@@ -118,6 +118,33 @@ struct NetworkDeadlineTests {
     override func stopLoading() {}
   }
 
+  final class NotConnectedProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+      client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+  }
+
+  @Test("A URLSession-native notConnectedToInternet is surfaced as TranscriptionError.networkError")
+  func nativeDisconnectMapsToNetworkError() async {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [NotConnectedProtocol.self]
+    let session = URLSession(configuration: configuration)
+    defer { session.invalidateAndCancel() }
+
+    let request = URLRequest(url: URL(string: "https://deadline.test/offline")!)
+    do {
+      _ = try await NetworkDeadline.data(for: request, session: session, timeout: 5)
+      Issue.record("expected networkError")
+    } catch TranscriptionError.networkError {
+      // retryable, audio retained
+    } catch {
+      Issue.record("unexpected error: \(error)")
+    }
+  }
+
   @Test("A URLSession-native timedOut is surfaced as TranscriptionError.requestTimeout")
   func nativeTimedOutMapsToRequestTimeout() async {
     let configuration = URLSessionConfiguration.ephemeral

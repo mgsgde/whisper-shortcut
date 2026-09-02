@@ -47,19 +47,21 @@ struct ResetSection: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
 
-      VStack(alignment: .leading, spacing: 6) {
-        Toggle("Save raw assistant responses to disk", isOn: $saveRawAssistantResponses)
-          .help("Diagnostics: dumps each final chat response as a .md file so markdown-rendering bugs can be reproduced from the exact model output. Off by default.")
-        if saveRawAssistantResponses {
-          Button(action: { openRawResponsesFolderInFinder() }) {
-            Label("Open raw responses folder", systemImage: "folder.badge.gearshape")
-              .font(.callout)
+      AdvancedSettingsGroup {
+        VStack(alignment: .leading, spacing: 6) {
+          Toggle("Save raw assistant responses to disk", isOn: $saveRawAssistantResponses)
+            .help("Diagnostics: dumps each final chat response as a .md file so markdown-rendering bugs can be reproduced from the exact model output. Off by default.")
+          if saveRawAssistantResponses {
+            Button(action: { openRawResponsesFolderInFinder() }) {
+              Label("Open raw responses folder", systemImage: "folder.badge.gearshape")
+                .font(.callout)
+            }
+            .buttonStyle(.bordered)
+            .pointerCursorOnHover()
           }
-          .buttonStyle(.bordered)
-          .pointerCursorOnHover()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 

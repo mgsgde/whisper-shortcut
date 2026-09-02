@@ -47,6 +47,59 @@ struct ChatToolContext {
 
 enum ChatToolRegistry {
 
+  /// Tools that mutate the user's data or open a URL. Each call is confirmed in Chat
+  /// before it runs; the choice is per-turn and is not remembered.
+  static func requiresUserApproval(_ name: String) -> Bool {
+    switch name {
+    case "open_url",
+         "google_calendar_create_event", "google_calendar_update_event", "google_calendar_delete_event",
+         "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
+         "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card":
+      return true
+    default:
+      return false
+    }
+  }
+
+  /// One-line summary for the approval alert.
+  static func approvalSummary(name: String, args: [String: Any]) -> String {
+    func arg(_ key: String) -> String {
+      (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+    switch name {
+    case "open_url":
+      let url = arg("url")
+      return url.isEmpty ? "Open a URL in your browser." : "Open \(url) in your browser."
+    case "google_calendar_create_event":
+      let summary = arg("summary")
+      return summary.isEmpty ? "Create a calendar event." : "Create calendar event: \(summary)"
+    case "google_calendar_update_event":
+      return "Update calendar event \(arg("event_id"))."
+    case "google_calendar_delete_event":
+      return "Delete calendar event \(arg("event_id"))."
+    case "google_tasks_create":
+      let title = arg("title")
+      return title.isEmpty ? "Create a task." : "Create task: \(title)"
+    case "google_tasks_update":
+      return "Update task \(arg("task_id"))."
+    case "google_tasks_complete":
+      return "Mark task \(arg("task_id")) complete."
+    case "google_tasks_delete":
+      return "Delete task \(arg("task_id"))."
+    case "trello_create_card":
+      let cardName = arg("name")
+      return cardName.isEmpty ? "Create a Trello card." : "Create Trello card: \(cardName)"
+    case "trello_move_card":
+      return "Move Trello card \(arg("card_id"))."
+    case "trello_update_card":
+      return "Update Trello card \(arg("card_id"))."
+    case "trello_archive_card":
+      return "Archive Trello card \(arg("card_id"))."
+    default:
+      return "Allow the chat to run \(name)?"
+    }
+  }
+
   /// Base function declarations (always available).
   static let functionDeclarations: [[String: Any]] = [
     [
@@ -966,6 +1019,9 @@ enum ChatToolRegistry {
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
     meetingContext: Bool, workspaceAvailable: Bool, workspaceWritable: Bool
   ) -> [[String: Any]] {
+    // In-process MLX has no tool-calling path. Do not declare tools so the model cannot
+    // hallucinate a `/folder` or Gmail call that then silently vanishes.
+    if Self.selectedChatProvider == .localMLX { return [] }
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
       + instructionsFunctionDeclarations
@@ -988,6 +1044,15 @@ enum ChatToolRegistry {
       decls += meetingFunctionDeclarations
     }
     return decls
+  }
+
+  /// The chat window's selected provider. Read without the chat-slot loader so a send cannot
+  /// persist a migration as a side effect of building tool declarations.
+  private static var selectedChatProvider: ChatModelProvider {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
+      ?? SettingsDefaults.selectedChatModel.rawValue
+    let migrated = PromptModel.migrateLegacyPromptRawValue(raw)
+    return PromptModel(rawValue: migrated)?.provider ?? SettingsDefaults.selectedChatModel.provider
   }
 
   private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {

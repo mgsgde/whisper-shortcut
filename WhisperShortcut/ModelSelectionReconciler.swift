@@ -39,12 +39,22 @@ enum ModelSelectionReconciler {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
+    case .system: return true
     }
   }
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no
   /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI.
   private static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok]
+
+  /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
+  private static let snapshotKeys: [String] = [
+    UserDefaultsKeys.selectedTranscriptionModel,
+    UserDefaultsKeys.selectedTranscriptionModelForMeetings,
+    UserDefaultsKeys.selectedPromptModel,
+    UserDefaultsKeys.selectedChatModel,
+    UserDefaultsKeys.selectedReadAloudModel,
+  ]
 
   // MARK: - Entry point
 
@@ -55,9 +65,11 @@ enum ModelSelectionReconciler {
     // actively fights the mode — an OpenAI key entered for something else is enough for it to
     // rewrite dictation to a cloud model, the exact failure the mode exists to make impossible.
     if OfflineMode.isEnabled {
+      snapshotPreOfflineSelectionsIfNeeded()
       reconcileForOfflineMode()
       return
     }
+    restorePreOfflineSelectionsIfNeeded()
     reconcilePromptSelection(key: UserDefaultsKeys.selectedChatModel,
                              candidates: PromptModel.chatModels,
                              fallback: SettingsDefaults.selectedChatModel)
@@ -77,12 +89,42 @@ enum ModelSelectionReconciler {
                            fallback: SettingsDefaults.selectedTranscriptionModel)
   }
 
+  // MARK: - Offline Mode snapshot / restore
+
+  /// Captures the current selections the first time Offline Mode is on, so turning it off can
+  /// put the user back on the cloud models they had. Later reconciles while the mode stays on
+  /// must not overwrite that snapshot with the already-rewritten offline values.
+  private static func snapshotPreOfflineSelectionsIfNeeded() {
+    let defaults = UserDefaults.standard
+    guard defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) == nil else {
+      return
+    }
+    var snapshot: [String: String] = [:]
+    for key in snapshotKeys {
+      if let value = defaults.string(forKey: key) {
+        snapshot[key] = value
+      }
+    }
+    defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+    DebugLogger.log("MODEL-RECONCILE: snapshotted \(snapshot.count) pre-offline selection(s)")
+  }
+
+  private static func restorePreOfflineSelectionsIfNeeded() {
+    let defaults = UserDefaults.standard
+    guard let snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+            as? [String: String] else { return }
+    for (key, value) in snapshot {
+      defaults.set(value, forKey: key)
+      DebugLogger.log("MODEL-RECONCILE: \(key): restored \(value) (Offline Mode off)")
+    }
+    defaults.removeObject(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+  }
+
   // MARK: - Offline Mode
 
-  /// Moves the selections that *have* an on-device equivalent — dictation, meeting transcription,
-  /// Dictate Prompt — onto this Mac. Read Aloud, Chat, meeting summary and Smart Improvement are
-  /// deliberately left alone: nothing in this build runs them locally, so there is nothing to move
-  /// them to. They stay selected and fail at the network guard, which is the honest outcome.
+  /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
+  /// transcription, Dictate Prompt, Chat, and Read Aloud. Meeting summary and Smart Improvement
+  /// still have no on-device path and stay selected, failing at the network guard.
   private static func reconcileForOfflineMode() {
     for key in [
       UserDefaultsKeys.selectedTranscriptionModel,
@@ -99,30 +141,49 @@ enum ModelSelectionReconciler {
         "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
     }
 
-    // Dictate Prompt moves to an on-device MLX model when possible. Chat can use the same MLX
-    // models; meeting summary, Smart Improvement and Read Aloud have no on-device equivalent and
-    // stay selected, failing at the network guard.
-    let promptKey = UserDefaultsKeys.selectedPromptModel
-    let raw = UserDefaults.standard.string(forKey: promptKey) ?? SettingsDefaults.selectedPromptModel.rawValue
+    reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedPromptModel)
+    reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedChatModel)
+
+    let ttsKey = UserDefaultsKeys.selectedReadAloudModel
+    let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
+    let ttsCurrent = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(ttsRaw))
+      ?? SettingsDefaults.readAloudModel
+    if ttsCurrent.provider != .system {
+      UserDefaults.standard.set(TTSModel.systemMacOS.rawValue, forKey: ttsKey)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(ttsKey): \(ttsCurrent.rawValue) → \(TTSModel.systemMacOS.rawValue) (Offline Mode)")
+    }
+  }
+
+  private static func reconcilePromptSlotForOfflineMode(key: String) {
+    let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.selectedPromptModel.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw))
       ?? SettingsDefaults.selectedPromptModel
     // A custom OpenAI-compatible endpoint may already point at the user's own server; the network
-    // guard is what decides, so leave that choice alone. In-process MLX and the HTTP local server
-    // already run on this Mac — leave those alone too.
-    guard current.provider != .localMLX, current.provider != .local,
-          current.provider != .customOpenAI else { return }
+    // guard is what decides, so leave that choice alone. In-process MLX (when this Mac can run it)
+    // and the HTTP local server already run on this Mac — leave those alone too.
+    if current.provider == .customOpenAI || current.provider == .local { return }
+    if current.provider == .localMLX, current.isOfferableOnThisMac { return }
     let replacement = offlinePromptReplacement()
-    UserDefaults.standard.set(replacement.rawValue, forKey: promptKey)
+    guard replacement != current else { return }
+    UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log(
-      "MODEL-RECONCILE: \(promptKey): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
+      "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
   }
 
-  /// Prefer a downloaded MLX model; otherwise the recommended catalogue default.
+  /// Prefer a downloaded MLX model this Mac can run; otherwise the recommended catalogue
+  /// default, or the HTTP local server on machines with no MLX (Intel).
   private static func offlinePromptReplacement() -> PromptModel {
     let downloaded = LocalLLMModelType.byPreference.last {
-      LocalLLMModelManager.shared.isModelAvailable($0)
+      $0.isOfferable && LocalLLMModelManager.shared.isModelAvailable($0)
     }
-    return PromptModel.forLocalLLMModel(downloaded ?? LocalLLMModelType.defaultModel)
+    if let downloaded {
+      return PromptModel.forLocalLLMModel(downloaded)
+    }
+    if LocalLLMModelType.isSupportedOnThisMac {
+      return PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    }
+    return .localModel
   }
 
   /// The best on-device model the user has actually downloaded, or the accuracy pick if none is —
@@ -138,6 +199,14 @@ enum ModelSelectionReconciler {
   private static func reconcilePromptSelection(key: String, candidates: [PromptModel], fallback: PromptModel) {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? fallback
+    if let mlx = current.localMLXModelType, !mlx.isOfferable {
+      let replacement = preferredPromptModel(among: candidates)
+        ?? PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+      UserDefaults.standard.set(replacement.rawValue, forKey: key)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (MLX not offerable)")
+      return
+    }
     if hasKey(current.provider) { return }
     guard let replacement = preferredPromptModel(among: candidates) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)

@@ -141,8 +141,11 @@ struct ChatSession: Codable {
   /// this chat; a non-empty list = only those display paths. Same nil-vs-empty distinction as
   /// `xHandles`, and for the same reason: `/workspace off` has to beat the global default.
   var workspaceFolders: [String]?
+  /// Last send failure for this session, shown as a failed-turn row even if the user
+  /// switched tabs before the error arrived. Cleared on the next successful send or retry.
+  var lastSendError: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil, workspaceFolders: [String]? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil, workspaceFolders: [String]? = nil, lastSendError: String? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -154,11 +157,12 @@ struct ChatSession: Codable {
     self.thinkingLevel = thinkingLevel
     self.xHandles = xHandles
     self.workspaceFolders = workspaceFolders
+    self.lastSendError = lastSendError
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
-    case xHandles, workspaceFolders
+    case xHandles, workspaceFolders, lastSendError
   }
 
   init(from decoder: Decoder) throws {
@@ -176,6 +180,23 @@ struct ChatSession: Codable {
     xHandles = try c.decodeIfPresent([String].self, forKey: .xHandles)
     // Absent (every chat written before `/workspace` existed) stays nil = all shared folders.
     workspaceFolders = try c.decodeIfPresent([String].self, forKey: .workspaceFolders)
+    lastSendError = try c.decodeIfPresent(String.self, forKey: .lastSendError)
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(id, forKey: .id)
+    try c.encode(lastUpdated, forKey: .lastUpdated)
+    try c.encode(messages, forKey: .messages)
+    try c.encodeIfPresent(title, forKey: .title)
+    try c.encode(archived, forKey: .archived)
+    try c.encode(pinned, forKey: .pinned)
+    try c.encode(isMeeting, forKey: .isMeeting)
+    try c.encodeIfPresent(meetingStem, forKey: .meetingStem)
+    try c.encode(thinkingLevel, forKey: .thinkingLevel)
+    try c.encodeIfPresent(xHandles, forKey: .xHandles)
+    try c.encodeIfPresent(workspaceFolders, forKey: .workspaceFolders)
+    try c.encodeIfPresent(lastSendError, forKey: .lastSendError)
   }
 }
 
@@ -195,6 +216,15 @@ private struct SessionsFile: Codable {
 @MainActor
 class ChatSessionStore {
   static let shared = ChatSessionStore()
+  /// Set when the sessions file failed to decode; ChatView shows it once then clears it.
+  static var lastCorruptionNotice: String?
+
+  /// Returns and clears a one-shot notice from a corrupt sessions-file recovery.
+  func consumeCorruptionNotice() -> String? {
+    let notice = ChatSessionStore.lastCorruptionNotice
+    ChatSessionStore.lastCorruptionNotice = nil
+    return notice
+  }
 
   private let fileName: String
   private let legacyFileName = "gemini-chat-session.json"
@@ -216,6 +246,9 @@ class ChatSessionStore {
   /// Matches `AppConstants.chatFullHistoryMaxMessages` so trimming never
   /// drops turns that would still be sent on the next request.
   private static let maxMessagesPerSession = 400
+  /// Skip image-strip / message-trim on sessions whose `lastUpdated` hasn't changed
+  /// since the last pass, unless they have now aged past the image-retention cutoff.
+  private var lastNormalized: [UUID: (updated: Date, imagesStripped: Bool)] = [:]
 
   init(scope: String? = nil) {
     self.scope = scope
@@ -264,7 +297,14 @@ class ChatSessionStore {
           return file
         }
       } catch {
-        DebugLogger.logError("GEMINI-CHAT: Failed to decode sessions file, starting fresh: \(error.localizedDescription)")
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let backupName = fileName.replacingOccurrences(of: ".json", with: ".corrupt-\(stamp).json")
+        let backupURL = appSupportDir.appendingPathComponent(backupName)
+        try? FileManager.default.moveItem(at: fileURL, to: backupURL)
+        ChatSessionStore.lastCorruptionNotice =
+          "Chat history could not be read and was set aside as \(backupName). A new empty chat was started."
+        DebugLogger.logError(
+          "GEMINI-CHAT: Failed to decode sessions file, moved to \(backupName): \(error.localizedDescription)")
       }
     }
 
@@ -314,31 +354,38 @@ class ChatSessionStore {
 
     // Strip image binaries from sessions older than imageRetentionDays before caching in memory.
     // This covers both attached image parts and generated-image markers embedded in message text.
-    // The current session always keeps its images for display.
+    // The current session always keeps its images for display. Unchanged sessions are skipped.
     let cutoff = Date().addingTimeInterval(-Self.imageRetentionDays * 86400)
     file.sessions = file.sessions.map { session in
-      guard session.id != file.currentSessionId, session.lastUpdated < cutoff else { return session }
-      var stripped = session
-      stripped.messages = session.messages.map { msg in
-        let contentWithoutMarkers = GeminiAPIClient.stripImageMarkers(msg.content)
-        let needsAttachmentStrip = !msg.attachedImageParts.isEmpty
-        let needsContentStrip = contentWithoutMarkers != msg.content
-        guard needsAttachmentStrip || needsContentStrip else { return msg }
-        var m = msg
-        if needsAttachmentStrip { m.attachedImageParts = [] }
-        if needsContentStrip { m.content = contentWithoutMarkers }
-        return m
+      let needsAgeStrip = session.id != file.currentSessionId && session.lastUpdated < cutoff
+      let needsTrim = session.messages.count > Self.maxMessagesPerSession
+      let prev = lastNormalized[session.id]
+      if prev?.updated == session.lastUpdated,
+         (prev?.imagesStripped == true || !needsAgeStrip),
+         !needsTrim {
+        return session
       }
-      return stripped
+      var result = session
+      if needsAgeStrip {
+        result.messages = session.messages.map { msg in
+          let contentWithoutMarkers = GeminiAPIClient.stripImageMarkers(msg.content)
+          let needsAttachmentStrip = !msg.attachedImageParts.isEmpty
+          let needsContentStrip = contentWithoutMarkers != msg.content
+          guard needsAttachmentStrip || needsContentStrip else { return msg }
+          var m = msg
+          if needsAttachmentStrip { m.attachedImageParts = [] }
+          if needsContentStrip { m.content = contentWithoutMarkers }
+          return m
+        }
+      }
+      if result.messages.count > Self.maxMessagesPerSession {
+        result.messages = Array(result.messages.suffix(Self.maxMessagesPerSession))
+      }
+      lastNormalized[session.id] = (updated: result.lastUpdated, imagesStripped: needsAgeStrip)
+      return result
     }
-
-    // Trim old messages from non-current sessions to keep file size manageable.
-    file.sessions = file.sessions.map { session in
-      guard session.messages.count > Self.maxMessagesPerSession else { return session }
-      var trimmed = session
-      trimmed.messages = Array(session.messages.suffix(Self.maxMessagesPerSession))
-      return trimmed
-    }
+    let liveIds = Set(file.sessions.map(\.id))
+    lastNormalized = lastNormalized.filter { liveIds.contains($0.key) }
 
     cachedFile = file
     scheduleDiskWrite(file)
@@ -484,6 +531,7 @@ class ChatSessionStore {
     try? fm.removeItem(at: fileURL)
     try? fm.removeItem(at: legacyFileURL)
     cachedFile = nil
+    lastNormalized = [:]
     DebugLogger.log("GEMINI-CHAT: Deleted all sessions")
   }
 

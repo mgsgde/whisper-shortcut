@@ -57,4 +57,70 @@ enum RetryBackoff {
   static func sleep(_ seconds: TimeInterval) async {
     try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
   }
+
+  /// Chat streams may only retry while no token has been yielded. Two extra attempts
+  /// cover a Wi-Fi blip or 5xx before the first byte.
+  static let preFirstTokenMaxAttempts = 3
+
+  /// Pre-first-token stream failures that are worth retrying (Wi-Fi blip, 5xx, transient
+  /// rate limits). Auth, cancel, and permanent spending-cap 429s are not.
+  static func isTransientPreFirstToken(_ error: Error) -> Bool {
+    if error is CancellationError { return false }
+    if isPermanentRateLimit(error) { return false }
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .cancelled:
+        return false
+      case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost,
+           .notConnectedToInternet, .dnsLookupFailed:
+        return true
+      default:
+        return false
+      }
+    }
+    guard let te = error as? TranscriptionError else { return false }
+    if te.isServerOrUnavailable { return true }
+    switch te {
+    case .slowDown, .rateLimited, .quotaExceeded, .requestTimeout, .resourceTimeout:
+      return true
+    case .networkError(let msg):
+      let lower = msg.lowercased()
+      return lower.contains("503") || lower.contains("502") || lower.contains("504")
+        || lower.contains("500") || lower.contains("unavailable")
+        || lower.contains("timed out") || lower.contains("timeout")
+        || lower.contains("connection") || lower.contains("offline")
+        || lower.contains("lost")
+    default:
+      return false
+    }
+  }
+
+  /// Retries `operation` on transient pre-stream failures only. Callers must not invoke this
+  /// after the first token has been yielded.
+  static func withPreFirstTokenRetry<T>(
+    logTag: String,
+    operation: () async throws -> T
+  ) async throws -> T {
+    var attempt = 0
+    while true {
+      attempt += 1
+      do {
+        return try await operation()
+      } catch {
+        if Task.isCancelled { throw error }
+        guard isTransientPreFirstToken(error), attempt < preFirstTokenMaxAttempts else {
+          throw error
+        }
+        let te = error as? TranscriptionError
+        let delaySeconds = delay(
+          attempt: attempt,
+          retryAfter: te?.retryAfter,
+          base: (te?.isServerOrUnavailable ?? false) ? 2.0 : 1.0,
+          exponential: te?.isServerOrUnavailable ?? false)
+        DebugLogger.log(
+          "\(logTag)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delaySeconds))s: \(error.localizedDescription)")
+        await sleep(delaySeconds)
+      }
+    }
+  }
 }

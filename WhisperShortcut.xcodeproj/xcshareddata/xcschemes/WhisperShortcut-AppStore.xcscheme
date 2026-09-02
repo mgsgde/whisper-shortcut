@@ -33,6 +33,9 @@
             reference = "container:WhisperShortcut-AppStore.xctestplan"
             default = "YES">
          </TestPlanReference>
+         <TestPlanReference
+            reference = "container:WhisperShortcut-Hermetic.xctestplan">
+         </TestPlanReference>
       </TestPlans>
    </TestAction>
    <LaunchAction

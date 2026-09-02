@@ -12,12 +12,19 @@ struct ClipboardSnapshot {
 }
 
 class ClipboardManager {
-  private let pasteboard = NSPasteboard.general
+  private let pasteboard: NSPasteboard
+
+  init(pasteboard: NSPasteboard = .general) {
+    self.pasteboard = pasteboard
+  }
 
   /// Pasteboard contents captured before this job clobbered them. Set at the first write of
   /// a job (the synthetic ⌘C of Dictate Prompt, or the result copy) and consumed once the
   /// synthetic ⌘V has landed. Only used when "Restore clipboard" is on.
   private var pendingRestore: ClipboardSnapshot?
+  /// `changeCount` immediately after the last `copyToClipboard` write. Restore is skipped
+  /// if the pasteboard changed in the meantime (user ⌘C, another dictation).
+  private var changeCountAfterLastWrite: Int = 0
 
   // MARK: - Constants
   private enum Constants {
@@ -31,6 +38,7 @@ class ClipboardManager {
   func copyToClipboard(text: String) {
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
+    changeCountAfterLastWrite = pasteboard.changeCount
   }
 
   /// Copies dictation transcript text with capitalization and trailing punctuation.
@@ -72,6 +80,7 @@ class ClipboardManager {
   /// paste, so a later job can never put back a clipboard from minutes ago.
   func discardRestorePoint() {
     pendingRestore = nil
+    changeCountAfterLastWrite = 0
   }
 
   /// Writes the remembered contents back and clears the restore point. No-op when nothing was
@@ -82,6 +91,10 @@ class ClipboardManager {
   func restorePendingSnapshot() -> Bool {
     guard let snapshot = pendingRestore else { return false }
     pendingRestore = nil
+    guard pasteboard.changeCount == changeCountAfterLastWrite else {
+      DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
+      return false
+    }
     guard !snapshot.isEmpty else { return false }
 
     pasteboard.clearContents()

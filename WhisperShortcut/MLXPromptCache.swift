@@ -67,6 +67,26 @@ actor MLXPromptCache {
   private var lru: [String] = []
   private static let maxSnapshots = 2
 
+  private var memoryPressureSource: DispatchSourceMemoryPressure?
+
+  func dropAll() {
+    guard !snapshots.isEmpty else { return }
+    DebugLogger.log("MLX-PROMPT-CACHE: dropping \(snapshots.count) snapshot(s)")
+    snapshots.removeAll()
+    lru.removeAll()
+  }
+
+  private func installPressureSourceIfNeeded() {
+    guard memoryPressureSource == nil else { return }
+    let source = DispatchSource.makeMemoryPressureSource(
+      eventMask: [.warning, .critical], queue: .global(qos: .utility))
+    source.setEventHandler {
+      Task { await MLXPromptCache.shared.dropAll() }
+    }
+    source.resume()
+    memoryPressureSource = source
+  }
+
   private func key(model: String, systemPrompt: String) -> String {
     var hasher = SHA256()
     hasher.update(data: Data(model.utf8))
@@ -96,6 +116,7 @@ actor MLXPromptCache {
     // A prompt that will not come back is not worth priming — see `reusablePromptPrefix`.
     guard reusePrefix else { return plainSession() }
     guard let systemPrompt, !systemPrompt.isEmpty else { return plainSession() }
+    installPressureSourceIfNeeded()
     let id = key(model: modelID, systemPrompt: systemPrompt)
 
     guard let snapshot = await snapshot(

@@ -71,16 +71,19 @@ final class AnthropicChatProvider: LLMChatProvider {
             "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
           )
 
-          let (bytes, response) = try await self.session.bytes(for: request)
-          guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response from Anthropic API")
-          }
-          if http.statusCode < 200 || http.statusCode >= 300 {
-            var errData = Data()
-            for try await b in bytes { errData.append(b) }
-            let text = String(data: errData, encoding: .utf8) ?? ""
-            DebugLogger.logError("ANTHROPIC-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            throw Self.mapHTTPError(status: http.statusCode, body: text)
+          let bytes = try await RetryBackoff.withPreFirstTokenRetry(logTag: "ANTHROPIC-CHAT-STREAM") {
+            let (bytes, response) = try await self.session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse else {
+              throw TranscriptionError.networkError("Invalid response from Anthropic API")
+            }
+            if http.statusCode < 200 || http.statusCode >= 300 {
+              var errData = Data()
+              for try await b in bytes { errData.append(b) }
+              let text = String(data: errData, encoding: .utf8) ?? ""
+              DebugLogger.logError("ANTHROPIC-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
+              throw Self.mapHTTPError(status: http.statusCode, body: text)
+            }
+            return bytes
           }
 
           var pendingToolUses: [(id: String, name: String, inputJSON: String)] = []
@@ -237,13 +240,12 @@ final class AnthropicChatProvider: LLMChatProvider {
   }
 
   private static func mapHTTPError(status: Int, body: String) -> Error {
-    if status == 401 || status == 403 {
-      return TranscriptionError.networkError("Anthropic API key is invalid. Check the key in Settings → General.")
-    }
-    if status == 429 {
-      return TranscriptionError.rateLimited(retryAfter: nil)
-    }
-    return TranscriptionError.networkError("Anthropic API error HTTP \(status): \(body.prefix(500))")
+    ChatProviderHTTPError.map(
+      provider: "Claude",
+      status: status,
+      body: body,
+      invalidKey: TranscriptionError.networkError(
+        "Anthropic API key is invalid. Check the key in Settings → General."))
   }
 
   /// Effort / adaptive thinking is supported on Sonnet 5 and Opus 4.8 family models, not Haiku 4.5.

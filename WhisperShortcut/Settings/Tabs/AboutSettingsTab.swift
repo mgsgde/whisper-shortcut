@@ -7,6 +7,8 @@ struct AboutSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      WhatsNewSection()
+
       welcomeTourSection
 
       SpacedSectionDivider()

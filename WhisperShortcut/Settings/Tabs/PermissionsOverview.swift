@@ -32,7 +32,10 @@ struct PermissionsOverview: View {
         description: "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted.",
         required: true,
         status: micStatus,
-        actions: micActions
+        actions: micActions,
+        hint: micStatus == .denied
+          ? "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later."
+          : nil
       )
 
       if includeAccessibility {

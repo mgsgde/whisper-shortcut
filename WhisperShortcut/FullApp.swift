@@ -65,15 +65,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Microphone permission will be requested automatically when recording starts
 
     // First-launch onboarding: if the user hasn't completed the Welcome tour, show it.
-    // Otherwise fall back to the legacy "open Settings if no key" safety net so users
-    // who somehow bypassed the tour still land in a configuration screen.
+    // Otherwise fall back to the legacy "open Settings if dictation cannot run" safety net so
+    // users who somehow bypassed the tour still land in a configuration screen. An offline
+    // Whisper model counts — it is not a chat credential, but it is enough to transcribe.
     Task {
       await MainActor.run {
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
-          } else if !ProviderCredentials.anyChatCredentialConfigured {
+          } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
             SettingsManager.shared.showSettings()
           }
         }

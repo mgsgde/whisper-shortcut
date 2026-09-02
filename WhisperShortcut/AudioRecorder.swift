@@ -4,6 +4,8 @@ import Foundation
 protocol AudioRecorderDelegate: AnyObject {
   func audioRecorderDidFinishRecording(audioURL: URL)
   func audioRecorderDidFailWithError(_ error: Error)
+  /// Recording actually started (mic permission granted and AVAudioRecorder.record() succeeded).
+  func audioRecorderDidBeginRecording()
 }
 
 /// Common surface of the Dictate recorders so MenuBarController can hold either the
@@ -14,8 +16,12 @@ protocol DictationAudioRecording: AnyObject {
   var onLevelSample: ((Float) -> Void)? { get set }
   var hasRecentlyBeenSilent: Bool { get }
   var lastRecordingWasSilent: Bool { get }
+  /// Peak average power in dB of the last completed recording (−160…0).
+  var lastPeakPowerDb: Float { get }
   func startRecording()
-  func stopRecording()
+  /// Returns false when nothing was recording (permission dialog still up, or already idle).
+  @discardableResult
+  func stopRecording() -> Bool
   func cleanup()
 }
 
@@ -48,6 +54,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
 
   /// Whether the last completed recording contained only silence (no speech detected).
   private(set) var lastRecordingWasSilent: Bool = false
+  private(set) var lastPeakPowerDb: Float = -160
 
   /// True when at least 2 meter samples have landed and both were below the silence
   /// threshold — i.e., the user wasn't speaking in the moment before pressing Stop.
@@ -169,6 +176,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
             NSLocalizedDescriptionKey: "Failed to start recording"
           ])
       }
+      delegate?.audioRecorderDidBeginRecording()
       meteringTimer = Timer.scheduledTimer(
         withTimeInterval: Self.meteringInterval, repeats: true
       ) { [weak self] _ in
@@ -192,16 +200,19 @@ class AudioRecorder: NSObject, DictationAudioRecording {
     }
   }
 
-  func stopRecording() {
+  @discardableResult
+  func stopRecording() -> Bool {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
-    guard let recorder = audioRecorder, recorder.isRecording else { return }
+    guard let recorder = audioRecorder, recorder.isRecording else { return false }
 
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
+    lastPeakPowerDb = peakPowerDuringRecording
     DebugLogger.logAudio("AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, silent=\(lastRecordingWasSilent)")
 
     recorder.stop()
+    return true
   }
 
   func cleanup() {

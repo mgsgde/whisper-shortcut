@@ -64,18 +64,28 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
 
     let verifier = generateCodeVerifier()
     let challenge = codeChallengeS256(verifier: verifier)
+    let state = OAuthCSRF.makeState()
 
     // Started before the URL is built: the listener owns the port, and the port is part of the
-    // callback OpenRouter must be told about.
+    // callback OpenRouter must be told about. OpenRouter has no top-level `state` query param;
+    // it preserves query already on `callback_url` and appends `code`, so the CSRF token lives
+    // there.
     let listener = try LoopbackOAuthListener { [weak self] components in
       guard let self else { return }
       Task { @MainActor in self.finishAuthorization(with: .success(components ?? URLComponents())) }
     }
     self.listener = listener
 
+    var callback = URLComponents(string: listener.callbackURL)!
+    callback.queryItems = [URLQueryItem(name: "state", value: state)]
+    guard let callbackURL = callback.string else {
+      cleanUpAuthorization()
+      throw OAuthError.invalidURL
+    }
+
     var components = URLComponents(url: OpenRouterOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
     components.queryItems = [
-      URLQueryItem(name: "callback_url", value: listener.callbackURL),
+      URLQueryItem(name: "callback_url", value: callbackURL),
       URLQueryItem(name: "code_challenge", value: challenge),
       URLQueryItem(name: "code_challenge_method", value: "S256"),
     ]
@@ -112,6 +122,11 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
     } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
       DebugLogger.log("OPENROUTER-OAUTH: User cancelled authorization")
       return false
+    }
+
+    let receivedState = callbackComponents.queryItems?.first(where: { $0.name == "state" })?.value
+    guard OAuthCSRF.accept(expected: state, received: receivedState, logPrefix: "OPENROUTER-OAUTH") else {
+      throw OAuthError.stateMismatch
     }
 
     guard let code = callbackComponents.queryItems?.first(where: { $0.name == "code" })?.value,
@@ -213,12 +228,14 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
     case invalidResponse
     case authorizationInProgress
     case authorizationStartFailed
+    case stateMismatch
 
     var errorDescription: String? {
       switch self {
       case .invalidURL: return "Failed to build the OpenRouter authorization URL."
       case .noCallbackURL: return "OpenRouter did not return a callback."
       case .noAuthorizationCode: return "No authorization code in OpenRouter's callback."
+      case .stateMismatch: return "OpenRouter sign-in was refused because the callback did not match this attempt. Try connecting again."
       case .keyExchangeFailed(let msg): return "OpenRouter rejected the authorization: \(msg)"
       case .missingKey: return "OpenRouter's response contained no API key."
       case .keychainWriteFailed: return "Could not save the OpenRouter key to your Keychain."

@@ -17,7 +17,7 @@ struct TTSModelSelectionView: View {
     systemImage: String? = "speaker.wave.2.fill",
     subtitle: String = "Which provider generates the spoken audio. Pick the specific voice below.",
     selectedModel: Binding<TTSModel>,
-    models: [TTSModel] = TTSModel.allCases,
+    models: [TTSModel] = TTSModel.readAloudModels,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
@@ -37,6 +37,8 @@ struct TTSModelSelectionView: View {
       return !KeychainManager.shared.hasNonEmpty(.openAI)
     case .xai:
       return !KeychainManager.shared.hasNonEmpty(.xai)
+    case .system:
+      return false
     }
   }
 

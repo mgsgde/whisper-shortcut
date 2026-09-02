@@ -6,6 +6,15 @@ import MLXLMCommon
 final class MLXChatProvider: LLMChatProvider {
   static let shared = MLXChatProvider()
 
+  /// Sessions (by `ChatRequestOptions.cacheKey`) already shown the no-tools notice.
+  private let noticeLock = NSLock()
+  private var sessionsToldNoTools = Set<String>()
+
+  /// Shown once per chat session, in the reply, so the user is not left guessing why
+  /// `/folder` or Gmail tools do nothing.
+  static let noToolsNotice =
+    "On-device MLX chat cannot use tools in this session (Gmail, Calendar, Trello, workspace files, and similar). Ask in plain language instead.\n\n"
+
   private init() {}
 
   func sendChatStream(
@@ -19,12 +28,11 @@ final class MLXChatProvider: LLMChatProvider {
     // server-side prompt cache, and no reasoning knob of its own — thinking is switched off
     // through the chat template below.
     let mayReusePrefix = options.reusablePromptPrefix
-    // Tools are accepted by the protocol but cannot be honoured here yet: this provider never
-    // emits `.functionCall`. Chat offers these models, so say so once per request instead of
-    // letting a web-search or workspace tool vanish without a trace.
+    // Tools are not declared for `.localMLX` (`ChatToolRegistry`); if any slip through, drop
+    // them rather than pretending a function call will run.
     if !tools.isEmpty {
       DebugLogger.logWarning(
-        "MLX-CHAT-STREAM: ignoring \(tools.count) tool(s) — in-process MLX has no tool-calling path yet")
+        "MLX-CHAT-STREAM: ignoring \(tools.count) tool(s) — in-process MLX has no tool-calling path")
     }
 
     let systemText = Self.plainText(from: systemInstruction)
@@ -43,6 +51,9 @@ final class MLXChatProvider: LLMChatProvider {
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {
+          if shouldAnnounceNoTools(sessionKey: options.cacheKey) {
+            continuation.yield(.textDelta(Self.noToolsNotice))
+          }
           // Readiness lives here, not in the callers: every path that reaches this provider needs
           // the weights on disk and in RAM, and the title stays neutral because both Chat and
           // Dictate Prompt come through. A 2.3 GB first download must not look like a hang.
@@ -79,6 +90,13 @@ final class MLXChatProvider: LLMChatProvider {
       }
       continuation.onTermination = { _ in task.cancel() }
     }
+  }
+
+  private func shouldAnnounceNoTools(sessionKey: String?) -> Bool {
+    guard let sessionKey, !sessionKey.isEmpty else { return false }
+    noticeLock.lock()
+    defer { noticeLock.unlock() }
+    return sessionsToldNoTools.insert(sessionKey).inserted
   }
 
   func generateStructured(

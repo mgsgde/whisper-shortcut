@@ -9,8 +9,26 @@ permissions:
   contents: write
 
 jobs:
+  hermetic-tests:
+    name: Hermetic tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    # No secrets: the hermetic subset is offline and must stay that way.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Run hermetic tests
+        run: bash scripts/run-tests.sh --hermetic
+
   build-and-release:
     name: Build, Sign, Notarize, and Release
+    needs: hermetic-tests
     runs-on: macos-latest
     timeout-minutes: 60
 
@@ -82,6 +100,7 @@ jobs:
       - name: Build and archive
         run: |
           xcodebuild clean archive \
+            -disableAutomaticPackageResolution \
             -project WhisperShortcut.xcodeproj \
             -scheme WhisperShortcut \
             -configuration Release \

@@ -296,3 +296,65 @@ final class MainThreadWatchdog {
     return String(format: "0x%016lx ???", address)
   }
 }
+
+// MARK: - Hang report files
+
+/// The watchdog writes `hang-*.txt` into the Logs directory. These helpers are how that
+/// evidence leaves the machine: Settings reveals the files in Finder, and the feedback
+/// composer lists them so a GitHub issue / email / WhatsApp draft can attach them.
+enum HangReports {
+
+  static let filePrefix = "hang-"
+  static let fileExtension = "txt"
+  /// Caps the excerpt pasted into a feedback URL so `wa.me` / `mailto:` stay under
+  /// handler length limits instead of being silently dropped.
+  static let excerptCharacterLimit = 1_200
+
+  static func directoryURL() -> URL {
+    AppSupportPaths.logsURL()
+  }
+
+  static func existingReportURLs(in directory: URL = directoryURL()) -> [URL] {
+    let files = (try? FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: [.contentModificationDateKey],
+      options: [.skipsHiddenFiles])) ?? []
+    return files
+      .filter {
+        $0.pathExtension == fileExtension
+          && $0.lastPathComponent.hasPrefix(filePrefix)
+      }
+      .sorted { $0.lastPathComponent > $1.lastPathComponent }
+  }
+
+  /// Filenames plus a truncated excerpt of the newest report. `nil` when none exist so
+  /// the feedback body does not grow an empty section.
+  static func feedbackAttachment(
+    reportURLs: [URL] = existingReportURLs(),
+    newestContents: String? = nil
+  ) -> String? {
+    guard !reportURLs.isEmpty else { return nil }
+    let names = reportURLs.map(\.lastPathComponent)
+    var lines = [
+      "Hang reports on this Mac (Settings → About → Reveal Hang Reports — attach these files to the issue):",
+    ]
+    lines.append(contentsOf: names.prefix(8).map { "- \($0)" })
+    if names.count > 8 {
+      lines.append("- …and \(names.count - 8) more")
+    }
+    let excerpt = newestContents ?? newestExcerpt(of: reportURLs[0])
+    if let excerpt, !excerpt.isEmpty {
+      lines.append("")
+      lines.append("Newest report (\(reportURLs[0].lastPathComponent)):")
+      lines.append(excerpt)
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  private static func newestExcerpt(of url: URL) -> String? {
+    guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    return FeedbackLinks.truncated(trimmed, limit: excerptCharacterLimit)
+  }
+}

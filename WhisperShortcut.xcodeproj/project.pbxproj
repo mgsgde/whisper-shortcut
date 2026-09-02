@@ -33,6 +33,7 @@
 
 /* Begin PBXFileReference section */
 		BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WhisperShortcut-AppStore.xctestplan"; sourceTree = "<group>"; };
+		BF1827C02FD9582800BEE910 /* WhisperShortcut-Hermetic.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WhisperShortcut-Hermetic.xctestplan"; sourceTree = "<group>"; };
 		BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhisperShortcut.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "WhisperShortcut-AppStore.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BFF9398E2FD94F7C001F505E /* WhisperShortcutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhisperShortcutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -113,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				BF1827BF2FD9582800BEE909 /* WhisperShortcut-AppStore.xctestplan */,
+				BF1827C02FD9582800BEE910 /* WhisperShortcut-Hermetic.xctestplan */,
 				BF3C90C82E3E0CC0001D325B /* WhisperShortcut */,
 				BFF9398F2FD94F7C001F505E /* WhisperShortcutTests */,
 				BFBC35F32E3E129600BAC747 /* Frameworks */,
@@ -673,40 +675,24 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/soffes/HotKey";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.2.1;
 			};
 		};
 		BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
 			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		BF99181D2F697163008AB3ED /* XCRemoteSwiftPackageReference "HotKey" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/soffes/HotKey";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		BF99181F2F697163008AB3ED /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
-			requirement = {
-				branch = main;
-				kind = branch;
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.1.0;
 			};
 		};
 		BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.31.3;
+				kind = exactVersion;
+				version = 3.31.4;
 			};
 		};
 		BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
@@ -727,12 +713,12 @@
 		};
 		BF99181C2F697163008AB3ED /* HotKey */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BF99181D2F697163008AB3ED /* XCRemoteSwiftPackageReference "HotKey" */;
+			package = BF09775C2E3E113F0040819C /* XCRemoteSwiftPackageReference "HotKey" */;
 			productName = HotKey;
 		};
 		BF99181E2F697163008AB3ED /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BF99181F2F697163008AB3ED /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			package = BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
 		};
 		BFBC35F42E3E129600BAC747 /* HotKey */ = {

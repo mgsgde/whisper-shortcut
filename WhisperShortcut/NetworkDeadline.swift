@@ -38,6 +38,10 @@ enum NetworkDeadline {
           throw TranscriptionError.requestTimeout
         } catch let error as URLError where error.code == .cancelled {
           throw CancellationError()
+        } catch let error as URLError {
+          // Connection loss, DNS, TLS, etc. — same retryable `.networkError` Gemini already
+          // maps, so the popup keeps Retry and the audio is retained (ledger I7).
+          throw TranscriptionError.networkError(error.localizedDescription)
         }
       }
       group.addTask {
@@ -54,6 +58,22 @@ enum NetworkDeadline {
       case .timedOut:
         throw TranscriptionError.requestTimeout
       }
+    }
+  }
+
+  /// One extra attempt on a transient `URLError` (mapped to `.networkError`) before the
+  /// caller surfaces the popup. Mirrors the 429 budget: the user already retries by hand.
+  static func dataWithOneNetworkRetry(
+    for request: URLRequest,
+    session: URLSession,
+    timeout: TimeInterval,
+    logPrefix: String
+  ) async throws -> (Data, URLResponse) {
+    do {
+      return try await data(for: request, session: session, timeout: timeout)
+    } catch TranscriptionError.networkError(let message) {
+      DebugLogger.log("RETRY: \(logPrefix) transient network error, retrying once: \(message)")
+      return try await data(for: request, session: session, timeout: timeout)
     }
   }
 }

@@ -26,6 +26,9 @@ struct ChatSearchResult: Identifiable {
 enum ChatSearch {
 
   private static let maxResults = 50
+  /// Per-session haystack reused while `lastUpdated` is unchanged.
+  @MainActor
+  private static var haystackCache: [UUID: (updated: Date, haystack: String, parts: [String])] = [:]
 
   /// Searches every chat session (title + message text) and meeting transcript (.txt content),
   /// returning results ranked by relevance (term-occurrence score) then recency. Multi-word
@@ -48,23 +51,36 @@ enum ChatSearch {
 
     var results: [ChatSearchResult] = []
     var coveredStems = Set<String>()
+    let sessions = store.allSessions()
 
-    for session in store.allSessions() {
-      var parts: [String] = []
-      if let t = session.title { parts.append(t) }
-      parts.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
+    for session in sessions {
+      let title = ChatViewModel.displayTitle(for: session)
+      let cached = haystackCache[session.id]
+      let parts: [String]
+      let haystack: String
+      if let cached, cached.updated == session.lastUpdated {
+        parts = cached.parts
+        haystack = cached.haystack
+      } else {
+        var built: [String] = []
+        if let t = session.title { built.append(t) }
+        built.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
+        if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
+          built.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
+        }
+        parts = built
+        haystack = parts.joined(separator: "\n").lowercased()
+        haystackCache[session.id] = (updated: session.lastUpdated, haystack: haystack, parts: parts)
+      }
 
       var meetingURL: URL? = nil
       if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
         coveredStems.insert(stem)
         meetingURL = meeting.url
-        parts.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
       }
 
-      let haystack = parts.joined(separator: "\n").lowercased()
       guard terms.allSatisfy({ haystack.contains($0) }) else { continue }
 
-      let title = ChatViewModel.displayTitle(for: session)
       results.append(ChatSearchResult(
         id: session.id,
         kind: session.isMeeting ? .meeting : .chat,
@@ -75,6 +91,9 @@ enum ChatSearch {
         date: session.lastUpdated,
         score: score(haystack: haystack, title: title.lowercased(), terms: terms)))
     }
+
+    let liveIds = Set(sessions.map(\.id))
+    haystackCache = haystackCache.filter { liveIds.contains($0.key) }
 
     // Orphan transcripts: file exists but its session was pruned from the 50-session cap.
     for meeting in meetingService.meetings where !coveredStems.contains(meeting.meetingId) {

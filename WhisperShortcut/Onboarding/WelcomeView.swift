@@ -202,7 +202,7 @@ struct WelcomeView: View {
       return hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey
         || offlineReady
     case .permissions:
-      return micStatus == .granted
+      return micStatus == .granted || micStatus == .denied
     default:
       return true
     }
@@ -232,8 +232,8 @@ struct WelcomeView: View {
     hasXAIKey = KeychainManager.shared.hasNonEmpty(.xai)
     hasAnthropicKey = KeychainManager.shared.hasNonEmpty(.anthropic)
     hasOpenRouterKey = KeychainManager.shared.hasNonEmpty(.openRouter)
-    // Any downloaded model unblocks the step — in Offline Mode the row downloads the accurate
-    // model rather than Base, and a user who already has Small has nothing left to do here.
+    // Any downloaded model unblocks the step — onboarding always offers Whisper Base,
+    // and a user who already has Small has nothing left to do here.
     offlineReady = OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) }
     micStatus = PermissionStatusChecker.status(for: .microphone)
   }

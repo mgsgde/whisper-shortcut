@@ -70,13 +70,13 @@ struct OfflineModeSection: View {
 
       if offlineMode {
         VStack(alignment: .leading, spacing: 6) {
-          offlineModeBullet("Dictation and Dictate Prompt offer on-device models only — Whisper here, Ollama or LM Studio for the rewrite.")
-          offlineModeBullet("Chat, Read Aloud, Smart Improvement, and the Google and Trello integrations do not work — nothing runs them on-device.")
-          offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available.")
+          offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
+          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
+          offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a Whisper or MLX model from Hugging Face still works (it carries no content of yours).")
           if !hasOfflineModel {
-            offlineModeBullet(
-              "No Whisper model is downloaded yet — download one in Dictate settings, or dictation has nothing to run.",
-              systemImage: "exclamationmark.triangle.fill", color: .orange)
+            WhisperModelDownloadCard(modelType: .whisperBase) {
+              hasOfflineModel = true
+            }
           }
         }
         .padding(.top, 2)
@@ -187,4 +187,8 @@ extension Notification.Name {
   /// ChatView, the screenshot popup) to open the Settings window and switch to the Permissions
   /// tab — the single hub. `SettingsView` observes this and updates `selectedTab`.
   static let openPrivacyPermissionsTab = Notification.Name("WhisperShortcut.openPrivacyPermissionsTab")
+  /// Posted with a `SettingsTab.rawValue` object to switch the Settings sidebar.
+  static let openSettingsTab = Notification.Name("WhisperShortcut.openSettingsTab")
+  /// Posted when onboarding is finished so the menu bar can hide "Finish setup…".
+  static let onboardingStatusDidChange = Notification.Name("WhisperShortcut.onboardingStatusDidChange")
 }

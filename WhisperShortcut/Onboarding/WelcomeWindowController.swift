@@ -38,9 +38,16 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     window?.center()
   }
 
+  /// True until the user finishes the last step. The menu bar observes this to keep a
+  /// "Finish setup…" item while the tour is incomplete.
+  static var needsCompletion: Bool {
+    !UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
+  }
+
   func finish() {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
     UserDefaults.standard.set(0, forKey: UserDefaultsKeys.onboardingCurrentStep)
+    NotificationCenter.default.post(name: .onboardingStatusDidChange, object: nil)
     // Keys may have just been entered during onboarding — adapt model selections to them.
     ModelSelectionReconciler.reconcileAll()
     window?.close()

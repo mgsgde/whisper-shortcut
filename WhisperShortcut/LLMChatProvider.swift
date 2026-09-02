@@ -397,7 +397,17 @@ enum OpenAICompatibleStream {
   }
 
   /// POSTs `body` and returns the byte stream, or throws the provider-mapped error.
+  /// Transient failures (Wi-Fi blip, 5xx) are retried only here — once the caller begins
+  /// consuming `bytes`, a retry would duplicate streamed output.
   private static func openStream(
+    _ config: Config, body: [String: Any]
+  ) async throws -> URLSession.AsyncBytes {
+    try await RetryBackoff.withPreFirstTokenRetry(logTag: config.logTag) {
+      try await openStreamOnce(config, body: body)
+    }
+  }
+
+  private static func openStreamOnce(
     _ config: Config, body: [String: Any]
   ) async throws -> URLSession.AsyncBytes {
     guard let url = URL(string: config.endpoint) else {
@@ -922,5 +932,67 @@ enum OpenAIResponsesAPIConverter {
       }
     }
     return input
+  }
+}
+
+// MARK: - Chat HTTP / attachment helpers
+
+/// Maps a provider HTTP error into a typed `TranscriptionError` without leaking raw JSON.
+enum ChatProviderHTTPError {
+  static func map(
+    provider: String, status: Int, body: String, invalidKey: Error? = nil
+  ) -> Error {
+    if (status == 401 || status == 403), let invalidKey {
+      return invalidKey
+    }
+    if status == 429 {
+      return TranscriptionError.rateLimited(retryAfter: nil)
+    }
+    if (500...599).contains(status) {
+      return TranscriptionError.serverError(status)
+    }
+    let detail = message(from: body) ?? "HTTP \(status)"
+    return TranscriptionError.networkError("\(provider) API error: \(detail)")
+  }
+
+  /// Pulls `error.message` (or `message`) out of a JSON body; otherwise a short plaintext snippet.
+  static func message(from body: String) -> String? {
+    let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return nil }
+    if let data = trimmed.data(using: .utf8),
+       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+      if let err = obj["error"] as? [String: Any],
+         let msg = err["message"] as? String, !msg.isEmpty {
+        return msg
+      }
+      if let msg = obj["message"] as? String, !msg.isEmpty { return msg }
+      if let err = obj["error"] as? String, !err.isEmpty { return err }
+    }
+    return String(trimmed.prefix(200))
+  }
+}
+
+/// Rejects MIME types the converter would otherwise drop silently (PDFs, documents).
+enum ChatAttachmentGuard {
+  static func rejectUnsupported(
+    in contents: [[String: Any]],
+    provider: String,
+    allowedPrefixes: [String]
+  ) -> Error? {
+    var unsupported: Set<String> = []
+    for content in contents {
+      guard let parts = content["parts"] as? [[String: Any]] else { continue }
+      for part in parts {
+        guard let inlineData = part["inline_data"] as? [String: Any],
+              let mimeType = inlineData["mime_type"] as? String else { continue }
+        if allowedPrefixes.contains(where: { mimeType.hasPrefix($0) }) { continue }
+        unsupported.insert(mimeType)
+      }
+    }
+    guard !unsupported.isEmpty else { return nil }
+    let types = unsupported.sorted().joined(separator: ", ")
+    return TranscriptionError.fileError(
+      "\(provider) can't use \(types) attachments. Switch to a Gemini model to chat about PDFs and documents."
+    )
   }
 }

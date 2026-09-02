@@ -38,6 +38,11 @@ struct SettingsView: View {
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
       selectedTabRaw = SettingsTab.permissions.rawValue
     }
+    .onReceive(NotificationCenter.default.publisher(for: .openSettingsTab)) { note in
+      if let raw = note.object as? String, SettingsTab(rawValue: raw) != nil {
+        selectedTabRaw = raw
+      }
+    }
   }
 
   // MARK: - Sidebar

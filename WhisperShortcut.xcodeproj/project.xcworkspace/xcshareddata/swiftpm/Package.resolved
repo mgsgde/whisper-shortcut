@@ -1,13 +1,13 @@
 {
-  "originHash" : "23e39f3089ad04538276e2777b9fefaab25e1639deb2af7166b1ebbd983a438c",
+  "originHash" : "54353dc96cfc534c06ff519025352df970af8df205d87c2f72376ba426f9d22f",
   "pins" : [
     {
       "identity" : "hotkey",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/soffes/HotKey",
       "state" : {
-        "branch" : "main",
-        "revision" : "a3cf605d7a96f6ff50e04fcb6dea6e2613cfcbe4"
+        "revision" : "a3cf605d7a96f6ff50e04fcb6dea6e2613cfcbe4",
+        "version" : "0.2.1"
       }
     },
     {
@@ -105,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/argmaxinc/WhisperKit",
       "state" : {
-        "branch" : "main",
-        "revision" : "2870b46b92ebd522c094e4c2da77ba3c415138d8"
+        "revision" : "1e2a163736dfa5a198e637ae44c114e1c6d5cc2d",
+        "version" : "1.1.0"
       }
     },
     {

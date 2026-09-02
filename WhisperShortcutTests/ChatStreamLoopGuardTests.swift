@@ -106,4 +106,29 @@ struct ChatStreamLoopGuardTests {
     let count = twice.components(separatedBy: ChatStreamLoopGuard.stopNotice).count - 1
     #expect(count == 1)
   }
+
+  @Test("A long unique prefix does not hide a trailing n-gram loop")
+  func windowedScanDetectsTrailingLoop() {
+    let prefix = String(repeating: "unique text that never repeats. ", count: 400)
+    let unit = String(repeating: "abcdefghij", count: 4)
+    #expect(unit.count == 40)
+    #expect(ChatStreamLoopGuard.isRepeatingLoop(prefix + unit + unit + unit))
+    #expect(!ChatStreamLoopGuard.isRepeatingLoop(prefix + unit + unit))
+  }
+
+  @Test("A long unique prefix does not hide a trailing sentence loop")
+  func windowedScanDetectsTrailingSentences() {
+    let prefix = String(repeating: "Different sentence number. ", count: 400)
+    let loop = "Kurze Faktenprüfung zu Hitze. Kurze Faktenprüfung zu Hitze. Kurze Faktenprüfung zu Hitze."
+    #expect(ChatStreamLoopGuard.isRepeatingLoop(prefix + loop))
+  }
+
+  @Test("shouldStop skips the n-gram scan on non-cadence deltas unless the ignore streak is high")
+  func cadenceSkipsExpensiveScan() {
+    let unit = String(repeating: "abcdefghij", count: 4)
+    let loop = unit + unit + unit
+    #expect(!ChatStreamLoopGuard.shouldStop(streamed: loop, ignoredStreak: 0, deltaIndex: 1))
+    #expect(ChatStreamLoopGuard.shouldStop(streamed: loop, ignoredStreak: 0, deltaIndex: 8))
+    #expect(ChatStreamLoopGuard.shouldStop(streamed: "x", ignoredStreak: 3, deltaIndex: 1))
+  }
 }

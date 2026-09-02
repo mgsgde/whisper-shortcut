@@ -9,6 +9,7 @@
 import Combine
 import Foundation
 import Hub
+import MLX
 import MLXLLM
 import MLXLMCommon
 
@@ -51,13 +52,34 @@ enum LocalLLMModelType: String, CaseIterable {
 
   static var defaultModel: LocalLLMModelType { .qwen34BInstruct2507 }
 
+  /// MLX is Apple Silicon only. Intel Macs keep the HTTP local-server path.
+  static var isSupportedOnThisMac: Bool {
+    #if arch(arm64)
+    return true
+    #else
+    return false
+    #endif
+  }
+
+  /// 8B weights are ~4.5 GB. An 8 GB Mac already holding Whisper Turbo cannot also hold them.
+  private static let qwen38BMinimumRAMBytes: UInt64 = 16 * 1024 * 1024 * 1024
+
+  /// Whether Settings / pickers may offer this catalogue entry on this Mac.
+  var isOfferable: Bool {
+    guard Self.isSupportedOnThisMac else { return false }
+    if self == .qwen38B {
+      return ProcessInfo.processInfo.physicalMemory >= Self.qwen38BMinimumRAMBytes
+    }
+    return true
+  }
+
   /// Preference order for Offline Mode: larger models last so a downloaded smaller model wins
   /// when both exist, and the recommended default is chosen when none are on disk yet.
   static var byPreference: [LocalLLMModelType] {
-    [.qwen34BInstruct2507, .qwen38B]
+    [.qwen34BInstruct2507, .qwen38B].filter(\.isOfferable)
   }
 
-  static var offerable: [LocalLLMModelType] { allCases }
+  static var offerable: [LocalLLMModelType] { allCases.filter(\.isOfferable) }
 
   var promptModel: PromptModel {
     PromptModel.forLocalLLMModel(self)
@@ -215,6 +237,8 @@ final class LocalLLMModelManager: ObservableObject {
     _ type: LocalLLMModelType,
     onProgress: ((Double) -> Void)?
   ) async throws {
+    try DiskSpace.require(estimatedSizeMB: type.estimatedSizeMB, at: hubDirectory)
+
     downloadingModels.insert(type)
     downloadProgress[type] = 0
     defer {
@@ -338,9 +362,28 @@ actor MLXModelLoader {
   private var loadedType: LocalLLMModelType?
   private var loaded: ModelContainer?
   private var inFlight: [LocalLLMModelType: Task<ModelContainer, Error>] = [:]
+  private var memoryPressureSource: DispatchSourceMemoryPressure?
+  private var idleUnloadTask: Task<Void, Never>?
+
+  /// Prefill regresses several-fold under memory pressure when the GPU cache is unbounded
+  /// (`LocalLLMBenchmarkTests`, 2026-09-02, the last open item in `plans/active/local-llm-mlx.md`).
+  /// 256 MB is a conservative cap so Whisper Turbo and MLX can coexist. `GPU.set(cacheLimit:)`
+  /// is the mlx-swift-lm call; it forwards to `Memory.cacheLimit`.
+  private static let gpuCacheLimitBytes = 256 * 1024 * 1024
+  /// Matches typical Ollama `keep_alive` so a menu-bar app does not hold ~2 GB forever.
+  private static let idleUnloadAfter: TimeInterval = 5 * 60
+
+  init() {
+    MLX.GPU.set(cacheLimit: Self.gpuCacheLimitBytes)
+    DebugLogger.log("MLX: GPU cacheLimit=\(Self.gpuCacheLimitBytes) bytes")
+  }
 
   func container(for type: LocalLLMModelType) async throws -> ModelContainer {
-    if loadedType == type, let loaded { return loaded }
+    startLifetimeGuardsIfNeeded()
+    if loadedType == type, let loaded {
+      scheduleIdleUnload()
+      return loaded
+    }
 
     if let existing = inFlight[type] {
       return try await existing.value
@@ -370,6 +413,7 @@ actor MLXModelLoader {
       loaded = value
       loadedType = type
       inFlight[type] = nil
+      scheduleIdleUnload()
       return value
     } catch {
       inFlight[type] = nil
@@ -379,8 +423,37 @@ actor MLXModelLoader {
 
   func unloadIfLoaded(_ type: LocalLLMModelType) {
     guard loadedType == type else { return }
+    unloadLoaded(reason: "delete")
+  }
+
+  private func startLifetimeGuardsIfNeeded() {
+    guard memoryPressureSource == nil else { return }
+    let source = DispatchSource.makeMemoryPressureSource(
+      eventMask: [.warning, .critical], queue: .global(qos: .utility))
+    source.setEventHandler {
+      Task { await self.unloadLoaded(reason: "memory pressure") }
+    }
+    source.resume()
+    memoryPressureSource = source
+  }
+
+  private func scheduleIdleUnload() {
+    idleUnloadTask?.cancel()
+    idleUnloadTask = Task {
+      try? await Task.sleep(for: .seconds(Self.idleUnloadAfter))
+      guard !Task.isCancelled else { return }
+      await self.unloadLoaded(reason: "idle")
+    }
+  }
+
+  private func unloadLoaded(reason: String) {
+    guard loadedType != nil else { return }
+    DebugLogger.log("MLX: unloading \(loadedType?.huggingFaceID ?? "model") (\(reason))")
     loaded = nil
     loadedType = nil
+    idleUnloadTask?.cancel()
+    idleUnloadTask = nil
+    Task { await MLXPromptCache.shared.dropAll() }
   }
 }
 

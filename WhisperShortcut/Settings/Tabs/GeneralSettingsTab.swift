@@ -47,24 +47,24 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
-      windowBehaviorSection
-
-      SpacedSectionDivider()
-
       LaunchAtLoginSection(viewModel: viewModel)
 
       SpacedSectionDivider()
 
-      PopupNotificationsSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
-      RecordingSafeguardsSection(viewModel: viewModel)
+      PopupNotificationsSection(viewModel: viewModel, includePlacement: false)
 
       SpacedSectionDivider()
 
       // In the App Store build the section explains why auto-paste is unavailable there.
       ClipboardBehaviorSection(viewModel: viewModel)
+
+      SpacedSectionDivider()
+
+      AdvancedSettingsGroup {
+        windowBehaviorSection
+        PopupNotificationsSection(viewModel: viewModel, includeToggle: false)
+        RecordingSafeguardsSection(viewModel: viewModel)
+      }
     }
   }
 

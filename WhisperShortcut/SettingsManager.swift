@@ -14,6 +14,14 @@ class SettingsManager {
     // Use the new showWindow method that handles activation policy
     settingsWindowController?.showWindow()
   }
+
+  func showSettings(tab: SettingsTab) {
+    UserDefaults.standard.set(tab.rawValue, forKey: UserDefaultsKeys.settingsSelectedTab)
+    showSettings()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+      NotificationCenter.default.post(name: .openSettingsTab, object: tab.rawValue)
+    }
+  }
   
   /// Opens the Settings window and switches to the Privacy & Permissions tab — the single
   /// in-app hub for permission status and actions. Every permission-error path routes here so

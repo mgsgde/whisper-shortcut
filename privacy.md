@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** August 3, 2026
+**Last updated:** September 2, 2026
 
 ## Overview
 
@@ -18,6 +18,12 @@ WhisperShortcut is designed to minimize data collection:
 - App data is stored locally on your Mac.
 - API keys and OAuth refresh tokens are stored in macOS Keychain.
 - Offline Whisper dictation can run without sending audio to a cloud service.
+
+## Offline Mode
+
+When **Offline Mode** is on (Settings → Privacy & Permissions), WhisperShortcut blocks internet requests that the app itself builds (`URLSession` instances the app configures, guarded by `OfflineModeURLProtocol`). Loopback and local-network hosts stay allowed.
+
+That guard does **not** wrap every request on the process. WhisperKit downloads local dictation models through its own `URLSession`, which never receives the Offline Mode protocol. While Offline Mode is on, the app can still reach huggingface.co to download a Whisper model. Those downloads carry no dictation audio, transcripts, or prompts.
 
 ## What Data Is Stored Locally
 

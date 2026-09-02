@@ -8,7 +8,7 @@ import Foundation
 enum ChatStreamLoopGuard {
 
   /// Shown in the bubble after a loop stop. Keep it short and non-scary.
-  static let stopNotice = "Antwort gestoppt: das Modell hat sich wiederholt."
+  static let stopNotice = "Reply stopped: the model was repeating itself."
 
   static let repeatThreshold = 3
   /// Below this, a trailing n-gram is too short to count as a loop (avoids "yes yes yes").
@@ -17,6 +17,11 @@ enum ChatStreamLoopGuard {
   static let minSentenceUnitLength = 12
   /// Cap n-gram unit length so per-token checks stay cheap on long replies.
   static let maxNgramUnitLength = 1024
+  /// Only the trailing window is scanned for loops — a 3 MB reply is otherwise O(N) per token
+  /// on the main actor (sentence split + n-gram).
+  static let scanWindowChars = 8_192
+  /// Skip the n-gram/sentence scan on most deltas; ignored-streak stays O(1) every token.
+  static let loopCheckEveryNDeltas = 8
 
   enum MergeKind: Equatable {
     /// True incremental SSE: `text` is `streamed + delta`.
@@ -66,24 +71,31 @@ enum ChatStreamLoopGuard {
 
   /// True when the same sentence/phrase appears `repeatThreshold` times in a row
   /// at the end of `streamed`. Two copies is legal (a heading restated once);
-  /// short tokens never trip it.
+  /// short tokens never trip it. Only the last `scanWindowChars` are inspected.
   static func isRepeatingLoop(_ streamed: String) -> Bool {
-    let sentences = splitSentences(streamed).map(normalizeWhitespace).filter { !$0.isEmpty }
+    let text = windowed(streamed)
+    let sentences = splitSentences(text).map(normalizeWhitespace).filter { !$0.isEmpty }
     if trailingSentenceUnitsRepeat(sentences, repeats: repeatThreshold) {
       return true
     }
     return hasTrailingNgramRepeat(
-      streamed, minUnit: minNgramLength, repeats: repeatThreshold)
+      text, minUnit: minNgramLength, repeats: repeatThreshold)
   }
 
   /// Consecutive in-place-status ignores also count as a loop: `merge` keeps a
   /// single copy, so `isRepeatingLoop` would never see 3 sentences in `streamed`,
   /// and the queued turn would wait forever.
-  static func shouldStop(streamed: String, ignoredStreak: Int) -> Bool {
-    ignoredStreak >= repeatThreshold || isRepeatingLoop(streamed)
+  ///
+  /// `deltaIndex` (1-based count of text deltas this turn) gates the expensive
+  /// scan to every `loopCheckEveryNDeltas` tokens. Pass 0 (the default) to always
+  /// scan — existing tests and ignored-streak checks rely on that.
+  static func shouldStop(streamed: String, ignoredStreak: Int, deltaIndex: Int = 0) -> Bool {
+    if ignoredStreak >= repeatThreshold { return true }
+    if deltaIndex > 0 && deltaIndex % loopCheckEveryNDeltas != 0 { return false }
+    return isRepeatingLoop(streamed)
   }
 
-  /// Append the German stop line, without duplicating it.
+  /// Append the stop line, without duplicating it.
   static func appendStopNotice(to text: String) -> String {
     if text.contains(stopNotice) { return text }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -111,7 +123,14 @@ enum ChatStreamLoopGuard {
   }
 
   static func lastSentence(_ text: String) -> String? {
-    splitSentences(text).last
+    splitSentences(windowed(text)).last
+  }
+
+  /// Trailing slice used by loop detection and last-sentence lookup so a long reply
+  /// never re-scans from the start on every token.
+  static func windowed(_ text: String) -> String {
+    if text.utf8.count <= scanWindowChars { return text }
+    return String(text.suffix(scanWindowChars))
   }
 
   static func normalizeWhitespace(_ text: String) -> String {
