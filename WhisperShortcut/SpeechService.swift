@@ -477,9 +477,22 @@ class SpeechService {
         // The weights were cold although the recording is already over, so every millisecond
         // spent here is wait the user sees. `ConnectionPrewarmer.warmOfflineWhisper` exists to
         // make this branch never run; this log is how we find out whether it worked.
+        //
+        // Unless this *is* a streaming chunk (`reportsProgress: false`), in which case the
+        // recording is emphatically not over — the user is still talking. Since slice 4 an
+        // in-flight chunk can be what first finds the weights cold, and a modal "Loading model…"
+        // popup thrown over the screen mid-sentence would be a worse bug than the wait it
+        // describes. Background chunks therefore load in silence; the popup belongs to the
+        // foreground transcription the user is actually waiting on.
         let loadStart = CFAbsoluteTimeGetCurrent()
-        defer { Task { @MainActor in PopupNotificationWindow.dismissProcessing() } }
+        let showsLoadingUI = reportsProgress
+        defer {
+          if showsLoadingUI {
+            Task { @MainActor in PopupNotificationWindow.dismissProcessing() }
+          }
+        }
         try await ModelManager.shared.ensureReady(offlineModelType) { status in
+          guard showsLoadingUI else { return }
           PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictation")
         }
         DebugLogger.logSpeech(

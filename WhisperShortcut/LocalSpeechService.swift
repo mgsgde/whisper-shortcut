@@ -371,7 +371,15 @@ actor LocalSpeechService {
         audioPath: audioURL.path,
         decodeOptions: decodeOptions
       ) { _ in
-        return true
+        // Returning false stops the decode at the next token. Before slice 4 this always
+        // returned true, which was harmless: the only decode ran after Stop, with the user
+        // waiting on its result. Now chunks decode *during* the recording, so a cancelled
+        // dictation used to leave the GPU finishing work whose transcript is already discarded.
+        //
+        // `Task.isCancelled` is read from the task that awaits this call, since WhisperKit
+        // invokes the callback synchronously from inside the decoding loop. If that ever stops
+        // holding, this reads false and the behaviour is exactly the pre-slice-4 one.
+        return !Task.isCancelled
       }
       let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
       DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")

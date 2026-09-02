@@ -4,7 +4,8 @@ import Foundation
 /// user is still speaking, so pressing Stop only leaves the tail chunk to process.
 ///
 /// One session is created per Dictate recording when the selected transcription model is
-/// a cloud STT provider — Gemini, OpenAI, or xAI (`makeIfEligible`). It consumes
+/// a cloud STT provider — Gemini, OpenAI, or xAI — or a downloaded on-device Whisper
+/// (`makeIfEligible`). It consumes
 /// `ChunkedDictateRecorder`'s chunk callbacks and transcribes each rotated-out chunk
 /// immediately through the regular `SpeechService.transcribe` pipeline, which routes per
 /// provider and brings AAC transcoding (Gemini), retries, and SPEED logging for free.
@@ -37,15 +38,43 @@ final class DictateStreamingSession {
     self.speechService = speechService
   }
 
-  /// Creates a session when streaming can help: chunked recorder active and the selected
-  /// Dictate model is a cloud STT provider (Gemini, OpenAI, xAI) with a credential.
-  /// Offline Whisper (local compute, whisper.cpp concurrency during recording untested)
-  /// and self-hosted endpoints (unknown semantics) return nil and keep the single-shot path.
+  /// Creates a session when streaming can help: the chunked recorder is active and the selected
+  /// Dictate model is either a cloud STT provider (Gemini, OpenAI, xAI) with a credential or an
+  /// on-device Whisper whose weights are already downloaded. Self-hosted endpoints stay out —
+  /// unknown latency and rate-limit semantics — and keep the single-shot path.
+  ///
+  /// Offline Whisper was excluded until slice 4 (2026-09-02) over "whisper.cpp concurrency during
+  /// recording untested". It is not actually concurrent: `LocalSpeechService` is an actor, so chunk
+  /// decodes serialise behind one another, and at the measured rtf ≈ 0.15 a chunk decodes about six
+  /// times faster than it was spoken — in-flight chunks cannot pile up behind the speaker.
+  ///
+  /// The **downloaded** check is the load-bearing half of the offline gate: an in-flight chunk must
+  /// never be what triggers a multi-gigabyte download, mid-recording, behind the user's back. When
+  /// the model is absent this returns nil and `SpeechService` still offers the download, with
+  /// progress, at dictation time — exactly as before.
   static func makeIfEligible(speechService: SpeechService) -> DictateStreamingSession? {
     guard AppConstants.useChunkedDictateRecorder else { return nil }
     let model = TranscriptionModel.loadSelected()
-    guard model.isGemini || model.isOpenAI || model.isXAI, model.hasRequiredCredential else { return nil }
+    guard isEligible(
+      model: model,
+      hasCredential: model.hasRequiredCredential,
+      offlineModelDownloaded: model.isOfflineModelAvailable())
+    else { return nil }
     return DictateStreamingSession(speechService: speechService)
+  }
+
+  /// The gate's whole decision, with its two pieces of global state passed in.
+  ///
+  /// Split out the way `OfflineMode.shouldBlock(_:offlineMode:)` is: the real inputs are the
+  /// Keychain and the model folder on disk, and a test that had to plant a credential and a
+  /// 1.6 GB download to assert "xAI streams, an undownloaded Whisper does not" would assert
+  /// nothing useful. Pure, so every model can be checked.
+  static func isEligible(
+    model: TranscriptionModel, hasCredential: Bool, offlineModelDownloaded: Bool
+  ) -> Bool {
+    if model.isOffline { return offlineModelDownloaded }
+    guard model.isGemini || model.isOpenAI || model.isXAI else { return false }
+    return hasCredential
   }
 
   /// Called from `ChunkedDictateRecorder.onChunkFinalized` while recording continues.

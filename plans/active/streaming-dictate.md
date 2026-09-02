@@ -1,6 +1,6 @@
 # Streaming Dictate — Overlap Transcription with Recording
 
-**Status:** Slice 1 implemented (2026-07-08) — `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`, externally identical behavior (chunks merged to one WAV on stop). Slice 2 shipped (`DictateStreamingSession.swift`, wired in `MenuBarController`). Slice 3 pending.
+**Status:** Slices 1, 2 and 4 shipped; slice 3 (tuning) pending. Slice 1 implemented (2026-07-08) — `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`, externally identical behavior (chunks merged to one WAV on stop). Slice 2 shipped (`DictateStreamingSession.swift`, wired in `MenuBarController`). Slice 4 shipped 2026-09-02 (offline Whisper admitted).
 
 **Correction to the original plan:** `LiveMeetingRecorder` is NOT AVAudioEngine-based — it is a double-buffer of two `AVAudioRecorder`s rotated at silence boundaries. Slice 1 therefore copied that proven pattern instead of introducing an engine-based recorder, which removes the recorder-swap risk (mic permission flow, metering, delegate contract all stay on `AVAudioRecorder` semantics) and the meeting-interplay concern (the app already runs multiple concurrent `AVAudioRecorder`s during meeting + dictation segments). Dictate rotation is silence-only (no max-duration cut): continuous speech grows the current chunk, so seams only ever sit inside real pauses.
 **Audience:** LLM implementing the feature end-to-end
@@ -44,7 +44,9 @@ All the building blocks exist:
 1. **Recorder swap behind a flag** — ✅ DONE (2026-07-08). Dictate records through `ChunkedDictateRecorder` (flag: `AppConstants.useChunkedDictateRecorder`) but always delivers one WAV at Stop (chunks merged via AVAudioFile concat; single-chunk sessions delivered untouched). Rotation: silence ≥ `dictateChunkSilenceDuration` (1.0s) after `dictateChunkMinDuration` (10s). Log markers: `AUDIO: Rotated dictate chunk`, `AUDIO: Merged N dictate chunks`.
 2. **In-flight chunk transcription** — ✅ DONE (2026-07-08). `DictateStreamingSession` (new file) transcribes rotated-out chunks immediately via the regular `SpeechService.transcribe` pipeline (cancellable:false → no cancellation-slot interference; AAC transcode + retries for free). Created per recording in `MenuBarController` when the Dictate model is cloud Gemini with credential (`makeIfEligible`); prompt recordings and other providers stay single-shot. Tail chunk arrives via `ChunkedDictateRecorder.onFinalChunk` before the merge; transcripts are joined in index order with " " (chunks are gap-free, no overlap → no `TranscriptMerger` needed). Silent chunks skip the API call. Fallbacks: any chunk error / missing chunk / all-silent → `finalTranscript()` returns nil → single-shot transcription of the merged WAV; session cancellation (indicator ✕, cancel shortcut, silent gate, long-recording safeguard, recorder failure) throws `CancellationError` so no fallback call runs. ContextLogger/Smart-Improvement still get the full merged WAV. Log markers: `STREAMING-DICTATE:`, `SPEED: STREAMING-DICTATE: Transcript ready Nms after stop`.
 3. **Tune & instrument** — `SPEED:` logs for per-chunk latency and stop-to-clipboard time; compare against pre-change baseline (`SPEED: [model] API call completed`); tune threshold/max-chunk length from real usage via `analyze-user-interactions`.
-4. **Offline Whisper in-flight (F15 next slice) — parked 2026-09-02, not started.** Cloud streaming is live; Offline Mode still waits for the finished file (`LocalSpeechService.transcribe` is one-shot). The next build is *not* a new ASR stack: admit Whisper in `DictateStreamingSession.makeIfEligible` (same chunk recorder, same fallback to the merged WAV if a chunk fails). Measure `SPEED: STREAMING-DICTATE:` stop-to-clipboard on a ≥20 s Offline dictation against the one-shot baseline. Watch for: WhisperKit concurrency while recording (today untested), seam hallucinations after F14's peak gate (chunk starts), RAM vs F13 idle-unload. **Do not pull a Parakeet-class model into this slice** — that stays a later, separate L (new download, quality vs Whisper, no `promptTokens` glossary). Queue: `plans/implementer-queue.md` row 3 (`HOLD`). Plan row: `plans/improvement-plan-2026-09.md` F15.
+4. **Offline Whisper in-flight** — ✅ BUILT 2026-09-02 (see "Slice 4 as built" below).
+   Original text, kept because its stated risks are what the build had to answer:
+   **parked 2026-09-02, not started.** Cloud streaming is live; Offline Mode still waits for the finished file (`LocalSpeechService.transcribe` is one-shot). The next build is *not* a new ASR stack: admit Whisper in `DictateStreamingSession.makeIfEligible` (same chunk recorder, same fallback to the merged WAV if a chunk fails). Measure `SPEED: STREAMING-DICTATE:` stop-to-clipboard on a ≥20 s Offline dictation against the one-shot baseline. Watch for: WhisperKit concurrency while recording (today untested), seam hallucinations after F14's peak gate (chunk starts), RAM vs F13 idle-unload. **Do not pull a Parakeet-class model into this slice** — that stays a later, separate L (new download, quality vs Whisper, no `promptTokens` glossary). Queue: `plans/implementer-queue.md` row 3 (`HOLD`). Plan row: `plans/improvement-plan-2026-09.md` F15.
 
 ## Measuring the offline path before building slice 4 (added 2026-09-02)
 
@@ -172,10 +174,70 @@ Two incidental findings from the run:
   test process — far short of the five-minute idle timer, so the memory-pressure source fired. Worth
   knowing before slice 4 keeps the model resident *and* decodes during recording on a 16 GB Mac.
 
+## Slice 4 as built (2026-09-02)
+
+`DictateStreamingSession.makeIfEligible` now admits offline Whisper, so Offline Mode transcribes
+chunks while the user is still speaking. Everything downstream was already in place — the chunked
+recorder runs for every dictation, chunks route through `SpeechService.transcribe`, and the
+merged-WAV fallback is unchanged — so the feature is a gate change plus the three things the gate
+change makes newly reachable.
+
+**The gate.** Split into a pure `isEligible(model:hasCredential:offlineModelDownloaded:)`, the way
+`OfflineMode.shouldBlock(_:offlineMode:)` is split, because its real inputs are the Keychain and a
+model folder on disk. Offline streams **only when the weights are already downloaded** — an
+in-flight chunk must never be what starts a multi-gigabyte download mid-recording. Undownloaded
+models keep the single-shot path, where `SpeechService` still offers the download with progress.
+Covered by `DictateStreamingEligibilityTests` (4 tests, every model case).
+
+**The concurrency risk the row raised does not exist.** `LocalSpeechService` is an actor, so chunk
+decodes serialise behind one another rather than running WhisperKit re-entrantly. At the measured
+rtf ≈ 0.15 a chunk decodes ~6× faster than it was spoken, so a queue cannot build up behind the
+speaker.
+
+**Two things the gate change made reachable, both fixed here:**
+
+- A background chunk could throw the modal "Offline Dictation — loading model…" popup over the
+  screen *mid-sentence*, because `performTranscription` showed it unconditionally when the weights
+  were cold. It is now gated on `reportsProgress`, which streaming chunks already pass as false:
+  the popup belongs to the foreground transcription the user is waiting on, not to background work
+  during a recording.
+- Cancelling a dictation left the GPU finishing a decode whose transcript is already discarded.
+  `performWhisperTranscription` passed `{ _ in true }` as WhisperKit's decode callback — harmless
+  when the only decode ran after Stop, wrong now that decodes run during recording. It returns
+  `!Task.isCancelled`, which stops the decode at the next token.
+
+**Not changed, deliberately:** `ContextLogger` / Smart Improvement still receive the full merged
+WAV; the fallback semantics (chunk failure or missing chunk → single-shot; cancellation → no
+result at all) are untouched; `dictateChunkMinDuration` stays at 10 s.
+
+**Ship-day falsifier** (queue row 3) — dictate ≥20 s offline with at least one pause, then:
+
+```bash
+bash scripts/logs.sh -t 15m | grep -E "SPEED: (STREAMING-DICTATE|LOCAL-SPEECH)"
+```
+
+Expected: `STREAMING-DICTATE: Transcribing chunk N in flight` lines *during* the recording, and
+`SPEED: STREAMING-DICTATE: Transcript ready Nms after stop` where N is close to the tail chunk's
+decode (~1.5–2.5 s for a 10–15 s tail at rtf 0.15) rather than the ~0.15 × total the single-shot
+path costs. Falsified if chunk seams hallucinate after F14's peak gate, or if the fallback rate
+rises.
+
+**Two known residuals, neither a blocker:**
+
+- **The tail is the floor.** Rotation needs 1.0 s of silence *and* a ≥10 s chunk, so the last chunk
+  is typically 10–15 s and costs ~1.5–2.5 s after Stop. Shrinking `dictateChunkMinDuration` would
+  shrink it, and the earlier finding that decode cost tracks output tokens rather than windows says
+  that is compute-free — but it is a seam-quality trade, so it belongs in slice 3 tuning against
+  real usage, not in this slice.
+- **Memory pressure can still unload mid-session.** The benchmark run saw the memory-pressure source
+  drop Turbo inside a 108 s process, far short of the five-minute idle timer. A mid-recording unload
+  now costs a ~5 s reload on the next chunk instead of failing, so it degrades rather than breaks —
+  but on a 16 GB Mac also running MLX it is worth watching.
+
 ## Non-goals
 
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).
-- ~~No provider work beyond Gemini~~ Extended 2026-07-08: streaming covers all cloud STT providers (Gemini, OpenAI, xAI) — usage data showed dictation alternates between OpenAI and Gemini week to week, and the session already routed chunks through the provider-agnostic `SpeechService.transcribe`, so the gate widening was ~3 lines. Self-hosted endpoints stay excluded. Offline Whisper is **no longer a non-goal** — it is slice 4 above, parked.
+- ~~No provider work beyond Gemini~~ Extended 2026-07-08: streaming covers all cloud STT providers (Gemini, OpenAI, xAI) — usage data showed dictation alternates between OpenAI and Gemini week to week, and the session already routed chunks through the provider-agnostic `SpeechService.transcribe`, so the gate widening was ~3 lines. Self-hosted endpoints stay excluded. Offline Whisper is **no longer a non-goal** — it is slice 4 above, built 2026-09-02.
 - No change to Dictate Prompt mode (audio→prompt is a single multimodal call; chunked transcription doesn't apply).
 - No Parakeet / FastConformer / other local ASR in this plan. That is F15's second half and a new model ecosystem, not a streaming-Dictate slice.
 
