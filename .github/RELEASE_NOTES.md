@@ -1,22 +1,18 @@
-# WhisperShortcut 8.08
-
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-Offline dictation no longer pays a cold start before every transcript. On an M1 Pro with Whisper Large v3 Turbo, a 25-second dictation after a break went from about 13 seconds to about 4.
+## Offline dictation: a serious fix, and a big speed-up
 
-## Offline dictation is faster after a pause
+**If you dictate offline with a Glossary, please update.** The Glossary was being handed to the on-device Whisper model as raw conditioning text, including its `Term (not "Wrong")` notes. Whisper treats that text as a writing sample to continue rather than as a rule list, so it learned to emit quoted, parenthesised fragments and fall into repetition loops. On one 64-second recording it returned **51 characters instead of 975** — most of the dictation simply lost. The Glossary is now cleaned up before it reaches Whisper: the terms are passed through exactly as you wrote them, the annotations and quotation marks are not.
 
-- **The model loads while you speak.** Pressing the dictation shortcut now starts loading the offline model straight away, so the weights are ready by the time you stop talking instead of being loaded afterwards, with you waiting.
-- **The model you dictate with stays loaded.** It used to be released after five idle minutes, which meant anyone dictating a few times an hour paid the full load — and a further one-time cost on the first transcription after it — nearly every time. It is still released when macOS is short on memory, and as soon as you switch to a cloud model.
-- No downloads start behind your back: a model that is not on disk yet is still offered at dictation time, with progress, exactly as before.
+**Offline dictation now transcribes while you speak.** Sections of your recording are transcribed at natural pauses as you go, so pressing Stop usually leaves only the last section to process. On a 73-second dictation with pauses the wait after Stop dropped from about 20 seconds to 4–6. How much you gain depends on how you speak: a dictation with several pauses gains a lot, one long unbroken stretch gains little, because the final section still has to be transcribed.
 
-## Chat
+### Also in this release
 
-- **Repeated lookups stop costing a round trip.** When a model searched your shared folder for something that was not there, it would often re-issue the same search several times, each one a full request to the provider. A repeat is now answered from the first result, and a search whose words already came up empty is flagged even when the folder differs.
-- **Grok 4.6 is the default Grok model**, and the two Grok entries describe what they actually are — 4.6 the flagship, 4.3 the cheaper option with a 1M-token context.
+- A recording is no longer abandoned if macOS unloads the speech model under memory pressure mid-dictation — it is reloaded and the dictation continues.
+- Cancelling a dictation now stops the transcription immediately instead of letting it run to completion in the background.
 
 ## Installation
 
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.07...v8.08
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.08...v8.09
