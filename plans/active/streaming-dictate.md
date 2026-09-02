@@ -138,7 +138,7 @@ five-minute idle unload and the memory-pressure unload: the first dictation afte
 and it should be measured (recipe above) before slice 4 is built at all. It never downloads a
 missing model and never touches the network — Offline Mode's guarantee is unchanged.
 
-## VAD chunking measured, and shipped (2026-09-02)
+## VAD chunking measured, shipped, and taken back out (2026-09-02)
 
 Before slice 4, the cheaper question: WhisperKit can already parallelise a *finished* file.
 `DecodingOptions.chunkingStrategy = .vad` cuts audio longer than one 30 s window at voice-activity
@@ -151,6 +151,10 @@ runs per arm, `say`-synthesised German):
 |---|---|---|---|
 | 68.2 s | 10.03 s / 10.20 s | 8.92 s / 9.25 s | 1011 vs 1011 |
 | 127.1 s | 18.83 s / 18.36 s | 17.25 s | 1881 vs 1880 |
+
+> **Reverted the same day — the measurement below was on the wrong material.** See "What real
+> speech showed" at the end of this section. The numbers here stand; the conclusion drawn from
+> them did not.
 
 **~7–10 % faster, transcript unchanged** — no seam damage on this material, and no coverage risk:
 `VADAudioChunker.chunkAll` splits in the middle of the longest silence and still covers the whole
@@ -173,6 +177,39 @@ Two incidental findings from the run:
 - The model was unloaded out from under the last arm ("WhisperKit not initialized") inside a 108 s
   test process — far short of the five-minute idle timer, so the memory-pressure source fired. Worth
   knowing before slice 4 keeps the model resident *and* decodes during recording on a 16 GB Mac.
+
+### What real speech showed, and the bug underneath it
+
+The user ran the A/B, and the transcript came back with `Cursor "Gigawats"), BNI, "Gigawatt")`
+repeated. Decoding their retained 64 s recording four ways, twice each, separated two problems —
+neither of them a streaming seam:
+
+| prompt | sequential | `.vad` |
+|---|---|---|
+| none | 958 chars, correct | 945 chars, "is twice" dropped at a seam |
+| glossary, verbatim | **51** chars one run, 560 another | 1190 chars: `"Guardian"),` ×20 |
+| glossary, sanitised | **975 / 975, correct** | 688 / 676 — ~30 % missing |
+
+1. **The Whisper Glossary was destroying offline dictation, and had been all along.** It is passed
+   to `promptTokens`, which is not an instruction channel but *example text the decoder continues*.
+   `Claude (not "Cloud")` therefore reads as a writing sample full of parentheses and quotes, and
+   Whisper reproduces that shape and loops. One run returned 51 characters for 64 seconds of
+   speech. This predates streaming, predates VAD chunking, and hit every offline dictation with a
+   non-empty glossary. Fixed in `LocalSpeechService.sanitizeGlossaryForWhisper` — drop a leading
+   `Terms:`, drop parenthesised asides, drop quotes, keep every term untouched. Verified through
+   the production path: 975 chars, twice, deterministic. Covered by
+   `WhisperGlossarySanitizerTests`.
+
+2. **`.vad` is not safe with a prompt, and loses words without one.** Chunks decode independently,
+   so each re-applies `promptTokens` with no carried context. Reverted to sequential. The synthetic
+   benchmark missed this because `say` produces clean pauses and the arms were run without a
+   glossary — a reminder that a benchmark is only as good as the material it runs on.
+
+**A third correction, to the numbers this plan is built on:** real `rtf` on this recording is
+**0.34–0.54**, not the 0.15 measured on synthetic German. A chunk decodes roughly twice as fast as
+it was spoken, not six times. Streaming still keeps up comfortably, and the A/B confirms the win
+(4.0 s and 5.5 s after Stop with pauses, against 32.2 s single-shot on 64 s of audio) — but the
+margin on slower hardware or with `whisper-large` is much thinner than this plan assumed.
 
 ## Slice 4 as built (2026-09-02)
 

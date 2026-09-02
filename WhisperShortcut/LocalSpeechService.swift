@@ -168,23 +168,26 @@ actor LocalSpeechService {
   /// - Parameter chunkingStrategy: `.vad` lets WhisperKit split audio longer than one 30 s window
   ///   at voice-activity boundaries and hand the pieces to `concurrentWorkerCount` workers (16 on
   ///   macOS) instead of walking the windows in sequence. Inert below 30 s — a single window is
-  ///   not chunkable — and it never drops audio: `VADAudioChunker` cuts in the middle of the
-  ///   longest silence and still covers the whole array.
+  ///   not chunkable.
   ///
-  ///   On by default because it was measured, not assumed (M1 Pro / 16 GB, Turbo, 2026-09-02,
-  ///   `OfflineWhisperBenchmarkTests.chunkingStrategyComparison`, two runs per arm):
+  ///   **Off by default, after being on by default for a few hours on 2026-09-02.** It was
+  ///   switched on for a measured ~7–10 % (68 s of synthetic speech: 10.03/10.20 s sequential
+  ///   against 8.92/9.25 s), with identical transcripts. That measurement was on `say`-synthesised
+  ///   German, which has clean pauses, and it hid what real speech shows — the same 64 s recording,
+  ///   decoded both ways:
   ///
-  ///   | audio | sequential | `.vad` | chars |
-  ///   |---|---|---|---|
-  ///   | 68.2 s | 10.03 / 10.20 s | 8.92 / 9.25 s | 1011 vs 1011 |
-  ///   | 127.1 s | 18.83 / 18.36 s | 17.25 s | 1881 vs 1880 |
+  ///   | prompt | sequential | `.vad` |
+  ///   |---|---|---|
+  ///   | none | 958 chars, correct | 945 chars, "is twice" dropped at a seam |
+  ///   | glossary | 975 / 975 chars | 688 / 676 chars — ~30 % of the transcript gone |
   ///
-  ///   So ~7–10 %, with the transcript unchanged — worth taking, but an order of magnitude short
-  ///   of what streaming would give, because CoreML serialises on the GPU and 16 "workers" do not
-  ///   buy 16× (see `plans/active/streaming-dictate.md` slice 4). Pass nil to compare.
+  ///   Chunks decode independently, so each one re-applies `promptTokens` with no carried context,
+  ///   and the seams lose words. Eight percent does not buy that. The parameter stays so the
+  ///   comparison can be re-run (`OfflineWhisperBenchmarkTests.chunkingStrategyComparison`); the
+  ///   lever that actually removes the wait is streaming, not intra-file parallelism.
   func transcribe(
     audioURL: URL, language: String? = nil, prompt: String? = nil,
-    chunkingStrategy: ChunkingStrategy? = .vad
+    chunkingStrategy: ChunkingStrategy? = nil
   ) async throws -> String {
     let transcribeStartTime = CFAbsoluteTimeGetCurrent()
     
@@ -309,13 +312,70 @@ actor LocalSpeechService {
   
   // MARK: - Prompt Token Building
   
+  /// Rewrites the user's glossary into something Whisper can safely be conditioned on.
+  ///
+  /// `promptTokens` is not an instruction channel. It is *example text in the style the transcript
+  /// should have*, and the decoder simply continues it. The Whisper Glossary is authored for the
+  /// cloud models too, where `Claude (not "Cloud")` reads as a rule — fed to Whisper verbatim it
+  /// reads as a writing sample full of parentheses and quotation marks, and the decoder duly
+  /// produces those.
+  ///
+  /// Measured on a 64 s recording (2026-09-02), same audio, same model:
+  ///
+  /// | prompt | result |
+  /// |---|---|
+  /// | none | 958 chars, correct |
+  /// | glossary verbatim | **51 chars** on one run, 560 on another — the dictation is simply gone |
+  /// | glossary verbatim, `.vad` | 1190 chars: `"Guardian"), "Guardian"), …` twenty times over |
+  /// | glossary sanitised | 975 / 975 chars, correct |
+  ///
+  /// A user reported exactly this shape (`Cursor "Gigawats"), BNI, "Gigawatt")`) — their glossary's
+  /// own terms and punctuation, looped. It was never a chunking bug; it predates streaming and hit
+  /// every offline dictation with a non-empty glossary.
+  ///
+  /// Deliberately conservative: drop a leading `Terms:` label, drop parenthesised asides, drop
+  /// quotation marks, tidy the separators. Everything else — the terms themselves, their spelling,
+  /// their order — is left exactly as the user wrote it, because those are the whole point.
+  static func sanitizeGlossaryForWhisper(_ glossary: String) -> String {
+    var text = glossary.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    // A label, not example prose. Only an exact leading "Terms:" — anything else is the user's text.
+    if let range = text.range(of: "Terms:", options: [.caseInsensitive, .anchored]) {
+      text = String(text[range.upperBound...])
+    }
+
+    // `(not "Cloud")` and friends: the instruction half of an entry, and the source of the
+    // parenthesis-and-quote shape the decoder copies.
+    text = text.replacingOccurrences(
+      of: "\\([^()]*\\)", with: "", options: .regularExpression)
+    text = text.replacingOccurrences(
+      of: "[\"\u{201C}\u{201D}\u{201E}\u{00AB}\u{00BB}]", with: "", options: .regularExpression)
+
+    // Re-join the entries so stripping does not leave ", ," or trailing separators behind.
+    let entries = text
+      .split(whereSeparator: { $0 == "," || $0 == "\n" })
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty }
+    return entries.joined(separator: ", ")
+  }
+
   /// Encodes the dictation prompt into token IDs suitable for Whisper's promptTokens,
   /// filtering out special tokens and truncating to 224 (Whisper's effective limit).
   private func buildPromptTokens(prompt: String?, whisperKit: WhisperKit) -> [Int]? {
-    guard let promptText = prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !promptText.isEmpty else {
+    guard let rawPrompt = prompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !rawPrompt.isEmpty else {
       DebugLogger.log("LOCAL-SPEECH: No Whisper glossary sent (prompt empty)")
       return nil
+    }
+    let promptText = Self.sanitizeGlossaryForWhisper(rawPrompt)
+    guard !promptText.isEmpty else {
+      DebugLogger.log("LOCAL-SPEECH: No Whisper glossary sent (nothing left after sanitising)")
+      return nil
+    }
+    if promptText != rawPrompt {
+      DebugLogger.log(
+        "LOCAL-SPEECH: Whisper glossary sanitised (\(rawPrompt.count) → \(promptText.count) chars); "
+          + "parentheses and quotes make Whisper reproduce them")
     }
     
     guard let tokenizer = whisperKit.tokenizer else {
