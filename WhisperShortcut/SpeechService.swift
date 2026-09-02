@@ -474,10 +474,21 @@ class SpeechService {
       // nothing but time — whereas the old "Model Not Downloaded" error threw the recording away
       // and sent them to Settings to press a button.
       if await !LocalSpeechService.shared.isLoaded(modelType: offlineModelType) {
+        // The weights were cold although the recording is already over, so every millisecond
+        // spent here is wait the user sees. `ConnectionPrewarmer.warmOfflineWhisper` exists to
+        // make this branch never run; this log is how we find out whether it worked.
+        let loadStart = CFAbsoluteTimeGetCurrent()
         defer { Task { @MainActor in PopupNotificationWindow.dismissProcessing() } }
         try await ModelManager.shared.ensureReady(offlineModelType) { status in
           PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictation")
         }
+        DebugLogger.logSpeech(
+          "SPEED: LOCAL-SPEECH coldStart model=\(offlineModelType.rawValue) "
+            + "waitMs=\(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - loadStart) * 1000)) "
+            + "(prewarm missed; includes a download if the model was absent)")
+      } else {
+        DebugLogger.logSpeech(
+          "SPEED: LOCAL-SPEECH warmStart model=\(offlineModelType.rawValue) waitMs=0")
       }
       try Task.checkCancellation()
 

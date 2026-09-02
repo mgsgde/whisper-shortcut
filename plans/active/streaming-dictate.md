@@ -46,6 +46,80 @@ All the building blocks exist:
 3. **Tune & instrument** — `SPEED:` logs for per-chunk latency and stop-to-clipboard time; compare against pre-change baseline (`SPEED: [model] API call completed`); tune threshold/max-chunk length from real usage via `analyze-user-interactions`.
 4. **Offline Whisper in-flight (F15 next slice) — parked 2026-09-02, not started.** Cloud streaming is live; Offline Mode still waits for the finished file (`LocalSpeechService.transcribe` is one-shot). The next build is *not* a new ASR stack: admit Whisper in `DictateStreamingSession.makeIfEligible` (same chunk recorder, same fallback to the merged WAV if a chunk fails). Measure `SPEED: STREAMING-DICTATE:` stop-to-clipboard on a ≥20 s Offline dictation against the one-shot baseline. Watch for: WhisperKit concurrency while recording (today untested), seam hallucinations after F14's peak gate (chunk starts), RAM vs F13 idle-unload. **Do not pull a Parakeet-class model into this slice** — that stays a later, separate L (new download, quality vs Whisper, no `promptTokens` glossary). Queue: `plans/implementer-queue.md` row 3 (`HOLD`). Plan row: `plans/improvement-plan-2026-09.md` F15.
 
+## Measuring the offline path before building slice 4 (added 2026-09-02)
+
+Slice 4 is only worth building if Whisper's decode is fast relative to the speech it decodes, and
+the numbers depend entirely on the Mac — the target here is a *Praxis* machine, not the developer's,
+and nobody dictates offline day to day, so there is no passive telemetry to wait for. Two changes
+landed to make a deliberate three-minute test produce the answer:
+
+1. **Realtime factor per transcription** — `LocalSpeechService.transcribe` emits
+   `SPEED: LOCAL-SPEECH rtf model=… audioS=… decodeS=… totalS=… rtf=…`. `decodeS` spans the
+   prompt-retry decode too, so the factor is not flattered.
+2. **Cold vs. warm weights** — `LocalSpeechService.initializeModel` emits
+   `SPEED: LOCAL-SPEECH load model=… loadMs=…`; `SpeechService` emits
+   `SPEED: LOCAL-SPEECH coldStart …` / `warmStart …` depending on whether the load landed *after*
+   Stop, on the critical path. `ConnectionPrewarmer` emits `SPEED: PREWARM offline model=… readyMs=…`.
+
+**Test recipe:** select an offline model, then dictate once for ~5 s, ~20 s and ~60 s, and read:
+
+```bash
+bash scripts/logs.sh -t 15m | grep -E "SPEED: (LOCAL-SPEECH|PREWARM offline)"
+```
+
+**How to read it:** `rtf` well below ~0.3 means in-flight chunks decode far faster than they arrive
+and slice 4 pays off; `rtf` approaching 1 means chunks would queue behind the speech and streaming
+would make things *worse*, not better — that is the falsifier for slice 4 on that hardware. A
+`coldStart` line after the prewarm shipped means the warm-up did not reach in time (or the model was
+absent); every `warmStart waitMs=0` is load latency that no longer sits after Stop.
+
+**First baseline (M1 Pro / 16 GB, Turbo, 2026-09-02, `OfflineWhisperBenchmarkTests`, synthesized
+German dictation):**
+
+| audio | chars out | decode | rtf |
+|---|---|---|---|
+| 24.5 s | 362 | 4.25 s | 0.173 |
+| 68.2 s | 1011 | 12.66 s | 0.186 |
+| 1.0 s of noise | 0 | 0.086 s | — |
+| 24.5 s, first decode after a load | 362 | 7.29 s | 0.297 |
+
+Cold weight load: 3.7–6.1 s across runs. Warm run-to-run spread on the same clip: 3.8–4.7 s — read
+single numbers with that in mind.
+
+Three things fall out, and two of them contradict what this plan assumed before the measurement:
+
+1. **Decode cost tracks the tokens produced, not the audio duration and not 30 s windows.** 11.7 and
+   12.5 ms per output character for the two clips above; one second of noise, which yields no
+   tokens, decodes in 86 ms. The earlier worry that sub-30 s chunks would each pay a full encoder
+   pass is **wrong** — the encoder is cheap here, the autoregressive decoder is the cost, and
+   chunking does not multiply it. Chunk length is therefore a free parameter for slice 4, to be
+   chosen for seam quality rather than for compute.
+2. **Streaming can keep up comfortably.** At rtf ≈ 0.18 on dense synthetic speech — real dictation
+   has pauses and sits lower — a chunk decodes roughly five times faster than it was spoken, so
+   in-flight chunks cannot pile up behind the speaker on this class of hardware. `whisper-large` on
+   a weaker Mac is where that assumption needs re-checking; the benchmark takes
+   `WHISPERSHORTCUT_BENCH_OFFLINE_MODEL` for exactly that.
+3. **The first decode after every model load costs ~+3 s** (7.29 s vs 4.25 s warm for the same
+   clip), and the penalty returns after each unload rather than being paid once per process. A
+   throwaway warm-up inference was built and measured against it — silence (6 ms), a noise buffer
+   (10 ms), a noise file through the real path (86 ms), a short English utterance (0.85 s) and ten
+   seconds of German speech (1.58 s) — and **none of them absorbed it**: the following real decode
+   stayed at 7.5–8.4 s. The warm-up was reverted rather than shipped. What that penalty actually is
+   remains open; it is worth ~3 s per cold dictation, so it is worth someone's afternoon.
+
+Cold path for a 25 s dictation, end to end: ~5 s load + ~7.3 s first decode ≈ **12 s**, against
+~4.3 s warm. The preload below removes the first half of that reliably; the second half is item 3.
+
+## Preload instead of streaming (shipped 2026-09-02)
+
+`ConnectionPrewarmer.prewarm(for: TranscriptionModel)` now warms offline Whisper's weights at
+recording start, the way it already warmed cloud connections and local LLMs. Whisper was previously
+warmed only at launch and on model selection, which stopped being sufficient when F13 added the
+five-minute idle unload and the memory-pressure unload: the first dictation after a pause paid the
+~1.6 GB load *after* Stop. This is the cheap half of slice 4's benefit with none of its seam risk,
+and it should be measured (recipe above) before slice 4 is built at all. It never downloads a
+missing model and never touches the network — Offline Mode's guarantee is unchanged.
+
 ## Non-goals
 
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).

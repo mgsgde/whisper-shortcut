@@ -79,6 +79,13 @@ actor LocalSpeechService {
       let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
       DebugLogger.logSuccess(
         "LOCAL-SPEECH: Model initialized successfully in \(String(format: "%.1f", elapsed))s")
+      // Machine-readable twin of the line above, greppable next to the transcription numbers.
+      // On a cold model this load is the single biggest item in front of the transcript, and the
+      // only question that matters is whether it lands inside the recording window
+      // (`ConnectionPrewarmer.warmOfflineWhisper`) or after Stop, where the user waits on it.
+      DebugLogger.logSpeech(
+        "SPEED: LOCAL-SPEECH load model=\(modelType.rawValue) "
+          + "loadMs=\(String(format: "%.0f", elapsed * 1000))")
     } catch {
       // Check if error is related to missing or incomplete model files
       let errorMessage = error.localizedDescription
@@ -168,10 +175,15 @@ actor LocalSpeechService {
     }
     scheduleIdleUnload()
     
-    // Get audio duration for reference
+    // Not just for the log line: this is the denominator of the realtime factor emitted at the
+    // end of this method — the number that decides whether transcribing chunks *while* the user
+    // still speaks can keep up with the recording at all (see `plans/active/streaming-dictate.md`
+    // slice 4).
+    var audioDuration: Double?
     do {
       let audioFile = try AVAudioFile(forReading: audioURL)
       let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      audioDuration = duration
       DebugLogger.log("LOCAL-SPEECH: Audio duration: \(String(format: "%.2f", duration))s")
     } catch {
       DebugLogger.log("LOCAL-SPEECH: Could not determine audio duration")
@@ -187,6 +199,7 @@ actor LocalSpeechService {
     let decodeOptions = buildDecodingOptions(language: language, promptTokens: promptTokens)
     
     // Transcribe (with fallback retry if prompt causes empty result)
+    let decodeStart = CFAbsoluteTimeGetCurrent()
     var transcriptionResults = try await performWhisperTranscription(
       whisperKit: whisperKit, audioURL: audioURL, decodeOptions: decodeOptions
     )
@@ -200,6 +213,10 @@ actor LocalSpeechService {
       )
     }
     
+    // Spans the retry too: a prompt that produces an empty result costs a second full decode,
+    // and hiding that would flatter the realtime factor.
+    let decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
+
     // Combine all segments into a single text
     guard !transcriptionResults.isEmpty else {
       throw TranscriptionError.fileError("No transcription result")
@@ -214,6 +231,18 @@ actor LocalSpeechService {
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
     DebugLogger.logSpeech("SPEED: Whisper transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
+    // One greppable line per offline transcription carrying everything the streaming decision
+    // needs: `rtf` well below 1 means chunks can be decoded during the recording; near or above 1
+    // means in-flight chunks would queue up behind the speech and streaming would make it worse.
+    let rtfText = audioDuration.map { duration -> String in
+      duration > 0 ? String(format: "%.3f", decodeElapsed / duration) : "n/a"
+    } ?? "n/a"
+    DebugLogger.logSpeech(
+      "SPEED: LOCAL-SPEECH rtf model=\(currentModelType?.rawValue ?? "unknown") "
+        + "audioS=\(audioDuration.map { String(format: "%.2f", $0) } ?? "n/a") "
+        + "decodeS=\(String(format: "%.2f", decodeElapsed)) "
+        + "totalS=\(String(format: "%.2f", totalElapsedTime)) "
+        + "rtf=\(rtfText)")
     
     return normalizedText
   }

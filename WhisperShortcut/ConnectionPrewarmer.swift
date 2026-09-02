@@ -7,9 +7,14 @@ import MLXLMCommon
 /// the same connection pool every cloud transcription/prompt request goes through.
 enum ConnectionPrewarmer {
 
-  /// Pre-warms the connection for the selected transcription model. No-op for offline
-  /// Whisper and self-hosted models (empty `apiEndpoint`).
+  /// Pre-warms whatever the selected transcription model needs before it can answer: a TCP+TLS
+  /// connection for the cloud providers, the model weights for offline Whisper. Self-hosted
+  /// endpoints stay a no-op (unknown host, nothing worth warming).
   static func prewarm(for model: TranscriptionModel) {
+    if let offlineType = model.offlineModelType {
+      warmOfflineWhisper(offlineType)
+      return
+    }
     prewarm(endpoint: model.apiEndpoint)
   }
 
@@ -28,8 +33,8 @@ enum ConnectionPrewarmer {
       // The local path is transcribe-first: the spoken instruction goes through the selected
       // *transcription* model before the local LLM sees anything, so that request is step one of
       // the critical path, not a parallel extra like it is on the cloud paths. Warming only the
-      // prompt model would leave the step the user actually waits on first cold. No-ops for
-      // offline Whisper (empty endpoint — it is preloaded at launch and on selection instead).
+      // prompt model would leave the step the user actually waits on first cold. For offline
+      // Whisper this loads the weights (see `warmOfflineWhisper`), not a connection.
       prewarm(for: TranscriptionModel.loadSelected())
       warmLocalModel()
     case .localMLX:
@@ -100,6 +105,48 @@ enum ConnectionPrewarmer {
           "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt)")
       } catch {
         DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  /// Loads the offline Whisper weights into RAM while the user is still speaking.
+  ///
+  /// Whisper used to be warmed once at launch and once on model selection, which was enough back
+  /// when the loaded model then stayed resident for the app's lifetime. It no longer does:
+  /// `LocalSpeechService` unloads after five idle minutes and under memory pressure, so the first
+  /// dictation after a pause otherwise pays the load — ~1.6 GB for Turbo — at the worst possible
+  /// moment: after the recording has stopped, with the user waiting on the transcript. Moving it
+  /// into the recording window is the same trade `warmMLXModel` already makes.
+  ///
+  /// Deliberately does **not** download a missing model: that is a multi-gigabyte fetch and must
+  /// not start behind the user's back mid-recording. `SpeechService` still offers it, with
+  /// progress, at dictation time. It also calls `LocalSpeechService` directly rather than
+  /// `ModelManager.ensureReady`, whose self-heal deletes and re-downloads a model that fails to
+  /// load — correct when the user is waiting for a dictation, far too destructive for a
+  /// speculative warm-up. Nothing here touches the network, which is the property Offline Mode
+  /// has to be able to keep.
+  private static func warmOfflineWhisper(_ type: OfflineModelType) {
+    Task { @MainActor in
+      guard ModelManager.shared.isModelAvailable(type) else {
+        DebugLogger.log(
+          "PREWARM: offline \(type.displayName) is not downloaded — not fetching it mid-recording")
+        return
+      }
+      let wasLoaded = await LocalSpeechService.shared.isLoaded(modelType: type)
+      let startTime = CFAbsoluteTimeGetCurrent()
+      do {
+        // Also worth calling when the model is already loaded: `initializeModel` returns
+        // immediately and pushes the idle-unload timer out, so a long dictation cannot have the
+        // weights dropped out from under it mid-sentence.
+        try await LocalSpeechService.shared.initializeModel(type)
+        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+        DebugLogger.logSpeech(
+          "SPEED: PREWARM offline model=\(type.rawValue) "
+            + "readyMs=\(String(format: "%.0f", elapsedMs)) "
+            + "(\(wasLoaded ? "already loaded" : "cold load"))")
+      } catch {
+        DebugLogger.logWarning(
+          "PREWARM: offline \(type.displayName) warm-up failed: \(error.localizedDescription)")
       }
     }
   }
