@@ -302,6 +302,36 @@ rises.
   now costs a ~5 s reload on the next chunk instead of failing, so it degrades rather than breaks —
   but on a 16 GB Mac also running MLX it is worth watching.
 
+## The chunk ceiling: proposed, measured, rejected (2026-09-02)
+
+Slice 1 rotates on silence only, with no maximum chunk length — a deliberate departure from this
+plan's original design, which called for "a max-length fallback (~30 s) so continuous speech still
+chunks". A real dictation made the cost visible: after one early pause the user spoke for 64.8 s
+straight, so everything after it sat in the tail chunk, and the tail is the one piece you wait
+through after Stop. 16.2 s of it, against ~21 s for not streaming at all — a 22 % win where a
+five-chunk dictation had given 4.0 s.
+
+So the ceiling was built (`dictateChunkMaxDuration`, rotate at 30 s regardless of silence) and
+measured before being kept. The same 82.8 s recording, cut outside the app at exact boundaries so
+the cuts land mid-sentence, each piece decoded through the production path with the glossary and
+joined the way `DictateStreamingSession` joins:
+
+| | chars | tail decode | transcript |
+|---|---|---|---|
+| whole file | 771 | 21 s | correct and complete |
+| forced 30 s cuts | 1032 | 13.5 s | duplication at the seam ("is, in fact, **In fact,**"), dropped words ("and you _know_ that", "in **work** to have"), a leading `...`, and the tail looped: *"I think that's a really important thing."* six times |
+| forced 45 s cuts | 355 | 8.1 s | **over half the content gone** — jumps from "the things that we do," straight to "Intelligence. Through universities…" |
+
+**Rejected and reverted.** A cut inside continuous speech costs Whisper the context it needs on
+both sides of the seam, and the damage is not a missing word here and there — it is duplication,
+loss of more than half the transcript, and repetition loops. Slice 1's silence-only rule was right,
+and the original plan's max-length fallback was wrong. Do not re-propose this without new evidence.
+
+The consequence stands and should be stated plainly rather than engineered around: **streaming's
+benefit is a function of how the speaker pauses.** Five chunks gave 4.0 s after Stop; two chunks
+gave 16.2 s. Both are better than not streaming, neither is a constant, and the floor is whatever
+the speaker leaves in the tail.
+
 ## Non-goals
 
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).
