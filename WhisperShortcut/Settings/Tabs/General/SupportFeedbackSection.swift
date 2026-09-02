@@ -174,6 +174,56 @@ struct SupportFeedbackSection: View {
           .pointerCursorOnHover()
 
           Button(action: {
+            viewModel.revealHangReports()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 18))
+                .foregroundColor(.orange)
+                .opacity(0.85)
+
+              Text("Reveal Hang Reports")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(SettingsConstants.cornerRadius)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Show hang-*.txt watchdog captures in Finder so you can attach them to a report")
+          .pointerCursorOnHover()
+
+          Button(action: {
+            viewModel.openGitHubIssue()
+          }) {
+            HStack(alignment: .center, spacing: 12) {
+              Image(systemName: "ladybug")
+                .font(.system(size: 18))
+                .foregroundColor(.secondary)
+                .opacity(0.85)
+
+              Text("File a GitHub Issue")
+                .font(.body)
+                .fontWeight(.medium)
+                .textSelection(.enabled)
+
+              Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(SettingsConstants.cornerRadius)
+          }
+          .buttonStyle(PlainButtonStyle())
+          .help("Open a prefilled GitHub issue; attach hang-*.txt from Reveal Hang Reports")
+          .pointerCursorOnHover()
+
+          Button(action: {
             viewModel.openGitHub()
           }) {
             HStack(alignment: .center, spacing: 12) {

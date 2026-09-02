@@ -15,7 +15,7 @@ import Foundation
 /// xcodebuild command line, falling back to the Keychain — env injection avoids
 /// the macOS Keychain ACL prompt that the `xctest` binary would otherwise
 /// trigger on every run.
-@Suite("Transcription provider roundtrip (live)")
+@Suite("Transcription provider roundtrip (live)", .tags(.liveNetwork), .enabled(if: !TestRun.isHermetic))
 struct TranscriptionRoundtripTests {
 
     /// Anchor class used to resolve the test bundle, so the WAV fixture

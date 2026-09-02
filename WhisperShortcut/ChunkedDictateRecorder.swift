@@ -87,6 +87,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private var currentChunkWallStart: Date?
 
   private(set) var lastRecordingWasSilent: Bool = false
+  private(set) var lastPeakPowerDb: Float = -160
 
   var hasRecentlyBeenSilent: Bool {
     meterSampleCount >= 2
@@ -115,17 +116,19 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     }
   }
 
-  func stopRecording() {
+  @discardableResult
+  func stopRecording() -> Bool {
     meteringTimer?.invalidate()
     meteringTimer = nil
 
     // Deliberately not gated on `recorder.isRecording`: a stop that lands in the window
     // before the async `record()` has flipped that flag must still end the session.
     // `isSessionActive` is our own state and is the authoritative signal.
-    guard isSessionActive, let recorder = activeRecorder else { return }
+    guard isSessionActive, let recorder = activeRecorder else { return false }
     isSessionActive = false
 
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
+    lastPeakPowerDb = peakPowerDuringRecording
     DebugLogger.logAudio(
       "AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, silent=\(lastRecordingWasSilent), chunks=\(chunkURLs.count + 1)"
     )
@@ -133,6 +136,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     // Queued behind any in-flight record()/stop(), so it can never overtake a rotation.
     // Final delivery continues in audioRecorderDidFinishRecording.
     audioQueue.async { recorder.stop() }
+    return true
   }
 
   func cleanup() {
@@ -253,7 +257,16 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     consecutiveSilenceSamples = 0
 
     audioQueue.async { [weak self] in
-      guard !recorder.record() else { return }
+      if recorder.record() {
+        DispatchQueue.main.async {
+          // Only the first chunk of a session is "recording began"; rotations reuse this path.
+          guard let self, self.activeRecorder === recorder, self.isSessionActive,
+            self.chunkURLs.isEmpty
+          else { return }
+          self.delegate?.audioRecorderDidBeginRecording()
+        }
+        return
+      }
       DispatchQueue.main.async {
         guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
         let error = NSError(
@@ -381,24 +394,34 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     chunkURLs.append(finalChunkURL)
     let urls = chunkURLs
 
-    do {
-      let deliveredURL = try mergeChunks(urls)
-      let fileSize =
-        (try FileManager.default.attributesOfItem(atPath: deliveredURL.path)[.size] as? Int64) ?? 0
-      guard fileSize > 0 else {
-        throw NSError(
-          domain: Constants.errorDomain, code: Constants.emptyFileCode,
-          userInfo: [NSLocalizedDescriptionKey: "Recording file is empty"])
+    // Merge off the main thread: a 5-minute recording is ~14 MB of AVAudioFile I/O.
+    // The tail chunk is already in flight via onFinalChunk; the merged WAV is only
+    // needed for the usage-log sample and the single-shot fallback.
+    audioQueue.async { [weak self] in
+      guard let self else { return }
+      do {
+        let deliveredURL = try self.mergeChunks(urls)
+        let fileSize =
+          (try FileManager.default.attributesOfItem(atPath: deliveredURL.path)[.size] as? Int64) ?? 0
+        guard fileSize > 0 else {
+          throw NSError(
+            domain: Constants.errorDomain, code: Constants.emptyFileCode,
+            userInfo: [NSLocalizedDescriptionKey: "Recording file is empty"])
+        }
+        DispatchQueue.main.async {
+          if urls.count > 1 {
+            self.mergedURL = deliveredURL
+            DebugLogger.logAudio(
+              "AUDIO: Merged \(urls.count) dictate chunks into \(deliveredURL.lastPathComponent) (\(fileSize) bytes)")
+          }
+          self.delegate?.audioRecorderDidFinishRecording(audioURL: deliveredURL)
+        }
+      } catch {
+        DebugLogger.logError("AUDIO: Finalizing dictate recording failed: \(error.localizedDescription)")
+        DispatchQueue.main.async {
+          self.delegate?.audioRecorderDidFailWithError(error)
+        }
       }
-      if urls.count > 1 {
-        mergedURL = deliveredURL
-        DebugLogger.logAudio(
-          "AUDIO: Merged \(urls.count) dictate chunks into \(deliveredURL.lastPathComponent) (\(fileSize) bytes)")
-      }
-      delegate?.audioRecorderDidFinishRecording(audioURL: deliveredURL)
-    } catch {
-      DebugLogger.logError("AUDIO: Finalizing dictate recording failed: \(error.localizedDescription)")
-      delegate?.audioRecorderDidFailWithError(error)
     }
   }
 }

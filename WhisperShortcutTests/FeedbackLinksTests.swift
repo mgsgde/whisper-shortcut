@@ -74,4 +74,22 @@ struct FeedbackLinksTests {
     let short = "already short"
     #expect(FeedbackLinks.truncated(short, limit: 500) == short)
   }
+
+  @Test("A hang-report attachment survives encoding into a GitHub issue URL")
+  func hangAttachmentEncodesIntoGitHubIssue() {
+    let attachment = HangReports.feedbackAttachment(
+      reportURLs: [URL(fileURLWithPath: "/tmp/hang-20260902-100000.txt")],
+      newestContents: "WATCHDOG: main thread hang")
+    guard let attachment else {
+      Issue.record("expected an attachment")
+      return
+    }
+    guard let url = FeedbackLinks.url(for: .gitHub, context: attachment) else {
+      Issue.record("no URL")
+      return
+    }
+    #expect(url.path.hasSuffix("/issues/new"))
+    #expect(url.absoluteString.removingPercentEncoding?.contains("hang-20260902-100000.txt") == true)
+    #expect(url.absoluteString.removingPercentEncoding?.contains("Reveal Hang Reports") == true)
+  }
 }

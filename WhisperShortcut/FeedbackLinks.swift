@@ -90,6 +90,9 @@ enum FeedbackLinks {
     if let context = context?.trimmingCharacters(in: .whitespacesAndNewlines), !context.isEmpty {
       parts.append(context)
     }
+    if let hang = HangReports.feedbackAttachment() {
+      parts.append(hang)
+    }
     parts.append(environmentBlock)
     return parts.joined(separator: "\n\n")
   }

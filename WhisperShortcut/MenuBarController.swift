@@ -35,6 +35,11 @@ class MenuBarController: NSObject {
     case sendFeedback = 119
     case transcribeCancelledRecording = 120
     case addToGlossary = 121
+    case finishSetup = 122
+    case promptCorrect = 123
+    case promptFormat = 124
+    case promptRephrase = 125
+    case finishSetupSeparator = 126
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -84,6 +89,13 @@ class MenuBarController: NSObject {
   /// Set when the user hits ✕ on the recording indicator: the next
   /// `audioRecorderDidFinishRecording` discards the audio instead of processing it.
   private var discardNextRecording = false
+  /// Intended recording mode while mic permission is still pending. `.recording` is
+  /// entered only from `audioRecorderDidBeginRecording`, so a second shortcut press
+  /// during the system prompt cannot strand the app (D6).
+  private var pendingRecordingMode: AppState.RecordingMode?
+  /// Same idea for a live-meeting segment: `beginMeetingSegment` waits until the
+  /// recorder actually starts.
+  private var pendingMeetingSegment: MeetingSegment?
 
   /// Per-recording streaming session (slice 2 of plans/active/streaming-dictate.md).
   /// Non-nil only while a Dictate recording on a cloud STT model (Gemini/OpenAI/xAI) is
@@ -308,6 +320,13 @@ class MenuBarController: NSObject {
 
     menu.addItem(NSMenuItem.separator())
 
+    let finishSetupItem = createMenuItem(
+      "Finish setup…", action: #selector(showWelcomeTour), tag: .finishSetup)
+    menu.addItem(finishSetupItem)
+    let finishSetupSeparator = NSMenuItem.separator()
+    finishSetupSeparator.tag = MenuTag.finishSetupSeparator.rawValue
+    menu.addItem(finishSetupSeparator)
+
     // Central stop button — visible only when any operation is active
     let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
     menu.addItem(stopItem)
@@ -324,6 +343,9 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: .dictatePrompt))
+    menu.addItem(createMenuItem("Correct", action: #selector(startPromptCorrect), tag: .promptCorrect))
+    menu.addItem(createMenuItem("Format", action: #selector(startPromptFormat), tag: .promptFormat))
+    menu.addItem(createMenuItem("Rephrase", action: #selector(startPromptRephrase), tag: .promptRephrase))
     menu.addItem(
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
@@ -450,6 +472,10 @@ class MenuBarController: NSObject {
     return item
   }
 
+  @objc private func showWelcomeTour() {
+    WelcomeWindowController.shared.show()
+  }
+
   private func getKeyEquivalentCharacter(for key: Key) -> String {
     let keyMap: [Key: String] = [
       .one: "1", .two: "2", .three: "3", .four: "4", .five: "5",
@@ -534,11 +560,16 @@ class MenuBarController: NSObject {
 
   /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
   private func handleIndicatorCancel() {
-    if appState.isRecording {
+    if appState.isRecording || pendingRecordingMode != nil || pendingMeetingSegment != nil {
       DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
-      discardNextRecording = true
       RecordingIndicatorManager.shared.hide()
-      audioRecorder.stopRecording()
+      if audioRecorder.stopRecording() {
+        discardNextRecording = true
+      } else {
+        cancelPendingRecordingStart()
+        if case .recording = appState { appState = appState.finish() }
+        if activeMeetingSegment != nil { clearMeetingSegment() }
+      }
       return
     }
     if isTranscriptionProcessing {
@@ -665,6 +696,12 @@ class MenuBarController: NSObject {
       name: .chatWindowVisibilityChanged,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(onboardingStatusDidChange),
+      name: .onboardingStatusDidChange,
+      object: nil
+    )
 
     // Installed rather than posted as a notification because the caller has to *await* it: the meeting
     // chat cuts the pending audio chunk and waits for its transcript before sending a question about
@@ -672,6 +709,10 @@ class MenuBarController: NSObject {
     LiveMeetingTranscriptStore.shared.pendingAudioFlush = { [weak self] in
       await self?.liveMeeting.flushPendingAudio()
     }
+  }
+
+  @objc private func onboardingStatusDidChange() {
+    updateMenuItems()
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -785,6 +826,10 @@ class MenuBarController: NSObject {
     // Update status
     menu.item(withTag: MenuTag.status.rawValue)?.title = presentedStatusText
 
+    let needsOnboarding = WelcomeWindowController.needsCompletion
+    menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
+    menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
+
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
       || ttsPlayback.isPlaying
@@ -837,6 +882,14 @@ class MenuBarController: NSObject {
     #endif
 
     updateTranscriptionHistoryItems(menu)
+
+    let promptPresetsEnabled = appState.canStartPrompting(hasAPIKey: canPrompt, hasOfflineModel: false)
+      || meetingAllowsActions && canPrompt
+    for tag in [MenuTag.promptCorrect, .promptFormat, .promptRephrase] {
+      menu.item(withTag: tag.rawValue)?.isEnabled = promptPresetsEnabled
+        && appState.recordingMode != .prompt
+        && activeMeetingSegment != .prompt
+    }
 
     // Handle special case when no API key (any provider) and no usable transcription is configured.
     // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
@@ -962,25 +1015,70 @@ class MenuBarController: NSObject {
   /// Skips the delay entirely when the last ~400 ms of audio was below the silence threshold
   /// — there's no tail to catch, and the user gets the result that much sooner.
   private func stopRecordingAfterTailDelay() {
+    if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
+      cancelPendingRecordingStart()
+      return
+    }
     if audioRecorder.hasRecentlyBeenSilent {
       DebugLogger.logAudio("AUDIO: Skipping tail-capture delay — recent audio was silent")
-      audioRecorder.stopRecording()
+      handleStopRecordingResult(audioRecorder.stopRecording())
       return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
-      self?.audioRecorder.stopRecording()
+      guard let self else { return }
+      self.handleStopRecordingResult(self.audioRecorder.stopRecording())
     }
+  }
+
+  /// Arms a recording start. `.recording` / the meeting segment is applied only once the
+  /// recorder reports that capture actually began (permission granted + `record()` succeeded).
+  private func beginAudioCapture(
+    mode: AppState.RecordingMode,
+    meetingSegment: MeetingSegment? = nil
+  ) {
+    discardNextRecording = false
+    pendingRecordingMode = meetingSegment == nil ? mode : nil
+    pendingMeetingSegment = meetingSegment
+    audioRecorder.startRecording()
+  }
+
+  private func cancelPendingRecordingStart() {
+    pendingRecordingMode = nil
+    pendingMeetingSegment = nil
+    discardNextRecording = false
+    _ = audioRecorder.stopRecording()
+  }
+
+  private func handleStopRecordingResult(_ didStop: Bool) {
+    guard !didStop else { return }
+    DebugLogger.log("AUDIO: stopRecording found nothing running")
+    pendingRecordingMode = nil
+    pendingMeetingSegment = nil
+    discardNextRecording = false
+    if case .recording = appState {
+      appState = appState.finish()
+    }
+    if activeMeetingSegment != nil, !meetingSegmentIsProcessing {
+      clearMeetingSegment()
+    }
+  }
+
+  private static func audioDurationMs(of url: URL) -> Int {
+    guard let file = try? AVAudioFile(forReading: url), file.fileFormat.sampleRate > 0 else {
+      return 0
+    }
+    return Int((Double(file.length) / file.fileFormat.sampleRate * 1000).rounded())
   }
 
   @objc private func toggleTranscription() {
     // During live meeting: run dictation as a parallel segment
     if isLiveMeetingActive {
-      if activeMeetingSegment == .dictation {
+      if activeMeetingSegment == .dictation || pendingMeetingSegment == .dictation {
         DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment")
         stopRecordingAfterTailDelay()
         return
       }
-      if activeMeetingSegment != nil {
+      if activeMeetingSegment != nil || pendingMeetingSegment != nil {
         DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring dictation")
         return
       }
@@ -988,10 +1086,9 @@ class MenuBarController: NSObject {
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
       if selectedModel.hasRequiredCredential || hasOfflineModel {
         DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
-        beginMeetingSegment(.dictation)
         ConnectionPrewarmer.prewarm(for: selectedModel)
         dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
-        audioRecorder.startRecording()
+        beginAudioCapture(mode: .transcription, meetingSegment: .dictation)
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
@@ -1011,6 +1108,10 @@ class MenuBarController: NSObject {
     case .transcription:
       stopRecordingAfterTailDelay()
     case .none:
+      if pendingRecordingMode != nil {
+        stopRecordingAfterTailDelay()
+        return
+      }
       let selectedModel = TranscriptionModel.loadSelected()
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
 
@@ -1020,10 +1121,9 @@ class MenuBarController: NSObject {
         // Live-meeting dictation segments deliberately skip this: speaking repeatedly into a
         // meeting is normal use, not a retry, and would drown the signal.
         ContextLogger.shared.noteDictationStart(autoPasteAvailable: Self.autoPasteAvailable)
-        appState = appState.startRecording(.transcription)
         ConnectionPrewarmer.prewarm(for: selectedModel)
         dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
-        audioRecorder.startRecording()
+        beginAudioCapture(mode: .transcription)
       } else {
         PopupNotificationWindow.showError(
           selectedModel.apiKeyRequiredMessage,
@@ -1038,12 +1138,12 @@ class MenuBarController: NSObject {
   @objc internal func togglePrompting() {
     // During live meeting: run prompt as a parallel segment
     if isLiveMeetingActive {
-      if activeMeetingSegment == .prompt {
+      if activeMeetingSegment == .prompt || pendingMeetingSegment == .prompt {
         DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
         stopRecordingAfterTailDelay()
         return
       }
-      if activeMeetingSegment != nil {
+      if activeMeetingSegment != nil || pendingMeetingSegment != nil {
         DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
         return
       }
@@ -1052,10 +1152,9 @@ class MenuBarController: NSObject {
       if promptModel.hasRequiredCredentialForDictatePrompt {
         if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT", model: promptModel) { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        beginMeetingSegment(.prompt)
         ConnectionPrewarmer.prewarm(for: promptModel)
         discardStreamingSession()  // prompt recordings never stream
-        audioRecorder.startRecording()
+        beginAudioCapture(mode: .prompt, meetingSegment: .prompt)
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
@@ -1072,14 +1171,17 @@ class MenuBarController: NSObject {
     case .prompt:
       stopRecordingAfterTailDelay()
     case .none:
+      if pendingRecordingMode != nil {
+        stopRecordingAfterTailDelay()
+        return
+      }
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredentialForDictatePrompt, hasOfflineModel: false) {
         if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE", model: promptModel) { return }
-        appState = appState.startRecording(.prompt)
         ConnectionPrewarmer.prewarm(for: promptModel)
         discardStreamingSession()  // prompt recordings never stream
-        audioRecorder.startRecording()
+        beginAudioCapture(mode: .prompt)
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
@@ -1109,6 +1211,10 @@ class MenuBarController: NSObject {
     case .voiceFeedback:
       stopRecordingAfterTailDelay()
     case .none:
+      if pendingRecordingMode != nil {
+        stopRecordingAfterTailDelay()
+        return
+      }
       // Two credentials are needed: the transcription model transcribes the spoken instruction,
       // then the improvement model turns it into a proposed change. Check both up front so the
       // user isn't told about a missing key only after speaking.
@@ -1130,10 +1236,9 @@ class MenuBarController: NSObject {
         return
       }
       captureVoiceFeedbackSelection()
-      appState = appState.startRecording(.voiceFeedback)
       ConnectionPrewarmer.prewarm(for: transcriptionModel)
       discardStreamingSession()  // voice feedback never streams
-      audioRecorder.startRecording()
+      beginAudioCapture(mode: .voiceFeedback)
     default:
       break
     }
@@ -1501,9 +1606,6 @@ class MenuBarController: NSObject {
         errorMessage = SpeechErrorFormatter.formatForUser(error)
       }
 
-      // Copy error message to clipboard
-      self.clipboardManager.copyToClipboard(text: errorMessage)
-
       // Determine if error is retryable
       let isRetryable = transcriptionError?.isRetryable ?? false
       
@@ -1511,21 +1613,30 @@ class MenuBarController: NSObject {
       let isServerError = transcriptionError?.isServerOrUnavailable ?? false
       let retryAction: (() -> Void)? = isRetryable ? { [weak self] in
         guard let self = self else { return }
-        Task {
+        Task { @MainActor in
           // Brief delay before retrying server errors to give the API time to recover
           if isServerError {
             DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
             try? await Task.sleep(nanoseconds: 3_000_000_000)
           }
+          // `runAudioJob`'s catch tail clears `currentJobAudioURL` after the popup is shown.
+          // Restore ownership the same way `transcribeCancelledRecording` does, or the
+          // staleness guard drops a successful retry as a cancelled recording.
+          self.processedAudioURLs.insert(audioURL)
+          self.currentJobAudioURL = audioURL
+          DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
           switch mode {
           case .transcription:
+            self.appState = .processing(.transcribing)
             await self.performTranscription(audioURL: audioURL)
           case .prompt:
+            self.appState = .processing(.prompting)
             await self.performPrompting(audioURL: audioURL)
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
           case .voiceFeedback:
+            self.appState = .processing(.contextEditing)
             await self.performVoiceFeedback(audioURL: audioURL)
           }
         }
@@ -1603,8 +1714,8 @@ class MenuBarController: NSObject {
   }
 
   /// Runs one finished recording: produce the text, deliver it, and clean up — or handle
-  /// cancellation, staleness and failure. `afterCopy` runs between the clipboard write and
-  /// auto-paste, the slot where transcription commits its audio sample and writes the log entry.
+  /// cancellation, staleness and failure. `afterCopy` runs after the clipboard write and
+  /// auto-paste (logging and history), so it cannot delay the paste.
   private func runAudioJob(
     _ spec: AudioJobSpec,
     audioURL: URL,
@@ -1634,11 +1745,10 @@ class MenuBarController: NSObject {
       // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
       await MainActor.run { self.captureClipboardRestorePointIfEnabled() }
       spec.copyResult(result)
-      await afterCopy(result)
-
       let didAutoPaste = await MainActor.run {
         self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
       }
+      await afterCopy(result)
 
       await MainActor.run { [weak self] in
         self?.reviewPrompter.recordSuccessfulOperation()
@@ -1770,11 +1880,15 @@ class MenuBarController: NSObject {
     } else {
       backendTag = "gemini"
     }
-    let pendingAudioRef: String? = duringMeeting ? nil : ContextLogger.shared.captureDictationAudio(
-      from: audioURL,
-      backend: backendTag,
-      transcriptionModel: transcriptionModelForCapture.rawValue
-    )
+    let captureTask: Task<String?, Never>? = duringMeeting ? nil : Task.detached {
+      [audioURL, backendTag, model = transcriptionModelForCapture.rawValue] in
+      ContextLogger.shared.captureDictationAudio(
+        from: audioURL,
+        backend: backendTag,
+        transcriptionModel: model
+      )
+    }
+    var pendingAudioRef: String?
     var audioRefCommitted = false
     defer {
       if let ref = pendingAudioRef, !audioRefCommitted {
@@ -1820,8 +1934,7 @@ class MenuBarController: NSObject {
         // inside the store) so "Copy Last Transcription" always works for the current session.
         TranscriptionHistoryStore.shared.record(result)
         let modelDisplayName = await self.speechService.getTranscriptionModelInfo()
-        // Commit the up-front audio snapshot (captured before the transcription await); the defer
-        // now keeps it instead of discarding it.
+        pendingAudioRef = await captureTask?.value
         audioRefCommitted = true
         ContextLogger.shared.logTranscription(
           result: result,
@@ -1830,6 +1943,9 @@ class MenuBarController: NSObject {
           transcriptionModel: transcriptionModelForCapture.rawValue
         )
       })
+    if pendingAudioRef == nil {
+      pendingAudioRef = await captureTask?.value
+    }
   }
 
   private func performPrompting(audioURL: URL, duringMeeting: Bool = false) async {
@@ -2384,8 +2500,9 @@ class MenuBarController: NSObject {
 
   /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
   private func simulatePaste() {
-    // Use HID system state so Cmd+V is delivered to the frontmost app
-    let source = CGEventSource(stateID: .hidSystemState)
+    // Same private source as simulateCopy: a still-held Fn/⌥ from the shortcut
+    // must not turn ⌘V into ⌘⌥V ("Paste and Match Style") in the frontmost app.
+    let source = CGEventSource(stateID: .privateState)
     // Virtual key 0x09 is 'V'
     let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
     let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
@@ -2509,6 +2626,19 @@ class MenuBarController: NSObject {
 
 // MARK: - AudioRecorderDelegate (Clean State Transitions)
 extension MenuBarController: AudioRecorderDelegate {
+  func audioRecorderDidBeginRecording() {
+    if let segment = pendingMeetingSegment {
+      pendingMeetingSegment = nil
+      pendingRecordingMode = nil
+      beginMeetingSegment(segment)
+      return
+    }
+    if let mode = pendingRecordingMode {
+      pendingRecordingMode = nil
+      appState = appState.startRecording(mode)
+    }
+  }
+
   func audioRecorderDidFinishRecording(audioURL: URL) {
     let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
     let recordingModeStr = String(describing: appState.recordingMode ?? .none)
@@ -2602,6 +2732,12 @@ extension MenuBarController: AudioRecorderDelegate {
 
         if usesCloudAPI {
           DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+          let durationMs = Self.audioDurationMs(of: audioURL)
+          ContextLogger.shared.logNoSpeechDetected(
+            source: "localSilenceGate",
+            peakDb: String(format: "%.1f", self.audioRecorder.lastPeakPowerDb),
+            durationMs: String(durationMs),
+            logPrefix: "DICTATION")
           self.discardStreamingSession()
           // Mirror the explicit-remove pattern used by every other early-return path; without
           // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
@@ -2655,6 +2791,8 @@ extension MenuBarController: AudioRecorderDelegate {
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
     discardNextRecording = false
+    pendingRecordingMode = nil
+    pendingMeetingSegment = nil
     discardStreamingSession()
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
@@ -2683,6 +2821,7 @@ extension MenuBarController: ShortcutDelegate {
   /// Whether a dictation recording is running — mirrors what `toggleTranscription` treats as
   /// active, including a parallel segment during a live meeting. Used by the Fn toggle.
   func isDictationRecordingActive() -> Bool {
+    if pendingRecordingMode == .transcription || pendingMeetingSegment == .dictation { return true }
     if isLiveMeetingActive { return activeMeetingSegment == .dictation }
     return appState.recordingMode == .transcription
   }
@@ -2775,8 +2914,23 @@ extension MenuBarController: ShortcutDelegate {
   /// HotKey path.
   @objc func readAloudFromMenu() { triggerReadSelectedTextAloud() }
 
+  @objc private func startPromptCorrect() { startPrompting(preset: .correct) }
+  @objc private func startPromptFormat() { startPrompting(preset: .format) }
+  @objc private func startPromptRephrase() { startPrompting(preset: .rephrase) }
+
+  private func startPrompting(preset: DictatePromptPreset) {
+    DictatePromptPreset.pending = preset
+    togglePrompting()
+  }
+
   private func triggerReadSelectedTextAloud() {
     if attemptReadAloudToggleOff() { return }
+    if OfflineMode.isEnabled, ReadAloudPreferences.model.provider != .system {
+      PopupNotificationWindow.showError(
+        OfflineMode.blockedMessageForReadAloud,
+        title: "Read Aloud")
+      return
+    }
     if isLiveMeetingActive {
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
       return
@@ -2898,9 +3052,13 @@ extension MenuBarController: FnDictationToggleDelegate {
       return
     }
     DebugLogger.log("AUDIO: Discarding Fn dictation recording")
-    discardNextRecording = true
     RecordingIndicatorManager.shared.hide()
-    audioRecorder.stopRecording()
+    if audioRecorder.stopRecording() {
+      discardNextRecording = true
+    } else {
+      cancelPendingRecordingStart()
+      if case .recording = appState { appState = appState.finish() }
+    }
   }
 }
 
@@ -3117,5 +3275,8 @@ extension MenuBarController: NSMenuDelegate {
     // The history rows are otherwise only refreshed on an `appState` change, which leaves them
     // stale right after launch (a persisted history exists but nothing has happened yet).
     updateTranscriptionHistoryItems(menu)
+    let needsOnboarding = WelcomeWindowController.needsCompletion
+    menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
+    menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
   }
 }

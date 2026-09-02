@@ -16,7 +16,7 @@ import Foundation
 /// xcodebuild command line, falling back to the Keychain — env injection avoids
 /// the macOS Keychain ACL prompt that the `xctest` binary would otherwise
 /// trigger on every run.
-@Suite("LLM provider roundtrip (live)")
+@Suite("LLM provider roundtrip (live)", .tags(.liveNetwork), .enabled(if: !TestRun.isHermetic))
 struct LLMProviderRoundtripTests {
 
     private static let prompt = "Reply with exactly the word: pong"

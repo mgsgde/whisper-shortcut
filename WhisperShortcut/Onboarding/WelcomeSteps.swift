@@ -202,6 +202,8 @@ struct WelcomeAPIKeysStep: View {
   @Binding var hasAnthropicKey: Bool
   @Binding var hasOpenRouterKey: Bool
   @Binding var offlineReady: Bool
+  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  @State private var wantCloudFeatures = false
 
   private var canContinue: Bool {
     hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey || offlineReady
@@ -226,52 +228,67 @@ struct WelcomeAPIKeysStep: View {
 
       ScrollView(showsIndicators: true) {
         VStack(spacing: 14) {
-          // First because it is the only row a brand-new user can finish without leaving the app,
-          // opening a dashboard, or copying anything — including creating the account itself.
-          OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
+          if offlineMode && !wantCloudFeatures {
+            Button {
+              wantCloudFeatures = true
+            } label: {
+              Label("I also want cloud features", systemImage: "cloud")
+                .font(.callout)
+            }
+            .buttonStyle(.bordered)
+            .pointerCursorOnHover()
+            Text("Offline Mode is on — cloud providers are hidden so a key you paste here is not used until you turn the mode off. Expand only if you also want Chat, Read Aloud, or cloud dictation.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          } else {
+            // First because it is the only row a brand-new user can finish without leaving the app,
+            // opening a dashboard, or copying anything — including creating the account itself.
+            OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
 
-          OnboardingAPIKeyRow(
-            providerName: "Google Gemini",
-            placeholder: "AIza…",
-            linkTitle: "aistudio.google.com/api-keys",
-            linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
-            isConfigured: $hasGeminiKey,
-            load: { KeychainManager.shared.get(.google) ?? "" },
-            save: { KeychainManager.shared.save($0, for: .google) },
-            recommended: true
-          )
-          OnboardingAPIKeyRow(
-            providerName: "OpenAI",
-            placeholder: "sk-…",
-            linkTitle: "platform.openai.com/api-keys",
-            linkURL: URL(string: "https://platform.openai.com/api-keys")!,
-            isConfigured: $hasOpenAIKey,
-            load: { KeychainManager.shared.get(.openAI) ?? "" },
-            save: { KeychainManager.shared.save($0, for: .openAI) },
-            recommended: false
-          )
-          OnboardingAPIKeyRow(
-            providerName: "Anthropic (Claude)",
-            placeholder: "sk-ant-…",
-            linkTitle: "console.anthropic.com",
-            linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
-            description: "Chat only — Dictate Prompt is not available with Claude.",
-            isConfigured: $hasAnthropicKey,
-            load: { KeychainManager.shared.get(.anthropic) ?? "" },
-            save: { KeychainManager.shared.save($0, for: .anthropic) },
-            recommended: false
-          )
-          OnboardingAPIKeyRow(
-            providerName: "xAI (Grok)",
-            placeholder: "xai-…",
-            linkTitle: "console.x.ai",
-            linkURL: URL(string: "https://console.x.ai")!,
-            description: "Dictate Prompt is not available with Grok.",
-            isConfigured: $hasXAIKey,
-            load: { KeychainManager.shared.get(.xai) ?? "" },
-            save: { KeychainManager.shared.save($0, for: .xai) },
-            recommended: false
-          )
+            OnboardingAPIKeyRow(
+              providerName: "Google Gemini",
+              placeholder: "AIza…",
+              linkTitle: "aistudio.google.com/api-keys",
+              linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
+              isConfigured: $hasGeminiKey,
+              load: { KeychainManager.shared.get(.google) ?? "" },
+              save: { KeychainManager.shared.save($0, for: .google) },
+              recommended: true
+            )
+            OnboardingAPIKeyRow(
+              providerName: "OpenAI",
+              placeholder: "sk-…",
+              linkTitle: "platform.openai.com/api-keys",
+              linkURL: URL(string: "https://platform.openai.com/api-keys")!,
+              isConfigured: $hasOpenAIKey,
+              load: { KeychainManager.shared.get(.openAI) ?? "" },
+              save: { KeychainManager.shared.save($0, for: .openAI) },
+              recommended: false
+            )
+            OnboardingAPIKeyRow(
+              providerName: "Anthropic (Claude)",
+              placeholder: "sk-ant-…",
+              linkTitle: "console.anthropic.com",
+              linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
+              description: "Chat only — Dictate Prompt is not available with Claude.",
+              isConfigured: $hasAnthropicKey,
+              load: { KeychainManager.shared.get(.anthropic) ?? "" },
+              save: { KeychainManager.shared.save($0, for: .anthropic) },
+              recommended: false
+            )
+            OnboardingAPIKeyRow(
+              providerName: "xAI (Grok)",
+              placeholder: "xai-…",
+              linkTitle: "console.x.ai",
+              linkURL: URL(string: "https://console.x.ai")!,
+              description: "Dictate Prompt is not available with Grok.",
+              isConfigured: $hasXAIKey,
+              load: { KeychainManager.shared.get(.xai) ?? "" },
+              save: { KeychainManager.shared.save($0, for: .xai) },
+              recommended: false
+            )
+          }
         }
         .padding(.bottom, 8)
       }
@@ -303,101 +320,19 @@ struct WelcomeAPIKeysStep: View {
   }
 }
 
-/// Lets a new user finish setup with no provider key by downloading a local
-/// Whisper model. Dictation then runs fully offline; cloud-only features
-/// (Dictate Prompt, Chat, Read Aloud) still need a key added later in Settings.
+/// Lets a new user finish setup with no provider key by downloading Whisper Base
+/// (≈140 MB). Turbo is offered as an upgrade in Settings → Dictate.
 struct OnboardingOfflineRow: View {
   @Binding var offlineReady: Bool
-  @ObservedObject private var modelManager = ModelManager.shared
-  @State private var downloadError: String?
-
-  /// Base is the fast way into offline dictation — 140 MB and a transcript within a minute of
-  /// deciding. Offline Mode is a different situation: it is chosen because the transcript matters
-  /// and there is no cloud model to fall back on, so it gets the accurate model instead.
-  private var modelType: OfflineModelType {
-    OfflineMode.isEnabled ? OfflineModelType.mostAccurate : .whisperBase
-  }
-
-  private var isDownloading: Bool { modelManager.downloadingModels.contains(modelType) }
-  private var isAvailable: Bool { modelManager.isModelAvailable(modelType) }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 8) {
-        Image(systemName: "laptopcomputer.and.arrow.down")
-          .foregroundStyle(.tint)
-        Text("Run offline with local Whisper")
-          .font(.callout)
-          .fontWeight(.semibold)
-        Spacer()
-      }
-
-      Text("No key required — audio never leaves your Mac. Dictate works offline with Whisper. For offline improve, install Ollama or LM Studio and pick Local in Dictate Prompt settings. Chat and Read Aloud still need a cloud provider key (or a custom endpoint).")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      if isAvailable {
-        Label("\(modelType.displayName) ready — you can continue.", systemImage: "checkmark.seal.fill")
-          .font(.caption)
-          .foregroundStyle(.green)
-      } else if isDownloading {
-        HStack(spacing: 8) {
-          ProgressView().controlSize(.small)
-          Text("Downloading \(modelType.displayName)…")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      } else {
-        Button(action: download) {
-          Label(
-            "Download \(modelType.displayName) (≈\(modelType.estimatedSizeMB) MB)",
-            systemImage: "arrow.down.circle")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .pointerCursorOnHover()
-      }
-
-      if let downloadError {
-        Label(downloadError, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption2)
-          .foregroundStyle(.red)
-      }
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
-    .onAppear(perform: syncReady)
-  }
-
-  private func download() {
-    downloadError = nil
-    Task {
-      do {
-        try await ModelManager.shared.downloadModel(modelType)
-        await MainActor.run { syncReady() }
-      } catch {
-        await MainActor.run {
-          downloadError = "Download failed. Check your connection and try again."
-        }
-        DebugLogger.logError("ONBOARDING: Whisper Base download failed: \(error.localizedDescription)")
-      }
-    }
+    WhisperModelDownloadCard(modelType: .whisperBase, onReady: syncReady)
   }
 
   /// Marks offline setup as ready and — only when no cloud key is configured —
   /// makes the offline model the active transcription backend so the app works
   /// immediately. A cloud user's higher-quality default is left untouched.
   private func syncReady() {
-    guard modelManager.isModelAvailable(modelType) else { return }
     offlineReady = true
     let hasCloudKey = KeychainManager.shared.hasNonEmpty(.google)
       || KeychainManager.shared.hasNonEmpty(.openAI)
@@ -406,9 +341,10 @@ struct OnboardingOfflineRow: View {
       || KeychainManager.shared.hasNonEmpty(.openRouter)
     if !hasCloudKey {
       UserDefaults.standard.set(
-        TranscriptionModel.whisperBase.rawValue,
+        TranscriptionModel.forOfflineModel(.whisperBase).rawValue,
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
-      DebugLogger.log("ONBOARDING: offline Whisper Base ready; set as default transcription model")
+      DebugLogger.log(
+        "ONBOARDING: offline Whisper Base ready; set as default transcription model")
     }
   }
 }
@@ -671,7 +607,7 @@ struct WelcomePermissionsStep: View {
           Text("macOS permissions")
             .font(.title2)
             .fontWeight(.semibold)
-          Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Permissions.")
+          Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Privacy & Permissions.")
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -679,7 +615,7 @@ struct WelcomePermissionsStep: View {
       }
 
       ScrollView {
-        // The same overview used in Settings → Permissions and on permission errors —
+        // The same overview used in Settings → Privacy & Permissions and on permission errors —
         // one component, one behavior. Accessibility is omitted here on purpose
         // (App Store Guideline 2.4.5: don't imply the app needs it up front).
         PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
@@ -690,6 +626,10 @@ struct WelcomePermissionsStep: View {
         Label("Ready to continue.", systemImage: "checkmark.circle.fill")
           .font(.caption)
           .foregroundStyle(.green)
+      } else if micStatus == .denied {
+        Label("Microphone is off in System Settings. You can continue and enable it later.", systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.orange)
       } else {
         Label("Grant microphone access to continue.", systemImage: "exclamationmark.circle")
           .font(.caption)
@@ -837,7 +777,7 @@ struct WelcomeSmartImprovementStep: View {
           Text("Save usage data for Smart Improvement")
             .font(.callout)
             .fontWeight(.medium)
-          Text("You can change this any time in Settings → General.")
+          Text("You can change this any time in Settings → Smart Improvement.")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -878,6 +818,8 @@ struct WelcomeDoneStep: View {
   @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
   @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
   @State private var screenStatus = PermissionStatusChecker.status(for: .screenRecording)
+  @StateObject private var settingsViewModel = SettingsViewModel()
+  @FocusState private var focusedField: SettingsFocusField?
 
   /// Every shortcut the user can use, rendered uniformly. Dictation is just the first row — no
   /// special hero treatment — so the whole page reads as one consistent list. Disabled shortcuts
@@ -897,11 +839,18 @@ struct WelcomeDoneStep: View {
       // the direct build copies it via a synthetic ⌘C (Accessibility).
       let selectionRequirement: PermissionKind =
         AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
+      #if APP_STORE
+      let promptDetail =
+        "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
+      #else
+      let promptDetail =
+        "select text, speak an instruction — the selection is rewritten in place"
+      #endif
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.startPrompting.displayString,
           name: "Dictate Prompt",
-          detail: "select text, speak an instruction — the selection is rewritten in place",
+          detail: promptDetail,
           requirements: [.microphone, selectionRequirement]))
     }
     if shortcuts.screenshotCapture.isEnabled {
@@ -936,6 +885,7 @@ struct WelcomeDoneStep: View {
   }
 
   var body: some View {
+    ScrollView {
     VStack(spacing: 18) {
       Image(systemName: "checkmark.seal.fill")
         .font(.system(size: 40))
@@ -967,24 +917,84 @@ struct WelcomeDoneStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
+      OnboardingTryItPanel()
+        .frame(maxWidth: 560)
+
+      onboardingShortcutRecorder
+        .frame(maxWidth: 560)
+
       VStack(spacing: 6) {
         // The app has no Dock icon or main window, so tell first-time users where it lives.
         Text("WhisperShortcut lives in your menu bar — look for the \(Image(systemName: "mic.fill")) icon at the top of your screen.")
           .font(.callout)
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
-        Text("You can revisit this tour any time from Settings → General.")
+        Text("You can revisit this tour any time from Settings → About.")
           .font(.caption)
           .foregroundStyle(.tertiary)
           .multilineTextAlignment(.center)
       }
       .frame(maxWidth: 560)
     }
+    .frame(maxWidth: .infinity)
+    .padding(.bottom, 8)
+    }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .onAppear(perform: refreshStatuses)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshStatuses()
     }
+  }
+
+  @ViewBuilder
+  private var onboardingShortcutRecorder: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Shortcuts")
+        .font(.callout)
+        .fontWeight(.semibold)
+      Text("⌘1 / ⌘2 / ⌘3 switch tabs in many apps. Record a different combination here if that happens — existing installs keep their current shortcuts.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      ShortcutRecorderRow(
+        label: "Dictate:",
+        shortcut: $settingsViewModel.data.toggleDictation,
+        focusedField: .toggleDictation,
+        currentFocus: $focusedField,
+        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        findConflict: settingsViewModel.findShortcutConflict,
+        clearShortcut: settingsViewModel.clearShortcut
+      )
+      ShortcutRecorderRow(
+        label: "Dictate Prompt:",
+        shortcut: $settingsViewModel.data.togglePrompting,
+        focusedField: .togglePrompting,
+        currentFocus: $focusedField,
+        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        findConflict: settingsViewModel.findShortcutConflict,
+        clearShortcut: settingsViewModel.clearShortcut
+      )
+      ShortcutRecorderRow(
+        label: "Screenshot:",
+        shortcut: $settingsViewModel.data.screenshotCapture,
+        focusedField: .screenshotCapture,
+        currentFocus: $focusedField,
+        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        findConflict: settingsViewModel.findShortcutConflict,
+        clearShortcut: settingsViewModel.clearShortcut
+      )
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 10)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 10)
+        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+    )
   }
 
   @ViewBuilder

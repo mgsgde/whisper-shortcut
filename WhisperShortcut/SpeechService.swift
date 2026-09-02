@@ -407,6 +407,7 @@ class SpeechService {
     DebugLogger.log("CANCELLATION: Cancelling TTS task")
     currentTTSTask?.cancel()
     currentTTSTask = nil
+    SystemTTSService.shared.cancel()
   }
 
   // MARK: - Transcription Mode (Public API with Task Tracking)
@@ -438,10 +439,15 @@ class SpeechService {
       transcriptionTaskLock.lock()
       currentTranscriptionTask = task
       transcriptionTaskLock.unlock()
-      // Only clear the slot if this call still owns it — a concurrent newer call may have
-      // overwritten `currentTranscriptionTask` while we were suspended on `task.value`; its
-      // own `defer` will handle the clear.
-      defer {
+    }
+    // Must sit at function scope: a `defer` inside `if cancellable` runs when that
+    // block ends, which is *before* `await task.value` — so `cancelTranscription()`
+    // would always see `nil` and the HTTP request would keep running.
+    defer {
+      if cancellable {
+        // Only clear the slot if this call still owns it — a concurrent newer call may have
+        // overwritten `currentTranscriptionTask` while we were suspended on `task.value`; its
+        // own `defer` will handle the clear.
         transcriptionTaskLock.lock()
         if currentTranscriptionTask == task { currentTranscriptionTask = nil }
         transcriptionTaskLock.unlock()
@@ -642,6 +648,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
     }
 
+    defer { DictatePromptPreset.pending = nil }
+
     try validateAudioFileFormat(at: audioURL)
 
     switch selectedPromptModel.provider {
@@ -681,7 +689,8 @@ class SpeechService {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
     if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
-      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
+      return Self.withPendingPreset(
+        AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule)
     }
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
@@ -694,7 +703,13 @@ class SpeechService {
       base = trimmed
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
-    return base + AppConstants.promptModeOutputRule
+    return Self.withPendingPreset(base + AppConstants.promptModeOutputRule)
+  }
+
+  /// Peek, don't consume: ConnectionPrewarmer uses this too, and must see the same prompt.
+  private static func withPendingPreset(_ prompt: String) -> String {
+    guard let extra = DictatePromptPreset.pending?.instruction else { return prompt }
+    return prompt + "\n\n" + extra
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by
@@ -1465,6 +1480,12 @@ class SpeechService {
       DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
       return text
     }
+    // Cloud rewrite cannot run in Offline Mode; the on-device voice also skips it so Read Aloud
+    // stays a local path (the Gemini call would otherwise die at the network guard).
+    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider == .system {
+      DebugLogger.log("READ-ALOUD-REWRITE: Skipped — Offline Mode / on-device voice")
+      return text
+    }
     do {
       let rewritten = try await rewriteForSpeech(text)
       DebugLogger.logSuccess("READ-ALOUD-REWRITE: Rewrote \(text.count) chars -> \(rewritten.count) chars")
@@ -1520,9 +1541,13 @@ class SpeechService {
     return cleaned.isEmpty ? text : cleaned
   }
 
-  /// Multi-provider Read Aloud. Dispatches by the selected model's provider. All three providers
-  /// emit raw PCM (s16le 24kHz mono), which is exactly what `MenuBarController.playTTSAudio`
-  /// expects, so the returned `Data` is provider-independent.
+  /// Multi-provider Read Aloud. Dispatches by the selected model's provider. Cloud providers
+  /// and the on-device macOS voice all emit raw PCM (s16le 24kHz mono), which is exactly what
+  /// `MenuBarController`'s playback path expects, so the returned `Data` is provider-independent.
+  ///
+  /// MenuBarController calls `readSelectionAloud` / `readProseAloud`; those reach this
+  /// method. Offline Mode selects `.systemMacOS` and the shortcut allows that provider
+  /// through, so on-device Read Aloud uses `speakWithSystemVoice` with no extra player.
   private func performTTS(
     text: String, voiceName: String? = nil,
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
@@ -1535,9 +1560,14 @@ class SpeechService {
 
     DebugLogger.log("TTS: Starting text-to-speech (length: \(trimmedText.count) chars, voice: \(voice), model: \(model.displayName), provider: \(model.provider.displayName))")
 
+    if model.provider == .system {
+      return try await speakWithSystemVoice(
+        trimmedText, voiceIdentifier: voice, onChunkReady: onChunkReady)
+    }
+
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
-    // merging. Every provider returns raw PCM (s16le 24kHz mono), so the merged result feeds
-    // `playTTSAudio` unchanged — we only supply a per-chunk synthesizer for the chosen provider.
+    // merging. Every cloud provider returns raw PCM (s16le 24kHz mono), so the merged result
+    // feeds playback unchanged — we only supply a per-chunk synthesizer for the chosen provider.
     let synthesizeChunk: (String) async throws -> Data
     switch model.provider {
     case .gemini:
@@ -1558,6 +1588,8 @@ class SpeechService {
         guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
         return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
       }
+    case .system:
+      throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
     }
 
     let chunkService = ChunkTTSService()
@@ -1565,6 +1597,22 @@ class SpeechService {
     return try await chunkService.synthesize(
       text: trimmedText, model: model, onChunkReady: onChunkReady,
       synthesizeText: synthesizeChunk)
+  }
+
+  /// On-device Read Aloud. Reached from `readSelectionAloud` / `readProseAloud` when the
+  /// selected model is `.systemMacOS` (Offline Mode's automatic choice).
+  func speakWithSystemVoice(
+    _ text: String,
+    voiceIdentifier: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
+    let voice = voiceIdentifier ?? ReadAloudPreferences.voice(for: .systemMacOS)
+    let pcm = try await SystemTTSService.shared.synthesizePCM(
+      text: text, voiceIdentifier: voice)
+    if let onChunkReady {
+      await MainActor.run { onChunkReady(pcm, 0, 1) }
+    }
+    return pcm
   }
 
   // MARK: - Gemini TTS (Generative Language API) — synthesizes one chunk per call.
@@ -2025,10 +2073,11 @@ class SpeechService {
 
     let (data, response): (Data, URLResponse)
     do {
-      (data, response) = try await NetworkDeadline.data(
+      (data, response) = try await NetworkDeadline.dataWithOneNetworkRetry(
         for: request,
         session: session,
-        timeout: NetworkDeadline.transcriptionRequestTimeout)
+        timeout: NetworkDeadline.transcriptionRequestTimeout,
+        logPrefix: logPrefix)
     } catch TranscriptionError.requestTimeout {
       DebugLogger.logError(
         "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
@@ -2070,6 +2119,8 @@ class SpeechService {
       let result = parsed.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if result.isEmpty {
         DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
+        ContextLogger.shared.logNoSpeechDetected(
+          source: "apiEmptyResult", peakDb: "n/a", durationMs: "n/a", logPrefix: logPrefix)
         throw TranscriptionError.noSpeechDetected
       }
       DebugLogger.logSuccess("\(logPrefix): \(result.count) chars")
@@ -2080,6 +2131,9 @@ class SpeechService {
       DebugLogger.logSuccess("\(logPrefix): \(text.count) chars (plain text)")
       return text
     }
+    DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
+    ContextLogger.shared.logNoSpeechDetected(
+      source: "apiEmptyResult", peakDb: "n/a", durationMs: "n/a", logPrefix: logPrefix)
     throw TranscriptionError.noSpeechDetected
   }
 
@@ -2298,24 +2352,38 @@ class SpeechService {
       glossaryTerms: glossaryTermsForEchoCheck(),
       mode: "GEMINI-TRANSCRIPTION")
 
-    // The glossary-echo gate is right to drop this — 12 characters from 11 s of audio is not
-    // speech — but "right" still left the user with nothing to paste. Seven days of real usage
-    // showed 34 dictations discarded this way, once nine in a row inside two minutes: the user
-    // simply re-recorded by hand until it worked. Do that one retry for them, without the
-    // vocabulary block, so the model is not handed back the very words it just confabulated.
-    if normalizedText.isEmpty, !afterLengthGate.isEmpty, !suppressGlossary {
+    if suppressGlossary {
+      return normalizedText
+    }
+
+    var text = normalizedText
+    if text.isEmpty, !afterLengthGate.isEmpty {
       DebugLogger.logWarning(
         "GEMINI-TRANSCRIPTION: Glossary echo discarded — retrying once without the glossary")
-      return try await transcribeWithGeminiInline(
+      text = try await transcribeWithGeminiInline(
         audioURL: audioURL, credential: credential, model: model,
         promptOverride: promptOverride, audioDuration: audioDuration, suppressGlossary: true)
     }
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "TRANSCRIPTION-MODE")
+    if text.isEmpty, let fallback = Self.alternateCloudTranscriptionModel() {
+      DebugLogger.logWarning(
+        "GEMINI-TRANSCRIPTION: empty after glossary-echo retry — falling back to \(fallback.displayName)")
+      return try await performTranscription(audioURL: audioURL, preferredModel: fallback)
+    }
+    try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
     DebugLogger.logSpeech("SPEED: [\(model.displayName)] inline transcription total: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")
 
-    return normalizedText
+    return text
+  }
+
+  /// First cloud STT that isn't the current Gemini pick and that the user can actually run.
+  private static func alternateCloudTranscriptionModel() -> TranscriptionModel? {
+    let current = TranscriptionModel.loadSelected()
+    let candidates: [TranscriptionModel] = [
+      .openAIGPTTranscribe, .xaiTranscribe, .openAIGPT4oMiniTranscribe,
+    ]
+    return candidates.first { $0 != current && $0.hasRequiredCredential }
   }
 
   private func transcribeWithGeminiFilesAPI(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval) async throws -> String {

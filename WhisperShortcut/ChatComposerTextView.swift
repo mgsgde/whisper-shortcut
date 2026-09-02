@@ -597,6 +597,8 @@ struct ChatComposerTextView: NSViewRepresentable {
   /// ↑/↓ navigation through the slash-command overlay. Arg: -1 up / +1 down. Return true if consumed.
   var onMoveSelection: (Int) -> Bool
   var onClickScreenshot: (Data) -> Void
+  /// Called when a dropped file is skipped because it exceeds `AppConstants.maxFileSizeBytes`.
+  var onAttachmentRejected: ((String) -> Void)? = nil
 
   func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -659,15 +661,20 @@ struct ChatComposerTextView: NSViewRepresentable {
     }
     tv.onFilePaste = { [weak controller] urls in
       guard let c = controller else { return false }
-      // Gemini Files API rejects inline payloads above ~20 MB. Refuse to
-      // load anything larger into memory rather than risking OOM on a
-      // multi-GB drop.
       let maxBytes = AppConstants.maxFileSizeBytes
       var handled = false
+      var rejected: [String] = []
       for url in urls {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        if size > maxBytes { continue }
+        if size > maxBytes {
+          rejected.append(url.lastPathComponent)
+          continue
+        }
         guard let data = try? Data(contentsOf: url) else { continue }
+        if data.count > maxBytes {
+          rejected.append(url.lastPathComponent)
+          continue
+        }
         let ext = url.pathExtension.lowercased()
         let isImage = ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff"].contains(ext)
         if isImage {
@@ -679,7 +686,13 @@ struct ChatComposerTextView: NSViewRepresentable {
           }
         }
       }
-      return handled
+      if !rejected.isEmpty {
+        DispatchQueue.main.async {
+          context.coordinator.parent.onAttachmentRejected?(
+            ChatViewModel.attachmentTooLargeMessage(filenames: rejected))
+        }
+      }
+      return handled || !rejected.isEmpty
     }
     tv.onAttachmentClicked = { attachment in
       switch attachment.kind {

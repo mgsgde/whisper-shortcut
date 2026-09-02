@@ -95,7 +95,10 @@ class GeminiAPIClient {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = Constants.resourceTimeout
+    // 60s, not the 300s resource timeout: that override plus HTTP/2 reuse is the I2 stall,
+    // and Gemini Dictate never went through NetworkDeadline. The Task deadline in
+    // `performRequest` is the real backstop.
+    request.timeoutInterval = NetworkDeadline.transcriptionRequestTimeout
     if let credential = credential {
       switch credential {
       case .bearer(let token):
@@ -135,7 +138,10 @@ class GeminiAPIClient {
         
         DebugLogger.log("\(mode): Sending request (attempt \(attempt)/\(maxAttempts))")
         let requestStart = CFAbsoluteTimeGetCurrent()
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await NetworkDeadline.data(
+          for: request,
+          session: session,
+          timeout: NetworkDeadline.transcriptionRequestTimeout)
         let roundTripMs = Int(round((CFAbsoluteTimeGetCurrent() - requestStart) * 1000))
         DebugLogger.logNetwork("\(mode): Round-trip \(roundTripMs) ms")
         DebugLogger.log("\(mode): Received response")
@@ -231,6 +237,18 @@ class GeminiAPIClient {
       } catch is CancellationError {
         DebugLogger.log("\(mode)-RETRY: Cancelled on attempt \(attempt)")
         throw CancellationError()
+      } catch TranscriptionError.requestTimeout {
+        // Do not chew the retry budget: five × 60s is the I2 stall again.
+        DebugLogger.logError(
+          "\(mode): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
+        ContextLogger.shared.logSignal(
+          .requestTimedOut, mode: "transcription",
+          detail: [
+            "phase": "transcribing",
+            "timeoutSeconds": "\(Int(NetworkDeadline.transcriptionRequestTimeout))",
+            "logPrefix": mode
+          ])
+        throw TranscriptionError.requestTimeout
       } catch let error as URLError {
         // User-initiated cancellations (pressing the shortcut again, starting a new
         // request) surface as URLError.cancelled. They are normal control flow, not

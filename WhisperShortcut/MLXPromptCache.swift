@@ -33,6 +33,10 @@ import MLXLMCommon
 actor MLXPromptCache {
   static let shared = MLXPromptCache()
 
+  /// Chat system prompts vary per session; keeping every snapshot resident is unbounded.
+  /// Two entries cover Dictate Prompt + the current chat session without the 75 MB-per-prompt tax.
+  private static let maxEntries = 2
+
   private init() {}
 
   /// One entry per model+prompt pair. `[MLXArray]` per layer, plus the metaState that came with it.
@@ -41,12 +45,48 @@ actor MLXPromptCache {
   }
 
   private var snapshots: [String: Snapshot] = [:]
+  /// LRU order, oldest first.
+  private var order: [String] = []
+  private var memoryPressureSource: DispatchSourceMemoryPressure?
+
+  func dropAll() {
+    guard !snapshots.isEmpty else { return }
+    DebugLogger.log("MLX-PROMPT-CACHE: dropping \(snapshots.count) snapshot(s)")
+    snapshots.removeAll()
+    order.removeAll()
+  }
+
+  private func installPressureSourceIfNeeded() {
+    guard memoryPressureSource == nil else { return }
+    let source = DispatchSource.makeMemoryPressureSource(
+      eventMask: [.warning, .critical], queue: .global(qos: .utility))
+    source.setEventHandler {
+      Task { await MLXPromptCache.shared.dropAll() }
+    }
+    source.resume()
+    memoryPressureSource = source
+  }
 
   private func key(model: String, systemPrompt: String) -> String {
     var hasher = SHA256()
     hasher.update(data: Data(model.utf8))
     hasher.update(data: Data(systemPrompt.utf8))
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func remember(_ id: String) {
+    guard snapshots[id] != nil else { return }
+    touch(id)
+    while order.count > Self.maxEntries {
+      let evicted = order.removeFirst()
+      snapshots[evicted] = nil
+      DebugLogger.log("MLX-PROMPT-CACHE: evicted LRU entry")
+    }
+  }
+
+  private func touch(_ id: String) {
+    order.removeAll { $0 == id }
+    order.append(id)
   }
 
   /// A session for one request, starting from the shared prefix when one could be built.
@@ -68,12 +108,16 @@ actor MLXPromptCache {
     }
 
     guard let systemPrompt, !systemPrompt.isEmpty else { return plainSession() }
+    installPressureSourceIfNeeded()
     let id = key(model: modelID, systemPrompt: systemPrompt)
 
     if snapshots[id] == nil {
       snapshots[id] = await buildSnapshot(
         container: container, modelID: modelID, systemPrompt: systemPrompt,
         parameters: parameters, additionalContext: additionalContext)
+      remember(id)
+    } else {
+      touch(id)
     }
     guard let snapshot = snapshots[id] else { return plainSession() }
 

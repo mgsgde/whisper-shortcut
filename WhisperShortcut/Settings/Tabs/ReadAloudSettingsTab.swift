@@ -214,7 +214,7 @@ struct ReadAloudSettingsTab: View {
           .textSelection(.enabled)
         Text("Press the shortcut again to stop playback.")
           .textSelection(.enabled)
-        Text("Requires an API key for the selected voice model's provider (Settings → General). Gemini also works via sign in with Google.")
+        Text("Requires an API key for cloud voice models (Settings → General). The on-device macOS voice needs none, and is selected automatically in Offline Mode. Gemini also works via sign in with Google.")
           .textSelection(.enabled)
       }
       .font(.callout)

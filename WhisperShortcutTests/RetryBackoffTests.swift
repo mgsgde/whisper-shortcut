@@ -74,11 +74,16 @@ struct RetryBackoffTests {
     #expect(RetryBackoff.delay(attempt: -3, retryAfter: nil, base: 2, exponential: true) == 2)
   }
 
-  @Test("A negative retryAfter can never produce a negative sleep")
-  func negativeDelaysAreClamped() async {
-    // Not a hypothetical: `Retry-After` is server-supplied and clock skew can make it negative.
-    let start = Date()
-    await RetryBackoff.sleep(-5)
-    #expect(Date().timeIntervalSince(start) < 1)
+  @Test("A Wi-Fi blip before the first token is retryable; a cancel or bad key is not")
+  func transientPreFirstToken() {
+    #expect(RetryBackoff.isTransientPreFirstToken(URLError(.notConnectedToInternet)))
+    #expect(RetryBackoff.isTransientPreFirstToken(URLError(.networkConnectionLost)))
+    #expect(RetryBackoff.isTransientPreFirstToken(TranscriptionError.serverError(503)))
+    #expect(RetryBackoff.isTransientPreFirstToken(TranscriptionError.networkError("connection lost")))
+    #expect(!RetryBackoff.isTransientPreFirstToken(URLError(.cancelled)))
+    #expect(!RetryBackoff.isTransientPreFirstToken(CancellationError()))
+    #expect(!RetryBackoff.isTransientPreFirstToken(TranscriptionError.invalidAPIKey))
+    #expect(!RetryBackoff.isTransientPreFirstToken(
+      TranscriptionError.networkError("API key is invalid. Check Settings.")))
   }
 }

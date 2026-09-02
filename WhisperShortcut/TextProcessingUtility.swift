@@ -90,7 +90,13 @@ enum TextProcessingUtility {
     
     let lowercasedText = cleaned.lowercased()
     for prefix in promptPrefixes {
-      if lowercasedText.hasPrefix(prefix) {
+      // Word-boundary: "please transcribe this meeting for Sara" is real speech, not a leak.
+      let atBoundary = lowercasedText.hasPrefix(prefix)
+        && (cleaned.count == prefix.count
+          || cleaned.dropFirst(prefix.count).first?.isWhitespace == true
+          || cleaned.dropFirst(prefix.count).first == "\n"
+          || prefix.hasSuffix(":") || prefix.hasSuffix("."))
+      if atBoundary {
         DebugLogger.log("PROMPT-CLEANUP: Removed prefix: '\(prefix)' from transcription")
         cleaned = String(cleaned.dropFirst(prefix.count))
         break
@@ -397,6 +403,8 @@ enum TextProcessingUtility {
     // trigger). Surface that as "no speech detected" rather than the misleading "text too
     // short" — with minimumTextLength == 1, empty is in practice the only trigger anyway.
     if trimmedText.isEmpty {
+      ContextLogger.shared.logNoSpeechDetected(
+        source: "apiEmptyResult", peakDb: "n/a", durationMs: "n/a", logPrefix: mode)
       throw TranscriptionError.noSpeechDetected
     }
     if trimmedText.count < AppConstants.minimumTextLength {
@@ -424,7 +432,14 @@ enum TextProcessingUtility {
         "provide the text you",
         "i can transcribe",
       ]
-      if assistantRefusalPhrases.contains(where: { lowercasedText.contains($0) }) {
+      // Substring matches over a long real transcript false-positive (D11): only treat
+      // the recording as a refusal when the whole result is short, or the phrase is
+      // the entire text.
+      let isShortRefusal = trimmedText.count < 160
+      if assistantRefusalPhrases.contains(where: { phrase in
+        if lowercasedText == phrase { return true }
+        return isShortRefusal && lowercasedText.contains(phrase)
+      }) {
         DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription: '\(trimmedText.prefix(80))'")
         throw TranscriptionError.noSpeechDetected
       }
@@ -468,7 +483,11 @@ enum TextProcessingUtility {
       "the transcription is:"
     ]
     
-    let systemPatternCount = systemPatterns.filter { lowercasedText.hasPrefix($0) }.count
+    let systemPatternCount = systemPatterns.filter { pattern in
+      lowercasedText == pattern
+        || lowercasedText.hasPrefix(pattern + " ")
+        || lowercasedText.hasPrefix(pattern + "\n")
+    }.count
     if systemPatternCount > 0 {
       DebugLogger.log("PROMPT-DETECTION: Detected system pattern in transcription: \(systemPatterns.filter { lowercasedText.hasPrefix($0) }.first ?? "unknown")")
       throw TranscriptionError.promptLeakDetected

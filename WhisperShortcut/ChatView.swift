@@ -100,6 +100,9 @@ class ChatViewModel: ObservableObject {
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
   @Published var errorMessage: String? = nil
+  /// Last send failure for the visible session (also persisted on `ChatSession.lastSendError`
+  /// so a background-tab failure is still visible after the user switches back).
+  @Published var lastSendError: String? = nil
   /// Transient non-error confirmation (e.g. "Chat copied"). Auto-dismissed after a short delay.
   @Published var noticeMessage: String? = nil
   private var noticeDismissTask: Task<Void, Never>? = nil
@@ -364,6 +367,7 @@ class ChatViewModel: ObservableObject {
     session = store.load()
     currentSessionId = session.id
     messages = session.messages
+    lastSendError = session.lastSendError
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
     loadScrollAnchors()
@@ -417,6 +421,9 @@ class ChatViewModel: ObservableObject {
     }
 
     backfillMeetingTitleIfNeeded()
+    if let notice = store.consumeCorruptionNotice() {
+      errorMessage = notice
+    }
   }
 
   func createNewSession() {
@@ -432,6 +439,7 @@ class ChatViewModel: ObservableObject {
     currentSessionId = newSession.id
     messages = []
     errorMessage = nil
+    lastSendError = nil
     inputText = ""
     pendingScreenshots = []
     refreshRecentSessions()
@@ -443,6 +451,7 @@ class ChatViewModel: ObservableObject {
     currentSessionId = session.id
     messages = session.messages
     errorMessage = nil
+    lastSendError = session.lastSendError
     pendingScreenshots = []
     refreshRecentSessions()
     backfillMeetingTitleIfNeeded()
@@ -502,11 +511,13 @@ class ChatViewModel: ObservableObject {
     var target = session
     target.messages.removeSubrange(index...)
     target.lastUpdated = Date()
+    target.lastSendError = nil
     store.save(target)
     scrollAnchorClearSignal.send()
     session = target
     messages = target.messages
     errorMessage = nil
+    lastSendError = nil
     DebugLogger.log(
       "CHAT: Retry message (contentLen=\(original.content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
@@ -597,18 +608,37 @@ class ChatViewModel: ObservableObject {
     }
 
     var failedNames: [String] = []
+    var oversizedNames: [String] = []
     for url in urls {
+      let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+      if size > AppConstants.maxFileSizeBytes {
+        oversizedNames.append(url.lastPathComponent)
+        continue
+      }
       guard let data = try? Data(contentsOf: url) else {
         failedNames.append(url.lastPathComponent)
+        continue
+      }
+      if data.count > AppConstants.maxFileSizeBytes {
+        oversizedNames.append(url.lastPathComponent)
         continue
       }
       let mimeType = Self.mimeType(for: url)
       pendingFileAttachments.append(PendingFile(data: data, mimeType: mimeType, filename: url.lastPathComponent))
       DebugLogger.log("GEMINI-CHAT: File attached: \(url.lastPathComponent) (\(mimeType), \(data.count) bytes)")
     }
+    if !oversizedNames.isEmpty {
+      errorMessage = Self.attachmentTooLargeMessage(filenames: oversizedNames)
+    }
     if !failedNames.isEmpty {
       errorMessage = "Could not read: \(failedNames.joined(separator: ", "))"
     }
+  }
+
+  static func attachmentTooLargeMessage(filenames: [String]) -> String {
+    let names = filenames.map { "\"\($0)\"" }.joined(separator: ", ")
+    let verb = filenames.count == 1 ? "is" : "are"
+    return "\(names) \(verb) larger than \(AppConstants.maxFileSizeDisplay) and \(filenames.count == 1 ? "wasn't" : "weren't") attached."
   }
 
   // MARK: - Workspace folders
@@ -673,11 +703,15 @@ class ChatViewModel: ObservableObject {
     UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     let nowPinned = !newValue
     DebugLogger.log("GEMINI-CHAT: /pin — window is now \(nowPinned ? "pinned (stays open)" : "unpinned (closes on focus loss)")")
+    showNotice(nowPinned
+      ? "Window pinned — it stays open when it loses focus."
+      : "Window unpinned — it closes when it loses focus.")
   }
 
   func unpin() {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.chatCloseOnFocusLoss)
     DebugLogger.log("GEMINI-CHAT: /unpin — window is now unpinned (closes on focus loss)")
+    showNotice("Window unpinned — it closes when it loses focus.")
   }
 
   /// Stops the currently visible session: cancels the in-flight request *and* drops
@@ -876,6 +910,8 @@ class ChatViewModel: ObservableObject {
       // Consecutive in-place-status ignores (same trailing sentence, not appended).
       // Three of these must stop the stream even though `streamed` stayed at one copy.
       var duplicateStatusStreak = 0
+      var loopDeltaIndex = 0
+      persistLastSendError(nil, sessionId: sessionId)
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
         appendMessage(placeholder, toSessionId: sessionId)
@@ -895,6 +931,7 @@ class ChatViewModel: ObservableObject {
 
         var finalSources: [GroundingSource] = []
         var finalSupports: [GroundingSupport] = []
+        var truncatedFinish = false
         let tools = buildToolDeclarations(for: sendingSession)
         // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
         // discovering the list and then one per task, because the model emits its edits one call at
@@ -953,13 +990,16 @@ class ChatViewModel: ObservableObject {
                 if streamed.utf8.count > 512 { thoughtStripSettled = true }
               }
               streamingBuffer.enqueueUpdate(markerPrefix + streamed)
+              loopDeltaIndex += 1
               // Gemini can repeat the same status sentence for minutes. Stop only this
               // stream so the good prefix is kept. Do NOT call `cancelSend()` — that
               // also drops the session queue, which would discard the "1 queued" turn.
               // Breaking `toolLoop` releases the AsyncThrowingStream iterator; Gemini's
               // `onTermination` cancels the URLSession task the same way a consumer stop
               // does, then we finalize the partial normally (queue still drains).
-              if ChatStreamLoopGuard.shouldStop(streamed: streamed, ignoredStreak: duplicateStatusStreak) {
+              if ChatStreamLoopGuard.shouldStop(
+                streamed: streamed, ignoredStreak: duplicateStatusStreak, deltaIndex: loopDeltaIndex
+              ) {
                 DebugLogger.logWarning(
                   "CHAT: stream loop detected — stopping this reply without dropping the queue (chars=\(streamed.count))")
                 streamed = ChatStreamLoopGuard.appendStopNotice(to: streamed)
@@ -968,9 +1008,10 @@ class ChatViewModel: ObservableObject {
               }
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
-            case .finished(let sources, let supports, _):
+            case .finished(let sources, let supports, let finishReason):
               finalSources = sources
               finalSupports = supports
+              if Self.isTruncatedFinishReason(finishReason) { truncatedFinish = true }
             }
           }
           if pendingCalls.isEmpty { break toolLoop }
@@ -998,6 +1039,7 @@ class ChatViewModel: ObservableObject {
             streamed = ""
             thoughtStripSettled = false
             duplicateStatusStreak = 0
+            loopDeltaIndex = 0
             streamingBuffer.setContentImmediate(markerPrefix)
           }
           currentContents.append(contentsOf: turns)
@@ -1034,6 +1076,14 @@ class ChatViewModel: ObservableObject {
             reply = "_(no response)_"
           }
         }
+        if truncatedFinish {
+          let note = "_Reply was truncated._"
+          if reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            reply = note
+          } else if !reply.contains("Reply was truncated") {
+            reply = reply + "\n\n" + note
+          }
+        }
 
         // Final swap: streaming bubble (no sources) -> finalized message WITH grounding
         // sources. This one-shot content change is the layout-heaviest moment of a send;
@@ -1065,6 +1115,7 @@ class ChatViewModel: ObservableObject {
           Task { await generateAITitle(sessionId: sessionId) }
         }
         ReviewPrompter.shared.recordSuccessfulOperation()
+        self.persistLastSendError(nil, sessionId: sessionId)
       } catch is CancellationError {
         let partialChars = markerPrefix.count + streamed.count
         let droppedByUser = self.userCancelledSessions.removeValue(forKey: sessionId)
@@ -1084,7 +1135,9 @@ class ChatViewModel: ObservableObject {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
           partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
-        if sessionId == session.id { errorMessage = friendlyError(error) }
+        let friendly = self.friendlyError(error, provider: selectedModel.provider)
+        self.persistLastSendError(friendly, sessionId: sessionId)
+        if sessionId == session.id { errorMessage = friendly }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
     }
@@ -1151,6 +1204,20 @@ class ChatViewModel: ObservableObject {
     let context = makeToolContext(sessionId: sessionId)
     for call in calls {
       try Task.checkCancellation()
+      if ChatToolRegistry.requiresUserApproval(call.name) {
+        let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
+        let allowed = await confirmToolCall(name: call.name, summary: summary)
+        if !allowed {
+          DebugLogger.log("CHAT-TOOL-DENIED: \(call.name)")
+          responseParts.append([
+            "functionResponse": [
+              "name": call.name,
+              "response": ["error": "The user denied this \(call.name) call."],
+            ]
+          ])
+          continue
+        }
+      }
       DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
       let outcome = await ChatToolRegistry.execute(
         name: call.name, args: call.args, context: context)
@@ -1164,6 +1231,18 @@ class ChatViewModel: ObservableObject {
       ["role": "user", "parts": responseParts],
     ]
     return (turns, imageMarkers)
+  }
+
+  /// Per-turn confirmation for mutating tools. Nothing is remembered.
+  @MainActor
+  private func confirmToolCall(name: String, summary: String) async -> Bool {
+    let alert = NSAlert()
+    alert.messageText = "Allow \(name)?"
+    alert.informativeText = summary
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: "Allow")
+    alert.addButton(withTitle: "Deny")
+    return alert.runModal() == .alertFirstButtonReturn
   }
 
   /// Registers this session's tool handlers with the registry. Each one needs state the registry
@@ -1580,6 +1659,36 @@ class ChatViewModel: ObservableObject {
         id: placeholderId, sessionId: sessionId,
         content: partial, sources: [], supports: [])
     }
+  }
+
+  /// Persists a send failure on the session so a background tab still shows a failed-turn row.
+  private func persistLastSendError(_ message: String?, sessionId: UUID) {
+    let isCurrent = sessionId == session.id
+    var target: ChatSession
+    if isCurrent {
+      target = session
+    } else if let stored = store.session(by: sessionId) {
+      target = stored
+    } else {
+      return
+    }
+    guard target.lastSendError != message else {
+      if isCurrent { lastSendError = message }
+      return
+    }
+    target.lastSendError = message
+    store.save(target)
+    if isCurrent {
+      session = target
+      lastSendError = message
+    }
+  }
+
+  static func isTruncatedFinishReason(_ reason: String?) -> Bool {
+    guard let reason else { return false }
+    let lower = reason.lowercased()
+    return lower == "length" || lower == "max_tokens" || lower.contains("max_token")
+      || lower == "incomplete"
   }
 
   /// Registers a streaming buffer for `messageId` so the bubble for that message can observe it.
@@ -2751,7 +2860,8 @@ class ChatViewModel: ObservableObject {
         + "staleTurns=\(staleTurns) staleImages=\(staleImages) savablePerTurn=\(mb(staleBytes))")
   }
 
-  private func friendlyError(_ error: Error) -> String {
+  private func friendlyError(_ error: Error, provider: ChatModelProvider) -> String {
+    let name = Self.chatProviderDisplayName(provider)
     if let te = error as? TranscriptionError {
       switch te {
       case .invalidAPIKey, .incorrectAPIKey:
@@ -2760,20 +2870,21 @@ class ChatViewModel: ObservableObject {
         return "Rate limit reached. Please wait a moment and try again."
       case .quotaExceeded:
         return "API quota exceeded. Please try again later."
+      case .serverError, .serviceUnavailable:
+        return "\(name) is temporarily unavailable. Please try again in a few seconds."
       case .networkError(let msg):
-        // Hide raw JSON for transient Gemini outages.
         let lower = msg.lowercased()
-        if lower.contains("503") || lower.contains("unavailable") {
-          return "Gemini is temporarily unavailable. Please try again in a few seconds."
+        if lower.contains("503") || lower.contains("unavailable")
+          || lower.contains("502") || lower.contains("504") || lower.contains("500") {
+          return "\(name) is temporarily unavailable. Please try again in a few seconds."
         }
-        if lower.contains("502") || lower.contains("504") {
-          return "Gemini server error. Please try again in a few seconds."
+        if msg.hasPrefix("{") || msg.contains("\"error\"") {
+          if let extracted = ChatProviderHTTPError.message(from: msg) {
+            return "\(name) request failed: \(extracted)"
+          }
+          return "\(name) request failed. Please try again."
         }
-        // Provider-specific, already user-actionable messages are shown verbatim.
-        if msg.hasPrefix("xAI ") || msg.hasPrefix("No xAI") {
-          return msg
-        }
-        return "Network error: \(msg)"
+        return msg
       case .fileError(let msg):
         return msg
       default:
@@ -2791,6 +2902,18 @@ class ChatViewModel: ObservableObject {
       }
     }
     return error.localizedDescription
+  }
+
+  static func chatProviderDisplayName(_ provider: ChatModelProvider) -> String {
+    switch provider {
+    case .gemini: return "Gemini"
+    case .grok: return "Grok"
+    case .openai: return "OpenAI"
+    case .anthropic: return "Claude"
+    case .customOpenAI: return "Custom endpoint"
+    case .local: return "Local LLM"
+    case .localMLX: return "On-device LLM"
+    }
   }
 }
 
@@ -3279,6 +3402,15 @@ struct ChatView: View {
               streamingBuffer: detached.buffer,
               onTapAttachedImage: { previewImageData = $0 })
               .id(detached.message.id)
+          }
+
+          if let err = viewModel.lastSendError, !viewModel.isSending {
+            FailedTurnRow(message: err) {
+              if let id = lastUserMessageId {
+                viewModel.retryMessage(id: id)
+              }
+            }
+            .id("failedTurn")
           }
 
           ForEach(viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }) { queued in
@@ -4150,7 +4282,8 @@ struct ChatInputAreaView: View {
         },
         onTabComplete: { handleTabComplete() },
         onMoveSelection: { delta in moveSuggestionSelection(by: delta) },
-        onClickScreenshot: { data in onTapScreenshotThumbnail(data) }
+        onClickScreenshot: { data in onTapScreenshotThumbnail(data) },
+        onAttachmentRejected: { viewModel.errorMessage = $0 }
       )
       .frame(height: inputHeight)
 
@@ -4988,6 +5121,34 @@ private struct DownloadImageButtonView: View {
     case "image/heic": return "heic"
     default: return "png"
     }
+  }
+}
+
+// MARK: - Failed turn (background-tab error)
+
+private struct FailedTurnRow: View {
+  let message: String
+  let onRetry: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(message)
+        .font(.system(size: 14))
+        .foregroundColor(ChatTheme.secondaryText)
+        .fixedSize(horizontal: false, vertical: true)
+      RetryButtonView(action: onRetry)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 12)
+        .fill(Color.red.opacity(0.12))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12)
+        .strokeBorder(Color.red.opacity(0.35), lineWidth: 1)
+    )
   }
 }
 

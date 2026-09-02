@@ -77,6 +77,11 @@ enum OutcomeSignal: String {
   /// Distinct from `cancelledWhileProcessing`: the app gave up, the user did not.
   /// `detail.phase` / `timeoutSeconds` / `logPrefix` identify which path stalled.
   case requestTimedOut
+  /// No usable speech: either the local silence gate skipped the API, or the API
+  /// returned empty. `detail.source` is `localSilenceGate` or `apiEmptyResult`;
+  /// `peakDb`, `durationMs`, and `logPrefix` are required so meeting chunks can
+  /// be split from dictation (instrumentation gap #8 / ledger I3).
+  case noSpeechDetected
 }
 
 // MARK: - System Prompt History Entry
@@ -312,6 +317,20 @@ class ContextLogger {
       detail: detail
     )
     writeSignal(entry)
+  }
+
+  /// Gap #8: every `noSpeechDetected` path must hit the outcome-signal stream with the
+  /// four fields usage-review needs to grade I3.
+  func logNoSpeechDetected(source: String, peakDb: String, durationMs: String, logPrefix: String) {
+    logSignal(
+      .noSpeechDetected,
+      mode: "transcription",
+      detail: [
+        "source": source,
+        "peakDb": peakDb,
+        "durationMs": durationMs,
+        "logPrefix": logPrefix,
+      ])
   }
 
   /// Emits `dictationRestart` when a dictation begins so soon after an unpasted transcript that the

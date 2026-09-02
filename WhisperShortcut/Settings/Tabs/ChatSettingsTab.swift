@@ -23,10 +23,6 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
-      windowBehaviorSection
-
-      SpacedSectionDivider()
-
       // Chat system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
@@ -70,11 +66,14 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
-      meetingSafeguardSection
+      usageSection
 
       SpacedSectionDivider()
 
-      usageSection
+      AdvancedSettingsGroup {
+        windowBehaviorSection
+        meetingSafeguardSection
+      }
     }
   }
 

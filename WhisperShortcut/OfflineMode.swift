@@ -30,7 +30,15 @@ enum OfflineMode {
     let host = url?.host ?? "a remote server"
     return
       "Offline Mode is on, so nothing may leave this Mac — the request to \(host) was blocked. "
-      + "Pick an on-device Whisper model for dictation, or turn Offline Mode off in Settings → Privacy & Permissions."
+      + "Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions."
+  }
+
+  /// Read Aloud–specific copy. Cloud TTS is blocked while Offline Mode is on; the on-device
+  /// macOS voice is the replacement (see `TTSModel.systemMacOS`).
+  static var blockedMessageForReadAloud: String {
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. "
+      + "Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off "
+      + "in Settings → Privacy & Permissions."
   }
 
   // MARK: - What counts as "does not leave this Mac"

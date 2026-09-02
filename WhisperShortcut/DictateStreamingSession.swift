@@ -50,7 +50,9 @@ final class DictateStreamingSession {
 
   /// Called from `ChunkedDictateRecorder.onChunkFinalized` while recording continues.
   func addChunk(url: URL, index: Int, isSilent: Bool) {
-    guard !isCancelled, chunkTasks[index] == nil else { return }
+    cancelLock.lock()
+    defer { cancelLock.unlock() }
+    guard !_isCancelled, chunkTasks[index] == nil else { return }
     if isSilent {
       DebugLogger.logSpeech("STREAMING-DICTATE: Chunk \(index) is silent, skipping API call")
       chunkTasks[index] = Task { "" }
@@ -68,8 +70,14 @@ final class DictateStreamingSession {
   /// Called from `ChunkedDictateRecorder.onFinalChunk` at stop, before the merged WAV is
   /// delivered. Only ever fires when at least one rotation happened.
   func addFinalChunk(url: URL, index: Int, isSilent: Bool) {
-    guard !isCancelled, !chunkTasks.isEmpty else { return }
+    cancelLock.lock()
+    let cancelled = _isCancelled
+    let hasChunks = !chunkTasks.isEmpty
+    cancelLock.unlock()
+    guard !cancelled, hasChunks else { return }
+    cancelLock.lock()
     finalChunkIndex = index
+    cancelLock.unlock()
     addChunk(url: url, index: index, isSilent: isSilent)
   }
 
@@ -82,9 +90,10 @@ final class DictateStreamingSession {
     cancelLock.lock()
     let alreadyCancelled = _isCancelled
     _isCancelled = true
+    let tasks = Array(chunkTasks.values)
     cancelLock.unlock()
     guard !alreadyCancelled else { return }
-    for task in chunkTasks.values { task.cancel() }
+    for task in tasks { task.cancel() }
     DebugLogger.logSpeech("STREAMING-DICTATE: Session cancelled")
   }
 
@@ -94,12 +103,16 @@ final class DictateStreamingSession {
   /// CancellationError when the session was cancelled — the caller must NOT fall back
   /// then (the user asked for no result at all).
   func finalTranscript() async throws -> String? {
-    guard let finalIndex = finalChunkIndex else { return nil }
+    cancelLock.lock()
+    let finalIndex = finalChunkIndex
+    let snapshot = chunkTasks
+    cancelLock.unlock()
+    guard let finalIndex else { return nil }
     if isCancelled { throw CancellationError() }
 
     var parts: [String] = []
     for index in 0...finalIndex {
-      guard let task = chunkTasks[index] else {
+      guard let task = snapshot[index] else {
         DebugLogger.logWarning("STREAMING-DICTATE: Chunk \(index) missing, falling back to single-shot")
         return nil
       }

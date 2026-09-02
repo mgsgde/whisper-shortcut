@@ -106,6 +106,7 @@ class SettingsViewModel: ObservableObject {
     .string(\.readAloudVoiceGemini, key: UserDefaultsKeys.selectedReadAloudVoiceGemini),
     .string(\.readAloudVoiceOpenAI, key: UserDefaultsKeys.selectedReadAloudVoiceOpenAI),
     .string(\.readAloudVoiceXAI, key: UserDefaultsKeys.selectedReadAloudVoiceXAI),
+    .string(\.readAloudVoiceSystem, key: UserDefaultsKeys.selectedReadAloudVoiceSystem),
 
     // Window behaviour
     .bool(\.chatCloseOnFocusLoss, key: UserDefaultsKeys.chatCloseOnFocusLoss,
@@ -434,6 +435,26 @@ class SettingsViewModel: ObservableObject {
     } else {
       DebugLogger.logError("GITHUB: Invalid GitHub URL")
     }
+  }
+
+  /// Prefills a new GitHub issue with version, OS, and any hang-*.txt names so the
+  /// report is actionable without a round-trip. The files themselves stay on disk;
+  /// Reveal Hang Reports is how the user attaches them.
+  func openGitHubIssue() {
+    FeedbackLinks.open(.gitHub)
+  }
+
+  /// Reveals `hang-*.txt` watchdog captures in Finder (the Logs folder if none exist yet).
+  func revealHangReports() {
+    let directory = HangReports.directoryURL()
+    AppSupportPaths.ensureDirectoryExists(directory)
+    let reports = HangReports.existingReportURLs(in: directory)
+    if reports.isEmpty {
+      NSWorkspace.shared.open(directory)
+    } else {
+      NSWorkspace.shared.activateFileViewerSelecting(reports)
+    }
+    DebugLogger.log("SETTINGS: Revealed hang reports folder (\(reports.count) file(s))")
   }
 
   // MARK: - Live Meeting Transcripts Folder

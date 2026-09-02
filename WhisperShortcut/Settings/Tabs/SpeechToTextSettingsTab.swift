@@ -22,11 +22,6 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
 
-      // Temperature / thinking effort (cloud models only)
-      tuningSection
-
-      SpacedSectionDivider()
-
       // Available Models Section
       offlineModelsSection
 
@@ -75,6 +70,15 @@ struct SpeechToTextSettingsTab: View {
 
       // Usage Instructions Section
       usageInstructionsSection
+
+      if viewModel.data.selectedTranscriptionModel.isGemini
+        || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
+      {
+        SpacedSectionDivider()
+        AdvancedSettingsGroup {
+          tuningSection
+        }
+      }
     }
   }
   
@@ -418,8 +422,6 @@ struct SpeechToTextSettingsTab: View {
 
         // Action Button
         if isDownloading {
-          // Download in progress — determinate where WhisperKit reports a fraction, so the row
-          // says how far along a multi-gigabyte download is instead of spinning indefinitely.
           HStack(spacing: 8) {
             if let fraction = modelManager.downloadProgress[modelType] {
               ProgressView(value: fraction)
@@ -436,6 +438,14 @@ struct SpeechToTextSettingsTab: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
             }
+            Button("Cancel") {
+              Task { @MainActor in
+                ModelManager.shared.cancelDownload(modelType)
+              }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .pointerCursorOnHover()
           }
         } else if isAvailable {
           // Delete button
@@ -495,7 +505,10 @@ struct SpeechToTextSettingsTab: View {
             }
           }
         }
+      } catch is CancellationError {
+        // cancelled from the Cancel button
       } catch {
+        if ModelManager.isCancellation(error) { return }
         await MainActor.run {
           viewModel.showError("Failed to download \(modelType.displayName): \(SpeechErrorFormatter.formatForUser(error))")
           DebugLogger.logError("OFFLINE-UI: Failed to download \(modelType.displayName): \(error.localizedDescription)")

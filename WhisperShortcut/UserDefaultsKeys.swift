@@ -105,6 +105,8 @@ enum UserDefaultsKeys {
   /// restart (e.g. macOS "Quit & Reopen" after granting a permission) resumes on the same
   /// step instead of starting over. Reset to 0 when onboarding finishes or is dismissed.
   static let onboardingCurrentStep = "onboardingCurrentStep"
+  /// Last app version for which the About "What's new" card was dismissed.
+  static let lastSeenWhatsNewVersion = "lastSeenWhatsNewVersion"
   
   // MARK: - Review Prompter
   static let successfulOperationsCount = "successfulOperationsCount"
@@ -188,7 +190,7 @@ enum UserDefaultsKeys {
   static let readAloudSmartRewriteEnabled = "readAloudSmartRewriteEnabled"
   /// Local playback rate for Read Aloud TTS. Stored as Double (e.g. 1.0, 1.25, 1.5).
   static let readAloudSpeed = "readAloudSpeed"
-  /// Selected Read Aloud TTS model raw value (Gemini / OpenAI / xAI). See TTSModel.
+  /// Selected Read Aloud TTS model raw value (macOS / Gemini / OpenAI / xAI). See TTSModel.
   static let selectedReadAloudModel = "selectedReadAloudModel"
   /// Selected Read Aloud voice per provider. Stored separately so switching providers and back
   /// keeps each provider's chosen voice. Empty/unknown → that provider's default voice.
@@ -196,5 +198,10 @@ enum UserDefaultsKeys {
   static let selectedReadAloudVoiceGemini = "selectedReadAloudVoiceGemini"
   static let selectedReadAloudVoiceOpenAI = "selectedReadAloudVoiceOpenAI"
   static let selectedReadAloudVoiceXAI = "selectedReadAloudVoiceXAI"
+  static let selectedReadAloudVoiceSystem = "selectedReadAloudVoiceSystem"
+
+  /// Snapshot of model selections taken when Offline Mode is turned on, restored when it is
+  /// turned off. Dictionary of UserDefaults key → raw value. See `ModelSelectionReconciler`.
+  static let offlineModePreOfflineSelections = "offlineModePreOfflineSelections"
 }
 

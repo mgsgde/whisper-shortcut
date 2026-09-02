@@ -140,4 +140,52 @@ struct OfflineModeTests {
       #expect(TranscriptionModel.forOfflineModel(type).offlineModelType == type, "\(type.rawValue)")
     }
   }
+
+  // MARK: - URLProtocol guard
+
+  @Test("canonicalRequest is the request unchanged")
+  func canonicalRequestIsIdentity() {
+    let request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+    #expect(OfflineModeURLProtocol.canonicalRequest(for: request) == request)
+  }
+
+  @Test("install prepends the guard in front of the system protocols")
+  func installPrependsTheProtocol() throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    let before = configuration.protocolClasses ?? []
+    OfflineModeURLProtocol.install(on: configuration)
+    let after = try #require(configuration.protocolClasses)
+    #expect(after.count == before.count + 1)
+    #expect(ObjectIdentifier(after[0]) == ObjectIdentifier(OfflineModeURLProtocol.self))
+  }
+
+  @Test("startLoading fails with cannotConnectToHost and the Offline Mode message")
+  func startLoadingReportsTheBlockedError() throws {
+    let url = URL(string: "https://api.openai.com/v1/models")!
+    let request = URLRequest(url: url)
+    let client = URLProtocolClientSpy()
+    let proto = OfflineModeURLProtocol(request: request, cachedResponse: nil, client: client)
+    proto.startLoading()
+
+    let nsError = try #require(client.failedError as NSError?)
+    #expect(nsError.domain == NSURLErrorDomain)
+    #expect(nsError.code == NSURLErrorCannotConnectToHost)
+    let message = nsError.localizedDescription
+    #expect(message.contains("Offline Mode is on"))
+    #expect(message.contains("api.openai.com"))
+  }
+}
+
+/// Captures the transport error `OfflineModeURLProtocol.startLoading` delivers.
+private final class URLProtocolClientSpy: NSObject, URLProtocolClient {
+  var failedError: Error?
+
+  func urlProtocol(_ `protocol`: URLProtocol, wasRedirectedTo request: URLRequest, redirectResponse: URLResponse) {}
+  func urlProtocol(_ `protocol`: URLProtocol, cachedResponseIsValid cachedResponse: CachedURLResponse) {}
+  func urlProtocol(_ `protocol`: URLProtocol, didReceive response: URLResponse, cacheStoragePolicy policy: URLCache.StoragePolicy) {}
+  func urlProtocol(_ `protocol`: URLProtocol, didLoad data: Data) {}
+  func urlProtocolDidFinishLoading(_ `protocol`: URLProtocol) {}
+  func urlProtocol(_ `protocol`: URLProtocol, didFailWithError error: Error) { failedError = error }
+  func urlProtocol(_ `protocol`: URLProtocol, didReceive challenge: URLAuthenticationChallenge) {}
+  func urlProtocol(_ `protocol`: URLProtocol, didCancel challenge: URLAuthenticationChallenge) {}
 }

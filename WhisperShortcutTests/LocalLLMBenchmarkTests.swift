@@ -17,7 +17,7 @@ import Foundation
 /// Prefill and generation are split because they respond to different fixes: a primed prompt cache
 /// versus a smaller model. This mirrors the `SPEED:` line `executePromptWithLocal` already logs, so
 /// numbers from here and from real use are comparable.
-@Suite("Local LLM benchmark (opt-in)")
+@Suite("Local LLM benchmark (opt-in)", .tags(.liveNetwork), .enabled(if: !TestRun.isHermetic))
 struct LocalLLMBenchmarkTests {
 
   private static var isEnabled: Bool {

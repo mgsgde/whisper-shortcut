@@ -47,6 +47,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
     let verifier = generateCodeVerifier()
     let challenge = codeChallengeS256(verifier: verifier)
+    let state = OAuthCSRF.makeState()
 
     var components = URLComponents(url: GoogleAccountOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
     components.queryItems = [
@@ -54,6 +55,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       URLQueryItem(name: "redirect_uri", value: GoogleAccountOAuthConfig.redirectURI),
       URLQueryItem(name: "response_type", value: "code"),
       URLQueryItem(name: "scope", value: GoogleAccountOAuthConfig.scope),
+      URLQueryItem(name: "state", value: state),
       URLQueryItem(name: "code_challenge", value: challenge),
       URLQueryItem(name: "code_challenge_method", value: "S256"),
       URLQueryItem(name: "access_type", value: "offline"),
@@ -96,6 +98,11 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
           let code = components.queryItems?.first(where: { $0.name == "code" })?.value
     else {
       throw OAuthError.noAuthorizationCode
+    }
+
+    let receivedState = components.queryItems?.first(where: { $0.name == "state" })?.value
+    guard OAuthCSRF.accept(expected: state, received: receivedState, logPrefix: "GOOGLE-CALENDAR") else {
+      throw OAuthError.stateMismatch
     }
 
     try await exchangeCodeForTokens(code: code, verifier: verifier)
@@ -268,12 +275,14 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     case invalidResponse
     case authorizationInProgress
     case authorizationStartFailed
+    case stateMismatch
 
     var errorDescription: String? {
       switch self {
       case .invalidURL: return "Failed to build authorization URL."
       case .noCallbackURL: return "No callback URL received."
       case .noAuthorizationCode: return "No authorization code in callback."
+      case .stateMismatch: return "Google sign-in was refused because the callback did not match this attempt. Try connecting again."
       case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
       case .missingAccessToken: return "No access token in response."
       case .missingRefreshToken: return "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut."

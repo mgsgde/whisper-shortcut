@@ -1,6 +1,6 @@
 # App Improvement Plan — September 2026
 
-**Status:** Proposed, not started. Written 2026-09-02 against `main` at v8.05 (`2e2b058`).
+**Status:** Implemented (F15 deferred), 2026-09-02. Written against `main` at v8.05 (`2e2b058`).
 **Audience:** The developer deciding what gets built next, and whoever implements a row.
 **How it was produced:** Five read-only audits of the source (dictation pipeline, onboarding and
 Settings, chat and providers, offline/local models, engineering health), cross-checked against
@@ -153,7 +153,7 @@ unit-tested) and the rest of the mode uneven.
 | F13 | **Neither local model is ever unloaded.** Offline Mode with MLX keeps ≈1.6 GB + ≈2.3 GB + KV snapshots resident for the app's lifetime. | `LocalSpeechService.swift:90`; `LocalLLMModelManager.swift:380` | `DispatchSource.makeMemoryPressureSource` + idle unload after N minutes. | M |
 | F14 | **No VAD for Whisper; silence protection is post-hoc.** Classic silence hallucinations ("Thank you.") are caught only if the plausibility heuristic recognises them. | `LocalSpeechService.swift:217-234`; `TextProcessingUtility.swift:286`, `:396-429` | Reuse the existing peak-power gate before invoking Whisper; evaluate WhisperKit's VAD chunking. Ties into gap #8 (the gate becomes measurable first). | M |
 | E5 | **Privacy wording overstates the network block for model downloads.** `WhisperKit.download` uses its own `URLSession`, never touched by `OfflineModeURLProtocol` — the app will still reach huggingface.co in Offline Mode. Defensible (the README already carves it out), but `privacy.md` says "every request". | `ModelManager.swift:329`; `privacy.md` | Align the wording; or pass a guarded session if WhisperKit's `HubApi` allows it. | S |
-| F15 | **No streaming local transcription, no Parakeet-class model.** `LocalSpeechService.transcribe` is one-shot on a finished file; the streaming-Dictate design targets cloud chunking. Competitors ship near-realtime local ASR. Biggest competitive gap, highest effort — **deferred**; revisit after F14 and once Slice 3 of streaming Dictate settles. | `LocalSpeechService.swift:97` | Not scheduled. | L |
+| F15 | **No streaming local transcription, no Parakeet-class model.** `LocalSpeechService.transcribe` is one-shot on a finished file; the streaming-Dictate design targets cloud chunking. Competitors ship near-realtime local ASR. Biggest competitive gap. **Parked 2026-09-02 as a future TODO** (split, do not ship as one L): (1) next — admit Whisper in `DictateStreamingSession.makeIfEligible`, same fallback as cloud; (2) later — Parakeet-class model, separate L. Tracked in `plans/active/streaming-dictate.md` slice 4 and `plans/implementer-queue.md` row 3 (`HOLD`). | `LocalSpeechService.swift` `transcribe`; `DictateStreamingSession.makeIfEligible` | Slice 4 of streaming Dictate. | L split: next S–M, Parakeet L |
 
 ---
 
@@ -189,7 +189,7 @@ unit-tested) and the rest of the mode uneven.
 2. **Release B:** Tier 1a + 1b (D3, D4/I7, D6, D7, D11–D14, gap #8). D3 and D4 are the customer-facing stall fixes the growth ledger explicitly keeps; gap #8 is the instrumentation that ranks above features by the register's own rule. Each row lands with its unit test (E4 slices).
 3. **Release C:** Tier 2 offline-first onboarding (O2, F2, F4, O4, O6, O8, O7, O13) — all S. Then O3 "Try it" and O9 update check as their own PRs.
 4. **Release D:** Tier 3 F6/C14/F7/F9/F11/F10/F12 (all S) in one pass; F8 local TTS as its own feature PR — it is the one row here that produces a marketable line ("Read Aloud now works offline").
-5. **Then:** Tier 1c latency, Tier 4 C4/C3/C1, Tier 5 CI. F15 stays deferred.
+5. **Then:** Tier 1c latency, Tier 4 C4/C3/C1, Tier 5 CI. F15 is parked (not dropped): next slice is Whisper-on-`DictateStreamingSession`; Parakeet stays later.
 
 ## Candidates for `plans/implementer-queue.md`
 

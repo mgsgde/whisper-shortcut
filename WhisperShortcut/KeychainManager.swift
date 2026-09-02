@@ -148,11 +148,20 @@ class KeychainManager: KeychainManaging {
       kSecAttrService as String: Constants.serviceName,
       kSecAttrAccount as String: accountName,
     ]
-    var status = SecItemUpdate(match as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+    // ThisDeviceOnly so a Keychain dump / iCloud Keychain sync cannot take the
+    // API keys off this Mac. Included on UPDATE as well as add so items written
+    // before this accessibility class are repaired in place rather than left
+    // at the older AfterFirstUnlock (syncable) class forever.
+    let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    let attributes: [String: Any] = [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: accessibility,
+    ]
+    var status = SecItemUpdate(match as CFDictionary, attributes as CFDictionary)
     if status == errSecItemNotFound {
       var add = match
       add[kSecValueData as String] = data
-      add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+      add[kSecAttrAccessible as String] = accessibility
       status = SecItemAdd(add as CFDictionary, nil)
     }
 

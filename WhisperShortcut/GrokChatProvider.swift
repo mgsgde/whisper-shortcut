@@ -184,7 +184,7 @@ final class GrokChatProvider: LLMChatProvider {
         if status == 429 {
           return classifyXAI429(body: body)
         }
-        return TranscriptionError.networkError("xAI API error HTTP \(status): \(body.prefix(500))")
+        return ChatProviderHTTPError.map(provider: "Grok", status: status, body: body)
       })
   }
 

@@ -659,9 +659,11 @@ enum PromptModel: String, CaseIterable {
 
   /// All models available for the chat window (all providers). Excludes audio-only
   /// models such as `openaiGPT4oAudio`, which the OpenAI API rejects on text-only requests,
-  /// and models superseded by a newer sibling (see `chatReplacement`).
+  /// models superseded by a newer sibling (see `chatReplacement`), models this Mac cannot
+  /// run (see `isOfferableOnThisMac`), and cloud models while Offline Mode is on.
   static var chatModels: [PromptModel] {
-    return allCases.filter { $0.isSelectableInChat }
+    return allCases.filter { $0.isSelectableInChat }.filter(\.isOfferableOnThisMac)
+      .filter(\.isSelectableUnderOfflineMode)
   }
 
   /// Chat models suitable for text-only tasks such as Smart Improvement: excludes
@@ -675,16 +677,22 @@ enum PromptModel: String, CaseIterable {
   /// Gemini handles audio natively across all variants; OpenAI's GPT-4o Audio Preview handles
   /// it via `input_audio` content parts. Grok and text-only OpenAI models are excluded.
   static var dictatePromptCapableModels: [PromptModel] {
-    return allCases.filter { $0.supportsDictatePrompt }.filter(\.isSelectableUnderOfflineMode)
+    return allCases.filter { $0.supportsDictatePrompt }.filter(\.isOfferableOnThisMac)
+      .filter(\.isSelectableUnderOfflineMode)
   }
 
-  /// Whether this model may be offered for Dictate Prompt while Offline Mode is on: only the ones
-  /// that talk to a server the user runs. The custom OpenAI-compatible endpoint qualifies
-  /// conditionally — its URL is whatever the user typed, so the same host rule the network guard
-  /// uses decides.
+  /// False for an MLX catalogue entry this Mac cannot run (Intel, or 8B on a machine with
+  /// too little RAM). Cloud / HTTP-local models are always offerable at this layer.
+  var isOfferableOnThisMac: Bool {
+    localMLXModelType?.isOfferable ?? true
+  }
+
+  /// Whether this model may be offered while Offline Mode is on: only the ones that talk to a
+  /// server the user runs. The custom OpenAI-compatible endpoint qualifies conditionally — its
+  /// URL is whatever the user typed, so the same host rule the network guard uses decides.
   ///
-  /// Applied to Dictate Prompt only. Chat and Smart Improvement follow `supportsTextChat`.
-  /// When Offline Mode is on, only on-device providers qualify.
+  /// Applied to Chat and Dictate Prompt pickers alike. When Offline Mode is on, only on-device
+  /// providers qualify.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
     switch provider {
@@ -821,19 +829,23 @@ enum PromptModel: String, CaseIterable {
 }
 
 // MARK: - TTS Provider
-/// Which backend a `TTSModel` talks to. Each provider uses a different endpoint, auth, and
-/// request/response shape, but all are configured to return raw PCM (s16le, 24 kHz, mono) so
-/// the shared playback path (`AudioMerger` / `playTTSAudio`) stays provider-agnostic.
+/// Which backend a `TTSModel` talks to. Cloud providers use a different endpoint, auth, and
+/// request/response shape, but all (including on-device `.system`) return raw PCM (s16le,
+/// 24 kHz, mono) so the shared playback path (`AudioMerger` / `playTTSAudio`) stays
+/// provider-agnostic.
 enum TTSProvider {
   case gemini
   case openai
   case xai
+  /// On-device `AVSpeechSynthesizer`. No key, no network.
+  case system
 
   var displayName: String {
     switch self {
     case .gemini: return "Google Gemini"
     case .openai: return "OpenAI"
     case .xai: return "xAI (Grok)"
+    case .system: return "macOS"
     }
   }
 
@@ -845,18 +857,21 @@ enum TTSProvider {
     case .gemini: return UserDefaultsKeys.selectedReadAloudVoiceGemini
     case .openai: return UserDefaultsKeys.selectedReadAloudVoiceOpenAI
     case .xai: return UserDefaultsKeys.selectedReadAloudVoiceXAI
+    case .system: return UserDefaultsKeys.selectedReadAloudVoiceSystem
     }
   }
 
   /// The voice catalogue this provider's TTS API accepts, ordered male → female → neutral
   /// (stable within each group). Voice ids are provider-specific (a Gemini voice name is not
   /// valid for OpenAI/xAI and vice versa). Live-verified 2026-05-30 against each provider's docs.
+  /// `.system` voices come from `AVSpeechSynthesisVoice.speechVoices()` at call time.
   var voices: [TTSVoice] {
     let raw: [TTSVoice]
     switch self {
     case .gemini: raw = TTSVoice.geminiVoices
     case .openai: raw = TTSVoice.openAIVoices
     case .xai: raw = TTSVoice.xaiVoices
+    case .system: return SystemTTSService.voices
     }
     // Stable sort by gender: Swift's sort isn't guaranteed stable, so tie-break on original index.
     return raw.enumerated()
@@ -879,6 +894,8 @@ struct TTSVoice: Identifiable, Hashable {
   /// "m" / "w" / "neutral" (German: männlich/weiblich). Empty when unknown.
   let gender: String
   let descriptor: String
+  /// Human-readable name when `id` is an opaque identifier (macOS voice identifiers).
+  var displayLabel: String? = nil
 
   /// Display ordering rank by gender: male first, then female, then neutral/unknown.
   static func genderRank(_ gender: String) -> Int {
@@ -891,9 +908,10 @@ struct TTSVoice: Identifiable, Hashable {
 
   /// e.g. "Charon (m) — Informative" for the dropdown.
   var displayName: String {
+    let base = displayLabel ?? id.capitalized
     let genderPart = gender.isEmpty ? "" : " (\(gender))"
     let stylePart = descriptor.isEmpty ? "" : " — \(descriptor)"
-    return "\(id.capitalized)\(genderPart)\(stylePart)"
+    return "\(base)\(genderPart)\(stylePart)"
   }
 
   // Gemini's 30 prebuilt voices (https://ai.google.dev/gemini-api/docs/speech-generation).
@@ -978,12 +996,15 @@ enum TTSModel: String, CaseIterable {
   case gemini31FlashTTS = "gemini-3.1-flash-tts-preview"
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
   case grokVoiceTTS = "grok-voice-tts-1.0"
+  /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
+  case systemMacOS = "system-macos"
 
   var provider: TTSProvider {
     switch self {
     case .gemini31FlashTTS: return .gemini
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
+    case .systemMacOS: return .system
     }
   }
 
@@ -992,6 +1013,7 @@ enum TTSModel: String, CaseIterable {
     case .gemini31FlashTTS: return "Gemini 3.1 Flash TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
+    case .systemMacOS: return "macOS (On-Device)"
     }
   }
 
@@ -1003,12 +1025,15 @@ enum TTSModel: String, CaseIterable {
       return "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key"
     case .grokVoiceTTS:
       return "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key"
+    case .systemMacOS:
+      return "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode"
     }
   }
 
   /// API endpoint for this model's provider. For Gemini the model id is in the path; for OpenAI it
   /// is passed in the request body. **xAI takes no model id at all** — `SpeechService`
   /// `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see the note there.
+  /// `.system` has no network endpoint.
   var apiEndpoint: String {
     switch provider {
     case .gemini:
@@ -1017,6 +1042,8 @@ enum TTSModel: String, CaseIterable {
       return AppConstants.openAISpeechEndpoint
     case .xai:
       return AppConstants.xaiTTSEndpoint
+    case .system:
+      return ""
     }
   }
 
@@ -1027,6 +1054,7 @@ enum TTSModel: String, CaseIterable {
     case .gemini: return "Charon"
     case .openai: return "alloy"
     case .xai: return "eve"
+    case .system: return SystemTTSService.defaultVoiceIdentifier
     }
   }
 
@@ -1040,6 +1068,7 @@ enum TTSModel: String, CaseIterable {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
+    case .system: return true
     }
   }
 
@@ -1049,6 +1078,7 @@ enum TTSModel: String, CaseIterable {
     case .gemini: return "Add your Gemini API key in Settings (General) or sign in with Google to use Read Aloud."
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
     case .xai: return "Add your xAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
+    case .system: return "On-device macOS voices need no API key."
     }
   }
 
@@ -1058,13 +1088,23 @@ enum TTSModel: String, CaseIterable {
   }
 
   var costLevel: String {
-    return "Low"
+    switch provider {
+    case .system: return "Free"
+    case .gemini, .openai, .xai: return "Low"
+    }
   }
 
-  /// Models grouped for display in the Read Aloud picker (provider order: Gemini, OpenAI, xAI).
-  static let readAloudModels: [TTSModel] = [
-    .gemini31FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
-  ]
+  /// Whether this TTS model may be offered while Offline Mode is on.
+  var isSelectableUnderOfflineMode: Bool {
+    guard OfflineMode.isEnabled else { return true }
+    return provider == .system
+  }
+
+  /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
+  static var readAloudModels: [TTSModel] {
+    [.systemMacOS, .gemini31FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+      .filter(\.isSelectableUnderOfflineMode)
+  }
 
   /// Maps removed/renamed persisted raw values onto current cases.
   static func migrateLegacyReadAloudRawValue(_ raw: String) -> String {
@@ -1845,6 +1885,7 @@ struct SettingsData: Equatable {
   var readAloudVoiceGemini: String = ""
   var readAloudVoiceOpenAI: String = ""
   var readAloudVoiceXAI: String = ""
+  var readAloudVoiceSystem: String = ""
 
   /// The selected Read Aloud voice id for `provider` ("" → provider default).
   func readAloudVoice(for provider: TTSProvider) -> String {
@@ -1852,6 +1893,7 @@ struct SettingsData: Equatable {
     case .gemini: return readAloudVoiceGemini
     case .openai: return readAloudVoiceOpenAI
     case .xai: return readAloudVoiceXAI
+    case .system: return readAloudVoiceSystem
     }
   }
 
@@ -1860,6 +1902,7 @@ struct SettingsData: Equatable {
     case .gemini: readAloudVoiceGemini = id
     case .openai: readAloudVoiceOpenAI = id
     case .xai: readAloudVoiceXAI = id
+    case .system: readAloudVoiceSystem = id
     }
   }
 

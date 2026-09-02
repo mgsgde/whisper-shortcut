@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import CoreML
+import Darwin
 import WhisperKit
 
 actor LocalSpeechService {
@@ -15,6 +16,14 @@ actor LocalSpeechService {
   
   private var whisperKit: WhisperKit?
   private var currentModelType: OfflineModelType?
+  private var memoryPressureSource: DispatchSourceMemoryPressure?
+  private var idleUnloadTask: Task<Void, Never>?
+
+  /// Same threshold `AudioRecorder` uses (−45 dB). Duplicated because that type is not shared
+  /// with this actor; do not invent a second VAD.
+  private static let silenceThresholdDB: Float = -45
+  /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime.
+  private static let idleUnloadAfter: TimeInterval = 5 * 60
   
   private init() {}
   
@@ -23,6 +32,7 @@ actor LocalSpeechService {
     // Check if already initialized with the same model
     if let current = currentModelType, current == modelType, whisperKit != nil {
       DebugLogger.log("LOCAL-SPEECH: Model \(modelType.displayName) already loaded")
+      scheduleIdleUnload()
       return
     }
 
@@ -48,13 +58,14 @@ actor LocalSpeechService {
     // CoreML→ANE compile that took over 14 minutes here without finishing. See
     // `OfflineModelType.usesNeuralEngine`.
     let encoderCompute: MLComputeUnits = modelType.usesNeuralEngine ? .cpuAndNeuralEngine : .cpuAndGPU
+    // `prefillCompute` exists only on WhisperKit main after 1.1.0; the 1.1.0 pin we
+    // ship against has no such knob — prefill follows `textDecoderCompute`.
     let config = WhisperKitConfig(
       modelFolder: modelPath.path,
       computeOptions: ModelComputeOptions(
         melCompute: .cpuAndGPU,
         audioEncoderCompute: encoderCompute,
-        textDecoderCompute: encoderCompute,
-        prefillCompute: .cpuOnly)
+        textDecoderCompute: encoderCompute)
     )
     DebugLogger.log(
       "LOCAL-SPEECH: Compute units — encoder/decoder: \(modelType.usesNeuralEngine ? "CPU+ANE" : "CPU+GPU")")
@@ -63,6 +74,8 @@ actor LocalSpeechService {
     do {
       whisperKit = try await WhisperKit(config)
       currentModelType = modelType
+      startLifetimeGuardsIfNeeded()
+      scheduleIdleUnload()
       let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
       DebugLogger.logSuccess(
         "LOCAL-SPEECH: Model initialized successfully in \(String(format: "%.1f", elapsed))s")
@@ -88,9 +101,36 @@ actor LocalSpeechService {
   
   // MARK: - Unload Model
   func unloadModel() {
-    DebugLogger.log("LOCAL-SPEECH: Unloading model")
+    unloadModel(reason: "explicit")
+  }
+
+  private func unloadModel(reason: String) {
+    guard whisperKit != nil || currentModelType != nil else { return }
+    DebugLogger.log("LOCAL-SPEECH: Unloading model (\(reason))")
     whisperKit = nil
     currentModelType = nil
+    idleUnloadTask?.cancel()
+    idleUnloadTask = nil
+  }
+
+  private func startLifetimeGuardsIfNeeded() {
+    guard memoryPressureSource == nil else { return }
+    let source = DispatchSource.makeMemoryPressureSource(
+      eventMask: [.warning, .critical], queue: .global(qos: .utility))
+    source.setEventHandler {
+      Task { await LocalSpeechService.shared.unloadModel(reason: "memory pressure") }
+    }
+    source.resume()
+    memoryPressureSource = source
+  }
+
+  private func scheduleIdleUnload() {
+    idleUnloadTask?.cancel()
+    idleUnloadTask = Task {
+      try? await Task.sleep(for: .seconds(Self.idleUnloadAfter))
+      guard !Task.isCancelled else { return }
+      await self.unloadModel(reason: "idle")
+    }
   }
   
   // MARK: - Transcribe Audio
@@ -117,6 +157,16 @@ actor LocalSpeechService {
     guard FileManager.default.fileExists(atPath: audioURL.path) else {
       throw TranscriptionError.fileError("Audio file not found")
     }
+
+    // Reuse AudioRecorder's peak-power gate before invoking Whisper: silence hallucinations
+    // ("Thank you.") are cheaper to skip than to catch after the fact.
+    if let peakDb = peakPowerDecibels(of: audioURL), peakDb < Self.silenceThresholdDB {
+      DebugLogger.log(
+        "LOCAL-SPEECH: Skipping Whisper — peak \(String(format: "%.1f", peakDb)) dB "
+          + "below \(Self.silenceThresholdDB) dB silence gate")
+      throw TranscriptionError.noSpeechDetected
+    }
+    scheduleIdleUnload()
     
     // Get audio duration for reference
     do {
@@ -273,6 +323,48 @@ actor LocalSpeechService {
   
   private func isEmptyResult(_ results: [TranscriptionResult]) -> Bool {
     results.isEmpty || results.allSatisfy { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+  }
+
+  /// Peak sample magnitude as dBFS. Same units `AVAudioRecorder.peakPower` reports, so the
+  /// −45 dB threshold matches `AudioRecorder`. Returns nil when the file cannot be read —
+  /// Whisper then runs rather than a failed meter silently dropping a real recording.
+  private func peakPowerDecibels(of audioURL: URL) -> Float? {
+    do {
+      let file = try AVAudioFile(forReading: audioURL)
+      let format = file.processingFormat
+      let frameCount = AVAudioFrameCount(file.length)
+      guard frameCount > 0,
+            let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
+      else { return nil }
+      try file.read(into: buffer)
+      var peak: Float = 0
+      let frames = Int(buffer.frameLength)
+      if let channels = buffer.floatChannelData {
+        for ch in 0..<Int(format.channelCount) {
+          let samples = UnsafeBufferPointer(start: channels[ch], count: frames)
+          for sample in samples {
+            let magnitude = abs(sample)
+            if magnitude > peak { peak = magnitude }
+          }
+        }
+      } else if let channels = buffer.int16ChannelData {
+        for ch in 0..<Int(format.channelCount) {
+          let samples = UnsafeBufferPointer(start: channels[ch], count: frames)
+          for sample in samples {
+            let magnitude = abs(Float(sample) / 32768)
+            if magnitude > peak { peak = magnitude }
+          }
+        }
+      } else {
+        return nil
+      }
+      if peak <= 0 { return -160 }
+      return 20 * log10(peak)
+    } catch {
+      DebugLogger.logWarning(
+        "LOCAL-SPEECH: Could not measure peak power (\(error.localizedDescription))")
+      return nil
+    }
   }
   
   // MARK: - Check if Model is Ready

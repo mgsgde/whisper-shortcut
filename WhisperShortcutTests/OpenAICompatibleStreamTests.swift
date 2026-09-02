@@ -292,6 +292,15 @@ struct OpenAICompatibleStreamTests {
     #expect(sources.isEmpty)
   }
 
+  @Test("length / max_tokens finish reasons count as truncated")
+  func truncatedFinishReasons() {
+    #expect(ChatViewModel.isTruncatedFinishReason("length"))
+    #expect(ChatViewModel.isTruncatedFinishReason("MAX_TOKENS"))
+    #expect(ChatViewModel.isTruncatedFinishReason("max_tokens"))
+    #expect(!ChatViewModel.isTruncatedFinishReason("stop"))
+    #expect(!ChatViewModel.isTruncatedFinishReason(nil))
+  }
+
   // MARK: - Error mapping
 
   @Test("A non-2xx status is routed through the provider's own mapHTTPError")
@@ -300,5 +309,30 @@ struct OpenAICompatibleStreamTests {
     await #expect(throws: TranscriptionError.self) {
       _ = try await Self.collect(OpenAICompatibleStream.chatCompletions(config, body: [:]))
     }
+  }
+
+  @Test("5xx maps to serverError; JSON error bodies are not leaked")
+  func httpErrorHidesJSON() {
+    let err = ChatProviderHTTPError.map(
+      provider: "OpenAI", status: 503, body: #"{"error":{"message":"overloaded"}}"#)
+    #expect(err as? TranscriptionError == .serverError(503))
+    let four = ChatProviderHTTPError.map(
+      provider: "OpenAI", status: 400, body: #"{"error":{"message":"context_length_exceeded"}}"#)
+    #expect(four as? TranscriptionError == .networkError("OpenAI API error: context_length_exceeded"))
+  }
+
+  @Test("PDF attachments are rejected for OpenAI-compatible providers")
+  func attachmentGuardRejectsPDF() {
+    let contents: [[String: Any]] = [[
+      "role": "user",
+      "parts": [["inline_data": ["mime_type": "application/pdf", "data": "AAAA"]]],
+    ]]
+    let err = ChatAttachmentGuard.rejectUnsupported(
+      in: contents, provider: "OpenAI", allowedPrefixes: ["image/", "audio/"])
+    #expect(err != nil)
+    #expect((err as? TranscriptionError) != nil)
+    #expect(ChatAttachmentGuard.rejectUnsupported(
+      in: [["role": "user", "parts": [["inline_data": ["mime_type": "image/png", "data": "AAAA"]]]]],
+      provider: "OpenAI", allowedPrefixes: ["image/", "audio/"]) == nil)
   }
 }

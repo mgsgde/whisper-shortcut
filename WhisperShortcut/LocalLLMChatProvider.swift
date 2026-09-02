@@ -24,6 +24,11 @@ final class LocalLLMChatProvider: LLMChatProvider {
     // tools, and no server-side prompt-cache hint.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    if let attachmentError = ChatAttachmentGuard.rejectUnsupported(
+      in: contents, provider: "Local models", allowedPrefixes: ["image/", "audio/"]
+    ) {
+      return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
+    }
     let endpoint = LocalLLMPreferences.chatCompletionsURL
 
     // Build OpenAI-format messages from Gemini-format contents (shared translator).
@@ -49,7 +54,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
           return TranscriptionError.networkError(
             "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings.")
         }
-        return TranscriptionError.networkError("Local LLM server error HTTP \(status): \(body.prefix(500))")
+        return ChatProviderHTTPError.map(provider: "Local LLM", status: status, body: body)
       },
       mapTransportError: { Self.mapConnectionError($0, endpoint: endpoint) })
     return OpenAICompatibleStream.chatCompletions(config, body: body)

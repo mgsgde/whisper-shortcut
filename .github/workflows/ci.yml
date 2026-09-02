@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+# Offline unit tests only. No secrets, no .env, no live provider calls.
+permissions:
+  contents: read
+
+jobs:
+  hermetic-tests:
+    name: Hermetic tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Run hermetic tests
+        run: bash scripts/run-tests.sh --hermetic

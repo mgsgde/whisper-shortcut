@@ -22,6 +22,13 @@ final class OpenAIChatProvider: LLMChatProvider {
     options: ChatRequestOptions  // `disableBuiltInTools` / `xHandles` don't apply here; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
+    if let attachmentError = ChatAttachmentGuard.rejectUnsupported(
+      in: contents,
+      provider: useCustom ? "This endpoint" : "OpenAI",
+      allowedPrefixes: ["image/", "audio/"]
+    ) {
+      return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
+    }
     if options.useGrounding && !useCustom {
       return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
     }
@@ -191,13 +198,11 @@ final class OpenAIChatProvider: LLMChatProvider {
       headers: ["Authorization": "Bearer \(apiKey)"],
       logTag: logTag,
       mapHTTPError: { status, body in
-        if status == 401 {
-          return TranscriptionError.networkError(invalidKeyMessage(useCustomEndpoint: useCustomEndpoint))
-        }
-        if status == 429 {
-          return TranscriptionError.rateLimited(retryAfter: nil)
-        }
-        return TranscriptionError.networkError("OpenAI API error HTTP \(status): \(body.prefix(500))")
+        ChatProviderHTTPError.map(
+          provider: useCustomEndpoint ? "Custom endpoint" : "OpenAI",
+          status: status,
+          body: body,
+          invalidKey: TranscriptionError.networkError(invalidKeyMessage(useCustomEndpoint: useCustomEndpoint)))
       })
   }
 
