@@ -30,12 +30,21 @@ import MLXLMCommon
 ///
 /// Only `KVCacheSimple` is reconstructed. A model whose cache is rotating or quantized falls back
 /// to a plain per-request session rather than being handed a cache of the wrong shape.
+///
+/// **Only for prompts that repeat.** Priming costs seconds and holds tens of megabytes, so it is
+/// gated on `ChatRequestOptions.reusablePromptPrefix` — true for Dictate Prompt and the Read Aloud
+/// rewrite, false for Chat, whose system prompt carries the date, the live meeting transcript,
+/// memory and the workspace map and therefore differs on nearly every message.
+///
+/// **The primed prefix contains one throwaway exchange.** The KV state only becomes real once
+/// something has been generated, and the public API to generate is `respond(to:)` — so the cache
+/// covers `system + user("hi") + one assistant token`, and every request restores that before its
+/// own turn. Removing it would mean truncating the KV to the system prompt's token length, and
+/// getting that boundary wrong mid-template is exactly the mismatch the package documents as
+/// incoherent output. Verified on the Dictate Prompt task that rewrites come back clean; revisit
+/// if a prompt ever turns out to be sensitive to the leading turn.
 actor MLXPromptCache {
   static let shared = MLXPromptCache()
-
-  /// Chat system prompts vary per session; keeping every snapshot resident is unbounded.
-  /// Two entries cover Dictate Prompt + the current chat session without the 75 MB-per-prompt tax.
-  private static let maxEntries = 2
 
   private init() {}
 
@@ -45,15 +54,26 @@ actor MLXPromptCache {
   }
 
   private var snapshots: [String: Snapshot] = [:]
-  /// LRU order, oldest first.
-  private var order: [String] = []
+
+  /// In-flight priming per key, so two requests arriving together prime once instead of twice.
+  /// Without it the `await` below suspends the actor between the "is it cached?" check and the
+  /// store, and both callers run the multi-second generation. `ModelManager.readyTasks` solves the
+  /// same problem for model loads; this is that pattern.
+  private var priming: [String: Task<Snapshot?, Never>] = [:]
+
+  /// Keys in least-recently-used order. Even gated to stable prompts, editing the Dictate Prompt
+  /// system prompt in Settings mints a new key each time, and nothing else would ever free the old
+  /// one.
+  private var lru: [String] = []
+  private static let maxSnapshots = 2
+
   private var memoryPressureSource: DispatchSourceMemoryPressure?
 
   func dropAll() {
     guard !snapshots.isEmpty else { return }
     DebugLogger.log("MLX-PROMPT-CACHE: dropping \(snapshots.count) snapshot(s)")
     snapshots.removeAll()
-    order.removeAll()
+    lru.removeAll()
   }
 
   private func installPressureSourceIfNeeded() {
@@ -74,21 +94,6 @@ actor MLXPromptCache {
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
-  private func remember(_ id: String) {
-    guard snapshots[id] != nil else { return }
-    touch(id)
-    while order.count > Self.maxEntries {
-      let evicted = order.removeFirst()
-      snapshots[evicted] = nil
-      DebugLogger.log("MLX-PROMPT-CACHE: evicted LRU entry")
-    }
-  }
-
-  private func touch(_ id: String) {
-    order.removeAll { $0 == id }
-    order.append(id)
-  }
-
   /// A session for one request, starting from the shared prefix when one could be built.
   ///
   /// Falls back to a plain session — the behaviour before this type existed — whenever anything on
@@ -98,6 +103,7 @@ actor MLXPromptCache {
     container: ModelContainer,
     modelID: String,
     systemPrompt: String?,
+    reusePrefix: Bool,
     parameters: GenerateParameters,
     additionalContext: [String: any Sendable]?
   ) async -> MLXLMCommon.ChatSession {
@@ -107,19 +113,16 @@ actor MLXPromptCache {
         additionalContext: additionalContext)
     }
 
+    // A prompt that will not come back is not worth priming — see `reusablePromptPrefix`.
+    guard reusePrefix else { return plainSession() }
     guard let systemPrompt, !systemPrompt.isEmpty else { return plainSession() }
     installPressureSourceIfNeeded()
     let id = key(model: modelID, systemPrompt: systemPrompt)
 
-    if snapshots[id] == nil {
-      snapshots[id] = await buildSnapshot(
-        container: container, modelID: modelID, systemPrompt: systemPrompt,
-        parameters: parameters, additionalContext: additionalContext)
-      remember(id)
-    } else {
-      touch(id)
-    }
-    guard let snapshot = snapshots[id] else { return plainSession() }
+    guard let snapshot = await snapshot(
+      id: id, container: container, modelID: modelID, systemPrompt: systemPrompt,
+      parameters: parameters, additionalContext: additionalContext)
+    else { return plainSession() }
 
     // Fresh cache objects around the shared arrays. `instructions: nil` — the cache already
     // encodes the system prompt, and passing it again would re-tokenize it against KV state that
@@ -133,6 +136,49 @@ actor MLXPromptCache {
     return MLXLMCommon.ChatSession(
       container, instructions: nil, cache: caches, generateParameters: parameters,
       additionalContext: additionalContext)
+  }
+
+  /// The snapshot for `id`, priming it once if it is not there yet.
+  private func snapshot(
+    id: String,
+    container: ModelContainer,
+    modelID: String,
+    systemPrompt: String,
+    parameters: GenerateParameters,
+    additionalContext: [String: any Sendable]?
+  ) async -> Snapshot? {
+    if let cached = snapshots[id] {
+      touch(id)
+      return cached
+    }
+    if let inFlight = priming[id] { return await inFlight.value }
+
+    // Registered before the first suspension point, so a concurrent caller finds it.
+    let task = Task { [container, modelID, systemPrompt, parameters, additionalContext] in
+      await buildSnapshot(
+        container: container, modelID: modelID, systemPrompt: systemPrompt,
+        parameters: parameters, additionalContext: additionalContext)
+    }
+    priming[id] = task
+    let built = await task.value
+    priming[id] = nil
+    if let built { store(id, built) }
+    return built
+  }
+
+  private func store(_ id: String, _ snapshot: Snapshot) {
+    snapshots[id] = snapshot
+    touch(id)
+    while lru.count > Self.maxSnapshots, let oldest = lru.first {
+      lru.removeFirst()
+      snapshots[oldest] = nil
+      DebugLogger.log("MLX-PROMPT-CACHE: evicted the least recently used prefix")
+    }
+  }
+
+  private func touch(_ id: String) {
+    lru.removeAll { $0 == id }
+    lru.append(id)
   }
 
   /// Prefills the system prompt once and lifts its KV state into memory.

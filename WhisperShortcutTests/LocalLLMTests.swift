@@ -136,6 +136,19 @@ struct LocalLLMTests {
     #expect(forScreenshot == screenshotPrompt)
   }
 
+  // MARK: - Prompt-prefix reuse
+
+  /// Priming an MLX prefix costs seconds of generation and holds tens of megabytes, so it may only
+  /// happen where the system prompt actually repeats. Chat's does not: `buildSystemInstruction`
+  /// folds in today's date, the live meeting transcript, memory and the workspace map, so a cache
+  /// keyed on it would be primed once per message and reused never.
+  @Test("Only a repeating system prompt opts into prefix reuse")
+  func onlyTextTransformsReusePromptPrefix() {
+    #expect(ChatRequestOptions.textTransform.reusablePromptPrefix)
+    // The default is what Chat sends.
+    #expect(ChatRequestOptions().reusablePromptPrefix == false)
+  }
+
   // MARK: - Request body
 
   /// Ollama is the default endpoint and does not read `chat_template_kwargs`; its documented

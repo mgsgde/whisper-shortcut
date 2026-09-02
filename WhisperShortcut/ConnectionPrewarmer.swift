@@ -128,6 +128,9 @@ enum ConnectionPrewarmer {
           modelID: mlxType.huggingFaceID,
           systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
             logPrefix: "PREWARM", usesScreenshotSelection: false),
+          // The real Dictate Prompt request sends `.textTransform`, so it will look for exactly
+          // this prefix; priming under a different flag would prime a cache nobody reads.
+          reusePrefix: ChatRequestOptions.textTransform.reusablePromptPrefix,
           parameters: parameters,
           additionalContext: ["enable_thinking": false])
 

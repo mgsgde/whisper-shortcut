@@ -24,6 +24,10 @@ final class MLXChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
+    // Of these only `reusablePromptPrefix` applies: an in-process model has no web search, no
+    // server-side prompt cache, and no reasoning knob of its own — thinking is switched off
+    // through the chat template below.
+    let mayReusePrefix = options.reusablePromptPrefix
     // Tools are not declared for `.localMLX` (`ChatToolRegistry`); if any slip through, drop
     // them rather than pretending a function call will run.
     if !tools.isEmpty {
@@ -65,6 +69,7 @@ final class MLXChatProvider: LLMChatProvider {
             container: container,
             modelID: mlxType.huggingFaceID,
             systemPrompt: systemText,
+            reusePrefix: mayReusePrefix,
             parameters: parameters,
             additionalContext: ["enable_thinking": false])
           DebugLogger.logNetwork(
