@@ -21,6 +21,10 @@ actor LocalSpeechService {
   private var lastLoadedModelType: OfflineModelType?
   private var memoryPressureSource: DispatchSourceMemoryPressure?
   private var idleUnloadTask: Task<Void, Never>?
+  /// WhisperKit's own breakdown of the most recent decode, in the shape `timingsSummary` renders.
+  /// Read by `OfflineWhisperBenchmarkTests` so a benchmark can attribute a slow call to the
+  /// encoder, the prefill or the token loop instead of guessing from the total.
+  private(set) var lastDecodeTimingsSummary: String?
 
   /// Same threshold `AudioRecorder` uses (−45 dB). Duplicated because that type is not shared
   /// with this actor; do not invent a second VAD.
@@ -461,6 +465,12 @@ actor LocalSpeechService {
       }
       let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
       DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
+      // Where the call's time went, from WhisperKit's own stopwatch. The total alone cannot
+      // tell a slow encoder pass from a long token loop or a temperature fallback, and those
+      // call for different fixes (compute placement, model, thresholds).
+      let summary = Self.timingsSummary(of: results)
+      lastDecodeTimingsSummary = summary
+      DebugLogger.logSpeech("SPEED: LOCAL-SPEECH timings \(summary)")
       return results
     } catch {
       let errorMessage = error.localizedDescription
@@ -482,6 +492,40 @@ actor LocalSpeechService {
     }
   }
   
+  /// One line per decode: how many 30 s windows ran, and the seconds spent in each stage.
+  /// `encodeS` is the audio encoder (one pass per window, always a full 30 s frame regardless
+  /// of how much of it is speech), `initS` the decoder init (prompt/SOT prefill), `loopS` the autoregressive
+  /// token loop, `fallbacks` how many windows were re-decoded at a higher temperature.
+  static func timingsSummary(of results: [TranscriptionResult]) -> String {
+    func f(_ v: Double) -> String { String(format: "%.2f", v) }
+    let t = results.map(\.timings)
+    var windows = 0.0, encodeRuns = 0.0, loops = 0.0, fallbacks = 0.0
+    var encoding = 0.0, prefill = 0.0, loop = 0.0, predictions = 0.0, fallbackTime = 0.0
+    var audioLoad = 0.0, mels = 0.0, kv = 0.0, full = 0.0
+    for timing in t {
+      windows += timing.totalDecodingWindows
+      encodeRuns += timing.totalEncodingRuns
+      loops += timing.totalDecodingLoops
+      fallbacks += timing.totalDecodingFallbacks
+      encoding += timing.encoding
+      prefill += timing.decodingInit
+      loop += timing.decodingLoop
+      predictions += timing.decodingPredictions
+      fallbackTime += timing.decodingFallback
+      audioLoad += timing.audioLoading + timing.audioProcessing
+      mels += timing.logmels
+      kv += timing.decodingKvCaching
+      full += timing.fullPipeline
+    }
+    let firstToken = t.first.map { $0.firstTokenTime - $0.pipelineStart } ?? 0
+    let tokensPerSecond = loop > 0 ? loops / loop : 0
+    return "windows=\(Int(windows)) encodeRuns=\(Int(encodeRuns)) encodeS=\(f(encoding)) "
+      + "initS=\(f(prefill)) loopS=\(f(loop)) predictS=\(f(predictions)) kvS=\(f(kv)) "
+      + "loops=\(Int(loops)) tokPerS=\(f(tokensPerSecond)) fallbacks=\(Int(fallbacks)) "
+      + "fallbackS=\(f(fallbackTime)) audioLoadS=\(f(audioLoad)) melS=\(f(mels)) "
+      + "firstTokenS=\(f(firstToken)) fullS=\(f(full))"
+  }
+
   private func isEmptyResult(_ results: [TranscriptionResult]) -> Bool {
     results.isEmpty || results.allSatisfy { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
   }

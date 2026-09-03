@@ -514,6 +514,81 @@ struct OfflineWhisperBenchmarkTests {
     #expect(!(osteoTexts["terms"] ?? "").isEmpty)
   }
 
+  /// Where the fixed per-call cost goes, on the user's own recordings.
+  ///
+  /// The app's logs on 2026-09-03 showed every WhisperKit call costing 3.0–3.4 s whether the
+  /// chunk held 1.8 s or 16 s of speech — a floor the "decode cost tracks output tokens" model
+  /// above cannot explain, and the floor is exactly what the user waits through after Stop once
+  /// streaming has taken the rest. This decodes retained recordings (`UserContext/audio-samples`,
+  /// the ones Smart Improvement keeps) at several lengths and prints WhisperKit's own stage
+  /// timings, with and without the user's Whisper Glossary, twice each. Transcripts are not
+  /// printed: the material is real dictation, and only the numbers are needed here.
+  @Test(
+    "Stage breakdown on real recordings",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 to run (loads ~1.6 GB)")
+  )
+  func realRecordingBreakdown() async throws {
+    setvbuf(stdout, nil, _IONBF, 0)
+    func f(_ v: Double) -> String { String(format: "%.2f", v) }
+    let type = Self.modelType
+    #expect(ModelManager.shared.isModelAvailable(type), "Download \(type.displayName) first")
+
+    let samplesDir = AppSupportPaths.userContextURL().appendingPathComponent("audio-samples")
+    let wavs = try FileManager.default
+      .contentsOfDirectory(at: samplesDir, includingPropertiesForKeys: nil)
+      .filter { $0.pathExtension == "wav" }
+    #expect(!wavs.isEmpty, "no retained recordings under \(samplesDir.path)")
+    var byDuration: [(url: URL, seconds: Double)] = []
+    for url in wavs {
+      if let seconds = try? Self.duration(of: url) { byDuration.append((url, seconds)) }
+    }
+    // The recording closest to each target length, so the fixed cost shows against a sliding
+    // amount of speech.
+    var picks: [(label: String, url: URL, seconds: Double)] = []
+    for target in [2.0, 5.0, 15.0, 30.0, 60.0] {
+      guard let best = byDuration.min(by: { abs($0.seconds - target) < abs($1.seconds - target) })
+      else { continue }
+      if picks.contains(where: { $0.url == best.url }) { continue }
+      picks.append(("~\(Int(target))s", best.url, best.seconds))
+    }
+    let glossary = SystemPromptsStore.shared.loadWhisperGlossary()
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    print(
+      "BENCH-REAL model=\(type.rawValue) glossaryChars=\(glossary.count) files="
+        + picks.map { "\($0.label)=\($0.url.lastPathComponent)(\(f($0.seconds))s)" }
+          .joined(separator: " "))
+
+    try await LocalSpeechService.shared.initializeModel(type)
+    // Spend the first-decode-after-load penalty outside the measurement.
+    _ = try? await LocalSpeechService.shared.transcribe(
+      audioURL: picks[0].url, language: "de", prompt: glossary.isEmpty ? nil : glossary)
+
+    for pick in picks {
+      for arm in ["glossary", "none"] {
+        if arm == "glossary" && glossary.isEmpty { continue }
+        let prompt: String? = arm == "glossary" ? glossary : nil
+        for run in 0..<2 {
+          let start = CFAbsoluteTimeGetCurrent()
+          var chars = -1
+          var failure = ""
+          do {
+            let text = try await LocalSpeechService.shared.transcribe(
+              audioURL: pick.url, language: "de", prompt: prompt)
+            chars = text.count
+          } catch {
+            failure = " error=\(error)"
+          }
+          let decode = CFAbsoluteTimeGetCurrent() - start
+          let timings = await LocalSpeechService.shared.lastDecodeTimingsSummary ?? "n/a"
+          print(
+            "BENCH-REAL \(pick.label) arm=\(arm) run=\(run) audioS=\(f(pick.seconds)) "
+              + "decodeS=\(f(decode)) rtf=\(f(decode / pick.seconds)) chars=\(chars) "
+              + timings + failure)
+        }
+      }
+    }
+  }
+
   /// The clip the reverted product warm-up produced: a system voice at its native rate, not the
   /// recorder's 16 kHz. Written here rather than in the app so the experiment can compare it
   /// against a real recording without shipping either.
