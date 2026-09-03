@@ -15,7 +15,11 @@
 #      lifted. The runner now pushes the branch and opens a PR like Sabaki does; merge is the
 #      approval. Set IMPLEMENTER_PUSH_PR=0 to keep a run local.)
 #   3. The test gate kills the running app (xcodebuild test requires it) — so the runner
-#      relaunches YOUR MAIN build afterwards, never the unreviewed branch build.
+#      relaunches YOUR MAIN build afterwards, never the unreviewed branch build. At the very
+#      END of a fully green run it does the opposite on purpose: it leaves the BRANCH build
+#      running, so you experience the change the moment it is ready (dogfood-as-review, asked
+#      for 2026-09-03). Only after every gate AND the reviewer's APPROVE; a failed run always
+#      puts your own build back. Off with IMPLEMENTER_LAUNCH_BRANCH_BUILD=0.
 #
 # What this script may never do: push to main, merge, release, submit to the App Store, edit
 # files in the main checkout, or touch paths outside the scope allowlist. These are checks in
@@ -84,6 +88,11 @@ MAX_RUNS_PER_MONTH="${IMPLEMENTER_MAX_RUNS_PER_MONTH:-10}"
 # THIS repo usually breaks. Everything else in the plan is offline logic and still runs.
 # Set IMPLEMENTER_LIVE_TESTS=1 for a change that touches a provider request path.
 LIVE_TESTS="${IMPLEMENTER_LIVE_TESTS:-0}"
+# After a fully green run, leave the BRANCH build running so you experience the change the
+# moment it is ready, instead of having to launch it yourself. Only ever after every gate AND
+# the reviewer's APPROVE — a failed run always puts your own build back. Set 0 for the old
+# behaviour (your main build is restored and the branch build waits for you).
+LAUNCH_BRANCH_BUILD="${IMPLEMENTER_LAUNCH_BRANCH_BUILD:-1}"
 if [[ "$LIVE_TESTS" == "1" ]]; then
     TEST_SKIP_ARGS=()
 else
@@ -185,6 +194,25 @@ restore_user_app() {
         warn "your app was running but there is no build at ${MAIN_APP} — relaunch it yourself"
     fi
 }
+
+# The counterpart to restore_user_app, and deliberately its opposite: this hands you the branch
+# build to live in. It runs only at the very end of a fully green run, so an unreviewed or
+# broken build never becomes the app you dictate with. Every earlier call site still restores
+# YOUR build — mid-run the branch has not been judged yet.
+BRANCH_APP="${WT_DIR}/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+launch_branch_build() {
+    [[ "$LAUNCH_BRANCH_BUILD" == "1" ]] || return 0
+    if [[ ! -d "$BRANCH_APP" ]]; then
+        warn "no branch build at ${BRANCH_APP} — leaving your own build running"
+        return 0
+    fi
+    log "launching the BRANCH build so you can try it now: ${BRANCH}"
+    pkill -f "WhisperShortcut.app" 2>/dev/null || true
+    sleep 1
+    open "$BRANCH_APP" || { warn "could not launch the branch build — restoring yours"; restore_user_app; return 0; }
+    BRANCH_BUILD_RUNNING=1
+}
+BRANCH_BUILD_RUNNING=0
 
 fail_run() { # fail_run <reason>
     warn "$1"
@@ -460,6 +488,8 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" || fail_run "bookkeeping
 
 # --- Report --------------------------------------------------------------------------------
 REPORT="${RUN_DIR}/report.md"
+launch_branch_build
+
 {
     echo "VERDICT: implementer READY — queue #${Q_NUM}, ${FILE_COUNT} files, review ${REVIEW_VERDICT}"
     echo
@@ -469,11 +499,17 @@ REPORT="${RUN_DIR}/report.md"
     echo
     echo "## Review it by running it"
     echo
-    echo '```bash'
-    echo "cd ${WT_DIR} && bash scripts/rebuild-and-restart.sh   # launches the BRANCH build"
-    echo '```'
-    echo
-    echo "When you are done, put your own build back:"
+    if [[ "$BRANCH_BUILD_RUNNING" == "1" ]]; then
+        echo "**The branch build is already running** — the app you are looking at right now is"
+        echo "\`${BRANCH}\`, not your own build. Try the change, then put yours back:"
+    else
+        echo "Launch the branch build yourself:"
+        echo '```bash'
+        echo "cd ${WT_DIR} && bash scripts/rebuild-and-restart.sh   # launches the BRANCH build"
+        echo '```'
+        echo
+        echo "When you are done, put your own build back:"
+    fi
     echo '```bash'
     echo "cd ${REPO_ROOT} && bash scripts/rebuild-and-restart.sh"
     echo '```'
@@ -508,6 +544,10 @@ REPORT="${RUN_DIR}/report.md"
 } >"$REPORT"
 
 report_out "WhisperShortcut implementer READY — #${Q_NUM} ${Q_PROPOSAL:0:60}" "$REPORT"
-notify "WhisperShortcut implementer READY" "Queue #${Q_NUM} built and gated — review the branch"
+if [[ "$BRANCH_BUILD_RUNNING" == "1" ]]; then
+    notify "WhisperShortcut implementer READY" "Queue #${Q_NUM} is now RUNNING as ${BRANCH} — try it"
+else
+    notify "WhisperShortcut implementer READY" "Queue #${Q_NUM} built and gated — review the branch"
+fi
 log "DONE. Report: ${REPORT}"
 log "Branch ${BRANCH} is ready to dogfood; worktree kept at ${WT_DIR}"

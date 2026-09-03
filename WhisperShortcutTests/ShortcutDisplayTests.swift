@@ -10,18 +10,29 @@ import Testing
 @Suite("Shortcut display")
 struct ShortcutDisplayTests {
 
-  /// Rendering a shortcut used to abort the whole process when two threads did it at once:
-  /// `layoutAwareCharacter` calls `TISGetInputSourceProperty`, and HIToolbox validates the ref
-  /// against a process-global list that is not safe for concurrent access — it trips its own
-  /// assertion and calls `abort()`. Nothing in this file failed; the test *host* died, and
-  /// xcodebuild blamed whichever test had last completed.
+  /// Rendering a shortcut used to kill the test host, twice over, for different reasons.
   ///
-  /// This crashed reliably before `tisLock` and passes in milliseconds after it. A regression
-  /// shows up as the host disappearing mid-run rather than as a clean failure, which is exactly
-  /// the signal that went unread for four releases.
+  /// `layoutAwareCharacter` reaches `TISGetInputSourceProperty`, and HIToolbox both refuses
+  /// concurrent access *and* calls `dispatch_assert_queue` — it has to be on the main queue.
+  /// v8.09 serialized the calls with a lock, which removed the `abort()` but not the trap: the
+  /// CI host kept dying with `EXC_BREAKPOINT` on a `com.apple.root.user-initiated-qos.cooperative`
+  /// thread. The fix is a main-thread-refreshed cache, so this test has to prove two things at
+  /// once, which is why it renders on the main actor first.
+  ///
+  /// Note the failure signature: a regression kills the host rather than failing cleanly, and
+  /// xcodebuild then blames whichever test last *completed* — it named
+  /// `SettingsSlotRoundTripTests` for four releases while that suite was passing.
   @Test("Rendering from many threads at once does not abort the process")
   func concurrentRenderingIsSafe() async {
     let keys: [Key] = [.f17, .f13, .f20, .f1, .a, .space, .comma, .period]
+
+    // Warm the layout cache the way the app does — the first render of any shortcut happens on
+    // the main thread. Without this the concurrent renders below would all take the cold-cache
+    // path, return early, and the test would pass without ever reaching HIToolbox.
+    await MainActor.run {
+      _ = ShortcutDefinition(key: .a, modifiers: []).displayString
+    }
+
     await withTaskGroup(of: Void.self) { group in
       for i in 0..<500 {
         group.addTask {
@@ -31,6 +42,17 @@ struct ShortcutDisplayTests {
         }
       }
     }
+  }
+
+  /// The off-main path must stay non-fatal even when nothing has warmed the cache, which is the
+  /// state a freshly launched process is in. Falling back to `Key.displayString` is allowed;
+  /// trapping is not.
+  @Test("Rendering off the main thread with a cold cache falls back instead of trapping")
+  func offMainRenderingIsNonFatal() async {
+    await Task.detached {
+      #expect(ShortcutDefinition(key: .f17, modifiers: []).displayString == "F17")
+      _ = ShortcutDefinition(key: .a, modifiers: []).displayString
+    }.value
   }
 
   @Test("Bare function keys render as their name")

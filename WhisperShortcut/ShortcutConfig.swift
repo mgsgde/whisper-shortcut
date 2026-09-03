@@ -256,40 +256,86 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
   /// legacy stored shortcut has no `displayCharacter`. Returns `nil` for
   /// non-printable keys (arrows, function keys, etc.) — caller should fall back
   /// to `Key.displayString` in that case.
-  /// Serializes the Carbon Text Input Source calls below.
+  /// Caches the keyboard layout, because HIToolbox refuses to be called off the main queue.
   ///
-  /// `TISGetInputSourceProperty` is not safe to call concurrently: HIToolbox validates the ref
-  /// against a process-global input-source list, and two threads in there at once trips its own
-  /// assertion and calls `abort()`. That is a hard SIGABRT of the whole process, not an error
-  /// return — verified from the crash report:
+  /// `TISGetInputSourceProperty` does not merely dislike concurrency — it calls
+  /// `dispatch_assert_queue` and traps when it is not on the main queue. From the CI crash
+  /// report (`EXC_BREAKPOINT`/`SIGTRAP`, thread `com.apple.root.user-initiated-qos.cooperative`):
   ///
-  ///     abort
-  ///     HIToolbox  islGetInputSourceListWithAdditions.cold.3
+  ///     _dispatch_assert_queue_fail
+  ///     dispatch_assert_queue
+  ///     HIToolbox  islGetInputSourceListWithAdditions
   ///     HIToolbox  isValidateInputSourceRef
   ///     HIToolbox  TSMGetInputSourceProperty
   ///     ShortcutDefinition.layoutAwareCharacter(forCarbonKeyCode:)
+  ///     ShortcutDefinition.displayString.getter
   ///
-  /// It killed the CI test host from v8.06 on, roughly half of all runs: swift-testing runs suites
-  /// in parallel, so several of them rendered a `displayString` at once. It was invisible in the
-  /// log because xcodebuild attributes a host crash to the last test that *completed* — it kept
-  /// naming `SettingsSlotRoundTripTests`, a suite earlier, which passes.
+  /// The `NSLock` this replaces (v8.09) was the wrong half of the fix: serializing the calls
+  /// removed the earlier `abort()` inside the input-source list, but a lock cannot put a
+  /// cooperative thread on the main queue, so a rarer trap took its place. Same test, same
+  /// symptom — the host dies and xcodebuild blames whichever test last completed.
   ///
-  /// A lock rather than a main-thread hop or a cache on purpose: the concurrency was entirely our
-  /// own, serializing it is the whole fix, and it keeps this reading the live layout so switching
-  /// keyboard layout still updates what a binding renders as.
-  private static let tisLock = NSLock()
+  /// A cache rather than a `DispatchQueue.main.sync` hop, deliberately: this sits on a render
+  /// path that SwiftUI touches for every menu item, and this app already has a main-thread
+  /// watchdog and a history of hangs. Blocking the caller on main is how those start. The cache
+  /// stays live because a layout switch posts
+  /// `kTISNotifySelectedKeyboardInputSourceChanged`, which clears it.
+  ///
+  /// Off the main queue with a cold cache, this returns `nil` and the caller falls back to
+  /// `Key.displayString` — an outcome the contract already allows — and warms the cache for the
+  /// next render. In the app the first render is on the main thread, so that path is the
+  /// exception rather than the rule.
+  private static let layoutLock = NSLock()
+  private static var cachedLayoutData: Data?
+  private static var layoutObserverInstalled = false
 
-  fileprivate static func layoutAwareCharacter(forCarbonKeyCode keyCode: UInt32) -> String? {
-    tisLock.lock()
-    defer { tisLock.unlock() }
-    guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else {
-      return nil
+  /// Must run on the main thread. Reads the live layout and refreshes the cache.
+  ///
+  /// Returns `nil` rather than asserting when called from anywhere else. `dispatchPrecondition`
+  /// would be the conventional guard here and is deliberately not used: it traps, and adding a
+  /// second trap to the render path whose only bug is a trap trades one crash for another.
+  private static func refreshLayoutDataOnMain() -> Data? {
+    guard Thread.isMainThread else { return nil }
+    if !layoutObserverInstalled {
+      layoutObserverInstalled = true
+      // Distributed, not the local center: the input-source change is posted process-externally.
+      DistributedNotificationCenter.default().addObserver(
+        forName: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+        object: nil,
+        queue: .main
+      ) { _ in
+        layoutLock.lock()
+        cachedLayoutData = nil
+        layoutLock.unlock()
+      }
     }
-    guard let layoutDataPtr = TISGetInputSourceProperty(inputSource, kTISPropertyUnicodeKeyLayoutData)
+    guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+      let layoutDataPtr = TISGetInputSourceProperty(inputSource, kTISPropertyUnicodeKeyLayoutData)
     else {
       return nil
     }
-    let layoutData = Unmanaged<CFData>.fromOpaque(layoutDataPtr).takeUnretainedValue() as Data
+    let data = Unmanaged<CFData>.fromOpaque(layoutDataPtr).takeUnretainedValue() as Data
+    layoutLock.lock()
+    cachedLayoutData = data
+    layoutLock.unlock()
+    return data
+  }
+
+  private static func currentLayoutData() -> Data? {
+    layoutLock.lock()
+    let cached = cachedLayoutData
+    layoutLock.unlock()
+    if let cached { return cached }
+
+    if Thread.isMainThread { return refreshLayoutDataOnMain() }
+    // Off the main queue we may not touch TIS at all. Warm the cache for the next render and let
+    // this one fall back to `Key.displayString`.
+    DispatchQueue.main.async { _ = refreshLayoutDataOnMain() }
+    return nil
+  }
+
+  fileprivate static func layoutAwareCharacter(forCarbonKeyCode keyCode: UInt32) -> String? {
+    guard let layoutData = currentLayoutData() else { return nil }
 
     var deadKeyState: UInt32 = 0
     var actualLength = 0

@@ -36,6 +36,11 @@ IMPLEMENTER_MAX_RUNS_PER_MONTH=10  # cumulative brake; counter in runs-YYYY-MM n
 IMPLEMENTER_LIVE_TESTS=0
 IMPLEMENTER_SCOPE=app              # app | app-docs (see run-implementer.sh)
 
+# After a fully green run, leave the BRANCH build running as your app, so you experience the
+# change the moment it is ready instead of having to launch it. Only after every gate AND the
+# reviewer's APPROVE; a failed run always restores your own build. 0 = old behaviour.
+IMPLEMENTER_LAUNCH_BRANCH_BUILD=1
+
 # Push the branch and open a PR — the approval surface (merge = approval), same as
 # sabaki.dance. Pushing a branch publishes nothing to users: the release workflow
 # fires on v* tags only. Set 0 to keep the branch local instead.
