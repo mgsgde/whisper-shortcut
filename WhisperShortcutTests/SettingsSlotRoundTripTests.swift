@@ -43,6 +43,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedReadAloudVoiceGemini,
     UserDefaultsKeys.selectedReadAloudVoiceOpenAI,
     UserDefaultsKeys.selectedReadAloudVoiceXAI,
+    UserDefaultsKeys.selectedReadAloudVoiceSystem,
     UserDefaultsKeys.chatCloseOnFocusLoss,
     UserDefaultsKeys.settingsCloseOnFocusLoss,
     UserDefaultsKeys.liveMeetingChunkInterval,
@@ -99,6 +100,7 @@ struct SettingsSlotRoundTripTests {
     data.readAloudVoiceGemini = "probe-gemini-voice"
     data.readAloudVoiceOpenAI = "probe-openai-voice"
     data.readAloudVoiceXAI = "probe-xai-voice"
+    data.readAloudVoiceSystem = "probe-system-voice"
     data.chatCloseOnFocusLoss = !SettingsDefaults.chatCloseOnFocusLoss
     data.settingsCloseOnFocusLoss = !SettingsDefaults.settingsCloseOnFocusLoss
     data.liveMeetingChunkInterval = .thirtySeconds
@@ -135,22 +137,37 @@ struct SettingsSlotRoundTripTests {
     }
   }
 
+  /// The whole-table `roundTripIsIdentity` above can hide a broken slot: it saves and loads
+  /// *every* slot, so one that reads a key nobody wrote still lands on the value some other slot
+  /// happened to leave behind. This drives each slot alone against a cleared UserDefaults.
+  ///
+  /// The comparison is against the slot's own **no-op baseline** — what it loads when nothing was
+  /// persisted — rather than against a second load of the same state. Comparing two identical
+  /// loads is what this test used to do, and it made the test vacuous: both sides ran the same
+  /// code over the same bytes, so it passed even when `save` wrote nothing at all. Every probe
+  /// value differs from its default (see `makeProbe`), so a slot that genuinely persisted
+  /// something cannot match its baseline.
   @Test("Each slot writes something a reload can actually see")
   func everySlotPersists() {
     preservingDefaults {
       let probe = makeProbe()
       for (index, slot) in SettingsViewModel.slots.enumerated() {
+        // What this slot yields with nothing persisted.
         for key in Self.touchedKeys { UserDefaults.standard.removeObject(forKey: key) }
+        var baseline = SettingsData()
+        slot.load(&baseline)
 
+        // What it yields after saving the probe, from the same cleared starting point.
+        for key in Self.touchedKeys { UserDefaults.standard.removeObject(forKey: key) }
         slot.save(probe)
         var loaded = SettingsData()
         slot.load(&loaded)
 
-        // A slot whose save and load disagree on the key leaves `loaded` at the default, which
-        // differs from the probe for every field — that is exactly the drift this catches.
-        var expected = SettingsData()
-        slot.load(&expected)
-        #expect(loaded == expected, "slot \(index) did not round-trip in isolation")
+        // A slot whose save and load disagree on the key leaves `loaded` at the default — equal
+        // to the baseline. That is exactly the drift this catches.
+        #expect(
+          loaded != baseline,
+          "slot \(index) wrote nothing its own load could see — check that save and load use the same key")
       }
     }
   }
