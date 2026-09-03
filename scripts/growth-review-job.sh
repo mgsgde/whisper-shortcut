@@ -161,6 +161,15 @@ Hard constraints (rung 0, report-only — see plans/agent-loops.md):
 - Scheduled report: write in English.
 EOF
 
+# The report above is for the human. This block asks the same run to ALSO leave a
+# machine-readable proposal file for the implementer's groomer, so a finding no longer stops at
+# a ledger row nobody flags. The schema lives in one place, not four:
+# scripts/implementer/proposal-prompt.sh. Appending is best-effort — a loop whose report is
+# written must not fail because the sidecar prompt could not be generated.
+bash "$REPO/scripts/implementer/proposal-prompt.sh" growth-review >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the implementer-proposal block — this run reports only."
+
+
 echo "Review pass: model=$GROWTH_MODEL effort=$GROWTH_EFFORT budget=\$$GROWTH_BUDGET_USD timeout=${GROWTH_TIMEOUT_SECS}s"
 
 # Budget caps what a stuck run costs, not how long it runs — kill it ourselves (macOS has

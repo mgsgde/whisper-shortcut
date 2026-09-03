@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hourly heartbeat for the autonomous implementer. Architecture: plans/agent-loops.md.
+
+  Install (after this branch is on main — see the bootstrap note below):
+      bash scripts/implementer/install-tick.sh
+
+  To stop it without unloading anything, set IMPLEMENTER_TICK_ENABLED=0 (or the master switch
+  IMPLEMENTER_ENABLED=0) in ~/.config/whispershortcut-implementer/env. Both are read at run
+  time — no deploy, no edit, which is what the autonomy ladder requires of a kill switch.
+
+  The command bootstraps from origin/main rather than running the tree's copy. This file is the
+  only part of the machine that is not itself under a branch, so it is the only place the
+  bootstrap can live. Without it the tick runs whatever version of itself the shared checkout
+  happens to be sitting on. Falls back to the working tree when origin/main cannot be read.
+
+  StartInterval rather than StartCalendarInterval: this is a laptop. A calendar entry that
+  fires while the lid is shut is simply lost; an interval resumes on wake, which is the whole
+  reason the tick exists.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.implementer-tick</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>cd "$HOME/whisper-shortcut-private/whisper-shortcut" || exit 0
+git fetch -q origin main 2>/dev/null
+T=/tmp/whispershortcut-implementer-tick-main.sh
+if git show origin/main:scripts/implementer/tick.sh &gt;"$T" 2>/dev/null &amp;&amp; [ -s "$T" ]; then
+  IMPLEMENTER_TICK_REEXEC=1 IMPLEMENTER_REPO_ROOT="$HOME/whisper-shortcut-private/whisper-shortcut" exec bash "$T"
+fi
+exec bash scripts/implementer/tick.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>3600</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/whispershortcut-implementer-tick.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/whispershortcut-implementer-tick.err</string>
+  </dict>
+</plist>

@@ -44,7 +44,30 @@ IMPLEMENTER_PUSH_PR=1
 # Only after 5 consecutive clean MERGED rows in plans/implementer-log.md, and only
 # by your hand — it lets the runner pick a proposal when the queue has no BUILD row.
 # IMPLEMENTER_SELF_PICK=1
+
+# --- Schedule (tick.sh, installed with scripts/implementer/install-tick.sh) -------------
+# Second switch on purpose: IMPLEMENTER_ENABLED is the master kill switch every implementer
+# script shares, this one stops only the hourly schedule. Read at run time, so turning the
+# automation off never needs an edit or a rebuild.
+IMPLEMENTER_TICK_ENABLED=0
+IMPLEMENTER_GROOM=1                # file loop proposals into the queue on every tick
+
+# --- The VETO lane ----------------------------------------------------------------------
+# Rows the groomer can justify but no gate can judge are announced by mail with a deadline and
+# promoted to BUILD on silence. Adding this lane LOOSENED a gate, which plans/agent-loops.md
+# reserves for a human — decided 2026-09-03. Set to 0 and everything the groomer cannot prove
+# lands in ASK instead, which is the pre-2026-09-03 behaviour.
+IMPLEMENTER_VETO_LANE=1
+IMPLEMENTER_VETO_DAYS_COPY=1       # windows are per class because blast radius differs,
+IMPLEMENTER_VETO_DAYS_UI=2         # not because your attention does
+IMPLEMENTER_VETO_DAYS_BUGFIX=2
+IMPLEMENTER_VETO_DAYS_MODEL=3
+IMPLEMENTER_MAX_INFLIGHT=3         # BUILD+VETO rows still OPEN; a VETO row is a queued build
+
+# Where the loop jobs drop their proposal JSON for the groomer.
+# IMPLEMENTER_INCOMING_DIR=~/.local/state/whispershortcut-implementer/incoming
 EOF
 chmod 600 "$CONFIG_FILE"
 echo "Created ${CONFIG_FILE}"
 echo "Review it, then set IMPLEMENTER_ENABLED=1 to arm the runner."
+echo "For the hourly lane: bash scripts/implementer/install-tick.sh, then IMPLEMENTER_TICK_ENABLED=1."
