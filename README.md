@@ -17,7 +17,7 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 
 ## Features
 
-- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Long recordings are split into chunks and processed in parallel.
+- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Longer recordings start transcribing while you still speak — Gemini, OpenAI, Grok, and on-device Whisper — so pressing Stop only waits for the last chunk. If a chunk fails, the app falls back to transcribing the full recording.
 - **Add Selection to Glossary**: Select a correctly spelled term anywhere — your practice software, a document, an email — and press the shortcut (⌘7 by default, direct-download build only). It is appended to the Glossary verbatim, with a duplicate check. No model is involved, which makes it the way to grow the Glossary while Offline Mode is on, where the model-driven learning paths (Smart Improvement, Voice Feedback, the typed-text learner) do not run.
 - **Offline Mode**: One switch (Settings → Privacy & Permissions, also offered during onboarding) that makes the app device-local: dictation runs on an on-device Whisper model, requests the app itself builds are blocked at the network layer, and no transcript, prompt or audio sample is written to the usage log. Requests to your own machine or local network still work, so a Whisper server or Ollama on your network stays available. Downloading a Whisper or MLX model from Hugging Face still works (WhisperKit uses its own URLSession, which the Offline Mode guard does not wrap — that download carries no content of yours). Dictate Prompt keeps working through an in-process MLX model (Qwen3 4B Instruct, downloads itself, no server needed) or a local Ollama / LM Studio server if you prefer to run your own. Offline MLX and HTTP-local models read plain text, so they take the text to edit from your clipboard — in the App Store build, copy the text yourself (⌘C) before you start dictating, since that build cannot copy the selection for you. Chat can run on the same offline MLX models; Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations have no on-device equivalent and stop working while it is on. Built for regulated dictation — patient findings, case notes — where "the recording never leaves this device" has to hold whatever else is configured.
 - **Auto-paste**: Optionally paste the result straight at the cursor instead of only copying it (direct-download version only — it needs the Accessibility permission). Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
@@ -68,6 +68,7 @@ Default menu bar shortcuts (all configurable in Settings → General):
 | Read Aloud | ⌘4 |
 | Voice Feedback | ⌘5 |
 | Flag Meeting Moment | ⌘6 |
+| Add Selection to Glossary | ⌘7 |
 | Chat | ⌥Space |
 | Settings | ⌘0 |
 
@@ -75,28 +76,32 @@ Press **Stop** in the menu bar (or use the active mode's shortcut again) to canc
 
 To change a shortcut, open Settings → General, click **Record** next to it and press the combination once. Any key works with at least one of ⌘/⌥/⌃, and **F1–F20 can be bound on their own, without a modifier** — that is the binding to use for a programmable (QMK/VIA) keyboard with a dedicated dictation key.
 
+**Fn (Globe) key** (direct-download build only): In Settings → Dictate, turn on **Use 🌐 Fn to dictate**. Press Fn once to start recording, press it again to stop. It needs the Accessibility permission — the same one auto-paste uses. In System Settings → Keyboard, set “Press 🌐 key to” to “Do Nothing” so macOS does not also react to the key.
+
 ### Dictation
 
 1. Configure a Dictate shortcut in Settings → Dictate.
 2. Choose a Gemini, OpenAI, OpenRouter, self-hosted, or Whisper transcription model.
-3. Press the shortcut, speak, then stop recording.
+3. Press the shortcut (or the Fn key, if you turned that on), speak, then stop recording.
 4. The transcription is copied to the clipboard and can optionally be pasted automatically.
+
+Longer recordings (roughly ten seconds and up) start transcribing in the background while you speak, on Gemini, OpenAI, Grok, and on-device Whisper. Pressing Stop only waits for the last chunk. If any chunk fails, the app transcribes the full recording instead, so you still get a complete result.
 
 **Accuracy tuning** (Settings → Dictate, cloud models only):
 
 - **Temperature** — how literally the model reproduces what it heard. `0.0` (the default) is verbatim. The models' own default is `1.0`, which is what the app sent before this setting existed and the most likely source of invented or swapped words.
 - **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below `Low` and are clamped to it.
 
-**Which transcription model should I pick?** All of them work; they differ in speed, price, and how they behave on hard audio. Measured on the same recordings in August 2026 — latency is the median of 10 interleaved runs from one machine, so treat it as a ranking, not a guarantee:
+**Which transcription model should I pick?** All of them work; they differ in speed, price, and how they behave on hard audio. Measured on the same recordings in September 2026 — latency is the median of 10 interleaved runs from one machine, so treat it as a ranking, not a guarantee:
 
-| Model | Latency (1.4 s / 8.9 s / 35 s of audio) | Cost per minute | Notable |
+| Model | Latency (1.3 s / 8.2 s / 21.3 s of audio) | Cost per minute | Notable |
 |---|---|---|---|
-| Grok Speech-to-Text | 0.35 s / 0.97 s / 1.45 s | low | Fastest at every length tested |
-| GPT Transcribe | 0.69 s / 0.99 s / 2.04 s | $0.0045 flat | Returns nothing on silence instead of inventing text |
-| GPT-4o Mini Transcribe | 0.76 s / 0.97 s / 1.61 s | ~$0.003 | Cheapest cloud option at OpenAI |
-| GPT-4o Transcribe | 0.72 s / 1.07 s / 2.16 s | ~$0.006 | Follows Dictation-prompt instructions |
-| Gemini 3.1 Flash-Lite | 1.58 s / 1.28 s / 1.83 s | ~$0.001 | Best glossary adherence of the Gemini tiers |
-| Gemini 3.5 Flash-Lite | 1.86 s / 2.97 s / 6.63 s | ~$0.001 | Slowest tested; see the caveat below |
+| Grok Speech-to-Text | 0.39 s / 0.77 s / 1.33 s | low | Fastest on short and medium takes; empty on silence |
+| GPT Transcribe | 0.74 s / 0.86 s / 1.30 s | $0.0045 flat | Fastest on longer takes; empty on silence; best glossary of the cloud models |
+| GPT-4o Mini Transcribe | 0.72 s / 0.85 s / 1.30 s | ~$0.003 | Cheapest cloud option at OpenAI; shuts down 2027-02-26 |
+| GPT-4o Transcribe | 0.74 s / 1.03 s / 1.63 s | ~$0.006 | Follows Dictation-prompt instructions; shuts down 2027-02-26 |
+| Gemini 3.1 Flash-Lite | 1.01 s / 1.17 s / 1.48 s | ~$0.001 | Default; best glossary of the Gemini Lite tiers |
+| Gemini 3.5 Flash-Lite | 0.96 s / 1.20 s / 1.40 s | ~$0.001 | See the silence caveat below |
 | Whisper (offline) | depends on your Mac and model size | free | Runs locally, nothing leaves your machine |
 
 **Which offline Whisper model?** **Whisper Large v3 Turbo** (~1.6 GB) is the recommended one: same accuracy as Large v3, roughly half the download and several times faster. Base (140 MB) is the smallest download if you just want to try offline dictation; Tiny and Base both make mistakes a transcript you intend to keep will have to be corrected for. Small (460 MB) sits in between. Medium and Large v3 are no longer offered — turbo is more accurate than Medium at the same size and matches Large v3 at half of it — but if you already downloaded one it stays selectable and deletable. Put names and jargon in the Glossary either way — that matters more than model size.
@@ -105,15 +110,15 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 
 Recommendations by what you care about:
 
-- **Lowest latency** — Grok Speech-to-Text, by a clear margin on short and long recordings alike.
+- **Lowest latency** — Grok Speech-to-Text on short and medium recordings; GPT Transcribe is as fast once the take is longer than about 20 seconds.
 - **Cheapest cloud** — Gemini Flash-Lite, roughly 4× cheaper per minute than GPT Transcribe. Gemini bills audio *and* output tokens, so a long transcript costs more; GPT Transcribe bills only recording length, which makes it easier to predict.
 - **Privacy** — an offline Whisper model. No audio leaves your Mac.
-- **Names and jargon spelled right** — put them in the Glossary first; that matters more than the model. Among the Gemini tiers, 3.1 Flash-Lite reproduced glossary terms noticeably more reliably than 3.5 Flash-Lite in our tests.
+- **Names and jargon spelled right** — put them in the Glossary first; that matters more than the model. GPT Transcribe reproduced glossary terms more reliably than any other cloud model in our tests; among the Gemini Lite tiers, 3.1 Flash-Lite still beats 3.5 Flash-Lite.
 - **A Dictation prompt with formatting rules** — use a Gemini model or GPT-4o Transcribe. GPT Transcribe and Grok are pure speech-to-text and ignore instructions in the prompt.
 
-**A note on silence.** If a recording is silent or unintelligible, some models invent a plausible-sounding sentence built from your Glossary instead of returning nothing. WhisperShortcut filters implausible transcripts, but the filter cannot catch every case: in our tests Gemini 3.5 Flash-Lite produced normal-length invented sentences that passed the filter, while Gemini 3.1 Flash-Lite's inventions were long enough to be caught and GPT Transcribe returned nothing at all. If you often start recording before you start speaking, that is worth knowing when picking a model.
+**A note on silence.** If a recording is silent or unintelligible, some models invent a plausible-sounding sentence built from your Glossary instead of returning nothing. WhisperShortcut filters implausible transcripts, but the filter cannot catch every case: in our tests Gemini 3.5 Flash-Lite leaked invented sentences on most silent takes, Gemini 3.1 Flash-Lite and GPT-4o Mini Transcribe leaked on some, and GPT Transcribe and Grok returned nothing at all. If you often start recording before you start speaking, that is worth knowing when picking a model.
 
-**GPT Transcribe** (OpenAI): OpenAI's current transcription model, billed by audio duration rather than tokens. It is a pure speech-to-text model, so it ignores the Dictation system prompt; your Glossary still applies and is sent as keyword hints, which in testing was the more reliable way to get names and product terms spelled right. Unlike the GPT-4o transcription models, it returns an empty transcript on silence instead of echoing the glossary back.
+**GPT Transcribe** (OpenAI): OpenAI's current transcription model, billed by audio duration rather than tokens, and the replacement for GPT-4o Transcribe and GPT-4o Mini Transcribe (both shut down 2027-02-26). It is a pure speech-to-text model, so it ignores the Dictation system prompt; your Glossary still applies and is sent as keyword hints, which in testing was the more reliable way to get names and product terms spelled right. Unlike the GPT-4o transcription models, it returns an empty transcript on silence instead of echoing the glossary back.
 
 **OpenRouter**: select the OpenRouter transcription model, then click **Connect OpenRouter Account** in Settings → Dictate. That opens OpenRouter in a browser sheet where you sign in — or create an account, if you do not have one — and approve; the app receives its key directly, so there is nothing to copy and paste. You pay OpenRouter for what you use, and can top up or revoke access from your OpenRouter dashboard at any time. If you already hold a key, "Enter an API key manually instead" still accepts it. The same connection covers chat as well: use the **Use OpenRouter preset** button in Settings → Chat and no key is needed there either. The model list in Settings → Dictate is fetched live from OpenRouter and filtered to models that actually accept audio, with rough prices shown, so there is no slug to look up or memorise — pick one from the menu. New models appear as OpenRouter adds them, without an app update. "Custom slug…" still lets you type anything, for models the list does not cover. OpenRouter has no dedicated transcription endpoint, so the audio is sent as a chat message; that means your Dictation system prompt and Glossary apply here, unlike the OpenAI and self-hosted transcription endpoints.
 
