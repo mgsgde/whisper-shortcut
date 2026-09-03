@@ -296,7 +296,9 @@ enum StructuredOutputSchema {
 enum OpenAICompatibleStructured {
   static func generate(
     endpoint: String,
-    apiKey: String,
+    /// Auth headers, not a bare key: an Azure endpoint authenticates with `api-key` rather than
+    /// `Authorization: Bearer`. Built by `CustomEndpointAuth.headers` for custom endpoints.
+    authHeaders: [String: String],
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
@@ -312,7 +314,9 @@ enum OpenAICompatibleStructured {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    for (name, value) in authHeaders {
+      request.setValue(value, forHTTPHeaderField: name)
+    }
     request.timeoutInterval = 120
 
     let messages = OpenAIChatCompletionsConverter.messages(

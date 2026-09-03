@@ -1525,11 +1525,17 @@ enum OpenAIChatPreferences {
   /// and the shared slot is by definition holding a key for some *other* endpoint. The shared slot
   /// still applies as a fallback, for anyone who pasted an OpenRouter key there before this flow
   /// existed. Pure so the ordering is pinned by tests rather than by clicking through.
+  /// `allowsOpenAIKeyFallback` is false for a customer's own tenant (Azure, Vertex). The OpenAI
+  /// fallback below exists for proxies that forward to api.openai.com on the caller's key; at a
+  /// tenant endpoint that key cannot work, and sending it there would hand the user's OpenAI
+  /// credential to an unrelated third party in exchange for a 401. Same reasoning as the
+  /// OpenRouter branch above, applied to the other endpoints that are definitely not OpenAI.
   static func resolveCredential(
     isOpenRouterEndpoint: Bool,
     proxyKey: String?,
     openRouterKey: String?,
-    openAIKey: String?
+    openAIKey: String?,
+    allowsOpenAIKeyFallback: Bool = true
   ) -> (key: String, source: ResolvedCredential)? {
     func usable(_ value: String?) -> String? {
       let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1545,7 +1551,7 @@ enum OpenAIChatPreferences {
     }
 
     if let key = usable(proxyKey) { return (key, .proxyKey) }
-    if let key = usable(openAIKey) { return (key, .openAIKey) }
+    if allowsOpenAIKeyFallback, let key = usable(openAIKey) { return (key, .openAIKey) }
     return nil
   }
 
@@ -1555,7 +1561,9 @@ enum OpenAIChatPreferences {
       isOpenRouterEndpoint: isOpenRouterEndpoint,
       proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
       openRouterKey: KeychainManager.shared.get(.openRouter),
-      openAIKey: KeychainManager.shared.get(.openAI))
+      openAIKey: KeychainManager.shared.get(.openAI),
+      allowsOpenAIKeyFallback: CustomEndpointAuth.acceptsOpenAIAPIKey(
+        baseURL: customEndpointBaseURL ?? ""))
   }
 
   static var resolvedAPIKey: String? { resolvedCredential?.key }
@@ -1587,16 +1595,39 @@ enum OpenAIChatPreferences {
   }
 
   static var chatCompletionsURL: String {
-    guard let base = customEndpointBaseURL else {
+    guard let base = customEndpointBaseURL,
+          let url = CustomEndpointAuth.endpointURL(appending: "chat/completions", to: base)
+    else {
       return "https://invalid.local/missing-custom-openai-endpoint"
     }
-    return appendPath("chat/completions", to: base)
+    return url
   }
 
-  private static func appendPath(_ pathSuffix: String, to base: String) -> String {
-    let trimmed = base.hasSuffix("/") ? String(base.dropLast()) : base
-    if trimmed.hasSuffix("/\(pathSuffix)") { return trimmed }
-    return trimmed + "/\(pathSuffix)"
+  /// Auth headers for the configured endpoint — `api-key` on Azure, `Authorization: Bearer`
+  /// everywhere else. See `CustomEndpointAuth`.
+  static func authHeaders(apiKey: String) -> [String: String] {
+    CustomEndpointAuth.headers(baseURL: customEndpointBaseURL ?? "", apiKey: apiKey)
+  }
+
+  /// True when the configured base URL is an Azure OpenAI / Foundry tenant.
+  static var isAzureEndpoint: Bool {
+    guard let base = customEndpointBaseURL else { return false }
+    return CustomEndpointAuth.flavor(forBaseURL: base) == .azure
+  }
+
+  /// Points chat at an Azure OpenAI / Microsoft Foundry tenant. The user still fills in their
+  /// resource name and deployment — this only fixes the URL shape, which is the part that is
+  /// easy to get wrong.
+  static func applyAzureOpenAIPreset() {
+    UserDefaults.standard.set(SettingsDefaults.azureOpenAIEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    UserDefaults.standard.set(SettingsDefaults.azureOpenAIModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
+  }
+
+  /// Points chat at Vertex AI's OpenAI-compatible surface. Vertex takes a short-lived `gcloud`
+  /// access token as the key — see the Settings copy, which says so plainly.
+  static func applyVertexAIPreset() {
+    UserDefaults.standard.set(SettingsDefaults.vertexAIEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    UserDefaults.standard.set(SettingsDefaults.vertexAIModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
   }
 }
 
@@ -1846,6 +1877,23 @@ struct SettingsDefaults {
   /// OpenRouter preset — the same account the Dictate tab connects, reused for chat.
   static let openRouterChatEndpointURL = "https://openrouter.ai/api/v1"
   static let openRouterChatModelID = "openai/gpt-4o"
+
+  // MARK: - Bring-your-own-tenant presets (Azure / Vertex)
+  /// Azure OpenAI / Microsoft Foundry preset. The `/openai/v1` surface needs no `api-version`
+  /// and takes the **deployment name** as the model. `<resource>` is a placeholder the user
+  /// replaces; the region their resource sits in is what decides where inference runs.
+  /// https://learn.microsoft.com/azure/ai-foundry/openai/api-version-lifecycle
+  static let azureOpenAIEndpointURL = "https://<resource>.openai.azure.com/openai/v1"
+  /// Azure addresses a model by *deployment* name, which the customer chose — this is only a
+  /// plausible default, not a model id that exists in every tenant.
+  static let azureOpenAIModelID = "gpt-5-mini"
+  /// Vertex AI's OpenAI-compatible surface. Regional on purpose: `europe-west4` keeps inference
+  /// in the EU, which is the whole point of pointing at your own project.
+  /// https://docs.cloud.google.com/vertex-ai/generative-ai/docs/start/openai
+  static let vertexAIEndpointURL =
+    "https://europe-west4-aiplatform.googleapis.com/v1/projects/<project>/locations/europe-west4/endpoints/openapi"
+  /// Vertex requires the publisher prefix on the model id.
+  static let vertexAIModelID = "google/gemini-2.5-flash"
 
   // MARK: - UI State
   static let errorMessage = ""
