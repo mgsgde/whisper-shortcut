@@ -23,4 +23,34 @@ jobs:
           xcode-version: latest-stable
 
       - name: Run hermetic tests
+        env:
+          RESULT_BUNDLE: ${{ runner.temp }}/TestResults.xcresult
         run: bash scripts/run-tests.sh --hermetic
+
+      # A test-host crash is invisible in the console: xcodebuild prints every test as passing,
+      # then names some unrelated test under "Failing tests:" — it lists the last test that
+      # *completed*, not the one that was running when the process died. The backtrace only
+      # exists in the crash report, so collect it rather than guessing from the log.
+      - name: Show crash reports
+        if: failure()
+        run: |
+          shopt -s nullglob
+          reports=("$HOME"/Library/Logs/DiagnosticReports/*.ips "$HOME"/Library/Logs/DiagnosticReports/*.crash)
+          if [[ ${#reports[@]} -eq 0 ]]; then
+            echo "No crash reports in ~/Library/Logs/DiagnosticReports."
+            exit 0
+          fi
+          for f in "${reports[@]}"; do
+            echo "::group::$(basename "$f")"
+            cat "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult
+          path: ${{ runner.temp }}/TestResults.xcresult
+          retention-days: 7
+          if-no-files-found: warn

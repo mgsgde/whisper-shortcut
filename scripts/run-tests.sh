@@ -50,7 +50,9 @@ if [[ "$HERMETIC_RUN" == true ]]; then
 else
   TEST_PLAN="WhisperShortcut-AppStore"
 fi
-RESULT_BUNDLE="/tmp/WhisperShortcutTestResults-$(date +%s).xcresult"
+# Overridable so CI can pin a known path and upload the bundle as an artifact — a test-host
+# crash puts its report inside here, and nowhere in the console output.
+RESULT_BUNDLE="${RESULT_BUNDLE:-/tmp/WhisperShortcutTestResults-$(date +%s).xcresult}"
 
 # Build into a derived-data directory of our own, inside this checkout.
 #
