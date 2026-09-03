@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// Configuration for the explicit **Custom endpoint** chat model (OpenRouter, OpenInference, LiteLLM, …).
-/// Shown in Settings → Chat. Select the custom-endpoint chat model
-/// picker (or `/custom` in chat) to use this URL — regular OpenAI models keep using api.openai.com.
+/// Configuration for the explicit **Custom endpoint** chat model — a shared proxy (OpenRouter,
+/// OpenInference, LiteLLM, …) or a customer's own tenant (Azure OpenAI / Microsoft Foundry,
+/// Vertex AI). Shown in Settings → Chat. Select the custom-endpoint chat model picker (or `/custom`
+/// in chat) to use this URL — regular OpenAI models keep using api.openai.com.
+///
+/// The tenant case is why the URL and auth header are not simple string work: see
+/// `CustomEndpointAuth`, which picks `api-key` over `Authorization: Bearer` for Azure and shapes
+/// the path without destroying an `?api-version=` query.
 struct CustomOpenAIChatEndpointSection: View {
   @ObservedObject private var oauthService = OpenRouterOAuthService.shared
 
@@ -168,12 +173,80 @@ struct CustomOpenAIChatEndpointSection: View {
         Spacer()
       }
 
+      HStack(spacing: 12) {
+        Button("Use Azure OpenAI preset") {
+          OpenAIChatPreferences.applyAzureOpenAIPreset()
+          endpointURL = SettingsDefaults.azureOpenAIEndpointURL
+          modelID = SettingsDefaults.azureOpenAIModelID
+          ModelSelectionReconciler.reconcileAll()
+        }
+        .help("Fill the Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set Model to your deployment name.")
+
+        Button("Use Vertex AI preset") {
+          OpenAIChatPreferences.applyVertexAIPreset()
+          endpointURL = SettingsDefaults.vertexAIEndpointURL
+          modelID = SettingsDefaults.vertexAIModelID
+          ModelSelectionReconciler.reconcileAll()
+        }
+        .help("Fill the Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id.")
+
+        Spacer()
+      }
+
+      bringYourOwnTenantNotes
+
       if !OpenAIChatPreferences.isConfigured {
         Text("Set a base URL and API key, then choose **Custom endpoint** in the chat model picker (or type `/custom` in chat).")
           .font(.caption)
           .foregroundColor(.orange)
           .fixedSize(horizontal: false, vertical: true)
       }
+    }
+  }
+
+  // MARK: - Bring-your-own-tenant notes
+
+  /// What the two tenant presets actually do, and — just as importantly — what they do not.
+  ///
+  /// The claim worth being careful with is the privacy one. Pointing the app at a customer's own
+  /// Azure or Google project genuinely changes *who* processes the text and under whose contract,
+  /// and that is the real benefit. It does not make this app certified against anything, and it
+  /// does not by itself discharge a professional confidentiality duty. Offline Mode is the option
+  /// that keeps dictation on the Mac; this one is a network call the customer controls.
+  @ViewBuilder
+  private var bringYourOwnTenantNotes: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      if OpenAIChatPreferences.isAzureEndpoint {
+        Label(
+          "Azure detected — your key is sent as the `api-key` header, which is what Azure expects. "
+            + "A bare resource URL is expanded to `/openai/v1`; on that surface Model must be your "
+            + "deployment name, not an OpenAI model id.",
+          systemImage: "key.horizontal")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Text(
+        "Azure OpenAI / Vertex AI: chat requests go to the endpoint you enter here, in the region "
+          + "your own resource or project runs in, under your Microsoft or Google contract — not "
+          + "through any server of ours. Vertex takes a short-lived `gcloud auth print-access-token` "
+          + "value as the API key above, so it stops working after about an hour and has to be "
+          + "pasted again; Azure keys do not expire."
+      )
+      .font(.caption)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+
+      Text(
+        "That covers where inference runs and who your data-processing agreement is with. It is not "
+          + "a certification of this app, and whether it satisfies a professional confidentiality "
+          + "duty is your call to make with your own counsel. For dictation that never leaves this "
+          + "Mac, use Offline Mode instead."
+      )
+      .font(.caption)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 }

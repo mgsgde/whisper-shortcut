@@ -66,6 +66,15 @@ final class OpenAIChatProvider: LLMChatProvider {
     return "https://api.openai.com/v1/chat/completions"
   }
 
+  /// api.openai.com is always bearer. A custom endpoint may not be: an Azure tenant authenticates
+  /// its API key with `api-key` and rejects a bearer header. See `CustomEndpointAuth`.
+  private static func authHeaders(apiKey: String, useCustomEndpoint: Bool) -> [String: String] {
+    if useCustomEndpoint {
+      return OpenAIChatPreferences.authHeaders(apiKey: apiKey)
+    }
+    return ["Authorization": "Bearer \(apiKey)"]
+  }
+
   // MARK: - Responses API (with web_search)
 
   /// Uses OpenAI's Responses API which supports the hosted `web_search` tool. SSE event format
@@ -144,8 +153,12 @@ final class OpenAIChatProvider: LLMChatProvider {
       // 'max_completion_tokens' instead", HTTP 400), while OpenRouter, self-hosted llama.cpp and
       // the other OpenAI-compatible servers behind `useCustom` only reliably understand the
       // original `max_tokens`. Sending the wrong one is a hard 400, so it is picked per endpoint
-      // rather than sent as a pair.
-      let maxTokensKey = useCustom ? "max_tokens" : "max_completion_tokens"
+      // rather than sent as a pair. Azure is the exception inside `useCustom`: it *is* OpenAI, so
+      // its reasoning deployments reject `max_tokens` exactly the way api.openai.com does.
+      let maxTokensKey =
+        useCustom
+        ? CustomEndpointAuth.maxTokensKey(forBaseURL: OpenAIChatPreferences.customEndpointBaseURL ?? "")
+        : "max_completion_tokens"
       var body: [String: Any] = [
         "model": requestModel,
         "messages": messages,
@@ -195,7 +208,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     let apiKey = try requireAPIKey(useCustomEndpoint: useCustomEndpoint)
     return OpenAICompatibleStream.Config(
       endpoint: endpoint,
-      headers: ["Authorization": "Bearer \(apiKey)"],
+      headers: Self.authHeaders(apiKey: apiKey, useCustomEndpoint: useCustomEndpoint),
       logTag: logTag,
       mapHTTPError: { status, body in
         ChatProviderHTTPError.map(
@@ -221,7 +234,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     let requestModel = OpenAIChatPreferences.resolvedRequestModelID(for: model)
     return try await OpenAICompatibleStructured.generate(
       endpoint: Self.chatCompletionsURL(useCustomEndpoint: useCustom),
-      apiKey: apiKey,
+      authHeaders: Self.authHeaders(apiKey: apiKey, useCustomEndpoint: useCustom),
       model: requestModel,
       contents: contents,
       systemInstruction: systemInstruction,

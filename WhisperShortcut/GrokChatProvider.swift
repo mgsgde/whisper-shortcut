@@ -201,7 +201,7 @@ final class GrokChatProvider: LLMChatProvider {
     let apiKey = try ProviderCredentials.require(.xAI)
     return try await OpenAICompatibleStructured.generate(
       endpoint: "https://api.x.ai/v1/chat/completions",
-      apiKey: apiKey,
+      authHeaders: ["Authorization": "Bearer \(apiKey)"],
       model: model,
       contents: contents,
       systemInstruction: systemInstruction,

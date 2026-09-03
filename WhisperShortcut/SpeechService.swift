@@ -1799,7 +1799,7 @@ class SpeechService {
     }
 
     let bearerToken = (keychainManager.get(.customTranscriptionBearerToken) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    let extraHeaders = keychainManager.getCustomTranscriptionHeaders()
+    var extraHeaders = keychainManager.getCustomTranscriptionHeaders()
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
@@ -1808,10 +1808,29 @@ class SpeechService {
     let isBaseURL = urlPath.isEmpty || urlPath == "/"
     let base = configuredEndpoint.hasSuffix("/") ? String(configuredEndpoint.dropLast()) : configuredEndpoint
 
+    // An Azure tenant is the one endpoint here that is neither the OpenAI layout nor
+    // whisper-asr-webservice: it authenticates the key with `api-key` (a bearer header is read as
+    // an Entra token and rejected) and its path is `/openai/…`, not `/v1/…`. Both come from
+    // `CustomEndpointAuth`, the same shaping the Chat custom endpoint uses.
+    let isAzure = CustomEndpointAuth.flavor(forBaseURL: configuredEndpoint) == .azure
+    var requestBearerToken: String? = bearerToken.isEmpty ? nil : bearerToken
+    if isAzure, !bearerToken.isEmpty {
+      extraHeaders.append(["key": "api-key", "value": bearerToken])
+      requestBearerToken = nil
+    }
+
     // For a bare host, try the OpenAI layout first, then fall back to whisper-asr-webservice.
     // For a full path, try the same path with both field-name conventions.
     var attempts: [(URL, String)] = []
-    if isBaseURL {
+    if isAzure {
+      // One shape only — guessing a second path against a tenant endpoint just turns a legible
+      // 404 into two. `endpointURL` expands a bare resource host to `/openai/v1` and fills in the
+      // `api-version` a classic `/openai/deployments/<name>/…` URL requires.
+      if let shaped = CustomEndpointAuth.endpointURL(appending: "audio/transcriptions", to: configuredEndpoint),
+         let u = URL(string: shaped) {
+        attempts.append((u, "file"))
+      }
+    } else if isBaseURL {
       if let u = URL(string: "\(base)/v1/audio/transcriptions") { attempts.append((u, "file")) }
       if let u = URL(string: "\(base)/asr") { attempts.append((u, "audio_file")) }
     } else {
@@ -1831,7 +1850,7 @@ class SpeechService {
           audioData: audioData,
           fileExtension: fileExtension,
           mimeType: mimeType,
-          bearerToken: bearerToken.isEmpty ? nil : bearerToken,
+          bearerToken: requestBearerToken,
           extraHeaders: extraHeaders,
           session: session,
           logPrefix: "SELF-HOSTED-TRANSCRIPTION"
