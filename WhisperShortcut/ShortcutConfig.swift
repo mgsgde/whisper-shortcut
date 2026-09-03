@@ -256,7 +256,32 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
   /// legacy stored shortcut has no `displayCharacter`. Returns `nil` for
   /// non-printable keys (arrows, function keys, etc.) — caller should fall back
   /// to `Key.displayString` in that case.
+  /// Serializes the Carbon Text Input Source calls below.
+  ///
+  /// `TISGetInputSourceProperty` is not safe to call concurrently: HIToolbox validates the ref
+  /// against a process-global input-source list, and two threads in there at once trips its own
+  /// assertion and calls `abort()`. That is a hard SIGABRT of the whole process, not an error
+  /// return — verified from the crash report:
+  ///
+  ///     abort
+  ///     HIToolbox  islGetInputSourceListWithAdditions.cold.3
+  ///     HIToolbox  isValidateInputSourceRef
+  ///     HIToolbox  TSMGetInputSourceProperty
+  ///     ShortcutDefinition.layoutAwareCharacter(forCarbonKeyCode:)
+  ///
+  /// It killed the CI test host from v8.06 on, roughly half of all runs: swift-testing runs suites
+  /// in parallel, so several of them rendered a `displayString` at once. It was invisible in the
+  /// log because xcodebuild attributes a host crash to the last test that *completed* — it kept
+  /// naming `SettingsSlotRoundTripTests`, a suite earlier, which passes.
+  ///
+  /// A lock rather than a main-thread hop or a cache on purpose: the concurrency was entirely our
+  /// own, serializing it is the whole fix, and it keeps this reading the live layout so switching
+  /// keyboard layout still updates what a binding renders as.
+  private static let tisLock = NSLock()
+
   fileprivate static func layoutAwareCharacter(forCarbonKeyCode keyCode: UInt32) -> String? {
+    tisLock.lock()
+    defer { tisLock.unlock() }
     guard let inputSource = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue() else {
       return nil
     }
