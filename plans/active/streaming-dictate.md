@@ -386,6 +386,22 @@ Three conclusions, two of which overturn what this plan said before:
    recording it also triggered two temperature fallbacks (+3–5 s) that the no-glossary arm did
    not need. Same characters out either way. The glossary is worth its accuracy, but it is a
    speed cost on every chunk, and a shorter glossary is a direct win.
+
+   > **The accuracy half, measured 2026-09-03** (`glossaryPromptAB`, Turbo, `say` studio speech,
+   > one run per arm). A term list earns its cost, and a style instruction does not:
+   >
+   > | arm | osteopathy terms hit | what changed |
+   > |---|---|---|
+   > | none | 9/10 | "Blockade des **Helio**sakralgelenks" |
+   > | terms | **10/10** | "Iliosakralgelenks" — the one hard term, fixed |
+   > | style | 9/10 | byte-identical to `none` |
+   >
+   > So one term in ten, and it is exactly the term a practice would care about. The style arm
+   > confirms OpenAI's own guidance that Whisper does not follow instructions — sending prose
+   > there buys nothing and costs decoder loops. Two further notes: the glossary's spelling also
+   > propagates to casing ("Myofasziale", "Craniosacrale"), and the everyday-sentence control
+   > echoed **no** glossary term in any arm, so the sanitised prompt does not hallucinate its own
+   > vocabulary into unrelated speech.
 3. **Decoder throughput is 7–25 tokens/s** on `.cpuAndGPU`, and it drops when two decodes run at
    once — which they do: `LocalSpeechService` is an actor, but `transcribe` suspends at
    `await whisperKit.transcribe`, so a rotated chunk and the tail decode *overlap* on the GPU

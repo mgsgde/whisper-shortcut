@@ -360,3 +360,29 @@ rounds: 3 per case
   gpt-audio        19/27 rule checks passed (70%)   median 905 ms
   gpt-audio-1.5    18/26 rule checks passed (69%)   median 945 ms   1 request errors
   gpt-audio-mini   21/27 rule checks passed (78%)   median 849 ms
+
+## Offline Whisper glossary A/B — added by this audit, run 2026-09-03 (later, separate session)
+
+Turbo on .cpuAndGPU, warm model, `say -v Anna` studio speech, one run per arm.
+Arms: none / terms (10 osteopathy terms) / style ("Befundbericht einer Praxis. Satzzeichen
+wie Punkt und Komma ausschreiben.").
+
+  GLOSSARY-AB model=whisper-large-turbo
+  GLOSSARY-AB source: Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. Verdacht auf Blockade des Iliosakralgelenks. Behandlung osteopathisch mit Fokus auf myofasziale Techniken und craniosacrale Impulse. Triggerpunkte paravertebral links.
+  GLOSSARY-AB osteopathy arm=none hits=9/10 text=Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. Verdacht auf Blockade des Heliosakralgelenks. Behandlung osteopathisch mit Fokus auf myofasziale Techniken und kraniosakrale Impulse. Triggerpunkte Paravertebra links.
+  GLOSSARY-AB osteopathy arm=terms hits=10/10 text=Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. Verdacht auf Blockade des Iliosakralgelenks. Behandlung osteopathisch mit Fokus auf Myofasziale Techniken und Craniosacrale Impulse. Triggerpunkte Paravertebra links.
+  GLOSSARY-AB osteopathy arm=style hits=9/10 text=Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. Verdacht auf Blockade des Heliosakralgelenks. Behandlung osteopathisch mit Fokus auf myofasziale Techniken und kraniosakrale Impulse. Triggerpunkte Paravertebra links.
+  GLOSSARY-AB scoreboard (osteopathy):
+  GLOSSARY-AB   Lumbalgie              none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Faszieneinschränkung   none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Sacrum                 none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Halswirbelsäule        none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Blockade               none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Iliosakralgelenk       none/terms/style  no   yes  no 
+  GLOSSARY-AB   osteopathisch          none/terms/style  yes  yes  yes
+  GLOSSARY-AB   myofaszial             none/terms/style  yes  yes  yes
+  GLOSSARY-AB   craniosacral           none/terms/style  yes  yes  yes
+  GLOSSARY-AB   Triggerpunkt           none/terms/style  yes  yes  yes
+  GLOSSARY-AB everyday arm=none echo=none text=Heute ist schönes Wetter und ich gehe später einkaufen.
+  GLOSSARY-AB everyday arm=terms echo=none text=Heute ist schönes Wetter und ich gehe später einkaufen.
+  GLOSSARY-AB everyday arm=style echo=none text=Heute ist schönes Wetter und ich gehe später einkaufen.
