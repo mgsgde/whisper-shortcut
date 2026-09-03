@@ -77,6 +77,10 @@ struct OfflineWhisperBenchmarkTests {
   private static func makeSpeech(sentenceCount: Int, at url: URL, startingAt offset: Int = 0) throws {
     let text = (0..<sentenceCount).map { sentences[($0 + offset) % sentences.count] }
       .joined(separator: " ")
+    try makeSpeech(text: text, at: url)
+  }
+
+  private static func makeSpeech(text: String, at url: URL) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
     process.arguments = [
@@ -87,7 +91,7 @@ struct OfflineWhisperBenchmarkTests {
     guard process.terminationStatus == 0 else {
       throw NSError(
         domain: "OfflineWhisperBenchmark", code: Int(process.terminationStatus),
-        userInfo: [NSLocalizedDescriptionKey: "`say` failed for \(sentenceCount) sentences"])
+        userInfo: [NSLocalizedDescriptionKey: "`say` failed"])
     }
   }
 
@@ -384,6 +388,130 @@ struct OfflineWhisperBenchmarkTests {
     #expect(
       streamedAfterStop < oneShotAfterStop,
       "stop-to-transcript \(streamedAfterStop)s should beat the one-shot \(oneShotAfterStop)s")
+  }
+
+  /// Same-audio A/B for Whisper's conditioning prompt: does a domain glossary actually lift
+  /// specialist terms, and does a style instruction do anything at all?
+  ///
+  /// OpenAI's own Whisper docs say the prompt is a spelling dictionary of up to 224 tokens, and
+  /// that Whisper "doesn't follow instructions like a general-purpose text model"
+  /// (https://developers.openai.com/api/docs/guides/speech-to-text — Improving reliability).
+  /// The sales pitch that a sentence like "Befundbericht einer Praxis. Satzzeichen ausschreiben"
+  /// would steer punctuation is therefore the interesting falsifier, not a second vocabulary list.
+  ///
+  /// Two clips, three arms, same WAV each time:
+  ///   osteopathy — a finding packed with terms Small is likely to miss
+  ///   everyday   — a short sentence with none of those terms (echo / hallucination check)
+  ///   none / terms / style
+  ///
+  /// TTS (`say -v Anna`) is clean studio speech, so absolute accuracy is optimistic. A miss here
+  /// is a strong signal; a hit still wants a live dictation to confirm.
+  @Test(
+    "Glossary prompt A/B on osteopathy terms",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_OFFLINE_WHISPER=1 to run (loads the model)")
+  )
+  func glossaryPromptAB() async throws {
+    let type = Self.modelType
+    #expect(ModelManager.shared.isModelAvailable(type), "Download \(type.displayName) first")
+
+    let workDir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("offline-whisper-glossary-ab-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: workDir) }
+
+    try await LocalSpeechService.shared.initializeModel(type)
+
+    let osteopathy = """
+      Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. \
+      Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. \
+      Verdacht auf Blockade des Iliosakralgelenks. \
+      Behandlung osteopathisch mit Fokus auf myofasziale Techniken und craniosacrale Impulse. \
+      Triggerpunkte paravertebral links.
+      """
+    let everyday = "Heute ist schönes Wetter und ich gehe später einkaufen."
+    let termsPrompt =
+      "Osteopathie, Halswirbelsäule, Lumbalgie, Sacrum, Faszieneinschränkung, "
+      + "Iliosakralgelenk, Triggerpunkt, Myofaszial, Craniosacral, Blockade"
+    let stylePrompt = "Befundbericht einer Praxis. Satzzeichen wie Punkt und Komma ausschreiben."
+
+    struct Term {
+      let label: String
+      let needles: [String]
+    }
+    let scored: [Term] = [
+      Term(label: "Lumbalgie", needles: ["lumbalgie"]),
+      Term(label: "Faszieneinschränkung", needles: ["faszieneinschränkung", "faszieneinschraenkung"]),
+      Term(label: "Sacrum", needles: ["sacrum", "sakrum"]),
+      Term(label: "Halswirbelsäule", needles: ["halswirbelsäule", "halswirbelsaeule"]),
+      Term(label: "Blockade", needles: ["blockade"]),
+      Term(label: "Iliosakralgelenk", needles: ["iliosakralgelenk", "ilio-sakralgelenk"]),
+      Term(label: "osteopathisch", needles: ["osteopath"]),
+      Term(label: "myofaszial", needles: ["myofaszial", "myofascial"]),
+      Term(label: "craniosacral", needles: ["craniosacral", "kraniosakral", "kraniosacral"]),
+      Term(label: "Triggerpunkt", needles: ["triggerpunkt", "trigger-punkt"]),
+    ]
+    let decoys = ["lumbalgie", "sacrum", "sakrum", "faszieneinschränkung", "iliosakral"]
+
+    func folded(_ text: String) -> String {
+      text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "de_DE"))
+    }
+    func hits(in text: String) -> [String] {
+      let hay = folded(text)
+      return scored.filter { term in
+        term.needles.contains { hay.contains(folded($0)) }
+      }.map(\.label)
+    }
+
+    let osteoURL = workDir.appendingPathComponent("osteopathy.wav")
+    let everydayURL = workDir.appendingPathComponent("everyday.wav")
+    try Self.makeSpeech(text: osteopathy, at: osteoURL)
+    try Self.makeSpeech(text: everyday, at: everydayURL)
+
+    // Spend the first-decode-after-load penalty outside the comparison.
+    _ = try await LocalSpeechService.shared.transcribe(audioURL: everydayURL, language: "de")
+
+    let arms: [(String, String?)] = [
+      ("none", nil),
+      ("terms", termsPrompt),
+      ("style", stylePrompt),
+    ]
+
+    print("GLOSSARY-AB model=\(type.rawValue)")
+    print("GLOSSARY-AB source: \(osteopathy)")
+
+    var osteoHits: [String: [String]] = [:]
+    var osteoTexts: [String: String] = [:]
+    for (name, prompt) in arms {
+      let text = try await LocalSpeechService.shared.transcribe(
+        audioURL: osteoURL, language: "de", prompt: prompt)
+      let found = hits(in: text)
+      osteoHits[name] = found
+      osteoTexts[name] = text
+      print("GLOSSARY-AB osteopathy arm=\(name) hits=\(found.count)/\(scored.count) text=\(text)")
+    }
+
+    print("GLOSSARY-AB scoreboard (osteopathy):")
+    for term in scored {
+      let row = arms.map { name, _ in
+        let ok = osteoHits[name]?.contains(term.label) == true
+        return ok ? "yes" : "no "
+      }.joined(separator: "  ")
+      print("GLOSSARY-AB   \(term.label.padding(toLength: 22, withPad: " ", startingAt: 0)) none/terms/style  \(row)")
+    }
+
+    for (name, prompt) in arms {
+      let text = try await LocalSpeechService.shared.transcribe(
+        audioURL: everydayURL, language: "de", prompt: prompt)
+      let hay = folded(text)
+      let echoed = decoys.filter { hay.contains(folded($0)) }
+      print(
+        "GLOSSARY-AB everyday arm=\(name) echo=\(echoed.isEmpty ? "none" : echoed.joined(separator: ",")) text=\(text)")
+    }
+
+    // The test records, it does not gate a product claim: a 0-for-10 on `terms` is a finding,
+    // not a build break. Keep a floor so a totally empty decode still fails loudly.
+    #expect(!(osteoTexts["none"] ?? "").isEmpty)
+    #expect(!(osteoTexts["terms"] ?? "").isEmpty)
   }
 
   /// The clip the reverted product warm-up produced: a system voice at its native rate, not the

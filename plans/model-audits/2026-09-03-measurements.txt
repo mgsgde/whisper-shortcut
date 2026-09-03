@@ -1,0 +1,362 @@
+# Measurements — 2026-09-03
+
+## Model availability (test scripts)
+
+### test-gemini-models.sh
+=== Gemini text-generation models (current enum cases) ===
+gemini-3.1-pro-preview              [current] OK
+gemini-3.1-flash-lite               [current] OK
+gemini-3.5-flash-lite               [current] OK
+gemini-3.5-flash                    [current] OK
+gemini-3.6-flash                    [current] OK
+gemini-3.7-flash                    [current] OK
+
+=== Gemini text-generation legacy slugs (migrate-only, must still serve for back-compat) ===
+gemini-3.1-flash-lite-preview       [legacy] OK
+gemini-2.5-flash                    [legacy] OK
+gemini-2.5-flash-lite               [legacy] OK
+gemini-2.5-pro                      [legacy] OK
+gemini-3-flash-preview              [legacy] OK
+
+=== Gemini text-generation retired slugs (must 404 — confirms shutdown; enum cleanup pending) ===
+gemini-3-pro-preview                [legacy-retired] OK (correctly removed by Google; add migrateLegacy* mapping when enum case is removed)
+
+=== Gemini text-generation candidates (migration targets) ===
+gemini-flash-lite-latest            [candidate] OK
+
+=== Gemini TTS models ===
+gemini-3.1-flash-tts-preview        [current] OK
+gemini-2.5-flash-preview-tts        [candidate] OK
+gemini-2.5-pro-preview-tts          [candidate] OK
+---
+Passed: 16  Failed: 0
+
+### test-openai-models.sh
+=== OpenAI chat models (current enum cases, text-only) ===
+gpt-5.4                   [current] OK
+gpt-5.4-mini              [current] OK
+gpt-5.5                   [current] OK
+gpt-5.6-sol               [current] OK
+gpt-5.6-terra             [current] OK
+gpt-5.6-luna              [current] OK
+
+=== OpenAI audio chat models (input_audio required) ===
+gpt-audio-1.5             [current] OK
+gpt-audio-mini            [deprecated] OK
+
+=== OpenAI legacy chat slugs (must 404 — confirms slug was retired by OpenAI) ===
+gpt-4o-audio-preview      [legacy] OK (correctly removed by OpenAI; migrateLegacyPromptRawValue handles persisted values)
+gpt-5-chat-latest         [legacy] OK (correctly removed by OpenAI; migrateLegacyPromptRawValue handles persisted values)
+
+=== OpenAI chat candidates (migration targets) ===
+chat-latest               [candidate] OK
+
+=== OpenAI transcription models ===
+gpt-transcribe            [current] OK
+gpt-4o-transcribe         [current] OK
+gpt-4o-mini-transcribe    [current] OK
+---
+Passed: 14  Failed: 0
+
+### test-grok-models.sh
+=== Grok chat models (current enum cases) ===
+grok-4.20-0309-non-reasoning        [current] OK
+grok-4.20-0309-reasoning            [current] OK
+grok-4.3                            [current] OK
+grok-4.5                            [current] OK
+grok-4.6                            [current] OK
+
+=== Grok legacy slugs (must keep serving via redirect for back-compat) ===
+grok-4-1-fast-non-reasoning         [legacy] OK (redirected → grok-4.3)
+
+=== Grok chat candidates ===
+grok-build-0.1                      [candidate] OK
+
+=== Grok speech-to-text (/v1/stt — TranscriptionModel.xaiTranscribe) ===
+grok-stt                            [current] OK (silence → empty, no hallucination)
+
+=== Grok text-to-speech (/v1/tts — TTSModel.grokVoiceTTS, all shipped voices) ===
+tts voice_id=eve                    [current] OK (37920 bytes PCM)
+tts voice_id=ara                    [current] OK (30240 bytes PCM)
+tts voice_id=rex                    [current] OK (37920 bytes PCM)
+tts voice_id=sal                    [current] OK (34080 bytes PCM)
+tts voice_id=leo                    [current] OK (37920 bytes PCM)
+---
+Passed: 13  Failed: 0
+
+## Transcription benchmark
+# Transcription benchmark
+
+models: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash, gpt-transcribe, gpt-4o-transcribe, gpt-4o-mini-transcribe, grok-stt
+prompt/glossary source: app container (live)
+glossary: 17 terms
+
+## Latency — 10 interleaved rounds, shuffled order, median of successes
+
+### short (1.3 s of audio)
+  grok-stt                 median     394 ms   min    359   max    816   n=10
+  gpt-4o-mini-transcribe   median     722 ms   min    648   max    882   n=10
+  gpt-transcribe           median     735 ms   min    688   max    870   n=10
+  gpt-4o-transcribe        median     739 ms   min    670   max   1056   n=10
+  gemini-3.5-flash         median     960 ms   min    891   max   1130   n=10
+  gemini-3.5-flash-lite    median     962 ms   min    807   max   1169   n=10
+  gemini-3.1-flash-lite    median    1010 ms   min    788   max   1666   n=10
+  gemini-3.6-flash         median    1419 ms   min   1128   max   1783   n=10
+
+### claude (8.2 s of audio)
+  grok-stt                 median     771 ms   min    647   max   1276   n=10
+  gpt-4o-mini-transcribe   median     853 ms   min    806   max   1021   n=10
+  gpt-transcribe           median     864 ms   min    801   max   1024   n=10
+  gpt-4o-transcribe        median    1028 ms   min    942   max   1122   n=10
+  gemini-3.1-flash-lite    median    1165 ms   min   1060   max   1766   n=10
+  gemini-3.5-flash         median    1175 ms   min   1043   max   1327   n=10
+  gemini-3.5-flash-lite    median    1199 ms   min   1091   max   1744   n=10
+  gemini-3.6-flash         median    1522 ms   min   1383   max   2132   n=10
+
+### long (21.3 s of audio)
+  gpt-transcribe           median    1295 ms   min   1204   max   1657   n=10
+  gemini-3.5-flash         median    1298 ms   min   1159   max   1501   n=10
+  gpt-4o-mini-transcribe   median    1302 ms   min   1222   max   1441   n=10
+  grok-stt                 median    1333 ms   min   1016   max   1846   n=10
+  gemini-3.5-flash-lite    median    1402 ms   min   1230   max   1878   n=10
+  gemini-3.1-flash-lite    median    1478 ms   min   1293   max   2819   n=10
+  gpt-4o-transcribe        median    1634 ms   min   1516   max   1688   n=10
+  gemini-3.6-flash         median    2053 ms   min   1847   max   2970   n=10
+
+
+## Glossary adherence — 3 runs per case, terms reproduced verbatim
+
+  MISS gemini-3.1-flash-lite    claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.1-flash-lite    claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.1-flash-lite    claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.5-flash-lite    claude: missing ['Claude CLI', 'WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude AI im Projekt Whisper Shortcut gearbeitet und da'
+  MISS gemini-3.5-flash-lite    claude: missing ['Claude CLI', 'WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude C in Projekt Whisper Shortcut gearbeitet und dan'
+  MISS gemini-3.5-flash-lite    claude: missing ['Claude CLI', 'WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude C in Projekt Whisper Shortcut gearbeitet und dan'
+  MISS gemini-3.5-flash         claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude-CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.5-flash         claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude-CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.5-flash         claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude-CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.6-flash         claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.6-flash         claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gemini-3.6-flash         claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut00:091 gearbeitet '
+  MISS gpt-transcribe           claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gpt-transcribe           claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gpt-transcribe           claude: missing ['Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt WhisperShortcut gearbeitet und da'
+  MISS gpt-4o-transcribe        claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude KI im Projekt WhisperShortcut gearbeitet und dan'
+  MISS gpt-4o-transcribe        claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude Cli im Projekt WhisperShortcut gearbeitet und da'
+  MISS gpt-4o-transcribe        claude: missing ['Claude CLI'] → 'Ich habe gestern mit der Claude Klee im Projekt WhisperShortcut gearbeitet und d'
+  MISS gpt-4o-mini-transcribe   claude: missing ['Claude CLI', 'WhisperShortcut'] → 'Ich habe gestern mit der Claude Klee im Projekt Whisper Shortcut gearbeitet und '
+  MISS gpt-4o-mini-transcribe   claude: missing ['Claude CLI', 'WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude Klee im Projekt Whisper Shortcut gearbeitet und '
+  MISS gpt-4o-mini-transcribe   claude: missing ['Claude CLI', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude-Klee im Projekt WhisperShortcut gearbeitet und d'
+  MISS grok-stt                 claude: missing ['WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt Whisper Shortcut gearbeitet und d'
+  MISS grok-stt                 claude: missing ['WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt Whisper Shortcut gearbeitet und d'
+  MISS grok-stt                 claude: missing ['WhisperShortcut', 'Vibe-Coding'] → 'Ich habe gestern mit der Claude CLI im Projekt Whisper Shortcut gearbeitet und d'
+  MISS gemini-3.1-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.1-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.1-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash-lite    names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit BWI in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBE in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBE in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.5-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBE in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.6-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.6-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gemini-3.6-flash         names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-transcribe           names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-transcribe           names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-transcribe           names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-4o-transcribe        names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-4o-transcribe        names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-4o-transcribe        names: missing ['EnBW', 'SMARTBROKER'] → 'Magnus Gödde hat den Termin mit NBW in Karlsruhe verschoben und danach bei Smart'
+  MISS gpt-4o-mini-transcribe   names: missing ['SMARTBROKER'] → 'Magnus Gödde hat den Termin mit EnBW in Karlsruhe verschoben und danach bei Smar'
+  MISS gpt-4o-mini-transcribe   names: missing ['SMARTBROKER'] → 'Magnus Gödde hat den Termin mit EnBW in Karlsruhe verschoben und danach bei Smar'
+  MISS gpt-4o-mini-transcribe   names: missing ['SMARTBROKER'] → 'Magnus Gödde hat den Termin mit EnBW in Karlsruhe verschoben und danach bei Smar'
+  MISS grok-stt                 names: missing ['Magnus Gödde', 'EnBW', 'SMARTBROKER'] → 'Magnus Götte hat den Termin mit n b w in Karlsruhe verschoben und danach bei Sma'
+  MISS grok-stt                 names: missing ['Magnus Gödde', 'EnBW', 'SMARTBROKER'] → 'Magnus Götte hat den Termin mit n b w in Karlsruhe verschoben und danach bei Sma'
+  MISS grok-stt                 names: missing ['Magnus Gödde', 'EnBW', 'SMARTBROKER'] → 'Magnus Götte hat den Termin mit n b w in Karlsruhe verschoben und danach bei Sma'
+  MISS gemini-3.1-flash-lite    tools: missing ['Vault'] → 'Bitte prüfe im Wult, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gemini-3.1-flash-lite    tools: missing ['Vault'] → 'Bitte prüfe im Wult, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gemini-3.1-flash-lite    tools: missing ['Vault'] → 'Bitte prüfe im Wult, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gemini-3.5-flash-lite    tools: missing ['Vault', 'Gemini'] → 'Bitte prüfe im Wolt, ob das Event in Heidelberg mit Mini-Flasch oder mit Grok ge'
+  MISS gemini-3.5-flash-lite    tools: missing ['Vault', 'Gemini'] → 'Bitte prüfe im Wolt, ob das Event in Heidelberg mit Mini-Flasch oder mit Grok ge'
+  MISS gemini-3.5-flash-lite    tools: missing ['Vault', 'Gemini'] → 'Bitte prüfe im Wolt, ob das Event in Heidelberg mit Mini-Flasch oder mit Grok ge'
+  MISS gemini-3.5-flash         tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gemini-3.5-flash         tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gemini-3.5-flash         tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gpt-4o-transcribe        tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gpt-4o-transcribe        tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini-Flash oder mit Grok g'
+  MISS gpt-4o-transcribe        tools: missing ['Vault'] → 'Bitte prüfe im Volt, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS gpt-4o-mini-transcribe   tools: missing ['Vault'] → 'Bitte prüfe im Vold, ob das Event in Heidelberg mit Gemini Flash oder mit Grok g'
+  MISS grok-stt                 tools: missing ['Vault', 'Grok'] → 'Bitte prüfe im WULD, ob das Event in Heidelberg mit Gemini Flash oder mit Gro ge'
+  MISS grok-stt                 tools: missing ['Vault', 'Grok'] → 'Bitte prüfe im WULD, ob das Event in Heidelberg mit Gemini Flash oder mit Gro ge'
+  MISS grok-stt                 tools: missing ['Vault', 'Grok'] → 'Bitte prüfe im WULD, ob das Event in Heidelberg mit Gemini Flash oder mit Gro ge'
+  MISS gemini-3.1-flash-lite    long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode Projekt WhisperShortcut die Punkt-Transkriptio'
+  MISS gemini-3.1-flash-lite    long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode Projekt WhisperShortcut die Punkt-Transkriptio'
+  MISS gemini-3.1-flash-lite    long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode Projekt WhisperShortcut die Punkt-Transkriptio'
+  MISS gemini-3.5-flash-lite    long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt Whispershortcut die Transkription umge'
+  MISS gemini-3.5-flash-lite    long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt Whispershortcut die Transkription umge'
+  MISS gemini-3.5-flash-lite    long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt Whisper Shortcut die Transkription umg'
+  MISS gemini-3.5-flash         long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Transkription umge'
+  MISS gemini-3.5-flash         long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Transkription umge'
+  MISS gemini-3.5-flash         long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Transkription umge'
+  MISS gpt-transcribe           long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Funktion Transkrip'
+  MISS gpt-transcribe           long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Funktion Transkrip'
+  MISS gpt-transcribe           long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Funktion Transkrip'
+  MISS gpt-4o-transcribe        long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im xCode-Projekt WhisperShortcut die Konk-Transkription'
+  MISS gpt-4o-transcribe        long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Konktranskription '
+  MISS gpt-4o-transcribe        long: missing ['Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt WhisperShortcut die Kunk Transkription'
+  MISS gpt-4o-mini-transcribe   long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt Whisper Shortcut die Gunk-Transkriptio'
+  MISS gpt-4o-mini-transcribe   long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im Xcode-Projekt Whisper Shortcut die Gunk-Transkriptio'
+  MISS gpt-4o-mini-transcribe   long: missing ['WhisperShortcut', 'Chunk-Transkription', 'Magnus Gödde'] → 'Magnus Göde hat gestern im Xcode-Projekt Whisper Shortcut die Kunk-Transkription'
+  MISS grok-stt                 long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im ex-Code-Projekt Whisper Shortcut die Kung-Transkript'
+  MISS grok-stt                 long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im ex-Code-Projekt Whisper Shortcut die Kung-Transkript'
+  MISS grok-stt                 long: missing ['WhisperShortcut', 'Chunk-Transkription'] → 'Magnus Gödde hat gestern im ex-Code-Projekt Whisper Shortcut die Kung-Transkript'
+
+  gemini-3.6-flash         42/51 terms (82%)
+  gpt-transcribe           39/51 terms (76%)
+  gemini-3.1-flash-lite    36/51 terms (71%)
+  gpt-4o-transcribe        34/51 terms (67%)
+  gemini-3.5-flash         33/51 terms (65%)
+  gpt-4o-mini-transcribe   33/51 terms (65%)
+  gemini-3.5-flash-lite    24/51 terms (47%)
+  grok-stt                 24/51 terms (47%)
+
+## Silence hallucination — 3 runs per duration, scored through the app's gates
+
+  1s gemini-3.1-flash-lite    caught by length gate (213 chars)        'Bitte transkribiere den Text, den ich dir gleich diktiere. I'
+  1s gemini-3.1-flash-lite    caught by length gate (213 chars)        'Bitte transkribiere den Text, den ich dir gleich diktiere. I'
+  1s gemini-3.1-flash-lite    caught by length gate (213 chars)        'Bitte transkribiere den Text, den ich dir gleich diktiere. I'
+  1s gemini-3.5-flash-lite    LEAKS (6 chars)                          'Cursor'
+  1s gemini-3.5-flash-lite    LEAKS (49 chars)                         'Heute Morgen habe ich an sabaki.dance gearbeitet.'
+  1s gemini-3.5-flash-lite    LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.6-flash         LEAKS (24 chars)                         'Anfang Mai, sabaki.dance'
+  1s gemini-3.6-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gemini-3.6-flash         LEAKS (12 chars)                         'sabaki.dance'
+  1s gpt-4o-transcribe        caught by length gate (165 chars)        'Guten Morgen, ich habe heute Morgen wieder meine Routine gem'
+  1s gpt-4o-transcribe        LEAKS (92 chars)                         'Und hier kannst du zum Beispiel sagen: "Ja, ich will hier no'
+  1s gpt-4o-transcribe        LEAKS (33 chars)                         'Ich habe wieder die App geöffnet.'
+  1s gpt-4o-mini-transcribe   caught by length gate (1624 chars)       'Context: ###\nYou are a professional transcription assistant '
+  1s gpt-4o-mini-transcribe   LEAKS (50 chars)                         'ChatGPT, a large language model trained by OpenAI,'
+  1s gpt-4o-mini-transcribe   caught by length gate (1624 chars)       'Context: ###\nYou are a professional transcription assistant '
+  3s gemini-3.1-flash-lite    caught by length gate (297 chars)        'Ich habe heute mit Magnus Gödde über die neue Website gespro'
+  3s gemini-3.1-flash-lite    caught by length gate (297 chars)        'Ich habe heute mit Magnus Gödde über die neue Website gespro'
+  3s gemini-3.1-flash-lite    caught by length gate (297 chars)        'Ich habe heute mit Magnus Gödde über die neue Website gespro'
+  3s gemini-3.5-flash-lite    LEAKS (70 chars)                         'Hier ist der Text für sabaki.dance, den wir letztens aufgese'
+  3s gemini-3.5-flash-lite    LEAKS (106 chars)                        'Ich habe sabaki.dance in Google eingetragen und festgestellt'
+  3s gemini-3.5-flash-lite    LEAKS (12 chars)                         'Magnus Gödde'
+  3s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  3s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  3s gemini-3.5-flash         LEAKS (12 chars)                         'sabaki.dance'
+  3s gemini-3.6-flash         LEAKS (34 chars)                         'Ich freue mich über dein Feedback.'
+  3s gemini-3.6-flash         LEAKS (51 chars)                         'Ich freue mich über dein Interesse an sabaki.dance.'
+  3s gemini-3.6-flash         LEAKS (13 chars)                         'Hallo, hallo!'
+  3s gpt-4o-transcribe        LEAKS (70 chars)                         'Ich habe jetzt noch zwei Kontakte aus meinen BNI-Netzwerken '
+  3s gpt-4o-transcribe        LEAKS (14 chars)                         'Wie heißt die?'
+  3s gpt-4o-transcribe        LEAKS (72 chars)                         'Ich wollte noch mal fragen wegen der Teilnahme an der BNI-Ve'
+  3s gpt-4o-mini-transcribe   LEAKS (23 chars)                         'Das ist sehr, sehr gut.'
+  3s gpt-4o-mini-transcribe   LEAKS (40 chars)                         'So, und dann würde ich sie dann anrufen.'
+  8s gemini-3.1-flash-lite    LEAKS (269 chars)                        'Ich habe heute mit Magnus Gödde über die neue App gesprochen'
+  8s gemini-3.1-flash-lite    LEAKS (269 chars)                        'Ich habe heute mit Magnus Gödde über die neue App gesprochen'
+  8s gemini-3.1-flash-lite    LEAKS (269 chars)                        'Ich habe heute mit Magnus Gödde über die neue App gesprochen'
+  8s gemini-3.5-flash-lite    caught by glossary-echo gate (12 chars)  'sabaki.dance'
+  8s gemini-3.5-flash-lite    LEAKS (73 chars)                         'Heute habe ich mich mit Claude über die sabaki.dance Website'
+  8s gemini-3.5-flash-lite    caught by glossary-echo gate (12 chars)  'sabaki.dance'
+  8s gemini-3.5-flash         LEAKS (155 chars)                        'Ich habe mir gerade überlegt, dass wir für sabaki.dance eige'
+  8s gemini-3.5-flash         LEAKS (155 chars)                        'Ich habe mir gerade überlegt, dass wir für sabaki.dance eige'
+  8s gemini-3.5-flash         LEAKS (155 chars)                        'Ich habe mir gerade überlegt, dass wir für sabaki.dance eige'
+  8s gemini-3.6-flash         LEAKS (480 chars)                        'Ahoi, ich dachte, ich schicke dir mal eben noch ganz fix lie'
+  8s gemini-3.6-flash         LEAKS (60 chars)                         'Dass die Appsabaki.dance auch für Veranstalter geeignet ist.'
+  8s gemini-3.6-flash         LEAKS (50 chars)                         'Und dann sollte sich so langsam der Nebel lichten.'
+  8s gpt-4o-transcribe        LEAKS (40 chars)                         'Die App synchronisiert sich vollständig.'
+  8s gpt-4o-transcribe        LEAKS (57 chars)                         'Ich glaube, ich schicke dir jetzt meinen Tagebucheintrag.'
+  8s gpt-4o-transcribe        LEAKS (36 chars)                         'Ich bin großer Fan von Sabaki Dance.'
+  8s gpt-4o-mini-transcribe   caught by glossary-echo gate (13 chars)  'Sabaki Dance.'
+  8s gpt-4o-mini-transcribe   caught by length gate (1607 chars)       'You are a professional transcription assistant for a German '
+
+  gemini-3.1-flash-lite    3/9 invented transcripts reached the clipboard
+  gemini-3.5-flash-lite    7/9 invented transcripts reached the clipboard
+  gemini-3.5-flash         9/9 invented transcripts reached the clipboard
+  gemini-3.6-flash         9/9 invented transcripts reached the clipboard
+  gpt-transcribe           0/9 invented transcripts reached the clipboard
+  gpt-4o-transcribe        8/9 invented transcripts reached the clipboard
+  gpt-4o-mini-transcribe   3/9 invented transcripts reached the clipboard
+  grok-stt                 0/9 invented transcripts reached the clipboard
+
+## Dictate Prompt benchmark
+# Dictate Prompt benchmark
+
+models: gpt-audio, gpt-audio-1.5, gpt-audio-mini
+system prompt source: system-prompts.md (2119 chars)
+rounds: 3 per case
+
+### german-instruction-english-text — spoken: "Korrigiere die Rechtschreibung."
+
+### dont-fix-facts — spoken: "Korrigiere."
+  FAIL gpt-audio        altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 1. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio        altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 1. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio        altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 1. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-1.5    altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 28. Februar statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-1.5    altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 28. Februar statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-1.5    altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 1. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-mini   altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 30. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-mini   altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 30. März statt, bitte trag ihn dir ein.'
+  FAIL gpt-audio-mini   altered the (deliberately wrong) date instead of leaving it alone
+       → 'Der Termin findet am 30. März statt, bitte trag ihn dir ein.'
+
+### preserve-tone — spoken: "Korrigiere."
+  FAIL gpt-audio        capitalised a deliberately lowercase message
+       → 'Ja, endlich läuft der Build durch. Hat nur 3 Tage gedauert. 🎉'
+  FAIL gpt-audio        dropped the emoji
+       → 'Ja! Endlich läuft der Build durch. Hat nur 3 Tage gedauert.'
+  FAIL gpt-audio        dropped the emoji
+       → 'Ja, endlich läuft der Build durch – hat nur 3 Tage gedauert.'
+  FAIL gpt-audio-1.5    dropped the emoji
+       → 'Ja, endlich läuft der Build durch! Hat nur drei Tage gedauert.'
+  FAIL gpt-audio-1.5    dropped the emoji
+       → 'Ja, endlich läuft der Build durch. Es hat nur 3 Tage gedauert.'
+  FAIL gpt-audio-1.5    dropped the emoji
+       → 'Ja! Endlich läuft der Build durch. Es hat nur 3 Tage gedauert.'
+  FAIL gpt-audio-mini   capitalised a deliberately lowercase message
+       → 'Betreff: Build erfolgreich\n\nYes! Endlich läuft der Build durch 🎉 Hat nur 3 Tage gedauert.'
+  FAIL gpt-audio-mini   capitalised a deliberately lowercase message
+       → 'Korrigiert: Endlich läuft der Build durch 🎉 Hat nur 3 Tage gedauert.'
+
+### edit-not-append — spoken: "Schreib dazu, dass ich später komme."
+  FAIL gpt-audio-mini   appended to the selection instead of editing it
+       → 'Hallo Anna, ich komme morgen gegen neun Uhr vorbei. Später komme ich dazu.'
+
+### correct-casual — spoken: "Korrigiere."
+  FAIL gpt-audio        formalized the casual register
+       → 'Ich habe das mal ausprobiert, ist echt schnell und funktioniert auch offline.'
+  FAIL gpt-audio        formalized the casual register
+       → 'Ich habe das mal ausprobiert, ist echt schnell und funktioniert auch offline.'
+  FAIL gpt-audio-1.5    formalized the casual register
+       → 'Ich habe das mal ausprobiert, es ist echt schnell und funktioniert auch offline.'
+  FAIL gpt-audio-1.5    formalized the casual register
+       → 'Ich habe das mal ausprobiert – es ist echt schnell und funktioniert auch offline.'
+
+### reformat-prose — spoken: "Formatiere neu."
+
+### dont-answer — spoken: "Korrigiere die Rechtschreibung."
+  ERR  gpt-audio-1.5    HTTPError: HTTP Error 500: Internal Server Error
+
+### translate — spoken: "Übersetze das ins Englische."
+
+### shorten — spoken: "Mach das kürzer."
+
+## Summary
+
+  gpt-audio        19/27 rule checks passed (70%)   median 905 ms
+  gpt-audio-1.5    18/26 rule checks passed (69%)   median 945 ms   1 request errors
+  gpt-audio-mini   21/27 rule checks passed (78%)   median 849 ms
