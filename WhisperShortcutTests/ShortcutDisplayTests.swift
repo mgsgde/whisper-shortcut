@@ -10,6 +10,29 @@ import Testing
 @Suite("Shortcut display")
 struct ShortcutDisplayTests {
 
+  /// Rendering a shortcut used to abort the whole process when two threads did it at once:
+  /// `layoutAwareCharacter` calls `TISGetInputSourceProperty`, and HIToolbox validates the ref
+  /// against a process-global list that is not safe for concurrent access — it trips its own
+  /// assertion and calls `abort()`. Nothing in this file failed; the test *host* died, and
+  /// xcodebuild blamed whichever test had last completed.
+  ///
+  /// This crashed reliably before `tisLock` and passes in milliseconds after it. A regression
+  /// shows up as the host disappearing mid-run rather than as a clean failure, which is exactly
+  /// the signal that went unread for four releases.
+  @Test("Rendering from many threads at once does not abort the process")
+  func concurrentRenderingIsSafe() async {
+    let keys: [Key] = [.f17, .f13, .f20, .f1, .a, .space, .comma, .period]
+    await withTaskGroup(of: Void.self) { group in
+      for i in 0..<500 {
+        group.addTask {
+          let definition = ShortcutDefinition(key: keys[i % keys.count], modifiers: [])
+          _ = definition.displayString
+          _ = definition.displayStringWithSeparator
+        }
+      }
+    }
+  }
+
   @Test("Bare function keys render as their name")
   func bareFunctionKey() {
     // F13–F20 are what programmable keyboards send for a dedicated key, and they are bindable
