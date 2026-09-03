@@ -171,6 +171,15 @@ Hard constraints:
   leaks hallucinated transcripts), the measurement wins — say so.
 EOF
 
+# The report above is for the human. This block asks the same run to ALSO leave a
+# machine-readable proposal file for the implementer's groomer, so a finding no longer stops at
+# a ledger row nobody flags. The schema lives in one place, not four:
+# scripts/implementer/proposal-prompt.sh. Appending is best-effort — a loop whose report is
+# written must not fail because the sidecar prompt could not be generated.
+bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the implementer-proposal block — this run reports only."
+
+
 # A launchd job nobody is watching must say something when it finishes — and especially when it
 # fails. Silence is indistinguishable from "never ran".
 #

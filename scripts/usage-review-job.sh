@@ -314,6 +314,15 @@ is read once a week by one person deciding whether to act.
   A quiet week reported honestly is a good outcome, and padding it is how the ledger dies.
 EOF
 
+# The report above is for the human. This block asks the same run to ALSO leave a
+# machine-readable proposal file for the implementer's groomer, so a finding no longer stops at
+# a ledger row nobody flags. The schema lives in one place, not four:
+# scripts/implementer/proposal-prompt.sh. Appending is best-effort — a loop whose report is
+# written must not fail because the sidecar prompt could not be generated.
+bash "$REPO/scripts/implementer/proposal-prompt.sh" usage-review >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the implementer-proposal block — this run reports only."
+
+
 echo "Review pass: model=$REVIEW_MODEL effort=$REVIEW_EFFORT budget=\$$REVIEW_BUDGET_USD"
 
 # The budget cap bounds what a stuck run COSTS, but not how long it runs — the 2026-08-17 run sat

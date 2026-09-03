@@ -23,7 +23,7 @@ last, however good it looks locally.
 | **Models** | `model-audit-job.sh` (`audit-llm-models`) | Live provider lineups vs shipped defaults, benchmarks | Pareto-justified migrations | `plans/model-audits/` | Wed 09:17 monthly |
 | **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `../business/growth-ledger.md` + digest | Sat 09:07, effectively biweekly |
 | **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | 6th of month, 10:17 |
-| **Implementer** | `run-implementer.sh` (`implement-proposal`) — **rung 2** | One flagged queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | On demand (`BUILD` flag + manual invocation) |
+| **Implementer** | `tick.sh` → `groom-queue.py` + `run-implementer.sh` (`implement-proposal`) — **rung 2** | One released queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | Hourly tick (launchd); builds a row you flagged `BUILD`, or one whose veto window ran out |
 | **Sales** | parent `scripts/sales/scout-job.sh` (`run-sales-agent`) — scout **rung 0**; poster **rung 3** | Public HN/Reddit/GitHub/App Store conversations | Disclosed drafts that route people to the store; customer-voice feedback | `../sales/ops/` (private parent — queue, digests, feedback). Never the public app repo | Daily 08:17 scout, 15:05 poster |
 
 ## Shared conventions (kept identical with sabaki.dance — do not drift)
@@ -63,7 +63,8 @@ Two capabilities are above rung 0:
 
 | Capability | Rung | Gate that holds it there |
 | ---------- | ---- | ------------------------ |
-| Implementer: build a flagged queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` kill switch read at run time; nothing is pushed or released; only rows a human flagged `BUILD` are eligible. Reversibility: everything it produces is a local branch. |
+| Implementer: build a released queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` and `IMPLEMENTER_TICK_ENABLED` kill switches read at run time; nothing is merged or released. A row is released either by you flagging it `BUILD`, or by a **veto window** running out (below). Reversibility: everything it produces is a branch and a PR you merge. |
+| Groomer: file a loop proposal as a `VETO` row that builds on silence | **2** | `groom-queue.py` contains no model — every lane is a lookup or a regex against committed state. Only reversible, in-scope classes with a gradeable falsifier get a window; `instrumentation` needs an OPEN row in `plans/instrumentation-gaps.md`; everything else lands in `ASK`. At most `IMPLEMENTER_MAX_INFLIGHT` (3) auto rows open at once, and every window is announced by mail before it starts. Kill switch `IMPLEMENTER_VETO_LANE=0` restores the pre-2026-09-03 behaviour. |
 | Sales poster: comment on a public thread or App Store review | **3** | Morning digest is the preview; 15:05 posts PREVIEWED rows whose veto window elapsed (`SALES_VETO_HOURS`, default 7). `../scripts/sales/veto.sh S-001` stops a row. Kill switch `SALES_POST_ENABLED` (default 0). A comment to a stranger is irreversible, so this capability does not promote to rung 4. |
 
 The rule that outranks every finding, from the same policy:
@@ -71,6 +72,14 @@ The rule that outranks every finding, from the same policy:
 > **An agent may tighten a gate, never loosen one.** Adding a check, raising an evidence
 > bar, demanding a falsifier: propose freely. Removing a falsifier, relaxing a threshold,
 > lowering a sample floor: a human change, in its own commit.
+
+The `VETO` lane is the one loosening this repo has taken, and it was taken the way the rule
+requires: asked and answered by the owner on **2026-09-03**, in its own commit, with a kill
+switch (`IMPLEMENTER_VETO_LANE=0`). What it changes is who must act — before, a proposal
+nothing could prove waited for approval that never came (queue row 2 has sat `OPEN` since
+2026-08-20); now it waits for an objection. What it does **not** change is any gate on the code
+itself: the runner still re-runs every check, a different model still reviews the diff, and the
+output is still a PR you merge.
 
 And its corollary for the Architect loop specifically: it proposes changes to the loop
 machinery, it never applies them unattended — an agent that edits the criteria it is judged
@@ -83,7 +92,15 @@ The shape is theirs; three things differ because this repo is a sandboxed macOS 
 web service (see the divergence table below).
 
 ```
-plans/implementer-queue.md          ← YOU set Flag=BUILD (no agent may)
+loop jobs (usage · model-audit · growth · architect)
+        │ each run drops proposals.json in ~/.local/state/whispershortcut-implementer/incoming
+        ▼
+scripts/implementer/tick.sh         ← hourly under launchd
+        │ groom-queue.py: lookups only, no model. instrumentation w/ an OPEN gap → BUILD;
+        │ reversible+in-scope+falsifiable → VETO (announced by mail, builds on silence);
+        │ everything else → ASK. Ripe VETO windows promote to BUILD.
+        ▼
+plans/implementer-queue.md          ← YOU set Flag=BUILD, or stop a VETO row: veto.sh <#>
         │
 scripts/implementer/run-implementer.sh
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
@@ -102,9 +119,17 @@ YOU run the branch build for a while → merge → release when you decide
 
 ```bash
 bash scripts/implementer/install-implementer.sh    # once: ~/.config/whispershortcut-implementer/env
+bash scripts/implementer/install-tick.sh           # once: the hourly launchd agent
 bash scripts/implementer/run-implementer.sh --dry-run
-bash scripts/implementer/run-implementer.sh
+bash scripts/implementer/run-implementer.sh        # one build, by hand
+
+python3 scripts/implementer/groom-queue.py --dry-run   # what would the groomer file?
+bash scripts/implementer/veto.sh 7                     # stop VETO row 7 before its deadline
 ```
+
+Both switches must be `1` in `~/.config/whispershortcut-implementer/env` before the schedule
+does anything: `IMPLEMENTER_ENABLED` (master) and `IMPLEMENTER_TICK_ENABLED` (schedule only).
+Tick log: `build/logs/implementer/tick-<date>.log`.
 
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
 
@@ -115,7 +140,11 @@ bash scripts/implementer/run-implementer.sh
 - **Measurable-on-ship-day.** A row whose falsifier cannot be measured when it ships is not
   eligible; the build must add the instrumentation in the same branch, or the proposal goes to
   `plans/instrumentation-gaps.md` first.
-- **Flagging is human.** No loop and no agent may set `BUILD`. Loops propose into ledgers.
+- **Releasing is human, or it is silence.** No loop may set `BUILD` on its own finding — only
+  the groomer may, and only for classes an existing gate judges. Everything else it files is
+  either a `VETO` row you were mailed about and can stop, or an `ASK` row that waits for you.
+- **Nothing is ever dropped.** A proposal the groomer cannot justify becomes an `ASK` row, not
+  a discarded finding. That is what makes the ASK lane safe to be conservative with.
 - **Demotion falsifier:** ≥2 of any 5 consecutive runs needing structural rework → back to
   rung 1. Tracked in `plans/implementer-log.md`, graded from its Outcome column.
 - **Promotion is earned:** 5 clean merges before `IMPLEMENTER_SELF_PICK=1` is even offered, and
@@ -129,7 +158,7 @@ changes, re-measure it rather than editing the prose.
 | Surface | Billed as | Per run | Brake |
 | --- | --- | --- | --- |
 | The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
-| Implementer build agent | **Cursor subscription**, model `auto` (the Auto/Composer pool, not the API pool) | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) |
+| Implementer build agent | **Cursor subscription**, model `auto` (the Auto/Composer pool, not the API pool) | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
 | Implementer review pass | Max subscription (Opus) | $0 | one rework cycle, then the run stops |
 | Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
 | Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
@@ -137,6 +166,14 @@ changes, re-measure it rather than editing the prose.
 | `web-traffic-report.sh` | **$0 marginal** — Cloud Logging *reads* are free; Cloud Run was already writing those logs | $0 | `--limit 20000` |
 
 **Total real-dollar exposure of the whole loop system: well under $1/month** at current cadences.
+
+**The hourly tick does not mean hourly builds.** A tick with no released row exits in under a
+second: the runner prints "no BUILD/OPEN row in the queue" and stops before any agent starts.
+What bounds the spend is unchanged and is not the schedule — it is `IMPLEMENTER_MAX_RUNS_PER_MONTH`
+(10), counted in a file so it survives a crash mid-run, plus `IMPLEMENTER_MAX_INFLIGHT` (3) on
+how many rows the groomer may have released at once. The schedule only removes the requirement
+that you be at the keyboard for a build you already agreed to.
+
 
 **Two of the three billing surfaces are now closed by construction, not by luck:**
 
@@ -205,6 +242,8 @@ Sabaki):
 | "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
 | Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |
 | Implementer test gate | `npm run test:web` in the worktree | `xcodebuild test`, which requires killing the running app — the runner relaunches the user's **main** build afterwards, never the branch build | An unattended run must never swap the app the user works in |
+| Implementer auto lane | `scorer-fix` (a failing eval-corpus case is red→green) and `instrumentation` build with no announcement | `instrumentation` only — there is no eval corpus here | The auto lane may only hold classes an existing gate already judges; inventing one to match Sabaki would be the loosening the policy forbids |
+| Proposal transport | routines write JSON to `~/.local/state/sabaki-implementer/incoming`, groomer is TypeScript | identical shape, groomer is Python (`groom-queue.py`) | No node toolchain in a Swift repo; a dependency nobody maintains is a scheduled job that dies silently |
 
 ## Operating
 
