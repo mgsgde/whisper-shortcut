@@ -115,10 +115,26 @@ if [[ "$CURRENT_BRANCH" != "main" ]]; then
 fi
 rm -f "$BLOCK_STAMP" "${BLOCK_STAMP}.reported"
 
+# --- Sync with origin first ------------------------------------------------------------------
+# The groomer commits queue rows to the LOCAL main and, until 2026-09-03, nothing ever pushed
+# them. Every merged PR then left local main diverged from origin — the first one did, within
+# hours — and the operator's next `git pull` refused to fast-forward. So: rebase onto origin
+# before writing, push after. Both are best-effort; the tick runs hourly, so a push that fails
+# now (offline, lid just opened) simply lands on the next tick. Loud on failure, never fatal.
+git -C "$REPO_ROOT" pull -q --rebase origin main \
+    || warn "could not rebase main onto origin/main — grooming on a possibly stale main"
+
 # --- 1. Groom --------------------------------------------------------------------------------
 if [[ "${IMPLEMENTER_GROOM:-1}" == "1" ]]; then
     log "step 1: grooming the queue"
     python3 "${SCRIPT_DIR}/groom-queue.py" || warn "groom-queue.py exited non-zero — see above"
+    # Only push what the groomer just wrote — the tree was clean and on main going in, so any
+    # unpushed commit here is the queue bookkeeping and nothing else.
+    if [[ -n "$(git -C "$REPO_ROOT" log --oneline origin/main..main 2>/dev/null)" ]]; then
+        git -C "$REPO_ROOT" push -q origin main \
+            && log "pushed queue bookkeeping to origin/main" \
+            || warn "queue commit not pushed — will retry on the next tick"
+    fi
 else
     log "step 1: skipped (IMPLEMENTER_GROOM=0)"
 fi
