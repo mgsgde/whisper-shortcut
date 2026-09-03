@@ -1,6 +1,6 @@
 # Streaming Dictate — Overlap Transcription with Recording
 
-**Status:** Slices 1, 2 and 4 shipped; slice 3 (tuning) pending. Slice 1 implemented (2026-07-08) — `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`, externally identical behavior (chunks merged to one WAV on stop). Slice 2 shipped (`DictateStreamingSession.swift`, wired in `MenuBarController`). Slice 4 shipped 2026-09-02 (offline Whisper admitted).
+**Status:** Slices 1, 2 and 4 shipped; slice 3 (tuning) pending. Slice 1 implemented (2026-07-08) — `ChunkedDictateRecorder` behind `AppConstants.useChunkedDictateRecorder`, externally identical behavior (chunks merged to one WAV on stop). Slice 2 shipped (`DictateStreamingSession.swift`, wired in `MenuBarController`). Slice 4 shipped 2026-09-02 (offline Whisper admitted). 2026-09-03 stage timings: Whisper's ~3 s floor is the 30 s-padded encoder, not the tail length — see "Where the fixed cost per call goes".
 
 **Correction to the original plan:** `LiveMeetingRecorder` is NOT AVAudioEngine-based — it is a double-buffer of two `AVAudioRecorder`s rotated at silence boundaries. Slice 1 therefore copied that proven pattern instead of introducing an engine-based recorder, which removes the recorder-swap risk (mic permission flow, metering, delegate contract all stay on `AVAudioRecorder` semantics) and the meeting-interplay concern (the app already runs multiple concurrent `AVAudioRecorder`s during meeting + dictation segments). Dictate rotation is silence-only (no max-duration cut): continuous speech grows the current chunk, so seams only ever sit inside real pauses.
 **Audience:** LLM implementing the feature end-to-end
@@ -96,6 +96,11 @@ Three things fall out, and two of them contradict what this plan assumed before 
    pass is **wrong** — the encoder is cheap here, the autoregressive decoder is the cost, and
    chunking does not multiply it. Chunk length is therefore a free parameter for slice 4, to be
    chosen for seam quality rather than for compute.
+
+   > **Overturned 2026-09-03.** Stage timings on real recordings show the encoder is half to two
+   > thirds of every call, paid per 30 s-padded window. The 1 s noise clip produced no tokens *and*
+   > was measured before encoder time was visible. See "Where the fixed cost per call goes" below.
+   > Shrinking the tail chunk cannot lower Whisper's floor.
 2. **Streaming can keep up comfortably.** At rtf ≈ 0.18 on dense synthetic speech — real dictation
    has pauses and sits lower — a chunk decodes roughly five times faster than it was spoken, so
    in-flight chunks cannot pile up behind the speaker on this class of hardware. `whisper-large` on
@@ -231,6 +236,10 @@ decodes serialise behind one another rather than running WhisperKit re-entrantly
 rtf ≈ 0.15 a chunk decodes ~6× faster than it was spoken, so a queue cannot build up behind the
 speaker.
 
+> **Overturned 2026-09-03.** The actor suspends at `await whisperKit.transcribe`, so a rotated
+> chunk and the tail *do* overlap on the GPU and slow each other down. Serialising the decodes is
+> now a listed lever, not a property we already have.
+
 **Two things the gate change made reachable, both fixed here:**
 
 - A background chunk could throw the modal "Offline Dictation — loading model…" popup over the
@@ -331,6 +340,96 @@ The consequence stands and should be stated plainly rather than engineered aroun
 benefit is a function of how the speaker pauses.** Five chunks gave 4.0 s after Stop; two chunks
 gave 16.2 s. Both are better than not streaming, neither is a constant, and the floor is whatever
 the speaker leaves in the tail.
+
+## Where the fixed cost per call goes (measured 2026-09-03)
+
+The app's logs from a morning of real offline dictation showed every WhisperKit call costing
+**3.0–3.4 s whether the chunk held 1.8 s or 16 s of speech** (`SPEED: LOCAL-SPEECH rtf` lines:
+1.83 s → 3.17 s, 2.58 s → 3.05 s, 4.14 s → 3.25 s, 15.5 s → 3.42 s). A floor like that is what the
+user waits through after Stop once streaming has taken everything else, and the "decode cost
+tracks output tokens" model above cannot produce it. `LocalSpeechService` now logs WhisperKit's
+own stage timings (`SPEED: LOCAL-SPEECH timings …`) on branch
+`claude/whisper-transcription-speed-f4fcfe` (commit `54399e7`), and
+`OfflineWhisperBenchmarkTests.realRecordingBreakdown` decodes the user's retained recordings at
+five lengths, with and without the Whisper Glossary (137 chars, 52 tokens), twice each. M1 Pro /
+16 GB, Turbo on `.cpuAndGPU`, warm model, the Mac also building in another worktree — so read the
+structure, not the third digit:
+
+| audio | windows | glossary | decode | of which encoder | decoder loops | fallbacks |
+|---|---|---|---|---|---|---|
+| 2.0 s | 1 | yes | 7.4–8.0 s | 5.3–5.8 s | 65 | 0 |
+| 2.0 s | 1 | no | 6.1–7.1 s | 5.0–5.2 s | 12 | 0 |
+| 5.0 s | 1 | yes | 5.2–5.5 s | 3.1 s | 81 | 0 |
+| 5.0 s | 1 | no | 3.4–4.3 s | 2.4–2.8 s | 30 | 0 |
+| 15.0 s | 1 | yes | 5.0–5.9 s | 2.2–2.6 s | 114 | 0 |
+| 15.0 s | 1 | no | 4.1–6.6 s | 1.8–4.9 s | 62 | 0 |
+| 30.4 s | 2 | yes | 15.0–18.4 s | 6.9 s | 338–468 | **2** |
+| 30.4 s | 2 | no | 12.1–13.1 s | 7.8–8.9 s | 83 | 0 |
+| 60.8 s | 3 | yes | 20.0–22.0 s | 11.7–12.6 s | 315 | 0 |
+| 60.8 s | 3 | no | 10.9–16.6 s | 6.0–11.5 s | 169 | 0 |
+
+Wispr Flow is **not** fast because it has a local model. It is cloud-only: audio goes to their
+servers, a small ASR model plus a Llama cleanup pass (hosted at Baseten), quoted **≤700 ms p99
+after end of speech**. There is no on-device stack to copy. Our local path is slow because Whisper
+pays a fixed ~3 s socket per call, and that socket is in the model architecture, not in our code.
+
+Three conclusions, two of which overturn what this plan said before:
+
+1. **The encoder is not cheap — it is half to two thirds of every call.** Whisper pads every
+   window to 30 s and runs the full large-v3 encoder over it, so a 2 s tail chunk pays the same
+   2–5 s encoder pass as a 15 s one. Consequence: **shrinking `dictateChunkMinDuration` cannot
+   lower the floor** for Whisper; the floor is one encoder pass plus the prefill, ~3 s on this Mac
+   with the GPU otherwise idle, and it is paid per window, not per second of speech.
+2. **The glossary doubles the decoder loops.** WhisperKit feeds `promptTokens` through the
+   decoder one token at a time before the first real token (52 prompt tokens → 65 loops for a
+   12-token transcript), at 7–25 tokens/s on the GPU that is +1.5–3 s per window, and on the 30 s
+   recording it also triggered two temperature fallbacks (+3–5 s) that the no-glossary arm did
+   not need. Same characters out either way. The glossary is worth its accuracy, but it is a
+   speed cost on every chunk, and a shorter glossary is a direct win.
+3. **Decoder throughput is 7–25 tokens/s** on `.cpuAndGPU`, and it drops when two decodes run at
+   once — which they do: `LocalSpeechService` is an actor, but `transcribe` suspends at
+   `await whisperKit.transcribe`, so a rotated chunk and the tail decode *overlap* on the GPU
+   (logged 2026-09-03 13:26: a 16 s chunk took 4.3 s instead of 3.3 s while the tail ran
+   beside it). The plan's "the actor serialises chunk decodes" claim is wrong.
+
+What this means for the goal ("as fast as Wispr Flow"): on-device, the floor is the model
+architecture. Whisper's 30 s-padded encoder plus autoregressive decoder cannot get under ~2–3 s
+per call on an M1 Pro GPU. A FastConformer/TDT model (Parakeet TDT 0.6B v3 via FluidAudio,
+CoreML, ANE, 25 European languages incl. German, FLEURS de WER 5.9 %) encodes a 15 s window in
+~20 ms and decodes 1 min of audio in ~0.5 s on an M4 Pro (~110× realtime; an M1 Pro is slower but
+in the same order) — a 2 s tail would cost ~100 ms, not 3 s. That is the lever that reaches
+Wispr-class latency offline, and it is F15's second half in `plans/improvement-plan-2026-09.md`.
+Open point: no `promptTokens` glossary. FluidAudio has CTC vocabulary boosting (works with v3,
++97 MB); whether that holds German osteopathy terms needs a test.
+
+Cheaper steps that keep Whisper, in order of expected payoff, none measured yet:
+
+- **Encoder on the ANE with the `_632MB` turbo variant.** The GPU encoder is the biggest single
+  item. `OfflineModelType.usesNeuralEngine` keeps large models off the ANE because the first-load
+  compile ran >14 min across nine attempts on 2026-08-31 — attempts that were each killed by the
+  next rebuild-and-restart, so it is not known whether the compile finishes if left alone. The
+  ANE specialisation is cached per model after the first success. Test it once in the test host
+  (not the app), with `openai_whisper-large-v3-v20240930_turbo_632MB`, which is the variant Argmax
+  quantised for the ANE, and read `encodeS` from the timings line. Falsifier: encoder still >1 s
+  warm.
+- **Serialise chunk decodes** so the tail never shares the GPU with a still-running chunk (a
+  queue inside `LocalSpeechService`, or `DictateStreamingSession` awaiting the previous chunk
+  before starting the next).
+- **Shorter glossary.** Keep the terms that actually get misheard; do not drop the glossary on
+  in-flight chunks (those chunks would then mishear the same terms the user added it for).
+
+Instrumentation to re-run the measurement lives on `claude/whisper-transcription-speed-f4fcfe`
+(`54399e7`): `SPEED: LOCAL-SPEECH timings …` in `LocalSpeechService`, opt-in test
+`realRecordingBreakdown` in `OfflineWhisperBenchmarkTests` (numbers only, no transcripts).
+
+Sources: [Parakeety: Wispr Flow does not run locally](https://www.parakeety.com/resources/does-wispr-flow-run-locally),
+[Willow Voice Review](https://willowvoice.com/blog/wispr-flow-review-voice-dictation),
+[Spokenly Review](https://spokenly.app/blog/wispr-flow-review),
+[FluidAudio Benchmarks](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/Benchmarks.md),
+[Parakeet TDT v3 CoreML](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml),
+[FluidAudio](https://github.com/FluidInference/FluidAudio),
+[WhisperKit Paper](https://arxiv.org/html/2507.10860v1),
+[WhisperKit CoreML models](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main).
 
 ## Non-goals
 
