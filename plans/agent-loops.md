@@ -96,13 +96,15 @@ loop jobs (usage · model-audit · growth · architect)
         │ each run drops proposals.json in ~/.local/state/whispershortcut-implementer/incoming
         ▼
 scripts/implementer/tick.sh         ← hourly under launchd
+        │ STEP 1, in its own scratch worktree (.claude/worktrees/implementer-groom), pushing
+        │ straight to origin — so it runs whatever branch YOUR checkout is on:
         │ groom-queue.py: lookups only, no model. instrumentation w/ an OPEN gap → BUILD;
         │ reversible+in-scope+falsifiable → VETO (announced by mail, builds on silence);
         │ everything else → ASK. Ripe VETO windows promote to BUILD.
         ▼
 plans/implementer-queue.md          ← YOU set Flag=BUILD, or stop a VETO row: veto.sh <#>
         │
-scripts/implementer/run-implementer.sh
+scripts/implementer/run-implementer.sh   ← STEP 2, needs your checkout on main
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
         │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
         │    build agent (cursor-agent) runs .cursor/skills/implement-proposal/SKILL.md
@@ -242,6 +244,7 @@ Sabaki):
 | "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
 | Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |
 | Implementer test gate | `npm run test:web` in the worktree | `xcodebuild test`, which requires killing the running app — the runner relaunches the user's **main** build after each gate | Mid-run the branch has not been judged yet, so the app the user works in must not be swapped for it |
+| Groom lane | Runs in a worktree when the shared tree is busy | Same — a scratch worktree detached at `origin/main`, pushing `HEAD:main` | Findings must never wait on the operator's working state. Sabaki lost eight days and 28 proposals to a global branch guard; this repo copied the guard, then the fix |
 | After a green run | Branch is deployed to a gated dev instance | The runner leaves the **branch build running** as the user's app (`IMPLEMENTER_LAUNCH_BRANCH_BUILD=1`, asked for 2026-09-03) | There is no dev instance; the app *is* the review artifact, and a change you have to launch yourself is a change you do not try. Only after every gate and the reviewer's APPROVE — a failed run always restores the user's own build |
 | Implementer auto lane | `scorer-fix` (a failing eval-corpus case is red→green) and `instrumentation` build with no announcement | `instrumentation` only — there is no eval corpus here | The auto lane may only hold classes an existing gate already judges; inventing one to match Sabaki would be the loosening the policy forbids |
 | Proposal transport | routines write JSON to `~/.local/state/sabaki-implementer/incoming`, groomer is TypeScript | identical shape, groomer is Python (`groom-queue.py`) | No node toolchain in a Swift repo; a dependency nobody maintains is a scheduled job that dies silently |
