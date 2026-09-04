@@ -333,21 +333,27 @@ class ChatSessionStore {
   private func saveSessionsFile(_ file: SessionsFile) {
     var file = file
 
-    if file.sessions.count > Self.maxSessionCount {
-      // Meetings, pinned chats, and the current session are never pruned. Remaining slots are
-      // filled with the most-recently-updated prunable sessions; the rest are dropped.
-      var kept = Set(file.sessions.filter { $0.isMeeting || $0.pinned }.map { $0.id })
-      kept.insert(file.currentSessionId)
-      let prunable = file.sessions
-        .filter { !kept.contains($0.id) }
-        .sorted { $0.lastUpdated > $1.lastUpdated }
-      let remainingSlots = max(0, Self.maxSessionCount - kept.count)
-      kept.formUnion(prunable.prefix(remainingSlots).map { $0.id })
-      let removedCount = file.sessions.count - kept.count
-      if removedCount > 0 {
-        file.sessions.removeAll { !kept.contains($0.id) }
-        DebugLogger.log("GEMINI-CHAT: Pruned \(removedCount) old session(s) to stay within \(Self.maxSessionCount) limit")
-      }
+    // Meetings, pinned chats, and the current session are never pruned, so they must not
+    // consume the budget either: the cap counts only the sessions that pruning may delete.
+    // Sharing one cap with the exempt rows starved ordinary chats — once the exempt set alone
+    // reached the cap there were zero slots left, and every unpinned chat was deleted on the
+    // very next save (Cmd+N wiped the chat you had just been reading).
+    let exemptIds = Set(
+      file.sessions
+        .filter { $0.isMeeting || $0.pinned || $0.id == file.currentSessionId }
+        .map { $0.id })
+    let prunable = file.sessions.filter { !exemptIds.contains($0.id) }
+    if prunable.count > Self.maxSessionCount {
+      let keptPrunable = Set(
+        prunable
+          .sorted { $0.lastUpdated > $1.lastUpdated }
+          .prefix(Self.maxSessionCount)
+          .map { $0.id })
+      let removedIds = Set(prunable.map { $0.id }).subtracting(keptPrunable)
+      file.sessions.removeAll { removedIds.contains($0.id) }
+      file.tabOrder?.removeAll { removedIds.contains($0) }
+      DebugLogger.log(
+        "GEMINI-CHAT: Pruned \(removedIds.count) old session(s) to stay within \(Self.maxSessionCount) prunable limit")
     }
 
     purgeExpiredArchivedSessions(&file)
