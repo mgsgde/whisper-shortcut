@@ -14,9 +14,32 @@ would be a dependency nobody maintains.
     queue-edit.py set-flag 7 BUILD
     queue-edit.py set-status 7 'BRANCH implementer/q7-20260903'
     queue-edit.py due                        → JSON of VETO rows whose deadline has passed
-    queue-edit.py veto 7                     → VETO row back to ASK (the operator's stop button)
+    queue-edit.py veto 7                     → any released row back to ASK (the stop button)
+    queue-edit.py keep 7 [BUILD|VETO]        → park an ASK row in a lane until a slot frees
 
 Exit codes: 0 done, 1 nothing matched / bad input.
+
+**Status says who a row is waiting for.** It used to say only OPEN, and OPEN answered four
+different questions with one word — so the weekly said "waiting on you" about rows nobody could
+act on, and the operator was asked to rule on things whose real blocker was a build slot or a
+scope allowlist. Ported from sabaki.dance (2026-09-05), where that lane reached 34 rows of
+which three actually needed a human.
+
+    | Status     | waiting for            |
+    | ---------- | ---------------------- |
+    | `OPEN`     | a human's judgement, or the runner if the flag is BUILD |
+    | `DEFERRED` | a free build slot      |
+    | `BLOCKED`  | reach the runner lacks (outside IMPLEMENTER_SCOPE) |
+    | `DEFECT`   | the loop that wrote it (unreadable class or falsifier) |
+
+`DEFERRED` is backpressure and not a verdict: the row cleared every gate and the in-flight cap
+was full, so it keeps the lane it earned and the groomer releases it when capacity returns.
+`BLOCKED` is a missing hand, not a missing decision — it is the evidence for the next scope
+stage. `DEFECT` is a proposal the machine could not read; the fix for it is in a skill file,
+not in anyone's inbox. Only `OPEN` belongs on the operator's desk.
+
+The later life of a row (`BRANCH …`, `PR …`, `MERGED`, `DROPPED`) is written by the runner and
+is free text on purpose — it carries a branch name or a URL.
 """
 import argparse
 import json
@@ -29,6 +52,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 QUEUE_FILE = os.path.join(REPO_ROOT, "plans", "implementer-queue.md")
 
 FLAGS = ("HOLD", "ASK", "VETO", "BUILD")
+# The statuses a row may be FILED with. Everything after that (BRANCH …, PR …, MERGED,
+# DROPPED) is written by the runner and stays free text.
+PARK_STATUSES = ("OPEN", "DEFERRED", "BLOCKED", "DEFECT")
 COLUMNS = ("num", "source", "proposal", "falsifier", "flag", "status", "deadline")
 ROW_RE = re.compile(r"^\|\s*(\d+)\s*\|")
 
@@ -88,6 +114,14 @@ def cmd_append(args):
     if args.flag not in FLAGS:
         print(f"unknown flag '{args.flag}' (one of {', '.join(FLAGS)})", file=sys.stderr)
         return 1
+    if args.status not in PARK_STATUSES:
+        print(f"unknown status '{args.status}' (one of {', '.join(PARK_STATUSES)})", file=sys.stderr)
+        return 1
+    # A parked row has no deadline: `due` only ever looks at VETO/OPEN, so a date here could
+    # only be wrong — the release sweep sets one when the window becomes real.
+    if args.status != "OPEN" and args.deadline:
+        print("a parked row may not carry a deadline — the release sweep sets it", file=sys.stderr)
+        return 1
     lines = read_queue()
     rows = parse_rows(lines)
     if not rows:
@@ -100,7 +134,7 @@ def cmd_append(args):
         "proposal": args.proposal,
         "falsifier": args.falsifier,
         "flag": args.flag,
-        "status": "OPEN",
+        "status": args.status,
         "deadline": args.deadline or "",
     }
     lines.insert(rows[-1]["_line"] + 1, render(new))
@@ -162,19 +196,65 @@ def cmd_due(_args):
 
 
 def cmd_veto(args):
-    """The operator's stop button. VETO → ASK, so the row survives as a decision to make
-    rather than vanishing — a stopped proposal is still a finding somebody had."""
+    """The operator's stop button. Any row that would build unattended → ASK/OPEN, so it
+    survives as a decision to make rather than vanishing — a stopped proposal is still a
+    finding somebody had.
+
+    It takes BUILD and parked rows too, not only VETO. A stop button that works on one of three
+    lanes is a stop button you have to think about before pressing, and the one moment you
+    reach for it is the one moment you should not have to."""
     lines = read_queue()
     for row in parse_rows(lines):
         if row["num"] != args.num:
             continue
-        if row["flag"] != "VETO":
-            print(f"row #{args.num} is {row['flag']}, not VETO — nothing to stop", file=sys.stderr)
+        if row["flag"] == "ASK":
+            print(f"row #{args.num} is already ASK — nothing to stop", file=sys.stderr)
             return 1
-        row["flag"], row["deadline"] = "ASK", ""
+        if row["status"] not in ("OPEN", "DEFERRED"):
+            print(f"row #{args.num} is {row['status']} — too late to stop it here",
+                  file=sys.stderr)
+            return 1
+        row["flag"], row["status"], row["deadline"] = "ASK", "OPEN", ""
         lines[row["_line"]] = render(row)
         write_queue(lines)
-        print(f"row #{args.num} stopped — now ASK, it will not build unattended")
+        print(f"row #{args.num} stopped — now ASK/OPEN, it will not build unattended")
+        return 0
+    print(f"no row #{args.num} in the queue", file=sys.stderr)
+    return 1
+
+
+def cmd_keep(args):
+    """The exact inverse of veto, and the one-word verb a mail can offer for a row worth
+    keeping. It PARKS rather than opens: keeping ten rows queues ten builds behind the
+    in-flight cap instead of starting ten at once.
+
+    The lane is a choice, not a default, because it is not always yours to skip. `keep <#>`
+    means "build it, my yes replaces the window" — right on a row you filed. `keep <#> VETO`
+    parks it in the veto lane, so when a slot frees the row is announced with a window
+    somebody else still gets to object in."""
+    if args.lane not in ("BUILD", "VETO"):
+        print(f"keep takes BUILD or VETO, not '{args.lane}'", file=sys.stderr)
+        return 1
+    lines = read_queue()
+    for row in parse_rows(lines):
+        if row["num"] != args.num:
+            continue
+        if row["flag"] != "ASK":
+            print(f"row #{args.num} is {row['flag']}, not ASK — nothing to keep", file=sys.stderr)
+            return 1
+        if row["status"] != "OPEN":
+            print(f"row #{args.num} is {row['status']}, not OPEN — nothing to keep",
+                  file=sys.stderr)
+            return 1
+        # The class the release sweep needs to size a veto window is read out of Source. A row
+        # kept by hand may not carry one; the sweep falls back to the widest window, which is
+        # the safe direction to be wrong in.
+        row["flag"], row["status"], row["deadline"] = args.lane, "DEFERRED", ""
+        lines[row["_line"]] = render(row)
+        write_queue(lines)
+        tail = " — and is announced with a veto window then" if args.lane == "VETO" else ""
+        print(f"row #{args.num} kept: parked in the {args.lane} lane, "
+              f"it starts when a build slot frees{tail}")
         return 0
     print(f"no row #{args.num} in the queue", file=sys.stderr)
     return 1
@@ -192,6 +272,8 @@ def main():
     ap_a.add_argument("--falsifier", required=True)
     ap_a.add_argument("--flag", required=True)
     ap_a.add_argument("--deadline", default="")
+    ap_a.add_argument("--status", default="OPEN", choices=PARK_STATUSES,
+                      help="file the row parked — see the status table in this file's docstring")
     ap_a.set_defaults(fn=cmd_append)
 
     ap_f = sub.add_parser("set-flag")
@@ -208,6 +290,11 @@ def main():
     ap_v = sub.add_parser("veto")
     ap_v.add_argument("num", type=int)
     ap_v.set_defaults(fn=cmd_veto)
+
+    ap_k = sub.add_parser("keep")
+    ap_k.add_argument("num", type=int)
+    ap_k.add_argument("lane", nargs="?", default="BUILD", choices=("BUILD", "VETO"))
+    ap_k.set_defaults(fn=cmd_keep)
 
     args = ap.parse_args()
     sys.exit(args.fn(args))

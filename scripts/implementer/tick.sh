@@ -4,7 +4,10 @@
 # Architecture: plans/agent-loops.md. Ported from sabaki.dance's scripts/implementer/tick.sh,
 # including the three failures that lane paid for and this one does not have to repeat again.
 #
-# Two steps, and the difference between them is what this file is shaped around:
+# Three steps, and the difference between them is what this file is shaped around:
+#   0. carry out decided merge windows (release-merges.sh) — needs the shared checkout on main,
+#      because it merges into it. A window that ran out unstopped is merged; a window you
+#      stopped is closed and its branch handed back.
 #   1. groom the queue  (groom-queue.py) — file loop proposals, promote ripe VETO rows.
 #      Runs in a scratch worktree of its own and pushes to origin, so it does NOT care which
 #      branch your checkout is on. Findings must never wait on your working state.
@@ -89,6 +92,15 @@ fi
 trap 'rmdir "$TICK_LOCK" 2>/dev/null' EXIT
 
 git -C "$REPO_ROOT" fetch -q origin main || warn "could not fetch origin/main — working from what is on disk"
+
+# --- 0. Carry out the merge windows that were decided ----------------------------------------
+# Before grooming, so a merge frees the lane in the SAME tick rather than a hour later, and so
+# the queue the groomer reads already knows the row is MERGED. It refuses politely on its own
+# when the checkout is busy or a build holds the lock, so no guard is needed here.
+if [[ "${IMPLEMENTER_AUTO_MERGE:-1}" == "1" || -d "${HOME}/.local/state/whispershortcut-implementer/merge-windows" ]]; then
+    log "step 0: carrying out decided merge windows"
+    bash "${SCRIPT_DIR}/release-merges.sh" || warn "release-merges.sh exited non-zero — see above; it retries next tick"
+fi
 
 # --- 1. Groom — in its own worktree, whatever the shared checkout is doing --------------------
 # Grooming only reads loop proposals and writes queue bookkeeping. It has no business depending
@@ -180,6 +192,24 @@ else
     log "step 1: skipped (IMPLEMENTER_GROOM=0)"
 fi
 
+# --- 1b. The weekly health mail --------------------------------------------------------------
+# BEFORE the branch guard below, deliberately. Most ticks end at that guard or at "nothing to
+# build", and a health check that only runs when the machine is busy is silent exactly when
+# silence is the finding — which is the failure this whole file keeps having to work around.
+#
+# --if-due throttles it to one mail per ~week; a failure warns and retries next tick. Read from
+# origin/main rather than the working tree: the shared checkout's queue is whatever branch
+# somebody left it on, and a health report on a stale copy is worse than none.
+HEALTH_QUEUE="/tmp/whispershortcut-implementer-health-queue.md"
+HEALTH_ARGS=(--if-due)
+if git -C "$REPO_ROOT" show origin/main:plans/implementer-queue.md >"$HEALTH_QUEUE" 2>/dev/null \
+    && [[ -s "$HEALTH_QUEUE" ]]; then
+    HEALTH_ARGS+=(--queue-file "$HEALTH_QUEUE")
+fi
+python3 "${SCRIPT_DIR}/health-report.py" "${HEALTH_ARGS[@]}" \
+    || warn "health mail failed — retries next tick"
+rm -f "$HEALTH_QUEUE"
+
 # --- 2. Build — this one really does need the shared checkout ---------------------------------
 # The runner builds in a worktree it creates from the shared checkout's `main`, so unlike
 # grooming it cannot proceed while you are on a feature branch. Guarding it here rather than at
@@ -225,6 +255,18 @@ rm -f "$BLOCK_STAMP" "$REPORTED_FILE"
 # preserve, and anything that would need a merge is yours and not mine to resolve.
 git -C "$REPO_ROOT" merge -q --ff-only origin/main 2>/dev/null \
     || warn "shared main could not be fast-forwarded to origin/main — the build may use a stale base"
+
+# One change in flight at a time. A row whose merge window is still open has been built but not
+# yet landed, and starting the next build on top of it would mean a second branch cut from a
+# main that is about to move — plus a queue whose rows no longer describe what is happening.
+# Sabaki's tick does the same, for the same reason.
+OPEN_WINDOWS=$(find "${HOME}/.local/state/whispershortcut-implementer/merge-windows" \
+    -maxdepth 1 -name 'q*.env' 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$OPEN_WINDOWS" != "0" ]]; then
+    log "step 2 skipped: ${OPEN_WINDOWS} change(s) still in a merge window. Not starting another build."
+    log "tick done"
+    exit 0
+fi
 
 # The runner does its own preflight (lock, monthly budget, scope, clean tree) and exits 0 with
 # "nothing to do" when no BUILD/OPEN row exists, which is the common case. Let it decide.

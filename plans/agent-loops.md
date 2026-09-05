@@ -64,7 +64,7 @@ Two capabilities are above rung 0:
 | Capability | Rung | Gate that holds it there |
 | ---------- | ---- | ------------------------ |
 | Implementer: build a released queue row → gated branch | **2** | The *runner* re-runs every gate (scope allowlist, clean tree, main-checkout pollution, `xcodebuild`, full test plan); a **different model** reviews the diff; `IMPLEMENTER_ENABLED` and `IMPLEMENTER_TICK_ENABLED` kill switches read at run time; nothing is merged or released. A row is released either by you flagging it `BUILD`, or by a **veto window** running out (below). Reversibility: everything it produces is a branch and a PR you merge. |
-| Groomer: file a loop proposal as a `VETO` row that builds on silence | **2** | `groom-queue.py` contains no model — every lane is a lookup or a regex against committed state. Only reversible, in-scope classes with a gradeable falsifier get a window; `instrumentation` needs an OPEN row in `plans/instrumentation-gaps.md`; everything else lands in `ASK`. At most `IMPLEMENTER_MAX_INFLIGHT` (3) auto rows open at once, and every window is announced by mail before it starts. Kill switch `IMPLEMENTER_VETO_LANE=0` restores the pre-2026-09-03 behaviour. |
+| Groomer: file a loop proposal as a `VETO` row that builds on silence | **2** | `groom-queue.py` contains no model — every lane is a lookup or a regex against committed state. Only reversible, in-scope classes with a gradeable falsifier get a window; `instrumentation` needs an OPEN row in `plans/instrumentation-gaps.md`; everything else lands in `ASK`. At most `IMPLEMENTER_MAX_INFLIGHT` (3) auto rows open at once — beyond that a qualified proposal parks as `DEFERRED` and keeps its lane, rather than being demoted to a decision that was already made by a rule. Every window is announced by mail before it starts. Kill switch `IMPLEMENTER_VETO_LANE=0` restores the pre-2026-09-03 behaviour. |
 | Sales poster: comment on a public thread or App Store review | **3** | Morning digest is the preview; 15:05 posts PREVIEWED rows whose veto window elapsed (`SALES_VETO_HOURS`, default 7). `../scripts/sales/veto.sh S-001` stops a row. Kill switch `SALES_POST_ENABLED` (default 0). A comment to a stranger is irreversible, so this capability does not promote to rung 4. |
 
 The rule that outranks every finding, from the same policy:
@@ -100,21 +100,30 @@ scripts/implementer/tick.sh         ← hourly under launchd
         │ straight to origin — so it runs whatever branch YOUR checkout is on:
         │ groom-queue.py: lookups only, no model. instrumentation w/ an OPEN gap → BUILD;
         │ reversible+in-scope+falsifiable → VETO (announced by mail, builds on silence);
-        │ everything else → ASK. Ripe VETO windows promote to BUILD.
+        │ everything else → ASK, with a Status saying who it waits for (BLOCKED = scope,
+        │ DEFECT = the loop wrote it unreadably). Ripe VETO windows promote to BUILD; a
+        │ full queue parks a qualified row as DEFERRED and releases it when a slot frees.
+        │ health-report.py mails the weekly outside view (--if-due), before the branch guard.
         ▼
-plans/implementer-queue.md          ← YOU set Flag=BUILD, or stop a VETO row: veto.sh <#>
+plans/implementer-queue.md          ← YOU set Flag=BUILD, stop a row: veto.sh <#>, keep: keep.sh <#>
         │
 scripts/implementer/run-implementer.sh   ← STEP 2, needs your checkout on main
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
         │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
-        │    build agent (cursor-agent) runs .cursor/skills/implement-proposal/SKILL.md
+        │    Opus 5 writes plans/implementer-plans/row-<n>.md (one file, no code)
+        │    Grok 4.6 executes that plan via .cursor/skills/implement-proposal/SKILL.md
         │ 3. gates re-run BY THE RUNNER: scope allowlist · clean tree · pollution check ·
         │    xcodebuild · full test plan   (an agent cannot skip what it does not control)
         │ 4. a DIFFERENT model reviews the diff → APPROVE | BLOCK (one rework cycle, then stop)
         │ 5. queue row + ledger line committed ON THE BRANCH, so bookkeeping travels with code
-        │ 6. mail + notification: how to dogfood it, how to approve it
+        │ 6. mail + notification: how to dogfood it — and the merge window it just opened
         ▼
-YOU run the branch build for a while → merge → release when you decide
+scripts/implementer/release-merges.sh   ← STEP 0 of the NEXT ticks, needs main
+        │ silence merges: rebase onto current main if it moved, re-gate unless the delta
+        │ touches only non-compiled paths, ff-merge, close the queue row, push.
+        │ veto.sh <#> stops it — window closed, branch and worktree KEPT, row → ASK.
+        ▼
+YOU run the branch build while the window is open → release when you decide
 ```
 
 **Operating it**
@@ -126,7 +135,11 @@ bash scripts/implementer/run-implementer.sh --dry-run
 bash scripts/implementer/run-implementer.sh        # one build, by hand
 
 python3 scripts/implementer/groom-queue.py --dry-run   # what would the groomer file?
-bash scripts/implementer/veto.sh 7                     # stop VETO row 7 before its deadline
+bash scripts/implementer/veto.sh 7                     # stop row 7 before it builds — or before it merges
+bash scripts/implementer/release-merges.sh --dry-run   # which merge windows are due?
+bash scripts/implementer/keep.sh 7 VETO                # the inverse: park an ASK row in a lane
+python3 scripts/implementer/health-report.py --dry-run # the weekly mail, printed not sent
+bash scripts/implementer/usage-limit.sh --self-test    # the quota detector's own test
 ```
 
 Both switches must be `1` in `~/.config/whispershortcut-implementer/env` before the schedule
@@ -135,18 +148,53 @@ Tick log: `build/logs/implementer/tick-<date>.log`.
 
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
 
-- **Builder ≠ judge.** The model that wrote the code never decides it is fine — the same
-  proposer-is-never-the-judge rule the loops run on, applied to code. Cursor builds (large,
-  cheap quota), Claude judges (scarce, high-judgment). The split is config, so the scout/meta
-  loops may propose adjusting it; they may never propose removing the review step.
-- **Measurable-on-ship-day.** A row whose falsifier cannot be measured when it ships is not
-  eligible; the build must add the instrumentation in the same branch, or the proposal goes to
-  `plans/instrumentation-gaps.md` first.
+- **Opus plans and judges, Grok builds.** Claude Opus 5 writes the plan and reviews the
+  diff; Cursor Grok 4.6 types the code. Same proposer-is-never-the-judge rule as the loops,
+  one step earlier: the model that decided HOW is not the one that talks itself into
+  believing the diff implements it. The IDs are config (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`,
+  `IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
+  Scout/meta loops may propose adjusting them; they may never propose removing the plan
+  step or the review step, and they may never put Cursor on a propose/plan/judge job.
+- **Measurable-on-ship-day, on ONE user's logs.** A row whose falsifier cannot be measured when
+  it ships is not eligible; the build must add the instrumentation in the same branch, or the
+  proposal goes to `plans/instrumentation-gaps.md` first. And the only person this repo
+  collects data about is the operator — a falsifier that needs other users' behaviour cannot be
+  graded at all (`plans/implementer-queue.md`, eligibility rules).
 - **Releasing is human, or it is silence.** No loop may set `BUILD` on its own finding — only
   the groomer may, and only for classes an existing gate judges. Everything else it files is
   either a `VETO` row you were mailed about and can stop, or an `ASK` row that waits for you.
+- **Merging is silence too, and merging is not releasing.** A fully green, reviewed run opens a
+  merge window (`IMPLEMENTER_MERGE_WINDOW_DAYS`, 2) and the branch build is left running so you
+  live in the change while the clock runs. `release-merges.sh` then merges it unattended unless
+  `veto.sh <#>` stopped it. What makes this rung 2 rather than rung 3 is that `main` is not a
+  release here: `scripts/create-release.sh`, the App Store submission and the parent repo's
+  submodule pointer are all untouched, so the blast radius of a wrong merge is a revert. The
+  gates that ran are re-run first whenever `main` has moved under the branch — skipped only
+  when the delta touches a fixed list of non-compiled paths, never on a judgement about
+  content. Switches: `IMPLEMENTER_AUTO_MERGE` (1) and `IMPLEMENTER_AUTO_PUSH_MAIN` (1); the
+  second is separate because pushing is the one step that leaves this Mac.
+- **One change in flight.** While a merge window is open the tick starts no new build. That is
+  also what closes an older hole: `main`'s queue row still said `BUILD`/`OPEN` after a run —
+  the bookkeeping lives on the branch — so the next day's tick would have built the same row
+  again on a fresh branch.
 - **Nothing is ever dropped.** A proposal the groomer cannot justify becomes an `ASK` row, not
-  a discarded finding. That is what makes the ASK lane safe to be conservative with.
+  a discarded finding. That is what makes the ASK lane safe to be conservative with. The cap
+  follows the same rule: a qualified row that meets a full queue parks as `DEFERRED` and keeps
+  its lane. A rate limit that throws its overflow away is not a rate limit.
+- **Only `OPEN` is a question.** An `ASK` row's Status names its real blocker — `BLOCKED` is
+  scope the runner does not have, `DEFECT` is a proposal a checker could not read. Neither is
+  ever phrased as a decision: being asked to rule on an allowlist is plumbing wearing a
+  question mark, and it is how a lane fills up with rows nobody can answer.
+- **A usage limit is not a failure.** `claude -p` and cursor-agent both exit when the plan
+  quota is hit. The runner recognises that (`usage-limit.sh`), waits the reset out inside the
+  run when it fits in `IMPLEMENTER_USAGE_WAIT_CAP_SECONDS` (2 h), and otherwise cleans up
+  completely and exits 0: worktree removed, branch deleted, queue row still `BUILD`/`OPEN`, and
+  the monthly run counter refunded, because the run built nothing. It used to mail FAILED and
+  leave a worktree that then blocked the next tick.
+- **Silence is reported.** Every other signal fires when something happens; `health-report.py`
+  mails weekly whether or not anything did, from `origin/main`'s copy of the queue and before
+  the tick's branch guard — a health check that only runs when the machine is busy is silent
+  exactly when silence is the finding.
 - **Demotion falsifier:** ≥2 of any 5 consecutive runs needing structural rework → back to
   rung 1. Tracked in `plans/implementer-log.md`, graded from its Outcome column.
 - **Promotion is earned:** 5 clean merges before `IMPLEMENTER_SELF_PICK=1` is even offered, and
@@ -159,9 +207,10 @@ changes, re-measure it rather than editing the prose.
 
 | Surface | Billed as | Per run | Brake |
 | --- | --- | --- | --- |
-| The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
-| Implementer build agent | **Cursor subscription**, model `auto` (the Auto/Composer pool, not the API pool) | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
-| Implementer review pass | Max subscription (Opus) | $0 | one rework cycle, then the run stops |
+| The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars. Default model is `claude-opus-5` (usage-review used to default to Sonnet) | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
+| Implementer plan step | Max subscription (`claude-opus-5`) | $0 | 30-min timeout; writes one file; a planner that touches anything else fails the run |
+| Implementer build agent | **Cursor subscription**, model `cursor-grok-4.6-high` | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
+| Implementer review pass | Max subscription (`claude-opus-5`) | $0 | one rework cycle, then the run stops |
 | Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
 | Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
 | Voice Feedback selection | Real dollars, user's Gemini key | ≤2000 chars ≈ 500 extra tokens ≈ **$0.00005** | the 2000-char cap in `VoiceFeedbackService` |
@@ -239,7 +288,7 @@ Sabaki):
 | | sabaki.dance | whisper-shortcut | Why |
 | --- | --- | --- | --- |
 | Scheduler/host | systemd timers on the minipc | launchd on this Mac | The data (usage logs, Keychain auth for `asc`/`gh`, audio pipeline) only exists here |
-| Agent runner | `cursor-agent`, model `auto` (Cursor pool) | `claude -p`, opus/sonnet (Max subscription) | Different billing pools; both pin models + budget caps in the job script |
+| Agent runner | `cursor-agent` builds (`cursor-grok-4.6-high`); `claude -p` plans and judges (`claude-opus-5`) | same split, same IDs | Same billing pools; both pin models + budget caps in the job script |
 | Ledger writes | paste-ready block, human pastes (a dirty tree breaks the minipc's deploy pull) | job appends directly (local working copy, user reviews via git diff) | Same auditability, one less manual step |
 | "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
 | Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |

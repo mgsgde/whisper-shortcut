@@ -20,6 +20,16 @@ Everything else either gets a veto window (reversible, in scope, falsifier a lat
 grade) or lands in ASK. Nothing is ever dropped: a proposal the groomer cannot justify becomes
 a row you can flip, not a finding that evaporates.
 
+An ASK row then says WHO it is waiting for, in its status (the table in queue-edit.py):
+`OPEN` is a human's judgement, `BLOCKED` is reach the runner does not have, `DEFECT` is a
+proposal this file could not read. Only OPEN belongs on the operator's desk — being asked to
+rule on a scope allowlist is not a decision, it is plumbing wearing a question mark.
+
+And the in-flight cap parks rather than demotes: a proposal that cleared every gate and only
+met a full queue keeps the lane it earned, as `DEFERRED`, and the release sweep at the top of
+each run gives it the next free slot. A rate limit that throws its overflow away is not a rate
+limit.
+
 Input: one JSON file per loop run in $IMPLEMENTER_INCOMING_DIR, each holding an object or a
 list of objects:
 
@@ -105,18 +115,30 @@ def normalise(text):
     return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
 
 
-def decide_lane(proposal, existing, gaps, auto_so_far):
-    """Return (lane, reason). Lookups and regexes only — never a judgement call."""
+def decide_lane(proposal, existing, gaps, in_flight):
+    """Return (lane, park, reason). Lookups and regexes only — never a judgement call.
+
+    `lane` is what the proposal earned; `park` is who it is then waiting for. The two are
+    orthogonal on purpose: a capped row keeps its lane and waits for a slot, and a row nobody
+    can read is not a question for the operator however good its finding may be."""
     cls = (proposal.get("class") or "").strip()
     title = proposal.get("title") or proposal.get("proposal") or ""
 
+    # A proposal this file cannot read is a defect in the skill that wrote it, not a question
+    # for the operator. It parks in DEFECT, where the loop can re-file it corrected — the dedup
+    # below lets a DEFECT row be superseded, and only that status.
     if not (proposal.get("falsifier") or "").strip():
-        return "ASK", "no falsifier — a row nothing can grade may not build unattended"
+        return "ASK", "DEFECT", "no falsifier — a row nothing can grade may not build unattended"
 
     # Dedupe against what the queue actually stores, which is the proposal line. Comparing the
     # title against it compares two different fields, and a short title never prefixes a longer
     # proposal — so the check silently never fired. Both directions, because a loop may shorten
     # or lengthen its wording between runs; both fields, because either may be the stable one.
+    # One exception, and only one: a row parked in DEFECT is not a decision and not an outcome
+    # — it is a proposal the machine refused to read. Blocking on it would mean a loop that
+    # once wrote a bad falsifier can NEVER file that finding again, however well it words it
+    # the second time. Everything else in the queue still blocks, which is what this check is
+    # for: re-proposing a written-off finding is what makes a queue useless.
     for candidate in (proposal.get("proposal"), title):
         key = normalise(candidate)[:60]
         if not key:
@@ -124,30 +146,39 @@ def decide_lane(proposal, existing, gaps, auto_so_far):
         for row in existing:
             stored = normalise(row["proposal"])
             if stored.startswith(key) or key.startswith(stored[:60]):
-                return "SKIP", f"already in the queue as #{row['num']}"
+                if row["status"] == "DEFECT":
+                    continue
+                return "SKIP", "OPEN", f"already in the queue as #{row['num']} ({row['status']})"
 
     paths = proposal.get("paths") or []
     outside = [p for p in paths if not p.startswith(SCOPE_PREFIXES)]
     if outside:
-        return "ASK", f"touches {outside[0]} — outside IMPLEMENTER_SCOPE=app"
+        # Out of IMPLEMENTER_SCOPE is a missing hand, not a missing decision. It parks in
+        # BLOCKED, where it is the evidence for the next scope stage rather than a question the
+        # operator can only answer by widening an allowlist he was not asked about.
+        return "ASK", "BLOCKED", f"touches {outside[0]} — outside IMPLEMENTER_SCOPE=app"
 
     if cls in AUTO_CLASSES:
         gap = proposal.get("gap")
         if not isinstance(gap, int) or gap not in gaps:
-            return "ASK", "instrumentation without an OPEN row in plans/instrumentation-gaps.md"
-        if auto_so_far >= MAX_INFLIGHT:
-            return "ASK", f"in-flight cap reached ({MAX_INFLIGHT})"
-        return "BUILD", f"closes instrumentation gap #{gap} — red→green is checkable"
-
-    if cls in VETO_WINDOW_DAYS:
+            return "ASK", "OPEN", "instrumentation without an OPEN row in plans/instrumentation-gaps.md"
+        lane, earned = "BUILD", f"closes instrumentation gap #{gap} — red→green is checkable"
+    elif cls in VETO_WINDOW_DAYS:
         if not VETO_LANE_ENABLED:
-            return "ASK", "VETO lane disabled (IMPLEMENTER_VETO_LANE=0)"
-        if auto_so_far >= MAX_INFLIGHT:
-            return "ASK", f"in-flight cap reached ({MAX_INFLIGHT})"
+            return "ASK", "OPEN", "VETO lane disabled (IMPLEMENTER_VETO_LANE=0)"
         days = VETO_WINDOW_DAYS[cls]
-        return "VETO", f"reversible, in scope, falsifier gradeable — builds in {days}d unless stopped"
+        lane = "VETO"
+        earned = f"reversible, in scope, falsifier gradeable — builds in {days}d unless stopped"
+    else:
+        return "ASK", "DEFECT", f"class '{cls or '(none)'}' has no automatic gate"
 
-    return "ASK", f"class '{cls or '(none)'}' has no automatic gate"
+    # The cap comes last, so a parked row is always one that would otherwise have qualified —
+    # and it keeps the lane it earned. It used to be written as ASK "for the operator to pull
+    # forward", which reads well and works out badly: the row loses the gate it passed and
+    # waits on a desk for a decision that was already made by a deterministic rule.
+    if in_flight >= MAX_INFLIGHT:
+        return lane, "DEFERRED", f"{MAX_INFLIGHT} in-flight rows already — qualified, parked"
+    return lane, "OPEN", earned
 
 
 def load_proposals(paths):
@@ -214,7 +245,14 @@ def main():
 
     existing = json.loads(queue_edit("list"))
     open_auto = [r for r in existing if r["flag"] in ("BUILD", "VETO") and r["status"] == "OPEN"]
-    auto_so_far = len(open_auto)
+
+    # --- Release sweep: parked rows get the free slots before new proposals do ---------------
+    # Computed first, and its rows count against the cap below, so a row that has already
+    # waited does not lose its place to a proposal filed this morning. Oldest first, by queue
+    # number — the order they qualified in.
+    parked = sorted((r for r in existing if r["status"] == "DEFERRED"), key=lambda r: r["num"])
+    releasing = parked[: max(0, MAX_INFLIGHT - len(open_auto))]
+    auto_so_far = len(open_auto) + len(releasing)
 
     # A VETO row whose deadline is missing or unreadable promotes never and was announced
     # never — it just sits there looking queued. `due` cannot see it, so nothing else would
@@ -226,37 +264,62 @@ def main():
 
     gaps = open_gap_numbers()
     proposals = load_proposals(files)
-    log(f"{len(proposals)} proposal(s) from {len(files)} file(s) · {auto_so_far} already in flight")
+    log(f"{len(proposals)} proposal(s) from {len(files)} file(s) · {len(open_auto)} in flight · "
+        f"{len(parked)} parked · cap {MAX_INFLIGHT}")
 
     announcements, filed = [], []
     for path, proposal in proposals:
-        lane, reason = decide_lane(proposal, existing, gaps, auto_so_far)
+        lane, park, reason = decide_lane(proposal, existing, gaps, auto_so_far)
         title = proposal.get("title") or proposal.get("proposal") or "(no title)"
-        icon = {"BUILD": "🟢", "VETO": "🔵", "ASK": "🟡", "SKIP": "⚪️"}[lane]
-        log(f"{icon} {lane}: {title[:70]} — {reason}")
+        icon = "⏸" if park == "DEFERRED" else {"BUILD": "🟢", "VETO": "🔵", "ASK": "🟡", "SKIP": "⚪️"}[lane]
+        label = lane if park == "OPEN" else f"{lane}·{park}"
+        log(f"{icon} {label}: {title[:70]} — {reason}")
         if lane == "SKIP" or args.dry_run:
             continue
 
         deadline = ""
-        if lane == "VETO":
+        if lane == "VETO" and park == "OPEN":
             days = VETO_WINDOW_DAYS[proposal["class"]]
             deadline = (date.today() + timedelta(days=days)).isoformat()
+        # A parked row carries its class in Source, because the proposal file is archived this
+        # same run and the release sweep still has to size the window the row never got.
+        source = proposal.get("source", "loop proposal")
+        if park == "DEFERRED":
+            source = f"{source} · class: {proposal.get('class', '')}"
 
         num = queue_edit(
             "append",
-            "--source", proposal.get("source", "loop proposal"),
+            "--source", source,
             "--proposal", proposal.get("proposal") or title,
             "--falsifier", proposal.get("falsifier", ""),
             "--flag", lane,
             "--deadline", deadline,
+            "--status", park,
         )
-        filed.append((num, lane, title))
+        filed.append((num, label, title))
         # Re-read so the next proposal's duplicate check sees the row we just wrote.
         existing = json.loads(queue_edit("list"))
-        if lane in ("BUILD", "VETO"):
+        # A parked row consumes no slot this run — that is the whole point of parking it.
+        if park == "OPEN" and lane in ("BUILD", "VETO"):
             auto_so_far += 1
-        if lane == "VETO":
+        if lane == "VETO" and park == "OPEN":
             announcements.append((num, title, deadline, reason))
+
+    # Release the parked rows into the slots that came free. A VETO row's window starts HERE,
+    # not when it was filed: a window the operator could not have acted on is not a window, and
+    # it would already have run out by the time the row became real.
+    released = []
+    if not args.dry_run:
+        for row in releasing:
+            if row["flag"] == "VETO":
+                match = re.search(r"· class: ([a-z-]+)", row["source"])
+                days = VETO_WINDOW_DAYS.get(match.group(1) if match else "",
+                                            max(VETO_WINDOW_DAYS.values()))
+                deadline = (date.today() + timedelta(days=days)).isoformat()
+                queue_edit("set-flag", str(row["num"]), "VETO", "--deadline", deadline)
+                released.append((row["num"], row["proposal"][:80], deadline))
+            queue_edit("set-status", str(row["num"]), "OPEN")
+            log(f"⏵ released #{row['num']} from parking — a build slot came free")
 
     # Silence promotes. A row whose window ran out becomes BUILD; a row you stopped is ASK by
     # now and `due` never sees it again.
@@ -272,8 +335,18 @@ def main():
             if os.path.dirname(path) == incoming:
                 shutil.move(path, os.path.join(archive, os.path.basename(path)))
 
-    if announcements or ripe:
+    if announcements or ripe or released:
         lines = []
+        if released:
+            # Only the VETO releases need announcing: a released BUILD row was decided by a
+            # deterministic gate when it was filed, and saying so again is the weekly's job.
+            lines += [
+                "A build slot came free, so these parked rows became real. They cleared every",
+                "gate when they were filed and were only waiting for capacity:",
+                "",
+                *[f"#{n} — {t}\n    builds on {d} unless stopped" for n, t, d in released],
+                "",
+            ]
         if announcements:
             lines += [
                 "The implementer filed these in the VETO lane. You do not have to do anything —",
@@ -292,7 +365,8 @@ def main():
             ]
         lines.append("Queue: plans/implementer-queue.md")
         send_mail(
-            f"WhisperShortcut implementer — {len(announcements)} to veto, {len(ripe)} promoted",
+            f"WhisperShortcut implementer — {len(announcements) + len(released)} to veto, "
+            f"{len(ripe)} promoted",
             "\n".join(lines),
             no_mail=args.no_mail,
         )
@@ -304,15 +378,16 @@ def main():
     # in the shared checkout would sweep that work into a commit titled "Groom implementer
     # queue". Naming the path makes the commit contain exactly this file, whatever the index
     # holds.
-    if (filed or ripe) and not args.dry_run:
+    if (filed or ripe or released) and not args.dry_run:
         subprocess.run(
             ["git", "commit", "-m",
-             f"Groom implementer queue: {len(filed)} filed, {len(ripe)} promoted\n\n"
+             f"Groom implementer queue: {len(filed)} filed, {len(released)} released, "
+             f"{len(ripe)} promoted\n\n"
              "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>",
              "--", "plans/implementer-queue.md"],
             cwd=REPO_ROOT, capture_output=True, check=False,
         )
-    log(f"done — {len(filed)} filed, {len(ripe)} promoted")
+    log(f"done — {len(filed)} filed, {len(released)} released, {len(ripe)} promoted")
 
 
 if __name__ == "__main__":

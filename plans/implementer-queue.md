@@ -17,8 +17,12 @@ on `main`, because a proposal filed on a branch nobody merges is a proposal nobo
 | ---- | ------- |
 | `BUILD` | builds unattended on the next tick. Written by the groomer for gate-covered classes only (`instrumentation`), or by you for anything. |
 | `VETO` | announced by mail with a **Deadline**, then promoted to `BUILD` on silence. Your only job is to stop it: `bash scripts/implementer/veto.sh <#>` moves it to `ASK`. Silence is a yes. |
-| `ASK` | needs your decision — irreversible, out of scope, or no falsifier a checker can parse. The groomer files everything it cannot justify here; it never drops a proposal. |
+| `ASK` | not released. The groomer files everything it cannot justify here; it never drops a proposal. **Which of them is actually yours to answer is the Status, not the Flag** — see below. |
 | `HOLD` | parked by you. The groomer never touches a `HOLD` row. |
+
+`veto.sh <#>` takes any released or parked row back to `ASK`/`OPEN`; `keep.sh <#> [BUILD|VETO]`
+is its inverse and parks an `ASK` row in a lane until a build slot frees. One verb each way, so
+the moment you reach for the stop button is not a moment you have to think about lanes.
 
 **Why a VETO lane.** Two lanes made you the gate: every proposal the machinery could not prove
 landed on your desk, and the rows below show what that produced — row 2 has sat `OPEN` since
@@ -26,7 +30,34 @@ landed on your desk, and the rows below show what that produced — row 2 has sa
 it the same way: do not ask for approval, make disagreement possible. Adding this lane loosened
 a gate, so per `plans/agent-loops.md` it was a human decision, taken 2026-09-03.
 
-Status: `OPEN` · `BRANCH <name>` · `PR <url>` · `MERGED` · `DROPPED`.
+**Status says who a row is waiting for.** It used to say only `OPEN`, and `OPEN` answered four
+different questions with one word: the weekly would have called all of them "waiting on you"
+while most were waiting on a build slot or a scope allowlist. Ported from Sabaki on 2026-09-05,
+where that lane reached 34 rows of which three actually needed a human.
+
+| Status | waiting for | who acts |
+| ------ | ----------- | -------- |
+| `OPEN` | your judgement — or, with `Flag=BUILD`, the next tick | you |
+| `DEFERRED` | a free build slot. It cleared every gate and met a full queue; it keeps the lane it earned and the groomer releases it when capacity returns | nobody, it resolves itself |
+| `BLOCKED` | reach the runner does not have (outside `IMPLEMENTER_SCOPE`). This is the evidence for widening the scope, not a decision to make row by row | you, once, for all of them |
+| `DEFECT` | the loop that wrote it — the `class` or the falsifier could not be read. The fix is in that loop's skill file | the loop's author |
+
+A `DEFECT` row is the one status a later proposal may supersede: blocking on it would mean a
+loop that once wrote a bad falsifier can never file that finding again, however well it words
+it the second time. Everything else still blocks the duplicate check.
+
+Then the runner writes the row's later life: `BRANCH <name>` · `PR <url>` · `MERGED` ·
+`DROPPED`. Those cells are written **on the branch**, so `main`'s copy of a row keeps saying
+`BUILD`/`OPEN` until the branch lands — which is why the merge window lives in
+`~/.local/state/whispershortcut-implementer/merge-windows/` and not in this table.
+
+**The merge window.** A run that passes every gate and the reviewer opens one: the branch build
+is left running so you live in the change, and `scripts/implementer/release-merges.sh` merges it
+into `main` two days later unless `bash scripts/implementer/veto.sh <#>` stopped it. Stopping
+closes the window and **keeps** the branch and worktree — a stopped merge is not a rejected
+change — and sets the row to `ASK` so no tick rebuilds it. Merging is not releasing: the
+release scripts, the App Store submission and the parent repo's submodule pointer are all still
+yours, which is what makes an unattended merge a revert-sized risk rather than a shipped one.
 
 **Eligibility rules**
 
@@ -36,9 +67,25 @@ Status: `OPEN` · `BRANCH <name>` · `PR <url>` · `MERGED` · `DROPPED`.
   metric does not exist yet, the build must add the instrumentation in the same branch
   (`DebugLogger` / interaction-log / outcome-signal write) and name the exact query that will
   grade it. Otherwise it belongs in `plans/instrumentation-gaps.md` first.
+- **Measurable here means measurable on ONE user's logs.** The app ships to strangers, but the
+  only person this repo collects data about is the operator: every falsifier is graded from his
+  own interaction logs and outcome signals. A falsifier that rests on what other users do —
+  adoption of a feature, a rate across the install base, anything an App Store number would
+  have to answer — cannot be graded and is not a question for anyone's desk; it is a `DEFECT`
+  the writing loop has to re-word. This is a rule for the loops, not a check the groomer can
+  run: no regex can tell whose behaviour a sentence is about. The consequence for a proposal
+  worth building anyway is that its falsifier must be restated as something the operator's own
+  usage produces, or it needs a new instrumentation gap first.
 - **No model decides a lane.** `groom-queue.py` contains lookups and regexes, never a judgement
   call — a loop says what its proposal *is* (`class`), the groomer decides what that class is
   allowed to do. Widening `AUTO_CLASSES` or the veto windows is a human commit.
+- **The in-flight cap (`IMPLEMENTER_MAX_INFLIGHT`, 3) delays; it does not demote.** A qualified
+  proposal that meets a full queue is filed `DEFERRED` in the lane it earned, and the release
+  sweep at the top of each groom run gives the oldest parked rows the free slots — before new
+  proposals are judged, so a row that waited does not lose its place to one filed this morning.
+  A released `VETO` row's window starts on release, never on filing: a window you could not
+  have acted on is not a window. No gate moves either way — a parked row still passes class,
+  scope, falsifier and review before it builds.
 
 | #   | Source | Proposal (one line) | Falsifier | Flag | Status | Deadline |
 | --- | ------ | ------------------- | --------- | ---- | ------ | -------- |

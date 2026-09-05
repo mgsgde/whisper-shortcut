@@ -2,7 +2,7 @@
 # Autonomous implementer runner — `bash scripts/implementer/run-implementer.sh`.
 #
 # Takes the topmost BUILD/OPEN row from plans/implementer-queue.md, lets the build agent
-# (cursor-agent by default — "Cursor builds, Claude judges") implement it in a fresh worktree
+# (Grok builds from an Opus plan — "Opus plans and judges, Grok builds") implement it in a fresh worktree
 # branch, then re-runs every gate DETERMINISTICALLY, has a *different* model review the diff,
 # and hands you a branch to dogfood. Your merge is the approval; releases stay with you.
 #
@@ -71,10 +71,13 @@ fi
 [[ "${IMPLEMENTER_ENABLED:-0}" == "1" ]] \
     || die "IMPLEMENTER_ENABLED is not 1 — kill switch engaged (config: ${CONFIG_FILE}; create it with scripts/implementer/install-implementer.sh)"
 
+PLAN_AGENT="${IMPLEMENTER_PLAN_AGENT:-claude}"
+PLAN_MODEL="${IMPLEMENTER_PLAN_MODEL:-claude-opus-5}"
+PLAN_TIMEOUT_SECONDS="${IMPLEMENTER_PLAN_TIMEOUT_SECONDS:-1800}"
 BUILD_AGENT="${IMPLEMENTER_BUILD_AGENT:-cursor}"
-BUILD_MODEL="${IMPLEMENTER_BUILD_MODEL:-auto}"
+BUILD_MODEL="${IMPLEMENTER_BUILD_MODEL:-cursor-grok-4.6-high}"
 REVIEW_AGENT="${IMPLEMENTER_REVIEW_AGENT:-claude}"
-REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-opus}"
+REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-claude-opus-5}"
 TIMEOUT_SECONDS="${IMPLEMENTER_TIMEOUT_SECONDS:-7200}"
 SCOPE="${IMPLEMENTER_SCOPE:-app}"
 PUSH_PR="${IMPLEMENTER_PUSH_PR:-0}"
@@ -105,6 +108,18 @@ else
 fi
 MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
 
+# --- Usage limits are not failures ----------------------------------------------------------
+# `claude -p` and cursor-agent both EXIT when the plan quota is hit; auto-continue is
+# interactive-only. Treating that as a build failure mailed FAILED, kept a worktree nobody
+# could learn anything from, and that worktree then blocked the next tick. The helpers below
+# recognise it and wait the reset out instead.
+USAGE_LIMIT_STAMP="${HOME}/.config/whispershortcut-implementer/usage-limit-until"
+# How long a single run may sit waiting before it gives the slot back to the next tick. Two
+# hours covers a session limit; a weekly one is beyond any run and must defer.
+USAGE_WAIT_CAP_SECONDS="${IMPLEMENTER_USAGE_WAIT_CAP_SECONDS:-7200}"
+# shellcheck source=usage-limit.sh
+source "${SCRIPT_DIR}/usage-limit.sh"
+
 case "$SCOPE" in
     app)      SCOPE_REGEX='^(WhisperShortcut/|WhisperShortcutTests/|plans/implementer-)' ;;
     app-docs) SCOPE_REGEX='^(WhisperShortcut/|WhisperShortcutTests/|plans/|README\.md$|\.cursor/)' ;;
@@ -116,8 +131,13 @@ case "$BUILD_AGENT" in
     claude) command -v claude       >/dev/null 2>&1 || die "claude CLI not found" ;;
     *) die "unknown IMPLEMENTER_BUILD_AGENT '${BUILD_AGENT}'" ;;
 esac
-[[ "$REVIEW_AGENT" == "none" ]] || command -v claude >/dev/null 2>&1 \
-    || die "review agent '${REVIEW_AGENT}' needs the claude CLI"
+[[ "$REVIEW_AGENT" == "none" || "$REVIEW_AGENT" == "claude" ]] \
+    || die "IMPLEMENTER_REVIEW_AGENT must be claude or none — Cursor does not judge (config: ${CONFIG_FILE})"
+[[ -z "$PLAN_AGENT" || "$PLAN_AGENT" == "claude" ]] \
+    || die "IMPLEMENTER_PLAN_AGENT must be claude or empty — Cursor does not plan (config: ${CONFIG_FILE})"
+if [[ "$REVIEW_AGENT" != "none" || -n "$PLAN_AGENT" ]]; then
+    command -v claude >/dev/null 2>&1 || die "plan/review needs the claude CLI"
+fi
 if [[ "$PUSH_PR" == "1" ]]; then
     command -v gh >/dev/null 2>&1 || die "IMPLEMENTER_PUSH_PR=1 but gh is not installed"
     gh auth status >/dev/null 2>&1 || die "IMPLEMENTER_PUSH_PR=1 but gh is not authenticated"
@@ -158,7 +178,7 @@ WT_DIR="${REPO_ROOT}/.claude/worktrees/implementer-${SLUG}"
 RUN_DIR="${REPO_ROOT}/build/implementer/$(date +%F)-${SLUG}"
 
 log "queue row #${Q_NUM}: ${Q_PROPOSAL:0:90}…"
-log "branch ${BRANCH} · build ${BUILD_AGENT}/${BUILD_MODEL} · review ${REVIEW_AGENT}/${REVIEW_MODEL} · scope ${SCOPE}"
+log "branch ${BRANCH} · plan ${PLAN_AGENT:-none}/${PLAN_MODEL} · build ${BUILD_AGENT}/${BUILD_MODEL} · review ${REVIEW_AGENT}/${REVIEW_MODEL} · scope ${SCOPE}"
 if [[ "$DRY_RUN" == "1" ]]; then
     log "--dry-run: preflight OK, eligible row found, stopping before the worktree."
     exit 0
@@ -234,6 +254,91 @@ fail_run() { # fail_run <reason>
     exit 1
 }
 
+# --- Calling an agent CLI -------------------------------------------------------------------
+# One place, three callers (plan, build, review). It used to be three copies of the same
+# pid/watchdog dance, which is why the usage-limit wait could only be added once here.
+#
+# Returns the agent's exit code, or 77 when a usage limit is in force past this run's wait cap
+# — the caller answers that with defer_for_usage_limit, never with fail_run.
+#
+#   run_agent_cli <agent> <model> <timeout_s> <log_file> <prompt>
+run_agent_cli() {
+    local agent="$1" model="$2" timeout_s="$3" log_file="$4" prompt="$5"
+    local attempt=1 backoff=900 wait_deadline=0 agent_exit pid watchdog attempt_log now reset
+    : >"$log_file"
+    while :; do
+        attempt_log="${log_file}.attempt-${attempt}"
+        (
+            cd "$WT_DIR" || exit 97
+            case "$agent" in
+                cursor) exec cursor-agent -p --output-format text --force --model "$model" "$prompt" ;;
+                claude) exec claude -p --model "$model" --dangerously-skip-permissions "$prompt" ;;
+                *) exit 98 ;;
+            esac
+        ) >"$attempt_log" 2>&1 &
+        pid=$!
+        if [[ "$timeout_s" -gt 0 ]]; then
+            ( sleep "$timeout_s" && kill -TERM "$pid" 2>/dev/null ) &
+            watchdog=$!
+        else
+            watchdog=""
+        fi
+        wait "$pid"; agent_exit=$?
+        if [[ -n "$watchdog" ]]; then kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null; fi
+        # Appended, never moved: a retried call must leave the earlier attempts in the log, and
+        # the caller reads the file by name.
+        cat "$attempt_log" >>"$log_file"
+        if [[ $agent_exit -eq 0 ]]; then
+            rm -f "$USAGE_LIMIT_STAMP" "$attempt_log"
+            return 0
+        fi
+        if ! usage_limit_in_log "$attempt_log"; then
+            rm -f "$attempt_log"
+            return "$agent_exit"
+        fi
+        now=$(date +%s)
+        reset=$(parse_usage_reset_epoch "$attempt_log" || true)
+        (( wait_deadline == 0 )) && wait_deadline=$((now + USAGE_WAIT_CAP_SECONDS))
+        if [[ -n "$reset" && "$reset" =~ ^[0-9]+$ ]]; then
+            if (( reset > wait_deadline )); then
+                echo "$reset" >"$USAGE_LIMIT_STAMP"; rm -f "$attempt_log"; return 77
+            fi
+        else
+            # No parseable reset time — the message said "limit" but not when. Back off
+            # geometrically rather than hammering the API every minute.
+            reset=$((now + backoff))
+            if (( reset > wait_deadline )); then
+                echo $((now + 3600)) >"$USAGE_LIMIT_STAMP"; rm -f "$attempt_log"; return 77
+            fi
+            backoff=$(( backoff < 3600 ? backoff * 2 : 3600 ))
+        fi
+        echo "$reset" >"$USAGE_LIMIT_STAMP"
+        log "${agent} hit a usage/rate limit — waiting until $(format_epoch "$reset") (attempt ${attempt}), then retrying. Cap $(format_epoch "$wait_deadline")."
+        wait_until_epoch "$reset"
+        attempt=$((attempt + 1))
+        rm -f "$attempt_log"
+    done
+}
+
+# The opposite of fail_run: nothing is wrong with the row, the machine simply has no quota
+# right now. Leave no trace that would block the next tick — the worktree and branch go, the
+# queue row stays BUILD/OPEN, and the monthly counter is refunded because this run built
+# nothing. Exit 0: the tick must not report a failure either.
+defer_for_usage_limit() {
+    local until
+    until=$(cat "$USAGE_LIMIT_STAMP" 2>/dev/null || echo $(( $(date +%s) + 3600 )))
+    warn "LLM usage limit in force until $(format_epoch "$until") — cleaning up so the next tick retries. Queue row #${Q_NUM} stays BUILD/OPEN."
+    restore_user_app
+    echo "$RUNS_THIS_MONTH" >"$COUNTER_FILE"
+    if [[ -n "${WT_DIR:-}" && -e "$WT_DIR" ]]; then
+        git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || rm -rf "$WT_DIR"
+        git -C "$REPO_ROOT" worktree prune 2>/dev/null || true
+    fi
+    [[ -n "${BRANCH:-}" ]] && git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null
+    log "deferred — nothing built, nothing spent."
+    exit 0
+}
+
 # --- Worktree setup ------------------------------------------------------------------------
 [[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first)"
 mkdir -p "$(dirname "$WT_DIR")"
@@ -251,6 +356,87 @@ fi
 
 MAIN_STATUS_BEFORE=$(git -C "$REPO_ROOT" status --porcelain | sort)
 
+# --- Plan (Opus decides HOW; Grok types) ---------------------------------------------------
+# The planner writes exactly one file and is forbidden to touch anything else — enforced
+# afterwards, not asked for in the prompt. A planner that edits code would put changes into
+# the branch that no gate has looked at yet, and the build agent would inherit them as base.
+PLAN_FILE_REL="plans/implementer-plans/row-${Q_NUM}.md"
+PLAN_CLAUSE=""
+
+run_plan_agent() {
+    if [[ -z "$PLAN_AGENT" ]]; then
+        warn "plan step DISABLED (IMPLEMENTER_PLAN_AGENT is empty) — the build agent gets the raw queue row"
+        return 0
+    fi
+
+    local out="${RUN_DIR}/plan.log"
+    local prompt="You are the PLANNING agent of the autonomous implementer. You decide HOW this change is made; a different, cheaper model then executes your plan literally. You do not write code, and you do not run the test suite.
+
+Your working directory is a git worktree on branch ${BRANCH}, based on main. Treat it as the entire world.
+
+Plan this row from ${QUEUE_REL}:
+- Queue #: ${Q_NUM}
+- Source: ${Q_SOURCE}
+- Proposal: ${Q_PROPOSAL}
+- Falsifier: ${Q_FALSIFIER}
+
+Read before you write: .cursor/skills/implement-proposal/SKILL.md (the build agent's playbook — your plan has to fit it), the repo rules in AGENTS.md and .cursor/rules/index.mdc, and the real files this change touches. Read code rather than guessing at it; that reading is the whole value of this step.
+
+Then write EXACTLY ONE file: ${PLAN_FILE_REL}. Create no other file, modify no existing file, make no commit, push nothing. A deterministic check runs afterwards and fails the entire run if anything else in the worktree changed.
+
+The plan contains, in this order:
+1. What the row asks for, in one paragraph — and what it explicitly does NOT ask for.
+2. The files to touch, each with its change in one line. Real paths you have opened, not guesses.
+3. The tests: which file, which cases. For a bug fix, the regression case that fails before the change and passes after.
+4. The falsifier: name the exact metric, log filter or outcome signal it will be read from, and state what must be instrumented for it to be measurable ON THE DAY THIS SHIPS. If that metric does not exist yet, the instrumentation is part of this change and belongs in the file list.
+5. The commits, in order, each with its subject line and its paths.
+6. Traps: the repo rules that bite here (DebugLogger only, English-only UI text, AppState transitions, rebuild-and-restart is the runner's job not yours, README must change with user-facing features) and the edge cases the tests must cover.
+7. What you decided is out of scope, one line each, with the reason.
+
+Allowed paths for the implementation match ${SCOPE_REGEX}. If the row cannot be implemented inside that allowlist, do not plan around it: write the file with a leading 'BLOCKED' section naming the paths it would need. That is a useful answer, and it is the only case where a plan may end without a file list.
+
+Be concrete and short. Your reader is an agent that will follow you literally."
+
+    local head_before status_before plan_exit
+    head_before=$(git -C "$WT_DIR" rev-parse HEAD)
+    status_before=$(git -C "$WT_DIR" status --porcelain -uall | sort)
+    mkdir -p "$(dirname "${WT_DIR}/${PLAN_FILE_REL}")"
+
+    log "planning (${PLAN_AGENT}/${PLAN_MODEL}, timeout $((PLAN_TIMEOUT_SECONDS / 60)) min) — log: ${out}"
+    plan_exit=0
+    run_agent_cli "$PLAN_AGENT" "$PLAN_MODEL" "$PLAN_TIMEOUT_SECONDS" "$out" "$prompt" || plan_exit=$?
+    # A quota is not a verdict on this row. Nothing has been built yet, so give the slot back.
+    (( plan_exit == 77 )) && defer_for_usage_limit
+    [[ $plan_exit -eq 0 ]] || fail_run "planning agent exited ${plan_exit} (timeout or error) — see ${out}"
+
+    [[ "$(git -C "$WT_DIR" rev-parse HEAD)" == "$head_before" ]] \
+        || fail_run "GATE FAILED: the planning agent committed — a planner that commits puts code into the branch that no gate has judged"
+    local stray
+    stray=$(git -C "$WT_DIR" status --porcelain -uall | sort | grep -v -F " ${PLAN_FILE_REL}" || true)
+    if [[ "$stray" != "$status_before" ]]; then
+        diff <(echo "$status_before") <(echo "$stray") | sed 's/^/    /'
+        fail_run "GATE FAILED: the planning agent changed something other than ${PLAN_FILE_REL} (above)"
+    fi
+
+    [[ -s "${WT_DIR}/${PLAN_FILE_REL}" ]] || fail_run "the planning agent wrote no plan at ${PLAN_FILE_REL} — see ${out}"
+    local plan_bytes
+    plan_bytes=$(wc -c <"${WT_DIR}/${PLAN_FILE_REL}" | tr -d ' ')
+    ((plan_bytes >= 400)) || fail_run "the plan is ${plan_bytes} bytes — too thin to execute; see ${out}"
+
+    git -C "$WT_DIR" add "$PLAN_FILE_REL"
+    git -C "$WT_DIR" commit -q -m "docs(implementer): plan for queue row #${Q_NUM}
+
+Written by ${PLAN_AGENT}/${PLAN_MODEL} before the build." \
+        || fail_run "could not commit the plan"
+    log "plan committed: ${PLAN_FILE_REL} (${plan_bytes} B)"
+
+    PLAN_CLAUSE="
+
+A PLAN for this row has already been written by an independent planning agent and committed to this branch at ${PLAN_FILE_REL}. Read it first and execute it. It decided the approach; you decide the code. Deviate from it only where following it would be wrong, and when you do, write the deviation and its reason into IMPLEMENTER_NOTES.md — an unexplained deviation is a blocking review finding. Do not edit the plan file."
+}
+
+run_plan_agent
+
 # --- Build agent ---------------------------------------------------------------------------
 build_prompt() { # build_prompt [<review findings file>]
     cat <<EOF
@@ -264,6 +450,7 @@ ${QUEUE_REL}:
 - Source: ${Q_SOURCE}
 - Proposal: ${Q_PROPOSAL}
 - Falsifier: ${Q_FALSIFIER}
+${PLAN_CLAUSE}
 $(if [[ -n "${1:-}" && -f "${1:-}" ]]; then
     echo
     echo "A reviewer BLOCKED your previous attempt. Address every finding below, then re-verify."
@@ -286,18 +473,11 @@ run_build_agent() { # run_build_agent <attempt> [findings-file]
     local agent_log="${RUN_DIR}/agent-${attempt}.log"
     local prompt; prompt=$(build_prompt "$findings")
     log "building (attempt ${attempt}, timeout $((TIMEOUT_SECONDS / 60)) min) — log: ${agent_log}"
-    (
-        cd "$WT_DIR" || exit 97
-        case "$BUILD_AGENT" in
-            cursor) exec cursor-agent -p --output-format text --force --model "$BUILD_MODEL" "$prompt" ;;
-            claude) exec claude -p --model "$BUILD_MODEL" --dangerously-skip-permissions "$prompt" ;;
-        esac
-    ) >"$agent_log" 2>&1 &
-    local pid=$!
-    ( sleep "$TIMEOUT_SECONDS" && kill -TERM "$pid" 2>/dev/null ) &
-    local watchdog=$!
-    wait "$pid"; local rc=$?
-    kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+    local rc=0
+    run_agent_cli "$BUILD_AGENT" "$BUILD_MODEL" "$TIMEOUT_SECONDS" "$agent_log" "$prompt" || rc=$?
+    # Deliberately here and not at the caller: `run_build_agent … || fail_run` would turn a
+    # quota into a FAILED mail with a worktree attached to it.
+    (( rc == 77 )) && defer_for_usage_limit
     return $rc
 }
 
@@ -367,13 +547,23 @@ log "gates green (${FILE_COUNT} files changed)"
 # --- Review gate: a DIFFERENT model judges the diff -----------------------------------------
 REVIEW_VERDICT="skipped"
 if [[ "$REVIEW_AGENT" != "none" ]]; then
+    # Sets REVIEW_HEAD to the verdict's first line. A return value would have to travel out of
+    # a command substitution, and a subshell is exactly where defer_for_usage_limit cannot do
+    # its job: its `exit 0` would end the substitution, not the run.
+    REVIEW_HEAD=""
     review_once() { # review_once <attempt>
         local attempt="$1"
         local diff_file="${RUN_DIR}/diff-${attempt}.patch"
         local out="${RUN_DIR}/review-${attempt}.md"
         git -C "$WT_DIR" diff "${BASE}..${BRANCH}" >"$diff_file"
         log "gate: review by ${REVIEW_AGENT}/${REVIEW_MODEL} (attempt ${attempt})…"
-        claude -p --model "$REVIEW_MODEL" --dangerously-skip-permissions "$(cat <<EOF
+        # The reviewer now runs INSIDE the worktree (run_agent_cli cds there), which is right —
+        # it judges the branch — but it also puts a write-capable CLI in the tree whose gates
+        # have already run. So the read-only rule is enforced afterwards rather than asked for.
+        local head_before status_before
+        head_before=$(git -C "$WT_DIR" rev-parse HEAD)
+        status_before=$(git -C "$WT_DIR" status --porcelain -uall | sort)
+        local prompt; prompt=$(cat <<EOF
 You are the REVIEW gate of the autonomous implementer for WhisperShortcut (repo: ${REPO_ROOT}).
 You did not write this code and you must not edit it — you judge it. Read-only.
 
@@ -405,12 +595,26 @@ Write your verdict to ${out} as markdown. Its FIRST line must be exactly one of:
 Then the reasoning: for BLOCK, a numbered list of findings, each naming the file and what must
 change. Be concrete and short. Nits are not blocking — say them under "Non-blocking".
 EOF
-)" >"${RUN_DIR}/review-agent-${attempt}.log" 2>&1
-        [[ -f "$out" ]] || { echo "BLOCK"; echo "reviewer wrote no verdict file"; return 1; }
-        head -1 "$out"
+)
+        local rc=0
+        run_agent_cli "$REVIEW_AGENT" "$REVIEW_MODEL" 0 "${RUN_DIR}/review-agent-${attempt}.log" "$prompt" || rc=$?
+        (( rc == 77 )) && defer_for_usage_limit
+        if [[ "$(git -C "$WT_DIR" rev-parse HEAD)" != "$head_before" ]] \
+            || [[ "$(git -C "$WT_DIR" status --porcelain -uall | sort)" != "$status_before" ]]; then
+            fail_run "GATE FAILED: the review agent modified the worktree — a reviewer that edits bypasses every gate that already ran"
+        fi
+        # A review whose verdict cannot be read is NOT a pass: a gate that could not be
+        # evaluated has not been cleared.
+        if [[ ! -f "$out" ]]; then
+            REVIEW_HEAD="BLOCK"
+            warn "reviewer wrote no verdict file at ${out} (exit ${rc})"
+            return 1
+        fi
+        REVIEW_HEAD=$(head -1 "$out" | tr -d '[:space:]')
     }
 
-    VERDICT=$(review_once 1 | tr -d '[:space:]')
+    review_once 1
+    VERDICT="$REVIEW_HEAD"
     if [[ "$VERDICT" == "BLOCK" ]]; then
         warn "reviewer BLOCKED the first attempt — one rework cycle"
         run_build_agent 2 "${RUN_DIR}/review-1.md" || fail_run "build agent failed during rework"
@@ -428,7 +632,8 @@ EOF
             -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
             >"${RUN_DIR}/tests-2.log" 2>&1 || { tail -40 "${RUN_DIR}/tests-2.log"; fail_run "GATE FAILED: test plan (after rework)"; }
         restore_user_app
-        VERDICT=$(review_once 2 | tr -d '[:space:]')
+        review_once 2
+        VERDICT="$REVIEW_HEAD"
         [[ "$VERDICT" == "APPROVE" ]] || fail_run "reviewer BLOCKED twice — a human decides now (see ${RUN_DIR}/review-2.md)"
         REVIEW_VERDICT="approved after 1 rework"
     elif [[ "$VERDICT" == "APPROVE" ]]; then
@@ -486,6 +691,35 @@ git -C "$WT_DIR" commit -q -m "docs(implementer): queue row #${Q_NUM} → ${STAT
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" || fail_run "bookkeeping commit failed"
 [[ "$PUSH_PR" == "1" ]] && { git -C "$WT_DIR" push -q || fail_run "push of the bookkeeping commit failed"; }
 
+# --- Open the merge window ------------------------------------------------------------------
+# The same shape as the VETO lane one step earlier: you are not asked to approve, you are given
+# the chance to object. Silence merges. The window lives OUTSIDE the repo on purpose — the
+# runner's own bookkeeping is committed on the branch, and a window recorded there would only
+# become visible on main after the merge it is supposed to authorise.
+#
+# It also serialises the lane: tick.sh starts no new build while a window is open, which
+# incidentally fixes an older hole — main's queue row still said BUILD/OPEN after a run, so the
+# next day's tick would happily build the same row again on a new branch.
+MERGE_WINDOW_DAYS="${IMPLEMENTER_MERGE_WINDOW_DAYS:-2}"
+WINDOW_DIR="${HOME}/.local/state/whispershortcut-implementer/merge-windows"
+MERGE_DEADLINE=""
+if [[ "${IMPLEMENTER_AUTO_MERGE:-1}" == "1" ]]; then
+    MERGE_DEADLINE=$(date -v"+${MERGE_WINDOW_DAYS}d" +%F 2>/dev/null || date -d "+${MERGE_WINDOW_DAYS} days" +%F)
+    mkdir -p "$WINDOW_DIR"
+    {
+        echo "QUEUE_NUM=${Q_NUM}"
+        echo "BRANCH=${BRANCH}"
+        echo "WT_DIR=${WT_DIR}"
+        echo "PR_URL=${PR_URL}"
+        echo "DEADLINE=${MERGE_DEADLINE}"
+        echo "RUN_DIR=${RUN_DIR}"
+        echo "VETOED="
+    } >"${WINDOW_DIR}/q${Q_NUM}.env"
+    log "merge window open until ${MERGE_DEADLINE} — stop it with: bash scripts/implementer/veto.sh ${Q_NUM}"
+else
+    log "IMPLEMENTER_AUTO_MERGE=0 — no merge window; the branch waits for you."
+fi
+
 # --- Report --------------------------------------------------------------------------------
 REPORT="${RUN_DIR}/report.md"
 launch_branch_build
@@ -516,6 +750,21 @@ launch_branch_build
     echo
     echo "## Approve"
     echo
+    if [[ -n "$MERGE_DEADLINE" ]]; then
+        echo "**You do not have to do anything.** This merges into \`main\` on ${MERGE_DEADLINE}"
+        echo "unless you stop it:"
+        echo
+        echo '```bash'
+        echo "cd ${REPO_ROOT} && bash scripts/implementer/veto.sh ${Q_NUM}"
+        echo '```'
+        echo
+        echo "Stopping keeps the branch and the worktree — it closes the window, it does not"
+        echo "reject the change. Merging does not release anything: \`create-release.sh\` and the"
+        echo "App Store submission are still yours, and so is the parent repo's submodule pointer."
+        echo
+        echo "Rather have it now than on ${MERGE_DEADLINE}?"
+        echo
+    fi
     if [[ -n "$PR_URL" ]]; then
         echo "Merge the PR: ${PR_URL}"
     else
@@ -543,7 +792,9 @@ launch_branch_build
     echo "the automation's own falsifier is graded from that column."
 } >"$REPORT"
 
-report_out "WhisperShortcut implementer READY — #${Q_NUM} ${Q_PROPOSAL:0:60}" "$REPORT"
+SUBJECT_TAIL=""
+[[ -n "$MERGE_DEADLINE" ]] && SUBJECT_TAIL=" — merges ${MERGE_DEADLINE} unless stopped"
+report_out "WhisperShortcut implementer READY — #${Q_NUM} ${Q_PROPOSAL:0:60}${SUBJECT_TAIL}" "$REPORT"
 if [[ "$BRANCH_BUILD_RUNNING" == "1" ]]; then
     notify "WhisperShortcut implementer READY" "Queue #${Q_NUM} is now RUNNING as ${BRANCH} — try it"
 else
