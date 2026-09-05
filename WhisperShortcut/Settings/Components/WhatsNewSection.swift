@@ -118,7 +118,10 @@ struct WhatsNewSection: View {
     request.setValue("WhisperShortcut/\(currentVersion)", forHTTPHeaderField: "User-Agent")
     request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
     do {
-      let (data, response) = try await URLSession.shared.data(for: request)
+      // `LLMHTTPSession.integrations`, not `URLSession.shared`: only a session the app
+      // configures itself carries the Offline Mode guard, and this check is the one call in
+      // the app that would otherwise reach the internet while the mode is on.
+      let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
       if let http = response as? HTTPURLResponse, http.statusCode != 200 {
         DebugLogger.log("WHATS-NEW: GitHub releases HTTP \(http.statusCode)")
         return

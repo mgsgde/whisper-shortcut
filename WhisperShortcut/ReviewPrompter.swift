@@ -4,8 +4,8 @@ import AppKit
 
 /// Manages two distinct review/support prompts depending on how the app was distributed:
 ///
-/// - **App Store build**: native `SKStoreReviewController.requestReview()` after enough
-///   successful operations. Apple's own system additionally rate-limits this to 3×/year.
+/// - **App Store build**: native `AppStore.requestReview(in:)` after enough successful
+///   operations. Apple's own system additionally rate-limits this to 3×/year.
 /// - **GitHub build**: one-time NSAlert pointing the user at the App Store version
 ///   ("If you like this, please consider supporting me by buying it for a few euros and
 ///   leaving a review"). Shown at most once per installation.
@@ -17,6 +17,11 @@ import AppKit
 /// sets a "pending" flag once the threshold is reached; the prompt then fires the next
 /// time the user focuses this app (status-item menu open or chat window open). This
 /// avoids stealing focus from the foreground app the user was just dictating into.
+///
+/// The App Store prompt anchors to a view controller, and a menu-bar app is often running
+/// with no window at all — `menuWillOpen` is exactly that case. When no window is up the
+/// prompt stays armed rather than being spent, and fires the next time one is (chat or
+/// settings). Only a prompt that was actually shown clears the flag and resets the counter.
 final class ReviewPrompter {
 
   // MARK: - Tuning
@@ -67,11 +72,12 @@ final class ReviewPrompter {
     }
 
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.pendingReviewPrompt)
-    DebugLogger.log("REVIEW: Threshold reached — armed pending prompt, will fire on next menu open")
+    DebugLogger.log("REVIEW: Threshold reached — armed pending prompt, will fire on next app focus")
   }
 
-  /// Called when the user focuses this app (`menuWillOpen` on the status-item menu,
-  /// or chat window open). If a pending prompt is armed, shows it now.
+  /// Called when the user focuses this app: `menuWillOpen` on the status-item menu, or the
+  /// chat or settings window opening. If a pending prompt is armed, shows it now — and if it
+  /// could not be presented, leaves it armed for the next one of those.
   @MainActor
   func showPendingPromptIfNeeded() {
     guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.pendingReviewPrompt) else { return }
@@ -81,15 +87,20 @@ final class ReviewPrompter {
       return
     }
 
-    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.pendingReviewPrompt)
-    resetCounter()
-
+    let shown: Bool
     switch distribution {
     case .appStore:
-      showAppStorePrompt()
+      shown = showAppStorePrompt()
     case .github:
-      showGitHubSupportPrompt()
+      shown = showGitHubSupportPrompt()
     }
+
+    // A prompt that could not be presented is not a prompt the user declined: leave the flag
+    // armed so the next window gets it, and leave the counter alone.
+    guard shown else { return }
+
+    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.pendingReviewPrompt)
+    resetCounter()
   }
 
   // MARK: - Distribution detection
@@ -139,15 +150,41 @@ final class ReviewPrompter {
 
   // MARK: - App Store prompt
 
-  private func showAppStorePrompt() {
-    SKStoreReviewController.requestReview()
+  /// Returns whether the prompt was actually requested — false when no window was open to
+  /// anchor it to, which leaves the caller's pending flag armed for the next attempt.
+  @MainActor
+  private func showAppStorePrompt() -> Bool {
+    guard let anchor = anchorViewController else {
+      DebugLogger.log("REVIEW: No window open to anchor the App Store prompt — staying armed")
+      return false
+    }
+    AppStore.requestReview(in: anchor)
     UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastReviewPromptDate)
     DebugLogger.log("REVIEW: App Store review prompt requested")
+    return true
+  }
+
+  /// The view controller `AppStore.requestReview(in:)` anchors its sheet to.
+  ///
+  /// Key and main window first; then any visible window that has a content *view controller* —
+  /// which is what excludes `PopupNotificationWindow`, a bare `contentView` panel that must
+  /// never host a review sheet. Nil when the app has no window up at all.
+  @MainActor
+  private var anchorViewController: NSViewController? {
+    if let controller = NSApp.keyWindow?.contentViewController { return controller }
+    if let controller = NSApp.mainWindow?.contentViewController { return controller }
+    return NSApp.windows
+      .first { $0.isVisible && $0.contentViewController != nil }?
+      .contentViewController
   }
 
   // MARK: - GitHub one-time support prompt
 
-  private func showGitHubSupportPrompt() {
+  /// Always shows: `NSAlert.runModal()` needs no host window, so unlike the App Store sheet
+  /// this cannot fail for want of one.
+  @MainActor
+  @discardableResult
+  private func showGitHubSupportPrompt() -> Bool {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.githubSupportPromptShown)
 
     let alert = NSAlert()
@@ -170,6 +207,7 @@ final class ReviewPrompter {
     } else {
       DebugLogger.log("REVIEW: GitHub user dismissed support prompt")
     }
+    return true
   }
 
   // MARK: - Counter housekeeping

@@ -113,6 +113,12 @@ class SettingsWindowController: NSWindowController {
       needsDefaultFrame = false
     }
     window?.makeKeyAndOrderFront(nil)
+    // Third firing point for an armed review prompt, besides `menuWillOpen` and the chat
+    // window. The App Store sheet needs a window to anchor to, and a dictation-only user may
+    // open neither the menu nor chat — settings is the one window they do reach.
+    Task { @MainActor in
+      ReviewPrompter.shared.showPendingPromptIfNeeded()
+    }
   }
 }
 
