@@ -14,6 +14,9 @@ decides. You never push, never release, never touch anything outside this worktr
 
 ## 1. Context first
 
+- **If a plan file exists** at `plans/implementer-plans/row-<N>.md`, read it first and
+  execute it. Opus wrote it; you type it. Deviate only where following it would be wrong, and
+  write that deviation into `IMPLEMENTER_NOTES.md`.
 - Read the queue row's **source ledger entry** (`plans/improvement-ledger.md`,
   `../business/growth-ledger.md`, `plans/loop-ledger.md`) — the one-liner in the queue is a pointer,
   not the full intent. It carries the evidence, the counts, and the reasoning.

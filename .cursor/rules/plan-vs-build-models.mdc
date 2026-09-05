@@ -1,0 +1,22 @@
+---
+description: Claude Opus 5 proposes and plans; Cursor Grok 4.6 implements. Never the other way around.
+alwaysApply: true
+---
+
+# Plan vs build models
+
+Same split as sabaki.dance. The September 2026 plan commit that shipped Correct / Format / Rephrase without a separate approval is why this is a rule, not a suggestion.
+
+| Job | Model | Why |
+| --- | --- | --- |
+| Propose (usage / model-audit / growth / architect) | Claude Opus 5 | Judgement. Cursor proposals have been bad. |
+| Plan (implementer plan step, interactive plans) | Claude Opus 5 (`claude-opus-5`) | Decides HOW. Writes one plan file, no code. |
+| Build (implementer, "implement this") | Cursor Grok 4.6 (`cursor-grok-4.6-high`) | Types the code from a plan. |
+| Judge (implementer review) | Claude Opus 5 | Builder never judges its own diff. |
+
+**In an interactive Cursor session (this is Grok):**
+
+- Asked to **propose, plan, audit, or design** a change: do not write the plan yourself. Launch a Task subagent with `model` `claude-opus-5-thinking-high`. You may implement only after that plan exists and the user accepts it.
+- Asked to **implement** something already decided (including "take this out", "do what we just agreed"): implement it here. Do not spawn Opus to type the code.
+
+Scheduled jobs pin the same IDs. Do not switch a review job to Cursor or Sonnet, and do not switch the implementer builder to `auto`.

@@ -52,7 +52,7 @@ done
 # `--max-budget-usd` stays as a backstop for the case where an ANTHROPIC_API_KEY does enter the
 # environment later and the run becomes dollar-billed. Under subscription auth there is no
 # dollar spend for it to cap — do not mistake it for the thing keeping this job small.
-AUDIT_MODEL="${AUDIT_MODEL:-opus}"
+AUDIT_MODEL="${AUDIT_MODEL:-claude-opus-5}"
 AUDIT_EFFORT="${AUDIT_EFFORT:-high}"
 AUDIT_BUDGET_USD="${AUDIT_BUDGET_USD:-10}"
 

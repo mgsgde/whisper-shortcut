@@ -42,7 +42,7 @@ done
 # CLI authenticates against a Claude Max subscription, so this consumes rate-limit
 # capacity, not dollars, and the whole value of a strategy verdict is judgement quality.
 # --max-budget-usd stays as the backstop for a future API-key world.
-GROWTH_MODEL="${GROWTH_MODEL:-opus}"
+GROWTH_MODEL="${GROWTH_MODEL:-claude-opus-5}"
 GROWTH_EFFORT="${GROWTH_EFFORT:-high}"
 GROWTH_BUDGET_USD="${GROWTH_BUDGET_USD:-10}"
 GROWTH_TIMEOUT_SECS="${GROWTH_TIMEOUT_SECS:-3600}"

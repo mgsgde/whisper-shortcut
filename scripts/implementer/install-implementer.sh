@@ -20,15 +20,19 @@ cat >"$CONFIG_FILE" <<'EOF'
 # Works without a rebuild — it is read at run time, so it is a real off switch.
 IMPLEMENTER_ENABLED=0
 
-# Cost tiering ("Cursor builds, Claude judges"): bulk implementation runs on the
-# Cursor subscription, the scarcer Claude tier does the judging. Builder never
-# judges its own work — the same proposer-is-never-the-judge rule the loops use.
-IMPLEMENTER_BUILD_AGENT=cursor     # cursor | claude
-IMPLEMENTER_BUILD_MODEL=auto       # cursor-agent model (auto = quota-friendly router)
-IMPLEMENTER_REVIEW_AGENT=claude    # claude | none (none = skip the review gate)
-IMPLEMENTER_REVIEW_MODEL=opus
+# Cost tiering ("Opus plans and judges, Grok builds"): the expensive model
+# decides HOW and whether the diff is fine; the cheap one types. Builder never
+# judges its own work. Do not set BUILD_MODEL=auto — a router makes hit rates
+# across runs uncomparable. Avoid the -fast Grok variants (dearer, not latency-bound).
+IMPLEMENTER_PLAN_AGENT=claude                 # empty = build with no plan (a downgrade, say so)
+IMPLEMENTER_PLAN_MODEL=claude-opus-5
+IMPLEMENTER_BUILD_AGENT=cursor                # cursor | claude
+IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high
+IMPLEMENTER_REVIEW_AGENT=claude               # claude | none — never cursor
+IMPLEMENTER_REVIEW_MODEL=claude-opus-5
 
 IMPLEMENTER_TIMEOUT_SECONDS=7200   # hard cap for ONE build-agent phase
+IMPLEMENTER_PLAN_TIMEOUT_SECONDS=1800
 IMPLEMENTER_MAX_RUNS_PER_MONTH=10  # cumulative brake; counter in runs-YYYY-MM next to this file
 
 # Live transcription roundtrips in the test gate spend the app's own provider keys (real money,

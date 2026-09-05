@@ -38,7 +38,7 @@ done
 
 # Opus, same reasoning as model-audit-job.sh: subscription auth means this costs rate-limit
 # capacity, not dollars, and grading the graders is pure judgement work.
-LOOPS_MODEL="${LOOPS_MODEL:-opus}"
+LOOPS_MODEL="${LOOPS_MODEL:-claude-opus-5}"
 LOOPS_EFFORT="${LOOPS_EFFORT:-high}"
 LOOPS_BUDGET_USD="${LOOPS_BUDGET_USD:-10}"
 LOOPS_TIMEOUT_SECS="${LOOPS_TIMEOUT_SECS:-3600}"
