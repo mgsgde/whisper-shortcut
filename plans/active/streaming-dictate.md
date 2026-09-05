@@ -348,8 +348,7 @@ The app's logs from a morning of real offline dictation showed every WhisperKit 
 1.83 s → 3.17 s, 2.58 s → 3.05 s, 4.14 s → 3.25 s, 15.5 s → 3.42 s). A floor like that is what the
 user waits through after Stop once streaming has taken everything else, and the "decode cost
 tracks output tokens" model above cannot produce it. `LocalSpeechService` now logs WhisperKit's
-own stage timings (`SPEED: LOCAL-SPEECH timings …`) on branch
-`claude/whisper-transcription-speed-f4fcfe` (commit `54399e7`), and
+own stage timings (`SPEED: LOCAL-SPEECH timings …`), and
 `OfflineWhisperBenchmarkTests.realRecordingBreakdown` decodes the user's retained recordings at
 five lengths, with and without the Whisper Glossary (137 chars, 52 tokens), twice each. M1 Pro /
 16 GB, Turbo on `.cpuAndGPU`, warm model, the Mac also building in another worktree — so read the
@@ -434,9 +433,12 @@ Cheaper steps that keep Whisper, in order of expected payoff, none measured yet:
 - **Shorter glossary.** Keep the terms that actually get misheard; do not drop the glossary on
   in-flight chunks (those chunks would then mishear the same terms the user added it for).
 
-Instrumentation to re-run the measurement lives on `claude/whisper-transcription-speed-f4fcfe`
-(`54399e7`): `SPEED: LOCAL-SPEECH timings …` in `LocalSpeechService`, opt-in test
-`realRecordingBreakdown` in `OfflineWhisperBenchmarkTests` (numbers only, no transcripts).
+Instrumentation to re-run the measurement: `SPEED: LOCAL-SPEECH timings …` in
+`LocalSpeechService` (see `timingsSummary`), plus the opt-in test `realRecordingBreakdown` in
+`OfflineWhisperBenchmarkTests` (numbers only, no transcripts). The short version of this whole
+section is on the `LocalSpeechService` actor doc comment, and the always-loaded
+`.cursor/rules/index.mdc` carries a pointer, because "local Whisper is too slow" is a question
+that keeps coming back.
 
 Sources: [Parakeety: Wispr Flow does not run locally](https://www.parakeety.com/resources/does-wispr-flow-run-locally),
 [Willow Voice Review](https://willowvoice.com/blog/wispr-flow-review-voice-dictation),
