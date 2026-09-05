@@ -672,8 +672,6 @@ class SpeechService {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
     }
 
-    defer { DictatePromptPreset.pending = nil }
-
     try validateAudioFileFormat(at: audioURL)
 
     switch selectedPromptModel.provider {
@@ -713,8 +711,7 @@ class SpeechService {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
     if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
-      return Self.withPendingPreset(
-        AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule)
+      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
     }
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
@@ -727,13 +724,7 @@ class SpeechService {
       base = trimmed
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
-    return Self.withPendingPreset(base + AppConstants.promptModeOutputRule)
-  }
-
-  /// Peek, don't consume: ConnectionPrewarmer uses this too, and must see the same prompt.
-  private static func withPendingPreset(_ prompt: String) -> String {
-    guard let extra = DictatePromptPreset.pending?.instruction else { return prompt }
-    return prompt + "\n\n" + extra
+    return base + AppConstants.promptModeOutputRule
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by

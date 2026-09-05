@@ -36,9 +36,6 @@ class MenuBarController: NSObject {
     case transcribeCancelledRecording = 120
     case addToGlossary = 121
     case finishSetup = 122
-    case promptCorrect = 123
-    case promptFormat = 124
-    case promptRephrase = 125
     case finishSetupSeparator = 126
   }
 
@@ -343,9 +340,6 @@ class MenuBarController: NSObject {
       createMenuItemWithShortcut(
         "Dictate Prompt", action: #selector(togglePrompting),
         shortcut: currentConfig.startPrompting, tag: .dictatePrompt))
-    menu.addItem(createMenuItem("Correct", action: #selector(startPromptCorrect), tag: .promptCorrect))
-    menu.addItem(createMenuItem("Format", action: #selector(startPromptFormat), tag: .promptFormat))
-    menu.addItem(createMenuItem("Rephrase", action: #selector(startPromptRephrase), tag: .promptRephrase))
     menu.addItem(
       createMenuItemWithShortcut(
         "Screenshot", action: #selector(takeScreenshot),
@@ -882,14 +876,6 @@ class MenuBarController: NSObject {
     #endif
 
     updateTranscriptionHistoryItems(menu)
-
-    let promptPresetsEnabled = appState.canStartPrompting(hasAPIKey: canPrompt, hasOfflineModel: false)
-      || meetingAllowsActions && canPrompt
-    for tag in [MenuTag.promptCorrect, .promptFormat, .promptRephrase] {
-      menu.item(withTag: tag.rawValue)?.isEnabled = promptPresetsEnabled
-        && appState.recordingMode != .prompt
-        && activeMeetingSegment != .prompt
-    }
 
     // Handle special case when no API key (any provider) and no usable transcription is configured.
     // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
@@ -2898,18 +2884,6 @@ extension MenuBarController: ShortcutDelegate {
       },
       retryActionTitle: "Review Permissions"
     )
-  }
-
-  // Dictate Prompt presets. Both builds have Dictate Prompt (the App Store one takes its text
-  // from the clipboard rather than the selection), and the menu items are added unconditionally,
-  // so these must NOT sit inside the `#if !APP_STORE` block below.
-  @objc private func startPromptCorrect() { startPrompting(preset: .correct) }
-  @objc private func startPromptFormat() { startPrompting(preset: .format) }
-  @objc private func startPromptRephrase() { startPrompting(preset: .rephrase) }
-
-  private func startPrompting(preset: DictatePromptPreset) {
-    DictatePromptPreset.pending = preset
-    togglePrompting()
   }
 
   // Selection-based Read Aloud (HotKey + menu item + everything it needs) copies via ⌘C, which

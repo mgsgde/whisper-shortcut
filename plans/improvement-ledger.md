@@ -35,7 +35,7 @@ Status values: `proposed` · `accepted` · `shipped` · `measured` · `rejected`
 
 | ID  | Idea | Why not | Run |
 | --- | ---- | ------- | --- |
-| _(empty)_ | | | |
+| I5 | One-tap Correct / Format / Rephrase menu items for Dictate Prompt | Owner rejected 2026-09-04: never separately approved (shipped inside the Sept-2 plan commit), not actually one-tap (still starts a recording), no shortcut, menu clutter. Reverted. Do not re-propose. | plan 2026-09 |
 
 ## Run log
 
