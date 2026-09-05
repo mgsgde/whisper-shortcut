@@ -126,8 +126,51 @@ case "$SCOPE" in
     *) die "unknown IMPLEMENTER_SCOPE '${SCOPE}'" ;;
 esac
 
+# A preflight failure normally only warns into the tick log. That is right for "binary not
+# installed" — you find out the moment you install the machine — and wrong for a login that
+# goes stale months later, which would leave the loop doing nothing at all until the weekly
+# health mail noticed. So the logged-out case gets its own loud exit.
+alert_and_die() { # alert_and_die <subject> <body>
+    osascript -e "display notification \"$(printf '%s' "$1" | sed 's/"/\\"/g')\" with title \"Implementer blocked\"" >/dev/null 2>&1 || true
+    local body_file; body_file="$(mktemp -t implementer-preflight)"
+    printf '%s\n' "$2" >"$body_file"
+    python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$1" --body-file "$body_file" \
+        >/dev/null 2>&1 || warn "could not send mail — body kept at ${body_file}"
+    die "$1"
+}
+
 case "$BUILD_AGENT" in
-    cursor) command -v cursor-agent >/dev/null 2>&1 || die "cursor-agent not found (curl https://cursor.com/install -fsS | bash)" ;;
+    cursor)
+        command -v cursor-agent >/dev/null 2>&1 || die "cursor-agent not found (curl https://cursor.com/install -fsS | bash)"
+        # `command -v` only proves the binary exists, and `cursor-agent status` is no better:
+        # on 2026-09-06 it printed "✓ Login successful! Logged in" while every `-p` run died
+        # instantly on "Authentication required". The token was present but rejected
+        # server-side. By then the run had already spent a full Opus planning pass, and the
+        # mail blamed "timeout or error". The only honest probe is a real one-token prompt —
+        # cents, once per run, against an Opus plan thrown away.
+        # Run it in a scratch dir: `--force` auto-approves tools, and it has no business
+        # anywhere near the checkout.
+        _probe_dir="$(mktemp -d -t implementer-authprobe)"
+        _probe_out="$(cd "$_probe_dir" && cursor-agent -p --output-format text --force \
+            --model "$BUILD_MODEL" 'Reply with exactly: OK' 2>&1)"
+        rm -rf "$_probe_dir"
+        if grep -qiE 'authentication required|not (logged in|authenticated)|unauthorized|invalid (api )?key' <<<"$_probe_out"; then
+            alert_and_die "implementer BLOCKED — cursor-agent is logged out" \
+"The build agent (${BUILD_AGENT}/${BUILD_MODEL}) cannot authenticate, so no run can start.
+
+    ${_probe_out}
+
+This is the one state in this machine only you can clear:
+
+    cursor-agent login
+
+(or set CURSOR_API_KEY in ${CONFIG_FILE}). Nothing was planned, built or spent — the run
+stopped in preflight, before the Opus planning pass. The queue row stays BUILD/OPEN and the
+next tick picks it up once the login is back."
+        fi
+        # Any OTHER probe failure is deliberately not fatal: a quota exit here is exactly what
+        # usage-limit.sh exists to wait out during the real build.
+        ;;
     claude) command -v claude       >/dev/null 2>&1 || die "claude CLI not found" ;;
     *) die "unknown IMPLEMENTER_BUILD_AGENT '${BUILD_AGENT}'" ;;
 esac
