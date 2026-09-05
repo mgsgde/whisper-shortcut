@@ -2,7 +2,7 @@
 //  LocalSpeechService.swift
 //  WhisperShortcut
 //
-//  Offline speech-to-text using Whisper.cpp via SwiftWhisper
+//  Offline speech-to-text using WhisperKit (CoreML)
 //
 
 import Foundation
@@ -11,6 +11,54 @@ import CoreML
 import Darwin
 import WhisperKit
 
+/// Offline dictation through WhisperKit.
+///
+/// # Why offline dictation feels slow, and what does not fix it (measured 2026-09-03)
+///
+/// Read this before optimising anything here — the four obvious ideas have all been tried and
+/// three of them are dead ends. Every WhisperKit call costs a **fixed ~3 s floor on an M1 Pro**,
+/// whether the audio holds 1.8 s or 16 s of speech, and that floor is what the user waits through
+/// after Stop once streaming has taken the rest. The full table, method and falsifiers are in
+/// `plans/active/streaming-dictate.md` → "Where the fixed cost per call goes"; the benchmark that
+/// produces it is `OfflineWhisperBenchmarkTests.realRecordingBreakdown`, and every decode logs its
+/// own breakdown as `SPEED: LOCAL-SPEECH timings …` (see `timingsSummary`).
+///
+/// The floor is **the model, not this code**:
+///
+/// - **The encoder is half to two thirds of every call**, because Whisper pads every window to
+///   30 s and runs the full large-v3 encoder over it: 2–6 s of encoder for a 2 s clip just as for
+///   a 15 s one. So **shortening `dictateChunkMinDuration` cannot lower the wait** — the cost is
+///   per 30 s window, not per second of speech. (An earlier note in the plan claimed the encoder
+///   was cheap and decode tracked output tokens; that came from a clip that produced no tokens
+///   and was written before the encoder timing was visible.)
+/// - **The Whisper Glossary roughly doubles the decoder loops.** `promptTokens` are pushed through
+///   the decoder one at a time before the first real token (52 prompt tokens → 65 loops for a
+///   12-token transcript) at 7–25 tok/s, i.e. +1.5–3 s per window, and on a 30 s recording it also
+///   triggered two temperature fallbacks the no-glossary arm did not need. Same characters out.
+///   Dropping it is not the answer (it exists because those terms get misheard); keeping it short
+///   is.
+/// - **Chunk decodes overlap on the GPU** and slow each other down. This actor does *not* serialise
+///   them: `transcribe` suspends at `await whisperKit.transcribe`, so a rotated in-flight chunk and
+///   the tail decode run side by side (logged 2026-09-03: a 16 s chunk took 4.3 s instead of 3.3 s
+///   with the tail beside it). The plan's older "the actor serialises chunk decodes" claim is wrong.
+/// - **`.vad` chunking is not a lever either** — measured, shipped and reverted the same day; see
+///   the `chunkingStrategy` parameter on `transcribe`.
+///
+/// What is actually left, in order of expected payoff — none of it measured yet, none of it
+/// started:
+///
+/// 1. **A FastConformer/TDT model instead of Whisper** (Parakeet TDT 0.6B v3 via FluidAudio,
+///    CoreML/ANE, 25 European languages incl. German). Its encoder is ~20 ms per window against
+///    Whisper's seconds, so a 2 s tail would cost ~100 ms rather than ~3 s. This is the only path
+///    to the latency users compare us against — and note that **Wispr Flow, the usual comparison,
+///    is cloud-only** (no on-device model; ≤700 ms p99 from their server pipeline), so its speed is
+///    not evidence that a local model can be that fast. Open question: no `promptTokens` glossary;
+///    FluidAudio offers CTC vocabulary boosting (+97 MB) whose value for German domain terms is
+///    untested. Tracked as `plans/improvement-plan-2026-09.md` F15, second half.
+/// 2. **Encoder on the ANE with the `_632MB` turbo variant.** See `OfflineModelType.usesNeuralEngine`
+///    for why large models are on the GPU today — and note the 14-minute ANE compile behind that
+///    decision was never allowed to finish, so it is unknown, not disproven.
+/// 3. **Serialising chunk decodes**, so the tail never shares the GPU with a still-running chunk.
 actor LocalSpeechService {
   static let shared = LocalSpeechService()
   
