@@ -25,7 +25,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini37Flash
+    case .gemini: return .gemini38Flash
     case .grok:   return .grok46
     case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
@@ -1786,7 +1786,8 @@ struct SettingsDefaults {
   static let addToGlossary: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  // Chat defaults to 3.7 Flash — the current Gemini workhorse (GA 2026-08-13). Dictate Prompt
+  // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
+  // introductory price as 3.7 ($0.75/$3.75 per 1M through 2026). Dictate Prompt
   // and meeting summary stay on 3.5 Flash-Lite because those run more often and Flash is
   // roughly 3× the output price of Flash-Lite.
   // https://ai.google.dev/gemini-api/docs/pricing
@@ -1811,7 +1812,7 @@ struct SettingsDefaults {
   /// Cheapest audio-capable model on OpenRouter's own pricing list (2026-07).
   static let openRouterTranscriptionModelID = "google/gemini-3.5-flash-lite"
   static let selectedPromptModel = PromptModel.gemini35FlashLite
-  static let selectedChatModel = PromptModel.gemini37Flash
+  static let selectedChatModel = PromptModel.gemini38Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1870,10 +1871,11 @@ struct SettingsDefaults {
   static let selectedMeetingSummaryModel = PromptModel.gemini35FlashLite
 
   /// Smart Improvement runs at most once a week in the background, so its per-run cost barely
-  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.7 Flash
-  /// is the current workhorse (GA 2026-08-13): more capable than 3.6 and cheaper through 2026
-  /// ($0.75/$3.75 per 1M intro vs 3.6's $1.50/$7.50). https://ai.google.dev/gemini-api/docs/models
-  static let selectedImprovementModel = PromptModel.gemini37Flash
+  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.8 Flash
+  /// is the current workhorse (GA 2026-09-02): same introductory price as 3.7 ($0.75/$3.75 per 1M
+  /// through 2026). 3.7 stays selectable — the audit's probe had 3.8 ~12% slower, so it is not
+  /// hidden. https://ai.google.dev/gemini-api/docs/models
+  static let selectedImprovementModel = PromptModel.gemini38Flash
 
   // MARK: - Local LLM (OpenAI-compatible server, e.g. Ollama / LM Studio)
   /// Base URL up to and including `/v1`. The provider appends `/chat/completions`. Ollama's

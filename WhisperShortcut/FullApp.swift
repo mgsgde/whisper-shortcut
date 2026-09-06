@@ -50,6 +50,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     migrateTranscriptionDefaultTo31FlashLite()
     migrateImprovementDefaultTo37Flash()
     migrateChatDefaultTo37Flash()
+    migrateChatAndImprovementDefaultsTo38Flash()
 
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
@@ -307,6 +308,31 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     DebugLogger.log(
       "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+  }
+
+  /// One-shot migration (2026-09): chat-window and Smart Improvement defaults move
+  /// 3.7 Flash → 3.8 Flash. Google shipped 3.8 as the current Flash workhorse on
+  /// 2026-09-02 at the same introductory price as 3.7. Only slots still sitting on
+  /// exactly `gemini-3.7-flash` move — a user who picked another model keeps it.
+  ///
+  /// Must run after the two 3.7 migrations so a 3.6 install chains 3.6 → 3.7 → 3.8
+  /// in one launch. Same `SettingsViewModel.save()` reason as the earlier Gemini
+  /// migrations: changing `SettingsDefaults` alone would reach almost nobody.
+  private func migrateChatAndImprovementDefaultsTo38Flash() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateDefaultsTo38Flash) else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateDefaultsTo38Flash)
+
+    let keys = [
+      UserDefaultsKeys.selectedChatModel,
+      UserDefaultsKeys.selectedImprovementModel,
+    ]
+    for key in keys {
+      guard let stored = defaults.string(forKey: key),
+            stored == PromptModel.gemini37Flash.rawValue else { continue }
+      defaults.set(PromptModel.gemini38Flash.rawValue, forKey: key)
+      DebugLogger.log("MIGRATION: \(key) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
+    }
   }
 
   /// Catches SIGTERM / SIGINT / SIGHUP so we know *why* the process died and
