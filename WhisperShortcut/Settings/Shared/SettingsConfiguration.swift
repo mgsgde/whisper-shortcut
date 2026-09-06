@@ -59,8 +59,8 @@ enum ChatModelProvider: String, CaseIterable {
 // Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
-// -pro, shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
-// gemini-3-flash-preview (deprecated-pending) → gemini-3.5-flash.
+// -pro, shutdown 2026-10-16) → gemini-3.7-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
+// gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
@@ -553,6 +553,10 @@ enum PromptModel: String, CaseIterable {
     // "Legacy models". Dominated.
     // https://platform.claude.com/docs/en/about-claude/models/overview
     case .claudeOpus48: return .claudeOpus5
+    // Gemini Flash: 3.5 and 3.6 are dominated by 3.7 on price, tier, and (for 3.6) speed.
+    // Point at 3.7, not 3.8 — the 2026-09-03 audit's probe had 3.8 ~12% slower than 3.7,
+    // so 3.7 stays selectable until an interleaved latency run decides otherwise.
+    case .gemini35Flash, .gemini36Flash: return .gemini37Flash
     default: return nil
     }
   }
@@ -755,8 +759,10 @@ enum PromptModel: String, CaseIterable {
       // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
       return Self.gemini31Pro.rawValue
     case "gemini-2.5-flash":
-      // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
-      return Self.gemini35Flash.rawValue
+      // Deprecated, shutdown 2026-10-16. Google's named replacement is gemini-3.5-flash,
+      // but 3.5 Flash is hidden from chat pickers (chatReplacement → 3.7), so landing
+      // here would deposit a user on a model they cannot re-select. Forward to 3.7.
+      return Self.gemini37Flash.rawValue
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return Self.gemini31FlashLite.rawValue
@@ -764,8 +770,9 @@ enum PromptModel: String, CaseIterable {
       // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
       return Self.gemini31Pro.rawValue
     case "gemini-3-flash-preview":
-      // Deprecated-pending; Google says use gemini-3.5-flash.
-      return Self.gemini35Flash.rawValue
+      // Deprecated-pending; Google says use gemini-3.5-flash. Same reason as 2.5-flash:
+      // 3.5 is no longer chat-selectable, so land on 3.7 instead.
+      return Self.gemini37Flash.rawValue
     default:
       return raw
     }
@@ -789,6 +796,7 @@ enum PromptModel: String, CaseIterable {
   static func loadChatSlotModel(forKey key: String, default fallback: PromptModel) -> PromptModel {
     let loaded = loadPromptModel(forKey: key, default: fallback, validate: { $0.supportsTextChat })
     guard let replacement = loaded.chatReplacement else { return loaded }
+    DebugLogger.log("MODEL-LINEUP: \(key) \(loaded.rawValue) → \(replacement.rawValue) (superseded)")
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     return replacement
   }
