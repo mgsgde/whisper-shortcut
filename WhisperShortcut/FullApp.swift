@@ -8,6 +8,41 @@ private enum Constants {
   static let defaultBundleID = "com.magnusgoedde.whispershortcut"
 }
 
+/// True when this process is hosting an XCTest / Swift Testing run instead of serving a user.
+///
+/// Read once, in `main()`, to decide which delegate the process gets. `XCTestConfigurationFilePath`
+/// is set by xcodebuild before the host's `main()` runs, so the decision is available early enough
+/// to keep `FullAppDelegate` out of a test run entirely.
+let isRunningUnderTest: Bool =
+  ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    || ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+    || NSClassFromString("XCTestCase") != nil
+
+/// The delegate a test host gets instead of `FullAppDelegate` — deliberately empty.
+///
+/// XCTest needs a running `NSApplication`, but nothing else about the menu bar app belongs in a
+/// test run, and three of its behaviours actively break one on a CI machine:
+///
+///   1. `applicationDidFinishLaunching` builds the status item, the Edit menu and — on a container
+///      that has never completed onboarding, which is every GitHub runner — the Welcome window.
+///      A runner has no usable render server, so those CoreAnimation transactions wait on a fence
+///      that never signals ("[Render] fence tx observer … timed out") and the main thread wedges;
+///      the watchdog logs it as a hang at `activity: launch`.
+///   2. `installTerminationSignalHandlers()` sets SIGTERM/SIGINT/SIGHUP to `SIG_IGN` and routes
+///      them through a dispatch source *on the main queue*. With the main queue wedged by (1),
+///      a request to stop the host is not delayed — it is ignored.
+///   3. `applicationShouldTerminate` answers `.terminateCancel`, because a menu bar app has to
+///      survive a closed window.
+///
+/// The result was a fully green run that still ended red: every test passed, and three to five
+/// seconds later the job died in "** BUILD INTERRUPTED **" with the step marked *cancelled*, so
+/// even `if: failure()` diagnostics were skipped. It cost PR #55 its CI and kept v8.06…v8.11 from
+/// publishing a DMG. It never reproduces on a developer Mac, where onboarding is long since
+/// complete and no window opens.
+///
+/// Keep this delegate empty. Anything a test needs, the test should build itself.
+final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
+
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
@@ -444,27 +479,38 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 class FullWhisperShortcut {
-  static func main() {
-    // Full implementation using all components
+  /// Retains the delegate for the process lifetime — `NSApplication.delegate` is weak.
+  private static var delegate: NSApplicationDelegate?
 
-    // Check for multiple instances to prevent double menu bar icons.
-    // Skipped under XCTest/Swift Testing so a running production instance
-    // doesn't make the test host exit before the runner can attach.
+  static func main() {
+    let app = NSApplication.shared
+    // LSUIElement = true in Info.plist handles the menu bar app behavior
+
+    // A test run gets a running NSApplication and nothing else: no status item, no windows, no
+    // signal handlers, no refusal to terminate. See `TestHostAppDelegate` for what each of those
+    // costs a CI job.
+    if isRunningUnderTest {
+      let hostDelegate = TestHostAppDelegate()
+      delegate = hostDelegate
+      app.delegate = hostDelegate
+      app.run()
+      return
+    }
+
+    // Check for multiple instances to prevent double menu bar icons. (Unreachable under test,
+    // where a running production instance would otherwise make the host exit before the runner
+    // can attach.)
     let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-    let isUnderTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
-    if runningApps.count > 1 && !isUnderTest {
+    if runningApps.count > 1 {
       DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
       exit(0)
     }
 
-    // Create the NSApplication
-    let app = NSApplication.shared
-    // LSUIElement = true in Info.plist handles the menu bar app behavior
-
     // Create and run the full app
     let appDelegate = FullAppDelegate()
+    delegate = appDelegate
     app.delegate = appDelegate
     app.run()
   }
