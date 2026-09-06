@@ -54,7 +54,8 @@ enum ChatModelProvider: String, CaseIterable {
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash,
-// gemini-3.7-flash (shipped 2026-08-13; https://ai.google.dev/gemini-api/docs/models).
+// gemini-3.7-flash (shipped 2026-08-13), gemini-3.8-flash (shipped 2026-09-02;
+// https://ai.google.dev/gemini-api/docs/models).
 // Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
@@ -71,6 +72,7 @@ enum PromptModel: String, CaseIterable {
   case gemini35Flash = "gemini-3.5-flash"
   case gemini36Flash = "gemini-3.6-flash"
   case gemini37Flash = "gemini-3.7-flash"
+  case gemini38Flash = "gemini-3.8-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
@@ -182,6 +184,8 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.6 Flash"
     case .gemini37Flash:
       return "Gemini 3.7 Flash"
+    case .gemini38Flash:
+      return "Gemini 3.8 Flash"
     case .geminiImage:
       return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
@@ -251,6 +255,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini35Flash:     return "gemini35flash"
     case .gemini36Flash:     return "gemini36flash"
     case .gemini37Flash:     return "gemini37flash"
+    case .gemini38Flash:     return "gemini38flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
@@ -290,7 +295,9 @@ enum PromptModel: String, CaseIterable {
     case .gemini36Flash:
       return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence • Multimodal"
     case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Newest Flash • Most capable workhorse for coding and agents • Multimodal"
+      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents • Multimodal"
+    case .gemini38Flash:
+      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal"
     case .geminiImage:
       return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
@@ -348,7 +355,7 @@ enum PromptModel: String, CaseIterable {
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
+         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
     case .localMLXQwen34BInstruct, .localMLXQwen38B:
       return "Free (Offline)"
@@ -372,7 +379,7 @@ enum PromptModel: String, CaseIterable {
     // compiler force the decision instead.
     switch self {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
-         .gemini37Flash, .geminiImage, .geminiImagePro:
+         .gemini37Flash, .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return .grok
@@ -577,6 +584,12 @@ enum PromptModel: String, CaseIterable {
       // Live-verified 2026-08-23: gemini-3.7-flash rejects thinkingLevel MINIMAL
       // ("Thinking level MINIMAL is not supported for this model"). `low` is the floor.
       return ["thinkingLevel": "low"]
+    case .gemini38Flash:
+      // Same floor as 3.7. Official docs list supported thinking levels as LOW/MEDIUM/HIGH
+      // and state MINIMAL is unsupported (https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-8-flash).
+      // Not live-probed for this ID — a rejected MINIMAL is a failed chat, an extra `low` is
+      // only a little latency.
+      return ["thinkingLevel": "low"]
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
     // Image-generation models — no thinking knob.
@@ -624,6 +637,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini36Flash
     case .gemini37Flash:
       return .gemini37Flash
+    case .gemini38Flash:
+      return .gemini38Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
@@ -758,10 +773,11 @@ enum PromptModel: String, CaseIterable {
 
   /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
   /// Verified for 3.1 Pro (2026-07) and 3.7 Flash (2026-08-23:
-  /// "Thinking level MINIMAL is not supported for this model").
+  /// "Thinking level MINIMAL is not supported for this model"). 3.8 Flash is grouped here
+  /// from official docs (MINIMAL unsupported); not live-probed for this ID.
   var geminiRejectsMinimalThinking: Bool {
     switch self {
-    case .gemini31Pro, .gemini37Flash: return true
+    case .gemini31Pro, .gemini37Flash, .gemini38Flash: return true
     default: return false
     }
   }

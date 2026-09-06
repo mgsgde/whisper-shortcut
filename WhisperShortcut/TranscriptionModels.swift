@@ -44,7 +44,7 @@ enum TranscriptionTuning {
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.6-flash, gemini-3.7-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
+// gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
 // dictation**, see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
@@ -68,6 +68,7 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini35Flash = "gemini-3.5-flash"
   case gemini36Flash = "gemini-3.6-flash"
   case gemini37Flash = "gemini-3.7-flash"
+  case gemini38Flash = "gemini-3.8-flash"
 
   // Offline Whisper models
   case whisperTiny = "whisper-tiny"
@@ -119,6 +120,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3.6 Flash"
     case .gemini37Flash:
       return "Gemini 3.7 Flash"
+    case .gemini38Flash:
+      return "Gemini 3.8 Flash"
     case .whisperTiny:
       return "Whisper Tiny (Offline)"
     case .whisperBase:
@@ -232,7 +235,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31FlashLite, .whisperLargeTurbo:
       return true
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
+         .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
@@ -244,7 +247,8 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+         .gemini38Flash:
       return "Low"
     case .gemini31Pro:
       return "Medium"
@@ -279,7 +283,9 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini36Flash:
       return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence"
     case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Newest Flash • Most capable workhorse for coding and agents"
+      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents"
+    case .gemini38Flash:
+      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents"
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
@@ -328,10 +334,12 @@ enum TranscriptionModel: String, CaseIterable {
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
-    case .gemini31Pro, .gemini37Flash:
-      // Pro and 3.7 Flash reject `thinkingLevel: minimal` (HTTP 400) and `thinkingBudget: 0` —
-      // they only run in thinking mode. `minimal` therefore means "as little as this model
-      // allows", i.e. `low`. Verified live for 3.7 Flash on 2026-08-23.
+    case .gemini31Pro, .gemini37Flash, .gemini38Flash:
+      // Pro, 3.7 Flash, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
+      // `thinkingBudget: 0` — they only run in thinking mode. `minimal` therefore means
+      // "as little as this model allows", i.e. `low`. Verified live for 3.7 Flash on
+      // 2026-08-23; 3.8 Flash is grouped here from official docs (MINIMAL unsupported),
+      // not a live probe of this ID.
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
@@ -550,7 +558,7 @@ enum TranscriptionModel: String, CaseIterable {
       return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini35Flash, .gemini36Flash, .gemini37Flash:
+    case .gemini35Flash, .gemini36Flash, .gemini37Flash, .gemini38Flash:
       return .geminiFlash
     case .gemini31Pro:
       return .geminiPro
