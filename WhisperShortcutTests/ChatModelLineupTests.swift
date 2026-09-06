@@ -68,6 +68,21 @@ struct ChatModelLineupTests {
         == .applied(model: .gemini31FlashLite))
   }
 
+  @Test("A slot on a superseded Flash resolves to what the loader would return")
+  func resolverMirrorsTheLoader() {
+    // The launch migration matches on this, so it has to agree with loadChatSlotModel's chain.
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.5-flash") == .gemini37Flash)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.6-flash") == .gemini37Flash)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.7-flash") == .gemini37Flash)
+    // Legacy slugs forward first, then supersede — both hops, in order.
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-2.5-flash") == .gemini37Flash)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3-flash-preview") == .gemini37Flash)
+    // Already there, and unrelated picks, must not be swept up.
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.8-flash") == .gemini38Flash)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.6") == .grok46)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
+  }
+
   @Test("Transcription side of 3.8 Flash is Google, selectable, and clamps MINIMAL")
   func transcriptionSide() {
     #expect(TranscriptionModel.gemini38Flash.provider == .google)

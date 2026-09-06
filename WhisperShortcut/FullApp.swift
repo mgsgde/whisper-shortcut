@@ -315,13 +315,19 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   /// 2026-09-02 at the same introductory price as 3.7. Only slots still sitting on
   /// exactly `gemini-3.7-flash` move — a user who picked another model keeps it.
   ///
-  /// Must run after the two 3.7 migrations so a 3.6 install chains 3.6 → 3.7 → 3.8
-  /// in one launch. Same `SettingsViewModel.save()` reason as the earlier Gemini
-  /// migrations: changing `SettingsDefaults` alone would reach almost nobody.
+  /// Matches on the model the slot is *effectively* on, not the literal stored string. A slot
+  /// left on 3.5 or 3.6 Flash is superseded to 3.7 by `chatReplacement` — but that happens when
+  /// the slot is first LOADED, which is after every launch migration has run. Comparing the raw
+  /// string to `gemini-3.7-flash` therefore misses exactly the installs the supersession is
+  /// about to move: found on 2026-09-06, on a machine sitting on 3.6 whose
+  /// `didMigrateImprovementTo37Flash` flag was long spent, so the 3.6 → 3.7 hop this migration
+  /// was assumed to follow never happened at launch at all.
+  ///
+  /// Same `SettingsViewModel.save()` reason as the earlier Gemini migrations: changing
+  /// `SettingsDefaults` alone would reach almost nobody.
   private func migrateChatAndImprovementDefaultsTo38Flash() {
     let defaults = UserDefaults.standard
     guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateDefaultsTo38Flash) else { return }
-    defaults.set(true, forKey: UserDefaultsKeys.didMigrateDefaultsTo38Flash)
 
     let keys = [
       UserDefaultsKeys.selectedChatModel,
@@ -329,10 +335,13 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ]
     for key in keys {
       guard let stored = defaults.string(forKey: key),
-            stored == PromptModel.gemini37Flash.rawValue else { continue }
+            PromptModel.resolvedChatSlotModel(forRawValue: stored) == .gemini37Flash else { continue }
       defaults.set(PromptModel.gemini38Flash.rawValue, forKey: key)
       DebugLogger.log("MIGRATION: \(key) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
     }
+    // Flag last: the writes above are idempotent, so a crash mid-loop costs a repeat, not a
+    // half-migrated install with the flag already burned.
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateDefaultsTo38Flash)
   }
 
   /// Catches SIGTERM / SIGINT / SIGHUP so we know *why* the process died and

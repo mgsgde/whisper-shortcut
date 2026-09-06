@@ -791,6 +791,19 @@ enum PromptModel: String, CaseIterable {
   /// summary, Smart Improvement). On top of `loadPromptModel` it forwards a superseded
   /// selection to its replacement and persists that, so the value always appears in the
   /// pickers, which list `chatModels`.
+  /// What `loadChatSlotModel` would hand back for `raw`, computed WITHOUT touching UserDefaults.
+  ///
+  /// Launch-time migrations run before any slot is loaded, so they see the raw stored string —
+  /// not the model the user will actually end up on. Anything that wants to reason about "which
+  /// model is this slot effectively tracking" has to replay the same three steps the loader does:
+  /// legacy raw-value forwarding, deprecation mapping, then supersession. Returns nil when the
+  /// string does not name a model at all (the loader falls back in that case).
+  static func resolvedChatSlotModel(forRawValue raw: String) -> PromptModel? {
+    guard let parsed = PromptModel(rawValue: migrateLegacyPromptRawValue(raw)) else { return nil }
+    let current = migrateIfDeprecated(parsed)
+    return current.chatReplacement ?? current
+  }
+
   static func loadChatSlotModel(forKey key: String, default fallback: PromptModel) -> PromptModel {
     let loaded = loadPromptModel(forKey: key, default: fallback, validate: { $0.supportsTextChat })
     guard let replacement = loaded.chatReplacement else { return loaded }
