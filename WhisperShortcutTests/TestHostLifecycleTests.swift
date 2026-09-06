@@ -3,16 +3,17 @@ import Testing
 
 @testable import WhisperShortcut_AppStore
 
-/// Pins the two properties that let xcodebuild shut the test host down.
+/// Pins that the suite runs inside an inert test host, not inside the menu bar app.
 ///
-/// The host is the real menu bar app: it opens the Welcome window on a container that has never
-/// completed onboarding, ignores SIGTERM, and answers `applicationShouldTerminate` with
-/// `.terminateCancel`. On a CI runner that combination turns a fully green run red — the window's
-/// render fence never signals, the main thread wedges, nothing can deliver the termination
-/// signal, and the job ends in "** BUILD INTERRUPTED **" seconds after the last test passed
-/// (v8.06…v8.11 never published a DMG this way). All of it hangs off `isRunningUnderTest`, and
-/// none of it fails on a developer Mac, so without these two tests the regression would come back
-/// invisibly.
+/// `FullAppDelegate` builds a status item, an Edit menu and — on a container that has never
+/// completed onboarding, which is every CI runner — the Welcome window, then ignores SIGTERM and
+/// answers `applicationShouldTerminate` with `.terminateCancel`. On a runner with no usable render
+/// server that combination turns a fully green run red: the main thread wedges on a CoreAnimation
+/// fence, nothing can stop the host, and the job dies in "** BUILD INTERRUPTED **" seconds after
+/// the last test passed — with the step marked *cancelled*, so the crash-report and xcresult steps
+/// are skipped too and the failure carries no evidence.
+///
+/// None of it reproduces on a developer Mac, so this is the only place the wiring gets checked.
 @Suite("Test host lifecycle")
 struct TestHostLifecycleTests {
 
@@ -21,10 +22,9 @@ struct TestHostLifecycleTests {
     #expect(isRunningUnderTest)
   }
 
-  @Test("A test host agrees to terminate instead of surviving as a menu bar app")
+  @Test("The test host runs the inert delegate, not the menu bar app")
   @MainActor
-  func testHostTerminatesOnRequest() {
-    let delegate = FullAppDelegate()
-    #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
+  func testHostUsesInertDelegate() {
+    #expect(NSApplication.shared.delegate is TestHostAppDelegate)
   }
 }

@@ -92,7 +92,44 @@ relaunch_app() {
     echo "ℹ️  No built app at $RELAUNCH_APP — run scripts/rebuild-and-restart.sh to build it. Skipping relaunch."
   fi
 }
-trap relaunch_app EXIT
+
+# Everything we know about a run that died *after* the tests, dumped to the console.
+#
+# The console is the only channel that survives this failure mode. When the test host will not
+# exit, the run ends in "** BUILD INTERRUPTED **" and GitHub marks the step *cancelled* rather
+# than failed — so `if: failure()` steps (crash reports, xcresult upload) are all skipped and the
+# job carries no evidence at all. That cost several blind CI round-trips on 2026-09-06.
+dump_teardown_evidence() {
+  [[ "${CI:-}" == "true" ]] || return 0
+  echo ""
+  echo "──────── teardown evidence ────────"
+  shopt -s nullglob
+  local hangs=(
+    "$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Logs/WhisperShortcut"/hang-*.txt
+    "$HOME/Library/Logs/WhisperShortcut"/hang-*.txt
+  )
+  if [[ ${#hangs[@]} -eq 0 ]]; then
+    echo "No hang-*.txt captures — the main thread never missed a watchdog ping."
+  else
+    for f in "${hangs[@]}"; do
+      echo "::group::$(basename "$f")"
+      cat "$f"
+      echo "::endgroup::"
+    done
+  fi
+  echo "Test-host processes still alive:"
+  pgrep -fl WhisperShortcut || echo "  none"
+}
+
+on_exit() {
+  dump_teardown_evidence
+  relaunch_app
+}
+trap on_exit EXIT
+# A cancelled step arrives as SIGINT/SIGTERM to the process group. Convert it into a normal exit
+# so the EXIT trap above still runs and the evidence still lands in the log.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [[ "${CI:-}" != "true" ]]; then
   pkill -f "WhisperShortcut" 2>/dev/null || true

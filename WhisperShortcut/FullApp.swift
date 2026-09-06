@@ -10,30 +10,38 @@ private enum Constants {
 
 /// True when this process is hosting an XCTest / Swift Testing run instead of serving a user.
 ///
-/// The test host *is* the real app, and three menu bar behaviours that are right for a user are
-/// fatal for a test run on a CI machine:
-///
-///   1. A fresh container has not completed onboarding, so the Welcome window opens 0.5 s after
-///      launch. A GitHub runner has no usable render server, so that window's CoreAnimation
-///      transaction waits on a fence that never signals ("[Render] fence tx observer … timed
-///      out") and the main thread wedges — the watchdog reports it as a multi-second hang at
-///      `activity: launch`.
-///   2. `installTerminationSignalHandlers()` sets SIGTERM/SIGINT/SIGHUP to `SIG_IGN` and routes
-///      them through a dispatch source **on the main queue**. With the main queue wedged by (1),
-///      xcodebuild's request to stop the test host is not merely delayed — it is ignored.
-///   3. `applicationShouldTerminate` answers `.terminateCancel`, because a menu bar app must
-///      survive a closed window.
-///
-/// Together they mean a fully green run still dies: every test passes, xcodebuild cannot get the
-/// host to exit, and a few seconds later the job ends in "** BUILD INTERRUPTED **". That is what
-/// kept v8.06…v8.11 from ever publishing a DMG, and what failed PR #55's CI. It never reproduced
-/// on a developer Mac, where onboarding is long since complete and no window opens.
-///
-/// Under test the app therefore stays headless and lets itself be killed.
+/// Read once, in `main()`, to decide which delegate the process gets. `XCTestConfigurationFilePath`
+/// is set by xcodebuild before the host's `main()` runs, so the decision is available early enough
+/// to keep `FullAppDelegate` out of a test run entirely.
 let isRunningUnderTest: Bool =
   ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     || ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
     || NSClassFromString("XCTestCase") != nil
+
+/// The delegate a test host gets instead of `FullAppDelegate` — deliberately empty.
+///
+/// XCTest needs a running `NSApplication`, but nothing else about the menu bar app belongs in a
+/// test run, and three of its behaviours actively break one on a CI machine:
+///
+///   1. `applicationDidFinishLaunching` builds the status item, the Edit menu and — on a container
+///      that has never completed onboarding, which is every GitHub runner — the Welcome window.
+///      A runner has no usable render server, so those CoreAnimation transactions wait on a fence
+///      that never signals ("[Render] fence tx observer … timed out") and the main thread wedges;
+///      the watchdog logs it as a hang at `activity: launch`.
+///   2. `installTerminationSignalHandlers()` sets SIGTERM/SIGINT/SIGHUP to `SIG_IGN` and routes
+///      them through a dispatch source *on the main queue*. With the main queue wedged by (1),
+///      a request to stop the host is not delayed — it is ignored.
+///   3. `applicationShouldTerminate` answers `.terminateCancel`, because a menu bar app has to
+///      survive a closed window.
+///
+/// The result was a fully green run that still ended red: every test passed, and three to five
+/// seconds later the job died in "** BUILD INTERRUPTED **" with the step marked *cancelled*, so
+/// even `if: failure()` diagnostics were skipped. It cost PR #55 its CI and kept v8.06…v8.11 from
+/// publishing a DMG. It never reproduces on a developer Mac, where onboarding is long since
+/// complete and no window opens.
+///
+/// Keep this delegate empty. Anything a test needs, the test should build itself.
+final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
 
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
@@ -62,11 +70,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // stops responding, so the next hang leaves a stack in the Logs dir instead of nothing.
     MainThreadWatchdog.shared.start()
 
-    // Only for a real run: under test these handlers would make the host unkillable (see
-    // `isRunningUnderTest`), and there is no chat state worth flushing on the way out.
-    if !isRunningUnderTest {
-      installTerminationSignalHandlers()
-    }
+    installTerminationSignalHandlers()
 
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
@@ -99,19 +103,14 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Otherwise fall back to the legacy "open Settings if dictation cannot run" safety net so
     // users who somehow bypassed the tour still land in a configuration screen. An offline
     // Whisper model counts — it is not a chat credential, but it is enough to transcribe.
-    //
-    // Skipped under test: the runner's container has never completed onboarding, so this is the
-    // window whose render fence wedges the main thread on CI.
-    if !isRunningUnderTest {
-      Task {
-        await MainActor.run {
-          DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
-            let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
-            if !hasCompletedOnboarding {
-              WelcomeWindowController.shared.show()
-            } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
-              SettingsManager.shared.showSettings()
-            }
+    Task {
+      await MainActor.run {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+          let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
+          if !hasCompletedOnboarding {
+            WelcomeWindowController.shared.show()
+          } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
+            SettingsManager.shared.showSettings()
           }
         }
       }
@@ -126,13 +125,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // toggles it in Settings → General. The app must never register itself for
     // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
-    // Improve from usage auto-run: check if due and start daily timer. A fresh test-host
-    // container reads as "due", so under test this would start real work behind the suite.
-    if !isRunningUnderTest {
-      Task { @MainActor in
-        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
-        ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
-      }
+    // Improve from usage auto-run: check if due and start daily timer
+    Task { @MainActor in
+      await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+      ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
     }
 
   }
@@ -149,14 +145,6 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminate(_ application: NSApplication) -> NSApplication.TerminateReply {
-    // A test host has no user to keep the app alive for, and xcodebuild has to be able to stop it
-    // once the run finishes — otherwise a green run still ends in "** BUILD INTERRUPTED **".
-    if isRunningUnderTest {
-      isTerminating = true
-      DebugLogger.log("APP-LIFECYCLE: applicationShouldTerminate -> terminateNow (test host)")
-      return .terminateNow
-    }
-
     // Check if user explicitly wants to quit completely
     let shouldTerminate = UserDefaults.standard.bool(forKey: UserDefaultsKeys.shouldTerminate)
     if shouldTerminate {
@@ -491,26 +479,38 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 class FullWhisperShortcut {
-  static func main() {
-    // Full implementation using all components
+  /// Retains the delegate for the process lifetime — `NSApplication.delegate` is weak.
+  private static var delegate: NSApplicationDelegate?
 
-    // Check for multiple instances to prevent double menu bar icons.
-    // Skipped under XCTest/Swift Testing so a running production instance
-    // doesn't make the test host exit before the runner can attach.
+  static func main() {
+    let app = NSApplication.shared
+    // LSUIElement = true in Info.plist handles the menu bar app behavior
+
+    // A test run gets a running NSApplication and nothing else: no status item, no windows, no
+    // signal handlers, no refusal to terminate. See `TestHostAppDelegate` for what each of those
+    // costs a CI job.
+    if isRunningUnderTest {
+      let hostDelegate = TestHostAppDelegate()
+      delegate = hostDelegate
+      app.delegate = hostDelegate
+      app.run()
+      return
+    }
+
+    // Check for multiple instances to prevent double menu bar icons. (Unreachable under test,
+    // where a running production instance would otherwise make the host exit before the runner
+    // can attach.)
     let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
-    if runningApps.count > 1 && !isRunningUnderTest {
+    if runningApps.count > 1 {
       DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
       exit(0)
     }
 
-    // Create the NSApplication
-    let app = NSApplication.shared
-    // LSUIElement = true in Info.plist handles the menu bar app behavior
-
     // Create and run the full app
     let appDelegate = FullAppDelegate()
+    delegate = appDelegate
     app.delegate = appDelegate
     app.run()
   }
