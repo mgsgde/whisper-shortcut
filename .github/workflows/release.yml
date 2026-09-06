@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - "v*"
+  # Re-drive a tag that already exists. Six tags (v8.06..v8.11) failed to publish
+  # and the only way back was `gh run rerun`, which needs the old run to still be
+  # around. This does not need one.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v* tag to (re-)release, e.g. v8.11"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -17,6 +26,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -30,11 +41,13 @@ jobs:
     name: Build, Sign, Notarize, and Release
     needs: hermetic-tests
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -164,12 +177,40 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
           TEAM_ID: ${{ secrets.TEAM_ID }}
         run: |
-          # Notarize the DMG
-          xcrun notarytool submit "$DMG_PATH" \
-            --apple-id "$NOTARY_USERNAME" \
-            --password "$NOTARY_PASSWORD" \
-            --team-id "$TEAM_ID" \
-            --wait
+          set -euo pipefail
+          CREDS=(--apple-id "$NOTARY_USERNAME" --password "$NOTARY_PASSWORD" --team-id "$TEAM_ID")
+
+          # Submit and wait as two steps. `submit --wait` has no timeout of its own:
+          # on 2026-09-04 (v8.10) Apple's notary service stalled and it hung for 45
+          # minutes until the job's timeout-minutes killed it, so a finished, signed
+          # DMG was never published. Waiting separately means a stalled service costs
+          # one more wait, and an *invalid* submission fails immediately with its log.
+          SUBMISSION_ID=$(xcrun notarytool submit "$DMG_PATH" "${CREDS[@]}" \
+            --output-format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          echo "Notarization submission: $SUBMISSION_ID"
+
+          for attempt in 1 2 3; do
+            if xcrun notarytool wait "$SUBMISSION_ID" "${CREDS[@]}" --timeout 20m; then
+              echo "✅ Notarization accepted"
+              exit 0
+            fi
+
+            STATUS=$(xcrun notarytool info "$SUBMISSION_ID" "${CREDS[@]}" \
+              --output-format json | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","Unknown"))')
+            echo "Wait attempt $attempt ended with status: $STATUS"
+
+            # Only a still-running submission is worth waiting on again. Invalid and
+            # Rejected are verdicts, not delays — surface the reason and stop.
+            if [ "$STATUS" != "In Progress" ]; then
+              echo "❌ Notarization did not succeed (status: $STATUS). Notary log:"
+              xcrun notarytool log "$SUBMISSION_ID" "${CREDS[@]}" || true
+              exit 1
+            fi
+          done
+
+          echo "❌ Notarization still In Progress after 60 minutes — giving up."
+          echo "Re-run this workflow, or dispatch it with the same tag once Apple's notary service recovers."
+          exit 1
 
       - name: Staple notarization ticket
         run: |
@@ -189,9 +230,11 @@ jobs:
       - name: Get version from tag
         id: get_version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building version: $VERSION"
+          echo "Building version: $VERSION (tag $TAG)"
 
       - name: Prepare Release Notes
         id: release_notes
@@ -224,6 +267,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.DMG_PATH }}
+          tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
           body: ${{ steps.release_notes.outputs.body }}
           draft: false
