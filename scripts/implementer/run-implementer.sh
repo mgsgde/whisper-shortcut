@@ -220,6 +220,13 @@ BRANCH="implementer/${SLUG}"
 WT_DIR="${REPO_ROOT}/.claude/worktrees/implementer-${SLUG}"
 RUN_DIR="${REPO_ROOT}/build/implementer/$(date +%F)-${SLUG}"
 
+# Checked HERE, before the monthly counter is spent, not down at `git worktree add`. A kept
+# post-mortem worktree makes every tick for the rest of the day pick the same row and the same
+# slug, and until 2026-09-06 each of those ticks incremented the counter and only then hit this
+# guard — seven of September's ten runs went on runs that did nothing at all. Refusing before
+# the spend is the difference between a stale worktree costing nothing and costing the month.
+[[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first)"
+
 log "queue row #${Q_NUM}: ${Q_PROPOSAL:0:90}…"
 log "branch ${BRANCH} · plan ${PLAN_AGENT:-none}/${PLAN_MODEL} · build ${BUILD_AGENT}/${BUILD_MODEL} · review ${REVIEW_AGENT}/${REVIEW_MODEL} · scope ${SCOPE}"
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -383,7 +390,6 @@ defer_for_usage_limit() {
 }
 
 # --- Worktree setup ------------------------------------------------------------------------
-[[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first)"
 mkdir -p "$(dirname "$WT_DIR")"
 git -C "$REPO_ROOT" worktree add "$WT_DIR" -b "$BRANCH" main >/dev/null 2>&1 \
     || die "git worktree add failed"
@@ -563,9 +569,15 @@ run_static_gates() {
 run_static_gates || fail_run "static gates failed (see the GATE FAILED line above) — details: ${RUN_DIR}"
 
 # Gate: it must build. Worktree-local derivedDataPath, so this never disturbs your own build.
+# -skipPackagePluginValidation everywhere below, exactly as scripts/rebuild-and-restart.sh does:
+# mlx-swift ships a Linux-only CudaBuild plugin that no-ops on macOS, and Xcode refuses
+# unvalidated plugins non-interactively. Every gate here uses a FRESH worktree-local
+# derivedDataPath, so it can never inherit the approval your own build recorded — run
+# q4-20260906 died on it with the build agent's work complete and unjudged.
 log "gate: xcodebuild (Debug)…"
 ( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
-    -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ) \
+    -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" \
+    -skipPackagePluginValidation build ) \
     >"${RUN_DIR}/build.log" 2>&1 \
     || { tail -40 "${RUN_DIR}/build.log"; fail_run "GATE FAILED: xcodebuild"; }
 
@@ -578,7 +590,7 @@ sleep 1
 ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
   xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
     -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
-    "${TEST_SKIP_ARGS[@]}" \
+    "${TEST_SKIP_ARGS[@]}" -skipPackagePluginValidation \
     -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
     >"${RUN_DIR}/tests.log" 2>&1 \
     || { tail -40 "${RUN_DIR}/tests.log"; fail_run "GATE FAILED: test plan"; }
@@ -664,14 +676,15 @@ EOF
         run_static_gates || fail_run "static gates failed after rework (see above)"
         log "gate: xcodebuild (after rework)…"
         ( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
-            -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ) \
+            -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" \
+            -skipPackagePluginValidation build ) \
             >"${RUN_DIR}/build-2.log" 2>&1 || { tail -40 "${RUN_DIR}/build-2.log"; fail_run "GATE FAILED: xcodebuild (after rework)"; }
         log "gate: test plan (after rework)…"
         pkill -f "WhisperShortcut.app" 2>/dev/null || true; sleep 1
         ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
           xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
             -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
-            "${TEST_SKIP_ARGS[@]}" \
+            "${TEST_SKIP_ARGS[@]}" -skipPackagePluginValidation \
             -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
             >"${RUN_DIR}/tests-2.log" 2>&1 || { tail -40 "${RUN_DIR}/tests-2.log"; fail_run "GATE FAILED: test plan (after rework)"; }
         restore_user_app
