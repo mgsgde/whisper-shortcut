@@ -46,6 +46,8 @@ MODELS = {
     "gemini-3.5-flash-lite": "gemini",
     "gemini-3.5-flash": "gemini",
     "gemini-3.6-flash": "gemini",
+    "gemini-3.7-flash": "gemini",
+    "gemini-3.8-flash": "gemini",
     "gpt-transcribe": "openai-keywords",
     "gpt-4o-transcribe": "openai-prompt",
     "gpt-4o-mini-transcribe": "openai-prompt",
@@ -225,10 +227,13 @@ def transcribe(model, wav, prompt, terms):
     kind = MODELS[model]
     if kind == "gemini":
         audio = base64.b64encode(open(wav, "rb").read()).decode()
-        # The app's default effort is `minimal`, which every tier in MODELS accepts. Pro rejects it
-        # with HTTP 400, so the clamp stays here for whoever re-adds Pro to check on Google's fix —
-        # otherwise the run would measure a 400 rather than the model. No shipped tier needs it.
-        level = "low" if "-pro" in model else "minimal"
+        # The app's default effort is `minimal`, but not every tier accepts it: 3.1 Pro, 3.7 Flash
+        # and 3.8 Flash answer HTTP 400 ("Thinking level MINIMAL is not supported for this model")
+        # and the run would then measure a 400 rather than the model. Clamp them to `low`, exactly
+        # as PromptModel.geminiRejectsMinimalThinking does in the app — keep the two in step when
+        # a tier is added. Live-probed: 3.7 on 2026-08-23, 3.8 on 2026-09-06.
+        REJECTS_MINIMAL = ("-pro", "gemini-3.7-flash", "gemini-3.8-flash")
+        level = "low" if any(m in model for m in REJECTS_MINIMAL) else "minimal"
         body = json.dumps({
             "contents": [{"parts": [{"text": prompt},
                                     {"inline_data": {"mimeType": "audio/wav", "data": audio}}]}],
