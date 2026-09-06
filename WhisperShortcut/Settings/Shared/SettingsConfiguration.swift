@@ -589,10 +589,9 @@ enum PromptModel: String, CaseIterable {
       // ("Thinking level MINIMAL is not supported for this model"). `low` is the floor.
       return ["thinkingLevel": "low"]
     case .gemini38Flash:
-      // Same floor as 3.7. Official docs list supported thinking levels as LOW/MEDIUM/HIGH
-      // and state MINIMAL is unsupported (https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-8-flash).
-      // Not live-probed for this ID — a rejected MINIMAL is a failed chat, an extra `low` is
-      // only a little latency.
+      // Same floor as 3.7, live-verified 2026-09-06: `thinkingLevel: minimal` returns HTTP 400
+      // ("Thinking level MINIMAL is not supported for this model"), `low` returns 200. Matches
+      // the documented LOW/MEDIUM/HIGH set.
       return ["thinkingLevel": "low"]
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
@@ -779,9 +778,8 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
-  /// Verified for 3.1 Pro (2026-07) and 3.7 Flash (2026-08-23:
-  /// "Thinking level MINIMAL is not supported for this model"). 3.8 Flash is grouped here
-  /// from official docs (MINIMAL unsupported); not live-probed for this ID.
+  /// Verified for 3.1 Pro (2026-07), 3.7 Flash (2026-08-23) and 3.8 Flash (2026-09-06), all
+  /// with the same error: "Thinking level MINIMAL is not supported for this model".
   var geminiRejectsMinimalThinking: Bool {
     switch self {
     case .gemini31Pro, .gemini37Flash, .gemini38Flash: return true

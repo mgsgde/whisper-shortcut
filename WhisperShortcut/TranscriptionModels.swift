@@ -337,9 +337,8 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro, .gemini37Flash, .gemini38Flash:
       // Pro, 3.7 Flash, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
       // `thinkingBudget: 0` — they only run in thinking mode. `minimal` therefore means
-      // "as little as this model allows", i.e. `low`. Verified live for 3.7 Flash on
-      // 2026-08-23; 3.8 Flash is grouped here from official docs (MINIMAL unsupported),
-      // not a live probe of this ID.
+      // "as little as this model allows", i.e. `low`. Verified live: 3.7 Flash 2026-08-23,
+      // 3.8 Flash 2026-09-06 (minimal → 400, low → 200).
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
