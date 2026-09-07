@@ -51,6 +51,10 @@ Architect loop checks for drift on every run:
   whenever the bottleneck is not the thing that loop can move.
 - **Loud failure.** A loop that cannot read its data or write its digest reports a FAILED
   run by mail — silence must never be distinguishable from a quiet week.
+- **Every mail states whether you have to act**, in the same five words in the same place.
+  `scripts/operator_mail.py` holds the vocabulary and renders the banner; `send-report-mail.py`
+  takes it as `--verdict` and is the only sender. Ported from Sabaki's
+  `apps/shared/operator-action.ts` on 2026-09-07 — see "The mail contract" below.
 
 ## Autonomy policy
 
@@ -295,6 +299,7 @@ Sabaki):
 | Implementer test gate | `npm run test:web` in the worktree | `xcodebuild test`, which requires killing the running app — the runner relaunches the user's **main** build after each gate | Mid-run the branch has not been judged yet, so the app the user works in must not be swapped for it |
 | Groom lane | Runs in a worktree when the shared tree is busy | Same — a scratch worktree detached at `origin/main`, pushing `HEAD:main` | Findings must never wait on the operator's working state. Sabaki lost eight days and 28 proposals to a global branch guard; this repo copied the guard, then the fix |
 | After a green run | Branch is deployed to a gated dev instance | The runner leaves the **branch build running** as the user's app (`IMPLEMENTER_LAUNCH_BRANCH_BUILD=1`, asked for 2026-09-03) | There is no dev instance; the app *is* the review artifact, and a change you have to launch yourself is a change you do not try. Only after every gate and the reviewer's APPROVE — a failed run always restores the user's own build |
+| Admin-mail rendering | `apps/shared/html.ts` + `marked`, inside the app's own mailer | `scripts/operator_mail.py`, dependency-free, sent over SMTP by `send-report-mail.py` | Same vocabulary, same banner, same dark palette — but these mails are sent by launchd from a Mac whose system `python3` has no markdown library, and a failed import is a job that reports nothing |
 | Implementer auto lane | `scorer-fix` (a failing eval-corpus case is red→green) and `instrumentation` build with no announcement | `instrumentation` only — there is no eval corpus here | The auto lane may only hold classes an existing gate already judges; inventing one to match Sabaki would be the loosening the policy forbids |
 | Proposal transport | routines write JSON to `~/.local/state/sabaki-implementer/incoming`, groomer is TypeScript | identical shape, groomer is Python (`groom-queue.py`) | No node toolchain in a Swift repo; a dependency nobody maintains is a scheduled job that dies silently |
 
@@ -327,3 +332,49 @@ launchctl unload ~/Library/LaunchAgents/com.whispershortcut.sales-poster.plist
 Every job mails its digest (macOS notification as fallback) and reports failures loudly —
 a loop that silently stops running looks exactly like a quiet week, and that is the one
 failure mode this design exists to rule out.
+
+## The mail contract — every mail answers "muss ich hier etwas tun?"
+
+Ported from sabaki.dance (`apps/shared/operator-action.ts`, 2026-09-06) on 2026-09-07, after the
+usage-review mail of that morning: three screens of analysis, a subject that led with the finding,
+and nothing anywhere saying that one of its proposals was already released to build on a deadline
+two days out and one was waiting for a human. The answer existed in `plans/implementer-queue.md`;
+the mail did not carry it.
+
+A sender picks a **state**, never a sentence (`scripts/operator_mail.py`):
+
+| flag | reads as | when |
+| ---- | -------- | ---- |
+| `--verdict fyi` | ✅ Nothing to do — for your information. | a record of something that happened |
+| `--verdict handled` | ✅ Nothing to do — handled automatically. | `--verdict-handler` names the job that has it |
+| `--verdict ships-on-silence` | ⏳ Nothing to do unless you disagree. | a deadline; `--verdict-stop-with` is the exact stop command |
+| `--verdict needs-decision` | ⚠️ Needs you: N decisions. | `--verdict-count` says how many |
+| `--verdict needs-fix` | 🚨 Needs you: nothing automatic covers this. | broken, and nothing retries it |
+| `--verdict proposals` | derived from `--proposals-file` | the loop jobs: `handled` when the run queued proposals, `fyi` when it queued none |
+
+Rules that make it worth trusting:
+
+- **The verdict is derived from machine facts, never from the run's own summary of itself** — an
+  agent describing its own run is exactly the thing that drifts. The loops count the proposals
+  they actually handed over (`proposal-prompt.sh --path-only` fixes the path so the count is
+  exact); the groomer reads its own lanes; `health-report.py` reads the queue.
+- **Never claim a handler that is not armed.** `--verdict handled` must name a job that really
+  runs: the hourly `com.whispershortcut.implementer-tick`, the weekly health report, the release
+  sweep. When in doubt, use a `needs-*` state — over-claiming automation is the one failure worse
+  than silence.
+- **A sender that passes no `--verdict` still sends**, with an amber "this mail did not say
+  whether you have to act" banner. A mail nobody receives is worse than one whose sender forgot
+  the flag, and the banner makes the gap self-reporting.
+- **The subject carries the verdict, not the finding.** `withVerdictSubject`'s suffix is appended
+  by the mailer; the loops' subjects are the job and the date, because a 120-character finding
+  pushed the answer past where every mail client truncates. The finding still leads the mail body
+  as "In one line:", and the macOS notification still speaks it.
+
+Check what a mail looks like without waiting for a run — including dark mode, which is where a
+regression hides:
+
+```bash
+python3 scripts/send-report-mail.py --subject "…" --body-file plans/…md \
+    --verdict needs-decision --verdict-count 2 --verdict-detail "…" \
+    --dry-run --html-out /tmp/preview.html
+```

@@ -195,7 +195,11 @@ def load_proposals(paths):
     return out
 
 
-def send_mail(subject, body, no_mail=False):
+def send_mail(subject, body, no_mail=False, verdict_args=()):
+    """`verdict_args` are send-report-mail.py flags stating whether the operator has to act —
+    the banner at the top of the mail (scripts/operator_mail.py). A groom mail that announces a
+    veto window and one that only reports a promotion look alike in prose and are opposites in
+    what they ask of the reader."""
     if no_mail:
         log("--no-mail: NOT sending the announcement below. This is a test run only.")
         log(f"  subject: {subject}")
@@ -208,7 +212,8 @@ def send_mail(subject, body, no_mail=False):
         fh.write(body)
     try:
         rc = subprocess.run(
-            [sys.executable, helper, "--to", MAIL_TO, "--subject", subject, "--body-file", tmp]
+            [sys.executable, helper, "--to", MAIL_TO, "--subject", subject, "--body-file", tmp,
+             "--title", "Implementer queue groomed", *verdict_args]
         ).returncode
         if rc != 0:
             # A VETO row that is never announced is not a veto window — it is an unattended
@@ -364,11 +369,39 @@ def main():
                 "",
             ]
         lines.append("Queue: plans/implementer-queue.md")
+        # Two different mails wear this subject. One opened veto windows — that is a deadline
+        # the operator can act on, and the only state in the vocabulary that says "your silence
+        # decides". The other only reports rows the clock already promoted, which is a record of
+        # something that happened and needs a green banner, not an amber one.
+        open_windows = [(n, d) for n, _, d, _ in announcements] + [(n, d) for n, _, d in released]
+        if open_windows:
+            soonest = min(d for _, d in open_windows)
+            verdict_args = [
+                "--verdict", "ships-on-silence",
+                "--verdict-detail",
+                f"{len(open_windows)} queue row"
+                f"{'' if len(open_windows) == 1 else 's'} now build unattended, the first on "
+                f"{soonest}. Each passed class, scope, falsifier and duplicate checks, and each is "
+                "reversible; when one builds you get its own mail with a two-day merge window "
+                "before anything reaches main.",
+                "--verdict-stop-with",
+                "bash scripts/implementer/veto.sh <#> — the numbers are below.",
+            ]
+        else:
+            verdict_args = [
+                "--verdict", "handled",
+                "--verdict-handler", "the hourly tick",
+                "--verdict-detail",
+                f"{len(ripe)} row{'' if len(ripe) == 1 else 's'} reached the end of a veto window "
+                "you did not stop, so they are BUILD now and the next hourly tick starts the "
+                "topmost one. You will get a mail per build, each with its own merge window.",
+            ]
         send_mail(
             f"WhisperShortcut implementer — {len(announcements) + len(released)} to veto, "
             f"{len(ripe)} promoted",
             "\n".join(lines),
             no_mail=args.no_mail,
+            verdict_args=verdict_args,
         )
 
     # Commit on main: a proposal filed on a branch nobody merges is a proposal nobody sees.
