@@ -1622,6 +1622,13 @@ enum OpenAIChatPreferences {
     UserDefaults.standard.set(SettingsDefaults.openInferenceModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
   }
 
+  /// Applies the [ModelRunner](https://modelrunner.ai) URL + model preset. Plain bearer auth, so
+  /// nothing else in the endpoint plumbing changes.
+  static func applyModelRunnerPreset() {
+    UserDefaults.standard.set(SettingsDefaults.modelRunnerEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    UserDefaults.standard.set(SettingsDefaults.modelRunnerModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
+  }
+
   /// Points chat at OpenRouter. Pairs with the Connect button in Settings → Dictate: once both are
   /// done there is no key to type anywhere.
   static func applyOpenRouterPreset() {
@@ -1914,6 +1921,12 @@ struct SettingsDefaults {
   /// OpenRouter preset — the same account the Dictate tab connects, reused for chat.
   static let openRouterChatEndpointURL = "https://openrouter.ai/api/v1"
   static let openRouterChatModelID = "openai/gpt-4o"
+  /// [ModelRunner](https://modelrunner.ai) preset — OpenAI-compatible, one key across models
+  /// from several labs. Model ids are the platform endpoint, `owner/alias`.
+  static let modelRunnerEndpointURL = "https://queue.modelrunner.run/v1"
+  /// A general-purpose default rather than the cheapest or the largest; the picker in the app is
+  /// a free-text field, so this is only the value the preset fills in.
+  static let modelRunnerModelID = "google/gemini-3.5-flash"
 
   // MARK: - Bring-your-own-tenant presets (Azure / Vertex)
   /// Azure OpenAI / Microsoft Foundry preset. The `/openai/v1` surface needs no `api-version`
