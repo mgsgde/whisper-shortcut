@@ -276,7 +276,93 @@ fi
 
 # The runner does its own preflight (lock, monthly budget, scope, clean tree) and exits 0 with
 # "nothing to do" when no BUILD/OPEN row exists, which is the common case. Let it decide.
+#
+# --- Why a non-zero exit is counted rather than only warned about ----------------------------
+# A single failure is normal and must not mail: a usage limit, a flaky network, an agent that
+# timed out once. The next tick retries and nobody needs to know. What is not normal is the SAME
+# failure every hour, and that is what this repo actually shipped on 2026-09-06: the build agent
+# was logged out, the run died leaving its worktree behind for the post-mortem, and from 03:05
+# onward every tick hit
+#
+#     ERROR: worktree dir already exists: …/implementer-q4-20260906 (clean up the previous run first)
+#
+# — a precondition that no retry can ever satisfy. `die` exits before any report_out, so the lane
+# failed 40+ times over two days in complete silence, and from outside it was indistinguishable
+# from a quiet queue. The row's change (gemini-3.8-flash) sat unbuilt the whole time.
+#
+# Escalating per die-site would have missed it: the fix has to hold for the next failure nobody
+# predicted, not for this string. So the tick counts consecutive non-zero exits and reports the
+# streak, whatever produced it. The runner's own mails are unaffected — a run that reaches
+# fail_run still mails immediately; this is the net under the paths that never get that far.
+#
+# Threshold and cadence mirror the blocked-builds reporter above, for the same reasons: three
+# failures before the first mail so a transient hour stays quiet, then once a day, measured
+# against elapsed hours rather than a tick count because this is a laptop and ticks are skipped
+# whenever the lid is shut.
+FAIL_STAMP="${TICK_LOG_DIR}/.run-failing-since"
+FAIL_COUNT_FILE="${FAIL_STAMP}.count"
+FAIL_REPORTED_FILE="${FAIL_STAMP}.reported"
+FAIL_THRESHOLD="${IMPLEMENTER_FAIL_ALERT_AFTER:-3}"
+
 log "step 2: starting the next build if one is due"
-bash "${SCRIPT_DIR}/run-implementer.sh" || warn "run-implementer.sh exited non-zero — see above"
+RUN_OUT="$(mktemp -t wstickrun)"
+if bash "${SCRIPT_DIR}/run-implementer.sh" 2>&1 | tee "$RUN_OUT"; then
+    # Any clean exit ends the streak — including "nothing to do", which is the runner telling us
+    # it got far enough to read the queue.
+    rm -f "$FAIL_STAMP" "$FAIL_COUNT_FILE" "$FAIL_REPORTED_FILE"
+else
+    warn "run-implementer.sh exited non-zero — see above"
+    [[ -f "$FAIL_STAMP" ]] || date +%s >"$FAIL_STAMP"
+    FAILS=$(( $(cat "$FAIL_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+    echo "$FAILS" >"$FAIL_COUNT_FILE"
+    FAILING_HOURS=$(( ($(date +%s) - $(cat "$FAIL_STAMP")) / 3600 ))
+    LAST_REPORTED=$(cat "$FAIL_REPORTED_FILE" 2>/dev/null || echo 0)
+    if (( FAILS >= FAIL_THRESHOLD )) \
+        && { [[ ! -f "$FAIL_REPORTED_FILE" ]] || (( FAILING_HOURS >= LAST_REPORTED + 24 )); }; then
+        echo "$FAILING_HOURS" >"$FAIL_REPORTED_FILE"
+        # Three ticks inside one hour is possible (a catch-up burst after the lid opens), and
+        # "failing for 0h" reads like nothing is wrong. Count is the honest unit below an hour.
+        FAIL_SPAN="${FAILS} ticks in a row"
+        FAIL_HOURS_NOTE=""
+        if (( FAILING_HOURS >= 1 )); then
+            FAIL_SPAN="${FAILING_HOURS}h"
+            FAIL_HOURS_NOTE=" That is ${FAILING_HOURS}h with no build."
+        fi
+        FAIL_NOTE=$(mktemp -t wstickfail)
+        {
+            echo "The build lane has failed ${FAILS} ticks in a row.${FAIL_HOURS_NOTE}"
+            echo
+            echo "## What the last attempt printed"
+            echo
+            echo '```'
+            tail -25 "$RUN_OUT"
+            echo '```'
+            echo
+            echo "## Where to look"
+            echo
+            echo "Tick log:   ${TICK_LOG_DIR}/tick-$(date +%F).log"
+            echo "Run logs:   ${REPO_ROOT}/build/implementer/"
+            echo "Queue:      plans/implementer-queue.md"
+            echo
+            echo "A run that fails identically every hour is usually a leftover from an earlier"
+            echo "failure rather than a new fault — a kept post-mortem worktree is the common one:"
+            echo
+            echo "    git -C ${REPO_ROOT} worktree list"
+            echo "    git -C ${REPO_ROOT} worktree remove --force <path>"
+        } >"$FAIL_NOTE"
+        python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "${AUDIT_MAIL_TO:-mail@magnus-goedde.de}" \
+            --subject "WhisperShortcut implementer failing (${FAIL_SPAN})" \
+            --body-file "$FAIL_NOTE" \
+            --verdict needs-fix --verdict-detail "Every tick has tried to build and failed — \
+${FAIL_SPAN} now. Nothing automatic clears this: the tick will keep retrying and keep failing \
+the same way, and from the outside a failing lane looks exactly like an empty queue. Whatever the \
+row was proposing stays unbuilt until you look." \
+            --title "Implementer failing every tick" \
+            --meta "Consecutive failures=${FAILS}" --meta "Failing for=${FAIL_SPAN}" \
+            || osascript -e "display notification \"${FAILS} ticks in a row\" with title \"Implementer failing\"" >/dev/null 2>&1
+        rm -f "$FAIL_NOTE"
+    fi
+fi
+rm -f "$RUN_OUT"
 
 log "tick done"
