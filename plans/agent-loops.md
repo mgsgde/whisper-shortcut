@@ -378,3 +378,26 @@ python3 scripts/send-report-mail.py --subject "…" --body-file plans/…md \
     --verdict needs-decision --verdict-count 2 --verdict-detail "…" \
     --dry-run --html-out /tmp/preview.html
 ```
+
+### The other half: a mail that is never sent
+
+The contract above shapes mails that go out. It does nothing about the failure underneath it — a
+lane that stops mailing at all — and that is the one this repo actually shipped.
+
+On 2026-09-06 queue row #4 (gemini-3.8-flash) was promoted to `BUILD`, the build agent turned out
+to be logged out, and the run died leaving its worktree behind for the post-mortem, as designed.
+From 03:05 onward every hourly tick then hit `ERROR: worktree dir already exists … (clean up the
+previous run first)` — a precondition no retry can satisfy. `die` exits before any `report_out`,
+so the lane failed 40+ times across two days in complete silence and, from outside, was
+indistinguishable from an empty queue. The change sat unbuilt until a human happened to ask.
+
+The fix is deliberately not at the die-site. Escalating per error string would only cover the one
+failure already known; **`tick.sh` counts consecutive non-zero exits of `run-implementer.sh` and
+reports the streak, whatever produced it** — three failures before the first mail so a transient
+hour stays quiet, then once a day, measured in elapsed hours rather than tick count because this
+is a laptop and ticks are skipped whenever the lid is shut (`IMPLEMENTER_FAIL_ALERT_AFTER`, the
+same shape as the blocked-builds reporter above it). Any clean exit clears the streak, "nothing to
+do" included — that is the runner saying it got far enough to read the queue.
+
+The runner's own mails are untouched: a run that reaches `fail_run` still mails immediately. This
+is the net under every path that never gets that far.
