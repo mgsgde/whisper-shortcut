@@ -57,6 +57,9 @@ enum UserDefaultsKeys {
   /// One-shot migration flag: chat-window default moved 3.5 Flash-Lite → 3.7 Flash.
   static let didMigrateChatDefaultTo37Flash = "didMigrateChatDefaultTo37Flash"
 
+  /// One-shot migration flag: chat-window and Smart Improvement defaults moved 3.7 Flash → 3.8 Flash.
+  static let didMigrateDefaultsTo38Flash = "didMigrateDefaultsTo38Flash"
+
   // MARK: - Recording Safeguards
   static let confirmAboveDurationSeconds = "confirmAboveDurationSeconds"
 

@@ -28,6 +28,8 @@ struct ProviderCredentialFactsTests {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
     .gemini37Flash:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent",
+    .gemini38Flash:
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
   ]
 
   @Test("Gemini endpoints still resolve to the exact URLs the per-model switch returned")

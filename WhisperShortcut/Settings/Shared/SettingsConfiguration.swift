@@ -25,7 +25,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// they all read `defaultChatModel` from here.
   var defaultChatModel: PromptModel {
     switch self {
-    case .gemini: return .gemini37Flash
+    case .gemini: return .gemini38Flash
     case .grok:   return .grok46
     case .openai: return .openaiGPT56Sol
     case .anthropic: return .claudeSonnet5
@@ -54,12 +54,13 @@ enum ChatModelProvider: String, CaseIterable {
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash,
-// gemini-3.7-flash (shipped 2026-08-13; https://ai.google.dev/gemini-api/docs/models).
+// gemini-3.7-flash (shipped 2026-08-13), gemini-3.8-flash (shipped 2026-09-02;
+// https://ai.google.dev/gemini-api/docs/models).
 // Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
-// -pro, shutdown 2026-10-16) → gemini-3.5-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
-// gemini-3-flash-preview (deprecated-pending) → gemini-3.5-flash.
+// -pro, shutdown 2026-10-16) → gemini-3.7-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
+// gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
@@ -71,6 +72,7 @@ enum PromptModel: String, CaseIterable {
   case gemini35Flash = "gemini-3.5-flash"
   case gemini36Flash = "gemini-3.6-flash"
   case gemini37Flash = "gemini-3.7-flash"
+  case gemini38Flash = "gemini-3.8-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
@@ -182,6 +184,8 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.6 Flash"
     case .gemini37Flash:
       return "Gemini 3.7 Flash"
+    case .gemini38Flash:
+      return "Gemini 3.8 Flash"
     case .geminiImage:
       return "Gemini Image (Nano Banana 2)"
     case .geminiImagePro:
@@ -251,6 +255,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini35Flash:     return "gemini35flash"
     case .gemini36Flash:     return "gemini36flash"
     case .gemini37Flash:     return "gemini37flash"
+    case .gemini38Flash:     return "gemini38flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
     case .grok4:             return "grok4"
@@ -290,7 +295,9 @@ enum PromptModel: String, CaseIterable {
     case .gemini36Flash:
       return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence • Multimodal"
     case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Newest Flash • Most capable workhorse for coding and agents • Multimodal"
+      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents • Multimodal"
+    case .gemini38Flash:
+      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal"
     case .geminiImage:
       return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
@@ -348,7 +355,7 @@ enum PromptModel: String, CaseIterable {
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
+         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
     case .localMLXQwen34BInstruct, .localMLXQwen38B:
       return "Free (Offline)"
@@ -372,7 +379,7 @@ enum PromptModel: String, CaseIterable {
     // compiler force the decision instead.
     switch self {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
-         .gemini37Flash, .geminiImage, .geminiImagePro:
+         .gemini37Flash, .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
       return .grok
@@ -546,6 +553,10 @@ enum PromptModel: String, CaseIterable {
     // "Legacy models". Dominated.
     // https://platform.claude.com/docs/en/about-claude/models/overview
     case .claudeOpus48: return .claudeOpus5
+    // Gemini Flash: 3.5 and 3.6 are dominated by 3.7 on price, tier, and (for 3.6) speed.
+    // Point at 3.7, not 3.8 — the 2026-09-03 audit's probe had 3.8 ~12% slower than 3.7,
+    // so 3.7 stays selectable until an interleaved latency run decides otherwise.
+    case .gemini35Flash, .gemini36Flash: return .gemini37Flash
     default: return nil
     }
   }
@@ -576,6 +587,11 @@ enum PromptModel: String, CaseIterable {
     case .gemini37Flash:
       // Live-verified 2026-08-23: gemini-3.7-flash rejects thinkingLevel MINIMAL
       // ("Thinking level MINIMAL is not supported for this model"). `low` is the floor.
+      return ["thinkingLevel": "low"]
+    case .gemini38Flash:
+      // Same floor as 3.7, live-verified 2026-09-06: `thinkingLevel: minimal` returns HTTP 400
+      // ("Thinking level MINIMAL is not supported for this model"), `low` returns 200. Matches
+      // the documented LOW/MEDIUM/HIGH set.
       return ["thinkingLevel": "low"]
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
       return ["thinkingLevel": "minimal"]
@@ -624,6 +640,8 @@ enum PromptModel: String, CaseIterable {
       return .gemini36Flash
     case .gemini37Flash:
       return .gemini37Flash
+    case .gemini38Flash:
+      return .gemini38Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46:
@@ -740,8 +758,10 @@ enum PromptModel: String, CaseIterable {
       // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
       return Self.gemini31Pro.rawValue
     case "gemini-2.5-flash":
-      // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
-      return Self.gemini35Flash.rawValue
+      // Deprecated, shutdown 2026-10-16. Google's named replacement is gemini-3.5-flash,
+      // but 3.5 Flash is hidden from chat pickers (chatReplacement → 3.7), so landing
+      // here would deposit a user on a model they cannot re-select. Forward to 3.7.
+      return Self.gemini37Flash.rawValue
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return Self.gemini31FlashLite.rawValue
@@ -749,19 +769,20 @@ enum PromptModel: String, CaseIterable {
       // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
       return Self.gemini31Pro.rawValue
     case "gemini-3-flash-preview":
-      // Deprecated-pending; Google says use gemini-3.5-flash.
-      return Self.gemini35Flash.rawValue
+      // Deprecated-pending; Google says use gemini-3.5-flash. Same reason as 2.5-flash:
+      // 3.5 is no longer chat-selectable, so land on 3.7 instead.
+      return Self.gemini37Flash.rawValue
     default:
       return raw
     }
   }
 
   /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
-  /// Verified for 3.1 Pro (2026-07) and 3.7 Flash (2026-08-23:
-  /// "Thinking level MINIMAL is not supported for this model").
+  /// Verified for 3.1 Pro (2026-07), 3.7 Flash (2026-08-23) and 3.8 Flash (2026-09-06), all
+  /// with the same error: "Thinking level MINIMAL is not supported for this model".
   var geminiRejectsMinimalThinking: Bool {
     switch self {
-    case .gemini31Pro, .gemini37Flash: return true
+    case .gemini31Pro, .gemini37Flash, .gemini38Flash: return true
     default: return false
     }
   }
@@ -770,9 +791,23 @@ enum PromptModel: String, CaseIterable {
   /// summary, Smart Improvement). On top of `loadPromptModel` it forwards a superseded
   /// selection to its replacement and persists that, so the value always appears in the
   /// pickers, which list `chatModels`.
+  /// What `loadChatSlotModel` would hand back for `raw`, computed WITHOUT touching UserDefaults.
+  ///
+  /// Launch-time migrations run before any slot is loaded, so they see the raw stored string —
+  /// not the model the user will actually end up on. Anything that wants to reason about "which
+  /// model is this slot effectively tracking" has to replay the same three steps the loader does:
+  /// legacy raw-value forwarding, deprecation mapping, then supersession. Returns nil when the
+  /// string does not name a model at all (the loader falls back in that case).
+  static func resolvedChatSlotModel(forRawValue raw: String) -> PromptModel? {
+    guard let parsed = PromptModel(rawValue: migrateLegacyPromptRawValue(raw)) else { return nil }
+    let current = migrateIfDeprecated(parsed)
+    return current.chatReplacement ?? current
+  }
+
   static func loadChatSlotModel(forKey key: String, default fallback: PromptModel) -> PromptModel {
     let loaded = loadPromptModel(forKey: key, default: fallback, validate: { $0.supportsTextChat })
     guard let replacement = loaded.chatReplacement else { return loaded }
+    DebugLogger.log("MODEL-LINEUP: \(key) \(loaded.rawValue) → \(replacement.rawValue) (superseded)")
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     return replacement
   }
@@ -1770,7 +1805,8 @@ struct SettingsDefaults {
   static let addToGlossary: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
-  // Chat defaults to 3.7 Flash — the current Gemini workhorse (GA 2026-08-13). Dictate Prompt
+  // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
+  // introductory price as 3.7 ($0.75/$3.75 per 1M through 2026). Dictate Prompt
   // and meeting summary stay on 3.5 Flash-Lite because those run more often and Flash is
   // roughly 3× the output price of Flash-Lite.
   // https://ai.google.dev/gemini-api/docs/pricing
@@ -1795,7 +1831,7 @@ struct SettingsDefaults {
   /// Cheapest audio-capable model on OpenRouter's own pricing list (2026-07).
   static let openRouterTranscriptionModelID = "google/gemini-3.5-flash-lite"
   static let selectedPromptModel = PromptModel.gemini35FlashLite
-  static let selectedChatModel = PromptModel.gemini37Flash
+  static let selectedChatModel = PromptModel.gemini38Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
@@ -1854,10 +1890,11 @@ struct SettingsDefaults {
   static let selectedMeetingSummaryModel = PromptModel.gemini35FlashLite
 
   /// Smart Improvement runs at most once a week in the background, so its per-run cost barely
-  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.7 Flash
-  /// is the current workhorse (GA 2026-08-13): more capable than 3.6 and cheaper through 2026
-  /// ($0.75/$3.75 per 1M intro vs 3.6's $1.50/$7.50). https://ai.google.dev/gemini-api/docs/models
-  static let selectedImprovementModel = PromptModel.gemini37Flash
+  /// registers — but it does analysis over a whole corpus, which Flash-Lite is weak at. 3.8 Flash
+  /// is the current workhorse (GA 2026-09-02): same introductory price as 3.7 ($0.75/$3.75 per 1M
+  /// through 2026). 3.7 stays selectable — the audit's probe had 3.8 ~12% slower, so it is not
+  /// hidden. https://ai.google.dev/gemini-api/docs/models
+  static let selectedImprovementModel = PromptModel.gemini38Flash
 
   // MARK: - Local LLM (OpenAI-compatible server, e.g. Ollama / LM Studio)
   /// Base URL up to and including `/v1`. The provider appends `/chat/completions`. Ollama's

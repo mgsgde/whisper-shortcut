@@ -1928,7 +1928,7 @@ class ChatViewModel: ObservableObject {
     switch outcome {
     case .usage(let cur):
       appendModelMessage(
-        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 3.7 flash`."
+        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 3.8 flash`."
       )
     case .applied(let model):
       switchToModel(model)
@@ -1936,7 +1936,7 @@ class ChatViewModel: ObservableObject {
       let list = candidates.map { "• **\($0.displayName)**" }.joined(separator: "\n")
       appendModelMessage("Multiple matches. Be more specific:\n\(list)")
     case .noMatch(let query):
-      appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `3.7 flash`.")
+      appendModelMessage("No model matched \"\(query)\". Try a version and variant, e.g. `3.1 flash lite` or `3.8 flash`.")
     }
     DebugLogger.log("GEMINI-CHAT: /model argument=\(argument) outcome=\(outcome)")
   }
