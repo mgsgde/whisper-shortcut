@@ -223,7 +223,33 @@ def build_body(rows):
     on_a_clock = len(veto) + len([w for w in windows if not w.get("VETOED")])
     subject = (f"WhisperShortcut implementer — {on_a_clock} on a clock, {len(ask)} on your desk, "
                f"{len(parked)} parked")
-    return subject, "\n".join(lines)
+
+    # The verdict states which of those three numbers the reader is actually being asked about.
+    # ASK/OPEN is the only one that is his: DEFERRED waits for a slot, BLOCKED for a scope
+    # decision he makes once for all of them, DEFECT for the loop that wrote the row. Ranking
+    # them by loudness rather than reporting all three is the whole point — this mail exists
+    # because a lane that says everything says nothing.
+    if ask:
+        verdict = ["--verdict", "needs-decision", "--verdict-count", str(len(ask)),
+                   "--verdict-detail",
+                   "They are under \"Waiting on you\" below. Nothing else in this lane is: the "
+                   "machine cannot rule on them, so they sit until you do — release one with "
+                   "keep.sh or leave it. Everything else on this list is on a clock or waiting "
+                   "for a build slot."]
+    elif on_a_clock:
+        verdict = ["--verdict", "ships-on-silence",
+                   "--verdict-detail",
+                   f"{on_a_clock} row{'' if on_a_clock == 1 else 's'} build or merge on their own "
+                   "deadline, listed at the top with their dates. Nothing here is waiting for a "
+                   "decision from you.",
+                   "--verdict-stop-with", "bash scripts/implementer/veto.sh <#>"]
+    else:
+        verdict = ["--verdict", "fyi",
+                   "--verdict-detail",
+                   "Nothing in the lane is waiting for you and nothing is on a clock. This mail "
+                   "arrives weekly whatever the queue says, because a lane that has gone quiet "
+                   "and a lane with nothing to do are indistinguishable from silence."]
+    return subject, "\n".join(lines), verdict
 
 
 def main():
@@ -242,7 +268,7 @@ def main():
     except OSError as exc:
         print(f"cannot read the queue at {args.queue_file}: {exc}", file=sys.stderr)
         return 1
-    subject, body = build_body(rows_from(text))
+    subject, body, verdict = build_body(rows_from(text))
 
     if args.dry_run:
         print(subject)
@@ -256,7 +282,8 @@ def main():
     try:
         rc = subprocess.run(
             [sys.executable, os.path.join(REPO_ROOT, "scripts", "send-report-mail.py"),
-             "--to", MAIL_TO, "--subject", subject, "--body-file", tmp]
+             "--to", MAIL_TO, "--subject", subject, "--body-file", tmp,
+             "--title", "Implementer machine health", *verdict]
         ).returncode
     finally:
         os.unlink(tmp)

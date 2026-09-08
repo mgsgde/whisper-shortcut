@@ -135,6 +135,9 @@ alert_and_die() { # alert_and_die <subject> <body>
     local body_file; body_file="$(mktemp -t implementer-preflight)"
     printf '%s\n' "$2" >"$body_file"
     python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$1" --body-file "$body_file" \
+        --verdict needs-fix --verdict-detail "The implementer cannot run at all until this is fixed. \
+No later tick works around it: every hourly tick from now on stops here, so the queue stops moving \
+and its silence will look like an empty queue." \
         >/dev/null 2>&1 || warn "could not send mail — body kept at ${body_file}"
     die "$1"
 }
@@ -243,9 +246,12 @@ log "monthly budget: run $((RUNS_THIS_MONTH + 1)) of ${MAX_RUNS_PER_MONTH}"
 notify() {
     osascript -e "display notification \"$(printf '%s' "$2" | sed 's/"/\\"/g')\" with title \"$1\"" >/dev/null 2>&1 || true
 }
-report_out() { # report_out <subject> <body-file>
-    python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$1" --body-file "$2" \
-        || warn "could not send mail — see ${2}"
+report_out() { # report_out <subject> <body-file> [send-report-mail.py flags …]
+    # Every call states a verdict — the banner at the top of the mail is what answers "muss ich
+    # hier etwas tun?" for a lane whose whole point is that most of its mails need nothing.
+    local subject="$1" body="$2"; shift 2
+    python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$subject" --body-file "$body" "$@" \
+        || warn "could not send mail — see ${body}"
 }
 
 # The test gate below kills the app. Remember whether it was running, so we can put the user's
@@ -299,7 +305,12 @@ fail_run() { # fail_run <reason>
         echo "Worktree kept: ${WT_DIR}"
         echo "Logs: ${RUN_DIR}"
     } >"$note"
-    report_out "WhisperShortcut implementer FAILED (#${Q_NUM})" "$note"
+    report_out "WhisperShortcut implementer FAILED (#${Q_NUM})" "$note" \
+        --verdict needs-fix --verdict-detail "Queue row #${Q_NUM} did not build. Its row stays \
+eligible, so the next hourly tick will try the same row again and can fail the same way; the \
+worktree and logs are kept for the post-mortem (paths below)." \
+        --title "Implementer FAILED — queue #${Q_NUM}" \
+        --meta "Queue row=#${Q_NUM}" --meta "Branch=${BRANCH}" --meta "Logs=${RUN_DIR}"
     notify "WhisperShortcut implementer FAILED" "$1"
     exit 1
 }
@@ -848,9 +859,21 @@ launch_branch_build
     echo "the automation's own falsifier is graded from that column."
 } >"$REPORT"
 
-SUBJECT_TAIL=""
-[[ -n "$MERGE_DEADLINE" ]] && SUBJECT_TAIL=" — merges ${MERGE_DEADLINE} unless stopped"
-report_out "WhisperShortcut implementer READY — #${Q_NUM} ${Q_PROPOSAL:0:60}${SUBJECT_TAIL}" "$REPORT"
+# The verdict is the merge window, not the build: a run that opened one needs nothing from you
+# and says so with its deadline; a run that did not (IMPLEMENTER_AUTO_MERGE=0) is a branch that
+# sits there until you merge it, which is a decision and must not wear a green banner.
+READY_VERDICT=(--verdict needs-decision --verdict-count 1
+    --verdict-detail "Queue row #${Q_NUM} built and passed every gate, but no merge window was opened (IMPLEMENTER_AUTO_MERGE=0), so this branch merges only when you merge it. Nothing else moves it.")
+if [[ -n "$MERGE_DEADLINE" ]]; then
+    READY_VERDICT=(--verdict ships-on-silence
+        --verdict-detail "Queue row #${Q_NUM} built and passed every gate. It merges into main on ${MERGE_DEADLINE}; the branch build is yours to try until then."
+        --verdict-stop-with "cd ${REPO_ROOT} && bash scripts/implementer/veto.sh ${Q_NUM} (keeps the branch — it closes the window, it does not reject the change).")
+fi
+report_out "WhisperShortcut implementer READY — #${Q_NUM} ${Q_PROPOSAL:0:60}" "$REPORT" \
+    "${READY_VERDICT[@]}" \
+    --title "Implementer READY — queue #${Q_NUM}" \
+    --meta "Queue row=#${Q_NUM}" --meta "Branch=${BRANCH}" \
+    --meta "Review=${REVIEW_VERDICT}" --meta "Files changed=${FILE_COUNT}"
 if [[ "$BRANCH_BUILD_RUNNING" == "1" ]]; then
     notify "WhisperShortcut implementer READY" "Queue #${Q_NUM} is now RUNNING as ${BRANCH} — try it"
 else

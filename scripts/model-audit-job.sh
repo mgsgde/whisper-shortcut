@@ -176,6 +176,11 @@ EOF
 # a ledger row nobody flags. The schema lives in one place, not four:
 # scripts/implementer/proposal-prompt.sh. Appending is best-effort — a loop whose report is
 # written must not fail because the sidecar prompt could not be generated.
+# The path is fixed here rather than left to the helper's clock, because this run's mail has to
+# say whether anything reached the implementer queue — and "proposed nothing" must not look like
+# "wrote its file under a name nobody counted".
+IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit --path-only)"
+export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit >>"$PROMPT_FILE" \
   || echo "WARN: could not append the implementer-proposal block — this run reports only."
 
@@ -194,13 +199,14 @@ notify() {
     >/dev/null 2>&1 || true
 }
 
-# report_out <subject> <body-file> [attachment …] — mail it, notify locally if that fails.
+# report_out <subject> <body-file> [send-report-mail.py flags …] — mail it, notify locally if that
+# fails. Every call passes a --verdict: the banner at the top of the mail is what answers "muss ich
+# hier etwas tun?", and a mail that leaves it out flags itself as unanswered. Attachments are now
+# explicit --attach flags rather than trailing words, so the two kinds of argument cannot blur.
 report_out() {
   local subject="$1" body="$2"; shift 2
-  local attach_args=()
-  for a in "$@"; do attach_args+=(--attach "$a"); done
   if python3 "$REPO/scripts/send-report-mail.py" --to "$AUDIT_MAIL_TO" \
-       --subject "$subject" --body-file "$body" "${attach_args[@]+"${attach_args[@]}"}"; then
+       --subject "$subject" --body-file "$body" "$@"; then
     return 0
   fi
   echo "WARN: could not send mail — falling back to a local notification"
@@ -228,7 +234,11 @@ if [ $STATUS -ne 0 ] || [ ! -f "$REPORT" ]; then
     echo "The measurements did run and are attached. Log: $REPO/build/logs/model-audit.log"
     echo "Re-run manually with: bash scripts/model-audit-job.sh"
   } > "$FAIL_NOTE"
-  report_out "WhisperShortcut model audit FAILED ($STAMP)" "$FAIL_NOTE" "$RAW"
+  report_out "WhisperShortcut model audit FAILED ($STAMP)" "$FAIL_NOTE" --attach "$RAW" \
+    --verdict needs-fix --verdict-detail "The judging pass did not finish, so this month has \
+no model recommendation and no proposal reached the implementer queue. The measurements did \
+run and are attached. Nothing retries it — the next scheduled run is a month away unless you \
+re-run it by hand (command below)."
   rm -f "$FAIL_NOTE"
   exit 1
 fi
@@ -240,7 +250,15 @@ VERDICT="$(head -1 "$REPORT" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Report written (no verdict line found)"
 # The verdict goes in the subject so it is readable from a phone lock screen without opening
 # the mail; the report is the body, the raw measurements are attached for anything questionable.
-report_out "WhisperShortcut model audit — $VERDICT" "$REPORT" "$RAW"
+# The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
+# characters, which pushed the one thing a phone notification has to show — whether this needs you —
+# past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
+# notification below still speaks it.
+report_out "WhisperShortcut model audit ($STAMP)" "$REPORT" --attach "$RAW" \
+  --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
+  --title "Model audit $STAMP" \
+  --meta "Job=model-audit (monthly)" --meta "Report=$REPORT" \
+  --meta "Raw measurements=attached"
 echo "VERDICT: $VERDICT"
 echo "Report: $REPORT"
 echo "=== Model audit finished: $(date '+%Y-%m-%d %H:%M:%S') ==="

@@ -3,15 +3,27 @@
 # readable proposal file next to its prose report.
 #
 #     bash scripts/implementer/proposal-prompt.sh <loop-name> >> "$PROMPT_FILE"
+#     bash scripts/implementer/proposal-prompt.sh <loop-name> --path-only   # just the JSON path
+#
+# `--path-only` exists so the caller can count what the run actually proposed: the job's mail has to
+# say whether anything reached the implementer queue, and "proposed nothing" and "wrote its file
+# under a name nobody looked for" must not read alike. Export the printed path as
+# IMPLEMENTER_PROPOSAL_FILE and the prompt below tells the run to write exactly there.
 #
 # Why a sidecar rather than parsing the reports: the groomer must contain no judgement
 # (scripts/implementer/groom-queue.py), and a parser guessing which paragraph of a monthly audit
 # is a proposal is exactly that. The loop already knows what it is proposing — it just has to
 # say so in a form a lookup table can read. One place to maintain the schema; four callers.
 set -euo pipefail
-LOOP="${1:?usage: proposal-prompt.sh <loop-name>}"
+LOOP="${1:?usage: proposal-prompt.sh <loop-name> [--path-only]}"
 INCOMING="${IMPLEMENTER_INCOMING_DIR:-$HOME/.local/state/whispershortcut-implementer/incoming}"
 mkdir -p "$INCOMING"
+PROPOSAL_FILE="${IMPLEMENTER_PROPOSAL_FILE:-${INCOMING}/${LOOP}-$(date +%Y-%m-%d-%H%M%S).json}"
+
+if [ "${2:-}" = "--path-only" ]; then
+  echo "$PROPOSAL_FILE"
+  exit 0
+fi
 
 cat <<EOF
 
@@ -19,7 +31,7 @@ cat <<EOF
 
 Besides the report above, write a JSON file to:
 
-    ${INCOMING}/${LOOP}-$(date +%Y-%m-%d-%H%M%S).json
+    ${PROPOSAL_FILE}
 
 It holds a LIST of the proposals from this run that are concrete enough to build — usually 0 to
 3, and **an empty list \`[]\` is the right answer whenever this run's honest verdict is "build

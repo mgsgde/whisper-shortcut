@@ -243,6 +243,12 @@ if [[ "$CURRENT_BRANCH" != "main" ]]; then
         } >"$NOTE"
         python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "${AUDIT_MAIL_TO:-mail@magnus-goedde.de}" \
             --subject "WhisperShortcut implementer builds paused (${BLOCKED_HOURS}h)" --body-file "$NOTE" \
+            --verdict needs-fix --verdict-detail "The build lane has been stopped for ${BLOCKED_HOURS}h \
+because the shared checkout is on '${CURRENT_BRANCH}' instead of main, and no tick works around that: \
+it will stay stopped, silently looking like an empty queue, until you switch the checkout back \
+(command below). Grooming is unaffected — proposals are still filed and veto windows still promote." \
+            --title "Implementer builds paused" \
+            --meta "Blocked for=${BLOCKED_HOURS}h" --meta "Checkout is on=${CURRENT_BRANCH}" \
             || osascript -e "display notification \"on branch ${CURRENT_BRANCH} for ${BLOCKED_HOURS}h\" with title \"Implementer builds paused\"" >/dev/null 2>&1
         rm -f "$NOTE"
     fi

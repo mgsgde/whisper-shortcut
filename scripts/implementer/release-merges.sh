@@ -53,9 +53,12 @@ PUSH_MAIN="${IMPLEMENTER_AUTO_PUSH_MAIN:-1}"
 # change and needs the same deliberate act as widening AUTO_CLASSES.
 REGATE_EXEMPT_REGEX='^(plans/|\.cursor/|\.agents/|[^/]+\.md$)'
 
-mail_out() { # mail_out <subject> <body-file>
-    python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$1" --body-file "$2" \
-        || warn "could not send mail — see ${2}"
+mail_out() { # mail_out <subject> <body-file> [send-report-mail.py flags …]
+    # Every call states a verdict — this lane's mails are mostly "it landed, do nothing", and the
+    # one that needs a hand has to be distinguishable from them at a glance, not by reading.
+    local subject="$1" body="$2"; shift 2
+    python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "$MAIL_TO" --subject "$subject" --body-file "$body" "$@" \
+        || warn "could not send mail — see ${body}"
 }
 notify() {
     osascript -e "display notification \"$(printf '%s' "$2" | sed 's/"/\\"/g')\" with title \"$1\"" >/dev/null 2>&1 || true
@@ -170,7 +173,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
             echo "Merge it yourself:  git -C ${REPO_ROOT} merge --ff-only ${BRANCH}"
             echo "Drop it:            git -C ${REPO_ROOT} worktree remove --force ${WT_DIR} && git -C ${REPO_ROOT} branch -D ${BRANCH}"
         } >"$note"
-        mail_out "WhisperShortcut implementer — merge #${QUEUE_NUM} stopped" "$note"
+        mail_out "WhisperShortcut implementer — merge #${QUEUE_NUM} stopped" "$note" \
+            --verdict fyi --verdict-detail "You stopped this window with veto.sh, and it is now \
+closed. The branch and its worktree are kept and the queue row is ASK, so no tick rebuilds it — \
+nothing further happens to it unless you merge or drop it yourself (commands below)." \
+            --title "Merge window stopped — queue #${QUEUE_NUM}"
         rm -f "$note"
         return
     fi
@@ -240,7 +247,11 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
                 echo "Branch ${BRANCH} could not be rebased onto main. Worktree kept: ${WT_DIR}"
                 echo "The queue row is ASK, so nothing rebuilds it."
             } >"$cnote"
-            mail_out "WhisperShortcut implementer — #${QUEUE_NUM} rebase conflict" "$cnote"
+            mail_out "WhisperShortcut implementer — #${QUEUE_NUM} rebase conflict" "$cnote" \
+                --verdict needs-fix --verdict-detail "The branch could not be rebased onto main \
+and resolving a conflict is not something this pipeline claims to do. The row is ASK, so nothing \
+retries it: the change stays unmerged until you resolve it by hand." \
+                --title "Rebase conflict — queue #${QUEUE_NUM}"
             rm -f "$cnote"
             return
         fi
@@ -326,7 +337,12 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
         echo
         echo "Undo it:  git -C ${REPO_ROOT} revert --no-commit ${main_before}..HEAD"
     } >"$note"
-    mail_out "WhisperShortcut implementer MERGED (#${QUEUE_NUM})" "$note"
+    mail_out "WhisperShortcut implementer MERGED (#${QUEUE_NUM})" "$note" \
+        --verdict fyi --verdict-detail "The merge window ran out and the change is on main. \
+Merging is not releasing: the parent repo's submodule pointer, create-release.sh and the App \
+Store submission are all still yours, so nothing has reached a user. The revert command is at \
+the end of the report." \
+        --title "Merged to main — queue #${QUEUE_NUM}"
     notify "WhisperShortcut implementer MERGED" "Queue #${QUEUE_NUM} is on main"
     rm -f "$note"
     log "═══ MERGED ═══  queue #${QUEUE_NUM} is on main (${gates_note})."

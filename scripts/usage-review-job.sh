@@ -90,12 +90,15 @@ notify() {
     >/dev/null 2>&1 || true
 }
 
-# report_out <subject> <body-file> — mail it, notify locally if that fails. The Keychain is
+# report_out <subject> <body-file> [send-report-mail.py flags …] — mail it, notify locally if
+# that fails. Every call passes a --verdict: the banner at the top of the mail is what answers
+# "muss ich hier etwas tun?", and a mail that leaves it out flags itself as unanswered.
+# The Keychain is
 # unreadable while the Mac is locked, which at 08:47 on a Monday is a normal condition.
 report_out() {
-  local subject="$1" body="$2"
+  local subject="$1" body="$2"; shift 2
   if python3 "$REPO/scripts/send-report-mail.py" --to "$AUDIT_MAIL_TO" \
-       --subject "$subject" --body-file "$body"; then
+       --subject "$subject" --body-file "$body" "$@"; then
     return 0
   fi
   echo "WARN: could not send mail — falling back to a local notification"
@@ -108,7 +111,10 @@ fail_out() {
   echo "VERDICT: $verdict"   # also to the log — mail and notification can both be unavailable
   local note; note="$(mktemp -t wsreviewfail)"
   { echo "VERDICT: $verdict"; echo; for line in "$@"; do echo "$line"; done; } > "$note"
-  report_out "WhisperShortcut usage review FAILED ($STAMP)" "$note"
+  report_out "WhisperShortcut usage review FAILED ($STAMP)" "$note" \
+    --verdict needs-fix --verdict-detail "$verdict This week produced no proposals, so nothing \
+reached the implementer queue. Nothing retries it — the next scheduled run is a week away, so \
+this week of usage is lost unless you re-run it by hand (command below)."
   notify "WhisperShortcut usage review FAILED" "$verdict"
   rm -f "$note"
   exit 1
@@ -319,6 +325,11 @@ EOF
 # a ledger row nobody flags. The schema lives in one place, not four:
 # scripts/implementer/proposal-prompt.sh. Appending is best-effort — a loop whose report is
 # written must not fail because the sidecar prompt could not be generated.
+# The path is fixed here rather than left to the helper's clock, because this run's mail has to
+# say whether anything reached the implementer queue — and "proposed nothing" must not look like
+# "wrote its file under a name nobody counted".
+IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" usage-review --path-only)"
+export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" usage-review >>"$PROMPT_FILE" \
   || echo "WARN: could not append the implementer-proposal block — this run reports only."
 
@@ -374,7 +385,15 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
-report_out "WhisperShortcut usage review — $VERDICT" "$DIGEST"
+# The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
+# characters, which pushed the one thing a phone notification has to show — whether this needs you —
+# past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
+# notification below still speaks it.
+report_out "WhisperShortcut usage review ($STAMP)" "$DIGEST" \
+  --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
+  --title "Usage review $STAMP" \
+  --meta "Job=usage-review (weekly)" --meta "Window=last ${DAYS} days" \
+  --meta "Data=$INTERACTIONS interactions, $SIGNALS signals" --meta "Digest=$DIGEST"
 notify "WhisperShortcut usage review" "$VERDICT"
 echo "VERDICT: $VERDICT"
 echo "Digest: $DIGEST"
