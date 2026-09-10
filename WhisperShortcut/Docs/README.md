@@ -1,6 +1,6 @@
 # WhisperShortcut
 
-**Voice-first AI for your Mac.** Press ⌘1 anywhere, speak, and the transcription lands on your clipboard — ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
+**Voice-first AI for your Mac.** Press ⌘1 anywhere, speak, and the transcription inserts at the cursor — auto-paste, off by default and direct-download only — or lands on the clipboard, ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
 
 Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or run fully offline with local Whisper. No account, no subscription, no backend. Open source (AGPL-3.0).
 
@@ -17,10 +17,10 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 
 ## Features
 
-- **Dictate**: Record speech and copy the transcription to your clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Longer recordings start transcribing while you still speak — Gemini, OpenAI, Grok, and on-device Whisper — so pressing Stop only waits for the last chunk. If a chunk fails, the app falls back to transcribing the full recording.
+- **Dictate**: Record speech; the transcription inserts at the cursor when auto-paste is on, and is always copied to the clipboard. Use Gemini, OpenAI, or any audio-capable model on OpenRouter, a self-hosted transcription endpoint, or local Whisper models offline. Temperature and thinking effort are configurable for cloud models. Longer recordings start transcribing while you still speak — Gemini, OpenAI, Grok, and on-device Whisper — so pressing Stop only waits for the last chunk. If a chunk fails, the app falls back to transcribing the full recording.
 - **Add Selection to Glossary**: Select a correctly spelled term anywhere — your practice software, a document, an email — and press the shortcut (⌘7 by default, direct-download build only). It is appended to the Glossary verbatim, with a duplicate check. No model is involved, which makes it the way to grow the Glossary while Offline Mode is on, where the model-driven learning paths (Smart Improvement, Voice Feedback, the typed-text learner) do not run.
 - **Offline Mode**: One switch (Settings → Privacy & Permissions, also offered during onboarding) that makes the app device-local: dictation runs on an on-device Whisper model, requests the app itself builds are blocked at the network layer, and no transcript, prompt or audio sample is written to the usage log. Requests to your own machine or local network still work, so a Whisper server or Ollama on your network stays available. Downloading a Whisper or MLX model from Hugging Face still works (WhisperKit uses its own URLSession, which the Offline Mode guard does not wrap — that download carries no content of yours). Dictate Prompt keeps working through an in-process MLX model (Qwen3 4B Instruct, downloads itself, no server needed) or a local Ollama / LM Studio server if you prefer to run your own. Offline MLX and HTTP-local models read plain text, so they take the text to edit from your clipboard — in the App Store build, copy the text yourself (⌘C) before you start dictating, since that build cannot copy the selection for you. Chat can run on the same offline MLX models; Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations have no on-device equivalent and stop working while it is on. Built for regulated dictation — patient findings, case notes — where "the recording never leaves this device" has to hold whatever else is configured.
-- **Auto-paste**: Optionally paste the result straight at the cursor instead of only copying it (direct-download version only — it needs the Accessibility permission). Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
+- **Auto-paste**: Insert the result at the cursor via simulated ⌘V (Settings → Clipboard Behavior). Off by default; needs the Accessibility permission; direct-download only — the App Store build copies to the clipboard instead. Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
 - **Copy Last Transcription**: Every dictation result stays available in the menu bar — one entry re-copies the most recent transcription, and a **Recent Transcriptions** submenu holds the last five. Use it when an auto-paste landed in the wrong window, or when a later copy overwrote the clipboard.
 - **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models, in-process offline MLX models (no server), or a local Ollama / LM Studio server; optional screenshots can be included with the prompt.
 - **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, xAI, or on-device macOS voices. Long texts start playing as soon as the first chunk is synthesized while the rest streams in behind it, so you do not wait for the whole text. Markdown and links are stripped before synthesis, an optional Smart Rewrite pass cleans up code or log output, and playback speed is configurable. In Offline Mode the macOS voice is selected automatically.
@@ -84,7 +84,7 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 1. Configure a Dictate shortcut in Settings → Dictate.
 2. Choose a Gemini, OpenAI, OpenRouter, self-hosted, or Whisper transcription model.
 3. Press the shortcut (or the Fn key, if you turned that on), speak, then stop recording.
-4. The transcription is copied to the clipboard and can optionally be pasted automatically.
+4. The transcription inserts at the cursor when auto-paste is on (Settings → Clipboard Behavior; off by default; direct-download only). It is always copied to the clipboard as a backup.
 
 Longer recordings (roughly ten seconds and up) start transcribing in the background while you speak, on Gemini, OpenAI, Grok, and on-device Whisper. Pressing Stop only waits for the last chunk. If any chunk fails, the app transcribes the full recording instead, so you still get a complete result.
 
@@ -128,7 +128,7 @@ Recommendations by what you care about:
 1. Copy text you want to edit.
 2. Press the Dictate Prompt shortcut.
 3. Speak an instruction, such as "turn this into bullet points".
-4. The edited result is copied to the clipboard.
+4. The edited result inserts at the cursor when auto-paste is on, and is always copied to the clipboard.
 
 Optional: capture a screenshot (⌘3 or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
 
