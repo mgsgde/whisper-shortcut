@@ -2425,13 +2425,15 @@ class ChatViewModel: ObservableObject {
     showNotice("Transcript copied")
   }
 
-  /// Copies the transcript *and* everything asked and answered in this meeting's chat, as one
-  /// Markdown document. After a meeting the questions the user asked mid-way ("what did we decide
-  /// about X?") are often the most useful record — and "Copy transcript" alone drops them.
+  /// Copies the transcript, the live notes taken during the meeting, *and* everything asked and
+  /// answered in this meeting's chat, as one Markdown document. After a meeting the questions the
+  /// user asked mid-way ("what did we decide about X?") are often the most useful record — and
+  /// "Copy transcript" alone drops them.
   func copyMeetingTranscriptAndChat() {
     let transcript = copyableMeetingTranscriptText()
+    let notes = meetingNotesForDisplay
     let hasChat = !session.messages.isEmpty
-    guard !transcript.isEmpty || hasChat else {
+    guard !transcript.isEmpty || !notes.isEmpty || hasChat else {
       showNotice("No transcript or chat yet")
       return
     }
@@ -2439,6 +2441,14 @@ class ChatViewModel: ObservableObject {
     parts.append("# Transcript")
     parts.append(transcript.isEmpty ? "_No transcript yet._" : transcript)
     parts.append("")
+    if !notes.isEmpty {
+      parts.append("# Live Notes")
+      // Markers are the moments the user flagged by hotkey — worth telling apart from generated notes.
+      parts.append(notes.map { note in
+        note.isMarker ? "\(note.timestampString) ⚑ " + note.bullets.joined(separator: " ") : note.plainText
+      }.joined(separator: "\n"))
+      parts.append("")
+    }
     if hasChat {
       // The chat renderer already writes its own "# <title>" heading; keep it as the second section.
       parts.append(Self.renderChatAsMarkdown(session))
@@ -3783,7 +3793,7 @@ struct ChatView: View {
           .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Copy the transcript followed by the full chat history of this meeting as Markdown")
+        .help("Copy the transcript, the live notes, and the full chat history of this meeting as Markdown")
         .accessibilityLabel("Copy transcript and chat")
         .pointerCursorOnHover()
 
