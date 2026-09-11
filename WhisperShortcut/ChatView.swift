@@ -2415,12 +2415,7 @@ class ChatViewModel: ObservableObject {
   /// Copies this meeting's raw transcript. The transcript is a thing to paste elsewhere, not a
   /// thing to read in the app, so it gets a button rather than a tab.
   func copyMeetingTranscript() {
-    let text: String = {
-      if isCurrentSessionTheActiveMeeting {
-        return LiveMeetingTranscriptStore.shared.fullTranscriptText()
-      }
-      return (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    }()
+    let text = copyableMeetingTranscriptText()
     guard !text.isEmpty else {
       showNotice("No transcript yet")
       return
@@ -2428,6 +2423,43 @@ class ChatViewModel: ObservableObject {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
     showNotice("Transcript copied")
+  }
+
+  /// Copies the transcript *and* everything asked and answered in this meeting's chat, as one
+  /// Markdown document. After a meeting the questions the user asked mid-way ("what did we decide
+  /// about X?") are often the most useful record — and "Copy transcript" alone drops them.
+  func copyMeetingTranscriptAndChat() {
+    let transcript = copyableMeetingTranscriptText()
+    let hasChat = !session.messages.isEmpty
+    guard !transcript.isEmpty || hasChat else {
+      showNotice("No transcript or chat yet")
+      return
+    }
+    var parts: [String] = []
+    parts.append("# Transcript")
+    parts.append(transcript.isEmpty ? "_No transcript yet._" : transcript)
+    parts.append("")
+    if hasChat {
+      // The chat renderer already writes its own "# <title>" heading; keep it as the second section.
+      parts.append(Self.renderChatAsMarkdown(session))
+    }
+    let markdown = parts.joined(separator: "\n")
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(markdown, forType: .string)
+    showNotice(hasChat
+      ? "Transcript + chat copied (\(session.messages.count) messages)"
+      : "Transcript copied — chat is empty")
+    DebugLogger.log(
+      "GEMINI-CHAT: Copied meeting transcript + chat (\(session.messages.count) messages, \(markdown.count) chars)")
+  }
+
+  /// The live store while the meeting runs, the file on disk once it has ended — unlike
+  /// `currentMeetingTranscriptText()`, which only serves ended meetings.
+  private func copyableMeetingTranscriptText() -> String {
+    if isCurrentSessionTheActiveMeeting {
+      return LiveMeetingTranscriptStore.shared.fullTranscriptText()
+    }
+    return currentMeetingTranscriptText()
   }
 
   /// Reveals the transcript file in Finder — the escape hatch for actually reading the raw record.
@@ -3735,8 +3767,25 @@ struct ChatView: View {
         .accessibilityLabel("Copy transcript")
         .pointerCursorOnHover()
         .contextMenu {
+          Button("Copy Transcript + Chat") { viewModel.copyMeetingTranscriptAndChat() }
           Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
         }
+
+        // The questions asked during the meeting are part of the record too; this copies both.
+        Button(action: { viewModel.copyMeetingTranscriptAndChat() }) {
+          HStack(spacing: 4) {
+            Image(systemName: "doc.on.doc.fill").font(.system(size: 10))
+            Text("Copy transcript + chat").font(.system(size: 11))
+          }
+          .foregroundColor(ChatTheme.secondaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Copy the transcript followed by the full chat history of this meeting as Markdown")
+        .accessibilityLabel("Copy transcript and chat")
+        .pointerCursorOnHover()
 
         // Stopping is not instant, so the button reports the wait instead of inviting a second press:
         // pressing Stop again does nothing, and a control that looks live but isn't reads as broken.
