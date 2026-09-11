@@ -198,7 +198,7 @@ While a meeting runs:
 - **One-tap questions** above the composer: Catch me up, Action items, Open questions, Decisions.
 - **Ask about a moment**: hover any note and press *Ask* to quote it into the composer instead of retyping it.
 - **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → Chat). Markers show up in the note stream and the final summary is written around what you flagged.
-- **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder.
+- **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder. **Copy transcript + chat** next to it copies the transcript, the live notes (markers flagged with ⚑), and every question and answer from the meeting chat, as one Markdown document.
 
 While the meeting runs there is only the chat — the notes are already in it. Once a meeting has ended, its view has two tabs: **Chat** and **Notes**, where Notes holds the final summary. Chunks rotate faster while the chat window is on screen so the live view keeps up, and fall back to the configured interval when it is not.
 
