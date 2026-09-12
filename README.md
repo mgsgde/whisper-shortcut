@@ -237,7 +237,7 @@ Useful scripts:
 - `scripts/`: Local development and release helper scripts.
 - `.github/workflows/release.yml`: GitHub Actions workflow for signed, notarized release builds.
 - `plans/`: Shared implementation plans and specs.
-- `.cursor/`: Cursor agent commands, skills, and rules (see `.cursor/commands/README.md`).
+- `.agents/skills/`: agent skills (shared by Cursor, Claude Code and the in-app Chat); `.cursor/`: rules, commands, `CODEMAP.md` and `CONTEXT-CONVENTIONS.md` (the layout, shared with sabaki.dance).
 
 Core files:
 

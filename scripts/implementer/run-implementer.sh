@@ -440,7 +440,7 @@ Plan this row from ${QUEUE_REL}:
 - Proposal: ${Q_PROPOSAL}
 - Falsifier: ${Q_FALSIFIER}
 
-Read before you write: .cursor/skills/implement-proposal/SKILL.md (the build agent's playbook — your plan has to fit it), the repo rules in AGENTS.md and .cursor/rules/index.mdc, and the real files this change touches. Read code rather than guessing at it; that reading is the whole value of this step.
+Read before you write: .agents/skills/implement-proposal/SKILL.md (the build agent's playbook — your plan has to fit it), the repo rules in AGENTS.md and .cursor/rules/index.mdc, and the real files this change touches. Read code rather than guessing at it; that reading is the whole value of this step.
 
 Then write EXACTLY ONE file: ${PLAN_FILE_REL}. Create no other file, modify no existing file, make no commit, push nothing. A deterministic check runs afterwards and fails the entire run if anything else in the worktree changed.
 
@@ -504,7 +504,7 @@ You are running UNATTENDED as the autonomous implementer's build agent. Your wor
 is a git worktree on branch ${BRANCH}; treat it as the entire world — never write outside it,
 never push, never release.
 
-Task: execute the skill at .cursor/skills/implement-proposal/SKILL.md for this queue row from
+Task: execute the skill at .agents/skills/implement-proposal/SKILL.md for this queue row from
 ${QUEUE_REL}:
 - Queue #: ${Q_NUM}
 - Source: ${Q_SOURCE}
@@ -647,7 +647,7 @@ not re-run those. Judge what those gates cannot see:
 - Does it actually implement the proposal, or something adjacent that only looks like it?
 - Correctness and concurrency: main-thread work in audio/recording paths, unawaited async,
   retain cycles, force-unwraps on user input. This app's known failure mode is a main-thread
-  hang — see .cursor/skills/analyze-chat-freeze.
+  hang — see .agents/skills/analyze-chat-freeze.
 - Is the falsifier measurable once this ships? If the proposal needed instrumentation and the
   diff has none, that is a BLOCK.
 - Gate integrity: any weakened, skipped or deleted test, any relaxed threshold, any edited

@@ -26,7 +26,7 @@ loop machinery and the number that would show it got better.
 ## 1. Grade your own previous run first
 
 Read `plans/loop-ledger.md` and the newest digests in `plans/loop-reviews/`. For each open
-meta-proposal: was it applied (`git log --oneline --since=<that date> -- .cursor/skills/
+meta-proposal: was it applied (`git log --oneline --since=<that date> -- .agents/skills/
 scripts/ plans/`), and did the number it predicted move? Verdicts: `APPLIED+WORKED` ·
 `APPLIED+NO EFFECT` (write it off with why) · `NOT APPLIED` (twice = drop or re-argue) ·
 `TOO EARLY`. First run: say so in one line and continue.
@@ -83,7 +83,11 @@ improvement; otherwise it is one line under "watching".
 Read (read-only, at `~/sabaki.dance.v3` — if the path is missing, note it and skip):
 `docs/loop-architecture.md`, `docs/agent-autonomy-policy.md`, `docs/loop-meta-log.md`,
 `docs/ai-stack-log.md`, `docs/product-loop-log.md`, `docs/elon-log.md`,
-`scripts/routines/README.md`.
+`scripts/routines/README.md`, `AGENTS.md` — and, because the owner's rulings land in commits
+before they land in ledgers, `git log --format='%ad %s' --date=short --since=<last transfer date
+in plans/agent-loops.md> -- AGENTS.md docs scripts/routines scripts/implementer .agents/skills`.
+Then check the "Shared conventions" section of `plans/agent-loops.md` line by line against what
+Sabaki now does: every convention that reads differently is a drift finding, whichever repo moved.
 
 Produce a **Transfer** section, both directions:
 

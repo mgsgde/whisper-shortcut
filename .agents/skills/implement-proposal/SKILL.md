@@ -25,6 +25,33 @@ decides. You never push, never release, never touch anything outside this worktr
 - Read the current bottleneck in the newest `../business/growth-reviews/` digest. If the proposal
   conflicts with it, implement it as specified anyway — but say so in the reviewer notes.
 
+## 1b. Reproduce the claim before you build it
+
+**A queue row states a hypothesis, not a finding.** Ported from sabaki.dance on 2026-09-12,
+where two rows on 2026-09-07 named the wrong cause and both would have shipped a wrong fix —
+one "handled" a duplicate-key error whose real cause was every share link normalising onto one
+key (the feature was 175/175 broken), one would have relabelled beginners' courses as festivals
+because the row counted rows instead of reading titles.
+
+So, before writing code, spend the five minutes:
+
+- **Measure the claim against the data, not against the sentence.** The evidence here is the
+  operator's own logs and the code: count the pattern in the staged interaction/signal JSONL the
+  source ledger entry cites (`plans/active/outcome-signals.md` documents the fields), grep the
+  code path the row names, read the `DebugLogger` lines around it (`bash scripts/logs.sh -t …`).
+  If the row quotes an error string, ask how many records carry it and what the _other_
+  strings are — one example hides the distribution.
+- **Read real examples, not just aggregates.** Ten transcripts, ten log lines, the actual
+  text. The wrong-cause answer is usually visible in ten examples and in no number.
+- **If the measurement contradicts the row, stop and say so** in `IMPLEMENTER_NOTES.md`
+  instead of building what the row asked for. Rewriting the row with the evidence is a
+  complete, valuable run; the right answer to some rows is to build nothing.
+- **Put the query and its output in the notes.** The reviewer and the next reader must be able
+  to check the premise without redoing the work.
+
+This is not a licence to redesign the proposal. It is the difference between "the row says X"
+and "X is true".
+
 ## 2. Build
 
 - **Scope:** only the paths in the runner's allowlist (default: `WhisperShortcut/`,

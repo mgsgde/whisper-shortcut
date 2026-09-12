@@ -179,6 +179,13 @@ EOF
 # The path is fixed here rather than left to the helper's clock, because this run's mail has to
 # say whether anything reached the implementer queue — and "proposed nothing" must not look like
 # "wrote its file under a name nobody counted".
+# The rules that bind a run with no user at the keyboard — escalation test, the null-verdict rule
+# for this kind of loop, the mandatory deletion candidate. Shared with the other jobs through one
+# file so the four prompts cannot drift apart (scripts/loop-prompt.sh; the reasoning is in
+# plans/agent-loops.md, "Shared conventions"). Best-effort like the proposal block below.
+bash "$REPO/scripts/loop-prompt.sh" null-ok >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the shared loop rules — this run reports without them."
+
 IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit --path-only)"
 export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" model-audit >>"$PROMPT_FILE" \

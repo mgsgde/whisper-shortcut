@@ -34,20 +34,20 @@ From the parent workspace, prefix with `cd whisper-shortcut &&`. This only works
 # Rebuild and relaunch (builds AND restarts the running app). ~1–3 min cold.
 bash scripts/rebuild-and-restart.sh
 # or, via the driver (same thing):
-bash .cursor/skills/run-whisper-shortcut/driver.sh build
+bash .agents/skills/run-whisper-shortcut/driver.sh build
 ```
 
 The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut.app`.
 If it's already built and you only need it running:
 
 ```bash
-bash .cursor/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
+bash .agents/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
 ```
 
 ## Run (agent path) — the driver
 
 ```bash
-D=.cursor/skills/run-whisper-shortcut/driver.sh
+D=.agents/skills/run-whisper-shortcut/driver.sh
 
 bash $D items                      # list status-menu item names (sanity check it's driveable)
 bash $D shot "Settings…" settings  # open Settings, screenshot its window → /tmp/ws-settings.png

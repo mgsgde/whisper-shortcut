@@ -67,7 +67,7 @@ BUSINESS_DIR="${WS_BUSINESS_DIR:-$REPO/../business}"
 REVIEW_DIR="$BUSINESS_DIR/growth-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
 LEDGER="$BUSINESS_DIR/growth-ledger.md"
-SKILL="$REPO/.cursor/skills/review-growth/SKILL.md"
+SKILL="$REPO/.agents/skills/review-growth/SKILL.md"
 if [ ! -d "$BUSINESS_DIR" ]; then
   echo "ERROR: no private business dir at $BUSINESS_DIR — this job writes revenue data and"
   echo "must never write it into the public app repo. Aborting."
@@ -111,11 +111,17 @@ echo "=== Growth review started: $(date '+%Y-%m-%d %H:%M:%S') ==="
 # ------------------------------------------------------------------ 0. cadence gate
 # launchd fires weekly (so a slept-through Saturday costs one week, not two); this gate is
 # what makes the effective cadence biweekly.
+# The date is read from the file NAME, not its mtime: an edit to an old digest (or a git
+# checkout) resets mtime and would silently skip a Saturday. Same fix as agent-loops-job.sh.
 if [ "$FORCE" -eq 0 ]; then
-  RECENT="$(find "$REVIEW_DIR" -name '*-review.md' -mtime -11 2>/dev/null | head -1)"
-  if [ -n "$RECENT" ]; then
-    echo "Newest digest is younger than 11 days ($RECENT) — biweekly cadence, exiting quietly."
-    exit 0
+  NEWEST="$(ls "$REVIEW_DIR" 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-review\.md$' | sort | tail -1)"
+  if [ -n "$NEWEST" ]; then
+    NEWEST_EPOCH="$(date -j -f '%Y-%m-%d' "${NEWEST%-review.md}" '+%s' 2>/dev/null || echo 0)"
+    AGE_DAYS=$(( ( $(date +%s) - NEWEST_EPOCH ) / 86400 ))
+    if [ "$AGE_DAYS" -lt 11 ]; then
+      echo "Newest digest $NEWEST is $AGE_DAYS days old — biweekly cadence, exiting quietly."
+      exit 0
+    fi
   fi
 fi
 
@@ -172,6 +178,13 @@ EOF
 # The path is fixed here rather than left to the helper's clock, because this run's mail has to
 # say whether anything reached the implementer queue — and "proposed nothing" must not look like
 # "wrote its file under a name nobody counted".
+# The rules that bind a run with no user at the keyboard — escalation test, the null-verdict rule
+# for this kind of loop, the mandatory deletion candidate. Shared with the other jobs through one
+# file so the four prompts cannot drift apart (scripts/loop-prompt.sh; the reasoning is in
+# plans/agent-loops.md, "Shared conventions"). Best-effort like the proposal block below.
+bash "$REPO/scripts/loop-prompt.sh" null-ok >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the shared loop rules — this run reports without them."
+
 IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" growth-review --path-only)"
 export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" growth-review >>"$PROMPT_FILE" \

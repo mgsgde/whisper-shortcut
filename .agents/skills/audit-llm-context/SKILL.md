@@ -1,6 +1,6 @@
 ---
 name: audit-llm-context
-description: Systematically reviews all LLM-context files in this repo (.cursor/commands/, .cursor/rules/, .cursor/skills/) for stale references, factual drift vs the current codebase, redundancy across files, and files that no longer earn their slot. Produces a tiered report (broken / drift / dedup / hygiene). Use when the user asks to audit, review, check, or validate LLM-context files, cursor rules, claude skills, prompt files, or "are these instructions still correct".
+description: Systematically reviews all LLM-context files in this repo (.cursor/commands/, .cursor/rules/, .agents/skills/) for stale references, factual drift vs the current codebase, redundancy across files, and files that no longer earn their slot. Produces a tiered report (broken / drift / dedup / hygiene). Use when the user asks to audit, review, check, or validate LLM-context files, cursor rules, claude skills, prompt files, or "are these instructions still correct".
 ---
 
 # Audit LLM-Context Files
@@ -14,13 +14,13 @@ The Skills/Rules/Commands ecosystem moves fast (new frontmatter fields, deprecat
 1. **Agent Skills standard** — `https://agentskills.io/home` (the open spec that both Cursor and Claude follow; defines required vs optional frontmatter).
 2. **Claude Code Skills docs** — `https://code.claude.com/docs/en/skills` (Claude-only extensions: `allowed-tools`, `disallowed-tools`, `when_to_use`, `argument-hint`, `arguments`, `user-invocable`, `model`, `effort`, `context: fork`, `agent`, `background`, `hooks`, `shell`, plus dynamic shell injection — `` !`cmd` `` at line-start and ```` ```! ```` blocks — and `${CLAUDE_SKILL_DIR}` / `${CLAUDE_PROJECT_DIR}` substitution in the body). Note: `disable-model-invocation` and `paths` were once Claude-only but are now portable — Cursor supports both. Do not flag them as Claude-only.
    **Also confirm the commands-are-skills merge is still current**: a file at `.claude/commands/x.md` and a skill at `.claude/skills/x/SKILL.md` both register `/x`, and the skill wins. That collision is a finding, not a duplicate-content nitpick — see cross-cutting check 6.
-3. **Cursor Skills docs** — `https://cursor.com/docs/skills` (Cursor-specific behavior: `.cursor/skills/` vs `.agents/skills/`, `paths` glob restriction, `/migrate-to-skills`).
+3. **Cursor Skills docs** — `https://cursor.com/docs/skills` (Cursor-specific behavior: `.cursor/skills/` vs `.agents/skills/` — this repo uses `.agents/skills/` only, like sabaki.dance and the parent repo, `paths` glob restriction, `/migrate-to-skills`).
 
 Also re-read locally:
 
 - `.cursor/rules/*.mdc` frontmatter (`alwaysApply`, `globs`, `description`) — these are Cursor-only and have no Claude equivalent.
 - `.cursor/rules/index.mdc` for project-specific conventions (rebuild rule, slash-command-only policy, English-only UI strings, data directory paths). This is the always-applied repo rule; the root `CLAUDE.md` `@`-includes it **and adds a short "Most important — do not skip" section of its own**, so audit `CLAUDE.md` too rather than treating it as a pure pointer.
-- `.cursor/commands/README.md` for the verb taxonomy this repo follows.
+- `.cursor/CONTEXT-CONVENTIONS.md` for the verb taxonomy this repo follows.
 
 **From the fetched docs, extract and pin in working memory:**
 
@@ -34,9 +34,9 @@ Then proceed to the audit. Findings about "Claude-only feature in a portable ski
 
 **Always review:**
 
-- `.cursor/commands/*.md` — Cursor slash commands (naming convention in `.cursor/commands/README.md`).
+- `.cursor/commands/*.md` — Cursor slash commands (naming convention in `.cursor/CONTEXT-CONVENTIONS.md`).
 - `.cursor/rules/*.mdc` — Cursor project rules (`.cursor/rules/index.mdc` with `alwaysApply: true` is the project's repo-level rule; the root `CLAUDE.md` just `@`-includes it).
-- `.cursor/skills/*/SKILL.md` — Skill playbooks. (`.claude/skills` is a symlink to `../.cursor/skills`, so one edit propagates to both surfaces.)
+- `.agents/skills/*/SKILL.md` — Skill playbooks. (`.claude/skills` is a symlink to `../.agents/skills`, so one edit propagates to both surfaces.)
 
 **If the user gives a `--scope` flag**, narrow accordingly (e.g. `--scope=skills`, `--scope=rules`, `--scope=commands`).
 
@@ -87,8 +87,8 @@ After all subagents finish, produce a single tiered report:
 - Line numbers cited in skills/commands (function names are stable, line numbers aren't — recommend replacement).
 - Trivial overview files that just repeat what `.cursor/rules/index.mdc` already says.
 - Cross-tool references that won't resolve (e.g. Cursor command referencing Claude-Code-specific tools).
-- Tool-naming mismatches (`.cursor/skills/...` vs `.claude/skills/...` — pick one and stick with it).
-- Verb-prefix mismatches vs `.cursor/commands/README.md` (e.g. an `analyze-*` command that's actually a `review-*`).
+- Tool-naming mismatches (`.agents/skills/...` vs `.claude/skills/...` — pick one and stick with it).
+- Verb-prefix mismatches vs `.cursor/CONTEXT-CONVENTIONS.md` (e.g. an `analyze-*` command that's actually a `review-*`).
 
 For each finding, include: **file:line**, **what's wrong**, **proposed fix** (concrete).
 
@@ -96,19 +96,19 @@ For each finding, include: **file:line**, **what's wrong**, **proposed fix** (co
 
 These need a view across all three groups, so the orchestrator runs them after the subagents return:
 
-1. **Single-source-of-truth check** — for top-level project facts (state machine in `AppState.swift`, `DebugLogger`-only logging, rebuild script, slash-command-only convention, English-only UI, sandboxed data directory): does any `.cursor/skills/*/SKILL.md` restate something already in `.cursor/rules/index.mdc`? The cursor rule has `alwaysApply: true` so it fires every session; a skill that just restates it is dead weight. Either delete the skill or shrink it to a 5-line pointer.
+1. **Single-source-of-truth check** — for top-level project facts (state machine in `AppState.swift`, `DebugLogger`-only logging, rebuild script, slash-command-only convention, English-only UI, sandboxed data directory): does any `.agents/skills/*/SKILL.md` restate something already in `.cursor/rules/index.mdc`? The cursor rule has `alwaysApply: true` so it fires every session; a skill that just restates it is dead weight. Either delete the skill or shrink it to a 5-line pointer.
 2. **Skill ↔ bash-script overlap** — for each skill, grep its `SKILL.md` for `bash scripts/` and check whether the same logic is already in a script (e.g. `scripts/logs.sh`, `scripts/rebuild-and-restart.sh`, `scripts/test-{gemini,openai,grok}-models.sh`). The skill should call the script, not duplicate its steps.
-3. **Symlink integrity for skills** — `.claude/skills` should resolve to the same content as `.cursor/skills`. Run `ls -la .claude/skills` to confirm it is a symlink to `../.cursor/skills` (current setup). If it ever becomes a separate directory (no symlink), the two trees can drift silently — flag this immediately.
-4. **Portability check vs Step 0 fetched docs** — for every skill under `.cursor/skills/`, check whether its frontmatter or body uses Claude-only features (per the freshly fetched Claude Code docs): `allowed-tools`, `disallowed-tools`, `when_to_use`, `argument-hint`, `arguments`, `user-invocable`, `model`, `effort`, `context: fork`, `agent`, `background`, `hooks`, `shell`, dynamic injection (`` !`cmd` `` / ```` ```! ````), or `${CLAUDE_SKILL_DIR}` / `${CLAUDE_PROJECT_DIR}` substitution in the body. (Do NOT flag `disable-model-invocation` or `paths` — both are now Cursor-supported too.) Since `.claude/skills` is a symlink to `.cursor/skills`, Claude-only features make the skill silently misbehave in Cursor. Flag each occurrence with the exact field/syntax and recommend either (a) moving the skill to a Claude-only location or (b) rewriting to use standard fields.
-5. **Verb-taxonomy adherence** — compare every `.cursor/commands/*.md` filename against the verb table in `.cursor/commands/README.md`. Flag mismatches (e.g. `analyze-*` that is really a `review-*` because it produces qualitative judgments, or a command without a verb prefix that isn't a workflow). The README inventory should also match the actual file list — flag stale entries.
-6. **Skill ↔ command name collisions (do this first — it is the highest-value check)** — because Claude Code merged commands into skills, a `.cursor/commands/x.md` and a `.cursor/skills/x/SKILL.md` both claim `/x`, and **the skill wins**. The command file becomes unreachable: any section it holds that the skill does not is silently dead. Detect and quantify:
+3. **Symlink integrity for skills** — `.claude/skills` should resolve to the same content as `.agents/skills`. Run `ls -la .claude/skills` to confirm it is a symlink to `../.agents/skills` (current setup). If it ever becomes a separate directory (no symlink), the two trees can drift silently — flag this immediately.
+4. **Portability check vs Step 0 fetched docs** — for every skill under `.agents/skills/`, check whether its frontmatter or body uses Claude-only features (per the freshly fetched Claude Code docs): `allowed-tools`, `disallowed-tools`, `when_to_use`, `argument-hint`, `arguments`, `user-invocable`, `model`, `effort`, `context: fork`, `agent`, `background`, `hooks`, `shell`, dynamic injection (`` !`cmd` `` / ```` ```! ````), or `${CLAUDE_SKILL_DIR}` / `${CLAUDE_PROJECT_DIR}` substitution in the body. (Do NOT flag `disable-model-invocation` or `paths` — both are now Cursor-supported too.) Since `.claude/skills` is a symlink to `.agents/skills`, Claude-only features make the skill silently misbehave in Cursor. Flag each occurrence with the exact field/syntax and recommend either (a) moving the skill to a Claude-only location or (b) rewriting to use standard fields.
+5. **Verb-taxonomy adherence** — compare every `.cursor/commands/*.md` filename against the verb table in `.cursor/CONTEXT-CONVENTIONS.md`. Flag mismatches (e.g. `analyze-*` that is really a `review-*` because it produces qualitative judgments, or a command without a verb prefix that isn't a workflow). The README inventory should also match the actual file list — flag stale entries.
+6. **Skill ↔ command name collisions (do this first — it is the highest-value check)** — because Claude Code merged commands into skills, a `.cursor/commands/x.md` and a `.agents/skills/x/SKILL.md` both claim `/x`, and **the skill wins**. The command file becomes unreachable: any section it holds that the skill does not is silently dead. Detect and quantify:
 
    ```bash
    for f in .cursor/commands/*.md; do n=$(basename "$f" .md); [ "$n" = README ] && continue
-     [ -f ".cursor/skills/$n/SKILL.md" ] && echo "COLLISION: $n"; done
+     [ -f ".agents/skills/$n/SKILL.md" ] && echo "COLLISION: $n"; done
    # then, per collision, list what only the command has:
    comm -23 <(grep '^#\{2,3\} ' .cursor/commands/$n.md | sort -u) \
-            <(grep '^#\{2,3\} ' .cursor/skills/$n/SKILL.md | sort -u)
+            <(grep '^#\{2,3\} ' .agents/skills/$n/SKILL.md | sort -u)
    ```
 
    Confirm the precedence empirically rather than assuming: invoke `/x` and check whether a
@@ -155,7 +155,7 @@ End with a one-line ask: "Want me to apply Tier 1 now? Tier 2 needs decisions on
 ## Example invocations
 
 - `/audit-llm-context` — full audit.
-- `/audit-llm-context --scope=skills` — only `.cursor/skills/`.
+- `/audit-llm-context --scope=skills` — only `.agents/skills/`.
 - `/audit-llm-context --scope=rules` — only `.cursor/rules/`.
 - `/audit-llm-context --scope=commands` — only `.cursor/commands/`.
 - `/audit-llm-context --fix-tier-1` — audit then auto-apply only Tier 1 fixes (broken refs).
@@ -166,5 +166,5 @@ End with a one-line ask: "Want me to apply Tier 1 now? Tier 2 needs decisions on
 - **`/review-code`** — same review pattern, but for app source code rather than LLM-context files.
 - **`/improve-context`** — the additive counterpart: it turns session friction into new context, this
   skill prunes what has rotted. Run them in either order; they share a corpus.
-- **`.cursor/commands/README.md`** — verb taxonomy + command/skill inventory used by the
+- **`.cursor/CONTEXT-CONVENTIONS.md`** — verb taxonomy + command/skill inventory used by the
   cross-cutting naming check.

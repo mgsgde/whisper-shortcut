@@ -47,8 +47,32 @@ Architect loop checks for drift on every run:
   meta-log calls this its most expensive failure mode.
 - **Instrumentation gaps rank above features** and live in one register with statuses —
   `plans/instrumentation-gaps.md` — not in per-run prose.
-- **"Build nothing this cycle" is a valid verdict** for every loop, and the honest one
-  whenever the bottleneck is not the thing that loop can move.
+- **The bottleneck ranks proposals; it never cancels a run.** Owner ruling 2026-09-06 (sabaki,
+  after a UI run closed with "nichts Neues bauen, Engpass bleibt Monetarisierung"): the
+  bottleneck is his priority call about his own time, not a routine's excuse. So "build nothing
+  this cycle" is **not available to the improvement loop** (usage-review): it ends with at least
+  one ranked proposal carrying a falsifier, tagged against the bottleneck, plus its deletion
+  candidate. The loops whose output is an outward or irreversible act keep the null verdict —
+  model-audit may adopt nothing, growth may say "keep going", the Architect may say "healthy".
+  What stops a run is a data floor in the job script (40 interactions), never a judgement in
+  the prompt. `scripts/loop-prompt.sh improvement|null-ok` carries the two variants; ported
+  2026-09-12.
+- **Routines answer their own questions.** A question reaches the operator only if all three
+  hold: no read available in the run can answer it; the answer turns on his preference, money,
+  an outside relationship or something irreversible; and the answer changes what gets built.
+  Cap 2 per digest, normally `none`; everything else is decided in the run as _decision · rule
+  applied · what would reverse it_ under `## Self-answered`, and filed as a proposal where it
+  implies code. Sabaki's 2026-09-05 ruling after a run mailed five questions that were each a
+  `SELECT` or a coin-flip; the test binds every routine from their runner prompt and every job
+  here from `scripts/loop-prompt.sh`.
+- **Every run names something to delete** (`## Weglassen`). A system that only ever adds is
+  not improving, it is accumulating. Loop-ledger L7, applied 2026-09-12 via the shared block.
+- **The graded agent does not carry the approval to loosen its own gate** (sabaki 2026-09-10).
+  "Magnus said so in my chat" is a claim nobody downstream can check; the loosening commit is
+  written by a session the gate does not grade, after he says it where the merge happens.
+- **Reproduce the claim before building it.** A queue row is a hypothesis; the build agent
+  measures it against the logs and the code first, and a measurement that contradicts the row
+  is a complete run (`.agents/skills/implement-proposal/SKILL.md` §1b, ported 2026-09-12).
 - **Loud failure.** A loop that cannot read its data or write its digest reports a FAILED
   run by mail — silence must never be distinguishable from a quiet week.
 - **Every mail states whether you have to act**, in the same five words in the same place.
@@ -115,7 +139,7 @@ scripts/implementer/run-implementer.sh   ← STEP 2, needs your checkout on main
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
         │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
         │    Opus 5 writes plans/implementer-plans/row-<n>.md (one file, no code)
-        │    Grok 4.6 executes that plan via .cursor/skills/implement-proposal/SKILL.md
+        │    Grok 4.6 executes that plan via .agents/skills/implement-proposal/SKILL.md
         │ 3. gates re-run BY THE RUNNER: scope allowlist · clean tree · pollution check ·
         │    xcodebuild · full test plan   (an agent cannot skip what it does not control)
         │ 4. a DIFFERENT model reviews the diff → APPROVE | BLOCK (one rework cycle, then stop)
@@ -278,8 +302,11 @@ Both repos run the same loop architecture; the transfer channel is the **Archite
 not ad-hoc copying:
 
 - `review-agent-loops` here **reads** Sabaki's loop state read-only:
-  `~/sabaki.dance.v3/docs/{loop-architecture,agent-autonomy-policy,loop-meta-log,ai-stack-log,product-loop-log,elon-log}.md`
-  and `scripts/routines/README.md`. Its report ends with a **Transfer** section: lessons to
+  `~/sabaki.dance.v3/docs/{loop-architecture,agent-autonomy-policy,loop-meta-log,ai-stack-log,product-loop-log,elon-log}.md`,
+  `scripts/routines/README.md`, and — because the owner's rulings land there first — `AGENTS.md`
+  and `git log --since=<last transfer> -- docs/ scripts/routines scripts/implementer AGENTS.md`.
+  Last manual convergence pass: **2026-09-12** (layout, shared prompt rules, cadence gates,
+  claim reproduction). Grade drift from that date. Its report ends with a **Transfer** section: lessons to
   import here (as proposals in `plans/loop-ledger.md`) and lessons to export (as a
   paste-ready block for `~/sabaki.dance.v3/docs/loop-meta-log.md` — it never writes into
   the other repo).
@@ -302,6 +329,9 @@ Sabaki):
 | Admin-mail rendering | `apps/shared/html.ts` + `marked`, inside the app's own mailer | `scripts/operator_mail.py`, dependency-free, sent over SMTP by `send-report-mail.py` | Same vocabulary, same banner, same dark palette — but these mails are sent by launchd from a Mac whose system `python3` has no markdown library, and a failed import is a job that reports nothing |
 | Implementer auto lane | `scorer-fix` (a failing eval-corpus case is red→green) and `instrumentation` build with no announcement | `instrumentation` only — there is no eval corpus here | The auto lane may only hold classes an existing gate already judges; inventing one to match Sabaki would be the loosening the policy forbids |
 | Proposal transport | routines write JSON to `~/.local/state/sabaki-implementer/incoming`, groomer is TypeScript | identical shape, groomer is Python (`groom-queue.py`) | No node toolchain in a Swift repo; a dependency nobody maintains is a scheduled job that dies silently |
+| Unattended rules | one runner (`scripts/routines/run-routine.sh`) wraps every skill and carries the prompt rules | no runner — each job builds its own prompt and appends `scripts/loop-prompt.sh` | Four jobs with four data paths (TCC staging, `asc` probes, benchmark JSON) do not share a runner; the rules are shared instead, which is the part that must not drift |
+| Falsifier bookkeeping | `<!-- falsifier: -->` markers in any `docs/*.md`, `falsifier-due.ts` daily, `grade-falsifiers` routine settles bets by mail, `docs/falsifier-state.json` | ledger rows carry a falsifier column and a human grades them at the next loop run | Not yet ported — loop-ledger **L8**. Here the deploy check is `asc versions list` / a rebuilt local app, not `/api/version`, so the port is a design, not a copy |
+| Context-file layout | `AGENTS.md` = `CLAUDE.md`, `.agents/skills/`, `.cursor/{CODEMAP,CONTEXT-CONVENTIONS}.md` | identical since 2026-09-12 (skills moved from `.cursor/skills/`) | Same layout as the parent repo; a skill directory name is a public interface for the launchd jobs |
 
 ## Operating
 

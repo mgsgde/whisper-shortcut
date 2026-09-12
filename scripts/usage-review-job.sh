@@ -255,7 +255,7 @@ It holds exactly the files that fall in the review window — nothing to filter 
 directory to visit.
 
 - interactions-YYYY-MM-DD.jsonl — one record per interaction. Modes: transcription, prompt,
-  geminiChat. Schema and caveats are documented in .cursor/skills/analyze-user-interactions/SKILL.md
+  geminiChat. Schema and caveats are documented in .agents/skills/analyze-user-interactions/SKILL.md
   — read that skill and follow its procedure.
 - signals-YYYY-MM-DD.jsonl — outcome signals: what the user DID after an interaction.
   kind=pasted (result reached the cursor — it worked), kind=dictationRestart (a dictation started
@@ -316,8 +316,10 @@ is read once a week by one person deciding whether to act.
 - Do NOT commit or push anything.
 - Do NOT put user content (transcripts, chat text, selected text) in the ledger. Short quoted
   fragments are fine in the digest where they are the evidence; the ledger stays summary-level.
-- If the week genuinely contains nothing actionable, say so in the verdict and add no ledger rows.
-  A quiet week reported honestly is a good outcome, and padding it is how the ledger dies.
+- Below the evidence bar means below the bar: a single anecdote goes in the digest as "observed,
+  insufficient data", never in the ledger. Padding is how the ledger dies — but the run still ends
+  with at least one ranked proposal (see the shared rules below): a week with 40+ interactions
+  always holds one measured thing worth changing, even if it is small.
 EOF
 
 # The report above is for the human. This block asks the same run to ALSO leave a
@@ -328,6 +330,13 @@ EOF
 # The path is fixed here rather than left to the helper's clock, because this run's mail has to
 # say whether anything reached the implementer queue — and "proposed nothing" must not look like
 # "wrote its file under a name nobody counted".
+# The rules that bind a run with no user at the keyboard — escalation test, the null-verdict rule
+# for this kind of loop, the mandatory deletion candidate. Shared with the other jobs through one
+# file so the four prompts cannot drift apart (scripts/loop-prompt.sh; the reasoning is in
+# plans/agent-loops.md, "Shared conventions"). Best-effort like the proposal block below.
+bash "$REPO/scripts/loop-prompt.sh" improvement >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the shared loop rules — this run reports without them."
+
 IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" usage-review --path-only)"
 export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" usage-review >>"$PROMPT_FILE" \

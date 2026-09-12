@@ -18,7 +18,7 @@
 
 # Usage: agent-loops-job.sh [--dry-run] [--force]
 #   --dry-run   check the plumbing, skip the Claude pass
-#   --force     ignore the 20-day cadence gate
+#   --force     ignore the 7-day duplicate-firing gate
 set -uo pipefail
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
@@ -60,7 +60,7 @@ STAMP="$(date +%Y-%m-%d)"
 REVIEW_DIR="$REPO/plans/loop-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
 LEDGER="$REPO/plans/loop-ledger.md"
-SKILL="$REPO/.cursor/skills/review-agent-loops/SKILL.md"
+SKILL="$REPO/.agents/skills/review-agent-loops/SKILL.md"
 SABAKI="$HOME/sabaki.dance.v3"
 mkdir -p "$REVIEW_DIR"
 
@@ -99,11 +99,23 @@ echo "=== Agent-loops review started: $(date '+%Y-%m-%d %H:%M:%S') ==="
 
 # ------------------------------------------------------------------ 0. cadence gate
 # Monthly via launchd; the gate stops a duplicate firing (wake catch-up) from burning a run.
+# A wake catch-up fires within hours of the missed slot, so 7 days is all the gate needs. It used
+# to be 20, and that skipped the 2026-09-06 run outright: the previous digest was a manual run on
+# 2026-08-20, 17 days earlier, so the "duplicate" guard swallowed a whole scheduled month and the
+# next honest run moved to October — the same class of bug as sabaki's weekly loops skipping
+# every Saturday that fell on the 29th–31st (their fix 2026-09-01). A gate that can cancel a
+# scheduled run must be narrower than the schedule.
+# The date is read from the file NAME, not its mtime: a `git checkout` or an edit to an old
+# digest resets mtime and would re-arm the gate against a run that never happened.
 if [ "$FORCE" -eq 0 ]; then
-  RECENT="$(find "$REVIEW_DIR" -name '*-review.md' -mtime -20 2>/dev/null | head -1)"
-  if [ -n "$RECENT" ]; then
-    echo "Newest digest is younger than 20 days ($RECENT) — monthly cadence, exiting quietly."
-    exit 0
+  NEWEST="$(ls "$REVIEW_DIR" 2>/dev/null | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}-review\.md$' | sort | tail -1)"
+  if [ -n "$NEWEST" ]; then
+    NEWEST_EPOCH="$(date -j -f '%Y-%m-%d' "${NEWEST%-review.md}" '+%s' 2>/dev/null || echo 0)"
+    AGE_DAYS=$(( ( $(date +%s) - NEWEST_EPOCH ) / 86400 ))
+    if [ "$AGE_DAYS" -lt 7 ]; then
+      echo "Newest digest $NEWEST is $AGE_DAYS days old — duplicate firing, exiting quietly."
+      exit 0
+    fi
   fi
 fi
 
@@ -147,6 +159,13 @@ EOF
 # The path is fixed here rather than left to the helper's clock, because this run's mail has to
 # say whether anything reached the implementer queue — and "proposed nothing" must not look like
 # "wrote its file under a name nobody counted".
+# The rules that bind a run with no user at the keyboard — escalation test, the null-verdict rule
+# for this kind of loop, the mandatory deletion candidate. Shared with the other jobs through one
+# file so the four prompts cannot drift apart (scripts/loop-prompt.sh; the reasoning is in
+# plans/agent-loops.md, "Shared conventions"). Best-effort like the proposal block below.
+bash "$REPO/scripts/loop-prompt.sh" null-ok >>"$PROMPT_FILE" \
+  || echo "WARN: could not append the shared loop rules — this run reports without them."
+
 IMPLEMENTER_PROPOSAL_FILE="$(bash "$REPO/scripts/implementer/proposal-prompt.sh" agent-loops --path-only)"
 export IMPLEMENTER_PROPOSAL_FILE
 bash "$REPO/scripts/implementer/proposal-prompt.sh" agent-loops >>"$PROMPT_FILE" \

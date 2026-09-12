@@ -1,6 +1,6 @@
 ---
 name: improve-context
-description: Reviews the current conversation to find moments where the LLM was confused, missing information, going down wrong paths, or being corrected by the user — then proposes concise, durable edits to context files (.cursor/rules/, .cursor/skills/, .cursor/commands/) so future sessions don't hit the same friction without bloating context.
+description: Reviews the current conversation to find moments where the LLM was confused, missing information, going down wrong paths, or being corrected by the user — then proposes concise, durable edits to context files (.cursor/rules/, .agents/skills/, .cursor/commands/) so future sessions don't hit the same friction without bloating context.
 ---
 
 # Improve LLM Context From This Session
@@ -21,7 +21,7 @@ Look back through the **current conversation** (user messages + your own tool ca
 - **Excessive exploration** — you ran 5+ greps / Reads to find something a one-line pointer in `.cursor/rules/index.mdc` or an existing skill could have given you instantly.
 - **Repeated questions** — you asked the user for the same kind of context you'll likely need again next time (e.g. "where do logs go?", "which rebuild script?", "Gemini or Grok for this path?").
 - **Skill / command misses** — the user described a workflow that should have been a skill but wasn't; or an existing skill was outdated and led you astray (e.g. skipped **view-logs-via-bash**, **debugging-workflow**, or **llm-model-docs** when they applied).
-- **Architecture confusion** — manipulated UI flags instead of transitioning via `AppState`, added hotkeys for chat commands, used `print()` instead of `DebugLogger`, or edited `.claude/skills/` instead of `.cursor/skills/`.
+- **Architecture confusion** — manipulated UI flags instead of transitioning via `AppState`, added hotkeys for chat commands, used `print()` instead of `DebugLogger`, or edited `.claude/skills/` instead of `.agents/skills/`.
 
 Skip:
 
@@ -38,7 +38,7 @@ For each friction point, decide **where** the fix belongs. Use the table below �
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Repo-wide convention, architecture invariant, "always do X" | `.cursor/rules/index.mdc` **(last resort — see budget rule below)**                   |
 | Cursor-specific rule (glob-scoped, not every session)       | `.cursor/rules/*.mdc` (new file only if `index.mdc` is wrong scope)                   |
-| Repeatable workflow / procedure (multi-step, run on demand) | new or existing `.cursor/skills/*/SKILL.md`                                           |
+| Repeatable workflow / procedure (multi-step, run on demand) | new or existing `.agents/skills/*/SKILL.md`                                           |
 | User-facing entrypoint that maps to a skill                 | `.cursor/commands/*.md` (see [README.md](README.md) for `{verb}-{topic}` naming)      |
 | Multi-step implementation specs (not prompt context)        | `plans/` — only when the gap is "where does the plan live?", not for session friction |
 | Public-facing or contributor docs                           | root `README.md` (only if the gap is broad enough)                                    |
@@ -48,7 +48,7 @@ For each friction point, decide **where** the fix belongs. Use the table below �
 Heuristics:
 
 - If it's "one fact" → add a line to `index.mdc` or an existing skill/rule. Don't create a new top-level file.
-- If it's "a multi-step playbook" → it's a skill, not a rule. Pair with a thin `.cursor/commands/*.md` entrypoint if users will invoke it often (see `.cursor/commands/README.md`).
+- If it's "a multi-step playbook" → it's a skill, not a rule. Pair with a thin `.cursor/commands/*.md` entrypoint if users will invoke it often (see `.cursor/CONTEXT-CONVENTIONS.md`).
 - If two existing files both kind of cover it but neither nails it → update the better-fitting one rather than splitting further.
 - Avoid creating new context files. Prefer editing existing skills, rules, or `index.mdc`.
 - Prefer replacing or tightening existing wording over appending new bullets. If a new note only makes sense with the details of today's task, skip it.
@@ -71,10 +71,10 @@ Drop the finding if the answer is weak. The best outcome is often "no edit neede
 
 Before writing the report, **verify each gap is real**:
 
-- `grep -n` the relevant keyword in `.cursor/rules/`, `.cursor/skills/*/SKILL.md`, and `.cursor/commands/` to make sure the info isn't already there in different words.
+- `grep -n` the relevant keyword in `.cursor/rules/`, `.agents/skills/*/SKILL.md`, and `.cursor/commands/` to make sure the info isn't already there in different words.
 - Spot-check Swift claims against `WhisperShortcut/` (types, file paths, UserDefaults keys, model IDs).
 - If you're proposing to add it to a specific file, `Read` that file first to find the right insertion point and match its tone.
-- If you're proposing a new skill or command, check no existing one already covers it (`ls .cursor/skills/`, `ls .cursor/commands/`, `.cursor/commands/README.md` inventory).
+- If you're proposing a new skill or command, check no existing one already covers it (`ls .agents/skills/`, `ls .cursor/commands/`, `.cursor/CONTEXT-CONVENTIONS.md` inventory).
 
 Drop any finding where the info is already documented. Be honest — a session with no real gaps should produce an empty report, not padded suggestions.
 
@@ -108,7 +108,7 @@ After the report, ask the user **which findings to apply** (e.g. "apply 1, 3, 5"
 When applying:
 
 - Use `Edit` for additions to existing files; `Write` only for genuinely new skill/command files.
-- For new skills, create `.cursor/skills/<name>/SKILL.md` only (one name, one file — never also a same-named `.cursor/commands/<name>.md`; Claude Code merges commands into skills and the skill wins, leaving the command unreachable). Use a command file instead only when there is no skill and nothing else will reuse the playbook.
+- For new skills, create `.agents/skills/<name>/SKILL.md` only (one name, one file — never also a same-named `.cursor/commands/<name>.md`; Claude Code merges commands into skills and the skill wins, leaving the command unreachable). Use a command file instead only when there is no skill and nothing else will reuse the playbook.
 - After applying, briefly confirm what was changed (file paths, one-line summary).
 - Then nudge the user: `/improve-context` is additive-biased. Recommend running **`/audit-llm-context`** periodically (every ~10 cycles or ~3–4 weeks) to compensate — it's the pruning counterpart that catches stale and bloated context.
 
@@ -125,4 +125,4 @@ When applying:
 ## Related
 
 - **`/audit-llm-context`** — pruning counterpart; tiered audit of commands, rules, and skills for drift and redundancy.
-- **`.cursor/commands/README.md`** — verb taxonomy and command/skill inventory when proposing new entrypoints.
+- **`.cursor/CONTEXT-CONVENTIONS.md`** — verb taxonomy and command/skill inventory when proposing new entrypoints.
