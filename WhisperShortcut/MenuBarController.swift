@@ -746,14 +746,14 @@ class MenuBarController: NSObject {
     // selected is a legitimate way to reclaim gigabytes, and re-fetching it on the next launch
     // would make that impossible — the delete would silently undo itself.
     if selectedModel.isOffline, let offlineModelType = selectedModel.offlineModelType {
-      prepareOfflineModelInBackground(offlineModelType, reason: "launch", downloadIfMissing: false)
+      prepareModelInBackground(ModelManager.shared, offlineModelType, label: "offline", reason: "launch", downloadIfMissing: false)
     }
 
     let selectedPrompt = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedPromptModel,
       default: SettingsDefaults.selectedPromptModel)
     if let mlxType = selectedPrompt.localMLXModelType {
-      prepareMLXModelInBackground(mlxType, reason: "launch")
+      prepareModelInBackground(LocalLLMModelManager.shared, mlxType, label: "MLX", reason: "launch")
     }
 
     // Setup shortcuts
@@ -2090,7 +2090,7 @@ class MenuBarController: NSObject {
       // then and there is what every comparable app does; making them find a Download button in a
       // second section is how you end up dictating into a model that is not there.
       if newModel.isOffline, let offlineModelType = newModel.offlineModelType {
-        prepareOfflineModelInBackground(offlineModelType, reason: "selection", downloadIfMissing: true)
+        prepareModelInBackground(ModelManager.shared, offlineModelType, label: "offline", reason: "selection")
       }
     }
   }
@@ -2099,7 +2099,7 @@ class MenuBarController: NSObject {
     guard let newModel = notification.object as? PromptModel,
           let mlxType = newModel.localMLXModelType
     else { return }
-    prepareMLXModelInBackground(mlxType, reason: "selection")
+    prepareModelInBackground(LocalLLMModelManager.shared, mlxType, label: "MLX", reason: "selection")
   }
 
   /// Loads an offline model in the background, downloading it first only when asked to.
@@ -2108,11 +2108,18 @@ class MenuBarController: NSObject {
   /// for it, so that path fetches it; starting the app is not, so that path only warms what is
   /// already on disk. Failures are logged and not surfaced — nobody asked for this to happen right
   /// now, and the dictation path reports properly if the model is still missing when it matters.
-  private func prepareOfflineModelInBackground(
-    _ type: OfflineModelType, reason: String, downloadIfMissing: Bool
+  /// Downloads (if allowed) and loads an on-device model without blocking anything.
+  ///
+  /// Silent on purpose: the user did not ask for a multi-gigabyte download to start right now,
+  /// and the dictation, Dictate Prompt and Chat paths all report progress properly when the
+  /// model is still missing at the moment it actually matters. WhisperKit at launch passes
+  /// `downloadIfMissing: false` for the same reason; MLX always fetches because both of its
+  /// callers are a deliberate selection.
+  private func prepareModelInBackground<M: DownloadableModel>(
+    _ store: ModelStore<M>, _ type: M, label: String, reason: String, downloadIfMissing: Bool = true
   ) {
     Task { @MainActor in
-      let alreadyThere = ModelManager.shared.isModelAvailable(type)
+      let alreadyThere = store.isModelAvailable(type)
       guard alreadyThere || downloadIfMissing else {
         DebugLogger.log(
           "MENU-BAR: \(type.displayName) is selected but not downloaded — leaving it that way "
@@ -2120,36 +2127,16 @@ class MenuBarController: NSObject {
         return
       }
       DebugLogger.log(
-        "MENU-BAR: Preparing offline model \(type.displayName) in background (\(reason), "
+        "MENU-BAR: Preparing \(label) model \(type.displayName) in background (\(reason), "
           + "\(alreadyThere ? "downloaded" : "needs download"))")
       do {
-        try await ModelManager.shared.ensureReady(type)
-        DebugLogger.logSuccess("MENU-BAR: Offline model \(type.displayName) ready")
-      } catch {
-        DebugLogger.logError(
-          "MENU-BAR: Could not prepare \(type.displayName): \(error.localizedDescription)")
-      }
-    }
-  }
-
-  /// Downloads (if needed) and loads an in-process MLX model without blocking anything.
-  private func prepareMLXModelInBackground(_ type: LocalLLMModelType, reason: String) {
-    Task { @MainActor in
-      let alreadyThere = LocalLLMModelManager.shared.isModelAvailable(type)
-      DebugLogger.log(
-        "MENU-BAR: Preparing MLX model \(type.displayName) in background (\(reason), "
-          + "\(alreadyThere ? "downloaded" : "needs download"))")
-      do {
-        // Silent, like the offline-Whisper twin above: the user did not ask for a multi-gigabyte
-        // download to start right now, and the Dictate Prompt and Chat paths both report progress
-        // properly when the model is still missing at the moment it actually matters.
-        try await LocalLLMModelManager.shared.ensureReady(type)
-        DebugLogger.logSuccess("MENU-BAR: MLX model \(type.displayName) ready")
+        try await store.ensureReady(type)
+        DebugLogger.logSuccess("MENU-BAR: \(label) model \(type.displayName) ready")
       } catch is CancellationError {
-        DebugLogger.log("MENU-BAR: MLX prepare cancelled for \(type.displayName)")
+        DebugLogger.log("MENU-BAR: \(label) prepare cancelled for \(type.displayName)")
       } catch {
         DebugLogger.logError(
-          "MENU-BAR: Could not prepare MLX \(type.displayName): \(error.localizedDescription)")
+          "MENU-BAR: Could not prepare \(label) \(type.displayName): \(error.localizedDescription)")
       }
     }
   }
@@ -3113,29 +3100,40 @@ extension MenuBarController: ChunkProgressDelegate {
     DebugLogger.log("CHUNK-PROGRESS: Started chunking, \(totalChunks) total chunks (TTS: \(isTTS))")
   }
 
-  func chunkStarted(index: Int) {
-    guard index >= 0 && index < chunkStatuses.count else { return }
-
-    // Mark chunk as active
-    chunkStatuses[index] = .active
-
+  /// The one transition every per-chunk callback makes: record the chunk's status, move the
+  /// state machine (only while still processing — see `setChunkProcessingState`), refresh the
+  /// icon, and redraw the status grid in the popup. `popupSuffix` is an extra line under the
+  /// grid; `logIfSkipped` is what to say when the transition was refused because playback
+  /// already started.
+  private func applyChunkStatus(
+    _ status: ChunkStatus, at index: Int, popupSuffix: String? = nil, logIfSkipped: String? = nil
+  ) -> Bool {
+    chunkStatuses[index] = status
     let context = currentChunkContext
     guard setChunkProcessingState(
       .processing(.processingChunks(statuses: chunkStatuses, context: context)))
-    else { return }
-    updateMenuBarIcon()
-
-    let isTTS = context == .tts
-
-    // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
-    if showsChunkProgressPopups {
-      let statusGrid = generateStatusGrid()
-      PopupNotificationWindow.updateProcessing(
-        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-        message: statusGrid
-      )
+    else {
+      if let logIfSkipped { DebugLogger.logDebug("CHUNK-PROGRESS: \(logIfSkipped)") }
+      return false
     }
+    updateMenuBarIcon()
+    updateChunkPopup(context: context, popupSuffix: popupSuffix)
+    return true
+  }
 
+  /// Popups only for pill-less flows, see `chunkingStarted`.
+  private func updateChunkPopup(context: AppState.ProcessingMode.ChunkContext, popupSuffix: String? = nil) {
+    guard showsChunkProgressPopups else { return }
+    let statusGrid = generateStatusGrid()
+    PopupNotificationWindow.updateProcessing(
+      title: context == .tts ? "Synthesizing Speech" : "Processing Audio",
+      message: popupSuffix.map { "\(statusGrid)\n\($0)" } ?? statusGrid
+    )
+  }
+
+  func chunkStarted(index: Int) {
+    guard index >= 0 && index < chunkStatuses.count else { return }
+    guard applyChunkStatus(.active, at: index) else { return }
     DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) started processing")
   }
 
@@ -3147,75 +3145,30 @@ extension MenuBarController: ChunkProgressDelegate {
 
   func chunkCompleted(index: Int, text: String) {
     guard index >= 0 && index < chunkStatuses.count else { return }
-
-    // Mark chunk as completed
-    chunkStatuses[index] = .completed
-
-    let context = currentChunkContext
-    guard setChunkProcessingState(
-      .processing(.processingChunks(statuses: chunkStatuses, context: context)))
-    else {
-      DebugLogger.logDebug("CHUNK-PROGRESS: Chunk \(index) completed while already playing back")
-      return
-    }
-    updateMenuBarIcon()
-
-    let isTTS = context == .tts
-
-    // Update processing popup with status grid (pill-less flows only, see chunkingStarted)
-    if showsChunkProgressPopups {
-      let statusGrid = generateStatusGrid()
-      PopupNotificationWindow.updateProcessing(
-        title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-        message: statusGrid
-      )
-    }
-
+    guard applyChunkStatus(
+      .completed, at: index,
+      logIfSkipped: "Chunk \(index) completed while already playing back")
+    else { return }
     DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed (\(text.prefix(50))...)")
   }
 
   func chunkFailed(index: Int, error: Error, willRetry: Bool) {
     guard index >= 0 && index < chunkStatuses.count else { return }
-    let context = currentChunkContext
-    let isTTS = context == .tts
 
     if willRetry {
-      // Keep as active (will be re-started via chunkStarted)
+      // Keep as active (will be re-started via chunkStarted); only the popup changes.
       DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
-
-      // Update popup to show retry status (pill-less flows only, see chunkingStarted)
-      if showsChunkProgressPopups {
-        let statusGrid = generateStatusGrid()
-        PopupNotificationWindow.updateProcessing(
-          title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-          message: "\(statusGrid)\nRetrying chunk \(index + 1)..."
-        )
-      }
-    } else {
-      // Mark as permanently failed
-      chunkStatuses[index] = .failed
-
-      guard setChunkProcessingState(
-        .processing(.processingChunks(statuses: chunkStatuses, context: context)))
-      else {
-        DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed during playback: \(error.localizedDescription)")
-        return
-      }
-      updateMenuBarIcon()
-
-      // Update processing popup (pill-less flows only, see chunkingStarted)
-      if showsChunkProgressPopups {
-        let statusGrid = generateStatusGrid()
-        PopupNotificationWindow.updateProcessing(
-          title: isTTS ? "Synthesizing Speech" : "Processing Audio",
-          message: statusGrid
-        )
-      }
-
-      DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
-      // Log to file (replaces CrashLogger)
-      DebugLogger.logError(error, context: "Chunk \(index) transcription failed", state: appState)
+      updateChunkPopup(context: currentChunkContext, popupSuffix: "Retrying chunk \(index + 1)...")
+      return
     }
+
+    guard applyChunkStatus(.failed, at: index) else {
+      DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed during playback: \(error.localizedDescription)")
+      return
+    }
+    DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
+    // Log to file (replaces CrashLogger)
+    DebugLogger.logError(error, context: "Chunk \(index) transcription failed", state: appState)
   }
 
   func mergingStarted() {
