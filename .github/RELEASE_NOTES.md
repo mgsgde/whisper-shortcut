@@ -1,16 +1,18 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Gemini 3.8 Flash
+## Meetings
 
-- **Chat and Smart Improvement now default to Gemini 3.8 Flash.** Existing installs still on 3.7 Flash are moved across on launch. 3.8 Flash is also available for Dictate and Dictate Prompt.
-- Gemini 3.5 Flash and 3.6 Flash no longer appear in the Chat picker — they were weaker than 3.7 for that job. If you still had one selected, the app forwards you to 3.7 Flash.
+- **Copy transcript + chat** — a new button next to *Copy transcript* in the meeting bar. It copies the raw transcript, the live notes (markers flagged with ⚑), and every question and answer you asked in the meeting chat, as one Markdown document. Until now the questions asked mid-meeting were left out of the copied record.
 
-## Docs
+## Offline models
 
-- The README (and the in-app feature list Chat reads) now leads with insert-at-cursor. Auto-paste is off by default, needs Accessibility, and is direct-download only; the clipboard is the backup. The old opening line made the app sound clipboard-only.
+- Deleting a Whisper model while it is still downloading now cancels the download first instead of racing it.
+- A download you cancel is no longer marked as ready.
+- The *Available Models* list no longer re-measures the model folder on disk on every progress tick while a download is running.
+- Failed on-device LLM downloads now say which model failed.
 
 ## Installation
 
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.12...v8.13
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.13...v8.14
