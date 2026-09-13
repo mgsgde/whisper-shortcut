@@ -2,7 +2,8 @@
 //  ModelManager.swift
 //  WhisperShortcut
 //
-//  Handles downloading, storage, and management of offline models
+//  Catalogue and WhisperKit-specific download/load path for offline dictation models.
+//  The shared download bookkeeping is `ModelStore`.
 //
 
 import Foundation
@@ -10,7 +11,7 @@ import Combine
 import WhisperKit
 
 // MARK: - Model Type Enum
-enum OfflineModelType: String, CaseIterable {
+enum OfflineModelType: String, CaseIterable, DownloadableModel {
   // Whisper models for transcription (WhisperKit CoreML models)
   case whisperTiny = "whisper-tiny"
   case whisperBase = "whisper-base"
@@ -119,68 +120,66 @@ enum OfflineModelType: String, CaseIterable {
 }
 
 // MARK: - Model Manager
-class ModelManager: ObservableObject {
-  static let shared = ModelManager()
-  
-  @Published var downloadingModels: Set<OfflineModelType> = []
-  /// Fraction downloaded per model, 0…1, while a download is running. Drives the progress bar in
-  /// Settings and the text in the dictation popup — a 1.6 GB download with no progress reads as a
-  /// hang, which is exactly how the first turbo download was experienced.
-  @Published var downloadProgress: [OfflineModelType: Double] = [:]
 
-  /// In-flight `ensureReady` work per model, so a dictation that starts while Settings is already
-  /// downloading joins that download instead of starting a second one.
-  private var readyTasks: [OfflineModelType: Task<Void, Error>] = [:]
-  /// In-flight Hub downloads, so Settings and onboarding can cancel the same way MLX does.
-  private var downloadTasks: [OfflineModelType: Task<Void, Error>] = [:]
-  
-  private let fileManager = FileManager.default
-  
-  private init() {}
-  
-  // MARK: - Resolve Model Path
-  func resolveModelPath(for type: OfflineModelType) -> URL? {
-    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
-    
-    // Check nested location (standard WhisperKit download structure)
-    // models/argmaxinc/whisperkit-coreml/openai_whisper-[model]
-    let nestedPath = whisperKitDir
+/// WhisperKit models: the CoreML bundles under `Application Support/WhisperKit`.
+///
+/// Everything about downloads, cancellation, readiness and deletion is `ModelStore`; this class
+/// only knows WhisperKit's folder layout, which compiled components make a download complete,
+/// and that loading means `LocalSpeechService`.
+final class ModelManager: ModelStore<OfflineModelType> {
+  static let shared = ModelManager()
+
+  private init() {
+    super.init(logPrefix: "MODEL-MANAGER")
+  }
+
+  // MARK: - Paths
+
+  override nonisolated var rootDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
+  }
+
+  /// `models/argmaxinc/whisperkit-coreml/openai_whisper-<variant>` — WhisperKit's own layout.
+  private nonisolated var whisperKitRepoDirectory: URL {
+    rootDirectory
       .appendingPathComponent("models")
       .appendingPathComponent("argmaxinc")
       .appendingPathComponent("whisperkit-coreml")
+  }
+
+  override nonisolated func resolveModelPath(for type: OfflineModelType) -> URL? {
+    // Standard WhisperKit download structure first.
+    let nestedPath = whisperKitRepoDirectory
       .appendingPathComponent("openai_whisper-\(type.whisperKitModelName)")
-      
     if fileManager.fileExists(atPath: nestedPath.path) {
       return nestedPath
     }
-    
-    // Check simple location (legacy/manual downloads)
+
+    // Simple location (legacy/manual downloads).
     let possibleSimpleNames = [
       "openai_whisper-\(type.whisperKitModelName)",
       "\(type.whisperKitModelName)",
       "whisper-\(type.whisperKitModelName)"
     ]
-    
     for name in possibleSimpleNames {
-      let path = whisperKitDir.appendingPathComponent(name)
+      let path = rootDirectory.appendingPathComponent(name)
       if fileManager.fileExists(atPath: path.path) {
         return path
       }
     }
-    
     return nil
   }
 
   // MARK: - Model Availability
+
   /// Returns true only when the model folder exists and contains required WhisperKit files
   /// (e.g. AudioEncoder.mlmodelc). Avoids showing incomplete downloads as "available".
-  func isModelAvailable(_ type: OfflineModelType) -> Bool {
+  override nonisolated func isModelAvailable(_ type: OfflineModelType) -> Bool {
     guard let modelPath = resolveModelPath(for: type) else {
-      let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
       DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
-      DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(whisperKitDir.path)")
-      if fileManager.fileExists(atPath: whisperKitDir.path),
-         let contents = try? fileManager.contentsOfDirectory(atPath: whisperKitDir.path) {
+      DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(rootDirectory.path)")
+      if fileManager.fileExists(atPath: rootDirectory.path),
+         let contents = try? fileManager.contentsOfDirectory(atPath: rootDirectory.path) {
         DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory contents: \(contents.joined(separator: ", "))")
       }
       return false
@@ -207,11 +206,11 @@ class ModelManager: ObservableObject {
     "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc",
   ]
 
-  private func hasRequiredWhisperKitFiles(at modelPath: URL) -> Bool {
+  private nonisolated func hasRequiredWhisperKitFiles(at modelPath: URL) -> Bool {
     Self.requiredComponents.allSatisfy { findFile(named: $0, in: modelPath) }
   }
 
-  private func findFile(named filename: String, in directory: URL) -> Bool {
+  private nonisolated func findFile(named filename: String, in directory: URL) -> Bool {
     guard fileManager.fileExists(atPath: directory.path) else { return false }
     if let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil) {
       for case let fileURL as URL in enumerator {
@@ -222,187 +221,59 @@ class ModelManager: ObservableObject {
     }
     return false
   }
-  
+
   // MARK: - Ready to use
-
-  /// Makes `type` usable: downloads it if it is missing or incomplete, then loads it into
-  /// `LocalSpeechService`. Callers can transcribe as soon as this returns.
-  ///
-  /// This is the single answer to "the model is not there yet". Before it existed, selecting a
-  /// model, downloading it, and loading it were three separate user actions with three separate
-  /// failure popups — and dictating before all three were done silently produced a cloud
-  /// transcription instead (see `ModelSelectionReconciler`).
-  ///
-  /// `onProgress` receives user-facing status lines; it is called on the main actor.
-  @MainActor
-  func ensureReady(_ type: OfflineModelType, onProgress: ((String) -> Void)? = nil) async throws {
-    if let existing = readyTasks[type] {
-      // Someone (Settings, a previous dictation, the launch pre-load) is already on it.
-      try await existing.value
-      return
-    }
-    let task = Task<Void, Error> { try await self.makeReady(type, onProgress: onProgress) }
-    readyTasks[type] = task
-    defer { readyTasks[type] = nil }
-    try await task.value
-  }
-
-  @MainActor
-  private func makeReady(_ type: OfflineModelType, onProgress: ((String) -> Void)?) async throws {
-    if !isModelAvailable(type) {
-      try await downloadModel(type) { fraction in
-        onProgress?("Downloading \(type.displayName) — \(Int(fraction * 100))%")
-      }
-    }
-
-    onProgress?(Self.preparingMessage(for: type))
-    do {
-      try await LocalSpeechService.shared.initializeModel(type)
-    } catch {
-      // Load failure after the folder looked complete is the verified-corrupt case — purge
-      // and fetch once more. A network drop mid-download must NOT wipe the tree: Hub skips
-      // files that already landed, so a retry resumes instead of looping from zero.
-      DebugLogger.logWarning(
-        "MODEL-MANAGER: \(type.displayName) failed to load (\(error.localizedDescription)); treating as corrupt and re-downloading once")
-      try? deleteModel(type)
-      await LocalSpeechService.shared.unloadModel()
-      onProgress?("The previous download was incomplete — fetching \(type.displayName) again…")
-      try await downloadModel(type) { fraction in
-        onProgress?("Downloading \(type.displayName) — \(Int(fraction * 100))%")
-      }
-      onProgress?(Self.preparingMessage(for: type))
-      try await LocalSpeechService.shared.initializeModel(type)
-    }
-  }
 
   /// The wait after a download is CoreML compiling the model for the Neural Engine. It happens
   /// once per model and is minutes for the large ones, so it is worth naming rather than showing
   /// a spinner that looks stuck.
-  private static func preparingMessage(for type: OfflineModelType) -> String {
+  override func preparingMessage(for type: OfflineModelType) -> String {
     "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes."
   }
 
-  // MARK: - Download Model
+  /// Load failure after the folder looked complete is the verified-corrupt case — purge and
+  /// fetch once more, because the user is waiting on a dictation.
+  override var healsCorruptDownloadOnLoadFailure: Bool { true }
 
-  @MainActor
-  func cancelDownload(_ type: OfflineModelType) {
-    downloadTasks[type]?.cancel()
-    readyTasks[type]?.cancel()
-    downloadingModels.remove(type)
-    downloadProgress[type] = nil
-    DebugLogger.log("MODEL-MANAGER: Cancelled download for \(type.displayName)")
+  override func load(_ type: OfflineModelType) async throws {
+    try await LocalSpeechService.shared.initializeModel(type)
   }
 
-  func downloadModel(_ type: OfflineModelType, onProgress: ((Double) -> Void)? = nil) async throws {
-    let existing = await MainActor.run { downloadTasks[type] }
-    if let existing {
-      try await existing.value
-      return
-    }
-
-    try DiskSpace.require(
-      estimatedSizeMB: type.estimatedSizeMB,
-      at: AppSupportPaths.whisperShortcutApplicationSupportURL())
-
-    let task = Task<Void, Error> {
-      try await self.performDownload(type, onProgress: onProgress)
-    }
-    await MainActor.run { downloadTasks[type] = task }
-    defer {
-      Task { @MainActor in
-        downloadTasks[type] = nil
-      }
-    }
-    do {
-      try await withTaskCancellationHandler {
-        try await task.value
-      } onCancel: {
-        task.cancel()
-      }
-    } catch {
-      if Self.isCancellation(error) {
-        DebugLogger.log("MODEL-MANAGER: Download cancelled for \(type.displayName)")
-        throw CancellationError()
-      }
-      throw error
-    }
+  override func unload(_ type: OfflineModelType) async {
+    guard await LocalSpeechService.shared.isLoaded(modelType: type) else { return }
+    await LocalSpeechService.shared.unloadModel()
   }
 
-  private func performDownload(_ type: OfflineModelType, onProgress: ((Double) -> Void)?) async throws {
-    await MainActor.run {
-      downloadingModels.insert(type)
-      downloadProgress[type] = 0
-    }
+  // MARK: - Download
 
-    defer {
-      Task { @MainActor in
-        downloadingModels.remove(type)
-        downloadProgress[type] = nil
-      }
-    }
-
-    DebugLogger.log("MODEL-MANAGER: Triggering WhisperKit model download for \(type.displayName)")
-
-    let whisperKitDir = AppSupportPaths.whisperShortcutApplicationSupportURL().appendingPathComponent("WhisperKit")
-    let modelFolderPath = whisperKitDir.path
-
-    try? fileManager.createDirectory(at: whisperKitDir, withIntermediateDirectories: true)
-
-    DebugLogger.log("MODEL-MANAGER: Using modelFolder: \(modelFolderPath)")
-
-    // Keep a partial tree on a network drop so Hub skips complete files. Do not purge
-    // here — only `makeReady`'s load-failure path deletes a verified-corrupt folder.
-
-    let expectedNestedDir = whisperKitDir
-      .appendingPathComponent("models")
-      .appendingPathComponent("argmaxinc")
-      .appendingPathComponent("whisperkit-coreml")
-    try? fileManager.createDirectory(at: expectedNestedDir, withIntermediateDirectories: true)
-
+  override func fetch(_ type: OfflineModelType, onProgress: @escaping (Double) -> Void) async throws {
+    try? fileManager.createDirectory(at: whisperKitRepoDirectory, withIntermediateDirectories: true)
     let modelName = "openai_whisper-\(type.whisperKitModelName)"
-    
+
     do {
-      DebugLogger.log("MODEL-MANAGER: Starting download for \(modelName)...")
-      
-      // Download the model using WhisperKit's download method
       let downloadedModelPath = try await WhisperKit.download(
         variant: modelName,
-        downloadBase: whisperKitDir,
-        progressCallback: { progress in
-          let fraction = progress.fractionCompleted
-          Task { @MainActor in
-            ModelManager.shared.downloadProgress[type] = fraction
-            onProgress?(fraction)
-          }
-        }
+        downloadBase: rootDirectory,
+        progressCallback: { progress in onProgress(progress.fractionCompleted) }
       )
-      
       DebugLogger.log("MODEL-MANAGER: Download completed to: \(downloadedModelPath.path)")
-      
-      // Verify the model is actually available on disk
-      let isAvailable = isModelAvailable(type)
-      DebugLogger.log("MODEL-MANAGER: Model availability check after download: \(isAvailable)")
-      
-      if !isAvailable {
-        logDirectoryContents(whisperKitDir)
-        throw ModelError.downloadFailed("Model downloaded but not properly available. Please try downloading again.")
+
+      if !isModelAvailable(type) {
+        logDirectoryContents(rootDirectory)
+        throw ModelStoreError.downloadFailed("Model downloaded but not properly available. Please try downloading again.")
       }
-      
-      DebugLogger.logSuccess("MODEL-MANAGER: Model \(type.displayName) downloaded successfully")
-    } catch let error as ModelError {
-      // Re-throw our custom errors
+    } catch let error as ModelStoreError {
       throw error
     } catch {
       if Self.isCancellation(error) { throw CancellationError() }
-      // Log the full error for debugging
       let errorMessage = error.localizedDescription
       DebugLogger.logError("MODEL-MANAGER: WhisperKit error: \(errorMessage)")
-      
-      // Check for missing required model files (incomplete or corrupted download)
+
+      // Missing required model files mean an incomplete or corrupted download.
       if errorMessage.contains("MelSpectrogram.mlmodelc") {
         DebugLogger.logError("MODEL-MANAGER: MelSpectrogram.mlmodelc missing - this indicates an incomplete download")
-        logDirectoryContents(whisperKitDir)
-        throw ModelError.downloadFailed(
+        logDirectoryContents(rootDirectory)
+        throw ModelStoreError.downloadFailed(
           "Model download appears incomplete. The MelSpectrogram.mlmodelc file is missing. " +
           "This usually means the download was interrupted or failed. " +
           "Please try downloading again. If the problem persists, try deleting any partial downloads first."
@@ -410,87 +281,32 @@ class ModelManager: ObservableObject {
       }
       if errorMessage.contains("AudioEncoder.mlmodelc") {
         DebugLogger.logError("MODEL-MANAGER: AudioEncoder.mlmodelc missing - model folder incomplete or corrupted")
-        logDirectoryContents(whisperKitDir)
-        throw ModelError.downloadFailed(
+        logDirectoryContents(rootDirectory)
+        throw ModelStoreError.downloadFailed(
           "Model folder exists but AudioEncoder.mlmodelc is missing (incomplete or corrupted). " +
           "In Settings, delete the model and download it again."
         )
       }
-      
-      if let nsError = error as NSError? {
-        DebugLogger.logError("MODEL-MANAGER: Error domain: \(nsError.domain), code: \(nsError.code)")
-        DebugLogger.logError("MODEL-MANAGER: Error userInfo: \(nsError.userInfo)")
-      }
-      
-      throw ModelError.downloadFailed("Failed to download WhisperKit model: \(errorMessage)")
+
+      let nsError = error as NSError
+      DebugLogger.logError("MODEL-MANAGER: Error domain: \(nsError.domain), code: \(nsError.code)")
+      DebugLogger.logError("MODEL-MANAGER: Error userInfo: \(nsError.userInfo)")
+      throw ModelStoreError.downloadFailed("Failed to download WhisperKit model: \(errorMessage)")
     }
   }
-  
-  // MARK: - Verify Model Files
-  private func verifyModelFiles(type: OfflineModelType, whisperKitDir: URL) -> Bool {
-    guard let modelPath = resolveModelPath(for: type) else {
-      return false
-    }
-    
-    // Check for essential model files
-    // WhisperKit models typically contain .mlpackage files and other resources
-    if let contents = try? fileManager.contentsOfDirectory(atPath: modelPath.path) {
-      // Check for at least some model files (not empty directory)
-      if !contents.isEmpty {
-        // Check for common WhisperKit model file patterns
-        let hasModelFiles = contents.contains { file in
-          file.hasSuffix(".mlpackage") || 
-          file.hasSuffix(".mlmodelc") || 
-          file.hasSuffix(".bin") ||
-          file.hasSuffix(".json")
-        }
-        
-        if hasModelFiles {
-          DebugLogger.log("MODEL-MANAGER: Verified model files exist in \(modelPath.path)")
-          
-          // Also check for MelSpectrogram.mlmodelc which is a common dependency
-          // It might be in the model directory or a subdirectory
-          let melSpectrogramFound = findMelSpectrogramFile(in: modelPath)
-          if melSpectrogramFound {
-            DebugLogger.log("MODEL-MANAGER: MelSpectrogram.mlmodelc found")
-          } else {
-            DebugLogger.log("MODEL-MANAGER: Warning: MelSpectrogram.mlmodelc not found in model directory")
-          }
-          
-          return true
-        }
-      }
-    }
-    
-    return false
-  }
-  
-  // MARK: - Find MelSpectrogram File
-  private func findMelSpectrogramFile(in directory: URL) -> Bool {
-    // Check recursively for MelSpectrogram.mlmodelc
-    if let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil) {
-      for case let fileURL as URL in enumerator {
-        if fileURL.lastPathComponent == "MelSpectrogram.mlmodelc" {
-          DebugLogger.log("MODEL-MANAGER: Found MelSpectrogram.mlmodelc at: \(fileURL.path)")
-          return true
-        }
-      }
-    }
-    return false
-  }
-  
+
   // MARK: - Log Directory Contents (for debugging)
-  private func logDirectoryContents(_ directory: URL) {
+  private nonisolated func logDirectoryContents(_ directory: URL) {
     DebugLogger.log("MODEL-MANAGER: Listing contents of \(directory.path)")
-    
+
     guard fileManager.fileExists(atPath: directory.path) else {
       DebugLogger.log("MODEL-MANAGER: Directory does not exist")
       return
     }
-    
+
     if let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) {
       DebugLogger.log("MODEL-MANAGER: Directory contents: \(contents.joined(separator: ", "))")
-      
+
       // Also check subdirectories
       for item in contents {
         let itemPath = directory.appendingPathComponent(item)
@@ -503,66 +319,6 @@ class ModelManager: ObservableObject {
       }
     } else {
       DebugLogger.log("MODEL-MANAGER: Could not read directory contents")
-    }
-  }
-  
-  // MARK: - Delete Model
-  func deleteModel(_ type: OfflineModelType) throws {
-    guard let modelPath = resolveModelPath(for: type) else {
-      throw ModelError.fileError("Model not found in WhisperKit directory")
-    }
-    
-    try fileManager.removeItem(at: modelPath)
-    DebugLogger.log("MODEL-MANAGER: Deleted \(type.displayName) from: \(modelPath.path)")
-  }
-  
-  // MARK: - Get Model Size
-  func getModelSize(_ type: OfflineModelType) -> Int64? {
-    guard let modelPath = resolveModelPath(for: type) else {
-      return nil
-    }
-    
-    // Calculate total size of model directory
-    var totalSize: Int64 = 0
-    if let enumerator = fileManager.enumerator(at: modelPath, includingPropertiesForKeys: [.fileSizeKey]) {
-      for case let fileURL as URL in enumerator {
-        if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-          totalSize += Int64(fileSize)
-        }
-      }
-    }
-    
-    return totalSize > 0 ? totalSize : nil
-  }
-  
-  // MARK: - Format Size
-  func formatSize(_ bytes: Int64) -> String {
-    let formatter = ByteCountFormatter()
-    formatter.allowedUnits = [.useMB, .useGB]
-    formatter.countStyle = .file
-    return formatter.string(fromByteCount: bytes)
-  }
-
-  /// Hub / URLSession cancel with `URLError.cancelled`; Swift concurrency uses `CancellationError`.
-  static func isCancellation(_ error: Error) -> Bool {
-    if error is CancellationError { return true }
-    if let urlError = error as? URLError, urlError.code == .cancelled { return true }
-    let nsError = error as NSError
-    return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
-  }
-}
-
-// MARK: - Model Error
-enum ModelError: LocalizedError {
-  case downloadFailed(String)
-  case fileError(String)
-  
-  var errorDescription: String? {
-    switch self {
-    case .downloadFailed(let message):
-      return "Download failed: \(message)"
-    case .fileError(let message):
-      return "File error: \(message)"
     }
   }
 }

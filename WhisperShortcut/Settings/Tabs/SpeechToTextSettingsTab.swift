@@ -5,7 +5,6 @@ struct SpeechToTextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @ObservedObject var modelManager = ModelManager.shared
-  @State private var refreshTrigger = UUID() // Trigger to force view refresh
   /// Collapsed by default when the selected model ignores the system prompt — it is still there
   /// for the user who switches back to a cloud model, just not in the way of the field that works.
   @State private var showIgnoredSystemPrompt = false
@@ -334,201 +333,43 @@ struct SpeechToTextSettingsTab: View {
       VStack(spacing: 12) {
         ForEach(OfflineModelType.offerable, id: \.self) { modelType in
           offlineModelRow(for: modelType)
-            .id("\(modelType.rawValue)-\(refreshTrigger)") // Force refresh when trigger changes
         }
       }
     }
   }
 
   // MARK: - Offline Model Row
-  @ViewBuilder
   private func offlineModelRow(for modelType: OfflineModelType) -> some View {
-    // Check if model is currently downloading (takes precedence)
-    let isDownloading = modelManager.downloadingModels.contains(modelType)
-    // Only check availability if not downloading (prevents "Downloaded / 0 MB" glitch)
-    let isAvailable = !isDownloading && ModelManager.shared.isModelAvailable(modelType)
-    let modelSize = ModelManager.shared.getModelSize(modelType)
-
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .center, spacing: 12) {
-        // Model Info
-        VStack(alignment: .leading, spacing: 4) {
-          HStack(spacing: 8) {
-            Text(modelType.displayName)
-              .font(.body)
-              .fontWeight(.semibold)
-
-            if modelType.isRecommended {
-              HStack(spacing: 4) {
-                Image(systemName: "star.fill")
-                  .foregroundColor(.yellow)
-                  .font(.caption)
-                Text("Recommended")
-                  .font(.caption)
-                  .foregroundColor(.secondary)
-              }
-            } else if modelType.isSuperseded {
-              Text("Superseded by Large v3 Turbo")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            } else if modelType.isQuickStart {
-              // Not a second "Recommended": this is the small download for trying offline out,
-              // and saying so keeps it findable without competing with the actual recommendation.
-              Text("Smallest download")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-          }
-
-          HStack(spacing: 12) {
-            // Status - prioritize downloading status
-            HStack(spacing: 4) {
-              if isDownloading {
-                Image(systemName: "arrow.down.circle.fill")
-                  .foregroundColor(.blue)
-                  .font(.caption)
-                // A gigabyte-scale download with no number reads as a hang; show how far it is.
-                let fraction = modelManager.downloadProgress[modelType]
-                Text(
-                  fraction.map { "Downloading… \(Int($0 * 100))%" } ?? "Downloading…"
-                )
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-              } else {
-                Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
-                  .foregroundColor(isAvailable ? .green : .secondary)
-                  .font(.caption)
-                Text(isAvailable ? "Downloaded" : "Not downloaded")
-                  .font(.caption)
-                  .foregroundColor(.secondary)
-              }
-            }
-
-            // Size - only show if not downloading and model is available
-            if !isDownloading, let size = modelSize {
-              Text("• \(ModelManager.shared.formatSize(size))")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            } else if !isDownloading {
-              Text("• ~\(modelType.estimatedSizeMB) MB")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-          }
+    ModelDownloadRow(
+      store: modelManager,
+      model: modelType,
+      downloadedMessage:
+        "\(modelType.displayName) was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster.",
+      onError: { viewModel.showError($0) }
+    ) {
+      if modelType.isRecommended {
+        HStack(spacing: 4) {
+          Image(systemName: "star.fill")
+            .foregroundColor(.yellow)
+            .font(.caption)
+          Text("Recommended")
+            .font(.caption)
+            .foregroundColor(.secondary)
         }
-
-        Spacer()
-
-        // Action Button
-        if isDownloading {
-          HStack(spacing: 8) {
-            if let fraction = modelManager.downloadProgress[modelType] {
-              ProgressView(value: fraction)
-                .progressViewStyle(.linear)
-                .frame(width: 90)
-              Text("\(Int(fraction * 100))%")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-            } else {
-              ProgressView()
-                .scaleEffect(0.8)
-              Text("Downloading…")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            }
-            Button("Cancel") {
-              Task { @MainActor in
-                ModelManager.shared.cancelDownload(modelType)
-              }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .pointerCursorOnHover()
-          }
-        } else if isAvailable {
-          // Delete button
-          Button("Delete") {
-            deleteOfflineModel(modelType)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .foregroundColor(.red)
-          .pointerCursorOnHover()
-        } else {
-          // Download button
-          Button("Download") {
-            downloadOfflineModel(modelType)
-          }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
-          .pointerCursorOnHover()
-        }
-      }
-    }
-    .padding(SettingsConstants.rowPadding)
-    .background(Color(.controlBackgroundColor))
-    .cornerRadius(8)
-    .overlay(
-      RoundedRectangle(cornerRadius: 8)
-        .stroke(Color(.separatorColor), lineWidth: 1)
-    )
-  }
-
-  // MARK: - Offline Models Actions
-  private func downloadOfflineModel(_ modelType: OfflineModelType) {
-    // ModelManager now handles the downloading state internally
-    Task {
-      do {
-        try await ModelManager.shared.downloadModel(modelType)
-        await MainActor.run {
-          DebugLogger.logSuccess("OFFLINE-UI: Successfully downloaded \(modelType.displayName)")
-          // Use the same status-bar-level popup the rest of the app uses for
-          // dictation/prompt feedback. It sits above the Settings window
-          // regardless of focus/window-level/closeOnFocusLoss.
-          // 10s — longer than the 1s info default; this is a rare event with
-          // important first-run info, so the user needs time to read it.
-          PopupNotificationWindow.showInfo(
-            "\(modelType.displayName) was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster.",
-            title: "Model Downloaded",
-            customDisplayDuration: 10
-          )
-
-          // Give WhisperKit a moment to finish writing files
-          Task {
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            await MainActor.run {
-              // Trigger view update to show new model status
-              refreshTrigger = UUID()
-              DebugLogger.log("OFFLINE-UI: Refreshed view after download")
-            }
-          }
-        }
-      } catch is CancellationError {
-        // cancelled from the Cancel button
-      } catch {
-        if ModelManager.isCancellation(error) { return }
-        await MainActor.run {
-          viewModel.showError("Failed to download \(modelType.displayName): \(SpeechErrorFormatter.formatForUser(error))")
-          DebugLogger.logError("OFFLINE-UI: Failed to download \(modelType.displayName): \(error.localizedDescription)")
-        }
+      } else if modelType.isSuperseded {
+        Text("Superseded by Large v3 Turbo")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      } else if modelType.isQuickStart {
+        // Not a second "Recommended": this is the small download for trying offline out,
+        // and saying so keeps it findable without competing with the actual recommendation.
+        Text("Smallest download")
+          .font(.caption)
+          .foregroundColor(.secondary)
       }
     }
   }
 
-  private func deleteOfflineModel(_ modelType: OfflineModelType) {
-    do {
-      try ModelManager.shared.deleteModel(modelType)
-      DebugLogger.logSuccess("OFFLINE-UI: Successfully deleted \(modelType.displayName)")
-      // Trigger view update to show new model status
-      refreshTrigger = UUID()
-    } catch {
-      viewModel.showError("Failed to delete \(modelType.displayName): \(SpeechErrorFormatter.formatForUser(error))")
-      DebugLogger.logError("OFFLINE-UI: Failed to delete \(modelType.displayName): \(error.localizedDescription)")
-    }
-  }
-  
   // MARK: - Usage Instructions
   @ViewBuilder
   private var usageInstructionsSection: some View {

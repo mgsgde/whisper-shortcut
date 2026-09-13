@@ -285,60 +285,20 @@ class ChunkTranscriptionService {
                 }
             }
         ) {
-            // Read and encode audio (as compact AAC when possible)
-            let audioData: Data
-            let mimeType: String
-            if let aacData = AudioTranscoder.aacData(for: chunk.url) {
-                audioData = aacData
-                mimeType = AudioTranscoder.aacMimeType
-            } else {
-                audioData = try Data(contentsOf: chunk.url)
-                mimeType = geminiClient.getMimeType(for: chunk.url.pathExtension.lowercased())
-            }
-            let base64Audio = audioData.base64EncodedString()
-
-            let endpoint = model.apiEndpoint
-            var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
-            request.timeoutInterval = Self.chunkResourceTimeout
-
-            let transcriptionRequest = GeminiTranscriptionRequest(
-                contents: [
-                    GeminiTranscriptionRequest.GeminiTranscriptionContent(
-                        parts: [
-                            .text(prompt.isEmpty
-                                ? "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
-                                : prompt),
-                            .inline(mimeType: mimeType, data: base64Audio)
-                        ]
-                    )
-                ],
-                generationConfig: model.geminiTranscriptionGenerationConfig
-            )
-
-            request.httpBody = try JSONEncoder().encode(transcriptionRequest)
-
-            // Make request (without GeminiAPIClient's internal retry - we handle it here)
-            let response = try await geminiClient.performRequest(
-                request,
-                responseType: GeminiResponse.self,
-                mode: "CHUNK-\(chunk.index)",
-                withRetry: false
-            )
-
-            // Extract text
-            let text = geminiClient.extractText(from: response)
-            // A near-silent trailing chunk can trigger prompt-context confabulation on
-            // Flash-tier models, in both directions: impossibly long invented output, or
-            // near-empty output made of nothing but the glossary we sent in the prompt.
-            let chunkDuration = chunk.endTime - chunk.startTime
-            let normalizedText = TextProcessingUtility.discardingGlossaryEchoTranscript(
-                TextProcessingUtility.discardingImplausibleTranscript(
-                    TextProcessingUtility.normalizeTranscriptionText(text),
-                    audioDurationSeconds: chunkDuration,
-                    mode: "CHUNK-\(chunk.index)"),
-                audioDurationSeconds: chunkDuration,
+            // The client's own retry stays off: `retryPolicy` around this closure is the retry.
+            // The instruction is never empty here — `SpeechService` already substituted its
+            // default before handing it over.
+            let result = try await geminiClient.transcribe(
+                audioURL: chunk.url,
+                instruction: prompt,
+                model: model,
+                credential: credential,
+                audioDurationSeconds: chunk.endTime - chunk.startTime,
                 glossaryTerms: glossaryTerms,
-                mode: "CHUNK-\(chunk.index)")
+                mode: "CHUNK-\(chunk.index)",
+                withRetry: false,
+                timeoutInterval: Self.chunkResourceTimeout)
+            let normalizedText = result.text
 
             DebugLogger.log("CHUNK-SERVICE: Chunk \(chunk.index) transcribed (\(normalizedText.count) chars)")
 
