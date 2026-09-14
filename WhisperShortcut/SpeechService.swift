@@ -1603,23 +1603,24 @@ class SpeechService {
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
     // merging. Every cloud provider returns raw PCM (s16le 24kHz mono), so the merged result
     // feeds playback unchanged — we only supply a per-chunk synthesizer for the chosen provider.
-    let synthesizeChunk: (String) async throws -> Data
+    // Only OpenAI honours `onPartial` (see `synthesizeOpenAITTS`); the others deliver whole chunks.
+    let synthesizeChunk: ChunkTTSService.Synthesizer
     switch model.provider {
     case .gemini:
       guard let credential = await credentialProvider.getCredential() else {
         throw TranscriptionError.noGoogleAPIKey
       }
-      synthesizeChunk = { [weak self] chunkText in
+      synthesizeChunk = { [weak self] chunkText, _ in
         guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
         return try await self.synthesizeGeminiTTSChunk(text: chunkText, voice: voice, model: model, credential: credential)
       }
     case .openai:
-      synthesizeChunk = { [weak self] chunkText in
+      synthesizeChunk = { [weak self] chunkText, onPartial in
         guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
-        return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model)
+        return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model, onPartial: onPartial)
       }
     case .xai:
-      synthesizeChunk = { [weak self] chunkText in
+      synthesizeChunk = { [weak self] chunkText, _ in
         guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
         return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
       }
@@ -1683,8 +1684,21 @@ class SpeechService {
     return decoded
   }
 
-  /// OpenAI TTS — `response_format:"pcm"` returns raw s16le 24kHz mono PCM (no header).
-  private func synthesizeOpenAITTS(text: String, voice: String, model: TTSModel) async throws -> Data {
+  /// OpenAI TTS — `response_format:"pcm"` returns raw s16le 24kHz mono PCM (no header), and
+  /// OpenAI writes it as it is synthesized. Reading the body as a stream and handing slices to
+  /// `onPartial` lets playback start on the first quarter second instead of after the whole
+  /// chunk: measured 5.7–6.7 s per full-size chunk when read whole, versus first bytes well
+  /// under a second. Gemini cannot do this (its REST TTS returns one base64 JSON blob), and xAI
+  /// has not been probed, so this is the only streaming provider.
+  ///
+  /// Slices are cut on a sample boundary (2 bytes) so a partial never splits an s16 frame, and
+  /// batched — 0.25 s for the first flush, 0.5 s after — so the player node is not fed hundreds of
+  /// millisecond buffers. `onPartial` is awaited in order; the returned `Data` is the complete
+  /// chunk regardless, so the merge and the non-streaming callers keep working unchanged.
+  private func synthesizeOpenAITTS(
+    text: String, voice: String, model: TTSModel,
+    onPartial: ((Data) async -> Void)? = nil
+  ) async throws -> Data {
     let token = try ProviderCredentials.require(.openAI)
     guard let url = URL(string: AppConstants.openAISpeechEndpoint) else { throw TranscriptionError.invalidRequest }
     var request = URLRequest(url: url)
@@ -1699,13 +1713,70 @@ class SpeechService {
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, http) = try await Self.performWithRetryOn429(
-      request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-OPENAI")
+    let (data, http) = try await Self.performStreamingWithRetryOn429(
+      request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-OPENAI",
+      onPartial: onPartial)
     guard http.statusCode == 200 else {
       let bodyText = String(data: data, encoding: .utf8)?.prefix(200) ?? ""
       throw TranscriptionError.networkError("OpenAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return data
+  }
+
+  /// Streaming sibling of `performWithRetryOn429`: same 429 handling, but a 200 body is read
+  /// incrementally and forwarded to `onPartial` in batches while it arrives. Non-200 bodies are
+  /// collected whole (they are short JSON errors) and returned for the caller to map.
+  private static func performStreamingWithRetryOn429(
+    request: URLRequest,
+    session: URLSession,
+    logPrefix: String,
+    onPartial: ((Data) async -> Void)?
+  ) async throws -> (Data, HTTPURLResponse) {
+    var lastResponse: (Data, HTTPURLResponse)?
+    for attempt in 1...Constants.maxRetryAttempts {
+      let (bytes, response) = try await session.bytes(for: request)
+      guard let http = response as? HTTPURLResponse else {
+        throw TranscriptionError.networkError("Invalid response from server")
+      }
+
+      var data = Data()
+      if http.statusCode == 200, let onPartial {
+        var batcher = PCMStreamBatcher()
+        let started = CFAbsoluteTimeGetCurrent()
+        var firstFlushLogged = false
+        for try await byte in bytes {
+          data.append(byte)
+          if let slice = batcher.append(byte) {
+            if !firstFlushLogged {
+              firstFlushLogged = true
+              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
+            }
+            await onPartial(slice)
+          }
+        }
+        if let rest = batcher.drain() { await onPartial(rest) }
+      } else {
+        for try await byte in bytes { data.append(byte) }
+      }
+      lastResponse = (data, http)
+
+      if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
+        let body = String(data: data, encoding: .utf8) ?? ""
+        if RetryBackoff.isPermanentRateLimit(responseBody: body) {
+          DebugLogger.logWarning("\(logPrefix): HTTP 429 is a quota/billing block — not retrying")
+          return (data, http)
+        }
+        let delay = RetryBackoff.delay(
+          attempt: attempt, retryAfter: http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init),
+          base: Constants.retryDelaySeconds, exponential: true)
+        DebugLogger.logWarning("\(logPrefix): HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
+        await RetryBackoff.sleep(delay)
+        continue
+      }
+      return (data, http)
+    }
+    if let lastResponse { return lastResponse }
+    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
