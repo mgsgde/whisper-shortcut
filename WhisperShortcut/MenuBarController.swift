@@ -130,6 +130,9 @@ class MenuBarController: NSObject {
       self.presentError(
         shortTitle: SpeechErrorFormatter.shortStatusForUser(error),
         message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+    },
+    onProgress: { position, duration in
+      RecordingIndicatorManager.shared.updateProgress(position: position, duration: duration)
     })
 
   // MARK: - Configuration
@@ -517,6 +520,12 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onCycleSpeed = { [weak self] in
       self?.cycleReadAloudSpeed()
     }
+    RecordingIndicatorManager.shared.onSkip = { [weak self] seconds in
+      self?.ttsPlayback.skip(by: seconds)
+    }
+    RecordingIndicatorManager.shared.onSeek = { [weak self] seconds in
+      self?.ttsPlayback.seek(to: seconds)
+    }
   }
 
   // MARK: - Recording Indicator
@@ -560,6 +569,7 @@ class MenuBarController: NSObject {
       // utterance runs on — the transport comes back once the pill is free again.
       if ttsPlayback.isPlaying {
         indicator.showSpeaking(isPaused: ttsPlayback.isPaused, speed: ReadAloudPreferences.speed)
+        indicator.updateProgress(position: ttsPlayback.position, duration: ttsPlayback.duration)
       } else {
         indicator.hide()
       }

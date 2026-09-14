@@ -7,7 +7,8 @@
 //    recording  → live audio-level bars with ✕ (discard) and ✓ (stop & process)
 //    processing → spinner with ✕ (cancel)
 //  and Read Aloud playback:
-//    speaking   → ✕ (stop), status word, speed button (cycles 0.75×…2×), ⏸/▶ (pause / resume)
+//    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
+//                 speed button (cycles 0.75×…2×)
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -36,6 +37,11 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var isPaused = false
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
+  /// `.speaking` only: playhead and received audio, in seconds of source audio.
+  @Published var position: TimeInterval = 0
+  @Published var duration: TimeInterval = 0
+  /// `.speaking` only: the user is dragging the scrubber; progress updates leave the knob alone.
+  @Published var scrubPosition: TimeInterval?
 
   func pushLevel(_ normalized: CGFloat) {
     var next = levels
@@ -136,12 +142,70 @@ private struct SpeedButton: View {
   }
 }
 
+/// Thin track with a knob; dragging previews the target and seeks on release.
+private struct ScrubberView: View {
+  @ObservedObject var model: RecordingIndicatorModel
+  let onSeek: (TimeInterval) -> Void
+
+  private enum Metrics {
+    static let trackHeight: CGFloat = 3
+    static let knobSize: CGFloat = 10
+    static let hitHeight: CGFloat = 24
+  }
+
+  var body: some View {
+    GeometryReader { geometry in
+      let width = geometry.size.width
+      let shown = model.scrubPosition ?? model.position
+      let fraction = model.duration > 0 ? min(1, max(0, shown / model.duration)) : 0
+      let knobX = fraction * width
+      ZStack(alignment: .leading) {
+        Capsule().fill(Color.white.opacity(0.25)).frame(height: Metrics.trackHeight)
+        Capsule().fill(Color.white).frame(width: knobX, height: Metrics.trackHeight)
+        Circle()
+          .fill(Color.white)
+          .frame(width: Metrics.knobSize, height: Metrics.knobSize)
+          .offset(x: knobX - Metrics.knobSize / 2)
+      }
+      .frame(height: Metrics.hitHeight)
+      .contentShape(Rectangle())
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { value in
+            guard model.duration > 0 else { return }
+            let fraction = min(1, max(0, value.location.x / width))
+            model.scrubPosition = fraction * model.duration
+          }
+          .onEnded { _ in
+            guard let target = model.scrubPosition else { return }
+            model.scrubPosition = nil
+            model.position = target
+            onSeek(target)
+          }
+      )
+    }
+    .frame(height: Metrics.hitHeight)
+    .accessibilityLabel("Playback position")
+    .accessibilityValue(RecordingIndicatorView.timeLabel(model.scrubPosition ?? model.position))
+  }
+}
+
 struct RecordingIndicatorView: View {
   @ObservedObject var model: RecordingIndicatorModel
   let onCancel: () -> Void
   let onConfirm: () -> Void
   let onTogglePause: () -> Void
   let onCycleSpeed: () -> Void
+  let onSkip: (TimeInterval) -> Void
+  let onSeek: (TimeInterval) -> Void
+
+  /// Seconds the ⏪ / ⏩ buttons jump.
+  static let skipInterval: TimeInterval = 10
+
+  static func timeLabel(_ seconds: TimeInterval) -> String {
+    let whole = max(0, Int(seconds.rounded(.down)))
+    return String(format: "%d:%02d", whole / 60, whole % 60)
+  }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
   /// without decoding icons (Wispr Flow Bar / Superwhisper parity).
@@ -149,7 +213,7 @@ struct RecordingIndicatorView: View {
     switch phase {
     case .recording: return CGSize(width: 218, height: 40)
     case .processing: return CGSize(width: 168, height: 40)
-    case .speaking: return CGSize(width: 232, height: 40)
+    case .speaking: return CGSize(width: 420, height: 40)
     }
   }
 
@@ -180,19 +244,23 @@ struct RecordingIndicatorView: View {
         PillCircleButton(
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Stop reading aloud", action: onCancel)
-        Image(systemName: model.isPaused ? "speaker.slash.fill" : "speaker.wave.2.fill")
-          .font(.system(size: 12, weight: .semibold))
-          .foregroundColor(.white)
-          .frame(width: 18)
-        Text(model.isPaused ? "Paused" : "Reading")
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundColor(.white)
-          .frame(minWidth: 48, alignment: .leading)
-        SpeedButton(speed: model.speed, action: onCycleSpeed)
+        PillCircleButton(
+          symbolName: "gobackward.10", foreground: .white, background: Color(white: 0.28),
+          accessibilityLabel: "Back 10 seconds", action: { onSkip(-Self.skipInterval) })
         PillCircleButton(
           symbolName: model.isPaused ? "play.fill" : "pause.fill", foreground: .black, background: .white,
           accessibilityLabel: model.isPaused ? "Resume reading aloud" : "Pause reading aloud",
           action: onTogglePause)
+        PillCircleButton(
+          symbolName: "goforward.10", foreground: .white, background: Color(white: 0.28),
+          accessibilityLabel: "Forward 10 seconds", action: { onSkip(Self.skipInterval) })
+        ScrubberView(model: model, onSeek: onSeek)
+        Text("\(Self.timeLabel(model.scrubPosition ?? model.position)) / \(Self.timeLabel(model.duration))")
+          .font(.system(size: 10, weight: .semibold).monospacedDigit())
+          .foregroundColor(.white.opacity(0.85))
+          .lineLimit(1)
+          .fixedSize()
+        SpeedButton(speed: model.speed, action: onCycleSpeed)
       }
     }
     .padding(.horizontal, 8)
@@ -240,6 +308,10 @@ final class RecordingIndicatorManager {
   var onTogglePause: (() -> Void)?
   /// Read Aloud: step to the next playback speed. Set by MenuBarController.
   var onCycleSpeed: (() -> Void)?
+  /// Read Aloud: jump the playhead by a signed number of seconds. Set by MenuBarController.
+  var onSkip: ((TimeInterval) -> Void)?
+  /// Read Aloud: move the playhead to an absolute position in seconds. Set by MenuBarController.
+  var onSeek: ((TimeInterval) -> Void)?
 
   private(set) var isVisible = false
 
@@ -285,12 +357,20 @@ final class RecordingIndicatorManager {
     model.isPaused = isPaused
     model.speed = speed
     let phaseChanged = model.phase != .speaking
+    if phaseChanged { model.scrubPosition = nil }
     model.phase = .speaking
     if isVisible, let panel {
       if phaseChanged { position(panel) }
     } else {
       orderFrontPanel()
     }
+  }
+
+  /// Feeds the scrubber. Ignored while the user is dragging it, so the knob follows the mouse.
+  func updateProgress(position: TimeInterval, duration: TimeInterval) {
+    guard model.phase == .speaking else { return }
+    model.duration = duration
+    if model.scrubPosition == nil { model.position = position }
   }
 
   func hide() {
@@ -353,7 +433,9 @@ final class RecordingIndicatorManager {
       onCancel: { [weak self] in self?.onCancel?() },
       onConfirm: { [weak self] in self?.onConfirm?() },
       onTogglePause: { [weak self] in self?.onTogglePause?() },
-      onCycleSpeed: { [weak self] in self?.onCycleSpeed?() }
+      onCycleSpeed: { [weak self] in self?.onCycleSpeed?() },
+      onSkip: { [weak self] seconds in self?.onSkip?(seconds) },
+      onSeek: { [weak self] seconds in self?.onSeek?(seconds) }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)

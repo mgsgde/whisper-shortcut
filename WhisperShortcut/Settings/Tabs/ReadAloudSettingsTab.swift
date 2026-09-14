@@ -179,7 +179,7 @@ struct ReadAloudSettingsTab: View {
       SectionHeader(
         title: "Smart Rewriting",
         systemImage: "wand.and.stars",
-        subtitle: "Let Gemini decide whether the selection should be read verbatim or rewritten for natural speech"
+        subtitle: "Let Gemini rewrite code, logs, Markdown or messy notes for natural speech. Plain prose is read as is, without the extra round trip"
       )
 
       Toggle(isOn: $viewModel.data.readAloudSmartRewriteEnabled) {

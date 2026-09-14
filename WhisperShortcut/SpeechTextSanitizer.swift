@@ -20,6 +20,57 @@ import Foundation
 /// than voiced, and citation markers (`[1]`) disappear instead of becoming a spoken "one".
 enum SpeechTextSanitizer {
 
+  /// True when the selection is plain running prose — the case Smart Rewrite would hand back
+  /// essentially unchanged after a ~2–6 s Gemini round trip (measured over nine Read Aloud runs:
+  /// 2.0 s for 538 chars, 6.4 s for 5 711). The rewrite earns its latency on code, logs, tables,
+  /// Markdown, URLs and copy-paste debris; on a paragraph of sentences it only trims the odd
+  /// redundancy, and the user is already waiting for synthesis behind it.
+  ///
+  /// The gate is deliberately strict — any structural marker keeps the rewrite on, because a
+  /// wrongly skipped rewrite means the voice reads `{`, `|` and `https` aloud, while a wrongly
+  /// kept one costs a few seconds. What counts as "not prose": Markdown syntax (fences, inline
+  /// code, headings, bullets, tables, emphasis, links), URLs, file paths, anything that looks like
+  /// code or logs (braces, semicolons, arrows, timestamps), a low share of letters among the
+  /// visible characters, or text that never ends a sentence.
+  static func looksLikePlainProse(_ text: String) -> Bool {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+
+    for pattern in nonProsePatterns where trimmed.range(of: pattern, options: .regularExpression) != nil {
+      return false
+    }
+
+    // Code and logs are symbol- and digit-heavy; prose is overwhelmingly letters. Ordinary
+    // sentence punctuation is left out of the denominator so a short quoted sentence is not
+    // penalised for its commas and apostrophes.
+    let prosePunctuation = CharacterSet(charactersIn: ".,;:!?…'’‘\"“”„«»()-–—")
+    let counted = trimmed.unicodeScalars.filter {
+      !CharacterSet.whitespacesAndNewlines.contains($0) && !prosePunctuation.contains($0)
+    }
+    guard !counted.isEmpty else { return false }
+    let letters = counted.filter { CharacterSet.letters.contains($0) }.count
+    guard Double(letters) / Double(counted.count) >= 0.85 else { return false }
+
+    // A selection that never closes a sentence (a list of fragments, a table row, a heading
+    // block) is not something to read verbatim.
+    return trimmed.range(of: #"[.!?…]["'“”„‘’«»)\]]?(\s|$)"#, options: .regularExpression) != nil
+  }
+
+  /// Any hit keeps Smart Rewrite on. Anchored to line starts where Markdown is line-based.
+  private static let nonProsePatterns: [String] = [
+    #"```"#,                                  // fenced code
+    #"`[^`\n]+`"#,                            // inline code
+    #"(?m)^\s{0,3}#{1,6}\s"#,                 // headings
+    #"(?m)^\s*([-*+]|\d+[.)])\s"#,            // bullet / numbered lists
+    #"(?m)^\s*\|.*\|\s*$"#,                   // table rows
+    #"\*\*[^*\n]+\*\*|__[^_\n]+__"#,          // bold
+    #"\[[^\]\n]*\]\([^)\n]*\)"#,              // links / images
+    #"(?i)\b(https?|ftp)://|\bwww\.[a-z0-9-]+\.[a-z]{2,}"#,  // URLs
+    #"(?:^|[\s(])(?:~|\.{1,2})?/[\w.-]+/[\w./-]+"#,           // file paths
+    #"[{}\[\];]|=>|->|::|</|/>|\$\{|\w+\(\)"#,                // code: braces, arrows, tags, calls
+    #"\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T"#,                 // log timestamps
+  ]
+
   /// Order matters throughout: images before links (an image is a link with a `!`), fenced code
   /// before inline code, and link-unwrapping before bare-URL removal — otherwise the URL inside
   /// `[text](url)` is deleted first and the leftover `[text]()` no longer matches the link

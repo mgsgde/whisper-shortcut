@@ -24,15 +24,20 @@ final class TTSPlaybackSession {
   private let onPlaybackCompleted: () -> Void
   /// Scheduling failed (format/buffer/engine). The owner ends the Read Aloud session and reports it.
   private let onFailure: (Error) -> Void
+  /// Ten times a second while the graph is up: playhead and the audio received so far, in seconds
+  /// of source audio (independent of the playback rate). Drives the pill's scrubber.
+  private let onProgress: (_ position: TimeInterval, _ duration: TimeInterval) -> Void
 
   init(
     onPlaybackStarted: @escaping () -> Void,
     onPlaybackCompleted: @escaping () -> Void,
-    onFailure: @escaping (Error) -> Void
+    onFailure: @escaping (Error) -> Void,
+    onProgress: @escaping (_ position: TimeInterval, _ duration: TimeInterval) -> Void
   ) {
     self.onPlaybackStarted = onPlaybackStarted
     self.onPlaybackCompleted = onPlaybackCompleted
     self.onFailure = onFailure
+    self.onProgress = onProgress
   }
 
   // MARK: - Audio format
@@ -52,12 +57,31 @@ final class TTSPlaybackSession {
   /// captured token and no-op when the user has started a new playback.
   private var currentPlaybackToken: UUID?
 
-  /// Buffers handed to the player node so far, and how many of them have finished playing.
-  /// Playback is over when the synthesis side has closed the stream *and* these are equal —
-  /// a count comparison rather than "the last chunk finished", because a failed chunk means the
-  /// final index may never arrive.
+  /// Every chunk received so far, in playback order, kept for the whole session so the user can
+  /// seek back into audio the player node has already consumed. A minute of 24 kHz mono Float32
+  /// is under 6 MB — cheap for what it buys.
+  private var receivedChunks: [AVAudioPCMBuffer] = []
+  /// Total frames in `receivedChunks`; the scrubber's (growing) upper bound.
+  private var totalFrames: AVAudioFramePosition = 0
+
+  /// Buffers handed to the player node in the current *segment*, and how many of them have
+  /// finished playing. A segment is what one `play()` covers: everything from the first chunk
+  /// (or from the seek target) to the end of the received audio, plus chunks queued behind it
+  /// afterwards. Playback is over when the synthesis side has closed the stream *and* these are
+  /// equal — a count comparison rather than "the last chunk finished", because a failed chunk means
+  /// the final index may never arrive. A seek starts a new segment and resets both.
   private var scheduledChunkCount = 0
   private var drainedChunkCount = 0
+  /// Bumped by every seek so a completion handler from the previous segment's queue (which
+  /// `playerNode.stop()` fires immediately) cannot be counted against the new one.
+  private var segmentGeneration = 0
+  /// Source frame at which the current segment's `play()` started. Playhead = this + the player's
+  /// own sample time (the player node advances at the rate the time-pitch unit pulls from it, so
+  /// its sample time is source frames regardless of the playback speed).
+  private var segmentStartFrame: AVAudioFramePosition = 0
+  /// Playhead captured on pause — the player node reports no render time while paused.
+  private var pausedAtFrame: AVAudioFramePosition?
+  private var progressTimer: Timer?
   /// Set when no further chunks will be enqueued (synthesis finished, failed, or was cancelled).
   private var streamClosed = false
   /// Whether late-arriving chunks may still be scheduled. Cleared by Stop and by stream close, so
@@ -75,14 +99,23 @@ final class TTSPlaybackSession {
   /// True once synthesis declared itself finished — Stop then has no network work left to cancel.
   var isStreamClosed: Bool { streamClosed }
   /// True once at least one chunk was scheduled, i.e. the streaming path is in use.
-  var hasScheduledChunks: Bool { scheduledChunkCount > 0 }
+  var hasScheduledChunks: Bool { !receivedChunks.isEmpty }
+  /// Seconds of source audio received so far.
+  var duration: TimeInterval { Double(totalFrames) / Self.sampleRate }
+  /// Playhead in seconds of source audio.
+  var position: TimeInterval { Double(currentFrame) / Self.sampleRate }
 
   // MARK: - Lifecycle
 
   /// Resets the per-session chunk bookkeeping. Called before the first chunk of a Read Aloud.
   func begin() {
+    receivedChunks = []
+    totalFrames = 0
     scheduledChunkCount = 0
     drainedChunkCount = 0
+    segmentGeneration = 0
+    segmentStartFrame = 0
+    pausedAtFrame = nil
     streamClosed = false
     acceptingChunks = true
   }
@@ -114,37 +147,49 @@ final class TTSPlaybackSession {
     }
     do {
       let buffer = try Self.makeBuffer(from: pcm)
-      let isFirstChunk = scheduledChunkCount == 0
+      let isFirstChunk = receivedChunks.isEmpty
       if isFirstChunk {
         try startEngine(format: buffer.format)
       }
-      guard let playerNode = audioPlayerNode, let token = currentPlaybackToken else {
+      guard let playerNode = audioPlayerNode else {
         DebugLogger.logWarning("TTS-PLAYBACK: Chunk \(index) arrived without an active player — dropping")
         return
       }
-
-      scheduledChunkCount += 1
-      playerNode.scheduleBuffer(buffer) { [weak self] in
-        Task { @MainActor in
-          guard let self, self.currentPlaybackToken == token else { return }
-          self.drainedChunkCount += 1
-          DebugLogger.logDebug(
-            "TTS-PLAYBACK: Chunk \(index) finished (\(self.drainedChunkCount)/\(self.scheduledChunkCount) drained)")
-          self.completeIfDrained(token: token)
-        }
-      }
+      receivedChunks.append(buffer)
+      totalFrames += AVAudioFramePosition(buffer.frameLength)
+      schedule(buffer, on: playerNode)
 
       if isFirstChunk {
         playerNode.play()
+        startProgressTimer()
         onPlaybackStarted()
         DebugLogger.logSuccess(
           "TTS-PLAYBACK: Playback started on chunk 1/\(totalChunks) (\(pcm.count) bytes) — remaining chunks stream in behind it")
       } else {
-        DebugLogger.log("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
+        // Debug level: a streaming provider delivers a chunk as dozens of half-second slices.
+        DebugLogger.logDebug("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
       }
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
       onFailure(error)
+    }
+  }
+
+  /// Appends one buffer to the player node's queue for the current segment and counts it drained
+  /// when it has played through (or when a seek's `stop()` flushes it — hence the generation check).
+  private func schedule(_ buffer: AVAudioPCMBuffer, on playerNode: AVAudioPlayerNode) {
+    guard let token = currentPlaybackToken else { return }
+    let generation = segmentGeneration
+    scheduledChunkCount += 1
+    playerNode.scheduleBuffer(buffer) { [weak self] in
+      Task { @MainActor in
+        guard let self, self.currentPlaybackToken == token, self.segmentGeneration == generation
+        else { return }
+        self.drainedChunkCount += 1
+        DebugLogger.logDebug(
+          "TTS-PLAYBACK: Buffer finished (\(self.drainedChunkCount)/\(self.scheduledChunkCount) drained)")
+        self.completeIfDrained(token: token)
+      }
     }
   }
 
@@ -170,16 +215,83 @@ final class TTSPlaybackSession {
   /// scheduled behind the paused playhead, and `scheduleBuffer` completions simply wait.
   func pause() {
     guard isPlaying, !isPaused, let playerNode = audioPlayerNode else { return }
+    pausedAtFrame = currentFrame
     playerNode.pause()
     isPaused = true
-    DebugLogger.log("TTS-PLAYBACK: Paused")
+    DebugLogger.log("TTS-PLAYBACK: Paused at \(formatSeconds(position))")
   }
 
   func resume() {
     guard isPlaying, isPaused, let playerNode = audioPlayerNode else { return }
-    playerNode.play()
     isPaused = false
+    pausedAtFrame = nil
+    playerNode.play()
     DebugLogger.log("TTS-PLAYBACK: Resumed")
+  }
+
+  /// Moves the playhead to `seconds` of source audio (clamped to what has been received) and
+  /// starts a new segment from there: the player's queue is flushed and refilled with the tail of
+  /// the received audio, so seeking backwards replays consumed buffers and seeking forwards skips
+  /// queued ones. Chunks that arrive later append behind the new segment as usual. Paused playback
+  /// stays paused — the segment is queued but not started until `resume()`.
+  func seek(to seconds: TimeInterval) {
+    guard isPlaying, let playerNode = audioPlayerNode, !receivedChunks.isEmpty else { return }
+    let targetFrame = max(0, min(totalFrames - 1, AVAudioFramePosition(seconds * Self.sampleRate)))
+
+    segmentGeneration += 1
+    scheduledChunkCount = 0
+    drainedChunkCount = 0
+    playerNode.stop()  // flushes the queue; resets the node's sample time to 0 on the next play()
+    segmentStartFrame = targetFrame
+
+    var chunkStart: AVAudioFramePosition = 0
+    for chunk in receivedChunks {
+      let chunkEnd = chunkStart + AVAudioFramePosition(chunk.frameLength)
+      defer { chunkStart = chunkEnd }
+      guard chunkEnd > targetFrame else { continue }
+      if chunkStart >= targetFrame {
+        schedule(chunk, on: playerNode)
+      } else if let tail = Self.tail(of: chunk, from: AVAudioFrameCount(targetFrame - chunkStart)) {
+        schedule(tail, on: playerNode)
+      }
+    }
+
+    if isPaused {
+      pausedAtFrame = targetFrame
+    } else {
+      playerNode.play()
+    }
+    DebugLogger.log("TTS-PLAYBACK: Seeked to \(formatSeconds(position)) / \(formatSeconds(duration))")
+    onProgress(position, duration)
+  }
+
+  /// `seek(to:)` relative to the current playhead — the pill's ±10 s buttons.
+  func skip(by seconds: TimeInterval) {
+    seek(to: position + seconds)
+  }
+
+  /// Source frame the playhead is at right now.
+  private var currentFrame: AVAudioFramePosition {
+    if let pausedAtFrame { return pausedAtFrame }
+    guard let playerNode = audioPlayerNode,
+          let nodeTime = playerNode.lastRenderTime,
+          let playerTime = playerNode.playerTime(forNodeTime: nodeTime)
+    else { return segmentStartFrame }
+    return min(totalFrames, segmentStartFrame + playerTime.sampleTime)
+  }
+
+  private func startProgressTimer() {
+    progressTimer?.invalidate()
+    let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+      guard let self, self.isPlaying else { return }
+      self.onProgress(self.position, self.duration)
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    progressTimer = timer
+  }
+
+  private func formatSeconds(_ seconds: TimeInterval) -> String {
+    String(format: "%d:%02d", Int(seconds) / 60, Int(seconds) % 60)
   }
 
   /// Applies a new rate to the running graph. The time-pitch node is always in the chain (see
@@ -193,12 +305,20 @@ final class TTSPlaybackSession {
   func stop() {
     currentPlaybackToken = nil
     acceptingChunks = false
+    tearDownGraph()
+  }
+
+  private func tearDownGraph() {
+    progressTimer?.invalidate()
+    progressTimer = nil
     isPaused = false
+    pausedAtFrame = nil
     audioPlayerNode?.stop()
     audioEngine?.stop()
     audioEngine = nil
     audioPlayerNode = nil
     timePitchNode = nil
+    receivedChunks = []
   }
 
   /// Ends the session once the stream is closed and every scheduled buffer has played.
@@ -209,14 +329,9 @@ final class TTSPlaybackSession {
           drainedChunkCount >= scheduledChunkCount
     else { return }
 
-    DebugLogger.log("TTS-PLAYBACK: Playback completed (\(scheduledChunkCount) chunks)")
+    DebugLogger.log("TTS-PLAYBACK: Playback completed (\(formatSeconds(duration)))")
     currentPlaybackToken = nil
-    isPaused = false
-    audioPlayerNode?.stop()
-    audioEngine?.stop()
-    audioEngine = nil
-    audioPlayerNode = nil
-    timePitchNode = nil
+    tearDownGraph()
     onPlaybackCompleted()
   }
 
@@ -265,6 +380,22 @@ final class TTSPlaybackSession {
     return buffer
   }
 
+  /// Copies `buffer` from `offset` to its end into a fresh buffer — the partial first chunk of a
+  /// seek segment. Nil when nothing remains.
+  private static func tail(of buffer: AVAudioPCMBuffer, from offset: AVAudioFrameCount) -> AVAudioPCMBuffer? {
+    guard offset < buffer.frameLength,
+          let source = buffer.floatChannelData,
+          let tail = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength - offset),
+          let destination = tail.floatChannelData
+    else { return nil }
+    let frames = Int(buffer.frameLength - offset)
+    for channel in 0..<Int(buffer.format.channelCount) {
+      destination[channel].update(from: source[channel] + Int(offset), count: frames)
+    }
+    tail.frameLength = AVAudioFrameCount(frames)
+    return tail
+  }
+
   /// Tears down any previous engine and builds a fresh one for this playback session.
   private func startEngine(format: AVAudioFormat) throws {
     if let existingEngine = audioEngine {
@@ -294,6 +425,7 @@ final class TTSPlaybackSession {
     self.audioEngine = engine
     self.audioPlayerNode = playerNode
     isPaused = false
+    pausedAtFrame = nil
     currentPlaybackToken = UUID()
 
     try engine.start()
