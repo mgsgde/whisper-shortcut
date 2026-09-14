@@ -511,6 +511,12 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onConfirm = { [weak self] in
       self?.handleIndicatorConfirm()
     }
+    RecordingIndicatorManager.shared.onTogglePause = { [weak self] in
+      self?.toggleReadAloudPause()
+    }
+    RecordingIndicatorManager.shared.onCycleSpeed = { [weak self] in
+      self?.cycleReadAloudSpeed()
+    }
   }
 
   // MARK: - Recording Indicator
@@ -519,9 +525,10 @@ class MenuBarController: NSObject {
   /// recording pill for Dictate / Dictate Prompt, and the compact processing spinner
   /// for both those flows (handed off from recording) and Read Aloud / TTS synthesis
   /// (summoned directly, since TTS has no recording phase). Once TTS hands off to
-  /// playback the state is `.speaking`, so the pill hides — the audio itself is the
-  /// feedback. On success (and every other state) it hides immediately — lingering UI
-  /// would cover the user's work.
+  /// playback the state is `.speaking` and the pill turns into the Read Aloud transport
+  /// (stop / pause / speed) — a one-minute utterance is nothing the user should have to
+  /// hunt through the menu bar to silence. On success (and every other state) it hides
+  /// immediately — lingering UI would cover the user's work.
   ///
   /// The meeting itself stays pill-less: it runs for an hour, and a permanent pill over the user's
   /// work is not feedback but furniture. A Dictate / Dictate Prompt segment *inside* a meeting does
@@ -548,8 +555,31 @@ class MenuBarController: NSObject {
       let summon = mode.isTTSContext
       indicator.showProcessing(summonIfNeeded: summon)
     default:
-      indicator.hide()
+      // `.speaking` is the normal case here, but audio can also still be playing under a
+      // later state: `.speaking` is not busy, so a dictation may start and finish while the
+      // utterance runs on — the transport comes back once the pill is free again.
+      if ttsPlayback.isPlaying {
+        indicator.showSpeaking(isPaused: ttsPlayback.isPaused, speed: ReadAloudPreferences.speed)
+      } else {
+        indicator.hide()
+      }
     }
+  }
+
+  /// ⏸ / ▶ on the Read Aloud pill.
+  private func toggleReadAloudPause() {
+    guard ttsPlayback.isPlaying else { return }
+    if ttsPlayback.isPaused { ttsPlayback.resume() } else { ttsPlayback.pause() }
+    updateRecordingIndicator()
+  }
+
+  /// Speed button on the Read Aloud pill: steps to the next rate and keeps it as the new
+  /// Settings → Read Aloud default, so the choice sticks for the next utterance too.
+  private func cycleReadAloudSpeed() {
+    let next = ReadAloudPreferences.speed.next
+    UserDefaults.standard.set(next.rawValue, forKey: UserDefaultsKeys.readAloudSpeed)
+    ttsPlayback.setSpeed(next)
+    updateRecordingIndicator()
   }
 
   /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
@@ -573,6 +603,11 @@ class MenuBarController: NSObject {
     if isTTSRunning {
       DebugLogger.log("TTS: Read Aloud synthesis cancelled via indicator ✕")
       finishReadAloudSession()
+      return
+    }
+    if ttsPlayback.isPlaying {
+      DebugLogger.log("TTS: Read Aloud playback stopped via indicator ✕")
+      finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
       return
     }
     if case .processing(.prompting) = appState {

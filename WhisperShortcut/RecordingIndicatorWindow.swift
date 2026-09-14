@@ -6,6 +6,8 @@
 //  accompanies the Dictate / Dictate Prompt lifecycle:
 //    recording  → live audio-level bars with ✕ (discard) and ✓ (stop & process)
 //    processing → spinner with ✕ (cancel)
+//  and Read Aloud playback:
+//    speaking   → ✕ (stop), status word, speed button (cycles 0.75×…2×), ⏸/▶ (pause / resume)
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -21,6 +23,8 @@ import SwiftUI
 enum RecordingIndicatorPhase: Equatable {
   case recording
   case processing
+  /// Read Aloud audio is playing (or paused). Transport controls live on the pill.
+  case speaking
 }
 
 final class RecordingIndicatorModel: ObservableObject {
@@ -28,6 +32,10 @@ final class RecordingIndicatorModel: ObservableObject {
 
   @Published var phase: RecordingIndicatorPhase = .recording
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
+  /// `.speaking` only: whether playback is paused.
+  @Published var isPaused = false
+  /// `.speaking` only: the rate currently applied to playback.
+  @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
 
   func pushLevel(_ normalized: CGFloat) {
     var next = levels
@@ -107,10 +115,33 @@ private struct PillCircleButton: View {
   }
 }
 
+/// Small text pill showing the current rate; a click steps to the next speed.
+private struct SpeedButton: View {
+  let speed: ReadAloudSpeed
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Text(speed.displayName)
+        .font(.system(size: 10, weight: .bold).monospacedDigit())
+        .foregroundColor(.white)
+        .frame(width: 40, height: 22)
+        .background(Capsule().fill(Color(white: 0.28)))
+        .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .help("Playback speed — click to change")
+    .accessibilityLabel("Playback speed \(speed.displayName); click to change")
+    .pointerCursorOnHover()
+  }
+}
+
 struct RecordingIndicatorView: View {
   @ObservedObject var model: RecordingIndicatorModel
   let onCancel: () -> Void
   let onConfirm: () -> Void
+  let onTogglePause: () -> Void
+  let onCycleSpeed: () -> Void
 
   /// The pill grows with a status word so the user can tell listening from transcribing
   /// without decoding icons (Wispr Flow Bar / Superwhisper parity).
@@ -118,6 +149,7 @@ struct RecordingIndicatorView: View {
     switch phase {
     case .recording: return CGSize(width: 218, height: 40)
     case .processing: return CGSize(width: 168, height: 40)
+    case .speaking: return CGSize(width: 232, height: 40)
     }
   }
 
@@ -144,6 +176,23 @@ struct RecordingIndicatorView: View {
         Text("Transcribing")
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
+      case .speaking:
+        PillCircleButton(
+          symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
+          accessibilityLabel: "Stop reading aloud", action: onCancel)
+        Image(systemName: model.isPaused ? "speaker.slash.fill" : "speaker.wave.2.fill")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundColor(.white)
+          .frame(width: 18)
+        Text(model.isPaused ? "Paused" : "Reading")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white)
+          .frame(minWidth: 48, alignment: .leading)
+        SpeedButton(speed: model.speed, action: onCycleSpeed)
+        PillCircleButton(
+          symbolName: model.isPaused ? "play.fill" : "pause.fill", foreground: .black, background: .white,
+          accessibilityLabel: model.isPaused ? "Resume reading aloud" : "Pause reading aloud",
+          action: onTogglePause)
       }
     }
     .padding(.horizontal, 8)
@@ -151,7 +200,15 @@ struct RecordingIndicatorView: View {
     .background(Capsule().fill(Color.black.opacity(0.92)))
     .environment(\.colorScheme, .dark)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel(model.phase == .recording ? "Listening" : "Transcribing")
+    .accessibilityLabel(accessibilityTitle)
+  }
+
+  private var accessibilityTitle: String {
+    switch model.phase {
+    case .recording: return "Listening"
+    case .processing: return "Transcribing"
+    case .speaking: return model.isPaused ? "Read Aloud paused" : "Reading aloud"
+    }
   }
 }
 
@@ -179,6 +236,10 @@ final class RecordingIndicatorManager {
   var onCancel: (() -> Void)?
   /// Stop recording and start processing. Set by MenuBarController.
   var onConfirm: (() -> Void)?
+  /// Read Aloud: pause or resume playback. Set by MenuBarController.
+  var onTogglePause: (() -> Void)?
+  /// Read Aloud: step to the next playback speed. Set by MenuBarController.
+  var onCycleSpeed: (() -> Void)?
 
   private(set) var isVisible = false
 
@@ -213,6 +274,21 @@ final class RecordingIndicatorManager {
     if isVisible, let panel {
       position(panel)
     } else if summonIfNeeded {
+      orderFrontPanel()
+    }
+  }
+
+  /// Shows the Read Aloud transport pill, or refreshes its pause / speed state when already
+  /// on screen. Summons the pill directly — playback may start without a processing phase on
+  /// screen (e.g. Read Aloud triggered while the pill was hidden by another state).
+  func showSpeaking(isPaused: Bool, speed: ReadAloudSpeed) {
+    model.isPaused = isPaused
+    model.speed = speed
+    let phaseChanged = model.phase != .speaking
+    model.phase = .speaking
+    if isVisible, let panel {
+      if phaseChanged { position(panel) }
+    } else {
       orderFrontPanel()
     }
   }
@@ -275,7 +351,9 @@ final class RecordingIndicatorManager {
     let view = RecordingIndicatorView(
       model: model,
       onCancel: { [weak self] in self?.onCancel?() },
-      onConfirm: { [weak self] in self?.onConfirm?() }
+      onConfirm: { [weak self] in self?.onConfirm?() },
+      onTogglePause: { [weak self] in self?.onTogglePause?() },
+      onCycleSpeed: { [weak self] in self?.onCycleSpeed?() }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)

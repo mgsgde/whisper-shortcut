@@ -1462,6 +1462,14 @@ enum ReadAloudSpeed: Double, CaseIterable {
   var isRecommended: Bool {
     return self == SettingsDefaults.readAloudSpeed
   }
+
+  /// The next step up, wrapping from 2× back to 0.75× — what the Read Aloud pill's speed
+  /// button cycles through.
+  var next: ReadAloudSpeed {
+    let all = Self.allCases
+    let index = all.firstIndex(of: self) ?? 0
+    return all[(index + 1) % all.count]
+  }
 }
 
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)
