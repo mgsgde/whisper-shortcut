@@ -67,8 +67,11 @@ final class TTSPlaybackSession {
 
   // MARK: - Queries used by the owner
 
-  /// True while audio is actually coming out of the speakers.
+  /// True while a playback session holds the audio graph — including while paused, since the
+  /// session is still the thing on screen that Stop must tear down.
   var isPlaying: Bool { audioEngine?.isRunning == true }
+  /// True while the user has paused playback from the pill. Cleared by resume, stop and teardown.
+  private(set) var isPaused = false
   /// True once synthesis declared itself finished — Stop then has no network work left to cancel.
   var isStreamClosed: Bool { streamClosed }
   /// True once at least one chunk was scheduled, i.e. the streaming path is in use.
@@ -161,10 +164,36 @@ final class TTSPlaybackSession {
     acceptingChunks = false
   }
 
+  // MARK: - Transport controls (driven by the pill)
+
+  /// Pauses the player node in place. The engine keeps running so later chunks can still be
+  /// scheduled behind the paused playhead, and `scheduleBuffer` completions simply wait.
+  func pause() {
+    guard isPlaying, !isPaused, let playerNode = audioPlayerNode else { return }
+    playerNode.pause()
+    isPaused = true
+    DebugLogger.log("TTS-PLAYBACK: Paused")
+  }
+
+  func resume() {
+    guard isPlaying, isPaused, let playerNode = audioPlayerNode else { return }
+    playerNode.play()
+    isPaused = false
+    DebugLogger.log("TTS-PLAYBACK: Resumed")
+  }
+
+  /// Applies a new rate to the running graph. The time-pitch node is always in the chain (see
+  /// `startEngine`), so this takes effect immediately, mid-buffer, without a rebuild.
+  func setSpeed(_ speed: ReadAloudSpeed) {
+    timePitchNode?.rate = Float(speed.rawValue)
+    DebugLogger.log("TTS-PLAYBACK: Speed set to \(speed.displayName)")
+  }
+
   /// Stops all TTS audio playback and cleans up resources.
   func stop() {
     currentPlaybackToken = nil
     acceptingChunks = false
+    isPaused = false
     audioPlayerNode?.stop()
     audioEngine?.stop()
     audioEngine = nil
@@ -182,6 +211,7 @@ final class TTSPlaybackSession {
 
     DebugLogger.log("TTS-PLAYBACK: Playback completed (\(scheduledChunkCount) chunks)")
     currentPlaybackToken = nil
+    isPaused = false
     audioPlayerNode?.stop()
     audioEngine?.stop()
     audioEngine = nil
@@ -250,24 +280,20 @@ final class TTSPlaybackSession {
     let playerNode = AVAudioPlayerNode()
     engine.attach(playerNode)
 
-    // Insert a time-pitch node when the user has picked a non-1× rate so the audio
-    // plays faster/slower without changing pitch. `rate` is a multiplier where
-    // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe).
-    let configuredSpeed = ReadAloudPreferences.speed.rawValue
-    if configuredSpeed != 1.0 {
-      let timePitch = AVAudioUnitTimePitch()
-      timePitch.rate = Float(configuredSpeed)
-      engine.attach(timePitch)
-      engine.connect(playerNode, to: timePitch, format: format)
-      engine.connect(timePitch, to: engine.mainMixerNode, format: format)
-      timePitchNode = timePitch
-    } else {
-      engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-      timePitchNode = nil
-    }
+    // The time-pitch node is always in the chain, even at 1×, so the pill can change the rate
+    // mid-playback (`setSpeed`) without rebuilding the graph. `rate` is a multiplier where
+    // 1.0 = normal (the API range is 1/32 ... 32, so our 0.75–2.0 picker is safe); at exactly
+    // 1.0 the unit passes audio through unchanged.
+    let timePitch = AVAudioUnitTimePitch()
+    timePitch.rate = Float(ReadAloudPreferences.speed.rawValue)
+    engine.attach(timePitch)
+    engine.connect(playerNode, to: timePitch, format: format)
+    engine.connect(timePitch, to: engine.mainMixerNode, format: format)
+    timePitchNode = timePitch
 
     self.audioEngine = engine
     self.audioPlayerNode = playerNode
+    isPaused = false
     currentPlaybackToken = UUID()
 
     try engine.start()
