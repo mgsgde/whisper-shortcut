@@ -1501,6 +1501,12 @@ class SpeechService {
       DebugLogger.log("READ-ALOUD-REWRITE: Skipped — Offline Mode / on-device voice")
       return text
     }
+    // Plain prose comes back essentially verbatim; the round trip (2–6 s, growing with length)
+    // is only worth paying for code, logs, Markdown, URLs and the like.
+    if SpeechTextSanitizer.looksLikePlainProse(text) {
+      DebugLogger.log("READ-ALOUD-REWRITE: Skipped — selection is plain prose (\(text.count) chars)")
+      return text
+    }
     do {
       let rewritten = try await rewriteForSpeech(text)
       DebugLogger.logSuccess("READ-ALOUD-REWRITE: Rewrote \(text.count) chars -> \(rewritten.count) chars")

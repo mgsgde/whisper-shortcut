@@ -35,14 +35,25 @@ enum TextChunkerError: Error, LocalizedError {
 }
 
 /// Splits text into chunks at sentence boundaries for parallel TTS processing.
+///
+/// The first chunk is capped separately and much lower (`firstChunkSize`): playback starts as
+/// soon as it is synthesized, and TTS latency grows with the audio length, so a short opener is
+/// what decides how long the user waits. Everything after it uses `chunkSize`.
 class TextChunker {
-    /// Maximum characters per chunk. Default: 5000
+    /// Maximum characters per chunk after the first.
     let chunkSize: Int
+    /// Maximum characters for the first chunk.
+    let firstChunkSize: Int
 
-    /// Initialize with custom chunk size.
-    /// - Parameter chunkSize: Maximum characters per chunk (default: 5000)
-    init(chunkSize: Int = AppConstants.ttsChunkSizeChars) {
+    /// - Parameters:
+    ///   - chunkSize: Maximum characters per chunk after the first.
+    ///   - firstChunkSize: Maximum characters for the first chunk. Clamped to `chunkSize`.
+    init(
+        chunkSize: Int = AppConstants.ttsChunkSizeChars,
+        firstChunkSize: Int = AppConstants.ttsFirstChunkSizeChars
+    ) {
         self.chunkSize = chunkSize
+        self.firstChunkSize = min(firstChunkSize, chunkSize)
     }
 
     /// Determine if text needs chunking.
@@ -69,10 +80,10 @@ class TextChunker {
             throw TextChunkerError.emptyText
         }
 
-        DebugLogger.log("TTS-CHUNKER: Starting text split (text length: \(trimmedText.count) chars, chunk size: \(chunkSize))")
+        DebugLogger.log("TTS-CHUNKER: Starting text split (text length: \(trimmedText.count) chars, chunk size: \(chunkSize), first chunk: \(firstChunkSize))")
 
         // If text is short enough, return as single chunk
-        if trimmedText.count <= chunkSize {
+        if trimmedText.count <= firstChunkSize {
             DebugLogger.log("TTS-CHUNKER: Text fits in single chunk, returning as-is")
             return [TextChunk(
                 text: trimmedText,
@@ -89,9 +100,14 @@ class TextChunker {
         while currentIndex < trimmedText.count {
             let remainingText = String(trimmedText[trimmedText.index(trimmedText.startIndex, offsetBy: currentIndex)...])
             let remainingLength = remainingText.count
+            let isFirstChunk = chunkIndex == 0
+            let maxLength = isFirstChunk ? firstChunkSize : chunkSize
+            let minLength = isFirstChunk
+                ? Int(Double(firstChunkSize) * AppConstants.ttsFirstChunkMinSizeRatio)
+                : Int(Double(chunkSize) * AppConstants.ttsChunkMinSizeRatio)
 
             // If remaining text fits in one chunk, add it and finish
-            if remainingLength <= chunkSize {
+            if remainingLength <= maxLength {
                 chunks.append(TextChunk(
                     text: remainingText,
                     index: chunkIndex,
@@ -101,10 +117,11 @@ class TextChunker {
                 break
             }
 
-            // Find the best split point within chunkSize
+            // Find the best split point within this chunk's cap
             let chunkEnd = findBestSplitPoint(
                 in: remainingText,
-                maxLength: chunkSize,
+                maxLength: maxLength,
+                minLength: minLength,
                 startOffset: currentIndex
             )
 
@@ -138,9 +155,10 @@ class TextChunker {
     /// - Parameters:
     ///   - text: The text to search in
     ///   - maxLength: Maximum length for the chunk
+    ///   - minLength: Minimum length for the chunk (prevents splitting too early)
     ///   - startOffset: The starting offset in the original text
     /// - Returns: The best split point (character index)
-    private func findBestSplitPoint(in text: String, maxLength: Int, startOffset: Int) -> Int {
+    private func findBestSplitPoint(in text: String, maxLength: Int, minLength: Int, startOffset: Int) -> Int {
         // Ensure we don't exceed the text length
         let searchLength = min(maxLength, text.count)
         
@@ -148,8 +166,7 @@ class TextChunker {
             return startOffset
         }
 
-        // Calculate minimum chunk size (prevent splitting too early)
-        let minChunkSize = Int(Double(chunkSize) * AppConstants.ttsChunkMinSizeRatio)
+        let minChunkSize = minLength
         
         // Only search in the last portion of the chunk (last 30% or minimum 200 chars)
         // This ensures we don't split too early when natural boundaries are found near the start

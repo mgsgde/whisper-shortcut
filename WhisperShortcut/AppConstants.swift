@@ -251,8 +251,21 @@ Output rules (CRITICAL):
   /// Maximum characters per TTS chunk.
   /// Text longer than this will be chunked for parallel processing.
   /// Smaller chunks = lower latency per chunk, better parallelization, but more API calls.
-  /// 500 chars ≈ ~100 words ≈ ~6-7 seconds of audio (optimal for very low latency).
+  /// 500 chars ≈ 25–37 s of audio in practice (German prose, Gemini / OpenAI voices), which
+  /// is why the *first* chunk gets its own, much smaller cap below.
   static let ttsChunkSizeChars: Int = 500
+
+  /// Maximum characters for the first TTS chunk — the one playback waits for.
+  /// Cloud TTS latency scales with the audio it produces (measured: ~0.26 s + 0.61 s per second
+  /// of audio for Gemini, ~0.18 s/s for OpenAI), so a 500-char opener costs 15–20 s of silence
+  /// while a one-sentence opener is on the speakers in ~4 s. Synthesis runs faster than
+  /// realtime, so the full-size chunks behind it are ready before the opener finishes.
+  static let ttsFirstChunkSizeChars: Int = 120
+
+  /// Minimum length of the first chunk as a share of `ttsFirstChunkSizeChars`. Deliberately
+  /// lower than `ttsChunkMinSizeRatio`: a 40-char opening sentence is a fine place to start
+  /// talking; a mid-word hard split is not.
+  static let ttsFirstChunkMinSizeRatio: Double = 0.3
 
   /// Minimum characters per chunk (as percentage of chunk size).
   /// Prevents splitting too early when natural boundaries are found near the start.
