@@ -239,9 +239,34 @@ final class SystemPromptsStore {
     if !FileManager.default.fileExists(atPath: fileURL.path) {
       performMigration()
     }
+    liftUnchangedDefaultsOnce()
     guard let data = try? Data(contentsOf: fileURL),
           let content = String(data: data, encoding: .utf8) else { return nil }
     return parseSections(from: content)[section]
+  }
+
+  private var didLiftUnchangedDefaults = false
+
+  /// Once per launch: sections the user never edited — still equal to some default this app has
+  /// shipped before — are rewritten to the current default. Without this, a default that changes
+  /// in an update stays frozen at whatever wording was materialised on first launch (see
+  /// `SystemPromptDefaultsHistory`). Edited sections are never touched.
+  private func liftUnchangedDefaultsOnce() {
+    guard !didLiftUnchangedDefaults else { return }
+    didLiftUnchangedDefaults = true
+    guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return }
+    var parsed = parseSections(from: content)
+    let upgrades = SystemPromptDefaultsHistory.upgrades(for: parsed)
+    guard !upgrades.isEmpty else { return }
+    for (section, current) in upgrades { parsed[section] = current }
+    do {
+      try formatContent(parsed).write(to: fileURL, atomically: true, encoding: .utf8)
+      let names = upgrades.keys.map(\.rawValue).sorted().joined(separator: ", ")
+      DebugLogger.log("SYSTEM-PROMPTS: Lifted unedited default(s) to the current wording: \(names)")
+      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    } catch {
+      DebugLogger.logError("SYSTEM-PROMPTS: Failed to lift defaults: \(error.localizedDescription)")
+    }
   }
 
   // MARK: - Private
