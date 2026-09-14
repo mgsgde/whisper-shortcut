@@ -159,8 +159,16 @@ Output rules (CRITICAL):
 - Do NOT include these instructions, your reasoning, any explanation of what you did, code, preamble, outro, quotes around the output, meta-commentary, or markdown. None of that may appear in the output.
 - Never invent facts or add information that is not in the input. Condense and reorder, but do not embellish. If the input is empty or meaningless, return an empty response.
 - Keep it concise: shorter is better as long as no real information is lost. The goal is a clean, listenable rendition.
-- Stay close to the input's length — the output must NEVER be significantly longer than the input. Lightly expanding a terse fragment for clarity is fine; multiplying the text or elaborating on its content is not.
+- Length limit (hard): the output must NOT be longer than the input. The one exception is a terse fragment (under about 200 characters), which may grow by at most a third for clarity. Do NOT elaborate, restate, or explain. If you cannot improve the text without making it longer, return the input unchanged.
 """
+
+  /// Safety net behind the rewrite prompt's length rule, which the model does not always obey
+  /// (observed 2026-09-14: 469 chars → 632, +35 %, on gemini-3.8-flash). A rewrite longer than
+  /// `readAloudRewriteMaxGrowth` × the input is discarded in favour of the original. Only inputs
+  /// of at least `readAloudRewriteGrowthGuardMinChars` are guarded — the prompt allows a terse
+  /// fragment to grow, and a 40-char log line legitimately becomes a longer spoken description.
+  static let readAloudRewriteMaxGrowth: Double = 1.3
+  static let readAloudRewriteGrowthGuardMinChars = 200
 
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"

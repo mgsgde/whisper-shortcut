@@ -1509,6 +1509,11 @@ class SpeechService {
     }
     do {
       let rewritten = try await rewriteForSpeech(text)
+      guard Self.rewriteStaysWithinLengthBudget(rewritten, for: text) else {
+        DebugLogger.logWarning(
+          "READ-ALOUD-REWRITE: Discarding rewrite — \(text.count) chars -> \(rewritten.count) chars exceeds \(AppConstants.readAloudRewriteMaxGrowth)×; reading the original")
+        return text
+      }
       DebugLogger.logSuccess("READ-ALOUD-REWRITE: Rewrote \(text.count) chars -> \(rewritten.count) chars")
       return rewritten
     } catch {
@@ -1519,6 +1524,15 @@ class SpeechService {
       DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
       return text
     }
+  }
+
+  /// The length guard behind the rewrite prompt's hard rule (see
+  /// `AppConstants.readAloudRewriteMaxGrowth`). Short inputs are exempt: the prompt lets a terse
+  /// fragment grow, and a one-line log legitimately turns into a sentence.
+  static func rewriteStaysWithinLengthBudget(_ rewritten: String, for original: String) -> Bool {
+    guard original.count >= AppConstants.readAloudRewriteGrowthGuardMinChars else { return true }
+    let limit = Int(Double(original.count) * AppConstants.readAloudRewriteMaxGrowth)
+    return rewritten.count <= limit
   }
 
   /// Single-shot "rewrite for speech" pass, provider-agnostic. Routes through the user's selected

@@ -40,15 +40,20 @@ enum SpeechTextSanitizer {
       return false
     }
 
-    // Code and logs are symbol- and digit-heavy; prose is overwhelmingly letters.
-    let visible = trimmed.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }
-    guard !visible.isEmpty else { return false }
-    let letters = visible.filter { CharacterSet.letters.contains($0) }.count
-    guard Double(letters) / Double(visible.count) >= 0.85 else { return false }
+    // Code and logs are symbol- and digit-heavy; prose is overwhelmingly letters. Ordinary
+    // sentence punctuation is left out of the denominator so a short quoted sentence is not
+    // penalised for its commas and apostrophes.
+    let prosePunctuation = CharacterSet(charactersIn: ".,;:!?…'’‘\"“”„«»()-–—")
+    let counted = trimmed.unicodeScalars.filter {
+      !CharacterSet.whitespacesAndNewlines.contains($0) && !prosePunctuation.contains($0)
+    }
+    guard !counted.isEmpty else { return false }
+    let letters = counted.filter { CharacterSet.letters.contains($0) }.count
+    guard Double(letters) / Double(counted.count) >= 0.85 else { return false }
 
     // A selection that never closes a sentence (a list of fragments, a table row, a heading
     // block) is not something to read verbatim.
-    return trimmed.range(of: #"[.!?…]["'”’)\]]?(\s|$)"#, options: .regularExpression) != nil
+    return trimmed.range(of: #"[.!?…]["'“”„‘’«»)\]]?(\s|$)"#, options: .regularExpression) != nil
   }
 
   /// Any hit keeps Smart Rewrite on. Anchored to line starts where Markdown is line-based.

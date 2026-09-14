@@ -25,6 +25,12 @@ struct SpeechTextProseGateTests {
     #expect(SpeechTextSanitizer.looksLikePlainProse(text))
   }
 
+  @Test("A single sentence closed by German or French quotation marks is plain prose")
+  func closingQuotes() {
+    #expect(SpeechTextSanitizer.looksLikePlainProse("Er sagte nur: „Das reicht für heute.“"))
+    #expect(SpeechTextSanitizer.looksLikePlainProse("Elle a dit : « C'est tout pour aujourd'hui. »"))
+  }
+
   @Test("Multi-paragraph prose is plain prose")
   func paragraphs() {
     let text = "First paragraph ends here.\n\nSecond paragraph also ends properly."
@@ -77,5 +83,37 @@ struct SpeechTextProseGateTests {
   @Test("Symbol- and digit-heavy text keeps the rewrite on")
   func symbolHeavy() {
     #expect(!SpeechTextSanitizer.looksLikePlainProse("ID 4f9a-22b1-88c0-1d2e, ref 2026/09/14, qty 1200, total 4.599,00 EUR."))
+  }
+}
+
+/// The deterministic backstop for the prompt's "must not be longer" rule. The prompt lives in the
+/// user's context file after first launch, so a prompt fix never reaches an existing install —
+/// this guard is what actually stops a 35 % longer rewrite from being read aloud.
+@Suite("Read Aloud — rewrite length guard")
+struct ReadAloudRewriteLengthGuardTests {
+
+  private func text(_ n: Int) -> String { String(repeating: "a", count: n) }
+
+  @Test("A rewrite more than 30 % longer than a guarded input is rejected")
+  func rejectsExpansion() {
+    #expect(!SpeechService.rewriteStaysWithinLengthBudget(text(632), for: text(469)))
+  }
+
+  @Test("Shorter or modestly longer rewrites pass")
+  func acceptsShorterAndModest() {
+    #expect(SpeechService.rewriteStaysWithinLengthBudget(text(300), for: text(469)))
+    #expect(SpeechService.rewriteStaysWithinLengthBudget(text(600), for: text(469)))
+  }
+
+  @Test("Short inputs are exempt — a terse fragment may grow")
+  func shortInputsExempt() {
+    #expect(SpeechService.rewriteStaysWithinLengthBudget(text(150), for: text(40)))
+  }
+
+  @Test("The guard starts exactly at the configured minimum length")
+  func boundary() {
+    let n = AppConstants.readAloudRewriteGrowthGuardMinChars
+    #expect(SpeechService.rewriteStaysWithinLengthBudget(text(n * 2), for: text(n - 1)))
+    #expect(!SpeechService.rewriteStaysWithinLengthBudget(text(n * 2), for: text(n)))
   }
 }

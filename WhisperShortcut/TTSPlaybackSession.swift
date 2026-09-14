@@ -166,7 +166,8 @@ final class TTSPlaybackSession {
         DebugLogger.logSuccess(
           "TTS-PLAYBACK: Playback started on chunk 1/\(totalChunks) (\(pcm.count) bytes) — remaining chunks stream in behind it")
       } else {
-        DebugLogger.log("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
+        // Debug level: a streaming provider delivers a chunk as dozens of half-second slices.
+        DebugLogger.logDebug("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
       }
     } catch {
       DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
