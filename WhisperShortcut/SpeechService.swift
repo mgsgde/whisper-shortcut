@@ -1323,7 +1323,7 @@ class SpeechService {
         combined += delta
       case .finished(_, _, let reason):
         finishReason = reason
-      case .functionCall:
+      case .functionCall, .activity:
         break  // no tools are sent on this path
       }
     }

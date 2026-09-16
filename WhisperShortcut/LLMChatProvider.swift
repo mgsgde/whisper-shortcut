@@ -38,6 +38,22 @@ enum ChatStreamEvent {
   /// Final event with optional grounding metadata and finish reason.
   /// Grounding sources/supports are Gemini-specific; empty for other providers.
   case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
+  /// Progress the user cannot see in the text yet (e.g. a web-search round). Informational only;
+  /// the UI shows it next to the typing indicator and clears it once text streams.
+  case activity(ChatStreamActivity)
+}
+
+/// What a provider is doing while the reply bubble is still empty.
+enum ChatStreamActivity: Equatable {
+  /// A built-in web-search (grounding) round is running — Gemini spends 10–30k tokens per round
+  /// and can chain several before the first visible word.
+  case searchingWeb
+
+  var label: String {
+    switch self {
+    case .searchingWeb: return "Searching the web…"
+    }
+  }
 }
 
 // MARK: - Thinking Level (provider-agnostic)

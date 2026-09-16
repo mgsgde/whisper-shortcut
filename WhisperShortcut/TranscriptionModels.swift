@@ -703,6 +703,9 @@ struct GeminiResponse: Codable {
     let totalTokenCount: Int?
     let cachedContentTokenCount: Int?
     let thoughtsTokenCount: Int?
+    /// Tokens the built-in tools (Google Search, URL context, code execution) fed back into the
+    /// prompt. Grows by 10–30k per grounding round — the only sign that the model is searching.
+    let toolUsePromptTokenCount: Int?
   }
 
   struct GeminiGroundingMetadata: Codable {

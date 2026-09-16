@@ -47,6 +47,51 @@ struct GeminiErrorResponse: Codable {
     }
 }
 
+// MARK: - Stream progress clock
+
+/// "When did the chat stream last make progress?" — shared between the byte loop (which touches
+/// it) and the stall watchdog task (which reads it), hence the lock.
+private final class StreamProgressClock: @unchecked Sendable {
+  private let lock = NSLock()
+  private var last = Date()
+  private var sawChunkFlag = false
+  private var stalledFlag = false
+
+  /// Records progress. `chunk: false` restarts the clock without counting as a received chunk
+  /// (used when the HTTP response headers arrive).
+  func touch(chunk: Bool = true) {
+    lock.lock()
+    last = Date()
+    if chunk { sawChunkFlag = true }
+    lock.unlock()
+  }
+
+  /// Idle seconds since the last progress, and whether any chunk has arrived yet.
+  var state: (idle: TimeInterval, sawChunk: Bool) {
+    lock.lock()
+    defer { lock.unlock() }
+    return (Date().timeIntervalSince(last), sawChunkFlag)
+  }
+
+  var sawChunk: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return sawChunkFlag
+  }
+
+  func markStalled() {
+    lock.lock()
+    stalledFlag = true
+    lock.unlock()
+  }
+
+  var isStalled: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return stalledFlag
+  }
+}
+
 // MARK: - Gemini API Client
 /// Centralized client for all Gemini API interactions
 /// Eliminates code duplication and improves maintainability
@@ -55,6 +100,15 @@ class GeminiAPIClient {
   // MARK: - Constants
   private enum Constants {
     static let resourceTimeout: TimeInterval = 300.0
+    // Stall watchdog for the chat stream. `resourceTimeout` only fires when the socket goes
+    // silent; a grounded reply can keep the connection alive with content-free chunks for
+    // minutes (2026-09-16: three Google-Search rounds on a screenshot question, then 71s of
+    // identical usage chunks and zero text until the user hit Stop). Progress = a text delta, a
+    // function-call part, or a growing token total (thinking/search results). Before the first
+    // chunk the budget is larger: prompt processing plus thinking on a large multimodal prompt.
+    static let streamStallTimeout: TimeInterval = 45.0
+    static let streamFirstChunkTimeout: TimeInterval = 90.0
+    static let streamWatchdogPollInterval: TimeInterval = 5.0
     static let maxRetryAttempts = 5  // Handle rate limiting and transient 503s
     static let maxServerErrorRetryAttempts = 6  // Extra attempts for 503/500 server errors
     static let retryDelaySeconds: TimeInterval = 1.5
@@ -370,6 +424,9 @@ class GeminiAPIClient {
     case functionCall(name: String, args: [String: Any], thoughtSignature: String?)
     /// Final event with grounding metadata and finish reason. Emitted exactly once, just before the stream ends.
     case finished(sources: [GroundingSource], supports: [GroundingSupport], finishReason: String?)
+    /// The model is busy with something the user cannot see yet (a Google-Search grounding
+    /// round). Purely informational — lets the UI say why the reply is taking a while.
+    case activity(ChatStreamActivity)
   }
 
   /// Streams a chat reply from Gemini via the backend proxy (SSE). Yields text deltas as they arrive,
@@ -400,8 +457,13 @@ class GeminiAPIClient {
         var didClipVideoForRetry = false
         var didStripVideoForRetry = false
         var lastStatusCode: Int?
+        // Text actually handed to the UI (unlike `hasYielded`, which flips before the body is
+        // read). A stalled stream is retried only while nothing is on screen.
+        var didYieldText = false
+        var didRetryForStall = false
         while true {
         attempt += 1
+        let progress = StreamProgressClock()
         do {
           let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
           var request = try self.createRequest(endpoint: endpoint, credential: credential)
@@ -476,6 +538,27 @@ class GeminiAPIClient {
             throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(text)")
           }
 
+          // Stall watchdog: cancels the data task (not this Task) when the stream stops making
+          // progress, so the byte loop below throws and the catch decides between retry, partial
+          // finish and error. See Constants.streamStallTimeout.
+          progress.touch(chunk: false)
+          let dataTask = bytes.task
+          let watchdog = Task {
+            while !Task.isCancelled {
+              try await Task.sleep(nanoseconds: UInt64(Constants.streamWatchdogPollInterval * 1_000_000_000))
+              let (idle, sawChunk) = progress.state
+              let budget = sawChunk ? Constants.streamStallTimeout : Constants.streamFirstChunkTimeout
+              if idle > budget {
+                progress.markStalled()
+                DebugLogger.logWarning(
+                  "GEMINI-CHAT-STREAM: no progress for \(Int(idle))s (\(sawChunk ? "mid-stream" : "before first chunk")) — aborting the stalled stream")
+                dataTask.cancel()
+                return
+              }
+            }
+          }
+          defer { watchdog.cancel() }
+
           var aggregatedSources: [GroundingSource] = []
           var aggregatedSupports: [GroundingSupport] = []
           var finishReason: String?
@@ -493,10 +576,16 @@ class GeminiAPIClient {
           }
 
           // Decode one complete top-level JSON object from the stream.
+          // Highest token total seen so far: usage chunks repeat verbatim while the model is
+          // idle, so only a *growing* total counts as progress (thinking or a search round).
+          var maxTotalTokens = 0
+          var lastToolTokens = 0
           func processChunk(_ jsonData: Data) {
             if let chunk = try? JSONDecoder().decode(GeminiResponse.self, from: jsonData) {
               let deltaText = self.extractText(from: chunk)
               if !deltaText.isEmpty {
+                didYieldText = true
+                progress.touch()
                 continuation.yield(.textDelta(deltaText))
               }
               let chunkSources = self.extractGroundingSources(from: chunk)
@@ -505,8 +594,25 @@ class GeminiAPIClient {
               if !chunkSupports.isEmpty { aggregatedSupports = chunkSupports }
               if let reason = chunk.candidates.first?.finishReason { finishReason = reason }
               if let usage = chunk.usageMetadata, let total = usage.totalTokenCount, total > 0 {
+                let prompt = usage.promptTokenCount ?? 0
+                let output = usage.candidatesTokenCount ?? 0
+                let thoughts = usage.thoughtsTokenCount ?? 0
+                // Older responses omit the field; the remainder is the same number.
+                let toolTokens = usage.toolUsePromptTokenCount ?? max(0, total - prompt - output - thoughts)
                 DebugLogger.logNetwork(
-                  "GEMINI-CHAT-STREAM: usage prompt=\(usage.promptTokenCount ?? 0) output=\(usage.candidatesTokenCount ?? 0) thoughts=\(usage.thoughtsTokenCount ?? 0) total=\(total)")
+                  "GEMINI-CHAT-STREAM: usage prompt=\(prompt) output=\(output) thoughts=\(thoughts) tools=\(toolTokens) total=\(total)")
+                if total > maxTotalTokens {
+                  maxTotalTokens = total
+                  progress.touch()
+                }
+                // Search results landing in the prompt = a grounding round just ran. Tell the
+                // UI only while nothing is on screen yet; once text flows the label is noise.
+                if toolTokens > lastToolTokens {
+                  lastToolTokens = toolTokens
+                  if useGrounding, !didYieldText {
+                    continuation.yield(.activity(.searchingWeb))
+                  }
+                }
               }
             }
             // Snapshot the function call parts from each chunk, then attach
@@ -524,6 +630,7 @@ class GeminiAPIClient {
                let parts = content["parts"] as? [[String: Any]] {
               let fcParts = parts.filter { $0["functionCall"] != nil || $0["function_call"] != nil }
               if !fcParts.isEmpty {
+                progress.touch()
                 // Refresh the snapshot but don't drop a signature we already captured
                 // for the call at this position (a later snapshot can omit it).
                 latestFunctionCallParts = fcParts.enumerated().map { index, part in
@@ -558,8 +665,10 @@ class GeminiAPIClient {
           var chunkCount = 0
           // Past this point we may emit deltas to the UI, so disable retries.
           hasYielded = true
+          do {
           for try await byte in bytes {
             try Task.checkCancellation()
+            if !progress.sawChunk { progress.touch() }
             let ch = Character(UnicodeScalar(byte))
             if depth == 0 {
               if ch == "{" {
@@ -597,6 +706,20 @@ class GeminiAPIClient {
               }
             }
           }
+          } catch where progress.isStalled {
+            // The watchdog cancelled the data task. With text already on screen, end the turn
+            // on the partial rather than blanking it; a pending function call is incomplete
+            // without its signature and is dropped with the rest of the stalled round.
+            guard didYieldText else {
+              // Reaches the user only when the automatic re-send (outer catch) stalled as well.
+              throw TranscriptionError.networkError(
+                "\(model) stopped responding twice in a row (no progress for \(Int(Constants.streamStallTimeout))s). Please try again.")
+            }
+            DebugLogger.logWarning(
+              "GEMINI-CHAT-STREAM: stalled after streaming text — finishing with the partial reply (objects=\(chunkCount))")
+            latestFunctionCallParts.removeAll()
+            finishReason = "STALL"
+          }
           DebugLogger.logNetwork("GEMINI-CHAT-STREAM: stream end, totalObjects=\(chunkCount)")
 
           // Yield accumulated function calls now that the stream is complete
@@ -627,6 +750,14 @@ class GeminiAPIClient {
           if Task.isCancelled {
             continuation.finish(throwing: error)
             return
+          }
+          // A stalled stream with nothing on screen: re-send the same turn once. The retry has
+          // been much faster than the original every time it was observed (the 2026-09-16 case
+          // took 36s against a 2m19s stall) — the search-round chaining is not deterministic.
+          if progress.isStalled, !didYieldText, !didRetryForStall {
+            didRetryForStall = true
+            DebugLogger.logWarning("GEMINI-CHAT-STREAM: stalled with no text shown — re-sending the turn once")
+            continue
           }
           // A YouTube video attached without a clip window fails with a bare HTTP 400 once the
           // video is longer than the model accepts (verified 2026-08-03 against gemini-3.6-flash:
