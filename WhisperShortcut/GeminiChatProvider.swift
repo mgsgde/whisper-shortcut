@@ -64,6 +64,8 @@ final class GeminiChatProvider: LLMChatProvider {
               continuation.yield(.functionCall(name: name, args: args, thoughtSignature: sig))
             case .finished(let sources, let supports, let reason):
               continuation.yield(.finished(sources: sources, supports: supports, finishReason: reason))
+            case .activity(let activity):
+              continuation.yield(.activity(activity))
             }
           }
           continuation.finish()

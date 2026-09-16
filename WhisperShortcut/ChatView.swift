@@ -99,6 +99,10 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var sendingSessionIds: Set<UUID> = []
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
+  /// What the in-flight request is doing while its bubble is still empty (e.g. a web-search
+  /// round), per session. Cleared on the first text delta and at teardown.
+  @Published private(set) var streamActivityBySession: [UUID: ChatStreamActivity] = [:]
+  var streamActivity: ChatStreamActivity? { streamActivityBySession[session.id] }
   @Published var errorMessage: String? = nil
   /// Last send failure for the visible session (also persisted on `ChatSession.lastSendError`
   /// so a background-tab failure is still visible after the user switches back).
@@ -875,6 +879,7 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
         MainThreadWatchdog.shared.note("idle")
         sendingSessionIds.remove(sessionId)
+        streamActivityBySession.removeValue(forKey: sessionId)
         sendTasks.removeValue(forKey: sessionId)
         StallCancellationRegistry.shared.unregister(sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
@@ -976,7 +981,15 @@ class ChatViewModel: ObservableObject {
           for try await event in stream {
             try Task.checkCancellation()
             switch event {
+            case .activity(let activity):
+              if streamActivityBySession[sessionId] != activity {
+                DebugLogger.log("CHAT-SEND: activity=\(activity) session=\(sessionId)")
+                streamActivityBySession[sessionId] = activity
+              }
             case .textDelta(let delta):
+              if streamActivityBySession[sessionId] != nil {
+                streamActivityBySession.removeValue(forKey: sessionId)
+              }
               roundText = ChatStreamLoopGuard.mergeDelta(streamed: roundText, delta: delta)
               let merge = ChatStreamLoopGuard.merge(streamed: streamed, delta: delta)
               streamed = merge.text
@@ -3519,7 +3532,7 @@ struct ChatView: View {
           // Constrain to the same centered 660px column + 24px gutter as the message
           // list so the dots align with the conversation text instead of pinning to the
           // pane's far-left edge in a wide window.
-          TypingIndicatorView()
+          TypingIndicatorView(label: viewModel.streamActivity?.label)
             .frame(maxWidth: 660, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 24)
@@ -5562,6 +5575,8 @@ private struct MessageBubbleView: View {
 // MARK: - Typing Indicator
 
 private struct TypingIndicatorView: View {
+  /// Optional reason the reply is still empty ("Searching the web…"), shown after the dots.
+  var label: String? = nil
   // Drive the pulse from a single TimelineView clock and derive each dot's
   // scale from (time + index offset). Avoids per-dot @State + repeatForever
   // + scaleEffect inside a ScrollView, which on AppKit can occasionally leave
@@ -5588,6 +5603,12 @@ private struct TypingIndicatorView: View {
             .fill(ChatTheme.secondaryText)
             .frame(width: 7, height: 7)
             .scaleEffect(scale(at: t, index: i), anchor: .center)
+        }
+        if let label {
+          Text(label)
+            .font(.system(size: 12))
+            .foregroundStyle(ChatTheme.secondaryText)
+            .padding(.leading, 6)
         }
       }
       .padding(.horizontal, 16)
