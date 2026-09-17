@@ -171,7 +171,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
             echo "The queue row is ASK now, so no tick will rebuild it."
             echo
             echo "Merge it yourself:  git -C ${REPO_ROOT} merge --ff-only ${BRANCH}"
-            echo "Drop it:            git -C ${REPO_ROOT} worktree remove --force ${WT_DIR} && git -C ${REPO_ROOT} branch -D ${BRANCH}"
+            echo "Drop it:            bash ${REPO_ROOT}/scripts/worktree-remove.sh --relaunch-main ${WT_DIR} && git -C ${REPO_ROOT} branch -D ${BRANCH}"
         } >"$note"
         mail_out "WhisperShortcut implementer — merge #${QUEUE_NUM} stopped" "$note" \
             --verdict fyi --verdict-detail "You stopped this window with veto.sh, and it is now \
@@ -309,7 +309,11 @@ are still the operator's, and neither has run.
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
     push_main
 
-    git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" >/dev/null 2>&1 || rm -rf "$WT_DIR"
+    # launch_branch_build left the branch build running from ${WT_DIR}/build/DerivedData; the
+    # guard quits it and relaunches the main checkout's app before the binary disappears
+    # (otherwise TCC revokes the mic and every dictation records silence — queue #10).
+    bash "${REPO_ROOT}/scripts/worktree-remove.sh" --relaunch-main "$WT_DIR" \
+        || warn "#${QUEUE_NUM}: could not remove worktree ${WT_DIR} — remove it with scripts/worktree-remove.sh"
     git -C "$REPO_ROOT" branch -D "$BRANCH" >/dev/null 2>&1
     [[ -n "$PR_URL" ]] && git -C "$REPO_ROOT" push -q origin --delete "$BRANCH" >/dev/null 2>&1
     rm -f "$file"

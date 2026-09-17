@@ -228,7 +228,7 @@ RUN_DIR="${REPO_ROOT}/build/implementer/$(date +%F)-${SLUG}"
 # slug, and until 2026-09-06 each of those ticks incremented the counter and only then hit this
 # guard — seven of September's ten runs went on runs that did nothing at all. Refusing before
 # the spend is the difference between a stale worktree costing nothing and costing the month.
-[[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first)"
+[[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first: bash scripts/worktree-remove.sh '${WT_DIR}')"
 
 log "queue row #${Q_NUM}: ${Q_PROPOSAL:0:90}…"
 log "branch ${BRANCH} · plan ${PLAN_AGENT:-none}/${PLAN_MODEL} · build ${BUILD_AGENT}/${BUILD_MODEL} · review ${REVIEW_AGENT}/${REVIEW_MODEL} · scope ${SCOPE}"
@@ -293,7 +293,7 @@ BRANCH_BUILD_RUNNING=0
 fail_run() { # fail_run <reason>
     warn "$1"
     warn "worktree kept for post-mortem: ${WT_DIR}"
-    warn "(remove with: git -C '${REPO_ROOT}' worktree remove --force '${WT_DIR}')"
+    warn "(remove with: bash '${REPO_ROOT}/scripts/worktree-remove.sh' '${WT_DIR}' — it refuses while an app runs from it)"
     warn "logs: ${RUN_DIR}"
     restore_user_app
     local note="${RUN_DIR}/failure.md"
@@ -392,8 +392,8 @@ defer_for_usage_limit() {
     restore_user_app
     echo "$RUNS_THIS_MONTH" >"$COUNTER_FILE"
     if [[ -n "${WT_DIR:-}" && -e "$WT_DIR" ]]; then
-        git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || rm -rf "$WT_DIR"
-        git -C "$REPO_ROOT" worktree prune 2>/dev/null || true
+        bash "${REPO_ROOT}/scripts/worktree-remove.sh" --relaunch-main "$WT_DIR" \
+            || warn "could not remove worktree ${WT_DIR} — remove it with scripts/worktree-remove.sh"
     fi
     [[ -n "${BRANCH:-}" ]] && git -C "$REPO_ROOT" branch -D "$BRANCH" 2>/dev/null
     log "deferred — nothing built, nothing spent."
@@ -837,7 +837,7 @@ launch_branch_build
     else
         echo '```bash'
         echo "cd ${REPO_ROOT} && git merge --no-ff ${BRANCH}"
-        echo "git worktree remove ${WT_DIR}"
+        echo "bash scripts/worktree-remove.sh --relaunch-main ${WT_DIR}"
         echo '```'
         echo
         echo "(No PR: IMPLEMENTER_PUSH_PR=0 — this repo's convention is that you push manually.)"

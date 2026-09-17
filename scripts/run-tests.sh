@@ -68,7 +68,11 @@ DERIVED_DATA="$PROJECT_DIR/build/DerivedData-tests"
 # The app the user actually runs day-to-day is the default WhisperShortcut build
 # produced by rebuild-and-restart.sh (fixed derivedData path). We relaunch it once
 # tests finish so the user isn't left without a running app — see the EXIT trap below.
-RELAUNCH_APP="$PROJECT_DIR/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+# Inside a .claude/worktrees/ checkout that is the MAIN checkout's build, never the
+# worktree's: an app running from a worktree loses its binary (and its microphone —
+# TCC can no longer resolve the process path) when the worktree is removed.
+MAIN_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
+RELAUNCH_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
 
 echo "🧪 Running WhisperShortcut tests..."
 echo "   Scheme:    $SCHEME"
