@@ -183,6 +183,10 @@ Tick log: `build/logs/implementer/tick-<date>.log`.
   `IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
   Scout/meta loops may propose adjusting them; they may never propose removing the plan
   step or the review step, and they may never put Cursor on a propose/plan/judge job.
+  The *interactive* counterpart — Opus 5 session, Fable 5.1 advisor judges plan and diff, Grok
+  types — is `AGENTS.md` → "Model tiering"; it does not retune these pins. Its cost bet is
+  measured once, on the shared user-level setting, by sabaki.dance's falsifier
+  `opus-session-fable-advisor` (`~/sabaki.dance.v3/docs/agent-orchestration.md`).
 - **Measurable-on-ship-day, on ONE user's logs.** A row whose falsifier cannot be measured when
   it ships is not eligible; the build must add the instrumentation in the same branch, or the
   proposal goes to `plans/instrumentation-gaps.md` first. And the only person this repo
