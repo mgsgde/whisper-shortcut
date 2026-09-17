@@ -177,6 +177,9 @@ else is here; theirs live under `.claude/worktrees/`). Both halves of this rule 
 3. **Never stash, reset, or checkout files you did not change.** `git stash` takes the whole
    tree. To compare against `HEAD`: `git show HEAD:path > /tmp/old`. Need a clean checkout? Use
    a worktree, not the shared tree.
+   Remove a worktree with `bash scripts/worktree-remove.sh <path>`, never raw
+   `git worktree remove` — it refuses while an app is running from that worktree (the binary
+   would vanish under the process and macOS revokes its microphone until relaunch).
 4. **Never `git checkout` / `git switch` in the main checkout.** It belongs to whoever is at the
    keyboard, and `scripts/implementer/run-implementer.sh` and `release-merges.sh` need it on
    `main` — a tick that finds another branch there grooms but builds nothing, and mails you
