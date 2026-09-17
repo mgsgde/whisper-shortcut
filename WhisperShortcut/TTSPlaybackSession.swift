@@ -2,7 +2,9 @@ import AVFoundation
 import Foundation
 
 /// Owns one Read Aloud playback end to end: the audio graph, the chunk queue, and the bookkeeping
-/// that decides when an utterance is finished.
+/// that decides when an utterance is finished. A starved flag tracks a drained queue while
+/// synthesis is still delivering, so the next chunk can re-anchor the playhead instead of
+/// letting the node's sample time run ahead through the gap.
 ///
 /// This used to be four loose `tts*` fields plus the `AVAudioEngine` trio on `MenuBarController` —
 /// a scheduled/drained counter pair, a "stream closed" flag and an "accepting chunks" flag that
@@ -24,6 +26,9 @@ final class TTSPlaybackSession {
   private let onPlaybackCompleted: () -> Void
   /// Scheduling failed (format/buffer/engine). The owner ends the Read Aloud session and reports it.
   private let onFailure: (Error) -> Void
+  /// Flipped to true when the player's queue ran dry while synthesis is still delivering (a gap
+  /// between chunks), back to false when the next chunk is scheduled. Drives the pill's spinner.
+  private let onBufferingChanged: (Bool) -> Void
   /// Ten times a second while the graph is up: playhead and the audio received so far, in seconds
   /// of source audio (independent of the playback rate). Drives the pill's scrubber.
   private let onProgress: (_ position: TimeInterval, _ duration: TimeInterval) -> Void
@@ -32,11 +37,13 @@ final class TTSPlaybackSession {
     onPlaybackStarted: @escaping () -> Void,
     onPlaybackCompleted: @escaping () -> Void,
     onFailure: @escaping (Error) -> Void,
+    onBufferingChanged: @escaping (Bool) -> Void,
     onProgress: @escaping (_ position: TimeInterval, _ duration: TimeInterval) -> Void
   ) {
     self.onPlaybackStarted = onPlaybackStarted
     self.onPlaybackCompleted = onPlaybackCompleted
     self.onFailure = onFailure
+    self.onBufferingChanged = onBufferingChanged
     self.onProgress = onProgress
   }
 
@@ -88,6 +95,12 @@ final class TTSPlaybackSession {
   /// a chunk whose synthesis landed after the user cancelled cannot spin up a fresh engine and
   /// start talking out of an idle state.
   private var acceptingChunks = false
+  /// Queue ran dry while the stream is still open. Set immediately so `enqueue` can re-anchor;
+  /// the pill spinner waits on `bufferingDebounce`.
+  private var isStarved = false
+  private var starvedSince: Date?
+  private var bufferingReported = false
+  private var bufferingDebounce: Timer?
 
   // MARK: - Queries used by the owner
 
@@ -118,6 +131,11 @@ final class TTSPlaybackSession {
     pausedAtFrame = nil
     streamClosed = false
     acceptingChunks = true
+    bufferingDebounce?.invalidate()
+    bufferingDebounce = nil
+    isStarved = false
+    starvedSince = nil
+    bufferingReported = false
   }
 
   /// Plays one fully synthesized utterance. Kept as the non-streaming entry point: single-chunk
@@ -157,7 +175,24 @@ final class TTSPlaybackSession {
       }
       receivedChunks.append(buffer)
       totalFrames += AVAudioFramePosition(buffer.frameLength)
-      schedule(buffer, on: playerNode)
+      if isStarved {
+        // AVAudioPlayerNode's sample time keeps advancing while its queue is empty, so
+        // currentFrame = segmentStartFrame + sampleTime would run ahead of the true source
+        // position by the length of the gap for the rest of playback. seek(to:) starts a
+        // fresh segment anchored at the new chunk, flushes nothing (the queue is empty)
+        // and respects a paused state.
+        let resumeAt = Double(totalFrames - AVAudioFramePosition(buffer.frameLength)) / Self.sampleRate
+        let gap = starvedSince.map { Date().timeIntervalSince($0) } ?? 0
+        let unclamped = audioPlayerNode.flatMap { node in
+          node.lastRenderTime.flatMap { node.playerTime(forNodeTime: $0) }
+        }.map { segmentStartFrame + $0.sampleTime }
+        let driftFrames = unclamped.map { $0 - (totalFrames - AVAudioFramePosition(buffer.frameLength)) }
+        let line = "TTS-PLAYBACK: Resumed after \(String(format: "%.1f", gap)) s buffering gap — chunk \(index + 1)/\(totalChunks) re-anchored at \(formatSeconds(resumeAt)) (node sample time had advanced \(driftFrames.map(String.init) ?? "n/a") frames past received audio)"
+        if bufferingReported { DebugLogger.logWarning(line) } else { DebugLogger.logDebug(line) }
+        seek(to: resumeAt)
+      } else {
+        schedule(buffer, on: playerNode)
+      }
 
       if isFirstChunk {
         playerNode.play()
@@ -165,8 +200,10 @@ final class TTSPlaybackSession {
         onPlaybackStarted()
         DebugLogger.logSuccess(
           "TTS-PLAYBACK: Playback started on chunk 1/\(totalChunks) (\(pcm.count) bytes) — remaining chunks stream in behind it")
-      } else {
+      } else if !isStarved {
         // Debug level: a streaming provider delivers a chunk as dozens of half-second slices.
+        // After a re-anchor `seek` has already cleared `isStarved`, so this stays on the
+        // non-starved append path only.
         DebugLogger.logDebug("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
       }
     } catch {
@@ -188,15 +225,48 @@ final class TTSPlaybackSession {
         self.drainedChunkCount += 1
         DebugLogger.logDebug(
           "TTS-PLAYBACK: Buffer finished (\(self.drainedChunkCount)/\(self.scheduledChunkCount) drained)")
+        self.noteQueueDrainedIfStarved()
         self.completeIfDrained(token: token)
       }
     }
+  }
+
+  /// Leaves the starved state. Tells the pill only if it was told about the gap in the first place.
+  private func clearStarvation() {
+    bufferingDebounce?.invalidate()
+    bufferingDebounce = nil
+    isStarved = false
+    starvedSince = nil
+    if bufferingReported { bufferingReported = false; onBufferingChanged(false) }
+  }
+
+  /// Detects a drained queue while the stream is still open — a gap between chunks the user can
+  /// hear. The flags are set immediately so `enqueue`'s re-anchor can react to `isStarved`; the
+  /// pill's spinner and the warning log wait 300 ms behind `bufferingDebounce` so a streaming
+  /// provider's quarter/half-second slices arriving a few ms late don't flicker the pill.
+  private func noteQueueDrainedIfStarved() {
+    guard !streamClosed, acceptingChunks, drainedChunkCount >= scheduledChunkCount, !isStarved else { return }
+    isStarved = true
+    starvedSince = Date()
+    // A streaming provider's quarter/half-second slices can arrive a few ms late and drain the
+    // queue for an instant. That is not a gap the user hears: the flags are set right away (so
+    // the re-anchor in `enqueue` happens), but the warning and the pill's spinner wait 300 ms.
+    bufferingDebounce?.invalidate()
+    let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
+      guard let self, self.isStarved else { return }
+      self.bufferingReported = true
+      DebugLogger.logWarning("TTS-PLAYBACK: Queue drained at \(self.formatSeconds(self.position)) with the stream still open — waiting for the next chunk")
+      self.onBufferingChanged(true)
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    bufferingDebounce = timer
   }
 
   /// Declares that no further chunks are coming. Playback teardown waits for this: without it a
   /// gap between two chunks (queue drained before the next one arrived) would be indistinguishable
   /// from the end of the utterance and cut the rest off.
   func closeStream() {
+    clearStarvation()
     streamClosed = true
     acceptingChunks = false
     guard let token = currentPlaybackToken else { return }
@@ -263,6 +333,7 @@ final class TTSPlaybackSession {
     }
     DebugLogger.log("TTS-PLAYBACK: Seeked to \(formatSeconds(position)) / \(formatSeconds(duration))")
     onProgress(position, duration)
+    clearStarvation()
   }
 
   /// `seek(to:)` relative to the current playhead — the pill's ±10 s buttons.
@@ -303,6 +374,7 @@ final class TTSPlaybackSession {
 
   /// Stops all TTS audio playback and cleans up resources.
   func stop() {
+    clearStarvation()
     currentPlaybackToken = nil
     acceptingChunks = false
     tearDownGraph()
@@ -311,6 +383,11 @@ final class TTSPlaybackSession {
   private func tearDownGraph() {
     progressTimer?.invalidate()
     progressTimer = nil
+    bufferingDebounce?.invalidate()
+    bufferingDebounce = nil
+    isStarved = false
+    starvedSince = nil
+    bufferingReported = false
     isPaused = false
     pausedAtFrame = nil
     audioPlayerNode?.stop()

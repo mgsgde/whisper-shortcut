@@ -264,11 +264,28 @@ Output rules (CRITICAL):
   static let ttsChunkSizeChars: Int = 500
 
   /// Maximum characters for the first TTS chunk — the one playback waits for.
-  /// Cloud TTS latency scales with the audio it produces (measured: ~0.26 s + 0.61 s per second
-  /// of audio for Gemini, ~0.18 s/s for OpenAI), so a 500-char opener costs 15–20 s of silence
-  /// while a one-sentence opener is on the speakers in ~4 s. Synthesis runs faster than
-  /// realtime, so the full-size chunks behind it are ready before the opener finishes.
+  /// Cloud TTS latency scales with the audio it produces (measured: ~0.3 s + 0.65–0.73 s
+  /// per second of audio for Gemini 3.1 Flash TTS, ~0.18 s/s for OpenAI), so a 500-char
+  /// opener costs 15–20 s of silence while a one-sentence opener is on the speakers in
+  /// ~4 s. A 120-char opener (~7 s of audio) cannot cover a full-size follower: later caps
+  /// therefore ramp via `ttsChunkGrowthFactor` rather than jumping to `ttsChunkSizeChars`.
+  /// A slow round-trip can still open a gap; the buffering indicator covers that case.
   static let ttsFirstChunkSizeChars: Int = 120
+
+  /// Ratio by which successive TTS chunk caps grow until they hit `ttsChunkSizeChars`.
+  /// All chunks start synthesizing at t=0; chunk k+1 is seamless iff its synthesis finishes
+  /// before the audio in front of it runs out, i.e. size_{k+1}/size_k ≤ 1 + 1/(k·s) with
+  /// k = synth-seconds per audio-second (measured: 0.65–0.73 for Gemini 3.1 Flash TTS,
+  /// ~0.18 for OpenAI) and s = playback speed. At k = 0.7: r ≤ 2.4 at 1×, ≤ 1.95 at 1.5×,
+  /// ≤ 1.71 at 2×. 1.5 is inside that bound. With it, the second chunk (≤180 chars ≈ 12 s
+  /// of audio ≈ 8 s of synthesis) lands with ≈2 s margin at 1.5× and ≈0.5 s at 2× for the
+  /// measured Gemini rate. The opener usually under-fills its cap on a sentence boundary
+  /// (measured 2026-09-17 09:21: 94 of 120 chars, 7 s of audio vs 18 s to synthesize the
+  /// 436-char follower, ~8 s gap at 1.5×) and every request carries ~0.3 s of fixed overhead,
+  /// so a slow round-trip still opens a gap — that is what the buffering indicator is for.
+  /// The price is one extra request on texts over ~570 chars (120+180+270 = 570 fit in
+  /// three chunks).
+  static let ttsChunkGrowthFactor: Double = 1.5
 
   /// Minimum length of the first chunk as a share of `ttsFirstChunkSizeChars`. Deliberately
   /// lower than `ttsChunkMinSizeRatio`: a 40-char opening sentence is a fine place to start
