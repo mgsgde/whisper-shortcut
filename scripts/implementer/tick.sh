@@ -348,7 +348,7 @@ else
             echo "failure rather than a new fault — a kept post-mortem worktree is the common one:"
             echo
             echo "    git -C ${REPO_ROOT} worktree list"
-            echo "    git -C ${REPO_ROOT} worktree remove --force <path>"
+            echo "    bash ${REPO_ROOT}/scripts/worktree-remove.sh <path>   # refuses while an app runs from it"
         } >"$FAIL_NOTE"
         python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "${AUDIT_MAIL_TO:-mail@magnus-goedde.de}" \
             --subject "WhisperShortcut implementer failing (${FAIL_SPAN})" \

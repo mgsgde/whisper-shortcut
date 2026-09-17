@@ -8,6 +8,8 @@
 #   bash scripts/rebuild-and-restart.sh                        # Default build, production API
 #   bash scripts/rebuild-and-restart.sh --app-store            # App Store build
 #   bash scripts/rebuild-and-restart.sh --development          # currently a no-op (flag parsed but unused; no scheme/endpoint switch)
+#   bash scripts/rebuild-and-restart.sh --launch-from-main     # inside a .claude/worktrees/ checkout: build here, but
+#                                                              # relaunch the MAIN checkout's app (see warning below)
 
 set -e  # Exit on any error
 
@@ -16,10 +18,12 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
+LAUNCH_FROM_MAIN=false
 for arg in "$@"; do
   case "$arg" in
     --app-store) APP_STORE=true ;;
     --development|development) DEVELOPMENT=true ;;
+    --launch-from-main) LAUNCH_FROM_MAIN=true ;;
   esac
 done
 
@@ -29,6 +33,24 @@ if [[ "$APP_STORE" == true ]]; then
 else
   DERIVED_DATA="$PROJECT_DIR/build/DerivedData"
   APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut.app"
+fi
+
+# An app launched from a worktree dies with it: `git worktree remove` deletes the binary under
+# the running process, macOS TCC can no longer resolve its path, and every dictation records
+# silence until it is relaunched (queue #10, 2026-09-16). Inside .claude/worktrees/ we therefore
+# say so before launching, and offer to launch the main checkout's app instead.
+IN_WORKTREE=false
+MAIN_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
+if [[ "$MAIN_ROOT" != "$PROJECT_DIR" ]]; then
+  IN_WORKTREE=true
+  if [[ "$APP_STORE" == true ]]; then
+    MAIN_APP="$MAIN_ROOT/build/DerivedData-AppStore/Build/Products/Debug/WhisperShortcut-AppStore.app"
+  else
+    MAIN_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+  fi
+elif [[ "$LAUNCH_FROM_MAIN" == true ]]; then
+  echo "ℹ️  --launch-from-main ignored: this is the main checkout."
+  LAUNCH_FROM_MAIN=false
 fi
 
 cd "$PROJECT_DIR"
@@ -114,7 +136,28 @@ if pgrep -x WhisperShortcut >/dev/null 2>&1 || pgrep -x WhisperShortcut-AppStore
   exit 1
 fi
 
-echo "🚀 Starting WhisperShortcut application (this build)..."
+if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" == true ]]; then
+  if [[ -d "$MAIN_APP" ]]; then
+    echo "🚀 Starting the MAIN checkout's app (--launch-from-main; this worktree's build was only compiled)..."
+    APP_PATH="$MAIN_APP"
+  else
+    echo "⚠️  --launch-from-main: no build at $MAIN_APP — launching this worktree's build instead."
+    LAUNCH_FROM_MAIN=false
+  fi
+fi
+if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true ]]; then
+  echo ""
+  echo "⚠️  ⚠️  ⚠️  Launching from a WORKTREE: $PROJECT_DIR"
+  echo "   This app runs from the worktree's build/DerivedData. When the worktree is removed the"
+  echo "   binary vanishes under it, macOS revokes microphone access, and every dictation records"
+  echo "   silence until you relaunch. Before removing the worktree, relaunch the main checkout's app:"
+  echo "       open '$MAIN_APP'"
+  echo "   or remove it with the guard, which refuses while this app is alive:"
+  echo "       bash '$MAIN_ROOT/scripts/worktree-remove.sh' [--relaunch-main] '$PROJECT_DIR'"
+  echo "   (Rerun with --launch-from-main to build here but keep running the main checkout's app.)"
+  echo ""
+fi
+echo "🚀 Starting WhisperShortcut application ($( [[ "$LAUNCH_FROM_MAIN" == true ]] && echo main checkout || echo this build ))..."
 open "$APP_PATH"
 
 echo "🎉 WhisperShortcut has been rebuilt and restarted!"
