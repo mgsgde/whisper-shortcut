@@ -179,13 +179,17 @@ class ChunkTTSService {
 
     // MARK: - Initialization
 
+    /// - Parameter chunkSize: Ceiling of the chunk-size ramp (see `TextChunker`). Providers whose
+    ///   streams misbehave above a certain audio length pass a lower cap — Gemini uses
+    ///   `AppConstants.ttsGeminiChunkSizeChars`.
     init(
         maxRetries: Int = 5,  // Increased from 3 to handle rate limiting with proper delays
-        retryDelay: TimeInterval = 1.5
+        retryDelay: TimeInterval = 1.5,
+        chunkSize: Int = AppConstants.ttsChunkSizeChars
     ) {
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
-        self.chunker = TextChunker()
+        self.chunker = TextChunker(chunkSize: chunkSize)
     }
 
     // MARK: - Public API

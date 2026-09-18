@@ -49,9 +49,10 @@ struct GeminiErrorResponse: Codable {
 
 // MARK: - Stream progress clock
 
-/// "When did the chat stream last make progress?" — shared between the byte loop (which touches
-/// it) and the stall watchdog task (which reads it), hence the lock.
-private final class StreamProgressClock: @unchecked Sendable {
+/// "When did the stream last make progress?" — shared between the byte loop (which touches it)
+/// and the stall watchdog task (which reads it), hence the lock. Used by the chat stream here and
+/// by the Gemini TTS stream in `SpeechService`.
+final class StreamProgressClock: @unchecked Sendable {
   private let lock = NSLock()
   private var last = Date()
   private var sawChunkFlag = false
@@ -92,6 +93,63 @@ private final class StreamProgressClock: @unchecked Sendable {
   }
 }
 
+// MARK: - Stream object splitter
+
+/// Byte-level splitter for `streamGenerateContent` bodies. Gemini may answer either with SSE
+/// (`data: {…}\n\n`) or with a pretty-printed JSON array (`[ {…}, {…} ]`) depending on whether
+/// `?alt=sse` is honored. Tracking brace depth (outside strings, honouring escapes) emits each
+/// complete top-level `{…}` as soon as its closing brace arrives, in either format. Bytes outside
+/// a top-level object (`data:` prefixes, array brackets, commas, whitespace) are dropped.
+struct GeminiStreamObjectSplitter {
+  private var objectBytes = Data()
+  private var depth = 0
+  private var inString = false
+  private var escape = false
+
+  init() {}
+
+  /// Feeds one byte; returns a complete top-level JSON object when this byte closed one.
+  mutating func feed(_ byte: UInt8) -> Data? {
+    let ch = Character(UnicodeScalar(byte))
+    if depth == 0 {
+      if ch == "{" {
+        objectBytes.removeAll(keepingCapacity: true)
+        objectBytes.append(byte)
+        depth = 1
+        inString = false
+        escape = false
+      }
+      return nil
+    }
+    objectBytes.append(byte)
+    if inString {
+      if escape {
+        escape = false
+      } else if ch == "\\" {
+        escape = true
+      } else if ch == "\"" {
+        inString = false
+      }
+      return nil
+    }
+    if ch == "\"" {
+      inString = true
+      return nil
+    }
+    if ch == "{" {
+      depth += 1
+    } else if ch == "}" {
+      depth -= 1
+      if depth == 0 {
+        let object = objectBytes
+        objectBytes.removeAll(keepingCapacity: true)
+        return object
+      }
+    }
+    return nil
+  }
+}
+
 // MARK: - Gemini API Client
 /// Centralized client for all Gemini API interactions
 /// Eliminates code duplication and improves maintainability
@@ -124,6 +182,17 @@ class GeminiAPIClient {
   init(session: URLSession? = nil) {
     self.session = session ?? LLMHTTPSession.shared
   }
+
+  /// Opens `request` on the shared session and returns the body as a byte stream. Lets callers
+  /// outside this file (Gemini TTS in `SpeechService`) stream a response through the same
+  /// connection pool without exposing the session itself.
+  func streamingBytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+    try await session.bytes(for: request)
+  }
+
+  /// The client's resource timeout, for callers that build their own streaming request and run a
+  /// stall watchdog as the real deadline (see `streamGenerateContent`).
+  static var resourceTimeout: TimeInterval { Constants.resourceTimeout }
   
   // MARK: - Request Creation
   /// Creates a URLRequest for Gemini API with optional credential (API key). When credential is nil (e.g. proxy mode), no key is added.
@@ -136,7 +205,9 @@ class GeminiAPIClient {
     if let credential = credential {
       switch credential {
       case .apiKey(let key):
-        components.queryItems = [URLQueryItem(name: "key", value: key)]
+        // Append, don't replace: streaming endpoints carry `?alt=sse`, and overwriting the query
+        // silently downgraded them to the pretty-printed JSON-array format.
+        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "key", value: key)]
       case .bearer:
         break
       }
@@ -653,15 +724,9 @@ class GeminiAPIClient {
             }
           }
 
-          // Byte-level parser: Gemini's streamGenerateContent may return either
-          // SSE (`data: {…}\n\n`) or a pretty-printed JSON array (`[ {…}, {…} ]`)
-          // depending on whether `?alt=sse` is honored. Parsing at the JSON-object
-          // level by tracking brace depth emits complete `{…}` chunks as soon as
-          // they arrive in either format.
-          var objectBytes = Data()
-          var depth = 0
-          var inString = false
-          var escape = false
+          // Byte-level parser (`GeminiStreamObjectSplitter`): emits each complete top-level
+          // `{…}` as soon as it arrives, whether the body is SSE or a JSON array.
+          var splitter = GeminiStreamObjectSplitter()
           var chunkCount = 0
           // Past this point we may emit deltas to the UI, so disable retries.
           hasYielded = true
@@ -669,41 +734,9 @@ class GeminiAPIClient {
           for try await byte in bytes {
             try Task.checkCancellation()
             if !progress.sawChunk { progress.touch() }
-            let ch = Character(UnicodeScalar(byte))
-            if depth == 0 {
-              if ch == "{" {
-                objectBytes.removeAll(keepingCapacity: true)
-                objectBytes.append(byte)
-                depth = 1
-                inString = false
-                escape = false
-              }
-              continue
-            }
-            objectBytes.append(byte)
-            if inString {
-              if escape {
-                escape = false
-              } else if ch == "\\" {
-                escape = true
-              } else if ch == "\"" {
-                inString = false
-              }
-              continue
-            }
-            if ch == "\"" {
-              inString = true
-              continue
-            }
-            if ch == "{" {
-              depth += 1
-            } else if ch == "}" {
-              depth -= 1
-              if depth == 0 {
-                chunkCount += 1
-                processChunk(objectBytes)
-                objectBytes.removeAll(keepingCapacity: true)
-              }
+            if let objectBytes = splitter.feed(byte) {
+              chunkCount += 1
+              processChunk(objectBytes)
             }
           }
           } catch where progress.isStalled {

@@ -263,6 +263,36 @@ Output rules (CRITICAL):
   /// is why the *first* chunk gets its own, much smaller cap below.
   static let ttsChunkSizeChars: Int = 500
 
+  /// Chunk-size ceiling for the Gemini TTS models (OpenAI/xAI keep `ttsChunkSizeChars`).
+  /// 260 chars ≈ 16 s of audio. **Measured, not documented**: on 2026-09-18, three samples
+  /// (voice Charon, German prose) against `gemini-3.1-flash-tts-preview:streamGenerateContent`
+  /// streamed inputs whose audio stayed under ~16–19 s in one go (120 chars → 7.5 s of audio
+  /// complete in 3.5 s; 260 chars → 16 s in 6.7 s), while anything above that mark got its first
+  /// ~17 s of audio and then a ~15 s server pause before the rest arrived in a burst (403 chars:
+  /// 16.3 s of audio by t=6 s, the remainder at t=21 s). Capping at 260 keeps every chunk inside
+  /// the segment the server streams without pausing. With `ttsFirstChunkSizeChars` and
+  /// `ttsChunkGrowthFactor` the ramp becomes 120 → 180 → 260 → 260 …. If the buffering
+  /// indicator shows up mid-text on Gemini, this cap is the first suspect.
+  static let ttsGeminiChunkSizeChars: Int = 260
+
+  // MARK: - Gemini TTS stream watchdog
+  /// Idle budget before the first audio object of a Gemini TTS stream. The preview model is
+  /// unstable: TTFB measured 0.9–3.3 s on a good run and up to 39 s on a bad one (2026-09-18),
+  /// and non-streaming `generateContent` hung 3/3 times for 74–148 s in one A/B round. 45 s
+  /// admits the slow-but-alive case and still aborts a dead request long before the 300 s
+  /// resource timeout; the abort throws a retryable error, so `ChunkRetryPolicy` re-sends.
+  static let ttsStreamFirstAudioTimeout: TimeInterval = 45.0
+
+  /// Idle budget between audio objects once the stream has started. The server routinely
+  /// pauses ~15 s at the ~17 s audio mark on inputs above ~300 chars (a segment boundary; the
+  /// Interactions API shows the same) — that pause must **not** trip the watchdog, which is why
+  /// the budget sits at 30 s. A stream that hung after 6 s of audio with no bytes for 30 s+ was
+  /// also observed; that one must be aborted and retried rather than waited out.
+  static let ttsStreamStallTimeout: TimeInterval = 30.0
+
+  /// How often the TTS stream watchdog checks the progress clock.
+  static let ttsStreamWatchdogPollInterval: TimeInterval = 5.0
+
   /// Maximum characters for the first TTS chunk — the one playback waits for.
   /// Cloud TTS latency scales with the audio it produces (measured: ~0.3 s + 0.65–0.73 s
   /// per second of audio for Gemini 3.1 Flash TTS, ~0.18 s/s for OpenAI), so a 500-char

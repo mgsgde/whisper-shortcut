@@ -151,9 +151,14 @@ final class TTSPlaybackSession {
   /// out-of-order completions — so appending them to the player node's queue is all the ordering
   /// needed.
   ///
-  /// Being faster than realtime is what makes this work: synthesis runs at roughly 0.6× the audio
-  /// duration it produces, so the queue stays ahead of the playhead. If it ever doesn't, the node
-  /// drains and the next chunk starts a beat late; a logged gap, not a broken playback.
+  /// What keeps the queue ahead of the playhead is the chunk-size ramp (`TextChunker`,
+  /// `AppConstants.ttsChunkGrowthFactor`): all chunks start synthesizing at once, and each chunk's
+  /// audio is long enough to cover the next one's synthesis up to 2× playback speed. Synthesis
+  /// being faster than realtime at 1× is not enough on its own — at 1.5× a 120-char opener could
+  /// not cover a 500-char follower (7.5 s of silence, 2026-09-18). The streaming providers
+  /// (OpenAI, Gemini via `streamGenerateContent`) start emitting within ~1–3 s, so the opener
+  /// itself lands early. If the queue drains anyway, the buffering spinner shows until the next
+  /// chunk arrives (`onBufferingChanged`); a logged gap, not a broken playback.
   func enqueue(_ pcm: Data, index: Int, totalChunks: Int) {
     guard acceptingChunks else {
       DebugLogger.log("TTS-PLAYBACK: Dropping chunk \(index) — Read Aloud session already ended")

@@ -48,6 +48,22 @@ struct TextChunkerFirstChunkTests {
     #expect(chunks.contains { $0.text.count > 405 }, "the ramp must actually reach the full cap")
   }
 
+  @Test("Gemini's 260-char ceiling stops the ramp at 260 (120 → 180 → 260 → 260 …)")
+  func geminiCeilingCapsRamp() throws {
+    let chunker = TextChunker(chunkSize: AppConstants.ttsGeminiChunkSizeChars, firstChunkSize: 120, growthFactor: 1.5)
+    #expect(AppConstants.ttsGeminiChunkSizeChars == 260)
+    let expectedCaps = [120, 180, 260, 260, 260]
+    for k in 0...4 {
+      #expect(chunker.chunkCap(forIndex: k) == expectedCaps[k])
+    }
+    let chunks = try chunker.splitText(prose(sentences: 40))  // ~2200 chars
+    for (k, chunk) in chunks.enumerated() {
+      #expect(chunk.text.count <= chunker.chunkCap(forIndex: k))
+    }
+    #expect(chunks.allSatisfy { $0.text.count <= 260 })
+    #expect(chunks.contains { $0.text.count > 180 }, "the ramp must actually reach the ceiling")
+  }
+
   @Test("growth factor 1.0 disables the ramp: every cap equals firstChunkSize")
   func growthFactorOneDisablesRamp() {
     #expect(TextChunker(chunkSize: 500, firstChunkSize: 120, growthFactor: 1.0).chunkCap(forIndex: 3) == 120)

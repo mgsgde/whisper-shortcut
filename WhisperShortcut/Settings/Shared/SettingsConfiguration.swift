@@ -1065,14 +1065,18 @@ enum TTSModel: String, CaseIterable {
     }
   }
 
-  /// API endpoint for this model's provider. For Gemini the model id is in the path; for OpenAI it
-  /// is passed in the request body. **xAI takes no model id at all** — `SpeechService`
-  /// `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see the note there.
-  /// `.system` has no network endpoint.
+  /// API endpoint for this model's provider. For Gemini the model id is in the path and the
+  /// request is the streaming variant (`streamGenerateContent?alt=sse`): the TTS models emit
+  /// their audio as a series of SSE objects with base64 PCM slices, which `SpeechService`
+  /// `synthesizeGeminiTTSChunk` hands to playback as they arrive (verified 2026-09-18 against
+  /// `gemini-3.1-flash-tts-preview` with the same request body as the non-streaming call).
+  /// For OpenAI the model id is passed in the request body. **xAI takes no model id at all** —
+  /// `SpeechService` `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see
+  /// the note there. `.system` has no network endpoint.
   var apiEndpoint: String {
     switch provider {
     case .gemini:
-      return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):generateContent"
+      return "https://generativelanguage.googleapis.com/v1beta/models/\(rawValue):streamGenerateContent?alt=sse"
     case .openai:
       return AppConstants.openAISpeechEndpoint
     case .xai:

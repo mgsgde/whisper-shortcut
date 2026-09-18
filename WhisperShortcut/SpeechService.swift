@@ -1603,16 +1603,21 @@ class SpeechService {
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
     // merging. Every cloud provider returns raw PCM (s16le 24kHz mono), so the merged result
     // feeds playback unchanged — we only supply a per-chunk synthesizer for the chosen provider.
-    // Only OpenAI honours `onPartial` (see `synthesizeOpenAITTS`); the others deliver whole chunks.
+    // OpenAI and Gemini honour `onPartial` (see `synthesizeOpenAITTS` / `synthesizeGeminiTTSChunk`);
+    // xAI delivers whole chunks. Gemini also gets a lower chunk-size ceiling — see
+    // `AppConstants.ttsGeminiChunkSizeChars`.
     let synthesizeChunk: ChunkTTSService.Synthesizer
+    var chunkSize = AppConstants.ttsChunkSizeChars
     switch model.provider {
     case .gemini:
       guard let credential = await credentialProvider.getCredential() else {
         throw TranscriptionError.noGoogleAPIKey
       }
-      synthesizeChunk = { [weak self] chunkText, _ in
+      chunkSize = AppConstants.ttsGeminiChunkSizeChars
+      synthesizeChunk = { [weak self] chunkText, onPartial in
         guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
-        return try await self.synthesizeGeminiTTSChunk(text: chunkText, voice: voice, model: model, credential: credential)
+        return try await self.synthesizeGeminiTTSChunk(
+          text: chunkText, voice: voice, model: model, credential: credential, onPartial: onPartial)
       }
     case .openai:
       synthesizeChunk = { [weak self] chunkText, onPartial in
@@ -1628,7 +1633,7 @@ class SpeechService {
       throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
     }
 
-    let chunkService = ChunkTTSService()
+    let chunkService = ChunkTTSService(chunkSize: chunkSize)
     chunkService.progressDelegate = chunkProgressDelegate
     return try await chunkService.synthesize(
       text: trimmedText, model: model, onChunkReady: onChunkReady,
@@ -1651,10 +1656,37 @@ class SpeechService {
     return pcm
   }
 
-  // MARK: - Gemini TTS (Generative Language API) — synthesizes one chunk per call.
-  private func synthesizeGeminiTTSChunk(text: String, voice: String, model: TTSModel, credential: GeminiCredential) async throws -> Data {
+  // MARK: - Gemini TTS (Generative Language API) — streams one chunk per call.
+
+  /// Gemini TTS over `streamGenerateContent?alt=sse` (`TTSModel.apiEndpoint`). The model emits
+  /// its audio as a series of JSON objects, each carrying a base64 PCM slice (~1.9 KB ≈ 40 ms of
+  /// s16le 24 kHz mono) in `candidates[0].content.parts[*].inlineData`; the last one carries
+  /// `finishReason:"STOP"`. Measured 2026-09-18 on `gemini-3.1-flash-tts-preview`: first audio
+  /// 0.9–3.3 s after the request, then ≈3.4× realtime — against 5.8 s for the whole 107-char
+  /// opener over non-streaming `generateContent`. Each decoded slice goes to `onPartial` through
+  /// a `PCMStreamBatcher` (same shape as `synthesizeOpenAITTS`); the returned `Data` is the
+  /// complete chunk.
+  ///
+  /// The preview model is unstable (TTFB 0.9 s … 39 s across runs, one stream hung after 6 s of
+  /// audio with no bytes for 30 s+), so a stall watchdog mirrors the chat stream's: a
+  /// `StreamProgressClock` touched on the response headers and on every audio object, polled
+  /// every `AppConstants.ttsStreamWatchdogPollInterval`; past the budget
+  /// (`ttsStreamFirstAudioTimeout` before audio, `ttsStreamStallTimeout` after) it cancels the
+  /// data task and this method throws a **retryable** `.networkError`, so `ChunkRetryPolicy`
+  /// re-synthesizes the chunk and `PlaybackOrderGate` emits only the bytes beyond what already
+  /// played. Non-2xx responses are mapped through `GeminiAPIClient.parseErrorResponse` and thrown
+  /// for the same policy — no retry loop lives here. Cancellation by the caller (Stop) propagates
+  /// as-is.
+  private func synthesizeGeminiTTSChunk(
+    text: String, voice: String, model: TTSModel, credential: GeminiCredential,
+    onPartial: ((Data) async -> Void)? = nil
+  ) async throws -> Data {
+    let logPrefix = "TTS-GEMINI-STREAM"
     let endpoint = model.apiEndpoint
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    // The watchdog below is the real deadline, exactly as in the chat stream.
+    request.timeoutInterval = GeminiAPIClient.resourceTimeout
 
     let ttsRequest = GeminiTTSRequest(
       contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(text)")])],
@@ -1669,27 +1701,141 @@ class SpeechService {
     )
     request.httpBody = try JSONEncoder().encode(ttsRequest)
 
-    let result = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "TTS",
-      withRetry: true
-    )
-
-    guard let base64Audio = result.candidates.first?.content.parts.first(where: { $0.inlineData != nil })?.inlineData?.data,
-          let decoded = Data(base64Encoded: base64Audio) else {
-      DebugLogger.logError("TTS: Failed to decode base64 audio from Gemini response")
-      throw TranscriptionError.networkError("Failed to decode base64 audio data")
+    let started = CFAbsoluteTimeGetCurrent()
+    DebugLogger.logNetwork("\(logPrefix): POST \(endpoint) (\(text.count) chars, voice: \(voice))")
+    let (bytes, response) = try await geminiClient.streamingBytes(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
     }
-    return decoded
+    if http.statusCode < 200 || http.statusCode >= 300 {
+      var errData = Data()
+      for try await b in bytes { errData.append(b) }
+      let bodyText = String(data: errData, encoding: .utf8) ?? ""
+      DebugLogger.logError("\(logPrefix): HTTP \(http.statusCode) body=\(bodyText.prefix(500))")
+      let mapped = try? geminiClient.parseErrorResponse(data: errData, statusCode: http.statusCode)
+      throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(bodyText.prefix(200))")
+    }
+
+    // Stall watchdog: cancels the data task (not this Task) when the stream stops delivering
+    // audio, so the byte loop below throws and the catch converts it into a retryable error.
+    let progress = StreamProgressClock()
+    progress.touch(chunk: false)
+    let dataTask = bytes.task
+    let watchdog = Task {
+      while !Task.isCancelled {
+        try await Task.sleep(nanoseconds: UInt64(AppConstants.ttsStreamWatchdogPollInterval * 1_000_000_000))
+        let (idle, sawChunk) = progress.state
+        let budget = sawChunk ? AppConstants.ttsStreamStallTimeout : AppConstants.ttsStreamFirstAudioTimeout
+        if idle > budget {
+          progress.markStalled()
+          DebugLogger.logWarning(
+            "\(logPrefix): no audio for \(Int(idle))s (\(sawChunk ? "mid-stream" : "before first audio")) — aborting the stalled stream")
+          dataTask.cancel()
+          return
+        }
+      }
+    }
+    defer { watchdog.cancel() }
+
+    var splitter = GeminiStreamObjectSplitter()
+    var batcher = PCMStreamBatcher()
+    var audio = Data()
+    var objectCount = 0
+    var audioObjectCount = 0
+    var firstSliceLogged = false
+    do {
+      for try await byte in bytes {
+        try Task.checkCancellation()
+        guard let object = splitter.feed(byte) else { continue }
+        objectCount += 1
+        let parsed = try Self.parseGeminiTTSStreamObject(object)
+        if let reason = parsed.finishReason, reason != "STOP" {
+          DebugLogger.logWarning("\(logPrefix): finishReason=\(reason)")
+        }
+        guard let pcm = parsed.audio else { continue }
+        audioObjectCount += 1
+        progress.touch()
+        audio.append(pcm)
+        guard let onPartial else { continue }
+        for b in pcm {
+          if let slice = batcher.append(b) {
+            if !firstSliceLogged {
+              firstSliceLogged = true
+              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
+            }
+            await onPartial(slice)
+          }
+        }
+      }
+    } catch {
+      // The caller pressed Stop: hand the cancellation up untouched.
+      if Task.isCancelled { throw error }
+      if progress.isStalled {
+        let idle = Int(progress.state.idle)
+        DebugLogger.logWarning(
+          "\(logPrefix): stream stalled after \(idle)s (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
+        throw TranscriptionError.networkError("Gemini TTS stream stalled after \(idle)s")
+      }
+      throw error
+    }
+    if let onPartial, let rest = batcher.drain() { await onPartial(rest) }
+
+    DebugLogger.logNetwork(
+      "\(logPrefix): stream end after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count))")
+    guard !audio.isEmpty else {
+      DebugLogger.logError("\(logPrefix): 2xx response without any inlineData audio (objects=\(objectCount))")
+      throw TranscriptionError.networkError("Gemini TTS returned no audio")
+    }
+    return audio
+  }
+
+  /// One decoded `streamGenerateContent` object from a Gemini TTS stream.
+  struct GeminiTTSStreamObject: Equatable {
+    /// Concatenated, base64-decoded PCM of every `inlineData` part; nil when the object carries
+    /// none (usage metadata, a bare finishReason).
+    let audio: Data?
+    let finishReason: String?
+  }
+
+  /// Object → PCM bytes. Throws a `TranscriptionError` for a top-level `error` (mapped through
+  /// `GeminiAPIClient.parseErrorResponse`, statusCode 200 since the HTTP status was fine) and for a
+  /// `promptFeedback.blockReason`. Unparseable bytes are treated as "no audio" rather than an
+  /// error: the splitter only hands over balanced `{…}`, so this is a defensive branch.
+  static func parseGeminiTTSStreamObject(_ object: Data) throws -> GeminiTTSStreamObject {
+    guard let json = try? JSONSerialization.jsonObject(with: object) as? [String: Any] else {
+      return GeminiTTSStreamObject(audio: nil, finishReason: nil)
+    }
+    if json["error"] != nil {
+      let mapped = try? GeminiAPIClient().parseErrorResponse(data: object, statusCode: 200)
+      let text = String(data: object, encoding: .utf8)?.prefix(300) ?? ""
+      throw mapped ?? TranscriptionError.networkError("Gemini TTS stream error: \(text)")
+    }
+    if let feedback = json["promptFeedback"] as? [String: Any],
+       let blockReason = feedback["blockReason"] as? String {
+      throw TranscriptionError.networkError("Gemini TTS blocked the request: \(blockReason)")
+    }
+    let candidate = (json["candidates"] as? [[String: Any]])?.first
+    let finishReason = candidate?["finishReason"] as? String
+    var audio = Data()
+    if let content = candidate?["content"] as? [String: Any],
+       let parts = content["parts"] as? [[String: Any]] {
+      for part in parts {
+        guard let inline = part["inlineData"] as? [String: Any],
+              let base64 = inline["data"] as? String,
+              let pcm = Data(base64Encoded: base64) else { continue }
+        audio.append(pcm)
+      }
+    }
+    return GeminiTTSStreamObject(audio: audio.isEmpty ? nil : audio, finishReason: finishReason)
   }
 
   /// OpenAI TTS — `response_format:"pcm"` returns raw s16le 24kHz mono PCM (no header), and
   /// OpenAI writes it as it is synthesized. Reading the body as a stream and handing slices to
   /// `onPartial` lets playback start on the first quarter second instead of after the whole
   /// chunk: measured 5.7–6.7 s per full-size chunk when read whole, versus first bytes well
-  /// under a second. Gemini cannot do this (its REST TTS returns one base64 JSON blob), and xAI
-  /// has not been probed, so this is the only streaming provider.
+  /// under a second. Gemini streams too since the switch to `streamGenerateContent` (see
+  /// `synthesizeGeminiTTSChunk`, which decodes base64 slices out of SSE objects); only xAI is
+  /// unprobed and still delivers whole chunks.
   ///
   /// Slices are cut on a sample boundary (2 bytes) so a partial never splits an s16 frame, and
   /// batched — 0.25 s for the first flush, 0.5 s after — so the player node is not fed hundreds of
