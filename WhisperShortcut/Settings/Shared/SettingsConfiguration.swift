@@ -1842,7 +1842,7 @@ struct SettingsDefaults {
   static let transcriptionThinkingEffort = TranscriptionThinkingEffort.minimal
   /// Cheapest audio-capable model on OpenRouter's own pricing list (2026-07).
   static let openRouterTranscriptionModelID = "google/gemini-3.5-flash-lite"
-  static let selectedPromptModel = PromptModel.gemini35FlashLite
+  static let selectedPromptModel = PromptModel.gemini38Flash
   static let selectedChatModel = PromptModel.gemini38Flash
   static let chatCloseOnFocusLoss = true
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
