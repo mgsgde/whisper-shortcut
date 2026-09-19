@@ -192,6 +192,75 @@ else
     log "step 1: skipped (IMPLEMENTER_GROOM=0)"
 fi
 
+# --- 1a. Do the two readers of the queue agree? ----------------------------------------------
+# The queue has two parsers: queue-edit.py (honours `\|`) and the runner's picker
+# (`awk -F'|'`, splits on every pipe). Row 6 was promoted to BUILD on 2026-09-09 with a `\|` in
+# its falsifier, so the picker saw Flag/Status one column to the right and printed "no BUILD/OPEN
+# row" for 174 hourly ticks while a released row waited — from outside, an empty queue. The
+# writer now refuses pipes (queue-edit.py, loop-ledger L12); this is the reader-side check that
+# makes the two parsers argue out loud instead of one of them silently losing: lint every
+# numbered row, and compare a tolerant grep count of BUILD/OPEN rows with what the picker's own
+# awk (copied verbatim from run-implementer.sh — do not fix it here, fix the row) returns.
+#
+# Read from the absolute path the runner reads, not a relative one: the tick's cwd is launchd's.
+# Throttled like the blocked-builds mail below — once when the state appears, then at most once a
+# day, against elapsed time (a laptop skips ticks) — because the fault persists across hours and
+# an alert that fires 24 times becomes noise.
+QUEUE_FILE="${REPO_ROOT}/plans/implementer-queue.md"
+LINT_STATE_DIR="${HOME}/.local/state/whispershortcut-implementer"
+LINT_REPORTED_FILE="${LINT_STATE_DIR}/queue-readers-disagree.reported"
+if [[ -f "$QUEUE_FILE" ]]; then
+    LINT_OUT="$(python3 "${SCRIPT_DIR}/queue-edit.py" --file "$QUEUE_FILE" lint 2>&1)"
+    LINT_RC=$?
+    GREP_N=$(grep -cE '\| *BUILD *\| *OPEN *\|' "$QUEUE_FILE" || true)
+    PICKER_ROW=$(grep -E '^\| *[0-9]+ *\|' "$QUEUE_FILE" | awk -F'|' '
+        function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+        trim($6) == "BUILD" && trim($7) == "OPEN" { print; exit }')
+    DISAGREE=""
+    [[ $LINT_RC -eq 0 ]] || DISAGREE="lint failed"
+    if [[ "${GREP_N:-0}" -gt 0 && -z "$PICKER_ROW" ]]; then
+        DISAGREE="${DISAGREE:+${DISAGREE}; }grep counts ${GREP_N} BUILD/OPEN row(s), the picker's awk returns none"
+    fi
+    if [[ -n "$DISAGREE" ]]; then
+        warn "queue readers disagree: ${DISAGREE}"
+        [[ -z "$LINT_OUT" ]] || printf '%s\n' "$LINT_OUT"
+        mkdir -p "$LINT_STATE_DIR"
+        LINT_LAST=$(cat "$LINT_REPORTED_FILE" 2>/dev/null || echo 0)
+        if (( $(date +%s) - LINT_LAST >= 86400 )); then
+            date +%s >"$LINT_REPORTED_FILE"
+            LINT_NOTE=$(mktemp -t wsticklint)
+            {
+                echo "VERDICT: the two readers of plans/implementer-queue.md disagree — ${DISAGREE}."
+                echo
+                echo "queue-edit.py lint:"
+                echo '```'
+                [[ -n "$LINT_OUT" ]] && printf '%s\n' "$LINT_OUT" || echo "(clean)"
+                echo '```'
+                echo
+                echo "grep -cE '| BUILD | OPEN |' → ${GREP_N}; picker awk (run-implementer.sh) → ${PICKER_ROW:-(none)}"
+                echo
+                echo "A row the picker cannot see never builds, however released it is. Fix the ROW"
+                echo "(re-word the cell without a pipe — 'or', '/'), never the picker: counting"
+                echo "columns from the other end breaks the same way from the other end."
+                echo "Queue: ${QUEUE_FILE}"
+            } >"$LINT_NOTE"
+            python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "${AUDIT_MAIL_TO:-mail@magnus-goedde.de}" \
+                --subject "implementer: queue readers disagree" --body-file "$LINT_NOTE" \
+                --verdict needs-fix --verdict-detail "A queue row parses differently for the groomer and \
+for the build picker, so a released row can sit unbuilt while every tick reports an empty queue. \
+Nothing automatic clears this: re-word the row named in the lint output so no cell contains a pipe." \
+                --title "Queue readers disagree" \
+                --meta "grep BUILD/OPEN=${GREP_N}" --meta "picker=$( [[ -n "$PICKER_ROW" ]] && echo found || echo none )" \
+                || osascript -e "display notification \"${DISAGREE}\" with title \"Implementer: queue readers disagree\"" >/dev/null 2>&1
+            rm -f "$LINT_NOTE"
+        fi
+    else
+        rm -f "$LINT_REPORTED_FILE"
+    fi
+else
+    warn "no queue at ${QUEUE_FILE} — lint skipped"
+fi
+
 # --- 1b. The weekly health mail --------------------------------------------------------------
 # BEFORE the branch guard below, deliberately. Most ticks end at that guard or at "nothing to
 # build", and a health check that only runs when the machine is busy is silent exactly when
