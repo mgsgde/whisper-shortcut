@@ -68,7 +68,7 @@ def filed_on(num):
     for it to lie. Git already knows, so ask git.
 
     The pickaxe string cannot collide: '| 4 |' is not a substring of '| 14 |', and a cell may
-    never contain a bare pipe (queue-edit.py escapes them)."""
+    never contain a pipe at all (queue-edit.py refuses one, escaped or bare, at write time)."""
     try:
         out = subprocess.run(
             ["git", "log", "--format=%ad", "--date=short", "-S", f"| {num} |", "--",
