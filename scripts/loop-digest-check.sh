@@ -18,7 +18,9 @@
 #   1. the path exists and is a regular file;
 #   2. size ≥ --min-bytes (default 2048);
 #   3. the first line starts with `VERDICT:`;
-#   4. no line contains `provisional` (case-insensitive) — the stub's own word for itself;
+#   4. no line begins with `(provisional` — the stub's own marker for itself (`(provisional —
+#      numbers being gathered…)`), matched at line start, case-insensitive, optional paren, so a
+#      complete digest that merely DISCUSSES a provisional stub is not failed for the word;
 #   5. every --section heading is present as a line that STARTS with that text (prefix match,
 #      so `## Open questions (would loosen a gate, …)` satisfies `## Open questions`);
 #   6. with --ledger: `grep -Eq -- "$MATCH" "$LEDGER"` succeeds — the run's row reached the
@@ -71,9 +73,12 @@ case "$FIRST" in
   *) incomplete "first line does not start with 'VERDICT:' (got: ${FIRST:0:60})" ;;
 esac
 
-# 4. provisional marker
-if grep -qi 'provisional' "$DIGEST"; then
-  incomplete "contains 'provisional' at line $(grep -ni 'provisional' "$DIGEST" | head -1 | cut -d: -f1) — the pass did not finish rewriting it"
+# 4. provisional marker — anchored to the start of a line. The 09-19 stub reads
+#    "(provisional — numbers being gathered…)" on a line of its own; a digest that reports on that
+#    stub ("the model wrote the provisional file first") is complete and must pass.
+PROV_RE='^[[:space:]]*\(?provisional\b'
+if grep -qiE "$PROV_RE" "$DIGEST"; then
+  incomplete "a line beginning with '(provisional' at line $(grep -niE "$PROV_RE" "$DIGEST" | head -1 | cut -d: -f1) — the pass did not finish rewriting it"
 fi
 
 # 5. required sections, prefix match on the line
