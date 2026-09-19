@@ -255,6 +255,13 @@ ln -sf "$(basename "$REPORT")" "$REPORT_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$REPORT" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Report written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10). The report and its raw measurements are tracked under
+# plans/model-audits/; commit exactly this run's files, on main only, never forced
+# (scripts/loop-commit.sh). Best-effort: a failed commit is a WARN and the mail still goes out.
+bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "model-audit $STAMP: ${VERDICT:0:72}" -- \
+  "plans/model-audits/$STAMP-audit.md" "plans/model-audits/$STAMP-measurements.txt" plans/model-audits/LATEST.md \
+  || echo "WARN: could not commit the audit report — it stays in the working copy."
 # The verdict goes in the subject so it is readable from a phone lock screen without opening
 # the mail; the report is the body, the raw measurements are attached for anything questionable.
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120

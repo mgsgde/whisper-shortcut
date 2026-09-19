@@ -394,6 +394,21 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10). Runs 4–5 appended ledger rows that nothing committed;
+# the groomer reads origin/main, saw no OPEN gap and filed the instrumentation rows as ASK. The
+# helper commits ONLY the paths named here, on main only, and never forces (scripts/loop-commit.sh).
+# The digest lives in the private parent repo; the ledger rows in this one. Best-effort: a commit
+# that fails is a WARN in the log, the output stays in the working copy, the mail still goes out.
+COMMIT_MSG="usage-review $STAMP: ${VERDICT:0:72}"
+bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "$COMMIT_MSG" -- \
+  plans/improvement-ledger.md plans/instrumentation-gaps.md \
+  || echo "WARN: could not commit the ledger rows — they stay in the working copy."
+PARENT_REPO="$(cd "$BUSINESS_DIR/.." && pwd)"
+BUSINESS_REL="$(basename "$BUSINESS_DIR")"
+bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "$COMMIT_MSG" -- \
+  "$BUSINESS_REL/usage-reviews/$STAMP-review.md" "$BUSINESS_REL/usage-reviews/LATEST.md" \
+  || echo "WARN: could not commit the digest in $PARENT_REPO — it stays in the working copy."
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the

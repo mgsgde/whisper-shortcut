@@ -214,6 +214,13 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10). This loop's ledger and digest live in this repo;
+# commit exactly those paths, on main only, never forced (scripts/loop-commit.sh). Best-effort:
+# a failed commit is a WARN, the files stay in the working copy, the mail still goes out.
+bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "agent-loops $STAMP: ${VERDICT:0:72}" -- \
+  plans/loop-ledger.md "plans/loop-reviews/$STAMP-review.md" plans/loop-reviews/LATEST.md \
+  || echo "WARN: could not commit the loop ledger and digest — they stay in the working copy."
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
