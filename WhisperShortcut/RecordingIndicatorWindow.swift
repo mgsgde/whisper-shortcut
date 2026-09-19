@@ -8,7 +8,8 @@
 //    processing → spinner with ✕ (cancel)
 //  and Read Aloud playback:
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
-//                 speed button (cycles 0.75×…2×)
+//                 speed button (cycles 0.75×…2×) — ⏸ becomes a spinner while the next chunk is
+//                 loading
 //  On success the pill hides immediately — the pasted/copied text itself is the
 //  feedback, and lingering UI would cover whatever the user is working on.
 //
@@ -35,6 +36,8 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
   @Published var isPaused = false
+  /// `.speaking` only: the player ran out of audio and is waiting for the next synthesized chunk.
+  @Published var isBuffering = false
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
   /// `.speaking` only: playhead and received audio, in seconds of source audio.
@@ -84,13 +87,15 @@ private struct LevelBarsView: View {
 }
 
 private struct SpinnerView: View {
+  var color: Color = .white.opacity(0.9)
+  var size: CGFloat = 14
   @State private var isRotating = false
 
   var body: some View {
     Circle()
       .trim(from: 0.18, to: 1)
-      .stroke(Color.white.opacity(0.9), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-      .frame(width: 14, height: 14)
+      .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+      .frame(width: size, height: size)
       .rotationEffect(.degrees(isRotating ? 360 : 0))
       .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: isRotating)
       .onAppear { isRotating = true }
@@ -102,15 +107,20 @@ private struct PillCircleButton: View {
   let foreground: Color
   let background: Color
   let accessibilityLabel: String
+  var isBusy: Bool = false
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       ZStack {
         Circle().fill(background)
-        Image(systemName: symbolName)
-          .font(.system(size: 10, weight: .bold))
-          .foregroundColor(foreground)
+        if isBusy {
+          SpinnerView(color: .black, size: 12)
+        } else {
+          Image(systemName: symbolName)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(foreground)
+        }
       }
       .frame(width: 24, height: 24)
       .contentShape(Circle())
@@ -249,17 +259,28 @@ struct RecordingIndicatorView: View {
           accessibilityLabel: "Back 10 seconds", action: { onSkip(-Self.skipInterval) })
         PillCircleButton(
           symbolName: model.isPaused ? "play.fill" : "pause.fill", foreground: .black, background: .white,
-          accessibilityLabel: model.isPaused ? "Resume reading aloud" : "Pause reading aloud",
+          accessibilityLabel: (model.isBuffering && !model.isPaused)
+            ? "Loading more audio — click to pause"
+            : (model.isPaused ? "Resume reading aloud" : "Pause reading aloud"),
+          isBusy: model.isBuffering && !model.isPaused,
           action: onTogglePause)
         PillCircleButton(
           symbolName: "goforward.10", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Forward 10 seconds", action: { onSkip(Self.skipInterval) })
         ScrubberView(model: model, onSeek: onSeek)
-        Text("\(Self.timeLabel(model.scrubPosition ?? model.position)) / \(Self.timeLabel(model.duration))")
-          .font(.system(size: 10, weight: .semibold).monospacedDigit())
-          .foregroundColor(.white.opacity(0.85))
-          .lineLimit(1)
-          .fixedSize()
+        if model.isBuffering && !model.isPaused {
+          Text("Loading…")
+            .font(.system(size: 10, weight: .semibold).monospacedDigit())
+            .foregroundColor(.white.opacity(0.85))
+            .lineLimit(1)
+            .fixedSize()
+        } else {
+          Text("\(Self.timeLabel(model.scrubPosition ?? model.position)) / \(Self.timeLabel(model.duration))")
+            .font(.system(size: 10, weight: .semibold).monospacedDigit())
+            .foregroundColor(.white.opacity(0.85))
+            .lineLimit(1)
+            .fixedSize()
+        }
         SpeedButton(speed: model.speed, action: onCycleSpeed)
       }
     }
@@ -275,7 +296,10 @@ struct RecordingIndicatorView: View {
     switch model.phase {
     case .recording: return "Listening"
     case .processing: return "Transcribing"
-    case .speaking: return model.isPaused ? "Read Aloud paused" : "Reading aloud"
+    case .speaking:
+      if model.isPaused { return "Read Aloud paused" }
+      if model.isBuffering { return "Reading aloud — loading" }
+      return "Reading aloud"
     }
   }
 }
@@ -357,7 +381,10 @@ final class RecordingIndicatorManager {
     model.isPaused = isPaused
     model.speed = speed
     let phaseChanged = model.phase != .speaking
-    if phaseChanged { model.scrubPosition = nil }
+    if phaseChanged {
+      model.scrubPosition = nil
+      model.isBuffering = false
+    }
     model.phase = .speaking
     if isVisible, let panel {
       if phaseChanged { position(panel) }
@@ -371,6 +398,12 @@ final class RecordingIndicatorManager {
     guard model.phase == .speaking else { return }
     model.duration = duration
     if model.scrubPosition == nil { model.position = position }
+  }
+
+  /// Read Aloud: the player's queue ran dry (or refilled) while the stream is still open.
+  func updateBuffering(_ isBuffering: Bool) {
+    guard model.phase == .speaking else { return }
+    model.isBuffering = isBuffering
   }
 
   func hide() {

@@ -38,22 +38,33 @@ enum TextChunkerError: Error, LocalizedError {
 ///
 /// The first chunk is capped separately and much lower (`firstChunkSize`): playback starts as
 /// soon as it is synthesized, and TTS latency grows with the audio length, so a short opener is
-/// what decides how long the user waits. Everything after it uses `chunkSize`.
+/// what decides how long the user waits. Caps after it grow geometrically by `growthFactor`
+/// until they reach `chunkSize`, so each chunk's audio covers the next one's synthesis.
 class TextChunker {
-    /// Maximum characters per chunk after the first.
+    /// Maximum characters per chunk after the ramp reaches its ceiling.
     let chunkSize: Int
     /// Maximum characters for the first chunk.
     let firstChunkSize: Int
+    /// Multiplier applied to `firstChunkSize` at each later index, until the cap hits `chunkSize`.
+    let growthFactor: Double
 
     /// - Parameters:
-    ///   - chunkSize: Maximum characters per chunk after the first.
+    ///   - chunkSize: Maximum characters per chunk after the ramp reaches its ceiling.
     ///   - firstChunkSize: Maximum characters for the first chunk. Clamped to `chunkSize`.
+    ///   - growthFactor: Multiplier applied to `firstChunkSize` for each later index.
     init(
         chunkSize: Int = AppConstants.ttsChunkSizeChars,
-        firstChunkSize: Int = AppConstants.ttsFirstChunkSizeChars
+        firstChunkSize: Int = AppConstants.ttsFirstChunkSizeChars,
+        growthFactor: Double = AppConstants.ttsChunkGrowthFactor
     ) {
         self.chunkSize = chunkSize
         self.firstChunkSize = min(firstChunkSize, chunkSize)
+        self.growthFactor = growthFactor
+    }
+
+    /// Cap for chunk `k`: `min(chunkSize, firstChunkSize * growthFactor^k)`.
+    func chunkCap(forIndex k: Int) -> Int {
+        min(chunkSize, Int(Double(firstChunkSize) * pow(growthFactor, Double(k))))
     }
 
     /// Determine if text needs chunking.
@@ -80,7 +91,7 @@ class TextChunker {
             throw TextChunkerError.emptyText
         }
 
-        DebugLogger.log("TTS-CHUNKER: Starting text split (text length: \(trimmedText.count) chars, chunk size: \(chunkSize), first chunk: \(firstChunkSize))")
+        DebugLogger.log("TTS-CHUNKER: Starting text split (text length: \(trimmedText.count) chars, chunk size: \(chunkSize), first chunk: \(firstChunkSize), growth factor: \(growthFactor))")
 
         // If text is short enough, return as single chunk
         if trimmedText.count <= firstChunkSize {
@@ -101,10 +112,8 @@ class TextChunker {
             let remainingText = String(trimmedText[trimmedText.index(trimmedText.startIndex, offsetBy: currentIndex)...])
             let remainingLength = remainingText.count
             let isFirstChunk = chunkIndex == 0
-            let maxLength = isFirstChunk ? firstChunkSize : chunkSize
-            let minLength = isFirstChunk
-                ? Int(Double(firstChunkSize) * AppConstants.ttsFirstChunkMinSizeRatio)
-                : Int(Double(chunkSize) * AppConstants.ttsChunkMinSizeRatio)
+            let maxLength = chunkCap(forIndex: chunkIndex)
+            let minLength = Int(Double(maxLength) * (isFirstChunk ? AppConstants.ttsFirstChunkMinSizeRatio : AppConstants.ttsChunkMinSizeRatio))
 
             // If remaining text fits in one chunk, add it and finish
             if remainingLength <= maxLength {

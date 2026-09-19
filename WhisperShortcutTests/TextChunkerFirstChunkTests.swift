@@ -2,10 +2,12 @@ import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
 
-/// Locks the one property of the TTS chunker that decides how long Read Aloud stays silent: the
-/// first chunk — the only one playback waits for — is short, while the rest keep the full size.
-/// Measured before this existed: a 383-char opener took 16 s to synthesize (30 s of audio);
-/// a one-sentence opener is on the speakers in ~4 s.
+/// Locks the property of the TTS chunker that decides how long Read Aloud stays silent: the
+/// first chunk — the only one playback waits for — is short (120 chars), and later caps ramp
+/// geometrically (120 → 180 → 270 → 405 → 500) so each chunk's audio covers the next one's
+/// synthesis. Measured without the ramp: a 94-char opener (7 s of audio) could not cover a
+/// 436-char follower (18 s to synthesize), leaving ~8 s of silence at 1.5× (2026-09-17 09:21);
+/// a one-sentence opener is still on the speakers in ~4 s.
 @Suite("TTS chunker — first chunk")
 struct TextChunkerFirstChunkTests {
 
@@ -23,7 +25,7 @@ struct TextChunkerFirstChunkTests {
 
   @Test("Text over the first-chunk cap but under the chunk size is split so playback can start early")
   func mediumTextGetsShortOpener() throws {
-    let text = prose(sentences: 6)  // ~330 chars: one chunk under the old rule
+    let text = prose(sentences: 5)  // ~275 chars: one chunk under the old 500-only rule
     let chunks = try TextChunker(chunkSize: 500, firstChunkSize: 120).splitText(text)
     #expect(chunks.count == 2)
     #expect(chunks[0].text.count <= 120)
@@ -31,18 +33,40 @@ struct TextChunkerFirstChunkTests {
     #expect(chunks.map(\.text).joined(separator: " ") == text)
   }
 
-  @Test("Only the first chunk is capped low; the rest use the full chunk size")
-  func laterChunksUseFullSize() throws {
-    let text = prose(sentences: 30)  // ~1650 chars
-    let chunks = try TextChunker(chunkSize: 500, firstChunkSize: 120).splitText(text)
-    #expect(chunks[0].text.count <= 120)
-    #expect(chunks[0].text.count >= Int(120 * AppConstants.ttsFirstChunkMinSizeRatio))
-    let rest = chunks.dropFirst().dropLast()
-    #expect(!rest.isEmpty)
-    for chunk in rest {
-      #expect(chunk.text.count > 120, "a later chunk (\(chunk.text.count) chars) should not be capped like the opener")
-      #expect(chunk.text.count <= 500)
+  @Test("Later chunks ramp geometrically until they hit the full chunk size")
+  func laterChunksFollowGeometricRamp() throws {
+    let chunker = TextChunker(chunkSize: 500, firstChunkSize: 120, growthFactor: 1.5)
+    let expectedCaps = [120, 180, 270, 405, 500, 500]
+    for k in 0...5 {
+      #expect(chunker.chunkCap(forIndex: k) == expectedCaps[k])
     }
+    let text = prose(sentences: 40)  // ~2200 chars
+    let chunks = try chunker.splitText(text)
+    for (k, chunk) in chunks.enumerated() {
+      #expect(chunk.text.count <= chunker.chunkCap(forIndex: k))
+    }
+    #expect(chunks.contains { $0.text.count > 405 }, "the ramp must actually reach the full cap")
+  }
+
+  @Test("Gemini's 260-char ceiling stops the ramp at 260 (120 → 180 → 260 → 260 …)")
+  func geminiCeilingCapsRamp() throws {
+    let chunker = TextChunker(chunkSize: AppConstants.ttsGeminiChunkSizeChars, firstChunkSize: 120, growthFactor: 1.5)
+    #expect(AppConstants.ttsGeminiChunkSizeChars == 260)
+    let expectedCaps = [120, 180, 260, 260, 260]
+    for k in 0...4 {
+      #expect(chunker.chunkCap(forIndex: k) == expectedCaps[k])
+    }
+    let chunks = try chunker.splitText(prose(sentences: 40))  // ~2200 chars
+    for (k, chunk) in chunks.enumerated() {
+      #expect(chunk.text.count <= chunker.chunkCap(forIndex: k))
+    }
+    #expect(chunks.allSatisfy { $0.text.count <= 260 })
+    #expect(chunks.contains { $0.text.count > 180 }, "the ramp must actually reach the ceiling")
+  }
+
+  @Test("growth factor 1.0 disables the ramp: every cap equals firstChunkSize")
+  func growthFactorOneDisablesRamp() {
+    #expect(TextChunker(chunkSize: 500, firstChunkSize: 120, growthFactor: 1.0).chunkCap(forIndex: 3) == 120)
   }
 
   @Test("A first-chunk cap larger than the chunk size is clamped")
@@ -55,5 +79,6 @@ struct TextChunkerFirstChunkTests {
     let chunks = try TextChunker().splitText(prose(sentences: 30))
     #expect(chunks[0].text.count <= AppConstants.ttsFirstChunkSizeChars)
     #expect(chunks[1].text.count > AppConstants.ttsFirstChunkSizeChars)
+    #expect(chunks[1].text.count <= AppConstants.ttsChunkSizeChars)
   }
 }

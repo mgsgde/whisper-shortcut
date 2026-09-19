@@ -131,6 +131,9 @@ class MenuBarController: NSObject {
         shortTitle: SpeechErrorFormatter.shortStatusForUser(error),
         message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
     },
+    onBufferingChanged: { isBuffering in
+      RecordingIndicatorManager.shared.updateBuffering(isBuffering)
+    },
     onProgress: { position, duration in
       RecordingIndicatorManager.shared.updateProgress(position: position, duration: duration)
     })

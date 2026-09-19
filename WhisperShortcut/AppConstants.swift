@@ -263,12 +263,59 @@ Output rules (CRITICAL):
   /// is why the *first* chunk gets its own, much smaller cap below.
   static let ttsChunkSizeChars: Int = 500
 
+  /// Chunk-size ceiling for the Gemini TTS models (OpenAI/xAI keep `ttsChunkSizeChars`).
+  /// 260 chars ≈ 16 s of audio. **Measured, not documented**: on 2026-09-18, three samples
+  /// (voice Charon, German prose) against `gemini-3.1-flash-tts-preview:streamGenerateContent`
+  /// streamed inputs whose audio stayed under ~16–19 s in one go (120 chars → 7.5 s of audio
+  /// complete in 3.5 s; 260 chars → 16 s in 6.7 s), while anything above that mark got its first
+  /// ~17 s of audio and then a ~15 s server pause before the rest arrived in a burst (403 chars:
+  /// 16.3 s of audio by t=6 s, the remainder at t=21 s). Capping at 260 keeps every chunk inside
+  /// the segment the server streams without pausing. With `ttsFirstChunkSizeChars` and
+  /// `ttsChunkGrowthFactor` the ramp becomes 120 → 180 → 260 → 260 …. If the buffering
+  /// indicator shows up mid-text on Gemini, this cap is the first suspect.
+  static let ttsGeminiChunkSizeChars: Int = 260
+
+  // MARK: - Gemini TTS stream watchdog
+  /// Idle budget before the first audio object of a Gemini TTS stream. The preview model is
+  /// unstable: TTFB measured 0.9–3.3 s on a good run and up to 39 s on a bad one (2026-09-18),
+  /// and non-streaming `generateContent` hung 3/3 times for 74–148 s in one A/B round. 45 s
+  /// admits the slow-but-alive case and still aborts a dead request long before the 300 s
+  /// resource timeout; the abort throws a retryable error, so `ChunkRetryPolicy` re-sends.
+  static let ttsStreamFirstAudioTimeout: TimeInterval = 45.0
+
+  /// Idle budget between audio objects once the stream has started. The server routinely
+  /// pauses ~15 s at the ~17 s audio mark on inputs above ~300 chars (a segment boundary; the
+  /// Interactions API shows the same) — that pause must **not** trip the watchdog, which is why
+  /// the budget sits at 30 s. A stream that hung after 6 s of audio with no bytes for 30 s+ was
+  /// also observed; that one must be aborted and retried rather than waited out.
+  static let ttsStreamStallTimeout: TimeInterval = 30.0
+
+  /// How often the TTS stream watchdog checks the progress clock.
+  static let ttsStreamWatchdogPollInterval: TimeInterval = 5.0
+
   /// Maximum characters for the first TTS chunk — the one playback waits for.
-  /// Cloud TTS latency scales with the audio it produces (measured: ~0.26 s + 0.61 s per second
-  /// of audio for Gemini, ~0.18 s/s for OpenAI), so a 500-char opener costs 15–20 s of silence
-  /// while a one-sentence opener is on the speakers in ~4 s. Synthesis runs faster than
-  /// realtime, so the full-size chunks behind it are ready before the opener finishes.
+  /// Cloud TTS latency scales with the audio it produces (measured: ~0.3 s + 0.65–0.73 s
+  /// per second of audio for Gemini 3.1 Flash TTS, ~0.18 s/s for OpenAI), so a 500-char
+  /// opener costs 15–20 s of silence while a one-sentence opener is on the speakers in
+  /// ~4 s. A 120-char opener (~7 s of audio) cannot cover a full-size follower: later caps
+  /// therefore ramp via `ttsChunkGrowthFactor` rather than jumping to `ttsChunkSizeChars`.
+  /// A slow round-trip can still open a gap; the buffering indicator covers that case.
   static let ttsFirstChunkSizeChars: Int = 120
+
+  /// Ratio by which successive TTS chunk caps grow until they hit `ttsChunkSizeChars`.
+  /// All chunks start synthesizing at t=0; chunk k+1 is seamless iff its synthesis finishes
+  /// before the audio in front of it runs out, i.e. size_{k+1}/size_k ≤ 1 + 1/(k·s) with
+  /// k = synth-seconds per audio-second (measured: 0.65–0.73 for Gemini 3.1 Flash TTS,
+  /// ~0.18 for OpenAI) and s = playback speed. At k = 0.7: r ≤ 2.4 at 1×, ≤ 1.95 at 1.5×,
+  /// ≤ 1.71 at 2×. 1.5 is inside that bound. With it, the second chunk (≤180 chars ≈ 12 s
+  /// of audio ≈ 8 s of synthesis) lands with ≈2 s margin at 1.5× and ≈0.5 s at 2× for the
+  /// measured Gemini rate. The opener usually under-fills its cap on a sentence boundary
+  /// (measured 2026-09-17 09:21: 94 of 120 chars, 7 s of audio vs 18 s to synthesize the
+  /// 436-char follower, ~8 s gap at 1.5×) and every request carries ~0.3 s of fixed overhead,
+  /// so a slow round-trip still opens a gap — that is what the buffering indicator is for.
+  /// The price is one extra request on texts over ~570 chars (120+180+270 = 570 fit in
+  /// three chunks).
+  static let ttsChunkGrowthFactor: Double = 1.5
 
   /// Minimum length of the first chunk as a share of `ttsFirstChunkSizeChars`. Deliberately
   /// lower than `ttsChunkMinSizeRatio`: a 40-char opening sentence is a fine place to start
