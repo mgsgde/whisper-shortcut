@@ -373,14 +373,23 @@ STATUS=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
+# A digest is complete or the run FAILED (loop-ledger L11). `[ -f "$DIGEST" ]` used to be the whole
+# test, and on 2026-09-19 the growth job mailed a 253-byte "provisional" stub as a success that
+# way. The shared helper checks size, the VERDICT line, the stub marker and the three sections
+# loop-prompt.sh requires (scripts/loop-digest-check.sh). On failure its one reason line is the
+# mail's verdict — no LATEST.md update, no commit.
+DIGEST_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$DIGEST" \
+  --section '## Self-answered' --section '## Open questions' --section '## Weglassen' 2>&1)"
+DIGEST_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $DIGEST_OK -ne 0 ]; then
   # A job that silently stops running looks exactly like a week with nothing to report. Say it broke.
   if [ -f "$KILLED_MARKER" ]; then
     WHY="usage review TIMED OUT — killed after ${REVIEW_TIMEOUT_SECS}s without finishing."
   elif [ $STATUS -ne 0 ]; then
     WHY="usage review FAILED — claude exited with status $STATUS."
   else
-    WHY="usage review INCOMPLETE — the pass wrote no digest."
+    WHY="usage review INCOMPLETE — $DIGEST_WHY"
   fi
   rm -f "$KILLED_MARKER"
   fail_out "$WHY" \

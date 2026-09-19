@@ -196,13 +196,24 @@ STATUS=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
+# A digest is complete or the run FAILED (loop-ledger L11). `[ -f "$DIGEST" ]` used to be the whole
+# test, and on 2026-09-19 the growth job mailed a 253-byte "provisional" stub as a success that
+# way. The shared helper checks size, the VERDICT line, the stub marker and the three sections
+# loop-prompt.sh requires (scripts/loop-digest-check.sh). No --ledger check here: this script does
+# not know its run number (the pass numbers the Run-log row itself), so there is no row pattern
+# to require without guessing one. On failure the helper's one reason line is the mail's verdict
+# — no LATEST.md update, no commit.
+DIGEST_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$DIGEST" \
+  --section '## Self-answered' --section '## Open questions' --section '## Weglassen' 2>&1)"
+DIGEST_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $DIGEST_OK -ne 0 ]; then
   if [ -f "$KILLED_MARKER" ]; then
     WHY="agent-loops review TIMED OUT — killed after ${LOOPS_TIMEOUT_SECS}s without finishing."
   elif [ $STATUS -ne 0 ]; then
     WHY="agent-loops review FAILED — claude exited with status $STATUS."
   else
-    WHY="agent-loops review INCOMPLETE — the pass wrote no digest."
+    WHY="agent-loops review INCOMPLETE — $DIGEST_WHY"
   fi
   rm -f "$KILLED_MARKER"
   fail_out "$WHY" \
