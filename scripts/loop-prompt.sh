@@ -78,6 +78,11 @@ ${NULL_RULE}
   release history, the numbers) — never against the ledger's own claim about itself. A change that
   is built but not live for the population being measured is TOO EARLY, never NO EFFECT.
 
+- **No subagents, delegates or background agents in this run.** The print-mode runner kills a
+  background agent after 600 s and the run then ships a stub; do every read yourself, in
+  sequence. If a read would take longer than the run budget, write what you have and say what is
+  missing under '## Open questions'.
+
 ## Digest sections this job requires
 
 After the VERDICT line and your findings, the digest MUST end with these three sections, in this

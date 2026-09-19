@@ -75,6 +75,23 @@ Architect loop checks for drift on every run:
   is a complete run (`.agents/skills/implement-proposal/SKILL.md` §1b, ported 2026-09-12).
 - **Loud failure.** A loop that cannot read its data or write its digest reports a FAILED
   run by mail — silence must never be distinguishable from a quiet week.
+- **Delivered = committed — for the loops too.** Each job commits its own ledger rows and digest
+  through `scripts/loop-commit.sh` (explicit paths, `main` only, never forced; a failed push
+  stays local for the next run's rebase). A row that exists only in a working copy is invisible
+  to the groomer, the health mail and the next run, which all read `origin/main` — usage-review
+  runs 4–5 filed two instrumentation proposals as `ASK` instead of `BUILD` that way. L10, 2026-09-19.
+- **A digest is complete or the run FAILED.** `scripts/loop-digest-check.sh` gates every digest
+  before `LATEST.md`, the commit and the mail: size ≥ 2 KB, `VERDICT:` first line, no
+  "provisional", the three required sections, and for growth the run's `G<n>` ledger row. A file
+  that exists is not a digest that was written — the 2026-09-19 growth run mailed a 253-byte stub
+  as a success on `[ -f ]` alone. The cause is barred in `loop-prompt.sh`: no subagents,
+  delegates or background agents in a scheduled run. L11, 2026-09-19.
+- **Queue cells may not contain pipes — escaped or not.** `queue-edit.py` refuses them at write
+  time (exit 2, naming the field) and `lint` checks every row against the header's cell count;
+  the tick runs the lint hourly and mails "queue readers disagree" (once, then daily) when lint
+  fails or a tolerant grep finds a `BUILD`/`OPEN` row the picker's own awk does not. Fix the row,
+  never the picker: counting columns from the other end breaks the same way from the other end.
+  Row 6 sat unpickable for 174 ticks. L12, 2026-09-19.
 - **Every mail states whether you have to act**, in the same five words in the same place.
   `scripts/operator_mail.py` holds the vocabulary and renders the banner; `send-report-mail.py`
   takes it as `--verdict` and is the only sender. Ported from Sabaki's

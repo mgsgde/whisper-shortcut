@@ -373,14 +373,23 @@ STATUS=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
+# A digest is complete or the run FAILED (loop-ledger L11). `[ -f "$DIGEST" ]` used to be the whole
+# test, and on 2026-09-19 the growth job mailed a 253-byte "provisional" stub as a success that
+# way. The shared helper checks size, the VERDICT line, the stub marker and the three sections
+# loop-prompt.sh requires (scripts/loop-digest-check.sh). On failure its one reason line is the
+# mail's verdict — no LATEST.md update, no commit.
+DIGEST_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$DIGEST" \
+  --section '## Self-answered' --section '## Open questions' --section '## Weglassen' 2>&1)"
+DIGEST_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $DIGEST_OK -ne 0 ]; then
   # A job that silently stops running looks exactly like a week with nothing to report. Say it broke.
   if [ -f "$KILLED_MARKER" ]; then
     WHY="usage review TIMED OUT — killed after ${REVIEW_TIMEOUT_SECS}s without finishing."
   elif [ $STATUS -ne 0 ]; then
     WHY="usage review FAILED — claude exited with status $STATUS."
   else
-    WHY="usage review INCOMPLETE — the pass wrote no digest."
+    WHY="usage review INCOMPLETE — $DIGEST_WHY"
   fi
   rm -f "$KILLED_MARKER"
   fail_out "$WHY" \
@@ -394,6 +403,21 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10). Runs 4–5 appended ledger rows that nothing committed;
+# the groomer reads origin/main, saw no OPEN gap and filed the instrumentation rows as ASK. The
+# helper commits ONLY the paths named here, on main only, and never forces (scripts/loop-commit.sh).
+# The digest lives in the private parent repo; the ledger rows in this one. Best-effort: a commit
+# that fails is a WARN in the log, the output stays in the working copy, the mail still goes out.
+COMMIT_MSG="usage-review $STAMP: ${VERDICT:0:72}"
+bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "$COMMIT_MSG" -- \
+  plans/improvement-ledger.md plans/instrumentation-gaps.md \
+  || echo "WARN: could not commit the ledger rows — they stay in the working copy."
+PARENT_REPO="$(cd "$BUSINESS_DIR/.." && pwd)"
+BUSINESS_REL="$(basename "$BUSINESS_DIR")"
+bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "$COMMIT_MSG" -- \
+  "$BUSINESS_REL/usage-reviews/$STAMP-review.md" "$BUSINESS_REL/usage-reviews/LATEST.md" \
+  || echo "WARN: could not commit the digest in $PARENT_REPO — it stays in the working copy."
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the

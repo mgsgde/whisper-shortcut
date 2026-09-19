@@ -16,8 +16,18 @@ would be a dependency nobody maintains.
     queue-edit.py due                        → JSON of VETO rows whose deadline has passed
     queue-edit.py veto 7                     → any released row back to ASK (the stop button)
     queue-edit.py keep 7 [BUILD|VETO]        → park an ASK row in a lane until a slot frees
+    queue-edit.py lint                       → every numbered row parses the same for every reader
 
-Exit codes: 0 done, 1 nothing matched / bad input.
+Exit codes: 0 done, 1 nothing matched / bad input / lint found a row, 2 a cell contains a pipe.
+
+**A cell may never contain a pipe — escaped or not.** This file used to escape `|` as `\\|` and
+call that safe. It was safe for THIS parser only: the runner's picker (`run-implementer.sh`,
+`awk -F'|'`) splits on every pipe, escaped or not, so a `\\|` inside a falsifier shifts Flag and
+Status one column to the right and the row is never BUILD/OPEN to the picker. Row 6 sat
+promoted for 174 hourly ticks that way (loop-ledger L12, 2026-09-19). Two readers of one table
+must parse it identically, and the only cell format both can agree on is "no pipes at all" —
+so a write with a pipe in it is refused at the door (exit 2, naming the field), and `lint` is
+what the tick runs to make the two readers argue out loud.
 
 **Status says who a row is waiting for.** It used to say only OPEN, and OPEN answered four
 different questions with one word — so the weekly said "waiting on you" about rows nobody could
@@ -59,11 +69,21 @@ COLUMNS = ("num", "source", "proposal", "falsifier", "flag", "status", "deadline
 ROW_RE = re.compile(r"^\|\s*(\d+)\s*\|")
 
 
-def cell(text):
-    """A table cell may never contain a bare pipe — it would create a phantom column and the
-    runner's awk would read the wrong field. Escape rather than reject: the proposal text comes
-    from a loop's report and rejecting it there would lose the finding."""
-    return re.sub(r"\s+", " ", str(text).replace("|", "\\|")).strip()
+class CellError(ValueError):
+    """A cell that no reader could parse the same way. Raised by cell(); main() turns it into
+    exit 2 so a caller (groom-queue.py, a human) sees WHICH field and can re-word it."""
+
+
+def cell(text, field="cell"):
+    """A table cell may never contain a pipe. Not a bare one (phantom column) and not an escaped
+    one either: this parser honours `\\|`, the runner's awk does not, and a row the two read
+    differently is worse than a rejected write — it is a row that silently never builds.
+    Reject, do not escape; the caller re-words with "or" / "/"."""
+    text = re.sub(r"\s+", " ", str(text)).strip()
+    if "|" in text:
+        raise CellError(f"{field} contains a pipe ('|'); re-word it with 'or' or '/' — no reader "
+                        f"of the queue may see a pipe inside a cell: {text[:80]!r}")
+    return text
 
 
 def split_row(line):
@@ -99,7 +119,47 @@ def write_queue(lines):
 
 
 def render(row):
-    return "| " + " | ".join(cell(row.get(k, "")) for k in COLUMNS) + " |"
+    return "| " + " | ".join(cell(row.get(k, ""), k) for k in COLUMNS) + " |"
+
+
+def header_cell_count(lines):
+    """Cell count of the queue table's own header (`| # | Source | … |`), the row every other
+    row has to match. None if the header is missing — lint then reports that instead."""
+    for line in lines:
+        if re.match(r"^\|\s*#\s*\|", line):
+            return len(split_row(line))
+    return None
+
+
+def cmd_lint(_args):
+    """Every numbered row must split into exactly the header's cell count AND contain no `\\|`.
+    The first is what the runner's awk sees; the second is the one escape this parser would
+    forgive and awk would not. One line per bad row, exit 1 if there is any — the tick mails
+    the output, so each line names the row and the reason, nothing else."""
+    lines = read_queue()
+    want = header_cell_count(lines)
+    if want is None:
+        print("lint: no table header (`| # | Source | …`) found — is the table intact?")
+        return 1
+    bad = 0
+    for idx, line in enumerate(lines):
+        if not ROW_RE.match(line):
+            continue
+        num = ROW_RE.match(line).group(1)
+        # Split the way awk does — on EVERY pipe — because that is the reader that broke.
+        raw_cells = line.strip().strip("|").split("|")
+        problems = []
+        if len(raw_cells) != want:
+            problems.append(f"{len(raw_cells)} cells, header has {want}")
+        if "\\|" in line:
+            problems.append("contains an escaped pipe '\\|' (this parser reads it, awk does not)")
+        if problems:
+            bad += 1
+            print(f"lint: row #{num} (line {idx + 1}): " + "; ".join(problems))
+    if bad:
+        print(f"lint: {bad} row(s) the two readers would disagree on")
+        return 1
+    return 0
 
 
 def cmd_list(_args):
@@ -262,6 +322,8 @@ def cmd_keep(args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--file", default="", help="queue file to operate on (default: plans/implementer-queue.md "
+                    "of this checkout) — for lint and tests against a copy")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     sub.add_parser("due").set_defaults(fn=cmd_due)
@@ -296,8 +358,17 @@ def main():
     ap_k.add_argument("lane", nargs="?", default="BUILD", choices=("BUILD", "VETO"))
     ap_k.set_defaults(fn=cmd_keep)
 
+    sub.add_parser("lint").set_defaults(fn=cmd_lint)
+
     args = ap.parse_args()
-    sys.exit(args.fn(args))
+    if args.file:
+        global QUEUE_FILE
+        QUEUE_FILE = args.file
+    try:
+        sys.exit(args.fn(args))
+    except CellError as err:
+        print(f"refused: {err}", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

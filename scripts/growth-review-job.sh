@@ -217,13 +217,25 @@ STATUS=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
+# A digest is complete or the run FAILED (loop-ledger L11). This is the job that shipped the stub:
+# on 2026-09-19 the pass delegated its ASC reads to a subagent, `claude -p` killed that at its
+# 600 s background ceiling, and `[ ! -f "$DIGEST" ]` — the whole test until then — accepted a
+# 253-byte "(provisional — numbers being gathered…)" file and mailed it as a success. The shared
+# helper checks size, the VERDICT line, the stub marker, the three sections loop-prompt.sh
+# requires, AND that this run's G-row reached the ledger (scripts/loop-digest-check.sh). On
+# failure its one reason line is the mail's verdict — no LATEST.md update, no commit.
+DIGEST_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$DIGEST" \
+  --section '## Self-answered' --section '## Open questions' --section '## Weglassen' \
+  --ledger "$LEDGER" --ledger-match '^\| G[0-9]+ \| '"$STAMP"' \|' 2>&1)"
+DIGEST_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $DIGEST_OK -ne 0 ]; then
   if [ -f "$KILLED_MARKER" ]; then
     WHY="growth review TIMED OUT — killed after ${GROWTH_TIMEOUT_SECS}s without finishing."
   elif [ $STATUS -ne 0 ]; then
     WHY="growth review FAILED — claude exited with status $STATUS."
   else
-    WHY="growth review INCOMPLETE — the pass wrote no digest."
+    WHY="growth review INCOMPLETE — $DIGEST_WHY"
   fi
   rm -f "$KILLED_MARKER"
   fail_out "$WHY" \
@@ -235,6 +247,16 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10): the 09-05 and 09-19 digests sat untracked in the parent
+# repo for weeks. Everything this job writes lives in the PRIVATE parent repo, so that is the one
+# repo it commits to — explicit paths, main only, never forced (scripts/loop-commit.sh).
+# Best-effort: a failed commit is a WARN, the files stay in the working copy, the mail still goes.
+PARENT_REPO="$(cd "$BUSINESS_DIR/.." && pwd)"
+BUSINESS_REL="$(basename "$BUSINESS_DIR")"
+bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "growth-review $STAMP: ${VERDICT:0:72}" -- \
+  "$BUSINESS_REL/growth-ledger.md" "$BUSINESS_REL/growth-reviews/$STAMP-review.md" "$BUSINESS_REL/growth-reviews/LATEST.md" \
+  || echo "WARN: could not commit the digest and ledger in $PARENT_REPO — they stay in the working copy."
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the

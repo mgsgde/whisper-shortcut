@@ -115,6 +115,41 @@ def normalise(text):
     return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
 
 
+# The cells a proposal contributes to a queue row. Title is log/mail text only, but it is
+# usually the proposal's own first line, so it is rewritten too — the announcement should
+# read the way the row does.
+PIPE_FIELDS = ("source", "title", "proposal", "falsifier")
+PIPE_MARKER = "(pipes rewritten by groomer)"
+
+
+def rewrite_pipes(proposal):
+    """Replace every `\\|` and bare `|` in the cells a row is built from with ` / `.
+
+    queue-edit.py refuses a cell with a pipe in it (exit 2) since loop-ledger L12 — its old
+    habit of escaping them produced rows the runner's `awk -F'|'` could not read. A refusal is
+    right at that door and wrong at this one: pipelines in a falsifier (`cat x | jq …`,
+    `grep 'A\\|B'`) are how a loop names a measurement, and `queue_edit()` runs with
+    check=True, so letting the refusal through would abort the whole groom pass on the first
+    such proposal — the silent-break class this file's "nothing is ever dropped" exists to rule
+    out. So the groomer rewrites, says so on the row (Source cell — the queue has no Notes
+    column, and Source already carries free-text annotations), and files it.
+
+    Returns (proposal, rewritten_fields). Lookups only: a string replacement, no judgement."""
+    rewritten = []
+    out = dict(proposal)
+    for field in PIPE_FIELDS:
+        value = out.get(field)
+        if not isinstance(value, str) or "|" not in value:
+            continue
+        cleaned = re.sub(r"\s*\\?\|\s*", " / ", value)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        out[field] = cleaned
+        rewritten.append(field)
+    if rewritten:
+        out["source"] = f"{out.get('source') or 'loop proposal'} {PIPE_MARKER}"
+    return out, rewritten
+
+
 def decide_lane(proposal, existing, gaps, in_flight):
     """Return (lane, park, reason). Lookups and regexes only — never a judgement call.
 
@@ -274,6 +309,10 @@ def main():
 
     announcements, filed = [], []
     for path, proposal in proposals:
+        proposal, rewritten = rewrite_pipes(proposal)
+        if rewritten:
+            log(f"pipes rewritten by groomer in {', '.join(rewritten)} → ' / ' "
+                f"(marked on the row's Source cell)")
         lane, park, reason = decide_lane(proposal, existing, gaps, auto_so_far)
         title = proposal.get("title") or proposal.get("proposal") or "(no title)"
         icon = "⏸" if park == "DEFERRED" else {"BUILD": "🟢", "VETO": "🔵", "ASK": "🟡", "SKIP": "⚪️"}[lane]

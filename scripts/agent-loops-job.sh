@@ -196,13 +196,24 @@ STATUS=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 wait "$WATCHDOG_PID" 2>/dev/null
 
-if [ $STATUS -ne 0 ] || [ ! -f "$DIGEST" ]; then
+# A digest is complete or the run FAILED (loop-ledger L11). `[ -f "$DIGEST" ]` used to be the whole
+# test, and on 2026-09-19 the growth job mailed a 253-byte "provisional" stub as a success that
+# way. The shared helper checks size, the VERDICT line, the stub marker and the three sections
+# loop-prompt.sh requires (scripts/loop-digest-check.sh). No --ledger check here: this script does
+# not know its run number (the pass numbers the Run-log row itself), so there is no row pattern
+# to require without guessing one. On failure the helper's one reason line is the mail's verdict
+# — no LATEST.md update, no commit.
+DIGEST_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$DIGEST" \
+  --section '## Self-answered' --section '## Open questions' --section '## Weglassen' 2>&1)"
+DIGEST_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $DIGEST_OK -ne 0 ]; then
   if [ -f "$KILLED_MARKER" ]; then
     WHY="agent-loops review TIMED OUT — killed after ${LOOPS_TIMEOUT_SECS}s without finishing."
   elif [ $STATUS -ne 0 ]; then
     WHY="agent-loops review FAILED — claude exited with status $STATUS."
   else
-    WHY="agent-loops review INCOMPLETE — the pass wrote no digest."
+    WHY="agent-loops review INCOMPLETE — $DIGEST_WHY"
   fi
   rm -f "$KILLED_MARKER"
   fail_out "$WHY" \
@@ -214,6 +225,13 @@ ln -sf "$(basename "$DIGEST")" "$REVIEW_DIR/LATEST.md"
 
 VERDICT="$(head -1 "$DIGEST" | sed 's/^VERDICT:[[:space:]]*//')"
 [ -n "$VERDICT" ] || VERDICT="Digest written (no verdict line found)"
+
+# Delivered = committed (loop-ledger L10). This loop's ledger and digest live in this repo;
+# commit exactly those paths, on main only, never forced (scripts/loop-commit.sh). Best-effort:
+# a failed commit is a WARN, the files stay in the working copy, the mail still goes out.
+bash "$REPO/scripts/loop-commit.sh" --repo "$REPO" --message "agent-loops $STAMP: ${VERDICT:0:72}" -- \
+  plans/loop-ledger.md "plans/loop-reviews/$STAMP-review.md" plans/loop-reviews/LATEST.md \
+  || echo "WARN: could not commit the loop ledger and digest — they stay in the working copy."
 # The subject is the job and the date, not the finding. The finding used to lead it and ran to 120
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
