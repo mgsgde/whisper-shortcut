@@ -171,6 +171,15 @@ This is the one state in this machine only you can clear:
 stopped in preflight, before the Opus planning pass. The queue row stays BUILD/OPEN and the
 next tick picks it up once the login is back."
         fi
+        # "Cannot use this model" here — with or without a list — stops the run before the
+        # planning pass. A removed model is not `cursor-agent login`, so plain die, not
+        # alert_and_die: nothing is spent, the tick counts the exit, and if it is still true
+        # after three ticks the streak mail says so with this line in it. This catches the
+        # refusal only when it is already true at preflight; the empty-catalogue form that
+        # appears mid-run (wake from sleep during the plan) is retried in run_agent_cli.
+        if grep -qi 'cannot use this model' <<<"$_probe_out"; then
+            die "build model ${BUILD_MODEL} refused by cursor-agent — offline, or the model is gone (check: cursor-agent models): ${_probe_out}"
+        fi
         # Any OTHER probe failure is deliberately not fatal: a quota exit here is exactly what
         # usage-limit.sh exists to wait out during the real build.
         ;;
@@ -186,7 +195,10 @@ if [[ "$REVIEW_AGENT" != "none" || -n "$PLAN_AGENT" ]]; then
 fi
 if [[ "$PUSH_PR" == "1" ]]; then
     command -v gh >/dev/null 2>&1 || die "IMPLEMENTER_PUSH_PR=1 but gh is not installed"
-    gh auth status >/dev/null 2>&1 || die "IMPLEMENTER_PUSH_PR=1 but gh is not authenticated"
+    # `gh auth status` validates the token against api.github.com, so offline it fails
+    # exactly like logged-out does. Say both: on 2026-09-19/20 two offline ticks mailed
+    # "not authenticated" while the keyring token was fine.
+    gh auth status >/dev/null 2>&1 || die "IMPLEMENTER_PUSH_PR=1 but gh auth status failed (offline, or gh is logged out — run: gh auth status)"
 fi
 
 # One run at a time. mkdir is atomic and macOS ships no flock(1).
@@ -323,9 +335,23 @@ worktree and logs are kept for the post-mortem (paths below)." \
 # — the caller answers that with defer_for_usage_limit, never with fail_run.
 #
 #   run_agent_cli <agent> <model> <timeout_s> <log_file> <prompt>
+# cursor-agent fetches its model catalogue on every start. When that fetch fails it prints
+# "Cannot use this model: <model>. Available models: " with NOTHING after the colon, and
+# exits — the same words a removed model gets, minus the list. Empty list means the catalogue
+# call failed, which on a laptop means Wi-Fi is not back yet: on 2026-09-20 the lid closed
+# mid-plan, the machine woke at 13:04:56, Opus finished at 13:09 and the build agent started
+# seconds later, before the network. A removed model prints the list, so that form is NOT
+# retried — it fails fast and the mail names it.
+cursor_catalogue_empty() {
+    grep -qiE 'cannot use this model:.*available models:[[:space:]]*$' "$1" 2>/dev/null
+}
+CATALOGUE_RETRIES="${IMPLEMENTER_CATALOGUE_RETRIES:-5}"
+CATALOGUE_RETRY_SECONDS="${IMPLEMENTER_CATALOGUE_RETRY_SECONDS:-120}"
+
 run_agent_cli() {
     local agent="$1" model="$2" timeout_s="$3" log_file="$4" prompt="$5"
     local attempt=1 backoff=900 wait_deadline=0 agent_exit pid watchdog attempt_log now reset
+    local catalogue_tries=0
     : >"$log_file"
     while :; do
         attempt_log="${log_file}.attempt-${attempt}"
@@ -352,6 +378,18 @@ run_agent_cli() {
         if [[ $agent_exit -eq 0 ]]; then
             rm -f "$USAGE_LIMIT_STAMP" "$attempt_log"
             return 0
+        fi
+        if [[ "$agent" == "cursor" ]] && cursor_catalogue_empty "$attempt_log"; then
+            catalogue_tries=$((catalogue_tries + 1))
+            rm -f "$attempt_log"
+            if (( catalogue_tries > CATALOGUE_RETRIES )); then
+                warn "cursor-agent still cannot fetch its model catalogue after ${CATALOGUE_RETRIES} retries — giving up"
+                return "$agent_exit"
+            fi
+            log "cursor-agent got an empty model catalogue (offline?) — retry ${catalogue_tries}/${CATALOGUE_RETRIES} in ${CATALOGUE_RETRY_SECONDS}s"
+            sleep "$CATALOGUE_RETRY_SECONDS"
+            attempt=$((attempt + 1))
+            continue
         fi
         if ! usage_limit_in_log "$attempt_log"; then
             rm -f "$attempt_log"

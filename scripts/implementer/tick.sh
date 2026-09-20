@@ -91,7 +91,18 @@ if ! mkdir "$TICK_LOCK" 2>/dev/null; then
 fi
 trap 'rmdir "$TICK_LOCK" 2>/dev/null' EXIT
 
-git -C "$REPO_ROOT" fetch -q origin main || warn "could not fetch origin/main — working from what is on disk"
+# Remembered, not just warned about: an offline tick can still groom and carry out merge
+# windows, but it cannot plan, build, probe cursor-agent or push a PR, and step 2 skips on it.
+# The stamp (reported by step 2) is cleared HERE on a good fetch, not in step 2 — a tick that
+# fetched fine and then stopped early on a branch or a merge window must still count as back.
+OFFLINE=0
+OFFLINE_STAMP="${TICK_LOG_DIR}/.offline-since"
+OFFLINE_REPORTED_FILE="${OFFLINE_STAMP}.reported"
+if git -C "$REPO_ROOT" fetch -q origin main; then
+    rm -f "$OFFLINE_STAMP" "$OFFLINE_REPORTED_FILE"
+else
+    OFFLINE=1; warn "could not fetch origin/main — working from what is on disk"
+fi
 
 # --- 0. Carry out the merge windows that were decided ----------------------------------------
 # Before grooming, so a merge frees the lane in the SAME tick rather than a hour later, and so
@@ -372,6 +383,49 @@ FAIL_STAMP="${TICK_LOG_DIR}/.run-failing-since"
 FAIL_COUNT_FILE="${FAIL_STAMP}.count"
 FAIL_REPORTED_FILE="${FAIL_STAMP}.reported"
 FAIL_THRESHOLD="${IMPLEMENTER_FAIL_ALERT_AFTER:-3}"
+
+# An unreachable origin is not the lane's fault and no retry inside this hour can fix it, so
+# it does not feed the failure streak below. The 2026-09-19/20 "failing (29h)" mail was three
+# of these: two ticks that could not reach github.com died in preflight as "gh is not
+# authenticated", the third woke from clamshell sleep mid-plan and started cursor-agent
+# before Wi-Fi was back. The streak stamps are left alone on purpose — a real streak that
+# straddles an offline hour should not be reset by it.
+#
+# But `git fetch` fails for more than a shut lid: an expired ssh key, a changed host key, a
+# renamed remote. Those never clear on their own, and a plain exit 0 would be the 2026-09-06
+# hole again — silent forever, indistinguishable from a quiet queue. So the same shape as the
+# on-branch reporter above: stamp the first miss, clear it on the next good fetch (at the
+# fetch, top of file), and mail once a day while it persists past 24h.
+if [[ "$OFFLINE" == "1" ]]; then
+    [[ -f "$OFFLINE_STAMP" ]] || date +%s >"$OFFLINE_STAMP"
+    OFFLINE_HOURS=$(( ($(date +%s) - $(cat "$OFFLINE_STAMP")) / 3600 ))
+    log "step 2 skipped: origin/main unreachable (${OFFLINE_HOURS}h). Nothing planned, built or spent; the next tick retries."
+    LAST_REPORTED=$(cat "$OFFLINE_REPORTED_FILE" 2>/dev/null || echo 0)
+    if (( OFFLINE_HOURS >= 24 )) && (( OFFLINE_HOURS >= LAST_REPORTED + 24 )); then
+        echo "$OFFLINE_HOURS" >"$OFFLINE_REPORTED_FILE"
+        NOTE=$(mktemp -t wstickoffline)
+        {
+            echo "VERDICT: implementer builds paused ${OFFLINE_HOURS}h — origin/main unreachable."
+            echo
+            echo "Every tick for ${OFFLINE_HOURS}h failed to fetch origin/main, so no build was started."
+            echo "A laptop offline for a day is one explanation; an expired ssh key, a changed GitHub"
+            echo "host key or a renamed remote are the others, and those never clear on their own."
+            echo "Grooming still ran. Check: git -C ${REPO_ROOT} fetch origin main"
+        } >"$NOTE"
+        python3 "${REPO_ROOT}/scripts/send-report-mail.py" --to "${AUDIT_MAIL_TO:-mail@magnus-goedde.de}" \
+            --subject "WhisperShortcut implementer builds paused (${OFFLINE_HOURS}h offline)" --body-file "$NOTE" \
+            --verdict needs-fix --verdict-detail "The build lane has started nothing for ${OFFLINE_HOURS}h \
+because origin/main could not be fetched on any tick. If the machine was simply offline this clears \
+itself on the next good fetch; if it is a key or remote problem it will not, and from outside both look \
+like an empty queue. Run the fetch below to tell them apart." \
+            --title "Implementer builds paused (offline)" \
+            --meta "Unreachable for=${OFFLINE_HOURS}h" \
+            || osascript -e "display notification \"origin/main unreachable for ${OFFLINE_HOURS}h\" with title \"Implementer builds paused\"" >/dev/null 2>&1
+        rm -f "$NOTE"
+    fi
+    log "tick done (groom only)"
+    exit 0
+fi
 
 log "step 2: starting the next build if one is due"
 RUN_OUT="$(mktemp -t wstickrun)"
