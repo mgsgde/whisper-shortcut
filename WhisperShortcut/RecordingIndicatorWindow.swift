@@ -40,9 +40,11 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var isBuffering = false
   /// `.speaking` only: the rate currently applied to playback.
   @Published var speed: ReadAloudSpeed = SettingsDefaults.readAloudSpeed
-  /// `.speaking` only: playhead and received audio, in seconds of source audio.
+  /// `.speaking` only: playhead, total length and received audio, in seconds of source audio.
+  /// `duration` is an estimate until synthesis finishes; `received` bounds where a seek can land.
   @Published var position: TimeInterval = 0
   @Published var duration: TimeInterval = 0
+  @Published var received: TimeInterval = 0
   /// `.speaking` only: the user is dragging the scrubber; progress updates leave the knob alone.
   @Published var scrubPosition: TimeInterval?
 
@@ -152,7 +154,9 @@ private struct SpeedButton: View {
   }
 }
 
-/// Thin track with a knob; dragging previews the target and seeks on release.
+/// Thin track with a knob; dragging previews the target and seeks on release. The track is drawn
+/// in three tones: played, received-but-not-played, and not yet synthesized. Drags stop at the
+/// end of the received audio — there is nothing to seek into beyond it.
 private struct ScrubberView: View {
   @ObservedObject var model: RecordingIndicatorModel
   let onSeek: (TimeInterval) -> Void
@@ -168,9 +172,12 @@ private struct ScrubberView: View {
       let width = geometry.size.width
       let shown = model.scrubPosition ?? model.position
       let fraction = model.duration > 0 ? min(1, max(0, shown / model.duration)) : 0
+      let receivedFraction = model.duration > 0 ? min(1, max(0, model.received / model.duration)) : 0
       let knobX = fraction * width
       ZStack(alignment: .leading) {
         Capsule().fill(Color.white.opacity(0.25)).frame(height: Metrics.trackHeight)
+        Capsule().fill(Color.white.opacity(0.45))
+          .frame(width: receivedFraction * width, height: Metrics.trackHeight)
         Capsule().fill(Color.white).frame(width: knobX, height: Metrics.trackHeight)
         Circle()
           .fill(Color.white)
@@ -184,7 +191,7 @@ private struct ScrubberView: View {
           .onChanged { value in
             guard model.duration > 0 else { return }
             let fraction = min(1, max(0, value.location.x / width))
-            model.scrubPosition = fraction * model.duration
+            model.scrubPosition = min(fraction * model.duration, model.received)
           }
           .onEnded { _ in
             guard let target = model.scrubPosition else { return }
@@ -394,9 +401,10 @@ final class RecordingIndicatorManager {
   }
 
   /// Feeds the scrubber. Ignored while the user is dragging it, so the knob follows the mouse.
-  func updateProgress(position: TimeInterval, duration: TimeInterval) {
+  func updateProgress(position: TimeInterval, duration: TimeInterval, received: TimeInterval) {
     guard model.phase == .speaking else { return }
     model.duration = duration
+    model.received = received
     if model.scrubPosition == nil { model.position = position }
   }
 

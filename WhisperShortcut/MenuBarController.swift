@@ -134,8 +134,8 @@ class MenuBarController: NSObject {
     onBufferingChanged: { isBuffering in
       RecordingIndicatorManager.shared.updateBuffering(isBuffering)
     },
-    onProgress: { position, duration in
-      RecordingIndicatorManager.shared.updateProgress(position: position, duration: duration)
+    onProgress: { position, duration, received in
+      RecordingIndicatorManager.shared.updateProgress(position: position, duration: duration, received: received)
     })
 
   // MARK: - Configuration
@@ -572,7 +572,8 @@ class MenuBarController: NSObject {
       // utterance runs on — the transport comes back once the pill is free again.
       if ttsPlayback.isPlaying {
         indicator.showSpeaking(isPaused: ttsPlayback.isPaused, speed: ReadAloudPreferences.speed)
-        indicator.updateProgress(position: ttsPlayback.position, duration: ttsPlayback.duration)
+        indicator.updateProgress(
+          position: ttsPlayback.position, duration: ttsPlayback.duration, received: ttsPlayback.received)
       } else {
         indicator.hide()
       }
@@ -2303,12 +2304,15 @@ class MenuBarController: NSObject {
   /// on the first chunk instead of after the merge; the producer's returned `Data` is only used as
   /// a fallback for producers that never emit a chunk. The producer call runs inside
   /// `currentReadAloudTask` so a subsequent Stop trigger can cancel it mid-flight.
+  /// - Parameter text: What is about to be spoken, before any Smart Rewrite; its length seeds the
+  ///   scrubber's provisional total (`TTSPlaybackSession.begin(expectedCharacters:)`).
   private func beginReadAloudProcessing(
+    text: String,
     producer: @escaping (_ onChunkReady: @escaping (Data, Int, Int) -> Void) async throws -> Data
   ) {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
-    ttsPlayback.begin()
+    ttsPlayback.begin(expectedCharacters: text.count)
 
     currentReadAloudTask = Task { [weak self] in
       do {
@@ -2384,7 +2388,7 @@ class MenuBarController: NSObject {
     // Chat-reply path: the text is LLM-generated prose intended for human reading, so skip the
     // Smart Rewrite Gemini call. The global-selection path keeps the default (true) because a
     // selection can be code/markdown/log-output.
-    beginReadAloudProcessing { [speechService] onChunkReady in
+    beginReadAloudProcessing(text: trimmedText) { [speechService] onChunkReady in
       try await speechService.readProseAloud(trimmedText, onChunkReady: onChunkReady)
     }
   }
@@ -3016,7 +3020,7 @@ extension MenuBarController: ShortcutDelegate {
       showNoTextSelectedForReadAloud()
       return
     }
-    beginReadAloudProcessing { [speechService] onChunkReady in
+    beginReadAloudProcessing(text: selectedText) { [speechService] onChunkReady in
       try await speechService.readSelectionAloud(selectedText, onChunkReady: onChunkReady)
     }
   }

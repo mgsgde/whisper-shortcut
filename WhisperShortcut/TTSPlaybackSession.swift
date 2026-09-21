@@ -29,16 +29,18 @@ final class TTSPlaybackSession {
   /// Flipped to true when the player's queue ran dry while synthesis is still delivering (a gap
   /// between chunks), back to false when the next chunk is scheduled. Drives the pill's spinner.
   private let onBufferingChanged: (Bool) -> Void
-  /// Ten times a second while the graph is up: playhead and the audio received so far, in seconds
-  /// of source audio (independent of the playback rate). Drives the pill's scrubber.
-  private let onProgress: (_ position: TimeInterval, _ duration: TimeInterval) -> Void
+  /// Ten times a second while the graph is up: playhead, total length and the audio received so
+  /// far, in seconds of source audio (independent of the playback rate). Drives the pill's
+  /// scrubber. `duration` is an estimate from the text length until the stream closes (see
+  /// `duration`); `received` is the part of the bar the user can actually seek into.
+  private let onProgress: (_ position: TimeInterval, _ duration: TimeInterval, _ received: TimeInterval) -> Void
 
   init(
     onPlaybackStarted: @escaping () -> Void,
     onPlaybackCompleted: @escaping () -> Void,
     onFailure: @escaping (Error) -> Void,
     onBufferingChanged: @escaping (Bool) -> Void,
-    onProgress: @escaping (_ position: TimeInterval, _ duration: TimeInterval) -> Void
+    onProgress: @escaping (_ position: TimeInterval, _ duration: TimeInterval, _ received: TimeInterval) -> Void
   ) {
     self.onPlaybackStarted = onPlaybackStarted
     self.onPlaybackCompleted = onPlaybackCompleted
@@ -68,8 +70,13 @@ final class TTSPlaybackSession {
   /// seek back into audio the player node has already consumed. A minute of 24 kHz mono Float32
   /// is under 6 MB — cheap for what it buys.
   private var receivedChunks: [AVAudioPCMBuffer] = []
-  /// Total frames in `receivedChunks`; the scrubber's (growing) upper bound.
+  /// Total frames in `receivedChunks`; the scrubber's upper bound once the stream is closed, and
+  /// the end of the seekable region before that.
   private var totalFrames: AVAudioFramePosition = 0
+  /// Expected length of the whole utterance, from the text length
+  /// (`AppConstants.ttsEstimatedSecondsPerCharacter`). Holds the scrubber's end still while
+  /// chunks are still arriving; `closeStream` retires it in favour of the exact length.
+  private var estimatedDuration: TimeInterval = 0
 
   /// Buffers handed to the player node in the current *segment*, and how many of them have
   /// finished playing. A segment is what one `play()` covers: everything from the first chunk
@@ -113,17 +120,24 @@ final class TTSPlaybackSession {
   var isStreamClosed: Bool { streamClosed }
   /// True once at least one chunk was scheduled, i.e. the streaming path is in use.
   var hasScheduledChunks: Bool { !receivedChunks.isEmpty }
-  /// Seconds of source audio received so far.
-  var duration: TimeInterval { Double(totalFrames) / Self.sampleRate }
+  /// Length of the utterance in seconds of source audio: exact once the stream is closed, until
+  /// then the larger of the text-length estimate and what has arrived. Never shrinks mid-stream,
+  /// so the knob does not lurch backwards when a long chunk lands.
+  var duration: TimeInterval { streamClosed ? received : max(received, estimatedDuration) }
+  /// Seconds of source audio received so far — how far the user can seek.
+  var received: TimeInterval { Double(totalFrames) / Self.sampleRate }
   /// Playhead in seconds of source audio.
   var position: TimeInterval { Double(currentFrame) / Self.sampleRate }
 
   // MARK: - Lifecycle
 
   /// Resets the per-session chunk bookkeeping. Called before the first chunk of a Read Aloud.
-  func begin() {
+  /// - Parameter expectedCharacters: Length of the text about to be spoken, for the scrubber's
+  ///   provisional total. 0 when unknown — the bar then grows with the received audio as before.
+  func begin(expectedCharacters: Int = 0) {
     receivedChunks = []
     totalFrames = 0
+    estimatedDuration = Double(expectedCharacters) * AppConstants.ttsEstimatedSecondsPerCharacter
     scheduledChunkCount = 0
     drainedChunkCount = 0
     segmentGeneration = 0
@@ -275,6 +289,11 @@ final class TTSPlaybackSession {
     streamClosed = true
     acceptingChunks = false
     guard let token = currentPlaybackToken else { return }
+    if estimatedDuration > 0 {
+      DebugLogger.logDebug(
+        "TTS-PLAYBACK: Stream closed — scrubber total \(formatSeconds(estimatedDuration)) estimated → \(formatSeconds(received)) exact")
+    }
+    onProgress(position, duration, received)
     completeIfDrained(token: token)
   }
 
@@ -337,7 +356,7 @@ final class TTSPlaybackSession {
       playerNode.play()
     }
     DebugLogger.log("TTS-PLAYBACK: Seeked to \(formatSeconds(position)) / \(formatSeconds(duration))")
-    onProgress(position, duration)
+    onProgress(position, duration, received)
     clearStarvation()
   }
 
@@ -360,7 +379,7 @@ final class TTSPlaybackSession {
     progressTimer?.invalidate()
     let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
       guard let self, self.isPlaying else { return }
-      self.onProgress(self.position, self.duration)
+      self.onProgress(self.position, self.duration, self.received)
     }
     RunLoop.main.add(timer, forMode: .common)
     progressTimer = timer

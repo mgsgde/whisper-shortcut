@@ -327,6 +327,14 @@ Output rules (CRITICAL):
   /// 0.7 = 70% of chunk size = minimum 700 chars per chunk (when chunk size is 1000).
   static let ttsChunkMinSizeRatio: Double = 0.7
 
+  /// Seconds of speech per character of text, for the scrubber's total while synthesis is still
+  /// in flight. Until the stream closes the pill only knows how much audio has *arrived*, and a
+  /// bar whose end grows with every chunk is useless for seeking (measured 2026-09-21: the knob
+  /// sat at 100 % on a 6.6-s opener, then snapped to 17 % when the 33-s follower landed).
+  /// Measured 2026-09-21, German prose, Gemini 3.1 Flash TTS: 428 chars → 39.4 s (0.092 s/char),
+  /// 1759 chars → 130.8 s (0.074 s/char). Once every chunk is in, the exact length replaces it.
+  static let ttsEstimatedSecondsPerCharacter: Double = 0.085
+
   // MARK: - Live Meeting Transcription
   /// Minimum chunk duration before silence-based rotation is allowed. Kept below the smallest
   /// selectable chunk interval (15s) so silence-based early rotation still has a window to fire
