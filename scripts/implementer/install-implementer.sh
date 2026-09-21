@@ -27,7 +27,7 @@ IMPLEMENTER_ENABLED=0
 IMPLEMENTER_PLAN_AGENT=claude                 # empty = build with no plan (a downgrade, say so)
 IMPLEMENTER_PLAN_MODEL=claude-opus-5
 IMPLEMENTER_BUILD_AGENT=cursor                # cursor | claude
-IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high
+IMPLEMENTER_BUILD_MODEL=grok-4.7-high
 IMPLEMENTER_REVIEW_AGENT=claude               # claude | none — never cursor
 IMPLEMENTER_REVIEW_MODEL=claude-opus-5
 
