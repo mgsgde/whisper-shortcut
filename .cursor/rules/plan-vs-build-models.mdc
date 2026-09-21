@@ -1,5 +1,5 @@
 ---
-description: Claude Opus 5 proposes and plans; Cursor Grok 4.6 implements. Never the other way around.
+description: Claude Opus 5 proposes and plans; Grok 4.7 implements. Never the other way around.
 alwaysApply: true
 ---
 
@@ -11,7 +11,7 @@ Same split as sabaki.dance. The September 2026 plan commit that shipped Correct 
 | --- | --- | --- |
 | Propose (usage / model-audit / growth / architect) | Claude Opus 5 | Judgement. Cursor proposals have been bad. |
 | Plan (implementer plan step, interactive plans) | Claude Opus 5 (`claude-opus-5`) | Decides HOW. Writes one plan file, no code. |
-| Build (implementer, "implement this") | Cursor Grok 4.6 (`cursor-grok-4.6-high`) | Types the code from a plan. |
+| Build (implementer, "implement this") | Grok 4.7 (`grok-4.7-high`) | Types the code from a plan. |
 | Judge (implementer review) | Claude Opus 5 | Builder never judges its own diff. |
 
 **In an interactive Cursor session (this is Grok):**

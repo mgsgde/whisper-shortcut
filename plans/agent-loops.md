@@ -156,7 +156,7 @@ scripts/implementer/run-implementer.sh   ← STEP 2, needs your checkout on main
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
         │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
         │    Opus 5 writes plans/implementer-plans/row-<n>.md (one file, no code)
-        │    Grok 4.6 executes that plan via .agents/skills/implement-proposal/SKILL.md
+        │    Grok 4.7 executes that plan via .agents/skills/implement-proposal/SKILL.md
         │ 3. gates re-run BY THE RUNNER: scope allowlist · clean tree · pollution check ·
         │    xcodebuild · full test plan   (an agent cannot skip what it does not control)
         │ 4. a DIFFERENT model reviews the diff → APPROVE | BLOCK (one rework cycle, then stop)
@@ -194,10 +194,10 @@ Tick log: `build/logs/implementer/tick-<date>.log`.
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
 
 - **Opus plans and judges, Grok builds.** Claude Opus 5 writes the plan and reviews the
-  diff; Cursor Grok 4.6 types the code. Same proposer-is-never-the-judge rule as the loops,
+  diff; Grok 4.7 types the code. Same proposer-is-never-the-judge rule as the loops,
   one step earlier: the model that decided HOW is not the one that talks itself into
   believing the diff implements it. The IDs are config (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`,
-  `IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
+  `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
   Scout/meta loops may propose adjusting them; they may never propose removing the plan
   step or the review step, and they may never put Cursor on a propose/plan/judge job.
   The *interactive* counterpart — Opus 5 session, Fable 5.1 advisor judges plan and diff, Grok
@@ -258,7 +258,7 @@ changes, re-measure it rather than editing the prose.
 | --- | --- | --- | --- |
 | The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars. Default model is `claude-opus-5` (usage-review used to default to Sonnet) | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
 | Implementer plan step | Max subscription (`claude-opus-5`) | $0 | 30-min timeout; writes one file; a planner that touches anything else fails the run |
-| Implementer build agent | **Cursor subscription**, model `cursor-grok-4.6-high` | quota only | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
+| Implementer build agent | **Cursor subscription**, model `grok-4.7-high` (since 2026-09-21; was `cursor-grok-4.6-high`) | quota only for the Cursor-hosted 4.6 id — whether the un-prefixed 4.7 id stays inside the quota is unverified; check the Cursor usage dashboard after the first run | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
 | Implementer review pass | Max subscription (`claude-opus-5`) | $0 | one rework cycle, then the run stops |
 | Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
 | Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
@@ -340,7 +340,7 @@ Sabaki):
 | | sabaki.dance | whisper-shortcut | Why |
 | --- | --- | --- | --- |
 | Scheduler/host | systemd timers on the minipc | launchd on this Mac | The data (usage logs, Keychain auth for `asc`/`gh`, audio pipeline) only exists here |
-| Agent runner | `cursor-agent` builds (`cursor-grok-4.6-high`); `claude -p` plans and judges (`claude-opus-5`) | same split, same IDs | Same billing pools; both pin models + budget caps in the job script |
+| Agent runner | `cursor-agent` builds (`grok-4.7-high`); `claude -p` plans and judges (`claude-opus-5`) | same split; sabaki still pins `cursor-grok-4.6-high` | Same billing pools; both pin models + budget caps in the job script |
 | Ledger writes | paste-ready block, human pastes (a dirty tree breaks the minipc's deploy pull) | job appends directly (local working copy, user reviews via git diff) | Same auditability, one less manual step |
 | "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
 | Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |

@@ -97,9 +97,10 @@ In an Opus 5 session:
     repo's tools and MCP servers, so anything that needs `scripts/logs.sh`, `asc`, `gh`, the
     iOS Simulator MCP or the browser goes here. Same per-token price as the session itself, so
     it earns its keep only by keeping the main context small on a large sweep.
-  - Cursor Grok via the CLI the implementer already uses, for **typing from a finished plan**:
-    `cursor-agent -p --output-format text --force --trust --model cursor-grok-4.6-high "<brief>"`
-    (`cursor-agent --list-models` prints the ids). Pinned to `cursor-grok-4.6-high` — never
+  - Grok via the Cursor CLI the implementer already uses, for **typing from a finished plan**:
+    `cursor-agent -p --output-format text --force --trust --model grok-4.7-high "<brief>"`
+    (`cursor-agent --list-models` prints the ids). Pinned to `grok-4.7-high` (owner ruling
+    2026-09-21, replacing `cursor-grok-4.6-high`; note the 4.7 ids carry no `cursor-` prefix) — never
     `auto` (bills at the routed model's list price), never a `-fast` variant. Cheapest tier, so
     bulk edits from an unambiguous plan belong here.
   - Either way the brief stands on its own, because the delegate has none of this conversation:
@@ -134,7 +135,7 @@ claiming he did is not the thing itself.
 
 **Scheduled work is a different tier and does NOT follow this split.** The four launchd loops run
 on `claude-opus-5` (Max subscription, no API key), and the implementer pipeline keeps its own
-pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=cursor-grok-4.6-high`,
+pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`,
 `IMPLEMENTER_REVIEW_MODEL=claude-opus-5` — `plans/agent-loops.md`). This section is not a mandate
 to retune them; a meta-loop that wants Fable in the pipeline files that as a proposal.
 
