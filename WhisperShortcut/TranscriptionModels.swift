@@ -1027,6 +1027,13 @@ struct GeminiTTSRequest: Codable {
 }
 
 // MARK: - Transcription Error
+
+/// Which on-device Whisper phase overran its wall-clock budget (`TranscriptionError.localProcessingTimeout`).
+enum LocalProcessingStage: String, Equatable {
+  case modelLoad
+  case decode
+}
+
 enum TranscriptionError: Error, Equatable {
   case noGoogleAPIKey
   case invalidAPIKey
@@ -1064,6 +1071,10 @@ enum TranscriptionError: Error, Equatable {
   /// Dictate Prompt ran with nothing selected. Appended last on purpose: these cases are logged
   /// by their integer index (`TranscriptionError error 21`), so inserting above renumbers history.
   case noSelectedText
+  /// An on-device Whisper model load or decode hit its wall-clock deadline (`WallClockDeadline`).
+  /// Separate from `requestTimeout` so the user-facing copy does not blame the network.
+  /// Appended last for the same index-logging reason as `noSelectedText`.
+  case localProcessingTimeout(stage: LocalProcessingStage, seconds: Int)
 
   var title: String {
     switch self {
@@ -1094,6 +1105,7 @@ enum TranscriptionError: Error, Equatable {
     case .voiceRequiresAPIKey: return "Voice Requires API Key"
     case .subscriptionRequired: return "Subscription Required"
     case .noSelectedText: return "Nothing Selected"
+    case .localProcessingTimeout: return "Local Processing Timeout"
     }
   }
 
@@ -1117,7 +1129,7 @@ enum TranscriptionError: Error, Equatable {
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
+    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
     case .rateLimited(let retryAfter, _):
