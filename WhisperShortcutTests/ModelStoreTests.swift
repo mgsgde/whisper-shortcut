@@ -151,6 +151,33 @@ struct ModelStoreTests {
     #expect(plain.fetchCalls == 0)
   }
 
+  @Test("A load that timed out or was cancelled is not treated as corrupt")
+  func timedOutOrCancelledLoadIsNotCorrupt() async {
+    let timedOut = makeStore()
+    timedOut.heals = true
+    timedOut.writeMarker(.small)
+    timedOut.loadBehaviour = { _ in throw TranscriptionError.requestTimeout }
+    await #expect(throws: TranscriptionError.requestTimeout) {
+      try await timedOut.ensureReady(.small)
+    }
+    #expect(timedOut.fetchCalls == 0)
+    #expect(timedOut.loadCalls == 1)
+    #expect(timedOut.unloadCalls.isEmpty)
+    #expect(timedOut.isModelAvailable(.small))
+
+    let cancelled = makeStore()
+    cancelled.heals = true
+    cancelled.writeMarker(.small)
+    cancelled.loadBehaviour = { _ in throw CancellationError() }
+    await #expect(throws: CancellationError.self) {
+      try await cancelled.ensureReady(.small)
+    }
+    #expect(cancelled.fetchCalls == 0)
+    #expect(cancelled.loadCalls == 1)
+    #expect(cancelled.unloadCalls.isEmpty)
+    #expect(cancelled.isModelAvailable(.small))
+  }
+
   // MARK: - Delete
 
   @Test("Delete cancels a running download first, so the download cannot re-create the files")
