@@ -187,7 +187,8 @@ actor LocalSpeechService {
           "logPrefix": "LOCAL-SPEECH",
           "model": modelType.rawValue
         ])
-      throw TranscriptionError.requestTimeout
+      throw TranscriptionError.localProcessingTimeout(
+        stage: .modelLoad, seconds: Int(Self.modelLoadDeadline))
     } catch is CancellationError {
       throw CancellationError()
     } catch {
@@ -594,7 +595,7 @@ actor LocalSpeechService {
           "logPrefix": "LOCAL-SPEECH",
           "model": currentModelType?.rawValue ?? "unknown"
         ])
-      throw TranscriptionError.requestTimeout
+      throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
     } catch {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")

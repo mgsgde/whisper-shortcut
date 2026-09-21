@@ -299,6 +299,9 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
   /// A wall-clock deadline on load is not a corrupt folder. Same shape as `isCancellation`.
   nonisolated static func isDeadline(_ error: Error) -> Bool {
-    (error as? TranscriptionError) == .requestTimeout
+    switch error as? TranscriptionError {
+    case .requestTimeout, .localProcessingTimeout: return true
+    default: return false
+    }
   }
 }

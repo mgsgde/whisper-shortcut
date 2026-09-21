@@ -193,6 +193,28 @@ struct SpeechErrorFormatter {
         • Try with a shorter recording
         """
         
+    case .localProcessingTimeout(let stage, let seconds):
+      let action: String
+      switch stage {
+      case .modelLoad: action = "load"
+      case .decode: action = "transcribe your recording"
+      }
+      return """
+        ⏰ Local Model Timeout
+
+        The on-device model took too long to \(action) (over \(seconds) seconds).
+
+        This usually means:
+        • The Mac is under heavy load or low on memory
+        • The model is still being compiled after a download or macOS update
+        • The recording is very long for this model size
+
+        Solutions:
+        • Wait a moment and try again
+        • Try a smaller model in Settings → Speech to Text
+        • Try with a shorter recording
+        """
+
     case .resourceTimeout:
       return """
         ⏰ Resource Timeout
@@ -375,6 +397,8 @@ struct SpeechErrorFormatter {
       return "⏰ Network Error"
     case .requestTimeout:
       return "⏰ Request Timeout"
+    case .localProcessingTimeout:
+      return "⏰ Local Model Timeout"
     case .resourceTimeout:
       return "⏰ Resource Timeout"
     case .serverError:
