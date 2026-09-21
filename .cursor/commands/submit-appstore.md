@@ -105,6 +105,21 @@ skill — read its "Submit a version for review" section first.
    asc versions attach-build --version-id "<VERSION_ID>" --build "<BUILD_ID>"
    ```
    (If the version already exists in an editable state, skip `create` and just attach.)
+
+   **If the previous version is still `WAITING_FOR_REVIEW`** (Apple has not looked at it yet and
+   you are shipping a superset), do not queue a second review — fold it in. Cancel its submission
+   and rename the version instead of creating a new one:
+   ```bash
+   asc review status --app 6749648401                       # latestSubmission.id + state
+   asc review submissions-cancel --id "<SUBMISSION_ID>" --confirm   # state → CANCELING
+   asc versions update --version-id "<VERSION_ID>" --version "$VERSION"   # 8.20 → 8.21
+   asc versions list --app 6749648401 --platform MAC_OS --output table    # confirm the rename
+   ```
+   The version drops to `DEVELOPER_REJECTED` but stays fully editable; attach the new build to it
+   and continue with step 7. `asc versions update` prints no JSON on success — verify with the
+   `list`, not by parsing its output. What's New must then be **cumulative** over every version
+   folded in (8.15→8.16, 8.20→8.21→8.22 all shipped this way). If the previous version is already
+   `READY_FOR_DISTRIBUTION`, `create` as above.
 7. **Set What's New for every active localization.** Copied metadata still carries the *old*
    version's notes, so every configured locale needs the new text or App Store Connect blocks
    the submission with "This field is required".
@@ -125,11 +140,30 @@ skill — read its "Submit a version for review" section first.
    cp -R "$DIR" "$DIR.orig"                                                 # pristine reference
    # …edit only the whatsNew value in each .strings file…
    diff -r "$DIR.orig" "$DIR"                                               # THE guard — see below
-   asc localizations upload --version "<VERSION_ID>" --path "$DIR" --dry-run
-   asc localizations upload --version "<VERSION_ID>" --path "$DIR"
+   for f in "$DIR"/*.strings; do                                            # per-locale update, NOT upload
+     loc=$(basename "$f" .strings)
+     text=$(grep -o '"whatsNew" = ".*";' "$f" | sed -E 's/^"whatsNew" = "(.*)";$/\1/' | sed 's/\\n/\n/g')
+     asc localizations update --version "<VERSION_ID>" --locale "$loc" --whats-new "$text"
+   done
    ```
 
-   > **`upload` pushes every field in the file, not just `whatsNew`.** A `.strings` file also
+   > **`asc localizations upload` silently drops `whatsNew`.** Observed on every version since
+   > 8.15 (2026-09-14): it prints `Warning: 'whatsNew' cannot be set for this version (initial
+   > releases have no What's New section). Retrying without it.` once per locale, writes the other
+   > five fields, and its result JSON still says `"action":"update"` for every locale — so the
+   > What's New stays the copied-forward old text and nothing in the exit code tells you. The
+   > per-locale `asc localizations update --whats-new` goes through. Keep the `download` +
+   > `diff -r` as the guard for the *other* fields, but write What's New with `update`, and read
+   > it back afterwards: `asc localizations list --version "<VERSION_ID>"` → every locale's
+   > `whatsNew` must start with the new text.
+   >
+   > **Apple rejects symbols in What's New.** `✕` fails with `What's New in This Version can't
+   > contain the following character(s): ✕.` (8.15); assume the same for ⏸ ▶ ⏪ ⏩. Name controls
+   > in words — "Stop, Pause / Resume, skip 10 seconds" — not by their glyphs. Bullets `•`, `×`
+   > and `–` are fine.
+
+   > **If you do reach for `upload` (to fix one of the other five fields): it pushes every field
+   > in the file.** A `.strings` file also
    > carries `description`, `keywords`, `marketingUrl`, `promotionalText` and `supportUrl`, and
    > `upload` rewrites all six for every locale in the directory. Always `download` first and
    > change *only* the `whatsNew` line.
@@ -140,8 +174,8 @@ skill — read its "Submit a version for review" section first.
    > set is right — nothing more. The `diff -r` against the pristine copy is what actually tells
    > you which fields you are about to change, so do not skip it.
 
-   For a single locale, `asc localizations update --version "<VERSION_ID>" --locale "de-DE"
-   --whats-new "..."` still works and touches nothing else.
+   `asc localizations update --whats-new` touches nothing else — no need to re-send the other
+   five fields when only What's New changes, which is the normal case.
 
    **While the directory is in hand, check the carried-over fields agree across locales.** Step 6
    copies them forward from the previous live version, so any inconsistency is inherited silently
