@@ -80,6 +80,26 @@ actor LocalSpeechService {
   /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime —
   /// but only for a model that is no longer selected, see `unloadIfNotSelected`.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
+
+  /// Wall-clock ceilings for the two WhisperKit calls that previously ran until the user
+  /// cancelled. Turbo weights load in 3.7–6.1 s on an M1 Pro; `preparingMessage` promises "a few
+  /// minutes" for the one-time compile; the 14-minute ANE compile is what `usesNeuralEngine`
+  /// already prevents. 300 s honours that copy and still catches the pathological case. Decode
+  /// realtime-factor on real recordings is 0.34–0.54 with Turbo
+  /// (`plans/active/streaming-dictate.md`); large-v3 is several times slower. Floor + 3× audio
+  /// is 4–9× the measured cost and fires only on a wedged decode, never on a long recording on
+  /// a slow Mac.
+  static let modelLoadDeadline: TimeInterval = 300
+  static let decodeDeadlineFloor: TimeInterval = 60
+  static let decodeDeadlineRealtimeFactor: Double = 3
+  static func decodeDeadline(forAudioSeconds seconds: Double?) -> TimeInterval {
+    decodeDeadlineFloor + decodeDeadlineRealtimeFactor * max(0, seconds ?? 0)
+  }
+
+  private final class LoadedWhisperKit: @unchecked Sendable {
+    let kit: WhisperKit
+    init(_ kit: WhisperKit) { self.kit = kit }
+  }
   
   private init() {}
   
@@ -106,6 +126,12 @@ actor LocalSpeechService {
     }
     
     DebugLogger.log("LOCAL-SPEECH: Using model path: \(modelPath.path)")
+
+    guard ModelManager.shared.isModelAvailable(modelType) else {
+      DebugLogger.logError(
+        "LOCAL-SPEECH: Not loading \(modelType.displayName) — its compiled model folder is incomplete; the download has to finish first")
+      throw TranscriptionError.modelNotAvailable(modelType)
+    }
     
     // Initialize WhisperKit with the specific model folder.
     //
@@ -116,19 +142,25 @@ actor LocalSpeechService {
     let encoderCompute: MLComputeUnits = modelType.usesNeuralEngine ? .cpuAndNeuralEngine : .cpuAndGPU
     // `prefillCompute` exists only on WhisperKit main after 1.1.0; the 1.1.0 pin we
     // ship against has no such knob — prefill follows `textDecoderCompute`.
-    let config = WhisperKitConfig(
-      modelFolder: modelPath.path,
-      computeOptions: ModelComputeOptions(
-        melCompute: .cpuAndGPU,
-        audioEncoderCompute: encoderCompute,
-        textDecoderCompute: encoderCompute)
-    )
     DebugLogger.log(
       "LOCAL-SPEECH: Compute units — encoder/decoder: \(modelType.usesNeuralEngine ? "CPU+ANE" : "CPU+GPU")")
     let loadStart = CFAbsoluteTimeGetCurrent()
+    let modelPathString = modelPath.path
     
     do {
-      whisperKit = try await WhisperKit(config)
+      // Build `WhisperKitConfig` inside the Sendable closure from String + MLComputeUnits —
+      // the config class itself is not Sendable. Assign actor state only after the call returns.
+      let loaded = try await WallClockDeadline.run(seconds: Self.modelLoadDeadline) {
+        let config = WhisperKitConfig(
+          modelFolder: modelPathString,
+          computeOptions: ModelComputeOptions(
+            melCompute: .cpuAndGPU,
+            audioEncoderCompute: encoderCompute,
+            textDecoderCompute: encoderCompute)
+        )
+        return LoadedWhisperKit(try await WhisperKit(config))
+      }
+      whisperKit = loaded.kit
       currentModelType = modelType
       lastLoadedModelType = modelType
       startLifetimeGuardsIfNeeded()
@@ -143,6 +175,21 @@ actor LocalSpeechService {
       DebugLogger.logSpeech(
         "SPEED: LOCAL-SPEECH load model=\(modelType.rawValue) "
           + "loadMs=\(String(format: "%.0f", elapsed * 1000))")
+    } catch TranscriptionError.requestTimeout {
+      DebugLogger.logError(
+        "LOCAL-SPEECH: model load exceeded \(Int(Self.modelLoadDeadline))s wall-clock deadline for \(modelType.displayName) — aborting (LocalDeadline)")
+      ContextLogger.shared.logSignal(
+        .requestTimedOut, mode: "transcription",
+        detail: [
+          "phase": "transcribing",
+          "stage": "modelLoad",
+          "timeoutSeconds": "\(Int(Self.modelLoadDeadline))",
+          "logPrefix": "LOCAL-SPEECH",
+          "model": modelType.rawValue
+        ])
+      throw TranscriptionError.requestTimeout
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       // Check if error is related to missing or incomplete model files
       let errorMessage = error.localizedDescription
@@ -301,6 +348,7 @@ actor LocalSpeechService {
     } catch {
       DebugLogger.log("LOCAL-SPEECH: Could not determine audio duration")
     }
+    let deadline = Self.decodeDeadline(forAudioSeconds: audioDuration)
     
     // Build promptTokens from dictation prompt if available
     let promptTokens: [Int]? = buildPromptTokens(prompt: prompt, whisperKit: whisperKit)
@@ -315,7 +363,8 @@ actor LocalSpeechService {
     // Transcribe (with fallback retry if prompt causes empty result)
     let decodeStart = CFAbsoluteTimeGetCurrent()
     var transcriptionResults = try await performWhisperTranscription(
-      whisperKit: whisperKit, audioURL: audioURL, decodeOptions: decodeOptions
+      whisperKit: whisperKit, audioURL: audioURL, decodeOptions: decodeOptions,
+      deadline: deadline
     )
     
     // Fallback: if prompt was used and result is empty, retry without prompt (WhisperKit #372)
@@ -324,7 +373,8 @@ actor LocalSpeechService {
       let fallbackOptions = buildDecodingOptions(
         language: language, promptTokens: nil, chunkingStrategy: chunkingStrategy)
       transcriptionResults = try await performWhisperTranscription(
-        whisperKit: whisperKit, audioURL: audioURL, decodeOptions: fallbackOptions
+        whisperKit: whisperKit, audioURL: audioURL, decodeOptions: fallbackOptions,
+        deadline: deadline
       )
     }
     
@@ -493,23 +543,29 @@ actor LocalSpeechService {
   private func performWhisperTranscription(
     whisperKit: WhisperKit,
     audioURL: URL,
-    decodeOptions: DecodingOptions
+    decodeOptions: DecodingOptions,
+    deadline: TimeInterval
   ) async throws -> [TranscriptionResult] {
     let whisperKitStartTime = CFAbsoluteTimeGetCurrent()
+    let audioPath = audioURL.path
     do {
-      let results = try await whisperKit.transcribe(
-        audioPath: audioURL.path,
-        decodeOptions: decodeOptions
-      ) { _ in
-        // Returning false stops the decode at the next token. Before slice 4 this always
-        // returned true, which was harmless: the only decode ran after Stop, with the user
-        // waiting on its result. Now chunks decode *during* the recording, so a cancelled
-        // dictation used to leave the GPU finishing work whose transcript is already discarded.
-        //
-        // `Task.isCancelled` is read from the task that awaits this call, since WhisperKit
-        // invokes the callback synchronously from inside the decoding loop. If that ever stops
-        // holding, this reads false and the behaviour is exactly the pre-slice-4 one.
-        return !Task.isCancelled
+      let results = try await WallClockDeadline.run(seconds: deadline) {
+        try await whisperKit.transcribe(
+          audioPath: audioPath,
+          decodeOptions: decodeOptions
+        ) { _ in
+          // Returning false stops the decode at the next token. Before slice 4 this always
+          // returned true, which was harmless: the only decode ran after Stop, with the user
+          // waiting on its result. Now chunks decode *during* the recording, so a cancelled
+          // dictation used to leave the GPU finishing work whose transcript is already discarded.
+          //
+          // `Task.isCancelled` is read from the deadline's work task. That task is cancelled by
+          // the timer and by the caller's cancellation, so a timed-out decode stops at its next
+          // token instead of finishing on the GPU. WhisperKit invokes the callback synchronously
+          // from inside the decoding loop. If that ever stops holding, this reads false and the
+          // behaviour is exactly the pre-slice-4 one.
+          return !Task.isCancelled
+        }
       }
       let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
       DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
@@ -520,6 +576,25 @@ actor LocalSpeechService {
       lastDecodeTimingsSummary = summary
       DebugLogger.logSpeech("SPEED: LOCAL-SPEECH timings \(summary)")
       return results
+    } catch TranscriptionError.requestTimeout {
+      let audioSecondsText: String
+      if let file = try? AVAudioFile(forReading: audioURL) {
+        audioSecondsText = String(format: "%.2f", Double(file.length) / file.fileFormat.sampleRate)
+      } else {
+        audioSecondsText = "n/a"
+      }
+      DebugLogger.logError(
+        "LOCAL-SPEECH: decode exceeded \(Int(deadline))s wall-clock deadline (audio \(audioSecondsText)s) — aborting (LocalDeadline)")
+      ContextLogger.shared.logSignal(
+        .requestTimedOut, mode: "transcription",
+        detail: [
+          "phase": "transcribing",
+          "stage": "decode",
+          "timeoutSeconds": "\(Int(deadline))",
+          "logPrefix": "LOCAL-SPEECH",
+          "model": currentModelType?.rawValue ?? "unknown"
+        ])
+      throw TranscriptionError.requestTimeout
     } catch {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")

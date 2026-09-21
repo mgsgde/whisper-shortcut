@@ -153,10 +153,12 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     onProgress?(preparingMessage(for: model))
     do {
       try await load(model)
-    } catch where healsCorruptDownloadOnLoadFailure {
+    } catch where healsCorruptDownloadOnLoadFailure && !Self.isCancellation(error) && !Self.isDeadline(error) {
       // A network drop mid-download must NOT wipe the tree: Hub skips files that already
       // landed, so a retry resumes instead of looping from zero. Only a load failure on a
-      // complete-looking folder gets here.
+      // complete-looking folder gets here. A load that ran out of time or was cancelled is
+      // not a corrupt folder; purging 1.6 GB on a slow Mac would be the prewarmer's "far
+      // too destructive" case on the dictation path.
       DebugLogger.logWarning(
         "\(logPrefix): \(model.displayName) failed to load (\(error.localizedDescription)); treating as corrupt and re-downloading once")
       try? removeFiles(of: model)
@@ -293,5 +295,10 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     if let urlError = error as? URLError, urlError.code == .cancelled { return true }
     let nsError = error as NSError
     return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+  }
+
+  /// A wall-clock deadline on load is not a corrupt folder. Same shape as `isCancellation`.
+  nonisolated static func isDeadline(_ error: Error) -> Bool {
+    (error as? TranscriptionError) == .requestTimeout
   }
 }
