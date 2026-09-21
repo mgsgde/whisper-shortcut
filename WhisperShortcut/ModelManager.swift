@@ -184,8 +184,9 @@ final class ModelManager: ModelStore<OfflineModelType> {
       }
       return false
     }
-    guard hasRequiredWhisperKitFiles(at: modelPath) else {
-      DebugLogger.logDebug("MODEL-MANAGER: \(type.displayName) folder exists but missing required files (e.g. AudioEncoder.mlmodelc)")
+    if let missing = Self.incompleteComponent(at: modelPath) {
+      DebugLogger.logDebug(
+        "MODEL-MANAGER: \(type.displayName) folder exists but \(missing) is missing or empty — download incomplete")
       return false
     }
     DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
@@ -201,25 +202,64 @@ final class ModelManager: ModelStore<OfflineModelType> {
   /// `TextDecoderContextPrefill` is deliberately NOT required: it is the prefill cache, and not
   /// every variant in the repo ships it. A model missing it still loads on most paths, and the
   /// case where it does not is handled by the self-heal in `ensureReady` rather than by declaring
-  /// every such model unavailable.
+  /// every such model unavailable. Present but half-written is the 08-31 case — Hub creates the
+  /// `.mlmodelc` directory before moving compiled files into it, so an interrupted download
+  /// leaves that folder in place with no loadable model inside.
   private static let requiredComponents = [
     "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc",
   ]
 
-  private nonisolated func hasRequiredWhisperKitFiles(at modelPath: URL) -> Bool {
-    Self.requiredComponents.allSatisfy { findFile(named: $0, in: modelPath) }
-  }
+  static let optionalComponents = ["TextDecoderContextPrefill.mlmodelc"]
 
-  private nonisolated func findFile(named filename: String, in directory: URL) -> Bool {
-    guard fileManager.fileExists(atPath: directory.path) else { return false }
-    if let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: nil) {
-      for case let fileURL as URL in enumerator {
-        if fileURL.lastPathComponent == filename {
-          return true
-        }
+  static let compiledModelFiles = ["coremldata.bin", "model.mil", "weights/weight.bin"]
+
+  /// First missing `<component>/<file>` under `modelPath`, or nil when the folder is loadable.
+  /// Direct children only — WhisperKit loads `modelFolder/<component>` itself, so a nested
+  /// match was never loadable. A required component must be a complete compiled model; an
+  /// optional one must be complete only when its directory exists.
+  nonisolated static func incompleteComponent(at modelPath: URL) -> String? {
+    for component in requiredComponents {
+      if let missing = firstMissingCompiledFile(in: component, at: modelPath) {
+        return missing
       }
     }
-    return false
+    for component in optionalComponents {
+      let componentURL = modelPath.appendingPathComponent(component)
+      var isDirectory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: componentURL.path, isDirectory: &isDirectory) else {
+        continue
+      }
+      if let missing = firstMissingCompiledFile(in: component, at: modelPath) {
+        return missing
+      }
+    }
+    return nil
+  }
+
+  /// A component is complete when `modelPath/<component>` is a directory and each compiled
+  /// model file is a regular file with size > 0. Missing directory or empty file → that path.
+  private nonisolated static func firstMissingCompiledFile(in component: String, at modelPath: URL) -> String? {
+    let fileManager = FileManager.default
+    let componentURL = modelPath.appendingPathComponent(component)
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: componentURL.path, isDirectory: &isDirectory),
+          isDirectory.boolValue else {
+      return "\(component)/\(compiledModelFiles[0])"
+    }
+    for file in compiledModelFiles {
+      let fileURL = file.split(separator: "/").reduce(componentURL) {
+        $0.appendingPathComponent(String($1))
+      }
+      var isFileDirectory: ObjCBool = false
+      guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isFileDirectory),
+            !isFileDirectory.boolValue,
+            let attrs = try? fileManager.attributesOfItem(atPath: fileURL.path),
+            let size = attrs[.size] as? NSNumber,
+            size.int64Value > 0 else {
+        return "\(component)/\(file)"
+      }
+    }
+    return nil
   }
 
   // MARK: - Ready to use
