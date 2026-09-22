@@ -2537,15 +2537,21 @@ class ChatViewModel: ObservableObject {
     (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  /// `Result` requires its failure type to conform to `Error`. The tool reply is still the
+  /// same `["error": …]` dictionary the call sites used to return directly.
+  private struct EndedMeetingRejection: Error {
+    let body: [String: Any]
+  }
+
   /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
   private func endedMeetingStem(
     notMeeting: String, stillRecording: String
-  ) -> Result<String, [String: Any]> {
+  ) -> Result<String, EndedMeetingRejection> {
     guard session.isMeeting, let stem = session.meetingStem else {
-      return .failure(["error": notMeeting])
+      return .failure(EndedMeetingRejection(body: ["error": notMeeting]))
     }
     if isCurrentSessionTheActiveMeeting {
-      return .failure(["error": stillRecording])
+      return .failure(EndedMeetingRejection(body: ["error": stillRecording]))
     }
     return .success(stem)
   }
@@ -2565,8 +2571,8 @@ class ChatViewModel: ObservableObject {
     ) {
     case .success(let value):
       stem = value
-    case .failure(let body):
-      return body
+    case .failure(let rejection):
+      return rejection.body
     }
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
@@ -2617,8 +2623,8 @@ class ChatViewModel: ObservableObject {
     ) {
     case .success(let value):
       stem = value
-    case .failure(let body):
-      return body
+    case .failure(let rejection):
+      return rejection.body
     }
     let url = MeetingListService.transcriptURL(forStem: stem)
     guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
