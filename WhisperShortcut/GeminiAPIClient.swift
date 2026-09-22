@@ -206,6 +206,17 @@ class GeminiAPIClient {
     static let maxServerErrorRetryAttempts = 6  // Extra attempts for 503/500 server errors
     static let retryDelaySeconds: TimeInterval = 1.5
     static let filesAPIBaseURL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
+    static let safetySettings: [[String: String]] = [
+      ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
+      ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
+    ]
+  }
+
+  /// `:generateContent` URL shared by title generation, structured output, and image generation.
+  private static func generateContentEndpoint(model: String) -> String {
+    "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
   }
   
   // MARK: - Properties
@@ -380,23 +391,6 @@ class GeminiAPIClient {
           }
         }
 
-        // TTS responses: reject empty bodies and log a compact shape summary before decoding.
-        if mode == "TTS" {
-          guard data.count > 0 else {
-            DebugLogger.logError("TTS: Response data is empty")
-            throw TranscriptionError.networkError("Empty response from TTS API")
-          }
-          if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-             let candidates = json["candidates"] as? [[String: Any]],
-             let parts = (candidates.first?["content"] as? [String: Any])?["parts"] as? [[String: Any]] {
-            let inline = parts.first?["inlineData"] as? [String: Any]
-            let base64Len = (inline?["data"] as? String)?.count ?? 0
-            DebugLogger.log("TTS: response candidates=\(candidates.count) parts=\(parts.count) inlineData=\(inline != nil ? "yes (\(base64Len) chars)" : "MISSING")")
-          } else {
-            DebugLogger.logError("TTS: response JSON missing candidates/content/parts — body: \(String(data: data.prefix(300), encoding: .utf8) ?? "<binary>")")
-          }
-        }
-        
         // Now try to decode
         do {
           DebugLogger.log("\(mode): Attempting to decode response...")
@@ -655,12 +649,7 @@ class GeminiAPIClient {
             generationConfig["thinkingConfig"] = thinkingConfig
           }
           body["generationConfig"] = generationConfig
-          body["safetySettings"] = [
-            ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
-            ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
-            ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
-            ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
-          ]
+          body["safetySettings"] = Constants.safetySettings
           let bodyData = try JSONSerialization.data(withJSONObject: body)
           let (bytes, _) = try await self.openSSEStream(
             endpoint: endpoint,
@@ -852,37 +841,32 @@ class GeminiAPIClient {
           // a 19-minute video passes, a 2-hour one is rejected). The API gives no distinguishable
           // reason — same generic INVALID_ARGUMENT as a malformed request — so the only way to
           // tell the cases apart is to retry with the opening window clipped. One attempt only.
-          if !hasYielded, statusSink.code == 400, !didClipVideoForRetry,
-             let clipped = YouTubeVideoLink.clipUnclippedVideoParts(in: effectiveContents) {
-            didClipVideoForRetry = true
-            effectiveContents = clipped
-            if let lastIndex = effectiveContents.indices.last,
-               var parts = effectiveContents[lastIndex]["parts"] as? [[String: Any]] {
-              parts.append(["text": YouTubeVideoLink.fallbackClipNote])
-              effectiveContents[lastIndex]["parts"] = parts
-            }
-            DebugLogger.log(
-              "GEMINI-CHAT-STREAM: HTTP 400 with an unclipped YouTube video — retrying clipped to the first \(YouTubeVideoLink.clipWindowSeconds)s")
+          if !hasYielded, retryYouTubeAttachment(
+            contents: &effectiveContents,
+            alreadyRetried: &didClipVideoForRetry,
+            when: statusSink.code == 400,
+            transform: YouTubeVideoLink.clipUnclippedVideoParts(in:),
+            note: YouTubeVideoLink.fallbackClipNote,
+            log: "GEMINI-CHAT-STREAM: HTTP 400 with an unclipped YouTube video — retrying clipped to the first \(YouTubeVideoLink.clipWindowSeconds)s"
+          ) {
             continue
           }
           // Gemini only opens *public* YouTube videos: a private, unlisted, or region-restricted
           // link comes back as a bare 403 PERMISSION_DENIED. The video was attached automatically
           // from a link in the user's text, so failing the turn punishes the user for a question
           // that may have nothing to do with the video. Retry once without it.
-          if !hasYielded, statusSink.code == 403, !didStripVideoForRetry,
-             let stripped = YouTubeVideoLink.removeVideoParts(in: effectiveContents) {
-            didStripVideoForRetry = true
-            effectiveContents = stripped
-            if let lastIndex = effectiveContents.indices.last,
-               var parts = effectiveContents[lastIndex]["parts"] as? [[String: Any]] {
-              parts.append(["text": YouTubeVideoLink.permissionDeniedNote])
-              effectiveContents[lastIndex]["parts"] = parts
-            }
-            DebugLogger.log(
-              "GEMINI-CHAT-STREAM: HTTP 403 with a YouTube video attached — video is not public, retrying without it")
+          if !hasYielded, retryYouTubeAttachment(
+            contents: &effectiveContents,
+            alreadyRetried: &didStripVideoForRetry,
+            when: statusSink.code == 403,
+            transform: YouTubeVideoLink.removeVideoParts(in:),
+            note: YouTubeVideoLink.permissionDeniedNote,
+            log: "GEMINI-CHAT-STREAM: HTTP 403 with a YouTube video attached — video is not public, retrying without it"
+          ) {
             continue
           }
           // Retry only transient, pre-stream failures (server/unavailable or rate limit).
+          // Not RetryBackoff.isTransientPreFirstToken: that treats some URLErrors as transient, which would change retry behaviour here.
           let te = error as? TranscriptionError
           let isTransient: Bool = {
             guard let te else { return false }
@@ -924,7 +908,7 @@ class GeminiAPIClient {
   }
 
   func generateText(model: String, prompt: String, credential: GeminiCredential) async throws -> String {
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let endpoint = Self.generateContentEndpoint(model: model)
     var request = try createRequest(endpoint: endpoint, credential: credential)
     let body: [String: Any] = [
       "contents": [["role": "user", "parts": [["text": prompt]]]],
@@ -988,7 +972,7 @@ class GeminiAPIClient {
     credential: GeminiCredential,
     thinkingLevel: ThinkingLevel = .default
   ) async throws -> [String: Any] {
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let endpoint = Self.generateContentEndpoint(model: model)
     var request = try createRequest(endpoint: endpoint, credential: credential)
     var generationConfig: [String: Any] = [
       "responseMimeType": "application/json",
@@ -1028,19 +1012,14 @@ class GeminiAPIClient {
     contents: [[String: Any]],
     credential: GeminiCredential
   ) async throws -> String {
-    let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    let endpoint = Self.generateContentEndpoint(model: model)
     var request = try createRequest(endpoint: endpoint, credential: credential)
     request.timeoutInterval = Constants.resourceTimeout
     let body: [String: Any] = [
       "contents": contents,
       // No maxOutputTokens: image tokens are large and an 8k cap would truncate the picture.
       "generationConfig": ["responseModalities": ["TEXT", "IMAGE"]] as [String: Any],
-      "safetySettings": [
-        ["category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"],
-        ["category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"],
-        ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
-        ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"],
-      ],
+      "safetySettings": Constants.safetySettings,
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     DebugLogger.logNetwork("GEMINI-IMAGE: POST \(Self.redactingAPIKey(endpoint)) model=\(model) (responseModalities=TEXT,IMAGE)")
@@ -1091,6 +1070,50 @@ class GeminiAPIClient {
     }
   }
 
+  /// Shared body of the HTTP 400 (clip) and HTTP 403 (strip) YouTube retries.
+  /// Returns true when the turn should be re-sent. `when`, `transform`, `note`, and `log`
+  /// are the only differences between the two call sites.
+  private func retryYouTubeAttachment(
+    contents: inout [[String: Any]],
+    alreadyRetried: inout Bool,
+    when condition: Bool,
+    transform: ([[String: Any]]) -> [[String: Any]]?,
+    note: String,
+    log: String
+  ) -> Bool {
+    guard condition, !alreadyRetried, let transformed = transform(contents) else { return false }
+    alreadyRetried = true
+    contents = transformed
+    if let lastIndex = contents.indices.last,
+       var parts = contents[lastIndex]["parts"] as? [[String: Any]] {
+      parts.append(["text": note])
+      contents[lastIndex]["parts"] = parts
+    }
+    DebugLogger.log(log)
+    return true
+  }
+
+  /// Files API init and upload share the "HTTPURLResponse and status 200, else log and throw" check.
+  /// The two log sentences differ, so both are passed in.
+  private func filesAPIRequireHTTP200(
+    data: Data,
+    response: URLResponse,
+    invalidTypeLog: String,
+    failureLog: String
+  ) throws -> HTTPURLResponse {
+    guard let httpResponse = response as? HTTPURLResponse else {
+      DebugLogger.log(invalidTypeLog)
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    guard httpResponse.statusCode == 200 else {
+      let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
+      DebugLogger.log("\(failureLog) \(httpResponse.statusCode): \(errorBody.prefix(500))")
+      let error = try parseErrorResponse(data: data, statusCode: httpResponse.statusCode)
+      throw error
+    }
+    return httpResponse
+  }
+
   // MARK: - File Upload
   /// Uploads a file to Gemini using resumable upload protocol.
   func uploadFile(audioURL: URL, credential: GeminiCredential) async throws -> String {
@@ -1101,26 +1124,7 @@ class GeminiAPIClient {
     let numBytes = audioData.count
     DebugLogger.log("GEMINI-FILES-API: Uploading file (\(numBytes) bytes, \(mimeType))")
 
-    guard let baseURL = URL(string: Constants.filesAPIBaseURL),
-          var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
-      throw TranscriptionError.invalidRequest
-    }
-
-    switch credential {
-    case .apiKey(let key):
-      components.queryItems = [URLQueryItem(name: "key", value: key)]
-    case .bearer:
-      break
-    }
-
-    guard let initURL = components.url else {
-      throw TranscriptionError.invalidRequest
-    }
-
-    var initRequest = URLRequest(url: initURL)
-    initRequest.httpMethod = "POST"
-    initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    if case .bearer(let token) = credential { initRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    var initRequest = try createRequest(endpoint: Constants.filesAPIBaseURL, credential: credential)
     initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
     initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
     initRequest.setValue("\(numBytes)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
@@ -1134,18 +1138,11 @@ class GeminiAPIClient {
     initRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
     
     let (initData, initResponse) = try await session.data(for: initRequest)
-    
-    guard let httpResponse = initResponse as? HTTPURLResponse else {
-      DebugLogger.log("GEMINI-FILES-API: ERROR - Invalid response type")
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    guard httpResponse.statusCode == 200 else {
-      let errorBody = String(data: initData, encoding: .utf8) ?? "Unable to decode error response"
-      DebugLogger.log("GEMINI-FILES-API: ERROR - Init failed with status \(httpResponse.statusCode): \(errorBody.prefix(500))")
-      let error = try parseErrorResponse(data: initData, statusCode: httpResponse.statusCode)
-      throw error
-    }
+    let httpResponse = try filesAPIRequireHTTP200(
+      data: initData,
+      response: initResponse,
+      invalidTypeLog: "GEMINI-FILES-API: ERROR - Invalid response type",
+      failureLog: "GEMINI-FILES-API: ERROR - Init failed with status")
     
     // Extract upload URL from response headers (case-insensitive search)
     let allHeaders = httpResponse.allHeaderFields
@@ -1176,18 +1173,11 @@ class GeminiAPIClient {
     uploadRequest.httpBody = audioData
     
     let (uploadData, uploadResponse) = try await session.data(for: uploadRequest)
-    
-    guard let uploadHttpResponse = uploadResponse as? HTTPURLResponse else {
-      DebugLogger.log("GEMINI-FILES-API: ERROR - Invalid upload response type")
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    
-    guard uploadHttpResponse.statusCode == 200 else {
-      let errorBody = String(data: uploadData, encoding: .utf8) ?? "Unable to decode error response"
-      DebugLogger.log("GEMINI-FILES-API: ERROR - Upload failed with status \(uploadHttpResponse.statusCode): \(errorBody.prefix(500))")
-      let error = try parseErrorResponse(data: uploadData, statusCode: uploadHttpResponse.statusCode)
-      throw error
-    }
+    _ = try filesAPIRequireHTTP200(
+      data: uploadData,
+      response: uploadResponse,
+      invalidTypeLog: "GEMINI-FILES-API: ERROR - Invalid upload response type",
+      failureLog: "GEMINI-FILES-API: ERROR - Upload failed with status")
     
     // Parse file info to get URI
     let fileInfo = try JSONDecoder().decode(GeminiFileInfo.self, from: uploadData)
