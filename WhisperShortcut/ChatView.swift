@@ -1644,6 +1644,18 @@ class ChatViewModel: ObservableObject {
     Self.openChatModel.displayName
   }
 
+  /// The session a message mutation should write. Nil when `sessionId` is a background
+  /// session that is no longer in the store. Inlined on the streaming path: one struct copy,
+  /// the same one the old `target = session` assignment made.
+  @inline(__always)
+  private func resolveSession(_ sessionId: UUID) -> (isCurrent: Bool, session: ChatSession)? {
+    if sessionId == session.id {
+      return (true, session)
+    }
+    guard let stored = store.session(by: sessionId) else { return nil }
+    return (false, stored)
+  }
+
   /// Updates an existing model message in-place (used during streaming).
   /// Refreshes the UI during streaming; persists only when requested to avoid
   /// running full session-store normalization on every token.
@@ -1651,14 +1663,9 @@ class ChatViewModel: ObservableObject {
     id: UUID, sessionId: UUID, content: String,
     sources: [GroundingSource], supports: [GroundingSupport], persist: Bool = true
   ) {
-    let isCurrentSession = sessionId == session.id
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
     let idx: Int
     if let last = target.messages.indices.last, target.messages[last].id == id {
       idx = last
@@ -1756,15 +1763,9 @@ class ChatViewModel: ObservableObject {
   /// Appends a message to the session identified by `sessionId`.
   /// If that session is currently visible, also updates the in-memory UI state.
   private func appendMessage(_ message: ChatMessage, toSessionId sessionId: UUID) {
-    let isCurrentSession = sessionId == session.id
-
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
 
     // Meetings are titled from their summary (`generateMeetingTitle`), never from a chat message —
     // and that summary path only fires while the title is still empty. So we must NOT stamp a
@@ -1797,14 +1798,9 @@ class ChatViewModel: ObservableObject {
   }
 
   private func removeMessage(id: UUID, fromSessionId sessionId: UUID) {
-    let isCurrentSession = sessionId == session.id
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
     target.messages.removeAll { $0.id == id }
     store.save(target)
     if isCurrentSession {
@@ -2170,6 +2166,17 @@ class ChatViewModel: ObservableObject {
     allSessionsList = store.allSessions()
   }
 
+  /// After a store mutation, switch to the store's current session when the one on screen
+  /// is no longer active; otherwise just refresh the tab lists. Each caller passes the same
+  /// condition it used to branch on, so the decision stays at the call site.
+  private func syncAfterStoreMutation(activeSessionChanged: Bool) {
+    if activeSessionChanged {
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
+  }
+
   /// Returns the sessions to display as tabs, ensuring the current session is always included.
   func visibleTabs(maxCount: Int) -> [ChatSession] {
     var tabs = Array(recentSessions.prefix(maxCount))
@@ -2191,11 +2198,7 @@ class ChatViewModel: ObservableObject {
   func closeTab(id: UUID) {
     rememberClosed(id: id)
     store.archiveSession(id: id)
-    if id == session.id {
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
-    }
+    syncAfterStoreMutation(activeSessionChanged: id == session.id)
     DebugLogger.log("GEMINI-CHAT: Closed (archived) tab \(id)")
   }
 
@@ -2220,20 +2223,6 @@ class ChatViewModel: ObservableObject {
     store.switchToSession(id: s.id)
     switchToCurrentStoreSession()
     DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
-  }
-
-  // MARK: - Pin / Unpin
-
-  func pinSession(id: UUID) {
-    store.pinSession(id: id)
-    refreshRecentSessions()
-    DebugLogger.log("SIDEBAR: Pinned session \(id)")
-  }
-
-  func unpinSession(id: UUID) {
-    store.unpinSession(id: id)
-    refreshRecentSessions()
-    DebugLogger.log("SIDEBAR: Unpinned session \(id)")
   }
 
   // MARK: - Search
@@ -2703,31 +2692,26 @@ class ChatViewModel: ObservableObject {
     store.archiveSession(id: id)
     if wasActive {
       DebugLogger.log("SIDEBAR: archiveSession → switchToCurrentStoreSession")
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: wasActive)
     DebugLogger.log("SIDEBAR: archiveSession done. recentSessions=\(recentSessions.count) currentSession=\(session.id)")
   }
 
   func archiveOlderSessions(than date: Date) {
     store.archiveOlderSessions(than: date)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived chats older than \(date)")
   }
 
   func archiveOlderMeetings(than date: Date) {
     store.archiveOlderMeetings(than: date)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived meetings older than \(date)")
   }
 
   func archiveOtherSessions(except keepId: UUID) {
     store.archiveOtherSessions(except: keepId)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived other chats except \(keepId)")
   }
 
@@ -2735,8 +2719,7 @@ class ChatViewModel: ObservableObject {
     var skipIds: Set<UUID> = []
     if isMeetingActive, let activeId = meetingSessionId { skipIds.insert(activeId) }
     store.archiveOtherMeetings(except: keepId, skipIds: skipIds)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived other meetings except \(keepId)")
   }
 
@@ -2785,12 +2768,11 @@ class ChatViewModel: ObservableObject {
   func closeOtherTabs(keep keepId: UUID) {
     let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
     for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
-    if session.id != keepId {
+    let activeWillChange = session.id != keepId
+    if activeWillChange {
       store.switchToSession(id: keepId)
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: activeWillChange)
     DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) other tab(s), kept \(keepId)")
   }
 
@@ -2803,10 +2785,8 @@ class ChatViewModel: ObservableObject {
     for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
     if activeWillBeClosed {
       store.switchToSession(id: anchorId)
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: activeWillBeClosed)
     DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) tab(s) right of \(anchorId)")
   }
 
