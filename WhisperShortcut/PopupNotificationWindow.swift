@@ -32,6 +32,63 @@ private class PointerCursorButton: NSButton {
   }
 }
 
+/// Which popup this window is. Replaces the old independent `isError` / `isInfo` /
+/// `isCancelled` / `isProcessing` flags, whose priority (first match wins) was
+/// cancelled → info → processing → error → success.
+enum PopupKind: Equatable {
+  case success
+  case info
+  case error
+  case cancelled
+  case processing
+
+  /// Glyph shown in the leading icon label. Error has none (Contact Support is the affordance).
+  var iconText: String {
+    switch self {
+    case .cancelled: return "⏸️"
+    case .info: return "ℹ️"
+    case .processing: return "⏳"
+    case .error: return ""
+    case .success: return "✅"
+    }
+  }
+
+  /// Error popups always include Contact Support, so the layout reserves a button row.
+  var hasActionButtons: Bool { self == .error }
+
+  /// Auto-hide interval, or nil when no timer should be scheduled.
+  ///
+  /// Processing never auto-hides. An error with Sign in, Retry, or Top up does not either
+  /// (Contact Support alone does not suppress the timer). A positive `customDisplayDuration`
+  /// wins over the saved notification / error durations. Saved values are honoured only when
+  /// they are a `NotificationDuration` raw value; otherwise the settings default applies.
+  func autoHideInterval(
+    customDisplayDuration: TimeInterval?,
+    savedNotificationDuration: TimeInterval,
+    savedErrorDuration: TimeInterval,
+    suppressesAutoHide: Bool
+  ) -> TimeInterval? {
+    if self == .processing { return nil }
+    if self == .error && suppressesAutoHide { return nil }
+    if let custom = customDisplayDuration, custom > 0 { return custom }
+    switch self {
+    case .error:
+      return Self.resolvedDuration(saved: savedErrorDuration, fallback: SettingsDefaults.errorNotificationDuration)
+    case .success, .info, .cancelled:
+      return Self.resolvedDuration(saved: savedNotificationDuration, fallback: SettingsDefaults.notificationDuration)
+    case .processing:
+      return nil
+    }
+  }
+
+  private static func resolvedDuration(saved: TimeInterval, fallback: NotificationDuration) -> TimeInterval {
+    if saved > 0, let duration = NotificationDuration(rawValue: saved) {
+      return duration.rawValue
+    }
+    return fallback.rawValue
+  }
+}
+
 class PopupNotificationWindow: NSWindow {
 
   // MARK: - Constants
@@ -46,8 +103,6 @@ class PopupNotificationWindow: NSWindow {
     static let shadowRadius: CGFloat = 8  // Subtle shadow like native macOS notifications
     static let shadowOpacity: Float = 0.15  // Very subtle, barely visible shadow
     static let animationDuration: TimeInterval = 0.25  // Smoother animation
-    static let displayDuration: TimeInterval = SettingsDefaults.notificationDuration.rawValue
-    static let errorDisplayDuration: TimeInterval = SettingsDefaults.errorNotificationDuration.rawValue
     static let outerPadding: CGFloat = 20  // Generous outer padding
     static let innerPadding: CGFloat = 16  // Inner content padding
     static let titleBottomSpacing: CGFloat = 16  // More space between title and text
@@ -73,13 +128,10 @@ class PopupNotificationWindow: NSWindow {
   private var scrollView: NSScrollView!
   private var whatsappIcon: NSImageView?
   private var closeButton: NSButton!
-  private var retryButton: NSButton?
-  private var topUpButton: NSButton?
-  private var signInButton: NSButton?
-  private var whatsappButton: NSButton?
+  /// Sign in, Retry, Top up, Contact Support — visual order, left to right. Empty unless `.error`.
+  private var actionButtons: [NSButton] = []
   private var autoHideTimer: Timer?
-  private var isError: Bool = false
-  private var isInfo: Bool = false
+  private let kind: PopupKind
   private var errorText: String = ""
   private var retryAction: (() -> Void)?
   /// Label for the action button driven by `retryAction`. Defaults to "Retry";
@@ -92,7 +144,8 @@ class PopupNotificationWindow: NSWindow {
   private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, isError: Bool = false, isInfo: Bool = false, isCancelled: Bool = false, isProcessing: Bool = false, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, kind: PopupKind = .success, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+    self.kind = kind
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -101,9 +154,6 @@ class PopupNotificationWindow: NSWindow {
       defer: false
     )
 
-    // Store state: success, info (auto-dismiss), or error (persistent unless custom duration)
-    self.isError = isError
-    self.isInfo = isInfo
     self.errorText = text
     self.retryAction = retryAction
     self.retryActionTitle = retryActionTitle
@@ -115,32 +165,31 @@ class PopupNotificationWindow: NSWindow {
     setupWindow()
     setupContentView()
     setupCloseButton()
-    setupIcon(isError: isError, isInfo: isInfo, isCancelled: isCancelled, isProcessing: isProcessing)
+    setupIcon()
     setupLabels(title: title, text: text, modelInfo: modelInfo)
     setupScrollView()
-    if isError {
-      setupWhatsAppButton()
+    if kind == .error {
+      var buttons: [NSButton] = []
       if signInAction != nil {
-        setupSignInButton()
+        buttons.append(makeActionButton(title: "Sign in with Google", action: #selector(signInButtonClicked)))
       }
       if retryAction != nil {
-        setupRetryButton()
+        buttons.append(makeActionButton(title: retryActionTitle, action: #selector(retryButtonClicked)))
       }
-      if let url = topUpURL {
-        setupTopUpButton(url: url)
+      if topUpURL != nil {
+        buttons.append(makeActionButton(title: "Top up", action: #selector(topUpButtonClicked)))
       }
+      buttons.append(makeActionButton(title: "Contact Support", action: #selector(whatsappButtonClicked)))
+      actionButtons = buttons
     }
     layoutContent()
 
-    // Success and info: click to close. Error: only close on button or click outside text.
-    if !isError || isInfo {
+    // Success, info, cancelled, and processing: click to close. Error: only close on button or click outside text.
+    if kind != .error {
       setupSuccessClickHandler()
     }
 
-    // Success and info: auto-dismiss. Error: auto-dismiss only if no retry, no Top up, no Sign in button.
-    if !isError || isInfo || (retryAction == nil && topUpURL == nil && signInAction == nil) {
-      startAutoHideTimer(isError: isError, isInfo: isInfo)
-    }
+    startAutoHideTimer()
   }
 
   // MARK: - Setup Methods
@@ -249,23 +298,18 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupRetryButton() {
-    retryButton = PointerCursorButton()
-    guard let retryButton = retryButton else { return }
-    
-    retryButton.title = retryActionTitle
-    retryButton.bezelStyle = .rounded
-    retryButton.isBordered = true
-    retryButton.wantsLayer = true
-    retryButton.translatesAutoresizingMaskIntoConstraints = false
-    
-    // Set action
-    retryButton.target = self
-    retryButton.action = #selector(retryButtonClicked)
-    
-    // Size constraints
-    retryButton.setContentHuggingPriority(.required, for: .horizontal)
-    retryButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+  private func makeActionButton(title: String, action: Selector) -> PointerCursorButton {
+    let button = PointerCursorButton()
+    button.title = title
+    button.bezelStyle = .rounded
+    button.isBordered = true
+    button.wantsLayer = true
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.target = self
+    button.action = action
+    button.setContentHuggingPriority(.required, for: .horizontal)
+    button.setContentCompressionResistancePriority(.required, for: .horizontal)
+    return button
   }
 
   @objc private func retryButtonClicked() {
@@ -277,20 +321,6 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupTopUpButton(url: URL) {
-    let button = PointerCursorButton()
-    button.title = "Top up"
-    button.bezelStyle = .rounded
-    button.isBordered = true
-    button.wantsLayer = true
-    button.translatesAutoresizingMaskIntoConstraints = false
-    button.target = self
-    button.action = #selector(topUpButtonClicked)
-    button.setContentHuggingPriority(.required, for: .horizontal)
-    button.setContentCompressionResistancePriority(.required, for: .horizontal)
-    topUpButton = button
-  }
-
   @objc private func topUpButtonClicked() {
     if let url = topUpURL {
       NSWorkspace.shared.open(url)
@@ -298,79 +328,45 @@ class PopupNotificationWindow: NSWindow {
     hide()
   }
 
-  private func setupSignInButton() {
-    let button = PointerCursorButton()
-    button.title = "Sign in with Google"
-    button.bezelStyle = .rounded
-    button.isBordered = true
-    button.wantsLayer = true
-    button.translatesAutoresizingMaskIntoConstraints = false
-    button.target = self
-    button.action = #selector(signInButtonClicked)
-    button.setContentHuggingPriority(.required, for: .horizontal)
-    button.setContentCompressionResistancePriority(.required, for: .horizontal)
-    signInButton = button
-  }
-
   @objc private func signInButtonClicked() {
     signInAction?()
     hide()
   }
 
-  private func setupIcon(
-    isError: Bool, isInfo: Bool = false, isCancelled: Bool = false, isProcessing: Bool = false
-  ) {
-    // Icon selection based on notification type
-    let iconText: String
-    if isCancelled {
-      iconText = "⏸️"  // Pause icon for cancelled operations
-    } else if isInfo {
-      iconText = "ℹ️"  // Info icon for informational messages
-    } else if isProcessing {
-      iconText = "⏳"  // Work in progress — a green checkmark on "Loading…" reads as "done"
-    } else if isError {
-      iconText = ""  // No icon for errors (WhatsApp icon is shown instead)
-    } else {
-      iconText = "✅"  // Green checkmark for success
-    }
-
-    iconLabel = NSTextField(labelWithString: iconText)
-    iconLabel.font = NSFont.systemFont(ofSize: 16, weight: .medium)  // Slightly larger for visibility
-    iconLabel.textColor = NSColor.labelColor
-    iconLabel.alignment = .center
-    iconLabel.isEditable = false
-    iconLabel.isBordered = false
-    iconLabel.backgroundColor = NSColor.clear
-    iconLabel.translatesAutoresizingMaskIntoConstraints = false
-    iconLabel.setContentHuggingPriority(.required, for: .horizontal)
-    iconLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+  private func setupIcon() {
+    iconLabel = makeLabel(
+      kind.iconText,
+      fontSize: 16,
+      weight: .medium,
+      textColor: .labelColor,
+      alignment: .center,
+      truncates: false,
+      hugHorizontally: true
+    )
   }
 
   private func setupLabels(title: String, text: String, modelInfo: String?) {
-    // Title label with improved typography
-    titleLabel = NSTextField(labelWithString: title)
-    titleLabel.font = NSFont.systemFont(ofSize: Constants.titleFontSize, weight: .medium)  // Subtle, elegant weight like native notifications
-    titleLabel.textColor = NSColor.labelColor
-    titleLabel.alignment = .left
-    titleLabel.isEditable = false
-    titleLabel.isBordered = false
-    titleLabel.backgroundColor = NSColor.clear
-    titleLabel.translatesAutoresizingMaskIntoConstraints = false
-    titleLabel.lineBreakMode = .byTruncatingTail
-    titleLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+    titleLabel = makeLabel(
+      title,
+      fontSize: Constants.titleFontSize,
+      weight: .medium,
+      textColor: .labelColor,
+      alignment: .left,
+      truncates: true,
+      hugHorizontally: false
+    )
 
-    // Model info label (only shown for success notifications with model info)
-    if let modelInfo = modelInfo, !isError, !isInfo {
-      modelInfoLabel = NSTextField(labelWithString: "🤖 \(modelInfo)")
-      modelInfoLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
-      modelInfoLabel.textColor = NSColor.secondaryLabelColor
-      modelInfoLabel.alignment = .left
-      modelInfoLabel.isEditable = false
-      modelInfoLabel.isBordered = false
-      modelInfoLabel.backgroundColor = NSColor.clear
-      modelInfoLabel.translatesAutoresizingMaskIntoConstraints = false
-      modelInfoLabel.lineBreakMode = .byTruncatingTail
-      modelInfoLabel.setContentCompressionResistancePriority(.required, for: .vertical)
+    // Model info is omitted for error and info popups (same as the old `!isError, !isInfo` check).
+    if let modelInfo = modelInfo, kind != .error, kind != .info {
+      modelInfoLabel = makeLabel(
+        "🤖 \(modelInfo)",
+        fontSize: 11,
+        weight: .regular,
+        textColor: .secondaryLabelColor,
+        alignment: .left,
+        truncates: true,
+        hugHorizontally: false
+      )
     } else {
       modelInfoLabel = nil
     }
@@ -378,23 +374,9 @@ class PopupNotificationWindow: NSWindow {
     // Text field with improved readability and text selection support
     let displayText = createPreviewText(from: text)
 
-    // Better text spacing and readability
-    let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.lineSpacing = 3  // Improved line spacing for better readability
-    paragraphStyle.paragraphSpacing = 6  // Better paragraph spacing
-
-    let attributedText = NSAttributedString(
-      string: displayText,
-      attributes: [
-        .font: NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular),
-        .foregroundColor: NSColor.labelColor,
-        .paragraphStyle: paragraphStyle,
-      ]
-    )
-
     // Use NSTextField (not label) to allow text selection
     textLabel = NSTextField()
-    textLabel.attributedStringValue = attributedText
+    textLabel.attributedStringValue = bodyAttributedString(displayText)
     textLabel.isEditable = false
     textLabel.isSelectable = true  // Allow text selection for copy/paste
     textLabel.isBordered = false
@@ -408,23 +390,46 @@ class PopupNotificationWindow: NSWindow {
       Constants.defaultWindowWidth - (Constants.outerPadding * 2) - Constants.iconAndSpacingWidth
   }
 
-  private func setupWhatsAppButton() {
-    whatsappButton = PointerCursorButton()
-    guard let whatsappButton = whatsappButton else { return }
-    
-    whatsappButton.title = "Contact Support"
-    whatsappButton.bezelStyle = .rounded
-    whatsappButton.isBordered = true
-    whatsappButton.wantsLayer = true
-    whatsappButton.translatesAutoresizingMaskIntoConstraints = false
-    
-    // Set action
-    whatsappButton.target = self
-    whatsappButton.action = #selector(whatsappButtonClicked)
-    
-    // Size constraints - button should fit its content, not stretch
-    whatsappButton.setContentHuggingPriority(.required, for: .horizontal)
-    whatsappButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+  private func makeLabel(
+    _ text: String,
+    fontSize: CGFloat,
+    weight: NSFont.Weight,
+    textColor: NSColor,
+    alignment: NSTextAlignment,
+    truncates: Bool,
+    hugHorizontally: Bool
+  ) -> NSTextField {
+    let label = NSTextField(labelWithString: text)
+    label.font = NSFont.systemFont(ofSize: fontSize, weight: weight)
+    label.textColor = textColor
+    label.alignment = alignment
+    label.isEditable = false
+    label.isBordered = false
+    label.backgroundColor = NSColor.clear
+    label.translatesAutoresizingMaskIntoConstraints = false
+    if truncates {
+      label.lineBreakMode = .byTruncatingTail
+      label.setContentCompressionResistancePriority(.required, for: .vertical)
+    }
+    if hugHorizontally {
+      label.setContentHuggingPriority(.required, for: .horizontal)
+      label.setContentCompressionResistancePriority(.required, for: .horizontal)
+    }
+    return label
+  }
+
+  private func bodyAttributedString(_ string: String) -> NSAttributedString {
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineSpacing = 3
+    paragraphStyle.paragraphSpacing = 6
+    return NSAttributedString(
+      string: string,
+      attributes: [
+        .font: NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular),
+        .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle,
+      ]
+    )
   }
 
   @objc private func whatsappButtonClicked() {
@@ -491,22 +496,8 @@ class PopupNotificationWindow: NSWindow {
     
     customContentView.addSubview(scrollView)
 
-    // Add WhatsApp button for error notifications
-    if isError, let whatsappButton = whatsappButton {
-      customContentView.addSubview(whatsappButton)
-    }
-    
-    // Add retry button for error notifications with retry action
-    if isError, let retryButton = retryButton {
-      customContentView.addSubview(retryButton)
-    }
-    // Add Top up button when backend returns rate_limit_exceeded with top_up_url
-    if isError, let topUpButton = topUpButton {
-      customContentView.addSubview(topUpButton)
-    }
-    // Add Sign in with Google button for credential-required errors
-    if isError, let signInButton = signInButton {
-      customContentView.addSubview(signInButton)
+    for button in actionButtons {
+      customContentView.addSubview(button)
     }
 
     // Set up constraints with improved spacing
@@ -554,7 +545,7 @@ class PopupNotificationWindow: NSWindow {
     }
 
     // Set up constraints based on notification type
-    if isError {
+    if kind == .error {
       // Error notifications: no left icon
       NSLayoutConstraint.activate([
         // Title starts from left edge (no left icon)
@@ -565,76 +556,27 @@ class PopupNotificationWindow: NSWindow {
         scrollView.trailingAnchor.constraint(
           equalTo: customContentView.trailingAnchor, constant: -Constants.outerPadding),
       ])
-      
-      // Add button constraints (Sign in with Google, Retry, Top up, WhatsApp) - position them below scroll view
-      let hasSignInButton = signInButton != nil
-      let hasRetryButton = retryButton != nil
-      let hasTopUpButton = topUpButton != nil
-      let hasWhatsAppButton = whatsappButton != nil
-      
-      if hasSignInButton || hasRetryButton || hasTopUpButton || hasWhatsAppButton {
+
+      // Sign in → Retry → Top up → Contact Support, each chained to the previous leading edge.
+      if !actionButtons.isEmpty {
         let buttonSpacing: CGFloat = 8
         let topAnchor = scrollView.bottomAnchor
-        
-        if let signInButton = signInButton {
+        var previous: NSButton?
+        for button in actionButtons {
           NSLayoutConstraint.activate([
-            signInButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            signInButton.leadingAnchor.constraint(
-              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding),
-            signInButton.bottomAnchor.constraint(
+            button.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            button.bottomAnchor.constraint(
               equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
-            signInButton.heightAnchor.constraint(equalToConstant: 28),
+            button.heightAnchor.constraint(equalToConstant: 28),
           ])
-        }
-        
-        if let retryButton = retryButton {
-          NSLayoutConstraint.activate([
-            retryButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            retryButton.bottomAnchor.constraint(
-              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
-            retryButton.heightAnchor.constraint(equalToConstant: 28),
-          ])
-          if let signInButton = signInButton {
-            retryButton.leadingAnchor.constraint(
-              equalTo: signInButton.trailingAnchor, constant: buttonSpacing).isActive = true
+          if let previous {
+            button.leadingAnchor.constraint(
+              equalTo: previous.trailingAnchor, constant: buttonSpacing).isActive = true
           } else {
-            retryButton.leadingAnchor.constraint(
+            button.leadingAnchor.constraint(
               equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
           }
-        }
-        
-        if let topUpButton = topUpButton {
-          NSLayoutConstraint.activate([
-            topUpButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            topUpButton.bottomAnchor.constraint(
-              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
-            topUpButton.heightAnchor.constraint(equalToConstant: 28),
-          ])
-          let leftOfTopUp = retryButton ?? signInButton
-          if let left = leftOfTopUp {
-            topUpButton.leadingAnchor.constraint(
-              equalTo: left.trailingAnchor, constant: buttonSpacing).isActive = true
-          } else {
-            topUpButton.leadingAnchor.constraint(
-              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
-          }
-        }
-        
-        if let whatsappButton = whatsappButton {
-          NSLayoutConstraint.activate([
-            whatsappButton.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            whatsappButton.bottomAnchor.constraint(
-              equalTo: customContentView.bottomAnchor, constant: -Constants.outerPadding),
-            whatsappButton.heightAnchor.constraint(equalToConstant: 28),
-          ])
-          let leftOfWhatsApp = topUpButton ?? retryButton ?? signInButton
-          if let left = leftOfWhatsApp {
-            whatsappButton.leadingAnchor.constraint(
-              equalTo: left.trailingAnchor, constant: buttonSpacing).isActive = true
-          } else {
-            whatsappButton.leadingAnchor.constraint(
-              equalTo: customContentView.leadingAnchor, constant: Constants.outerPadding).isActive = true
-          }
+          previous = button
         }
       } else {
         // No buttons, scroll view goes to bottom
@@ -701,7 +643,7 @@ class PopupNotificationWindow: NSWindow {
     let modelToTextSpacing = Constants.titleBottomSpacing  // Gap before text content
 
     // Calculate button height if present (Sign in, Retry, Top up, WhatsApp buttons)
-    let hasButtons = (signInButton != nil || retryButton != nil || topUpButton != nil || whatsappButton != nil)
+    let hasButtons = !actionButtons.isEmpty
     let buttonHeight = hasButtons ? 28.0 + 12.0 : 0.0  // Button height + spacing
     
     // Calculate total required height
@@ -950,28 +892,14 @@ class PopupNotificationWindow: NSWindow {
   }
 
   // MARK: - Timer Methods
-  private func startAutoHideTimer(isError: Bool, isInfo: Bool = false) {
-    // Success and info: short auto-dismiss. Error: long or user setting.
-    let duration: TimeInterval
-    if let custom = customDisplayDuration, custom > 0 {
-      duration = custom
-    } else if isInfo || !isError {
-      let savedDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration)
-      if savedDuration > 0, let notificationDuration = NotificationDuration(rawValue: savedDuration) {
-        duration = notificationDuration.rawValue
-      } else {
-        duration = Constants.displayDuration
-      }
-    } else if isError {
-      let savedErrorDuration = UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration)
-      if savedErrorDuration > 0, let errorDuration = NotificationDuration(rawValue: savedErrorDuration) {
-        duration = errorDuration.rawValue
-      } else {
-        duration = Constants.errorDisplayDuration
-      }
-    } else {
-      duration = Constants.displayDuration
-    }
+  private func startAutoHideTimer() {
+    let suppressesAutoHide = retryAction != nil || topUpURL != nil || signInAction != nil
+    guard let duration = kind.autoHideInterval(
+      customDisplayDuration: customDisplayDuration,
+      savedNotificationDuration: UserDefaults.standard.double(forKey: UserDefaultsKeys.notificationDuration),
+      savedErrorDuration: UserDefaults.standard.double(forKey: UserDefaultsKeys.errorNotificationDuration),
+      suppressesAutoHide: suppressesAutoHide
+    ) else { return }
 
     autoHideTimer = Timer.scheduledTimer(
       withTimeInterval: duration, repeats: false
@@ -992,20 +920,11 @@ class PopupNotificationWindow: NSWindow {
     // Only hide on click if it's not the button areas
     // The buttons will handle their own clicks
     let location = event.locationInWindow
-    if let signInButton = signInButton, signInButton.frame.contains(location) {
-      return  // Let the Sign in button handle the click
-    }
-    if let retryButton = retryButton, retryButton.frame.contains(location) {
-      return  // Let the retry button handle the click
-    }
-    if let topUpButton = topUpButton, topUpButton.frame.contains(location) {
-      return  // Let the Top up button handle the click
-    }
-    if let whatsappButton = whatsappButton, whatsappButton.frame.contains(location) {
-      return  // Let the WhatsApp button handle the click
+    if actionButtons.contains(where: { $0.frame.contains(location) }) {
+      return  // Let the action button handle the click
     }
     // For error popups, don't hide when clicking the text area so the user can select and copy
-    if isError {
+    if kind == .error {
       let ptInScroll = scrollView.convert(location, from: nil)
       if scrollView.bounds.contains(ptInScroll) {
         makeKey()  // So the text field can become first responder and accept selection
@@ -1025,7 +944,7 @@ class PopupNotificationWindow: NSWindow {
 
   /// Allow error popups to become key so the user can select and copy the error text.
   override var canBecomeKey: Bool {
-    return isError
+    return kind == .error
   }
 
   // MARK: - Cleanup
@@ -1055,22 +974,24 @@ extension PopupNotificationWindow {
     return value
   }
 
+  /// Shared tail of every `show*` entry point: bail when popups are disabled, then retain and show.
+  private static func present(_ make: () -> PopupNotificationWindow) {
+    guard arePopupNotificationsEnabled else { return }
+    let popup = make()
+    activePopups.insert(popup)
+    popup.show()
+  }
+
   private static func showSuccessNotification(
     title: String = "Text Copied to Clipboard", text: String, modelInfo: String? = nil
   ) {
-    guard arePopupNotificationsEnabled else {
-      return
+    present {
+      PopupNotificationWindow(
+        title: title,
+        text: text,
+        modelInfo: modelInfo
+      )
     }
-
-    let popup = PopupNotificationWindow(
-      title: title,
-      text: text,
-      modelInfo: modelInfo
-    )
-
-    // Keep strong reference until window closes
-    activePopups.insert(popup)
-    popup.show()
   }
 
   static func showPromptResponse(
@@ -1087,59 +1008,40 @@ extension PopupNotificationWindow {
 
   /// Show an informational popup (ℹ️ icon, auto-dismiss). Use for system messages that are neither success nor error.
   static func showInfo(_ text: String, title: String = "Info", customDisplayDuration: TimeInterval? = nil) {
-    guard arePopupNotificationsEnabled else {
-      return
+    present {
+      PopupNotificationWindow(
+        title: title,
+        text: text,
+        kind: .info,
+        customDisplayDuration: customDisplayDuration
+      )
     }
-
-    let popup = PopupNotificationWindow(
-      title: title,
-      text: text,
-      isError: false,
-      isInfo: true,
-      customDisplayDuration: customDisplayDuration
-    )
-
-    activePopups.insert(popup)
-    popup.show()
   }
 
   static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
-    guard arePopupNotificationsEnabled else {
-      return
+    present {
+      PopupNotificationWindow(
+        title: title,
+        text: error,
+        kind: .error,
+        retryAction: retryAction,
+        retryActionTitle: retryActionTitle,
+        dismissAction: dismissAction,
+        signInAction: signInAction,
+        customDisplayDuration: customDisplayDuration,
+        topUpURL: topUpURL
+      )
     }
-
-    let popup = PopupNotificationWindow(
-      title: title,
-      text: error,
-      isError: true,
-      retryAction: retryAction,
-      retryActionTitle: retryActionTitle,
-      dismissAction: dismissAction,
-      signInAction: signInAction,
-      customDisplayDuration: customDisplayDuration,
-      topUpURL: topUpURL
-    )
-
-    // Keep strong reference until window closes
-    activePopups.insert(popup)
-    popup.show()
   }
 
   static func showCancelled(_ message: String) {
-    guard arePopupNotificationsEnabled else {
-      return
+    present {
+      PopupNotificationWindow(
+        title: "Cancelled",
+        text: message,
+        kind: .cancelled
+      )
     }
-
-    let popup = PopupNotificationWindow(
-      title: "Cancelled",
-      text: message,
-      isError: false,
-      isCancelled: true
-    )
-
-    // Keep strong reference until window closes
-    activePopups.insert(popup)
-    popup.show()
   }
 
   // MARK: - Processing Popup (Persistent during long operations)
@@ -1150,43 +1052,24 @@ extension PopupNotificationWindow {
   ///   - message: The processing message to display
   ///   - title: Optional title (defaults to "Processing")
   static func showProcessing(_ message: String, title: String = "Processing") {
-    guard arePopupNotificationsEnabled else {
-      return
+    present {
+      // Dismiss any existing processing popup. Runs only after the enabled-guard inside `present`.
+      dismissProcessing()
+
+      let popup = PopupNotificationWindow(
+        title: title,
+        text: message,
+        kind: .processing
+      )
+      processingPopup = popup
+      return popup
     }
-
-    // Dismiss any existing processing popup
-    dismissProcessing()
-
-    let popup = PopupNotificationWindow(
-      title: title,
-      text: message,
-      isError: false,
-      isCancelled: false,
-      isProcessing: true
-    )
-
-    // Disable auto-hide for processing popups
-    popup.autoHideTimer?.invalidate()
-    popup.autoHideTimer = nil
-
-    processingPopup = popup
-    activePopups.insert(popup)
-    popup.show()
   }
 
   /// Replaces the body text of a processing popup, keeping the paragraph
   /// styling applied at creation time, and resizes the window to fit.
   private func setProcessingMessage(_ message: String) {
-    let paragraphStyle = NSMutableParagraphStyle()
-    paragraphStyle.lineSpacing = 3
-    paragraphStyle.paragraphSpacing = 6
-    textLabel?.attributedStringValue = NSAttributedString(
-      string: message,
-      attributes: [
-        .font: NSFont.systemFont(ofSize: Constants.textFontSize, weight: .regular),
-        .foregroundColor: NSColor.labelColor,
-        .paragraphStyle: paragraphStyle,
-      ])
+    textLabel?.attributedStringValue = bodyAttributedString(message)
     updateWindowSize()
   }
 
