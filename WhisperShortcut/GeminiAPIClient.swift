@@ -91,6 +91,41 @@ final class StreamProgressClock: @unchecked Sendable {
     defer { lock.unlock() }
     return stalledFlag
   }
+
+  /// Polls this clock and calls `cancel` once idle time exceeds the budget. The chat stream and
+  /// the Gemini TTS stream pass different budgets; `noun` / `firstLabel` / `midLabel` are the only
+  /// words their log lines differ by ("progress" vs "audio", "before first chunk" vs "before first
+  /// audio", both use "mid-stream").
+  func startWatchdog(
+    pollInterval: TimeInterval,
+    firstChunkTimeout: TimeInterval,
+    stallTimeout: TimeInterval,
+    logPrefix: String,
+    noun: String,
+    firstLabel: String,
+    midLabel: String,
+    cancel: @escaping () -> Void
+  ) -> Task<Void, Never> {
+    Task {
+      while !Task.isCancelled {
+        do {
+          try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        } catch {
+          return
+        }
+        if Task.isCancelled { return }
+        let (idle, sawChunk) = self.state
+        let budget = sawChunk ? stallTimeout : firstChunkTimeout
+        if idle > budget {
+          self.markStalled()
+          DebugLogger.logWarning(
+            "\(logPrefix): no \(noun) for \(Int(idle))s (\(sawChunk ? midLabel : firstLabel)) — aborting the stalled stream")
+          cancel()
+          return
+        }
+      }
+    }
+  }
 }
 
 // MARK: - Stream object splitter
@@ -183,16 +218,50 @@ class GeminiAPIClient {
     self.session = session ?? LLMHTTPSession.shared
   }
 
-  /// Opens `request` on the shared session and returns the body as a byte stream. Lets callers
-  /// outside this file (Gemini TTS in `SpeechService`) stream a response through the same
-  /// connection pool without exposing the session itself.
-  func streamingBytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
-    try await session.bytes(for: request)
-  }
+  /// Opens a Gemini SSE stream (`Accept: text/event-stream`, resource timeout as the socket
+  /// deadline) and returns the body once the status is 2xx. A non-2xx status is drained, logged,
+  /// mapped through `parseErrorResponse`, and thrown.
+  ///
+  /// `logDetail` is appended to the POST line so TTS can keep its chars/voice suffix while chat
+  /// logs the endpoint alone. `non2xxErrorBodyLimit` truncates the body embedded in the fallback
+  /// network error (TTS keeps 200 characters; chat passes nil and keeps the full body).
+  /// `onNon2xx` runs before that drain, so a caller can record the status even if the drain throws.
+  func openSSEStream(
+    endpoint: String,
+    credential: GeminiCredential,
+    body: Data,
+    logPrefix: String,
+    logDetail: String = "",
+    non2xxErrorBodyLimit: Int? = nil,
+    onNon2xx: ((Int) -> Void)? = nil
+  ) async throws -> (URLSession.AsyncBytes, HTTPURLResponse) {
+    var request = try createRequest(endpoint: endpoint, credential: credential)
+    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    // The stall watchdog is the real deadline, exactly as both callers used to set it.
+    request.timeoutInterval = Constants.resourceTimeout
+    request.httpBody = body
 
-  /// The client's resource timeout, for callers that build their own streaming request and run a
-  /// stall watchdog as the real deadline (see `streamGenerateContent`).
-  static var resourceTimeout: TimeInterval { Constants.resourceTimeout }
+    DebugLogger.logNetwork("\(logPrefix): POST \(endpoint)\(logDetail)")
+    let (bytes, response) = try await session.bytes(for: request)
+    guard let http = response as? HTTPURLResponse else {
+      throw TranscriptionError.networkError("Invalid response")
+    }
+    if http.statusCode < 200 || http.statusCode >= 300 {
+      onNon2xx?(http.statusCode)
+      var errData = Data()
+      for try await b in bytes { errData.append(b) }
+      let text = String(data: errData, encoding: .utf8) ?? ""
+      DebugLogger.logError("\(logPrefix): HTTP \(http.statusCode) body=\(text.prefix(500))")
+      // Map the body to a specific TranscriptionError (e.g. an expired/invalid key
+      // becomes .invalidAPIKey/.incorrectAPIKey) so the user sees an actionable
+      // message instead of a raw "HTTP 400: {…}" network error. Fall back to the
+      // generic network error only if mapping fails.
+      let mapped = try? parseErrorResponse(data: errData, statusCode: http.statusCode)
+      let errorBody = non2xxErrorBodyLimit.map { String(text.prefix($0)) } ?? text
+      throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(errorBody)")
+    }
+    return (bytes, http)
+  }
   
   // MARK: - Request Creation
   /// Creates a URLRequest for Gemini API with optional credential (API key). When credential is nil (e.g. proxy mode), no key is added.
@@ -482,6 +551,13 @@ class GeminiAPIClient {
     throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
   }
   
+  /// Box so `openSSEStream`'s escaping `onNon2xx` callback can record the HTTP status.
+  /// An escaping closure cannot assign a captured `var`, and the status has to be stored
+  /// before the error body is drained — a drain failure must still leave it set.
+  private final class HTTPStatusBox {
+    var code: Int?
+  }
+
   // MARK: - Streaming Chat
 
   /// One event emitted while streaming a Gemini chat reply.
@@ -527,7 +603,7 @@ class GeminiAPIClient {
         var effectiveContents = contents
         var didClipVideoForRetry = false
         var didStripVideoForRetry = false
-        var lastStatusCode: Int?
+        let statusSink = HTTPStatusBox()
         // Text actually handed to the UI (unlike `hasYielded`, which flips before the body is
         // read). A stalled stream is retried only while nothing is on screen.
         var didYieldText = false
@@ -537,9 +613,6 @@ class GeminiAPIClient {
         let progress = StreamProgressClock()
         do {
           let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(model):streamGenerateContent?alt=sse"
-          var request = try self.createRequest(endpoint: endpoint, credential: credential)
-          request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-          request.timeoutInterval = Constants.resourceTimeout
 
           var body: [String: Any] = ["contents": effectiveContents]
           var tools: [[String: Any]] = []
@@ -588,46 +661,28 @@ class GeminiAPIClient {
             ["category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"],
             ["category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"]
           ]
-          request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-          DebugLogger.logNetwork("GEMINI-CHAT-STREAM: POST \(endpoint)")
-          let (bytes, response) = try await self.session.bytes(for: request)
-          guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response")
-          }
-          if http.statusCode < 200 || http.statusCode >= 300 {
-            lastStatusCode = http.statusCode
-            var errData = Data()
-            for try await b in bytes { errData.append(b) }
-            let text = String(data: errData, encoding: .utf8) ?? ""
-            DebugLogger.logError("GEMINI-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-            // Map the body to a specific TranscriptionError (e.g. an expired/invalid key
-            // becomes .invalidAPIKey/.incorrectAPIKey) so the user sees an actionable
-            // message instead of a raw "HTTP 400: {…}" network error. Fall back to the
-            // generic network error only if mapping fails.
-            let mapped = (try? self.parseErrorResponse(data: errData, statusCode: http.statusCode))
-            throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(text)")
-          }
+          let bodyData = try JSONSerialization.data(withJSONObject: body)
+          let (bytes, _) = try await self.openSSEStream(
+            endpoint: endpoint,
+            credential: credential,
+            body: bodyData,
+            logPrefix: "GEMINI-CHAT-STREAM",
+            onNon2xx: { statusSink.code = $0 })
 
           // Stall watchdog: cancels the data task (not this Task) when the stream stops making
           // progress, so the byte loop below throws and the catch decides between retry, partial
           // finish and error. See Constants.streamStallTimeout.
           progress.touch(chunk: false)
           let dataTask = bytes.task
-          let watchdog = Task {
-            while !Task.isCancelled {
-              try await Task.sleep(nanoseconds: UInt64(Constants.streamWatchdogPollInterval * 1_000_000_000))
-              let (idle, sawChunk) = progress.state
-              let budget = sawChunk ? Constants.streamStallTimeout : Constants.streamFirstChunkTimeout
-              if idle > budget {
-                progress.markStalled()
-                DebugLogger.logWarning(
-                  "GEMINI-CHAT-STREAM: no progress for \(Int(idle))s (\(sawChunk ? "mid-stream" : "before first chunk")) — aborting the stalled stream")
-                dataTask.cancel()
-                return
-              }
-            }
-          }
+          let watchdog = progress.startWatchdog(
+            pollInterval: Constants.streamWatchdogPollInterval,
+            firstChunkTimeout: Constants.streamFirstChunkTimeout,
+            stallTimeout: Constants.streamStallTimeout,
+            logPrefix: "GEMINI-CHAT-STREAM",
+            noun: "progress",
+            firstLabel: "before first chunk",
+            midLabel: "mid-stream",
+            cancel: { dataTask.cancel() })
           defer { watchdog.cancel() }
 
           var aggregatedSources: [GroundingSource] = []
@@ -797,7 +852,7 @@ class GeminiAPIClient {
           // a 19-minute video passes, a 2-hour one is rejected). The API gives no distinguishable
           // reason — same generic INVALID_ARGUMENT as a malformed request — so the only way to
           // tell the cases apart is to retry with the opening window clipped. One attempt only.
-          if !hasYielded, lastStatusCode == 400, !didClipVideoForRetry,
+          if !hasYielded, statusSink.code == 400, !didClipVideoForRetry,
              let clipped = YouTubeVideoLink.clipUnclippedVideoParts(in: effectiveContents) {
             didClipVideoForRetry = true
             effectiveContents = clipped
@@ -814,7 +869,7 @@ class GeminiAPIClient {
           // link comes back as a bare 403 PERMISSION_DENIED. The video was attached automatically
           // from a link in the user's text, so failing the turn punishes the user for a question
           // that may have nothing to do with the video. Retry once without it.
-          if !hasYielded, lastStatusCode == 403, !didStripVideoForRetry,
+          if !hasYielded, statusSink.code == 403, !didStripVideoForRetry,
              let stripped = YouTubeVideoLink.removeVideoParts(in: effectiveContents) {
             didStripVideoForRetry = true
             effectiveContents = stripped

@@ -1683,10 +1683,6 @@ class SpeechService {
   ) async throws -> Data {
     let logPrefix = "TTS-GEMINI-STREAM"
     let endpoint = model.apiEndpoint
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
-    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-    // The watchdog below is the real deadline, exactly as in the chat stream.
-    request.timeoutInterval = GeminiAPIClient.resourceTimeout
 
     let ttsRequest = GeminiTTSRequest(
       contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(text)")])],
@@ -1699,42 +1695,31 @@ class SpeechService {
         )
       )
     )
-    request.httpBody = try JSONEncoder().encode(ttsRequest)
+    let body = try JSONEncoder().encode(ttsRequest)
 
     let started = CFAbsoluteTimeGetCurrent()
-    DebugLogger.logNetwork("\(logPrefix): POST \(endpoint) (\(text.count) chars, voice: \(voice))")
-    let (bytes, response) = try await geminiClient.streamingBytes(for: request)
-    guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    if http.statusCode < 200 || http.statusCode >= 300 {
-      var errData = Data()
-      for try await b in bytes { errData.append(b) }
-      let bodyText = String(data: errData, encoding: .utf8) ?? ""
-      DebugLogger.logError("\(logPrefix): HTTP \(http.statusCode) body=\(bodyText.prefix(500))")
-      let mapped = try? geminiClient.parseErrorResponse(data: errData, statusCode: http.statusCode)
-      throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(bodyText.prefix(200))")
-    }
+    let (bytes, _) = try await geminiClient.openSSEStream(
+      endpoint: endpoint,
+      credential: credential,
+      body: body,
+      logPrefix: logPrefix,
+      logDetail: " (\(text.count) chars, voice: \(voice))",
+      non2xxErrorBodyLimit: 200)
 
     // Stall watchdog: cancels the data task (not this Task) when the stream stops delivering
     // audio, so the byte loop below throws and the catch converts it into a retryable error.
     let progress = StreamProgressClock()
     progress.touch(chunk: false)
     let dataTask = bytes.task
-    let watchdog = Task {
-      while !Task.isCancelled {
-        try await Task.sleep(nanoseconds: UInt64(AppConstants.ttsStreamWatchdogPollInterval * 1_000_000_000))
-        let (idle, sawChunk) = progress.state
-        let budget = sawChunk ? AppConstants.ttsStreamStallTimeout : AppConstants.ttsStreamFirstAudioTimeout
-        if idle > budget {
-          progress.markStalled()
-          DebugLogger.logWarning(
-            "\(logPrefix): no audio for \(Int(idle))s (\(sawChunk ? "mid-stream" : "before first audio")) — aborting the stalled stream")
-          dataTask.cancel()
-          return
-        }
-      }
-    }
+    let watchdog = progress.startWatchdog(
+      pollInterval: AppConstants.ttsStreamWatchdogPollInterval,
+      firstChunkTimeout: AppConstants.ttsStreamFirstAudioTimeout,
+      stallTimeout: AppConstants.ttsStreamStallTimeout,
+      logPrefix: logPrefix,
+      noun: "audio",
+      firstLabel: "before first audio",
+      midLabel: "mid-stream",
+      cancel: { dataTask.cancel() })
     defer { watchdog.cancel() }
 
     var splitter = GeminiStreamObjectSplitter()
@@ -1742,7 +1727,6 @@ class SpeechService {
     var audio = Data()
     var objectCount = 0
     var audioObjectCount = 0
-    var firstSliceLogged = false
     do {
       for try await byte in bytes {
         try Task.checkCancellation()
@@ -1758,13 +1742,7 @@ class SpeechService {
         audio.append(pcm)
         guard let onPartial else { continue }
         for b in pcm {
-          if let slice = batcher.append(b) {
-            if !firstSliceLogged {
-              firstSliceLogged = true
-              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
-            }
-            await onPartial(slice)
-          }
+          await batcher.feed(b, started: started, logPrefix: logPrefix, emit: onPartial)
         }
       }
     } catch {
@@ -2390,16 +2368,9 @@ class SpeechService {
         if http.statusCode == 200 {
           var batcher = PCMStreamBatcher()
           let started = CFAbsoluteTimeGetCurrent()
-          var firstFlushLogged = false
           for try await byte in bytes {
             collected.append(byte)
-            if let slice = batcher.append(byte) {
-              if !firstFlushLogged {
-                firstFlushLogged = true
-                DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
-              }
-              await onPartial(slice)
-            }
+            await batcher.feed(byte, started: started, logPrefix: logPrefix, emit: onPartial)
           }
           if let rest = batcher.drain() { await onPartial(rest) }
         } else {
