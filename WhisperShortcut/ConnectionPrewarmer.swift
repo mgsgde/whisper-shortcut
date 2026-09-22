@@ -97,13 +97,12 @@ enum ConnectionPrewarmer {
     request.httpBody = httpBody
 
     Task.detached(priority: .utility) {
-      let startTime = CFAbsoluteTimeGetCurrent()
-      do {
+      await timedWarmUp {
         _ = try await LLMHTTPSession.shared.data(for: request)
-        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+      } onSuccess: { elapsedMs in
         DebugLogger.log(
           "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt)")
-      } catch {
+      } onFailure: { error in
         DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
       }
     }
@@ -133,18 +132,17 @@ enum ConnectionPrewarmer {
         return
       }
       let wasLoaded = await LocalSpeechService.shared.isLoaded(modelType: type)
-      let startTime = CFAbsoluteTimeGetCurrent()
-      do {
+      await timedWarmUp {
         // Also worth calling when the model is already loaded: `initializeModel` returns
         // immediately and pushes the idle-unload timer out, so a long dictation cannot have the
         // weights dropped out from under it mid-sentence.
         try await LocalSpeechService.shared.initializeModel(type)
-        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+      } onSuccess: { elapsedMs in
         DebugLogger.logSpeech(
           "SPEED: PREWARM offline model=\(type.rawValue) "
             + "readyMs=\(String(format: "%.0f", elapsedMs)) "
             + "(\(wasLoaded ? "already loaded" : "cold load"))")
-      } catch {
+      } onFailure: { error in
         DebugLogger.logWarning(
           "PREWARM: offline \(type.displayName) warm-up failed: \(error.localizedDescription)")
       }
@@ -155,8 +153,7 @@ enum ConnectionPrewarmer {
   private static func warmMLXModel(for model: PromptModel) {
     guard let mlxType = model.localMLXModelType else { return }
     Task.detached(priority: .utility) {
-      let startTime = CFAbsoluteTimeGetCurrent()
-      do {
+      await timedWarmUp {
         try await LocalLLMModelManager.shared.ensureReady(mlxType)
 
         // Prime the prompt cache too, not just the weights. Measured, the first request of a
@@ -180,13 +177,12 @@ enum ConnectionPrewarmer {
           reusePrefix: ChatRequestOptions.textTransform.reusablePromptPrefix,
           parameters: parameters,
           additionalContext: ["enable_thinking": false])
-
-        let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+      } onSuccess: { elapsedMs in
         DebugLogger.log(
           "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms (weights + prompt cache)")
-      } catch is CancellationError {
+      } onCancellation: {
         DebugLogger.log("PREWARM: MLX model \(mlxType.huggingFaceID) warm-up cancelled")
-      } catch {
+      } onFailure: { error in
         DebugLogger.logWarning(
           "PREWARM: MLX model \(mlxType.huggingFaceID) warm-up failed: \(error.localizedDescription)")
       }
@@ -207,12 +203,38 @@ enum ConnectionPrewarmer {
     request.timeoutInterval = 10
 
     Task.detached(priority: .utility) {
-      let startTime = CFAbsoluteTimeGetCurrent()
-      // The response status is irrelevant (hosts typically answer 404 on "/") — reaching
-      // the server at all leaves an established connection behind in the shared pool.
-      _ = try? await LLMHTTPSession.shared.data(for: request)
+      await timedWarmUp {
+        // The response status is irrelevant (hosts typically answer 404 on "/") — reaching
+        // the server at all leaves an established connection behind in the shared pool.
+        // `try?` is deliberate: a failed HEAD still logs the elapsed time and does not warn.
+        _ = try? await LLMHTTPSession.shared.data(for: request)
+      } onSuccess: { elapsedMs in
+        DebugLogger.log("PREWARM: \(host) connection ready in \(String(format: "%.0f", elapsedMs))ms")
+      }
+    }
+  }
+
+  /// Clock around one warm-up. Success, cancellation, and failure logs stay at the call site
+  /// because the four paths do not share a format or a logger.
+  private static func timedWarmUp(
+    _ body: () async throws -> Void,
+    onSuccess: (Double) -> Void,
+    onCancellation: (() -> Void)? = nil,
+    onFailure: ((Error) -> Void)? = nil
+  ) async {
+    let startTime = CFAbsoluteTimeGetCurrent()
+    do {
+      try await body()
       let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
-      DebugLogger.log("PREWARM: \(host) connection ready in \(String(format: "%.0f", elapsedMs))ms")
+      onSuccess(elapsedMs)
+    } catch is CancellationError {
+      if let onCancellation {
+        onCancellation()
+      } else {
+        onFailure?(CancellationError())
+      }
+    } catch {
+      onFailure?(error)
     }
   }
 }

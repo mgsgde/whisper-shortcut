@@ -2256,13 +2256,9 @@ class SpeechService {
     } catch TranscriptionError.requestTimeout {
       DebugLogger.logError(
         "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
-      ContextLogger.shared.logSignal(
-        .requestTimedOut, mode: "transcription",
-        detail: [
-          "phase": "transcribing",
-          "timeoutSeconds": "\(Int(NetworkDeadline.transcriptionRequestTimeout))",
-          "logPrefix": logPrefix
-        ])
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
+        logPrefix: logPrefix)
       throw TranscriptionError.requestTimeout
     }
     guard let httpResponse = response as? HTTPURLResponse else {

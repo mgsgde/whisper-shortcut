@@ -67,7 +67,7 @@ actor MLXPromptCache {
   private var lru: [String] = []
   private static let maxSnapshots = 2
 
-  private var memoryPressureSource: DispatchSourceMemoryPressure?
+  private let lifetime = ModelLifetimeGuards()
 
   func dropAll() {
     guard !snapshots.isEmpty else { return }
@@ -77,14 +77,9 @@ actor MLXPromptCache {
   }
 
   private func installPressureSourceIfNeeded() {
-    guard memoryPressureSource == nil else { return }
-    let source = DispatchSource.makeMemoryPressureSource(
-      eventMask: [.warning, .critical], queue: .global(qos: .utility))
-    source.setEventHandler {
+    lifetime.installMemoryPressureHandler {
       Task { await MLXPromptCache.shared.dropAll() }
     }
-    source.resume()
-    memoryPressureSource = source
   }
 
   private func key(model: String, systemPrompt: String) -> String {

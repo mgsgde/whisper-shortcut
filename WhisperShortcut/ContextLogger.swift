@@ -321,6 +321,17 @@ class ContextLogger {
 
   /// Gap #8: every `noSpeechDetected` path must hit the outcome-signal stream with the
   /// four fields usage-review needs to grade I3.
+  /// Transcription deadline signal. `stage` and `model` are emitted only when supplied, so the
+  /// cloud paths keep the three-key detail and the local paths keep their extra keys.
+  func logRequestTimedOut(timeoutSeconds: Int, logPrefix: String, stage: String? = nil, model: String? = nil) {
+    var detail: [String: String] = ["phase": "transcribing"]
+    if let stage { detail["stage"] = stage }
+    detail["timeoutSeconds"] = "\(timeoutSeconds)"
+    detail["logPrefix"] = logPrefix
+    if let model { detail["model"] = model }
+    logSignal(.requestTimedOut, mode: "transcription", detail: detail)
+  }
+
   func logNoSpeechDetected(source: String, peakDb: String, durationMs: String, logPrefix: String) {
     logSignal(
       .noSpeechDetected,

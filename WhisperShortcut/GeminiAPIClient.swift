@@ -429,13 +429,9 @@ class GeminiAPIClient {
         // Do not chew the retry budget: five × 60s is the I2 stall again.
         DebugLogger.logError(
           "\(mode): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
-        ContextLogger.shared.logSignal(
-          .requestTimedOut, mode: "transcription",
-          detail: [
-            "phase": "transcribing",
-            "timeoutSeconds": "\(Int(NetworkDeadline.transcriptionRequestTimeout))",
-            "logPrefix": mode
-          ])
+        ContextLogger.shared.logRequestTimedOut(
+          timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
+          logPrefix: mode)
         throw TranscriptionError.requestTimeout
       } catch let error as URLError {
         // User-initiated cancellations (pressing the shortcut again, starting a new

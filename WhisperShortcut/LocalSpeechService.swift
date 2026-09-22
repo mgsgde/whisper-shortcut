@@ -67,8 +67,7 @@ actor LocalSpeechService {
   /// The last model that was loaded, kept across unloads so `transcribe` can put it back.
   /// `currentModelType` is cleared by `unloadModel`; this deliberately is not.
   private var lastLoadedModelType: OfflineModelType?
-  private var memoryPressureSource: DispatchSourceMemoryPressure?
-  private var idleUnloadTask: Task<Void, Never>?
+  private let lifetime = ModelLifetimeGuards()
   /// WhisperKit's own breakdown of the most recent decode, in the shape `timingsSummary` renders.
   /// Read by `OfflineWhisperBenchmarkTests` so a benchmark can attribute a slow call to the
   /// encoder, the prefill or the token loop instead of guessing from the total.
@@ -80,6 +79,16 @@ actor LocalSpeechService {
   /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime —
   /// but only for a model that is no longer selected, see `unloadIfNotSelected`.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
+
+  /// Superset of the two former copies. The decode path added `"load"` in `02feb4dd`; the
+  /// init path now uses the same predicate, so a load-time error that only mentions "load"
+  /// is classified as a missing model too.
+  private static func looksLikeMissingModel(_ message: String) -> Bool {
+    let lowercasedError = message.lowercased()
+    return lowercasedError.contains("mil network") ||
+      lowercasedError.contains("mlmodelc") ||
+      lowercasedError.contains("model") && (lowercasedError.contains("not found") || lowercasedError.contains("missing") || lowercasedError.contains("read") || lowercasedError.contains("load"))
+  }
 
   /// Wall-clock ceilings for the two WhisperKit calls that previously ran until the user
   /// cancelled. Turbo weights load in 3.7–6.1 s on an M1 Pro; `preparingMessage` promises "a few
@@ -178,15 +187,11 @@ actor LocalSpeechService {
     } catch TranscriptionError.requestTimeout {
       DebugLogger.logError(
         "LOCAL-SPEECH: model load exceeded \(Int(Self.modelLoadDeadline))s wall-clock deadline for \(modelType.displayName) — aborting (LocalDeadline)")
-      ContextLogger.shared.logSignal(
-        .requestTimedOut, mode: "transcription",
-        detail: [
-          "phase": "transcribing",
-          "stage": "modelLoad",
-          "timeoutSeconds": "\(Int(Self.modelLoadDeadline))",
-          "logPrefix": "LOCAL-SPEECH",
-          "model": modelType.rawValue
-        ])
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(Self.modelLoadDeadline),
+        logPrefix: "LOCAL-SPEECH",
+        stage: "modelLoad",
+        model: modelType.rawValue)
       throw TranscriptionError.localProcessingTimeout(
         stage: .modelLoad, seconds: Int(Self.modelLoadDeadline))
     } catch is CancellationError {
@@ -196,11 +201,7 @@ actor LocalSpeechService {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: WhisperKit initialization failed: \(errorMessage)")
       
-      // Check for common model-related errors
-      let lowercasedError = errorMessage.lowercased()
-      if lowercasedError.contains("mil network") ||
-         lowercasedError.contains("mlmodelc") ||
-         lowercasedError.contains("model") && (lowercasedError.contains("not found") || lowercasedError.contains("missing") || lowercasedError.contains("read")) {
+      if Self.looksLikeMissingModel(errorMessage) {
         // This is a model availability issue
         DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete")
         throw TranscriptionError.modelNotAvailable(modelType)
@@ -221,26 +222,17 @@ actor LocalSpeechService {
     DebugLogger.log("LOCAL-SPEECH: Unloading model (\(reason))")
     whisperKit = nil
     currentModelType = nil
-    idleUnloadTask?.cancel()
-    idleUnloadTask = nil
+    lifetime.cancelIdleUnload()
   }
 
   private func startLifetimeGuardsIfNeeded() {
-    guard memoryPressureSource == nil else { return }
-    let source = DispatchSource.makeMemoryPressureSource(
-      eventMask: [.warning, .critical], queue: .global(qos: .utility))
-    source.setEventHandler {
+    lifetime.installMemoryPressureHandler {
       Task { await LocalSpeechService.shared.unloadModel(reason: "memory pressure") }
     }
-    source.resume()
-    memoryPressureSource = source
   }
 
   private func scheduleIdleUnload() {
-    idleUnloadTask?.cancel()
-    idleUnloadTask = Task {
-      try? await Task.sleep(for: .seconds(Self.idleUnloadAfter))
-      guard !Task.isCancelled else { return }
+    lifetime.scheduleIdleUnload(after: Self.idleUnloadAfter) {
       await self.unloadIfNotSelected()
     }
   }
@@ -585,24 +577,17 @@ actor LocalSpeechService {
       }
       DebugLogger.logError(
         "LOCAL-SPEECH: decode exceeded \(Int(deadline))s wall-clock deadline (audio \(audioSecondsText)s) — aborting (LocalDeadline)")
-      ContextLogger.shared.logSignal(
-        .requestTimedOut, mode: "transcription",
-        detail: [
-          "phase": "transcribing",
-          "stage": "decode",
-          "timeoutSeconds": "\(Int(deadline))",
-          "logPrefix": "LOCAL-SPEECH",
-          "model": currentModelType?.rawValue ?? "unknown"
-        ])
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(deadline),
+        logPrefix: "LOCAL-SPEECH",
+        stage: "decode",
+        model: currentModelType?.rawValue ?? "unknown")
       throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
     } catch {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")
       
-      let lowercasedError = errorMessage.lowercased()
-      if lowercasedError.contains("mil network") ||
-         lowercasedError.contains("mlmodelc") ||
-         lowercasedError.contains("model") && (lowercasedError.contains("not found") || lowercasedError.contains("missing") || lowercasedError.contains("read") || lowercasedError.contains("load")) {
+      if Self.looksLikeMissingModel(errorMessage) {
         DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete during transcription")
         if let modelType = currentModelType {
           throw TranscriptionError.modelNotAvailable(modelType)

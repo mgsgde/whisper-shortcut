@@ -195,8 +195,7 @@ actor MLXModelLoader {
   private var loadedType: LocalLLMModelType?
   private var loaded: ModelContainer?
   private var inFlight: [LocalLLMModelType: Task<ModelContainer, Error>] = [:]
-  private var memoryPressureSource: DispatchSourceMemoryPressure?
-  private var idleUnloadTask: Task<Void, Never>?
+  private let lifetime = ModelLifetimeGuards()
 
   /// Prefill regresses several-fold under memory pressure when the GPU cache is unbounded
   /// (`LocalLLMBenchmarkTests`, 2026-09-02, the last open item in `plans/active/local-llm-mlx.md`).
@@ -260,21 +259,13 @@ actor MLXModelLoader {
   }
 
   private func startLifetimeGuardsIfNeeded() {
-    guard memoryPressureSource == nil else { return }
-    let source = DispatchSource.makeMemoryPressureSource(
-      eventMask: [.warning, .critical], queue: .global(qos: .utility))
-    source.setEventHandler {
+    lifetime.installMemoryPressureHandler {
       Task { await self.unloadLoaded(reason: "memory pressure") }
     }
-    source.resume()
-    memoryPressureSource = source
   }
 
   private func scheduleIdleUnload() {
-    idleUnloadTask?.cancel()
-    idleUnloadTask = Task {
-      try? await Task.sleep(for: .seconds(Self.idleUnloadAfter))
-      guard !Task.isCancelled else { return }
+    lifetime.scheduleIdleUnload(after: Self.idleUnloadAfter) {
       await self.unloadLoaded(reason: "idle")
     }
   }
@@ -284,8 +275,7 @@ actor MLXModelLoader {
     DebugLogger.log("MLX: unloading \(loadedType?.huggingFaceID ?? "model") (\(reason))")
     loaded = nil
     loadedType = nil
-    idleUnloadTask?.cancel()
-    idleUnloadTask = nil
+    lifetime.cancelIdleUnload()
     Task { await MLXPromptCache.shared.dropAll() }
   }
 }
