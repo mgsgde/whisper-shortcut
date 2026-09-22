@@ -93,7 +93,7 @@ class ChatViewModel: ObservableObject {
   /// CHAT-SEND; a `sample` showed every frame resolving the scrollPosition matchingID).
   /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
   /// preserved by the ScrollView's default behavior and the persisted reading position
-  /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
+  /// (`ChatScrollAnchors`) is untouched — it repopulates on the next user scroll.
   let scrollAnchorClearSignal = PassthroughSubject<Void, Never>()
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
@@ -1309,12 +1309,12 @@ class ChatViewModel: ObservableObject {
         return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
       },
       ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
-        guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: self.executeRememberAboutUserTool(args: args))
+        guard self != nil else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: ChatMemoryTools.executeRememberAboutUserTool(args: args))
       },
       ChatToolRegistry.forgetAboutUserToolName: { [weak self] args in
-        guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: self.executeForgetAboutUserTool(args: args))
+        guard self != nil else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: ChatMemoryTools.executeForgetAboutUserTool(args: args))
       },
     ])
   }
@@ -2135,28 +2135,20 @@ class ChatViewModel: ObservableObject {
 
   /// Per-session id of the message pinned to the top of the chat scroll view. Survives window
   /// hide/show, tab switches, and relaunch. Keyed by session UUID; pruned to live sessions on load.
-  private var scrollAnchors: [UUID: UUID] = [:]
+  private let scrollAnchorStore = ChatScrollAnchors()
 
   private func loadScrollAnchors() {
-    let raw = UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.chatScrollAnchors) as? [String: String] ?? [:]
-    let liveIds = Set(store.allSessions().map(\.id))
-    scrollAnchors = raw.reduce(into: [:]) { acc, pair in
-      guard let sessionId = UUID(uuidString: pair.key),
-            let messageId = UUID(uuidString: pair.value),
-            liveIds.contains(sessionId) else { return }
-      acc[sessionId] = messageId
-    }
+    scrollAnchorStore.load(liveSessionIds: Set(store.allSessions().map(\.id)))
   }
 
   /// The saved top message for `sessionId`, if any.
-  func scrollAnchor(for sessionId: UUID) -> UUID? { scrollAnchors[sessionId] }
+  func scrollAnchor(for sessionId: UUID) -> UUID? {
+    scrollAnchorStore.anchor(for: sessionId)
+  }
 
   /// Stores (or clears, when `messageId` is nil) the top message for `sessionId`.
   func setScrollAnchor(_ messageId: UUID?, for sessionId: UUID) {
-    guard scrollAnchors[sessionId] != messageId else { return }
-    scrollAnchors[sessionId] = messageId
-    let raw = Dictionary(uniqueKeysWithValues: scrollAnchors.map { ($0.key.uuidString, $0.value.uuidString) })
-    UserDefaults.standard.set(raw, forKey: UserDefaultsKeys.chatScrollAnchors)
+    scrollAnchorStore.set(messageId, for: sessionId)
   }
 
   // MARK: - Tab navigation
@@ -2309,17 +2301,14 @@ class ChatViewModel: ObservableObject {
 
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
-    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let url = MeetingListService.transcriptURL(forStem: stem)
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
   func loadMeetingSummaryFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
-    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).summary.md")
+    let url = MeetingListService.summaryURL(
+      transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
@@ -2548,11 +2537,17 @@ class ChatViewModel: ObservableObject {
     (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// URL of the current meeting's transcript file (`{stem}.txt`).
-  private func meetingTranscriptURL(stem: String) -> URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+  /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
+  private func endedMeetingStem(
+    notMeeting: String, stillRecording: String
+  ) -> Result<String, [String: Any]> {
+    guard session.isMeeting, let stem = session.meetingStem else {
+      return .failure(["error": notMeeting])
+    }
+    if isCurrentSessionTheActiveMeeting {
+      return .failure(["error": stillRecording])
+    }
+    return .success(stem)
   }
 
   /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
@@ -2563,11 +2558,15 @@ class ChatViewModel: ObservableObject {
           !instruction.isEmpty else {
       return ["error": "Missing required argument: instruction"]
     }
-    guard session.isMeeting, let stem = session.meetingStem else {
-      return ["error": "This chat is not a meeting, so there is no summary to refine."]
-    }
-    if isCurrentSessionTheActiveMeeting {
-      return ["error": "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."]
+    let stem: String
+    switch endedMeetingStem(
+      notMeeting: "This chat is not a meeting, so there is no summary to refine.",
+      stillRecording: "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."
+    ) {
+    case .success(let value):
+      stem = value
+    case .failure(let body):
+      return body
     }
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
@@ -2588,7 +2587,7 @@ class ChatViewModel: ObservableObject {
       guard !refined.isEmpty else {
         return ["error": "The model returned an empty summary. Try rephrasing the instruction."]
       }
-      MeetingListService.shared.saveSummary(refined, transcriptFileURL: meetingTranscriptURL(stem: stem))
+      MeetingListService.shared.saveSummary(refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
       summaryRevision &+= 1
       DebugLogger.logSuccess("GEMINI-CHAT: Refined meeting summary for \(stem)")
       return ["ok": true,
@@ -2611,13 +2610,17 @@ class ChatViewModel: ObservableObject {
     guard from != to else {
       return ["error": "'from' and 'to' are identical — nothing to change."]
     }
-    guard session.isMeeting, let stem = session.meetingStem else {
-      return ["error": "This chat is not a meeting, so there is no transcript to correct."]
+    let stem: String
+    switch endedMeetingStem(
+      notMeeting: "This chat is not a meeting, so there is no transcript to correct.",
+      stillRecording: "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."
+    ) {
+    case .success(let value):
+      stem = value
+    case .failure(let body):
+      return body
     }
-    if isCurrentSessionTheActiveMeeting {
-      return ["error": "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."]
-    }
-    let url = meetingTranscriptURL(stem: stem)
+    let url = MeetingListService.transcriptURL(forStem: stem)
     guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
       return ["error": "Could not read the meeting transcript file."]
     }
@@ -2649,39 +2652,6 @@ class ChatViewModel: ObservableObject {
       result["summary_updated"] = summaryResult["ok"] != nil
     }
     return result
-  }
-
-  // MARK: - Memory tools (remember / forget durable user facts)
-
-  /// Backs the `remember_about_user` chat tool. Appends one durable fact to persistent memory
-  /// (UserContext/memory.md), deduped. Synchronous — the file is tiny and writes are local.
-  func executeRememberAboutUserTool(args: [String: Any]) -> [String: Any] {
-    guard let fact = (args["fact"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !fact.isEmpty else {
-      return ["error": "Missing required argument: fact"]
-    }
-    let added = ChatMemoryStore.shared.addFact(fact)
-    if added {
-      return ["ok": true, "remembered": fact,
-              "detail": "Saved to persistent memory. Briefly confirm in one sentence; do not list the rest of the memory."]
-    }
-    return ["ok": true, "remembered": fact, "duplicate": true,
-            "detail": "This fact was already remembered — nothing changed. Acknowledge briefly."]
-  }
-
-  /// Backs the `forget_about_user` chat tool. Removes every stored fact containing the given text.
-  func executeForgetAboutUserTool(args: [String: Any]) -> [String: Any] {
-    guard let matching = (args["matching"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !matching.isEmpty else {
-      return ["error": "Missing required argument: matching"]
-    }
-    let removed = ChatMemoryStore.shared.removeFacts(matching: matching)
-    guard removed > 0 else {
-      return ["ok": true, "removed": 0,
-              "detail": "No remembered fact matched \"\(matching)\". Tell the user there was nothing to forget."]
-    }
-    return ["ok": true, "removed": removed,
-            "detail": "Forgot \(removed) fact(s). Confirm briefly."]
   }
 
   // MARK: - Archive / Restore / Delete
