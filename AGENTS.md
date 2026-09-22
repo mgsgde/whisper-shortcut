@@ -100,7 +100,8 @@ In an Opus 5 session:
   - Grok via the Cursor CLI the implementer already uses, for **typing from a finished plan**:
     `cursor-agent -p --output-format text --force --trust --model grok-4.7-high "<brief>"`
     (`cursor-agent --list-models` prints the ids). Pinned to `grok-4.7-high` (owner ruling
-    2026-09-21, replacing `cursor-grok-4.6-high`; note the 4.7 ids carry no `cursor-` prefix) — never
+    2026-09-21, replacing `cursor-grok-4.6-high`; the 4.7 ids carry no `cursor-` prefix but sit in
+    the same "Cursor Models" included-usage pool, `plans/agent-loops.md` cost table) — never
     `auto` (bills at the routed model's list price), never a `-fast` variant. Cheapest tier, so
     bulk edits from an unambiguous plan belong here.
   - Either way the brief stands on its own, because the delegate has none of this conversation:
