@@ -1859,7 +1859,7 @@ class SpeechService {
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, http) = try await Self.performStreamingWithRetryOn429(
+    let (data, http) = try await Self.performWithRetryOn429(
       request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-OPENAI",
       onPartial: onPartial)
     guard http.statusCode == 200 else {
@@ -1867,62 +1867,6 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return data
-  }
-
-  /// Streaming sibling of `performWithRetryOn429`: same 429 handling, but a 200 body is read
-  /// incrementally and forwarded to `onPartial` in batches while it arrives. Non-200 bodies are
-  /// collected whole (they are short JSON errors) and returned for the caller to map.
-  private static func performStreamingWithRetryOn429(
-    request: URLRequest,
-    session: URLSession,
-    logPrefix: String,
-    onPartial: ((Data) async -> Void)?
-  ) async throws -> (Data, HTTPURLResponse) {
-    var lastResponse: (Data, HTTPURLResponse)?
-    for attempt in 1...Constants.maxRetryAttempts {
-      let (bytes, response) = try await session.bytes(for: request)
-      guard let http = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response from server")
-      }
-
-      var data = Data()
-      if http.statusCode == 200, let onPartial {
-        var batcher = PCMStreamBatcher()
-        let started = CFAbsoluteTimeGetCurrent()
-        var firstFlushLogged = false
-        for try await byte in bytes {
-          data.append(byte)
-          if let slice = batcher.append(byte) {
-            if !firstFlushLogged {
-              firstFlushLogged = true
-              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
-            }
-            await onPartial(slice)
-          }
-        }
-        if let rest = batcher.drain() { await onPartial(rest) }
-      } else {
-        for try await byte in bytes { data.append(byte) }
-      }
-      lastResponse = (data, http)
-
-      if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
-        let body = String(data: data, encoding: .utf8) ?? ""
-        if RetryBackoff.isPermanentRateLimit(responseBody: body) {
-          DebugLogger.logWarning("\(logPrefix): HTTP 429 is a quota/billing block — not retrying")
-          return (data, http)
-        }
-        let delay = RetryBackoff.delay(
-          attempt: attempt, retryAfter: http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init),
-          base: Constants.retryDelaySeconds, exponential: true)
-        DebugLogger.logWarning("\(logPrefix): HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
-        await RetryBackoff.sleep(delay)
-        continue
-      }
-      return (data, http)
-    }
-    if let lastResponse { return lastResponse }
-    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
@@ -2421,16 +2365,54 @@ class SpeechService {
   /// final response (data + HTTPURLResponse) without interpreting the status code —
   /// callers map non-2xx codes themselves. Mirrors the retry shape Gemini gets for free
   /// via `GeminiAPIClient.performRequest(withRetry: true)`.
-  private static func performWithRetryOn429(
+  ///
+  /// `onPartial == nil` reads the body whole (`session.data(for:)`). A non-nil `onPartial`
+  /// reads a 200 body as a byte stream and forwards it in batches while it arrives; any
+  /// other status is still collected whole (short JSON errors) for the caller to map.
+  /// Internal so the 429 branch can be driven from tests without a live provider.
+  static func performWithRetryOn429(
     request: URLRequest,
     session: URLSession,
-    logPrefix: String
+    logPrefix: String,
+    onPartial: ((Data) async -> Void)? = nil
   ) async throws -> (Data, HTTPURLResponse) {
     var lastResponse: (Data, HTTPURLResponse)?
     for attempt in 1...Constants.maxRetryAttempts {
-      let (data, response) = try await session.data(for: request)
-      guard let http = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response from server")
+      let data: Data
+      let http: HTTPURLResponse
+      if let onPartial {
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let streamed = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response from server")
+        }
+        http = streamed
+        var collected = Data()
+        if http.statusCode == 200 {
+          var batcher = PCMStreamBatcher()
+          let started = CFAbsoluteTimeGetCurrent()
+          var firstFlushLogged = false
+          for try await byte in bytes {
+            collected.append(byte)
+            if let slice = batcher.append(byte) {
+              if !firstFlushLogged {
+                firstFlushLogged = true
+                DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
+              }
+              await onPartial(slice)
+            }
+          }
+          if let rest = batcher.drain() { await onPartial(rest) }
+        } else {
+          for try await byte in bytes { collected.append(byte) }
+        }
+        data = collected
+      } else {
+        let (responseData, response) = try await session.data(for: request)
+        guard let whole = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response from server")
+        }
+        data = responseData
+        http = whole
       }
       lastResponse = (data, http)
       if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
