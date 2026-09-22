@@ -122,6 +122,33 @@ class ContextDerivation {
     """
   }
 
+  /// The four editable prompts for one derivation run, loaded once so the secondary-context
+  /// block and the analysis user message cannot drift apart (the chat case used to re-read
+  /// the store untrimmed).
+  private struct FocusPrompts {
+    let promptMode: String?
+    let dictation: String?
+    let whisperGlossary: String?
+    let chat: String?
+
+    func current(for kind: GenerationKind) -> String? {
+      switch kind {
+      case .promptMode: return promptMode
+      case .dictation: return dictation
+      case .whisperGlossary: return whisperGlossary
+      case .chat: return chat
+      }
+    }
+  }
+
+  /// One decode of the JSONL window, shared by sampling and audio-attachment selection.
+  /// `hadFiles` is false only when the directory listing itself is empty — that is the case
+  /// that used to return before the current prompt was copied into secondary context.
+  private struct InteractionLogCorpus {
+    let hadFiles: Bool
+    let entries: [InteractionLogEntry]
+  }
+
   // MARK: - Main Entry Point
 
   /// Analyzes interaction logs and derives the output for the given focus (one section only).
@@ -131,16 +158,15 @@ class ContextDerivation {
     DebugLogger.log("USER-CONTEXT-DERIVATION: Starting context update focus=\(focus) model=\(model.displayName) provider=\(model.provider)")
 
     let store = SystemPromptsStore.shared
-    let currentPromptModeSystemPrompt = store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentDictationPrompt = store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentWhisperGlossary = store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
-    let currentChatPrompt = store.loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let prompts = FocusPrompts(
+      promptMode: store.loadDictatePromptSystemPrompt().trimmingCharacters(in: .whitespacesAndNewlines),
+      dictation: store.loadDictationPrompt().trimmingCharacters(in: .whitespacesAndNewlines),
+      whisperGlossary: store.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines),
+      chat: store.loadSection(.chat)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    )
 
-    let loaded = try loadAndSampleLogs(focus: focus,
-                                       currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-                                       currentDictationPrompt: currentDictationPrompt,
-                                       currentWhisperGlossary: currentWhisperGlossary,
-                                       currentChatPrompt: currentChatPrompt)
+    let corpus = loadInteractionLogCorpus()
+    let loaded = try loadAndSampleLogs(focus: focus, prompts: prompts, corpus: corpus)
 
     let hasPrimary = !loaded.primaryText.isEmpty
     if hasPrimary {
@@ -159,15 +185,13 @@ class ContextDerivation {
       guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
         throw TranscriptionError.noGoogleAPIKey
       }
-      let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus)
+      let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus, entries: corpus.entries)
       analysisResult = try await callGeminiForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
         secondaryText: loaded.secondaryText,
         termEvidenceText: loaded.termEvidenceText,
-        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-        currentDictationPrompt: currentDictationPrompt,
-        currentWhisperGlossary: currentWhisperGlossary,
+        prompts: prompts,
         audioAttachments: audioAttachments,
         credential: credential
       )
@@ -177,9 +201,7 @@ class ContextDerivation {
         primaryText: loaded.primaryText,
         secondaryText: loaded.secondaryText,
         termEvidenceText: loaded.termEvidenceText,
-        currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-        currentDictationPrompt: currentDictationPrompt,
-        currentWhisperGlossary: currentWhisperGlossary,
+        prompts: prompts,
         model: model
       )
     }
@@ -206,7 +228,7 @@ class ContextDerivation {
   /// the Smart Improvement model. Returns base64-encoded audio bytes plus metadata for prompt context.
   /// Returns an empty array for non-audio focuses, when no usable clips exist, or when the asymmetry
   /// rule eliminates every candidate.
-  private func collectAudioAttachmentsIfApplicable(focus: GenerationKind) -> [AudioAttachment] {
+  private func collectAudioAttachmentsIfApplicable(focus: GenerationKind, entries: [InteractionLogEntry]) -> [AudioAttachment] {
     guard focus == .dictation || focus == .whisperGlossary else { return [] }
 
     let allSamples = ContextLogger.shared.audioSampleURLs()
@@ -218,20 +240,13 @@ class ContextDerivation {
       return []
     }
 
-    // Map ref → transcriptionModel and ref → transcribed text from the JSONL logs in the window.
-    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
+    // Map ref → transcriptionModel and ref → transcribed text from the already-decoded window.
     var refToModel: [String: String] = [:]
     var refToText: [String: String] = [:]
-    let decoder = JSONDecoder()
-    for fileURL in logFiles {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        guard let ref = entry.audioRef else { continue }
-        if let tm = entry.transcriptionModel { refToModel[ref] = tm }
-        if let result = entry.result { refToText[ref] = result }
-      }
+    for entry in entries {
+      guard let ref = entry.audioRef else { continue }
+      if let tm = entry.transcriptionModel { refToModel[ref] = tm }
+      if let result = entry.result { refToText[ref] = result }
     }
 
     // Classify every on-disk clip once: eligible = known model that passes the asymmetry rule.
@@ -389,52 +404,48 @@ class ContextDerivation {
 
   // MARK: - Log Loading & Sampling
 
-  private static func primaryMode(for focus: GenerationKind) -> String? {
-    switch focus {
-    case .dictation: return "transcription"
-    case .whisperGlossary: return "transcription"
-    case .promptMode: return "prompt"
-    case .chat: return "geminiChat"
+  private func loadInteractionLogCorpus() -> InteractionLogCorpus {
+    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
+    guard !logFiles.isEmpty else {
+      return InteractionLogCorpus(hadFiles: false, entries: [])
     }
+    var entries: [InteractionLogEntry] = []
+    let decoder = JSONDecoder()
+    for fileURL in logFiles {
+      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
+        guard let data = line.data(using: .utf8),
+              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
+        entries.append(entry)
+      }
+    }
+    return InteractionLogCorpus(hadFiles: true, entries: entries)
   }
 
   private func loadAndSampleLogs(
     focus: GenerationKind,
-    currentPromptModeSystemPrompt: String?,
-    currentDictationPrompt: String?,
-    currentWhisperGlossary: String?,
-    currentChatPrompt: String? = nil
+    prompts: FocusPrompts,
+    corpus: InteractionLogCorpus
   ) throws -> FocusedLoadResult {
     let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
       ?? AppConstants.contextDefaultMaxEntriesPerMode
     let maxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxTotalChars) as? Int
       ?? AppConstants.contextDefaultMaxTotalChars
 
-    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
-    guard !logFiles.isEmpty else {
+    guard corpus.hadFiles else {
       return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0, termEvidenceText: "")
     }
 
     var entriesByMode: [String: [InteractionLogEntry]] = [:]
-    let decoder = JSONDecoder()
-    for fileURL in logFiles {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
-      for line in lines {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        entriesByMode[entry.mode, default: []].append(entry)
-      }
+    for entry in corpus.entries {
+      entriesByMode[entry.mode, default: []].append(entry)
     }
 
     let now = Date()
     let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier1Days, to: now) ?? now
     let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier2Days, to: now) ?? now
 
-    guard let primaryMode = Self.primaryMode(for: focus) else {
-      return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0, termEvidenceText: "")
-    }
-
+    let primaryMode = focus.primaryMode
     let primaryEntries = entriesByMode[primaryMode] ?? []
     let sortedPrimary = primaryEntries.sorted { $0.ts < $1.ts }
     let tier1 = sortedPrimary.filter { parseDate($0.ts) >= tier1Cutoff }
@@ -454,15 +465,8 @@ class ContextDerivation {
     let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
 
     var secondaryParts: [String] = []
-    switch focus {
-    case .dictation:
-      if let p = currentDictationPrompt, !p.isEmpty { secondaryParts.append("Current dictation prompt (refine based on new data):\n\(p)") }
-    case .whisperGlossary:
-      if let p = currentWhisperGlossary, !p.isEmpty { secondaryParts.append("Current Whisper Glossary (refine based on new data):\n\(p)") }
-    case .promptMode:
-      if let p = currentPromptModeSystemPrompt, !p.isEmpty { secondaryParts.append("Current Dictate Prompt system prompt (refine based on new data):\n\(p)") }
-    case .chat:
-      if let p = currentChatPrompt, !p.isEmpty { secondaryParts.append("Current Chat system prompt (refine based on new data):\n\(p)") }
+    if let p = prompts.current(for: focus), !p.isEmpty {
+      secondaryParts.append("\(focus.currentPromptSecondaryLabel)\n\(p)")
     }
 
     let otherModes = entriesByMode.filter { $0.key != primaryMode }
@@ -535,12 +539,23 @@ class ContextDerivation {
     return (0..<count).map { entries[Int(Double($0) * step)] }
   }
 
+  /// Both option sets the old per-call formatter tried, kept immutable so sampling does not
+  /// allocate one `ISO8601DateFormatter` three times per entry. `date(from:)` is not thread-safe,
+  /// so the lock stands in for the old "fresh formatter per call" isolation.
+  private static let interactionDateParser: (fractional: ISO8601DateFormatter, internet: ISO8601DateFormatter) = {
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let internet = ISO8601DateFormatter()
+    internet.formatOptions = [.withInternetDateTime]
+    return (fractional, internet)
+  }()
+  private static let interactionDateParserLock = NSLock()
+
   private func parseDate(_ iso: String) -> Date {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    if let date = formatter.date(from: iso) { return date }
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.date(from: iso) ?? .distantPast
+    Self.interactionDateParserLock.lock()
+    defer { Self.interactionDateParserLock.unlock() }
+    if let date = Self.interactionDateParser.fractional.date(from: iso) { return date }
+    return Self.interactionDateParser.internet.date(from: iso) ?? .distantPast
   }
 
   // MARK: - Gemini Analysis
@@ -736,9 +751,7 @@ class ContextDerivation {
     primaryText: String,
     secondaryText: String,
     termEvidenceText: String,
-    currentPromptModeSystemPrompt: String?,
-    currentDictationPrompt: String?,
-    currentWhisperGlossary: String?,
+    prompts: FocusPrompts,
     audioAttachments: [AudioAttachment],
     credential: GeminiCredential
   ) async throws -> [String: Any] {
@@ -751,9 +764,7 @@ class ContextDerivation {
       primaryText: primaryText,
       secondaryText: secondaryText,
       termEvidenceText: termEvidenceText,
-      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-      currentDictationPrompt: currentDictationPrompt,
-      currentWhisperGlossary: currentWhisperGlossary,
+      prompts: prompts,
       audioAttachments: audioAttachments
     )
 
@@ -808,19 +819,10 @@ class ContextDerivation {
     primaryText: String,
     secondaryText: String,
     termEvidenceText: String,
-    currentPromptModeSystemPrompt: String?,
-    currentDictationPrompt: String?,
-    currentWhisperGlossary: String?,
+    prompts: FocusPrompts,
     audioAttachments: [AudioAttachment]
   ) -> String {
-    let currentPrompt: String = {
-      switch focus {
-      case .dictation: return currentDictationPrompt ?? ""
-      case .whisperGlossary: return currentWhisperGlossary ?? ""
-      case .promptMode: return currentPromptModeSystemPrompt ?? ""
-      case .chat: return SystemPromptsStore.shared.loadSection(.chat) ?? ""
-      }
-    }()
+    let currentPrompt = prompts.current(for: focus) ?? ""
 
     var userMessageParts: [String] = []
     if !currentPrompt.isEmpty {
@@ -829,7 +831,7 @@ class ContextDerivation {
       userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
     }
     if !primaryText.isEmpty {
-      let modeLabel = Self.primaryMode(for: focus) ?? "primary"
+      let modeLabel = focus.primaryMode
       userMessageParts.append("## Primary interactions – mode: \(modeLabel) (chronological, recent entries weighted)\n\n\(primaryText)")
     } else {
       userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
@@ -865,9 +867,7 @@ class ContextDerivation {
     primaryText: String,
     secondaryText: String,
     termEvidenceText: String,
-    currentPromptModeSystemPrompt: String?,
-    currentDictationPrompt: String?,
-    currentWhisperGlossary: String?,
+    prompts: FocusPrompts,
     model: PromptModel
   ) async throws -> [String: Any] {
     try ProviderCredentials.verifyConfigured(model.provider)
@@ -878,9 +878,7 @@ class ContextDerivation {
       primaryText: primaryText,
       secondaryText: secondaryText,
       termEvidenceText: termEvidenceText,
-      currentPromptModeSystemPrompt: currentPromptModeSystemPrompt,
-      currentDictationPrompt: currentDictationPrompt,
-      currentWhisperGlossary: currentWhisperGlossary,
+      prompts: prompts,
       audioAttachments: []
     )
 
@@ -906,16 +904,6 @@ class ContextDerivation {
 
   // MARK: - Output File Writing
 
-  /// File name (without extension) for the suggestion file of a given focus.
-  private func suggestionBaseName(for focus: GenerationKind) -> String {
-    switch focus {
-    case .dictation: return "suggested-dictation-prompt"
-    case .whisperGlossary: return "suggested-whisper-glossary"
-    case .promptMode: return "suggested-prompt-mode-system-prompt"
-    case .chat: return "suggested-gemini-chat-system-prompt"
-    }
-  }
-
   /// Writes the structured analysis result to disk: the suggestion file (when the model chose to
   /// change the prompt) plus an optional rationale sidecar. `no_change` writes nothing, so a stale
   /// suggestion is never overwritten with an empty one.
@@ -926,16 +914,47 @@ class ContextDerivation {
     }
 
     if !result.rationale.isEmpty {
-      let rationaleURL = ContextLogger.shared.directoryURL.appendingPathComponent(suggestionBaseName(for: focus) + "-rationale.txt")
+      let rationaleURL = ContextLogger.shared.directoryURL.appendingPathComponent(focus.suggestionBaseName + "-rationale.txt")
       try? result.rationale.write(to: rationaleURL, atomically: true, encoding: .utf8)
     }
 
-    let fileURL = ContextLogger.shared.directoryURL.appendingPathComponent(suggestionBaseName(for: focus) + ".txt")
+    let fileURL = ContextLogger.shared.directoryURL.appendingPathComponent(focus.suggestionBaseName + ".txt")
     do {
       try result.suggestion.write(to: fileURL, atomically: true, encoding: .utf8)
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(result.suggestion.count) chars)")
     } catch {
       DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.localizedDescription)")
+    }
+  }
+}
+
+extension GenerationKind {
+  /// Interaction-log `mode` that counts as primary evidence for this focus.
+  fileprivate var primaryMode: String {
+    switch self {
+    case .dictation, .whisperGlossary: return "transcription"
+    case .promptMode: return "prompt"
+    case .chat: return "geminiChat"
+    }
+  }
+
+  /// Suggestion filename without extension.
+  fileprivate var suggestionBaseName: String {
+    switch self {
+    case .dictation: return "suggested-dictation-prompt"
+    case .whisperGlossary: return "suggested-whisper-glossary"
+    case .promptMode: return "suggested-prompt-mode-system-prompt"
+    case .chat: return "suggested-gemini-chat-system-prompt"
+    }
+  }
+
+  /// Label line preceding the current prompt inside secondary context.
+  fileprivate var currentPromptSecondaryLabel: String {
+    switch self {
+    case .dictation: return "Current dictation prompt (refine based on new data):"
+    case .whisperGlossary: return "Current Whisper Glossary (refine based on new data):"
+    case .promptMode: return "Current Dictate Prompt system prompt (refine based on new data):"
+    case .chat: return "Current Chat system prompt (refine based on new data):"
     }
   }
 }
