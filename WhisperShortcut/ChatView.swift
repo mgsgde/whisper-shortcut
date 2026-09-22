@@ -1059,6 +1059,10 @@ class ChatViewModel: ObservableObject {
             duplicateStatusStreak = 0
             loopDeltaIndex = 0
             streamingBuffer.setContentImmediate(markerPrefix)
+          } else if let last = streamed.last, !last.isNewline {
+            // The next round's narration streams into the same bubble. Without a paragraph
+            // break it glues onto this round's last sentence ("…zu Grok 4.7.Noch kurz…").
+            streamed += "\n\n"
           }
           currentContents.append(contentsOf: turns)
         }
@@ -1077,6 +1081,9 @@ class ChatViewModel: ObservableObject {
         // (see `thoughtStripSettled`), so a marker leaking later would otherwise reach the saved
         // message. One strip here restores the "user never sees them" guarantee at O(N)-once cost.
         var reply = Self.stripLeakedThoughtTokens(markerPrefix + streamed)
+        // A round-boundary paragraph break (above) dangles when the final round emitted only
+        // function calls; a whitespace-only reply must also reach the fallback copy.
+        while let last = reply.last, last.isWhitespace { reply.removeLast() }
         if reply.isEmpty {
           if toolLoopExhausted {
             // Say what actually happened: the model kept working and hit the round cap. The old
