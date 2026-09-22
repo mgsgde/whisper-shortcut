@@ -342,8 +342,7 @@ actor LocalSpeechService {
     // slice 4).
     var audioDuration: Double?
     do {
-      let audioFile = try AVAudioFile(forReading: audioURL)
-      let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      let duration = try AudioDuration.avAudioFileSeconds(audioURL)
       audioDuration = duration
       DebugLogger.log("LOCAL-SPEECH: Audio duration: \(String(format: "%.2f", duration))s")
     } catch {
@@ -579,8 +578,8 @@ actor LocalSpeechService {
       return results
     } catch TranscriptionError.requestTimeout {
       let audioSecondsText: String
-      if let file = try? AVAudioFile(forReading: audioURL) {
-        audioSecondsText = String(format: "%.2f", Double(file.length) / file.fileFormat.sampleRate)
+      if let seconds = try? AudioDuration.avAudioFileSeconds(audioURL) {
+        audioSecondsText = String(format: "%.2f", seconds)
       } else {
         audioSecondsText = "n/a"
       }

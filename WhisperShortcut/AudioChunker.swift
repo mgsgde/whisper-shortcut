@@ -99,9 +99,7 @@ class AudioChunker {
     /// - Parameter fileURL: URL of the audio file
     /// - Returns: Duration in seconds
     func getAudioDuration(_ fileURL: URL) async throws -> TimeInterval {
-        let asset = AVURLAsset(url: fileURL)
-        let duration = try await asset.load(.duration)
-        return CMTimeGetSeconds(duration)
+        try await AudioDuration.avURLAssetSeconds(fileURL)
     }
 
     /// Determine if an audio file needs chunking.

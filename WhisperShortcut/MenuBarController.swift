@@ -1099,10 +1099,12 @@ class MenuBarController: NSObject {
   }
 
   private static func audioDurationMs(of url: URL) -> Int {
-    guard let file = try? AVAudioFile(forReading: url), file.fileFormat.sampleRate > 0 else {
+    // sampleRate <= 0 used to return 0; Int(inf) would trap.
+    guard let seconds = try? AudioDuration.avAudioFileSeconds(url),
+          seconds.isFinite, seconds >= 0 else {
       return 0
     }
-    return Int((Double(file.length) / file.fileFormat.sampleRate * 1000).rounded())
+    return Int((seconds * 1000).rounded())
   }
 
   @objc private func toggleTranscription() {

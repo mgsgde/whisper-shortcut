@@ -1047,14 +1047,8 @@ class SpeechService {
         url: nil
       ))
     } else {
-      let audioData: Data
-      let mimeType: String
-      if let aacData = AudioTranscoder.aacData(for: audioURL) {
-        audioData = aacData
-        mimeType = AudioTranscoder.aacMimeType
-      } else {
-        audioData = try Data(contentsOf: audioURL)
-        mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+      let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+        geminiClient.getMimeType(for: ext)
       }
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
@@ -1370,14 +1364,8 @@ class SpeechService {
   /// Uses a lightweight transcription call to get the user's voice instruction as text.
   private func transcribeAudioForHistory(audioURL: URL, credential: GeminiCredential) async throws -> String {
     // Use the existing transcription logic but with a simpler prompt
-    let audioData: Data
-    let mimeType: String
-    if let aacData = AudioTranscoder.aacData(for: audioURL) {
-      audioData = aacData
-      mimeType = AudioTranscoder.aacMimeType
-    } else {
-      audioData = try Data(contentsOf: audioURL)
-      mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+    let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+      geminiClient.getMimeType(for: ext)
     }
     let base64Audio = audioData.base64EncodedString()
 
@@ -2035,14 +2023,8 @@ class SpeechService {
 
     // Same AAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
     // body is JSON with the audio base64'd inside it.
-    let audioData: Data
-    let format: String
-    if let aacData = AudioTranscoder.aacData(for: audioURL) {
-      audioData = aacData
-      format = "m4a"
-    } else {
-      audioData = try Data(contentsOf: audioURL)
-      format = Self.openRouterAudioFormat(forExtension: audioURL.pathExtension.lowercased())
+    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, aacLabel: "m4a") { ext in
+      Self.openRouterAudioFormat(forExtension: ext)
     }
 
     let modelID = TranscriptionTuning.openRouterModelID
@@ -2497,9 +2479,7 @@ class SpeechService {
 
   // MARK: - Audio Duration Helper
   private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
-    let asset = AVURLAsset(url: url)
-    let duration = try await asset.load(.duration)
-    return CMTimeGetSeconds(duration)
+    try await AudioDuration.avURLAssetSeconds(url)
   }
   
   /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
@@ -2608,8 +2588,7 @@ class SpeechService {
   /// Used by isAudioLikelyEmpty and by recording safeguard (confirm above duration).
   func getAudioDuration(url: URL) -> TimeInterval? {
     do {
-      let audioFile = try AVAudioFile(forReading: url)
-      let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      let duration = try AudioDuration.avAudioFileSeconds(url)
       DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
       return duration
     } catch {
