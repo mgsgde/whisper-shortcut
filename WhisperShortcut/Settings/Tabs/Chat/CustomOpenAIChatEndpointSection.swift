@@ -170,6 +170,14 @@ struct CustomOpenAIChatEndpointSection: View {
         }
         .help("Fill URL and model for openinference.de (GLM 5.2). You still need your sk-oi-… API key above.")
 
+        Button("Use ModelRunner preset") {
+          OpenAIChatPreferences.applyModelRunnerPreset()
+          endpointURL = SettingsDefaults.modelRunnerEndpointURL
+          modelID = SettingsDefaults.modelRunnerModelID
+          ModelSelectionReconciler.reconcileAll()
+        }
+        .help("Fill URL and model for modelrunner.ai. You still need your ModelRunner API key above.")
+
         Spacer()
       }
 
