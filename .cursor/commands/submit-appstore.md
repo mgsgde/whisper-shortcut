@@ -104,7 +104,10 @@ skill — read its "Submit a version for review" section first.
      --copy-fields "description,keywords,marketingUrl,promotionalText,supportUrl,whatsNew"
    asc versions attach-build --version-id "<VERSION_ID>" --build "<BUILD_ID>"
    ```
-   (If the version already exists in an editable state, skip `create` and just attach.)
+   (If the version already exists in an editable state, skip `create` and just attach. If an
+   editable draft exists under a **different** version string, it carries staged listing changes
+   (name, subtitle, keywords) — rename it with `asc versions update --version-id "<ID>" --version
+   "$VERSION"` instead of creating a fresh copy of `<PREV_LIVE>`, which would silently drop them.)
 
    **If the previous version is still `WAITING_FOR_REVIEW`** (Apple has not looked at it yet and
    you are shipping a superset), do not queue a second review — fold it in. Cancel its submission
