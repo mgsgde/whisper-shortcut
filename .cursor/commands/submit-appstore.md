@@ -102,7 +102,7 @@ skill — read its "Submit a version for review" section first.
    asc versions create --app 6749648401 --platform MAC_OS --version "$VERSION" \
      --copy-metadata-from "<PREV_LIVE>" \
      --copy-fields "description,keywords,marketingUrl,promotionalText,supportUrl,whatsNew"
-   asc versions attach-build --version-id "<VERSION_ID>" --build "<BUILD_ID>"
+   asc versions attach-build --version-id "<VERSION_ID>" --build-id "<BUILD_ID>"
    ```
    (If the version already exists in an editable state, skip `create` and just attach. If an
    editable draft exists under a **different** version string, it carries staged listing changes
@@ -209,7 +209,7 @@ skill — read its "Submit a version for review" section first.
    pre-declared via `ITSAppUsesNonExemptEncryption=false`):
    ```bash
    asc review submit --app 6749648401 --platform MAC_OS \
-     --version-id "<VERSION_ID>" --build "<BUILD_ID>" --confirm
+     --version-id "<VERSION_ID>" --build-id "<BUILD_ID>" --confirm
    ```
 10. **Report**: version, build number, version state, and review state
     (`asc review status --app 6749648401`). Do **not** claim from memory whether release is
