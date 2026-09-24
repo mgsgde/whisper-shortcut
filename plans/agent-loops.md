@@ -22,7 +22,7 @@ last, however good it looks locally.
 | **Usage** | `usage-review-job.sh` (`analyze-user-interactions`) | Local interaction logs + outcome signals | Recurring failures with counts | `plans/improvement-ledger.md` + digest | Mon 08:47 weekly |
 | **Models** | `model-audit-job.sh` (`audit-llm-models`) | Live provider lineups vs shipped defaults, benchmarks | Pareto-justified migrations | `plans/model-audits/` | Wed 09:17 monthly |
 | **Strategy/Growth** | `growth-review-job.sh` (`review-growth`) | App Store Connect, GitHub, git effort, competitors | Naming the ONE binding constraint toward revenue | `../business/growth-ledger.md` + digest | Sat 09:07, effectively monthly (25-day gate, since 2026-09-24) |
-| **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | 6th of month, 10:17 |
+| **Architect** | `agent-loops-job.sh` (`review-agent-loops`) | The loops' own ledgers, hit rates, blind spots, outside best practices, Sabaki's loop docs | The loops finding more true things per run | `plans/loop-ledger.md` + digest | **Unscheduled since 2026-09-24** — launchd job removed; run by hand |
 | **Implementer** | `tick.sh` → `groom-queue.py` + `run-implementer.sh` (`implement-proposal`) — **rung 2** | One released queue row + its source ledger entry | A gated, reviewed branch you can dogfood | Code on a branch, `plans/implementer-{queue,log}.md` | **Unscheduled since 2026-09-24** — launchd job removed; rows are built interactively (see below) |
 | **Sales** | parent `scripts/sales/scout-job.sh` (`run-sales-agent`) — scout **rung 0**; poster **rung 3** | Public HN/Reddit/GitHub/App Store conversations | Disclosed drafts that route people to the store; customer-voice feedback | `../sales/ops/` (private parent — queue, digests, feedback). Never the public app repo | **Unscheduled since 2026-09-24** — scout and poster launchd jobs removed; run by hand |
 
@@ -31,7 +31,9 @@ found three that spent tokens or attention without output: the hourly implemente
 clean unattended merge in five weeks; its last row failed twice unattended and was built
 interactively, and the tick had been switched off since 2026-09-21 while launchd kept firing
 it), the sales poster (kill switch off, so every daily run only logged a refusal) and the sales
-scout (zero opportunities, Reddit rate-limited). Their launchd jobs are removed; the scripts
+scout (zero opportunities, Reddit rate-limited). The Architect loop goes too: every one of its
+ledger rows (L1–L12) was about the loop machinery itself, none about customers, so it mostly
+generated the work it then graded. Their launchd jobs are removed; the scripts
 stay and still run by hand. Growth review moves to monthly: three runs in a row named the same
 bottleneck while the fix it recommended never shipped, so the constraint is execution, not
 diagnosis. Re-scheduling any of them is a human decision that should cite what changed.
