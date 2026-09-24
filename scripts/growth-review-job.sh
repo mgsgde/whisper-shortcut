@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Biweekly growth/strategy review for WhisperShortcut.
+# Monthly growth/strategy review for WhisperShortcut.
 #
 # Runs the review-growth skill headlessly: pulls real business metrics (App Store Connect
 # via asc, GitHub via gh, git effort, a light competitor pass), names the ONE bottleneck
@@ -15,8 +15,8 @@
 # rung 0 of the autonomy ladder (plans/agent-loops.md). The ledger is the deliverable.
 #
 # Installed via ~/Library/LaunchAgents/com.whispershortcut.growth-review.plist
-# (Saturdays 09:07; the 11-day gate below makes the effective cadence biweekly, and a
-# missed Saturday — Mac asleep — is caught by the next one instead of waiting two weeks).
+# (Saturdays 09:07; the 25-day gate below makes the effective cadence monthly, and a
+# missed Saturday — Mac asleep — is caught by the next one instead of waiting a month).
 
 # Usage: growth-review-job.sh [--dry-run] [--force]
 #   --dry-run   check the plumbing (auth, gates), skip the Claude pass
@@ -109,8 +109,9 @@ weeks away unless you re-run it by hand (command below)."
 echo "=== Growth review started: $(date '+%Y-%m-%d %H:%M:%S') ==="
 
 # ------------------------------------------------------------------ 0. cadence gate
-# launchd fires weekly (so a slept-through Saturday costs one week, not two); this gate is
-# what makes the effective cadence biweekly.
+# launchd fires weekly (so a slept-through Saturday costs one week, not four); this gate is
+# what makes the effective cadence monthly (owner decision 2026-09-24: three runs in a row
+# returned the same "reach" verdict while its recommended fix never shipped).
 # The date is read from the file NAME, not its mtime: an edit to an old digest (or a git
 # checkout) resets mtime and would silently skip a Saturday. Same fix as agent-loops-job.sh.
 if [ "$FORCE" -eq 0 ]; then
@@ -118,8 +119,8 @@ if [ "$FORCE" -eq 0 ]; then
   if [ -n "$NEWEST" ]; then
     NEWEST_EPOCH="$(date -j -f '%Y-%m-%d' "${NEWEST%-review.md}" '+%s' 2>/dev/null || echo 0)"
     AGE_DAYS=$(( ( $(date +%s) - NEWEST_EPOCH ) / 86400 ))
-    if [ "$AGE_DAYS" -lt 11 ]; then
-      echo "Newest digest $NEWEST is $AGE_DAYS days old — biweekly cadence, exiting quietly."
+    if [ "$AGE_DAYS" -lt 25 ]; then
+      echo "Newest digest $NEWEST is $AGE_DAYS days old — monthly cadence, exiting quietly."
       exit 0
     fi
   fi
@@ -264,7 +265,7 @@ bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "growth-revi
 report_out "WhisperShortcut growth review ($STAMP)" "$DIGEST" \
   --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
   --title "Growth review $STAMP" \
-  --meta "Job=growth-review (biweekly)" --meta "Digest=$DIGEST"
+  --meta "Job=growth-review (monthly)" --meta "Digest=$DIGEST"
 notify "WhisperShortcut growth review" "$VERDICT"
 echo "VERDICT: $VERDICT"
 echo "Digest: $DIGEST"
