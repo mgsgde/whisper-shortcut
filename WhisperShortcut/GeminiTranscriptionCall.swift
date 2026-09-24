@@ -45,14 +45,8 @@ extension GeminiAPIClient {
   ) async throws -> GeminiTranscriptionResult {
     // Read audio (as compact AAC when possible) and convert to base64
     let encodeStartTime = CFAbsoluteTimeGetCurrent()
-    let audioData: Data
-    let mimeType: String
-    if let aacData = AudioTranscoder.aacData(for: audioURL) {
-      audioData = aacData
-      mimeType = AudioTranscoder.aacMimeType
-    } else {
-      audioData = try Data(contentsOf: audioURL)
-      mimeType = getMimeType(for: audioURL.pathExtension.lowercased())
+    let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+      getMimeType(for: ext)
     }
     let base64Audio = audioData.base64EncodedString()
     let encodeTime = CFAbsoluteTimeGetCurrent() - encodeStartTime

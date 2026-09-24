@@ -7,7 +7,9 @@ import Foundation
 /// request loop escalates its own attempt budget and posts rate-limit UI notifications, its stream
 /// loop may only retry before the first event is yielded, `ChunkRetryPolicy` pauses sibling chunks
 /// through a coordinator, and `SpeechService.performWithRetryOn429` returns a raw HTTP response for
-/// the caller to interpret. What they must NOT differ on is the policy, and they did: the
+/// the caller to interpret. Streaming and non-streaming TTS share that last loop (one 429 branch);
+/// the other three loops still differ in control flow from it and from each other. What they must
+/// NOT differ on is the policy, and they did: the
 /// "permanent rate limit" rule below existed in three different spellings and was missing entirely
 /// from the fourth, so a spend-capped key burned a doomed retry on every Dictate Prompt.
 enum RetryBackoff {

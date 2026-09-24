@@ -1047,14 +1047,8 @@ class SpeechService {
         url: nil
       ))
     } else {
-      let audioData: Data
-      let mimeType: String
-      if let aacData = AudioTranscoder.aacData(for: audioURL) {
-        audioData = aacData
-        mimeType = AudioTranscoder.aacMimeType
-      } else {
-        audioData = try Data(contentsOf: audioURL)
-        mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+      let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+        geminiClient.getMimeType(for: ext)
       }
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: nil,
@@ -1370,14 +1364,8 @@ class SpeechService {
   /// Uses a lightweight transcription call to get the user's voice instruction as text.
   private func transcribeAudioForHistory(audioURL: URL, credential: GeminiCredential) async throws -> String {
     // Use the existing transcription logic but with a simpler prompt
-    let audioData: Data
-    let mimeType: String
-    if let aacData = AudioTranscoder.aacData(for: audioURL) {
-      audioData = aacData
-      mimeType = AudioTranscoder.aacMimeType
-    } else {
-      audioData = try Data(contentsOf: audioURL)
-      mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+    let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+      geminiClient.getMimeType(for: ext)
     }
     let base64Audio = audioData.base64EncodedString()
 
@@ -1683,10 +1671,6 @@ class SpeechService {
   ) async throws -> Data {
     let logPrefix = "TTS-GEMINI-STREAM"
     let endpoint = model.apiEndpoint
-    var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
-    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-    // The watchdog below is the real deadline, exactly as in the chat stream.
-    request.timeoutInterval = GeminiAPIClient.resourceTimeout
 
     let ttsRequest = GeminiTTSRequest(
       contents: [GeminiTTSRequest.GeminiTTSContent(parts: [GeminiTTSRequest.GeminiTTSPart(text: "Say the following: \(text)")])],
@@ -1699,42 +1683,31 @@ class SpeechService {
         )
       )
     )
-    request.httpBody = try JSONEncoder().encode(ttsRequest)
+    let body = try JSONEncoder().encode(ttsRequest)
 
     let started = CFAbsoluteTimeGetCurrent()
-    DebugLogger.logNetwork("\(logPrefix): POST \(endpoint) (\(text.count) chars, voice: \(voice))")
-    let (bytes, response) = try await geminiClient.streamingBytes(for: request)
-    guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
-    }
-    if http.statusCode < 200 || http.statusCode >= 300 {
-      var errData = Data()
-      for try await b in bytes { errData.append(b) }
-      let bodyText = String(data: errData, encoding: .utf8) ?? ""
-      DebugLogger.logError("\(logPrefix): HTTP \(http.statusCode) body=\(bodyText.prefix(500))")
-      let mapped = try? geminiClient.parseErrorResponse(data: errData, statusCode: http.statusCode)
-      throw mapped ?? TranscriptionError.networkError("HTTP \(http.statusCode): \(bodyText.prefix(200))")
-    }
+    let (bytes, _) = try await geminiClient.openSSEStream(
+      endpoint: endpoint,
+      credential: credential,
+      body: body,
+      logPrefix: logPrefix,
+      logDetail: " (\(text.count) chars, voice: \(voice))",
+      non2xxErrorBodyLimit: 200)
 
     // Stall watchdog: cancels the data task (not this Task) when the stream stops delivering
     // audio, so the byte loop below throws and the catch converts it into a retryable error.
     let progress = StreamProgressClock()
     progress.touch(chunk: false)
     let dataTask = bytes.task
-    let watchdog = Task {
-      while !Task.isCancelled {
-        try await Task.sleep(nanoseconds: UInt64(AppConstants.ttsStreamWatchdogPollInterval * 1_000_000_000))
-        let (idle, sawChunk) = progress.state
-        let budget = sawChunk ? AppConstants.ttsStreamStallTimeout : AppConstants.ttsStreamFirstAudioTimeout
-        if idle > budget {
-          progress.markStalled()
-          DebugLogger.logWarning(
-            "\(logPrefix): no audio for \(Int(idle))s (\(sawChunk ? "mid-stream" : "before first audio")) — aborting the stalled stream")
-          dataTask.cancel()
-          return
-        }
-      }
-    }
+    let watchdog = progress.startWatchdog(
+      pollInterval: AppConstants.ttsStreamWatchdogPollInterval,
+      firstChunkTimeout: AppConstants.ttsStreamFirstAudioTimeout,
+      stallTimeout: AppConstants.ttsStreamStallTimeout,
+      logPrefix: logPrefix,
+      noun: "audio",
+      firstLabel: "before first audio",
+      midLabel: "mid-stream",
+      cancel: { dataTask.cancel() })
     defer { watchdog.cancel() }
 
     var splitter = GeminiStreamObjectSplitter()
@@ -1742,7 +1715,6 @@ class SpeechService {
     var audio = Data()
     var objectCount = 0
     var audioObjectCount = 0
-    var firstSliceLogged = false
     do {
       for try await byte in bytes {
         try Task.checkCancellation()
@@ -1758,13 +1730,7 @@ class SpeechService {
         audio.append(pcm)
         guard let onPartial else { continue }
         for b in pcm {
-          if let slice = batcher.append(b) {
-            if !firstSliceLogged {
-              firstSliceLogged = true
-              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
-            }
-            await onPartial(slice)
-          }
+          await batcher.feed(b, started: started, logPrefix: logPrefix, emit: onPartial)
         }
       }
     } catch {
@@ -1859,7 +1825,7 @@ class SpeechService {
     ]
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, http) = try await Self.performStreamingWithRetryOn429(
+    let (data, http) = try await Self.performWithRetryOn429(
       request: request, session: makeTranscriptionURLSession(), logPrefix: "TTS-OPENAI",
       onPartial: onPartial)
     guard http.statusCode == 200 else {
@@ -1867,62 +1833,6 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenAI TTS failed (HTTP \(http.statusCode)): \(bodyText)")
     }
     return data
-  }
-
-  /// Streaming sibling of `performWithRetryOn429`: same 429 handling, but a 200 body is read
-  /// incrementally and forwarded to `onPartial` in batches while it arrives. Non-200 bodies are
-  /// collected whole (they are short JSON errors) and returned for the caller to map.
-  private static func performStreamingWithRetryOn429(
-    request: URLRequest,
-    session: URLSession,
-    logPrefix: String,
-    onPartial: ((Data) async -> Void)?
-  ) async throws -> (Data, HTTPURLResponse) {
-    var lastResponse: (Data, HTTPURLResponse)?
-    for attempt in 1...Constants.maxRetryAttempts {
-      let (bytes, response) = try await session.bytes(for: request)
-      guard let http = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response from server")
-      }
-
-      var data = Data()
-      if http.statusCode == 200, let onPartial {
-        var batcher = PCMStreamBatcher()
-        let started = CFAbsoluteTimeGetCurrent()
-        var firstFlushLogged = false
-        for try await byte in bytes {
-          data.append(byte)
-          if let slice = batcher.append(byte) {
-            if !firstFlushLogged {
-              firstFlushLogged = true
-              DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
-            }
-            await onPartial(slice)
-          }
-        }
-        if let rest = batcher.drain() { await onPartial(rest) }
-      } else {
-        for try await byte in bytes { data.append(byte) }
-      }
-      lastResponse = (data, http)
-
-      if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
-        let body = String(data: data, encoding: .utf8) ?? ""
-        if RetryBackoff.isPermanentRateLimit(responseBody: body) {
-          DebugLogger.logWarning("\(logPrefix): HTTP 429 is a quota/billing block — not retrying")
-          return (data, http)
-        }
-        let delay = RetryBackoff.delay(
-          attempt: attempt, retryAfter: http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init),
-          base: Constants.retryDelaySeconds, exponential: true)
-        DebugLogger.logWarning("\(logPrefix): HTTP 429 (attempt \(attempt)/\(Constants.maxRetryAttempts)), retrying in \(String(format: "%.1f", delay))s")
-        await RetryBackoff.sleep(delay)
-        continue
-      }
-      return (data, http)
-    }
-    if let lastResponse { return lastResponse }
-    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
   }
 
   /// xAI Grok TTS — `output_format:{codec:"pcm",sample_rate:24000}` returns raw s16le 24kHz mono PCM.
@@ -2113,14 +2023,8 @@ class SpeechService {
 
     // Same AAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
     // body is JSON with the audio base64'd inside it.
-    let audioData: Data
-    let format: String
-    if let aacData = AudioTranscoder.aacData(for: audioURL) {
-      audioData = aacData
-      format = "m4a"
-    } else {
-      audioData = try Data(contentsOf: audioURL)
-      format = Self.openRouterAudioFormat(forExtension: audioURL.pathExtension.lowercased())
+    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, aacLabel: "m4a") { ext in
+      Self.openRouterAudioFormat(forExtension: ext)
     }
 
     let modelID = TranscriptionTuning.openRouterModelID
@@ -2352,13 +2256,9 @@ class SpeechService {
     } catch TranscriptionError.requestTimeout {
       DebugLogger.logError(
         "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
-      ContextLogger.shared.logSignal(
-        .requestTimedOut, mode: "transcription",
-        detail: [
-          "phase": "transcribing",
-          "timeoutSeconds": "\(Int(NetworkDeadline.transcriptionRequestTimeout))",
-          "logPrefix": logPrefix
-        ])
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
+        logPrefix: logPrefix)
       throw TranscriptionError.requestTimeout
     }
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -2421,16 +2321,47 @@ class SpeechService {
   /// final response (data + HTTPURLResponse) without interpreting the status code —
   /// callers map non-2xx codes themselves. Mirrors the retry shape Gemini gets for free
   /// via `GeminiAPIClient.performRequest(withRetry: true)`.
-  private static func performWithRetryOn429(
+  ///
+  /// `onPartial == nil` reads the body whole (`session.data(for:)`). A non-nil `onPartial`
+  /// reads a 200 body as a byte stream and forwards it in batches while it arrives; any
+  /// other status is still collected whole (short JSON errors) for the caller to map.
+  /// Internal so the 429 branch can be driven from tests without a live provider.
+  static func performWithRetryOn429(
     request: URLRequest,
     session: URLSession,
-    logPrefix: String
+    logPrefix: String,
+    onPartial: ((Data) async -> Void)? = nil
   ) async throws -> (Data, HTTPURLResponse) {
     var lastResponse: (Data, HTTPURLResponse)?
     for attempt in 1...Constants.maxRetryAttempts {
-      let (data, response) = try await session.data(for: request)
-      guard let http = response as? HTTPURLResponse else {
-        throw TranscriptionError.networkError("Invalid response from server")
+      let data: Data
+      let http: HTTPURLResponse
+      if let onPartial {
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let streamed = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response from server")
+        }
+        http = streamed
+        var collected = Data()
+        if http.statusCode == 200 {
+          var batcher = PCMStreamBatcher()
+          let started = CFAbsoluteTimeGetCurrent()
+          for try await byte in bytes {
+            collected.append(byte)
+            await batcher.feed(byte, started: started, logPrefix: logPrefix, emit: onPartial)
+          }
+          if let rest = batcher.drain() { await onPartial(rest) }
+        } else {
+          for try await byte in bytes { collected.append(byte) }
+        }
+        data = collected
+      } else {
+        let (responseData, response) = try await session.data(for: request)
+        guard let whole = response as? HTTPURLResponse else {
+          throw TranscriptionError.networkError("Invalid response from server")
+        }
+        data = responseData
+        http = whole
       }
       lastResponse = (data, http)
       if http.statusCode == 429, attempt < Constants.maxRetryAttempts {
@@ -2544,9 +2475,7 @@ class SpeechService {
 
   // MARK: - Audio Duration Helper
   private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
-    let asset = AVURLAsset(url: url)
-    let duration = try await asset.load(.duration)
-    return CMTimeGetSeconds(duration)
+    try await AudioDuration.avURLAssetSeconds(url)
   }
   
   /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
@@ -2655,8 +2584,7 @@ class SpeechService {
   /// Used by isAudioLikelyEmpty and by recording safeguard (confirm above duration).
   func getAudioDuration(url: URL) -> TimeInterval? {
     do {
-      let audioFile = try AVAudioFile(forReading: url)
-      let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+      let duration = try AudioDuration.avAudioFileSeconds(url)
       DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
       return duration
     } catch {

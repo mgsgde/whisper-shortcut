@@ -93,7 +93,7 @@ class ChatViewModel: ObservableObject {
   /// CHAT-SEND; a `sample` showed every frame resolving the scrollPosition matchingID).
   /// Clearing the binding removes the id-anchoring work entirely: the scroll offset is
   /// preserved by the ScrollView's default behavior and the persisted reading position
-  /// (`scrollAnchors`) is untouched — it repopulates on the next user scroll.
+  /// (`ChatScrollAnchors`) is untouched — it repopulates on the next user scroll.
   let scrollAnchorClearSignal = PassthroughSubject<Void, Never>()
   @Published var inputText: String = ""
   @Published private(set) var sendingSessionIds: Set<UUID> = []
@@ -893,7 +893,12 @@ class ChatViewModel: ObservableObject {
 
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
-      var currentContents = buildContents(forSessionId: sessionId)
+      var currentContents = ChatRequestBuilder.buildContents(
+        sessionId: sessionId,
+        currentSessionId: session.id,
+        messages: messages,
+        store: store,
+        model: selectedModel)
       // A send can target a background session (the user switched chats mid-stream), so per-session
       // knobs come from that session, not whichever one is on screen.
       let sendingSession = sessionId == session.id ? session : store.session(by: sessionId)
@@ -1160,7 +1165,7 @@ class ChatViewModel: ObservableObject {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
           partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
-        let friendly = self.friendlyError(error, provider: selectedModel.provider)
+        let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
         self.persistLastSendError(friendly, sessionId: sessionId)
         if sessionId == session.id { errorMessage = friendly }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
@@ -1304,12 +1309,12 @@ class ChatViewModel: ObservableObject {
         return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
       },
       ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
-        guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: self.executeRememberAboutUserTool(args: args))
+        guard self != nil else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: ChatMemoryTools.executeRememberAboutUserTool(args: args))
       },
       ChatToolRegistry.forgetAboutUserToolName: { [weak self] args in
-        guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: self.executeForgetAboutUserTool(args: args))
+        guard self != nil else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(response: ChatMemoryTools.executeForgetAboutUserTool(args: args))
       },
     ])
   }
@@ -1639,6 +1644,18 @@ class ChatViewModel: ObservableObject {
     Self.openChatModel.displayName
   }
 
+  /// The session a message mutation should write. Nil when `sessionId` is a background
+  /// session that is no longer in the store. Inlined on the streaming path: one struct copy,
+  /// the same one the old `target = session` assignment made.
+  @inline(__always)
+  private func resolveSession(_ sessionId: UUID) -> (isCurrent: Bool, session: ChatSession)? {
+    if sessionId == session.id {
+      return (true, session)
+    }
+    guard let stored = store.session(by: sessionId) else { return nil }
+    return (false, stored)
+  }
+
   /// Updates an existing model message in-place (used during streaming).
   /// Refreshes the UI during streaming; persists only when requested to avoid
   /// running full session-store normalization on every token.
@@ -1646,14 +1663,9 @@ class ChatViewModel: ObservableObject {
     id: UUID, sessionId: UUID, content: String,
     sources: [GroundingSource], supports: [GroundingSupport], persist: Bool = true
   ) {
-    let isCurrentSession = sessionId == session.id
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
     let idx: Int
     if let last = target.messages.indices.last, target.messages[last].id == id {
       idx = last
@@ -1751,15 +1763,9 @@ class ChatViewModel: ObservableObject {
   /// Appends a message to the session identified by `sessionId`.
   /// If that session is currently visible, also updates the in-memory UI state.
   private func appendMessage(_ message: ChatMessage, toSessionId sessionId: UUID) {
-    let isCurrentSession = sessionId == session.id
-
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
 
     // Meetings are titled from their summary (`generateMeetingTitle`), never from a chat message —
     // and that summary path only fires while the title is still empty. So we must NOT stamp a
@@ -1792,14 +1798,9 @@ class ChatViewModel: ObservableObject {
   }
 
   private func removeMessage(id: UUID, fromSessionId sessionId: UUID) {
-    let isCurrentSession = sessionId == session.id
-    var target: ChatSession
-    if isCurrentSession {
-      target = session
-    } else {
-      guard let s = store.session(by: sessionId) else { return }
-      target = s
-    }
+    guard let resolved = resolveSession(sessionId) else { return }
+    let isCurrentSession = resolved.isCurrent
+    var target = resolved.session
     target.messages.removeAll { $0.id == id }
     store.save(target)
     if isCurrentSession {
@@ -2134,28 +2135,20 @@ class ChatViewModel: ObservableObject {
 
   /// Per-session id of the message pinned to the top of the chat scroll view. Survives window
   /// hide/show, tab switches, and relaunch. Keyed by session UUID; pruned to live sessions on load.
-  private var scrollAnchors: [UUID: UUID] = [:]
+  private let scrollAnchorStore = ChatScrollAnchors()
 
   private func loadScrollAnchors() {
-    let raw = UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.chatScrollAnchors) as? [String: String] ?? [:]
-    let liveIds = Set(store.allSessions().map(\.id))
-    scrollAnchors = raw.reduce(into: [:]) { acc, pair in
-      guard let sessionId = UUID(uuidString: pair.key),
-            let messageId = UUID(uuidString: pair.value),
-            liveIds.contains(sessionId) else { return }
-      acc[sessionId] = messageId
-    }
+    scrollAnchorStore.load(liveSessionIds: Set(store.allSessions().map(\.id)))
   }
 
   /// The saved top message for `sessionId`, if any.
-  func scrollAnchor(for sessionId: UUID) -> UUID? { scrollAnchors[sessionId] }
+  func scrollAnchor(for sessionId: UUID) -> UUID? {
+    scrollAnchorStore.anchor(for: sessionId)
+  }
 
   /// Stores (or clears, when `messageId` is nil) the top message for `sessionId`.
   func setScrollAnchor(_ messageId: UUID?, for sessionId: UUID) {
-    guard scrollAnchors[sessionId] != messageId else { return }
-    scrollAnchors[sessionId] = messageId
-    let raw = Dictionary(uniqueKeysWithValues: scrollAnchors.map { ($0.key.uuidString, $0.value.uuidString) })
-    UserDefaults.standard.set(raw, forKey: UserDefaultsKeys.chatScrollAnchors)
+    scrollAnchorStore.set(messageId, for: sessionId)
   }
 
   // MARK: - Tab navigation
@@ -2163,6 +2156,17 @@ class ChatViewModel: ObservableObject {
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
+  }
+
+  /// After a store mutation, switch to the store's current session when the one on screen
+  /// is no longer active; otherwise just refresh the tab lists. Each caller passes the same
+  /// condition it used to branch on, so the decision stays at the call site.
+  private func syncAfterStoreMutation(activeSessionChanged: Bool) {
+    if activeSessionChanged {
+      switchToCurrentStoreSession()
+    } else {
+      refreshRecentSessions()
+    }
   }
 
   /// Returns the sessions to display as tabs, ensuring the current session is always included.
@@ -2186,11 +2190,7 @@ class ChatViewModel: ObservableObject {
   func closeTab(id: UUID) {
     rememberClosed(id: id)
     store.archiveSession(id: id)
-    if id == session.id {
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
-    }
+    syncAfterStoreMutation(activeSessionChanged: id == session.id)
     DebugLogger.log("GEMINI-CHAT: Closed (archived) tab \(id)")
   }
 
@@ -2215,20 +2215,6 @@ class ChatViewModel: ObservableObject {
     store.switchToSession(id: s.id)
     switchToCurrentStoreSession()
     DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
-  }
-
-  // MARK: - Pin / Unpin
-
-  func pinSession(id: UUID) {
-    store.pinSession(id: id)
-    refreshRecentSessions()
-    DebugLogger.log("SIDEBAR: Pinned session \(id)")
-  }
-
-  func unpinSession(id: UUID) {
-    store.unpinSession(id: id)
-    refreshRecentSessions()
-    DebugLogger.log("SIDEBAR: Unpinned session \(id)")
   }
 
   // MARK: - Search
@@ -2315,17 +2301,14 @@ class ChatViewModel: ObservableObject {
 
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
-    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let url = MeetingListService.transcriptURL(forStem: stem)
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
   func loadMeetingSummaryFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
-    let url = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).summary.md")
+    let url = MeetingListService.summaryURL(
+      transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
@@ -2554,11 +2537,23 @@ class ChatViewModel: ObservableObject {
     (loadMeetingTranscriptFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// URL of the current meeting's transcript file (`{stem}.txt`).
-  private func meetingTranscriptURL(stem: String) -> URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+  /// `Result` requires its failure type to conform to `Error`. The tool reply is still the
+  /// same `["error": …]` dictionary the call sites used to return directly.
+  private struct EndedMeetingRejection: Error {
+    let body: [String: Any]
+  }
+
+  /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
+  private func endedMeetingStem(
+    notMeeting: String, stillRecording: String
+  ) -> Result<String, EndedMeetingRejection> {
+    guard session.isMeeting, let stem = session.meetingStem else {
+      return .failure(EndedMeetingRejection(body: ["error": notMeeting]))
+    }
+    if isCurrentSessionTheActiveMeeting {
+      return .failure(EndedMeetingRejection(body: ["error": stillRecording]))
+    }
+    return .success(stem)
   }
 
   /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
@@ -2569,11 +2564,15 @@ class ChatViewModel: ObservableObject {
           !instruction.isEmpty else {
       return ["error": "Missing required argument: instruction"]
     }
-    guard session.isMeeting, let stem = session.meetingStem else {
-      return ["error": "This chat is not a meeting, so there is no summary to refine."]
-    }
-    if isCurrentSessionTheActiveMeeting {
-      return ["error": "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."]
+    let stem: String
+    switch endedMeetingStem(
+      notMeeting: "This chat is not a meeting, so there is no summary to refine.",
+      stillRecording: "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."
+    ) {
+    case .success(let value):
+      stem = value
+    case .failure(let rejection):
+      return rejection.body
     }
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
@@ -2594,7 +2593,7 @@ class ChatViewModel: ObservableObject {
       guard !refined.isEmpty else {
         return ["error": "The model returned an empty summary. Try rephrasing the instruction."]
       }
-      MeetingListService.shared.saveSummary(refined, transcriptFileURL: meetingTranscriptURL(stem: stem))
+      MeetingListService.shared.saveSummary(refined, transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
       summaryRevision &+= 1
       DebugLogger.logSuccess("GEMINI-CHAT: Refined meeting summary for \(stem)")
       return ["ok": true,
@@ -2617,13 +2616,17 @@ class ChatViewModel: ObservableObject {
     guard from != to else {
       return ["error": "'from' and 'to' are identical — nothing to change."]
     }
-    guard session.isMeeting, let stem = session.meetingStem else {
-      return ["error": "This chat is not a meeting, so there is no transcript to correct."]
+    let stem: String
+    switch endedMeetingStem(
+      notMeeting: "This chat is not a meeting, so there is no transcript to correct.",
+      stillRecording: "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."
+    ) {
+    case .success(let value):
+      stem = value
+    case .failure(let rejection):
+      return rejection.body
     }
-    if isCurrentSessionTheActiveMeeting {
-      return ["error": "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."]
-    }
-    let url = meetingTranscriptURL(stem: stem)
+    let url = MeetingListService.transcriptURL(forStem: stem)
     guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
       return ["error": "Could not read the meeting transcript file."]
     }
@@ -2657,39 +2660,6 @@ class ChatViewModel: ObservableObject {
     return result
   }
 
-  // MARK: - Memory tools (remember / forget durable user facts)
-
-  /// Backs the `remember_about_user` chat tool. Appends one durable fact to persistent memory
-  /// (UserContext/memory.md), deduped. Synchronous — the file is tiny and writes are local.
-  func executeRememberAboutUserTool(args: [String: Any]) -> [String: Any] {
-    guard let fact = (args["fact"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !fact.isEmpty else {
-      return ["error": "Missing required argument: fact"]
-    }
-    let added = ChatMemoryStore.shared.addFact(fact)
-    if added {
-      return ["ok": true, "remembered": fact,
-              "detail": "Saved to persistent memory. Briefly confirm in one sentence; do not list the rest of the memory."]
-    }
-    return ["ok": true, "remembered": fact, "duplicate": true,
-            "detail": "This fact was already remembered — nothing changed. Acknowledge briefly."]
-  }
-
-  /// Backs the `forget_about_user` chat tool. Removes every stored fact containing the given text.
-  func executeForgetAboutUserTool(args: [String: Any]) -> [String: Any] {
-    guard let matching = (args["matching"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !matching.isEmpty else {
-      return ["error": "Missing required argument: matching"]
-    }
-    let removed = ChatMemoryStore.shared.removeFacts(matching: matching)
-    guard removed > 0 else {
-      return ["ok": true, "removed": 0,
-              "detail": "No remembered fact matched \"\(matching)\". Tell the user there was nothing to forget."]
-    }
-    return ["ok": true, "removed": removed,
-            "detail": "Forgot \(removed) fact(s). Confirm briefly."]
-  }
-
   // MARK: - Archive / Restore / Delete
 
   func archiveSession(id: UUID) {
@@ -2698,31 +2668,26 @@ class ChatViewModel: ObservableObject {
     store.archiveSession(id: id)
     if wasActive {
       DebugLogger.log("SIDEBAR: archiveSession → switchToCurrentStoreSession")
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: wasActive)
     DebugLogger.log("SIDEBAR: archiveSession done. recentSessions=\(recentSessions.count) currentSession=\(session.id)")
   }
 
   func archiveOlderSessions(than date: Date) {
     store.archiveOlderSessions(than: date)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived chats older than \(date)")
   }
 
   func archiveOlderMeetings(than date: Date) {
     store.archiveOlderMeetings(than: date)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived meetings older than \(date)")
   }
 
   func archiveOtherSessions(except keepId: UUID) {
     store.archiveOtherSessions(except: keepId)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived other chats except \(keepId)")
   }
 
@@ -2730,8 +2695,7 @@ class ChatViewModel: ObservableObject {
     var skipIds: Set<UUID> = []
     if isMeetingActive, let activeId = meetingSessionId { skipIds.insert(activeId) }
     store.archiveOtherMeetings(except: keepId, skipIds: skipIds)
-    if store.load().id != session.id { switchToCurrentStoreSession() }
-    else { refreshRecentSessions() }
+    syncAfterStoreMutation(activeSessionChanged: store.load().id != session.id)
     DebugLogger.log("SIDEBAR: Archived other meetings except \(keepId)")
   }
 
@@ -2780,12 +2744,11 @@ class ChatViewModel: ObservableObject {
   func closeOtherTabs(keep keepId: UUID) {
     let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
     for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
-    if session.id != keepId {
+    let activeWillChange = session.id != keepId
+    if activeWillChange {
       store.switchToSession(id: keepId)
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: activeWillChange)
     DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) other tab(s), kept \(keepId)")
   }
 
@@ -2798,203 +2761,11 @@ class ChatViewModel: ObservableObject {
     for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
     if activeWillBeClosed {
       store.switchToSession(id: anchorId)
-      switchToCurrentStoreSession()
-    } else {
-      refreshRecentSessions()
     }
+    syncAfterStoreMutation(activeSessionChanged: activeWillBeClosed)
     DebugLogger.log("GEMINI-CHAT: Closed \(toClose.count) tab(s) right of \(anchorId)")
   }
 
-  private func buildContents(forSessionId sessionId: UUID) -> [[String: Any]] {
-    // Queued sends can target a session that is no longer the visible one,
-    // so the history must come from the target session — not `messages`.
-    let history = sessionId == session.id
-      ? messages
-      : (store.session(by: sessionId)?.messages ?? [])
-    // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
-    // so truncation is only a safeguard against pathological sessions.
-    let maxMessages = AppConstants.chatFullHistoryMaxMessages
-    let toSend = history.count > maxMessages
-      ? Array(history.suffix(maxMessages))
-      : history
-    logImagePayloadMeasurement(toSend)
-    // A YouTube link is only a link to every provider except Gemini, which can watch the video
-    // when it arrives as a `file_data` part (its `url_context` tool refuses YouTube). Resolve
-    // which messages get a video part before mapping: the budget is per request and counts from
-    // the newest message backwards, so a session full of links doesn't send a dozen videos.
-    let isGemini = Self.openChatModel.provider == .gemini
-    let videoLinksByMessage = isGemini ? youTubeLinksToAttach(in: toSend) : [:]
-    // Every other provider is blind to the link but perfectly willing to describe the video from
-    // search results — the failure this feature exists to fix. Tell the newest linking turn so the
-    // model says it cannot watch the video instead of confabulating it.
-    let unwatchableLinkMessageID: UUID? = isGemini
-      ? nil
-      : toSend.last { $0.role == .user && !YouTubeVideoLink.detect(in: $0.content).isEmpty }?.id
-    // Re-send each user message's attached images on every turn, not just the
-    // final one. Otherwise an image is visible to the model only on the turn it
-    // was attached and is stripped to text afterwards — so a follow-up like
-    // "look at the screenshot" sees no image at all. All providers (Gemini,
-    // OpenAI, Grok) convert inline_data on any message, so this is safe.
-    return toSend.map { msg in
-      // Assistant turns that generated an image carry a ⟦GEMINI_IMG:…⟧ marker with the full
-      // base64 inline. Strip it to a short placeholder before re-sending as history: the blob
-      // would otherwise bloat every subsequent request and is useless to the model as text.
-      let text = msg.role == .model
-        ? GeminiAPIClient.stripImageMarkers(msg.content)
-        : msg.content
-      let videoLinks = videoLinksByMessage[msg.id] ?? []
-      if msg.id == unwatchableLinkMessageID {
-        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
-          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
-        }
-        if !text.isEmpty { parts.append(["text": text]) }
-        parts.append(["text":
-          "[System note: the message above contains a YouTube link. You cannot watch YouTube videos — "
-          + "in this app only Gemini models can. Do not describe the video's contents as if you had seen "
-          + "it. Say plainly that you cannot open the video with this model, offer what you can find about "
-          + "it from other sources, and mention that switching to a Gemini model lets it be analysed.]"])
-        return ["role": msg.role.rawValue, "parts": parts]
-      }
-      if msg.role == .user && (!msg.attachedImageParts.isEmpty || !videoLinks.isEmpty) {
-        var parts: [[String: Any]] = msg.attachedImageParts.map { part in
-          ["inline_data": ["mime_type": part.mimeType ?? "image/png", "data": part.data.base64EncodedString()]]
-        }
-        // Video part first, its note right after: the note explains the clip window, and a model
-        // reads it as a caption for the media directly above it.
-        for link in videoLinks {
-          parts.append(link.geminiVideoPart)
-          parts.append(["text": link.geminiContextNote])
-        }
-        if !text.isEmpty {
-          parts.append(["text": text])
-        }
-        return ["role": msg.role.rawValue, "parts": parts]
-      }
-      return ["role": msg.role.rawValue, "parts": [["text": text]]]
-    }
-  }
-
-  /// Which YouTube links get attached as video parts, keyed by message id.
-  ///
-  /// Videos are the most expensive thing this app can put in a request (~90 tokens per second of
-  /// video, re-sent on every follow-up turn), so the budget is small and spent newest-first: the
-  /// video the user is currently asking about always wins over one from ten turns ago.
-  private func youTubeLinksToAttach(in messages: [ChatMessage]) -> [UUID: [YouTubeVideoLink]] {
-    var result: [UUID: [YouTubeVideoLink]] = [:]
-    var seenVideoIDs = Set<String>()
-    var budget = YouTubeVideoLink.maxVideosPerRequest
-    for msg in messages.reversed() where msg.role == .user {
-      guard budget > 0 else { break }
-      for link in YouTubeVideoLink.detect(in: msg.content) {
-        guard budget > 0 else { break }
-        // The same video re-posted in a later turn is already attached (with that turn's
-        // timestamp) — sending it twice just doubles the token bill.
-        guard seenVideoIDs.insert(link.videoID).inserted else { continue }
-        result[msg.id, default: []].append(link)
-        budget -= 1
-      }
-    }
-    if !result.isEmpty {
-      let attached = result.values.flatMap { $0 }
-      DebugLogger.log(
-        "CHAT-YOUTUBE: attaching \(attached.count) video part(s): "
-        + attached.map { link in
-          link.shouldClipUpFront
-            ? "\(link.videoID)@\(YouTubeVideoLink.formatTimestamp(link.clipRange.start))+\(YouTubeVideoLink.clipWindowSeconds)s"
-            : "\(link.videoID)/full"
-        }.joined(separator: ", "))
-    }
-    return result
-  }
-
-  /// Measures the image payload re-sent on this turn (images are sent in full on *every*
-  /// turn — see `buildContents`). Logs the total plus the portion carried by user turns
-  /// older than the last `AppConstants.chatRecentImageTurns` turns: that `savablePerTurn`
-  /// figure is what an "images only for the recent N turns" policy would drop from each
-  /// request, and is the number to watch before deciding whether the cap is worth it.
-  /// Pure measurement — it changes nothing about what gets sent.
-  private func logImagePayloadMeasurement(_ toSend: [ChatMessage]) {
-    let userTurnIdx = toSend.indices.filter { toSend[$0].role == .user }
-    guard !userTurnIdx.isEmpty else { return }
-    let window = AppConstants.chatRecentImageTurns
-    let recentTurns = Set(userTurnIdx.suffix(window))
-
-    var imgTurns = 0, images = 0, bytes = 0
-    var staleTurns = 0, staleImages = 0, staleBytes = 0
-    for i in userTurnIdx {
-      let parts = toSend[i].attachedImageParts
-      guard !parts.isEmpty else { continue }
-      let turnBytes = parts.reduce(0) { $0 + $1.data.count }
-      imgTurns += 1; images += parts.count; bytes += turnBytes
-      if !recentTurns.contains(i) {
-        staleTurns += 1; staleImages += parts.count; staleBytes += turnBytes
-      }
-    }
-    guard images > 0 else { return }
-
-    // Decoded bytes; the base64 wire payload is ~4/3 of this.
-    func mb(_ b: Int) -> String { String(format: "%.1fMB", Double(b) / 1_048_576) }
-    DebugLogger.logNetwork(
-      "CHAT-IMG-MEASURE: msgsSent=\(toSend.count) imgTurns=\(imgTurns) images=\(images) "
-        + "imgBytes=\(mb(bytes)) wire≈\(mb(bytes * 4 / 3)) | window=\(window)turns "
-        + "staleTurns=\(staleTurns) staleImages=\(staleImages) savablePerTurn=\(mb(staleBytes))")
-  }
-
-  private func friendlyError(_ error: Error, provider: ChatModelProvider) -> String {
-    let name = Self.chatProviderDisplayName(provider)
-    if let te = error as? TranscriptionError {
-      switch te {
-      case .invalidAPIKey, .incorrectAPIKey:
-        return "Invalid API key. Please check your API key in Settings."
-      case .rateLimited:
-        return "Rate limit reached. Please wait a moment and try again."
-      case .quotaExceeded:
-        return "API quota exceeded. Please try again later."
-      case .serverError, .serviceUnavailable:
-        return "\(name) is temporarily unavailable. Please try again in a few seconds."
-      case .networkError(let msg):
-        let lower = msg.lowercased()
-        if lower.contains("503") || lower.contains("unavailable")
-          || lower.contains("502") || lower.contains("504") || lower.contains("500") {
-          return "\(name) is temporarily unavailable. Please try again in a few seconds."
-        }
-        if msg.hasPrefix("{") || msg.contains("\"error\"") {
-          if let extracted = ChatProviderHTTPError.message(from: msg) {
-            return "\(name) request failed: \(extracted)"
-          }
-          return "\(name) request failed. Please try again."
-        }
-        return msg
-      case .fileError(let msg):
-        return msg
-      default:
-        return "Request failed. Please try again."
-      }
-    }
-    if let urlError = error as? URLError {
-      switch urlError.code {
-      case .notConnectedToInternet, .networkConnectionLost:
-        return "No internet connection. Please check your network and try again."
-      case .timedOut:
-        return "Request timed out. Please try again."
-      default:
-        return "Network error: \(urlError.localizedDescription)"
-      }
-    }
-    return error.localizedDescription
-  }
-
-  static func chatProviderDisplayName(_ provider: ChatModelProvider) -> String {
-    switch provider {
-    case .gemini: return "Gemini"
-    case .grok: return "Grok"
-    case .openai: return "OpenAI"
-    case .anthropic: return "Claude"
-    case .customOpenAI: return "Custom endpoint"
-    case .local: return "Local LLM"
-    case .localMLX: return "On-device LLM"
-    }
-  }
 }
 
 // MARK: - Tab drag & drop

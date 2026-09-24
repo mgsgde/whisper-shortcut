@@ -56,6 +56,18 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | R10 | Voice Feedback never cleared `chunkStatuses` (found while applying R4) | hot path     | applied | 1   | `77b5c96`; clearing is now unconditional, flag deleted       |
 | R27 | ⚠️ "add an API key" warning ignored routed transcription (found applying R26) | self-contained | applied | 5 | The menu-bar warning tested `!hasAnyKey && !hasOfflineTranscriptionModel`, so a user whose only setup was OpenRouter or a self-hosted endpoint was told to add a key they did not need. Now tests `canTranscribe`, which was already computed 6 lines above. Behaviour fix, not a refactor |
 | R28 | OpenAI Dictate Prompt retried a spend-cap 429 (found applying R6)          | hot path     | applied  | 5   | `performWithRetryOn429` retried **any** 429, including `insufficient_quota` — a billing block that never clears. The user waited out a backoff before seeing an error that was never going to change. The other three retry loops all had this rule. Behaviour fix, shipped as part of R6 |
+| R40 | `ChatViewModel` request assembly + error mapping hide under the "Archive / Restore / Delete" MARK (R3 slice 2) | self-contained | applied | 8 | `4dbf4ea` — ~190 lines (`buildContents` 2808, `youTubeLinksToAttach`, `logImagePayloadMeasurement`, `friendlyError` 2943, `chatProviderDisplayName`) need only `messages`, `session.id`, `store.session(by:)`, `openChatModel` → `ChatRequestBuilder` + pure `ChatErrorFormatter`; testable for the first time (the `ChatSearch` route) |
+| R41 | "Mutate store → resync view" written 8× in `ChatViewModel`; dead `pinSession`/`unpinSession` (R3 slice 3) | self-contained | applied | 8 | `08f4fc3` — `archiveOlder*` ×4 + `archiveSession` + `closeTab` + `closeOtherTabs`/`closeTabsToTheRight` (8 lines verbatim) → `syncAfterStoreMutation()`; "resolve target session" 8-line block ×3 (1649/1756/1795) → `withSession(id:)`; `pinSession`/`unpinSession` have **zero callers repo-wide** → delete |
+| R42 | Meeting-editing guard duplicated; transcript path built three ways (R3 slice 4) | self-contained | applied | 8 | `792d1e5` + `8361ef1` (compile fix: `Result`'s failure type must be an `Error`) — Ended-meeting guard 2570–2577 ≡ 2618–2625; `MeetingListService.transcriptURL(forStem:)` already exists (used at 2498) while 2318 and 2559 hand-build it. Memory tools (2660–2692) use **no** VM state and scroll anchors need only `store` → both leave the view model |
+| R43 | Session-list state is pushed by hand instead of derived from the store | cross-file | deferred | 8 | `refreshRecentSessions()` has 20 call sites; 6 slash-command sites mutate `session.x` and rely on the *next* `appendModelMessage` to persist (comments at 1991/2028 admit it). Target: a `didChange` publisher on `ChatSessionStore.saveSessionsFile` + one sink. **Deliberately not applied**: `save` frequency during streaming must be measured first — a per-token refresh re-sorts 50 sessions on the main thread, and this file's oddities all cite hang captures |
+| R44 | `performWithRetryOn429` / `performStreamingWithRetryOn429` differ only in `data` vs `bytes` | hot path | applied | 8 | `746c8cf` — `SpeechService` 2424 / 1875: the 429 branch is byte-identical. Collapses to one loop with `onPartial: nil` = non-streaming. Narrows `RetryBackoff.swift:6–12` ("four loops legitimately differ") for **this pair only** — same file, same producer shape |
+| R45 | The Gemini SSE seam is written twice — stream open, non-2xx drain, stall watchdog | hot path | applied | 8 | `69f6f04` — `SpeechService:1686–1738` (TTS) vs `GeminiAPIClient:540–631` (chat), with watchdog constants in two places (`AppConstants.ttsStream*` vs `Constants.stream*`); PCM slice loops 1759 / 1890 both hand-roll `PCMStreamBatcher` |
+| R46 | `GeminiAPIClient` hygiene: literals ×2–3, `uploadFile` bypasses `createRequest`, dead TTS branch | self-contained | applied | 8 | `925dbcd` — `safetySettings` ×2 (585, 983); `:generateContent` endpoint literal ×3; `uploadFile` rebuilds auth `createRequest` already does + repeats its request/check block (1081 ≡ 1123); YouTube 400/403 retry branches (800/817) differ in one note string; `mode == "TTS"` at 315 is **dead** (TTS moved to `streamingBytes`). The inline transient predicate at 831 vs `RetryBackoff.isTransientPreFirstToken` is **not** unified — they differ on `URLError`, so merging changes retry behaviour |
+| R47 | Audio helpers defined N times: AAC-or-raw ×4, duration ×6 | hot path | applied | 8 | `4d8a48c` — AAC-or-raw identical 8 lines at `GeminiTranscriptionCall:47`, `SpeechService:1049/1373/2116`; `AudioChunker.getAudioDuration` byte-identical to `SpeechService:2546`, AVAudioFile formula inline ×4 more. MIME maps (`audio/mp3` vs `audio/mpeg`, OpenRouter's `m4a`) are per-provider vocabularies — left alone on purpose |
+| R48 | `ContextDerivation`: five `switch focus` ladders + a prompt triple through 6 signatures, already drifted | self-contained | applied (a–c, e) | 8 | `1d56bee`. **(d) NOT applied** — `generateStructured` always emits a `thinkingConfig` for the Smart Improvement model (`.default` → `["thinkingLevel": "low"]`, `.minimal` clamped to `low` by `geminiRejectsMinimalThinking`), so the body could not be made byte-identical; the diff adds a `thinkingConfig` key for every `ThinkingLevel` (old 1351 bytes, new 1413–1416). The hand-built body stays. **Behaviour delta in (a):** `buildAnalysisUserMessage` used to re-read `SystemPromptsStore` untrimmed for `.chat` while sampling used the trimmed value; both now use the trimmed one, so a whitespace-only chat prompt now counts as empty. 816 re-reads `SystemPromptsStore` for `.chat` while 457 takes it as a parameter — the drift the threading invites. JSONL corpus decoded **twice per run** (222, 413); the Gemini path hand-builds what `GeminiAPIClient.generateStructured` already is (the R5 shape); `parseDate` allocates an `ISO8601DateFormatter` per call |
+| R49 | `PopupNotificationWindow` encodes one kind as four independent `Bool`s | self-contained | applied | 8 | `c57f0a1` — `isError/isInfo/isCancelled/isProcessing` on a 13-parameter init, resolved by ladders in `setupIcon` and `startAutoHideTimer`; four action-button factories ×10 lines; four constraint blocks re-encoding a button order that is **also** encoded in `init`, `addSubview`, `hasButtons` and `mouseDown`; five `show*` tails verbatim; label config ×3 |
+| R50 | Local layer: memory-pressure source ×3, idle-unload ×2, prewarm timing ×4, timeout logging ×4 | cross-file | applied | 8 | `2cd1204` — `MLXPromptCache:79` ≡ `LocalSpeechService:228` ≡ `LocalLLMModelManager:262`; `ConnectionPrewarmer` timing wrapper ×4; `LocalSpeechService` "model missing" sniff ×2 (second copy widened with `"load"` in `02feb4dd` — unify on the superset); `requestTimeout` catch + `logSignal(.requestTimedOut)` ×4 across 3 files |
+| R51 | Six hand-written HTTP-status→`TranscriptionError` ladders; two Codable models of one Gemini wire shape | hot path | deferred | 8 | `GeminiAPIClient:1357`, `SpeechService:1187/2162/2370`, `LLMChatProvider:364/962`; `GeminiResponse` (`TranscriptionModels:690`) vs `GeminiChatResponse` (`:890`); three Gemini request struct families in one file. Touches every provider path at once and the mapped strings are user-visible — **recorded, not scheduled** |
 
 ## Swept areas
 
@@ -81,6 +93,13 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | Offline/local model layer (`ModelManager`, `LocalLLMModelManager`, `ModelStore`, their 3 Settings/onboarding views, all 6 `ensureReady` call sites) | run 7 | `c6ffa80` | R35–R37 applied. `MLXModelLoader`, `MLXPromptCache`, `OfflineMode`, `SystemTTSService`, `LocalSpeechService` only skimmed — still unswept |
 | `SpeechService` Gemini transcription half (2247–2504) + `ChunkTranscriptionService` request block | run 7 | `c6ffa80` | R38 applied. The OpenAI-compatible trio (OpenAI / xAI / self-hosted) already shares `sendOpenAICompatibleTranscriptionRequest` and OpenRouter's separate shape is documented — healthy, don't re-flag. TTS synthesizers (1633–1722): OpenAI/xAI are ~14-line near-clones with no drift, deliberately not unified |
 | `MenuBarController` `ChunkProgressDelegate` conformance (3042–3245) | run 7 | `c6ffa80` | R39 applied. Menu construction and clipboard/paste handling in that file are **still** unexamined |
+| `ChatViewModel` request/error, session-management, meeting-edit, memory and scroll regions | run 8 | `7091b8c` | R40–R42 applied. `ChatView.swift` 5,631 → 5,402. Still inside the view model: send/queue (837–1505), the `// MARK: - Private` half, workspace-folder commands. The R3 constraint holds — each remaining region must earn an owner or take its deps as parameters |
+| `SpeechService` retry + Gemini TTS stream, `GeminiAPIClient` stream half | run 8 | `7091b8c` | R44, R45 applied. `openSSEStream` + `StreamProgressClock.startWatchdog` + `PCMStreamBatcher.feed` are now the seam — copy them, don't re-derive. `streamingBytes(for:)` and `GeminiAPIClient.resourceTimeout` were pure forwarders and are gone |
+| `GeminiAPIClient` non-streaming half + Files API | run 8 | `7091b8c` | R46 applied. The inline transient predicate (~831) is deliberately NOT `RetryBackoff.isTransientPreFirstToken` — they differ on `URLError`. `uploadFile` is live (Gemini Dictate Prompt >20 MB), not dead |
+| Audio payload/duration helpers across 8 files | run 8 | `7091b8c` | R47 applied → `AudioTranscoder.payload`, `AudioDuration`. Per-provider MIME tables stay separate on purpose (Gemini `audio/aac` vs OpenRouter `m4a`); `AudioChunker.splitAudioStream` keeps its own read off the asset it already holds |
+| `ContextDerivation.swift` (941 lines, read in full) | run 8 | `7091b8c` | R48 (a–c, e) applied; (d) blocked by `thinkingConfig` — see the finding row. `rawSystemPromptForFocus` (166 lines of per-focus prompt text) is genuinely per-case, left alone |
+| `PopupNotificationWindow.swift` (1,240 lines, read in full) | run 8 | `7091b8c` | R49 applied → `PopupKind`, one button factory, one ordered `actionButtons`. Net −49 lines. `Constants.displayDuration` was already `SettingsDefaults.notificationDuration.rawValue`, so the fallback change is a no-op |
+| Local model layer lifetime guards + `ConnectionPrewarmer` | run 8 | `7091b8c` | R50 applied → `ModelLifetimeGuards` (3 adopters), `timedWarmUp`, one missing-model predicate, one timeout signal. `warmOfflineWhisper` still bypasses `ensureReady` on purpose |
 
 ## Not yet swept
 
@@ -92,8 +111,14 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
   flagging.
 - `ChatView.swift`'s **input area** (`ChatInputAreaView`, ~470 lines) — the one rendering region run 5
   did not open. Everything else in the rendering half is now read.
-- `ChatViewModel` (R3) — now **2,720 lines**, up from the 2,620 measured in run 3. Biggest remaining
-  item in the repo and deserves a run of its own rather than a slot in a mixed list.
+- `ChatViewModel` (R3) — run 8 took slices 2–4 (R40–R42). What is left: the send/queue half
+  (837–1505) and the `// MARK: - Private` region. R43 (store-derived session lists) is the design
+  question underneath it and is recorded as its own finding.
+- `Settings/` again: **3,075 insertions across 42 files since run 2's sweep** at `b5e98f7`, so it is
+  fair game under the Step 0b2 rule even though run 2 closed it out.
+- `ChatView.swift`'s **input area** (`ChatInputAreaView`, ~470 lines) — still the one unread
+  rendering region.
+- `ChatTools.swift` (1,665) and `ChatToolRegistry` — never swept.
 - `PopupNotificationWindow.swift` (1,223), `ContextDerivation.swift` (941)
 - `Onboarding/` (`WelcomeSteps.swift` 1,056), `GeminiAPIClient.swift` stream body (~600 lines, read
   only down to line 440 in run 3), `SpeechService`'s TTS + transcription-provider half (~1,400 lines)
@@ -232,3 +257,33 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
   store: ModelStore<M>` in a generic SwiftUI view; no `objectWillChange` plumbing needed.
 - Tests are run against the App Store scheme (`@testable import WhisperShortcut_AppStore`);
   live-network suites carry `.tags(.liveNetwork)` and are skipped by the hermetic plan.
+
+## Working notes added in run 8
+
+- **A brief that names its own abort condition is what makes a delegate safe.** R48(d) told the
+  builder to dump both JSON bodies and diff them, and to leave the step undone if they differed. They
+  did — `resolvedThinkingConfig` never returns nil for `gemini-3.8-flash` (`.default` →
+  `["thinkingLevel": "low"]`, `.minimal` clamped by `geminiRejectsMinimalThinking`) — so
+  `callGeminiForAnalysis` still hand-builds its body and the rest of R48 landed anyway. Without the
+  abort clause this would have shipped a silent request-shape change.
+- **`Result`'s failure type must conform to `Error`.** `[String: Any]` does not, so a "return the
+  reply dictionary on failure" helper needs a one-field wrapper struct. Cost one extra commit in R42.
+- **An escaping closure cannot assign a captured `var`.** `openSSEStream`'s `onNon2xx` needed a tiny
+  reference box for the chat stream to record the status its YouTube 400/403 retries read.
+- **Check what a "pure forwarder" actually forwarded before deleting it.** `streamingBytes(for:)` was
+  literally `session.bytes(for:)` and `resourceTimeout` was `Constants.resourceTimeout`, which is why
+  routing TTS through the chat seam kept the same connection pool and the same deadline.
+- **One closure cannot always express N call sites.** R47's AAC helper needed a separate `aacLabel`
+  because `getMimeType("m4a")` is `audio/wav` while OpenRouter wants `"m4a"` — folding both into the
+  extension closure would have changed OpenRouter's payload label. Two parameters, tables untouched.
+- **A shared helper whose callers branch on different conditions takes the condition as a parameter.**
+  R41's `syncAfterStoreMutation(activeSessionChanged:)` has seven callers using three different tests
+  (`store.load().id != session.id`, `session.id != keepId`, `activeWillBeClosed`); unifying the
+  condition would have been a behaviour change wearing a refactor's clothes.
+- **Delegated typing worked at this scale**: 11 commits from four `cursor-agent` briefs on
+  `grok-4.7-high`, one bounded finding group each, each self-verified (build exit status, hermetic
+  suite, mutation-checked tests) and then re-read here against the diff rather than trusted.
+- Two sub-threshold repetitions were deliberately NOT numbered and are recorded here so a later run
+  does not rediscover them: the 3-line pasteboard-write triple (`ChatView` ×3), the empty
+  `FocusedLoadResult` literal ×2, the `inline_data` map ×3, `"Speech service was deallocated"` ×3,
+  and the UserDefaults "absent key means default" idiom ×3.

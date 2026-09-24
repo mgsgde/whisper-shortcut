@@ -73,4 +73,20 @@ enum AudioTranscoder {
       return nil
     }
   }
+
+  /// AAC bytes labelled `aacLabel` when transcoding succeeds, otherwise the file's own
+  /// bytes labelled by `mimeForExtension` of the lowercased path extension.
+  /// Gemini passes `aacMimeType` (the default) and its MIME table; OpenRouter passes
+  /// `"m4a"` and `openRouterAudioFormat` — those vocabularies stay separate.
+  static func payload(
+    for url: URL,
+    aacLabel: String = aacMimeType,
+    mimeForExtension: (String) -> String
+  ) throws -> (data: Data, mime: String) {
+    if let aacData = aacData(for: url) {
+      return (aacData, aacLabel)
+    }
+    let data = try Data(contentsOf: url)
+    return (data, mimeForExtension(url.pathExtension.lowercased()))
+  }
 }

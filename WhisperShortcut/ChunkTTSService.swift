@@ -37,12 +37,33 @@ struct PCMStreamBatcher {
         flushBytes = Int(flushSeconds * Double(Self.bytesPerSecond))
     }
 
+    /// True once the first flushed slice has been logged. `drain()` does not log: a chunk shorter
+    /// than the first batch used to stay silent, and it still does.
+    private var loggedFirstSlice = false
+
     /// Appends one byte; returns a slice when a batch is complete.
     mutating func append(_ byte: UInt8) -> Data? {
         pending.append(byte)
         let threshold = flushedOnce ? flushBytes : firstFlushBytes
         guard pending.count >= threshold, pending.count.isMultiple(of: 2) else { return nil }
         return take()
+    }
+
+    /// Appends one byte and, when a slice is ready, logs the first-slice latency once then
+    /// forwards the slice. Both TTS streams (raw PCM bytes and decoded Gemini objects) use this
+    /// so the log line cannot drift.
+    mutating func feed(
+      _ byte: UInt8,
+      started: CFAbsoluteTime,
+      logPrefix: String,
+      emit: (Data) async -> Void
+    ) async {
+      guard let slice = append(byte) else { return }
+      if !loggedFirstSlice {
+        loggedFirstSlice = true
+        DebugLogger.log("\(logPrefix): First audio slice after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (\(slice.count) bytes)")
+      }
+      await emit(slice)
     }
 
     /// Whatever is left at the end of the stream (dropping a trailing half-sample, if any).
