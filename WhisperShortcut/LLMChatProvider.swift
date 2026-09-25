@@ -565,6 +565,12 @@ enum OpenAICompatibleStream {
           // inline markers the model appends in citation order.
           var citationURLs: [String] = []
           var seenCitationURLs: Set<String> = []
+          var hasYieldedText = false
+          var needsMessageSeparator = false
+          // Diagnostics for truncated-reply reports.
+          var eventTypeCounts: [String: Int] = [:]
+          var messageItemCount = 0
+          var textCharCount = 0
 
           for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -581,11 +587,20 @@ enum OpenAICompatibleStream {
 
             let eventType = currentEventType ?? obj["type"] as? String ?? ""
             currentEventType = nil
+            eventTypeCounts[eventType, default: 0] += 1
 
             switch eventType {
             case "response.output_text.delta":
               if let delta = obj["delta"] as? String, !delta.isEmpty {
+                // A preamble message can precede the final answer message; insert a break so
+                // the two don't run together.
+                if needsMessageSeparator {
+                  continuation.yield(.textDelta("\n\n"))
+                  needsMessageSeparator = false
+                }
                 continuation.yield(.textDelta(delta))
+                hasYieldedText = true
+                textCharCount += delta.count
               }
 
             case "response.function_call_arguments.done":
@@ -599,11 +614,18 @@ enum OpenAICompatibleStream {
 
             case "response.output_item.added":
               if let item = obj["item"] as? [String: Any],
-                 let type = item["type"] as? String, type == "function_call",
-                 let name = item["name"] as? String,
-                 let itemId = item["id"] as? String {
-                functionCallNames[itemId] = name
-                DebugLogger.logNetwork("\(config.logTag): function_call added name=\(name) id=\(itemId)")
+                 let type = item["type"] as? String {
+                if type == "function_call",
+                   let name = item["name"] as? String,
+                   let itemId = item["id"] as? String {
+                  functionCallNames[itemId] = name
+                  DebugLogger.logNetwork("\(config.logTag): function_call added name=\(name) id=\(itemId)")
+                } else if type == "message" {
+                  messageItemCount += 1
+                  if hasYieldedText {
+                    needsMessageSeparator = true
+                  }
+                }
               }
 
             case "response.output_text.annotation.added":
@@ -635,7 +657,8 @@ enum OpenAICompatibleStream {
           let sources = citationURLs.map {
             GroundingSource(uri: $0, title: citationDisplayTitle(for: $0))
           }
-          DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count)")
+          let summary = eventTypeCounts.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ",")
+          DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count) messages=\(messageItemCount) textChars=\(textCharCount) events=\(summary)")
           // No `supports`: these providers write inline [N] markers into the reply text themselves,
           // so emitting grounding supports would render a second, duplicate set of markers.
           continuation.yield(.finished(sources: sources, supports: [], finishReason: finishReason))
