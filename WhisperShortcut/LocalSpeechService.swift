@@ -190,6 +190,7 @@ actor LocalSpeechService {
       ContextLogger.shared.logRequestTimedOut(
         timeoutSeconds: Int(Self.modelLoadDeadline),
         logPrefix: "LOCAL-SPEECH",
+        origin: .transcription,
         stage: "modelLoad",
         model: modelType.rawValue)
       throw TranscriptionError.localProcessingTimeout(
@@ -580,6 +581,7 @@ actor LocalSpeechService {
       ContextLogger.shared.logRequestTimedOut(
         timeoutSeconds: Int(deadline),
         logPrefix: "LOCAL-SPEECH",
+        origin: .transcription,
         stage: "decode",
         model: currentModelType?.rawValue ?? "unknown")
       throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))

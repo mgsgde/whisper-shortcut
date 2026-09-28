@@ -283,8 +283,24 @@ class AutoPromptImprovementScheduler {
       }
     }
 
-    // Update last run date regardless of whether suggestions were generated
-    UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
+    // Stamp the run date unless every focus failed on a transient error. The focuses share one
+    // task group, so a single 60 s network stall takes them all out at once — stamping that would
+    // cost a full auto-run interval (7 days by default) for a blip (ledger I14). Leaving the date
+    // unset lets the daily check retry, same as the eligibility early-return above. Permanent
+    // failures (bad key, billing) still stamp, so they surface once per interval, not every day.
+    let everyFocusFailedTransiently =
+      !results.isEmpty && results.allSatisfy { $0.error.map(Self.isTransient) ?? false }
+    if everyFocusFailedTransiently {
+      DebugLogger.log(
+        "AUTO-IMPROVEMENT: Every focus failed on a transient error — lastRun date not set so we retry next check")
+    } else {
+      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
+    }
+  }
+
+  private static func isTransient(_ error: Error) -> Bool {
+    if let transcriptionError = error as? TranscriptionError { return transcriptionError.isRetryable }
+    return error is URLError
   }
 
   private func hasSuggestion(for kind: GenerationKind) -> Bool {

@@ -106,7 +106,7 @@ Line numbers are as of 2026-08-02; find the function, not the line.
 |---|---|---|
 | `chatStopped` | the user pressed Stop mid-stream | `ChatViewModel.cancelSend()` :673. The `catch is CancellationError` arm :1027 already computes `partialChars` — emit there instead if the partial length is wanted, and keep `cancelSend` for the `dropped` queue count. Watch out: cancellation also arrives from `StallCancellationRegistry` (watchdog), which is *not* a user verdict — pass an explicit `reason: "user" \| "stall"` so the two never merge. |
 | `chatRetry` | the user re-sent the same message | `ChatViewModel.retryMessage(id:)` :480. The strongest negative signal in the app: an explicit "that answer was not good enough". `detail: {"model": …}` so a model that gets retried disproportionately is visible. |
-| `chatAbandoned` | a session got exactly one turn and was never returned to | Derived offline from `ChatSessionStore` timestamps. No code change. |
+| `chatAbandoned` | the user left a session (new chat, switched tab, closed tab) after exactly one turn | `ChatViewModel.noteLeaving`. **Was** "derived offline from `ChatSessionStore`, no code change" — dropped 2026-09-28 because the scheduled usage review cannot read the store (gap #12, ledger I16). Not retracted on a later return. |
 
 ### Slice 3 — model switching and metrics
 

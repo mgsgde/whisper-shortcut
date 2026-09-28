@@ -915,6 +915,7 @@ class SpeechService {
       request,
       responseType: GeminiChatResponse.self,
       mode: logPrefix,
+      origin: .prompt,
       withRetry: true
     )
 
@@ -1400,6 +1401,7 @@ class SpeechService {
       request,
       responseType: GeminiChatResponse.self,
       mode: "PROMPT-HISTORY-TRANSCRIBE",
+      origin: .prompt,
       withRetry: true
     )
 
@@ -2258,7 +2260,8 @@ class SpeechService {
         "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
       ContextLogger.shared.logRequestTimedOut(
         timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
-        logPrefix: logPrefix)
+        logPrefix: logPrefix,
+        origin: .transcription)
       throw TranscriptionError.requestTimeout
     }
     guard let httpResponse = response as? HTTPURLResponse else {

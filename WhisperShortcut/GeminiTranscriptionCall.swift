@@ -77,6 +77,7 @@ extension GeminiAPIClient {
       request,
       responseType: GeminiResponse.self,
       mode: mode,
+      origin: .transcription,
       withRetry: withRetry
     )
     let networkTime = CFAbsoluteTimeGetCurrent() - networkStartTime

@@ -793,6 +793,7 @@ class ContextDerivation {
       request,
       responseType: GeminiChatResponse.self,
       mode: "USER-CONTEXT-DERIVATION",
+      origin: .smartImprovement,
       withRetry: true
     )
 

@@ -326,6 +326,7 @@ class GeminiAPIClient {
     _ request: URLRequest,
     responseType: T.Type,
     mode: String = "GEMINI",
+    origin: RequestOrigin? = nil,
     withRetry: Bool = false
   ) async throws -> T {
     var lastError: Error?
@@ -431,7 +432,8 @@ class GeminiAPIClient {
           "\(mode): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
         ContextLogger.shared.logRequestTimedOut(
           timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
-          logPrefix: mode)
+          logPrefix: mode,
+          origin: origin)
         throw TranscriptionError.requestTimeout
       } catch let error as URLError {
         // User-initiated cancellations (pressing the shortcut again, starting a new

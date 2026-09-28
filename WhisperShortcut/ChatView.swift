@@ -438,6 +438,7 @@ class ChatViewModel: ObservableObject {
       DebugLogger.log("GEMINI-CHAT: Cmd+N reused empty current tab \(session.id)")
       return
     }
+    noteLeaving(session, reason: "newChat")
     let newSession = store.createNewSession()
     session = newSession
     currentSessionId = newSession.id
@@ -2182,16 +2183,33 @@ class ChatViewModel: ObservableObject {
   func switchToSession(id: UUID) {
     DebugLogger.log("SIDEBAR: switchToSession id=\(id) current=\(session.id) same=\(id == session.id)")
     guard id != session.id else { return }
+    noteLeaving(session, reason: "switched")
     store.switchToSession(id: id)
     switchToCurrentStoreSession()
     DebugLogger.log("SIDEBAR: switchToSession done → now on \(session.id)")
   }
 
   func closeTab(id: UUID) {
+    if let closing = id == session.id ? session : store.session(by: id) {
+      noteLeaving(closing, reason: "closed")
+    }
     rememberClosed(id: id)
     store.archiveSession(id: id)
     syncAfterStoreMutation(activeSessionChanged: id == session.id)
     DebugLogger.log("GEMINI-CHAT: Closed (archived) tab \(id)")
+  }
+
+  /// Emits `chatAbandoned` when the user leaves a chat that got exactly one turn (ledger I16 /
+  /// gap #12). Emitted live rather than derived from `ChatSessionStore` later, because the scheduled
+  /// usage review cannot read the store. A later return to the session is not retracted, so read it
+  /// as "left after one turn", not proof the answer failed. Meeting chats are excluded — their first
+  /// message is a transcript question, not a verdict on the model.
+  private func noteLeaving(_ leaving: ChatSession, reason: String) {
+    guard !leaving.isMeeting,
+      leaving.messages.lazy.filter({ $0.role == .user }).count == 1
+    else { return }
+    ContextLogger.shared.logSignal(
+      .chatAbandoned, mode: "geminiChat", detail: ["reason": reason, "model": Self.openChatModel.rawValue])
   }
 
   /// Pushes a session onto the recently-closed ring buffer if it has any

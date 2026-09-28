@@ -64,6 +64,11 @@ enum OutcomeSignal: String {
   /// The user re-sent the same message: an explicit "that answer was not good enough", and the
   /// strongest negative signal the app can observe.
   case chatRetry
+  /// The user left a chat (new chat, switched tab, closed tab) after exactly one turn. The only
+  /// chat verdict that fires on ordinary use — without it a good chat week and a quietly abandoned
+  /// one produce identical signal streams (gap #12). `detail.reason` is `newChat` / `switched` /
+  /// `closed`. Not retracted if the user comes back later.
+  case chatAbandoned
   /// A Dictate Prompt ran again over the *same* selection with a different instruction — the
   /// user rephrasing because the first edit missed. The chained case (feeding one result into
   /// the next instruction) is deliberately excluded: that is normal iterative editing, not a
@@ -73,15 +78,35 @@ enum OutcomeSignal: String {
   /// separates "clipboard held no text" from "clipboard was unreachable" — a distinction the
   /// interaction log could not previously make, since neither wrote a record at all.
   case promptNoSelection
-  /// A cloud transcription round-trip hit the client deadline instead of returning.
-  /// Distinct from `cancelledWhileProcessing`: the app gave up, the user did not.
-  /// `detail.phase` / `timeoutSeconds` / `logPrefix` identify which path stalled.
+  /// A network round-trip (or local processing step) hit the client deadline instead of returning.
+  /// Distinct from `cancelledWhileProcessing`: the app gave up, the user did not. `mode` is the
+  /// caller's `RequestOrigin` (nil = unattributed shared helper); `detail.phase` / `timeoutSeconds`
+  /// / `logPrefix` identify which path stalled.
   case requestTimedOut
   /// No usable speech: either the local silence gate skipped the API, or the API
   /// returned empty. `detail.source` is `localSilenceGate` or `apiEmptyResult`;
   /// `peakDb`, `durationMs`, and `logPrefix` are required so meeting chunks can
   /// be split from dictation (instrumentation gap #8 / ledger I3).
   case noSpeechDetected
+}
+
+/// Which interaction a network/processing deadline belongs to. Raw values are the `mode` keys the
+/// interaction log uses, plus `smartImprovement` for background derivation traffic, which has no
+/// interaction of its own.
+enum RequestOrigin: String {
+  case transcription
+  case prompt
+  case geminiChat
+  case smartImprovement
+
+  var phase: String {
+    switch self {
+    case .transcription: return "transcribing"
+    case .prompt: return "prompting"
+    case .geminiChat: return "chatting"
+    case .smartImprovement: return "deriving"
+    }
+  }
 }
 
 // MARK: - System Prompt History Entry
@@ -319,18 +344,24 @@ class ContextLogger {
     writeSignal(entry)
   }
 
-  /// Gap #8: every `noSpeechDetected` path must hit the outcome-signal stream with the
-  /// four fields usage-review needs to grade I3.
-  /// Transcription deadline signal. `stage` and `model` are emitted only when supplied, so the
-  /// cloud paths keep the three-key detail and the local paths keep their extra keys.
-  func logRequestTimedOut(timeoutSeconds: Int, logPrefix: String, stage: String? = nil, model: String? = nil) {
-    var detail: [String: String] = ["phase": "transcribing"]
+  /// Deadline signal. `origin` is the caller's interaction mode — never inferred here, because
+  /// `GeminiAPIClient.performRequest` serves every Gemini mode and a hardcoded `transcription` made
+  /// background Smart Improvement aborts read as dictation stalls (gap #11 / ledger I15). `nil`
+  /// means "unattributed shared helper", which is honest where a wrong mode would not be.
+  /// `stage` and `model` are emitted only when supplied, so the local paths keep their extra keys.
+  func logRequestTimedOut(
+    timeoutSeconds: Int, logPrefix: String, origin: RequestOrigin?, stage: String? = nil, model: String? = nil
+  ) {
+    var detail: [String: String] = ["phase": origin?.phase ?? "unattributed"]
     if let stage { detail["stage"] = stage }
     detail["timeoutSeconds"] = "\(timeoutSeconds)"
     detail["logPrefix"] = logPrefix
     if let model { detail["model"] = model }
-    logSignal(.requestTimedOut, mode: "transcription", detail: detail)
+    logSignal(.requestTimedOut, mode: origin?.rawValue, detail: detail)
   }
+
+  /// Gap #8: every `noSpeechDetected` path must hit the outcome-signal stream with the
+  /// four fields usage-review needs to grade I3.
 
   func logNoSpeechDetected(source: String, peakDb: String, durationMs: String, logPrefix: String) {
     logSignal(
