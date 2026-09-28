@@ -1019,11 +1019,12 @@ class SpeechService {
   /// second API call is dropped if the main request throws first.
   private func transcribeForHistoryInParallel(
     logPrefix: String,
+    audioURL: URL,
     _ transcribe: @escaping () async throws -> String
   ) -> Task<String, Never> {
     Task<String, Never> {
       do {
-        let text = try await transcribe()
+        let text = try await NoSpeechContext.run(.promptHistory, audioURL: audioURL) { try await transcribe() }
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
         return text
       } catch {
@@ -1051,7 +1052,7 @@ class SpeechService {
     var transcriptionTask: Task<String, Never>?
     defer { transcriptionTask?.cancel() }
     if textInstruction == nil {
-      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI") {
+      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI", audioURL: audioURL) {
         try await self.transcribeAudioForHistory(audioURL: audioURL, credential: credential)
       }
     }
@@ -1145,7 +1146,7 @@ class SpeechService {
     var transcriptionTask: Task<String, Never>?
     defer { transcriptionTask?.cancel() }
     if textInstruction == nil {
-      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI") {
+      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI", audioURL: audioURL) {
         try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
       }
     }

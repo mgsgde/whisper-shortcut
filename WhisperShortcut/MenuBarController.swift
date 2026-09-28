@@ -52,6 +52,15 @@ class MenuBarController: NSObject {
   private var appState: AppState = .idle {
     didSet {
       DebugLogger.logDebug("APPSTATE: \(oldValue) -> \(appState) (mainThread=\(Thread.isMainThread))")
+      // Edges only: chunk-pipeline states move processing → processing and must not restart
+      // the clock that `processingMs` on cancel/deadline signals reads (queue #8).
+      let wasProcessing = oldValue.isNonTTSProcessing
+      let isProcessing = appState.isNonTTSProcessing
+      if isProcessing, !wasProcessing {
+        ContextLogger.shared.noteProcessingStart()
+      } else if wasProcessing, !isProcessing {
+        ContextLogger.shared.noteProcessingStart(nil)
+      }
       updateUI()
       updateRecordingIndicator()
 
@@ -164,6 +173,7 @@ class MenuBarController: NSObject {
   /// lifecycle through the callbacks below rather than mutating the app's source of truth.
   private lazy var liveMeeting = LiveMeetingSession(
     transcribeChunk: { [unowned self] url in
+      try await NoSpeechContext.run(.liveMeetingChunk, audioURL: url) {
       try await self.speechService.transcribe(
         audioURL: url,
         preferredModel: TranscriptionModel.loadSelectedForMeeting(),
@@ -177,6 +187,7 @@ class MenuBarController: NSObject {
         // of the recording state each time.
         reportsProgress: false
       )
+      }
     },
     cleanUpAudioFile: { [weak self] url in self?.cleanupAudioFile(at: url) },
     appStateIsRecordingMeeting: { [weak self] in self?.appState.recordingMode == .liveMeeting },
@@ -1452,9 +1463,22 @@ class MenuBarController: NSObject {
     dictateStreamingSession = nil
   }
 
+  /// `detail` for a cancel signal: the phase, how long processing had run, and — on the
+  /// streaming path — how many chunk transcriptions were still in flight (queue #8).
+  private func cancelSignalDetail() -> [String: String] {
+    var detail = ["phase": appState.signalPhase]
+    if let processingMs = ContextLogger.shared.processingElapsedMs() {
+      detail["processingMs"] = "\(processingMs)"
+    }
+    if let session = dictateStreamingSession {
+      detail["pendingChunks"] = "\(session.pendingChunkCount)"
+    }
+    return detail
+  }
+
   private func cancelInFlightTranscription() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "transcription", detail: ["phase": appState.signalPhase])
+      .cancelledWhileProcessing, mode: "transcription", detail: cancelSignalDetail())
     discardStreamingSession()
     speechService.cancelTranscription()
     // Keep the audio instead of deleting it: a cancel is one keystroke and can be an accident,
@@ -1514,7 +1538,7 @@ class MenuBarController: NSObject {
   /// It also removes the recording, which the previous no-argument call left on disk.
   private func cancelInFlightPrompt() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "prompt", detail: ["phase": appState.signalPhase])
+      .cancelledWhileProcessing, mode: "prompt", detail: cancelSignalDetail())
     speechService.cancelPrompt()
     transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
   }
@@ -2013,6 +2037,7 @@ class MenuBarController: NSObject {
     // still be able to cancel it while we await the chunk transcripts below. Cleared on
     // exit (identity-checked so a newer recording's session is never clobbered).
     let streamingSession: DictateStreamingSession? = await MainActor.run { self.dictateStreamingSession }
+    let recordingPeakDb: Float = await MainActor.run { self.audioRecorder.lastPeakPowerDb }
     defer {
       Task { @MainActor [weak self] in
         guard let self else { return }
@@ -2086,8 +2111,11 @@ class MenuBarController: NSObject {
         }
         // Single-shot: non-Gemini model, no rotation happened, or a chunk failed —
         // transcribe the merged WAV exactly as before streaming existed.
-        return try await self.speechService.transcribe(
-          audioURL: audioURL, cancellable: !duringMeeting)
+        return try await NoSpeechContext.run(
+          duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
+        ) {
+          try await self.speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+        }
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
@@ -2936,7 +2964,8 @@ extension MenuBarController: AudioRecorderDelegate {
             source: "localSilenceGate",
             peakDb: String(format: "%.1f", self.audioRecorder.lastPeakPowerDb),
             durationMs: String(durationMs),
-            logPrefix: "DICTATION")
+            logPrefix: "DICTATION",
+            origin: .dictation)
           self.discardStreamingSession()
           // Mirror the explicit-remove pattern used by every other early-return path; without
           // this line the URL stayed in `processedAudioURLs` forever for each silent recording.

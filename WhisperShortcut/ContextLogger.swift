@@ -95,6 +95,43 @@ enum OutcomeSignal: String {
   case noInputSignal
 }
 
+/// Who asked for the transcription whose result came back empty (instrumentation gap #9 /
+/// queue #5). Without it 139 of 182 `noSpeechDetected` records could not say whether a streaming
+/// chunk, a whole dictation or a background history transcription heard nothing — and a silent
+/// streaming chunk inflated the dictation no-speech rate.
+enum NoSpeechOrigin: String, Sendable {
+  case streamingChunk
+  case dictation
+  case meetingSegment
+  case liveMeetingChunk
+  case promptHistory
+}
+
+/// What the caller knew about the audio when it started the request. Carried as a task-local
+/// rather than threaded through every provider path: the empty result is detected a dozen
+/// frames down (per-provider parsers, `TextProcessingUtility.validateSpeechText`), and only the
+/// caller at the top knows which interaction it is and how long the recording was. Child tasks
+/// (`Task {}`, task groups) inherit it; `Task.detached` does not, and none of the transcription
+/// paths use one.
+struct NoSpeechContext: Sendable {
+  let origin: NoSpeechOrigin
+  let durationMs: Int?
+  let peakDb: Float?
+
+  @TaskLocal static var current: NoSpeechContext?
+
+  /// Runs `body` with this context attached, reading the duration from the file when it can.
+  static func run<T>(
+    _ origin: NoSpeechOrigin, audioURL: URL, peakDb: Float? = nil,
+    _ body: () async throws -> T
+  ) async rethrows -> T {
+    let seconds = try? AudioDuration.avAudioFileSeconds(audioURL)
+    let durationMs = seconds.flatMap { $0.isFinite && $0 >= 0 ? Int(($0 * 1000).rounded()) : nil }
+    let context = NoSpeechContext(origin: origin, durationMs: durationMs, peakDb: peakDb)
+    return try await $current.withValue(context) { try await body() }
+  }
+}
+
 /// Which interaction a network/processing deadline belongs to. Raw values are the `mode` keys the
 /// interaction log uses, plus `smartImprovement` for background derivation traffic, which has no
 /// interaction of its own.
@@ -358,6 +395,7 @@ class ContextLogger {
     timeoutSeconds: Int, logPrefix: String, origin: RequestOrigin?, stage: String? = nil, model: String? = nil
   ) {
     var detail: [String: String] = ["phase": origin?.phase ?? "unattributed"]
+    if let processingMs = processingElapsedMs() { detail["processingMs"] = "\(processingMs)" }
     if let stage { detail["stage"] = stage }
     detail["timeoutSeconds"] = "\(timeoutSeconds)"
     detail["logPrefix"] = logPrefix
@@ -368,14 +406,25 @@ class ContextLogger {
   /// Gap #8: every `noSpeechDetected` path must hit the outcome-signal stream with the
   /// four fields usage-review needs to grade I3.
 
-  func logNoSpeechDetected(source: String, peakDb: String, durationMs: String, logPrefix: String) {
+  ///
+  /// `origin`, and `peakDb`/`durationMs` when the call site cannot know them (the API-empty
+  /// paths pass "n/a"), come from `NoSpeechContext.current` — set by whoever started the
+  /// request (gap #9 / queue #5). `origin` is "unattributed" only if no caller set a context.
+  func logNoSpeechDetected(
+    source: String, peakDb: String, durationMs: String, logPrefix: String,
+    origin: NoSpeechOrigin? = nil
+  ) {
+    let context = NoSpeechContext.current
+    let resolvedPeak = peakDb != "n/a" ? peakDb : context?.peakDb.map { String(format: "%.1f", $0) } ?? peakDb
+    let resolvedDuration = durationMs != "n/a" ? durationMs : context?.durationMs.map { "\($0)" } ?? durationMs
     logSignal(
       .noSpeechDetected,
       mode: "transcription",
       detail: [
         "source": source,
-        "peakDb": peakDb,
-        "durationMs": durationMs,
+        "origin": (origin ?? context?.origin)?.rawValue ?? "unattributed",
+        "peakDb": resolvedPeak,
+        "durationMs": resolvedDuration,
         "logPrefix": logPrefix,
       ])
   }
@@ -389,6 +438,29 @@ class ContextLogger {
         "durationMs": durationMs,
         "logPrefix": logPrefix,
       ])
+  }
+
+  // MARK: - Processing duration (gap #10 / queue #8)
+
+  private var processingStartedAt: Date?
+
+  /// Marks the moment a transcription/prompt job entered processing, so a later cancel or
+  /// deadline can say how long processing had run. `gapMs` measures from the previous
+  /// *interaction*, which can be hours earlier (baseline: 419 s – 3 h on the cancels it was
+  /// meant to explain). Pass nil when processing ends.
+  func noteProcessingStart(_ date: Date? = Date()) {
+    lastInteractionLock.lock()
+    processingStartedAt = date
+    lastInteractionLock.unlock()
+  }
+
+  /// Milliseconds since `noteProcessingStart`, or nil when nothing is processing.
+  func processingElapsedMs() -> Int? {
+    lastInteractionLock.lock()
+    let start = processingStartedAt
+    lastInteractionLock.unlock()
+    guard let start else { return nil }
+    return Int(Date().timeIntervalSince(start) * 1000)
   }
 
   /// Emits `dictationRestart` when a dictation begins so soon after an unpasted transcript that the
