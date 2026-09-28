@@ -302,6 +302,13 @@ launch_branch_build() {
 }
 BRANCH_BUILD_RUNNING=0
 
+# A run that dies mid-gate (timeout, die, Ctrl-C) never reaches its restore_user_app call and
+# would leave you without an app. restore_user_app is a no-op while any build — yours or the
+# branch build — is running, so running it on every exit is safe.
+trap 'restore_user_app; rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 fail_run() { # fail_run <reason>
     warn "$1"
     warn "worktree kept for post-mortem: ${WT_DIR}"

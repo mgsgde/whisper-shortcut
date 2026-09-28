@@ -278,10 +278,12 @@ retries it: the change stays unmerged until you resolve it by hand." \
                      -skip-testing:WhisperShortcutTests/LLMProviderRoundtripTests \
                      -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
                      </dev/null >/tmp/ws-implementer-retest.log 2>&1; then
+                bash "${REPO_ROOT}/scripts/ensure-app-running.sh"
                 tail -40 /tmp/ws-implementer-retest.log
                 warn "#${QUEUE_NUM}: GATE FAILED after rebase (test plan) — leaving the window open and the branch alone."
                 return
             fi
+            bash "${REPO_ROOT}/scripts/ensure-app-running.sh"
             gates_note="re-gated on the new base"
             log "#${QUEUE_NUM}: gates green on the rebased branch."
         fi
