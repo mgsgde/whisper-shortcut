@@ -26,8 +26,10 @@ IMPLEMENTER_ENABLED=0
 # across runs uncomparable. Avoid the -fast Grok variants (dearer, not latency-bound).
 IMPLEMENTER_PLAN_AGENT=claude                 # empty = build with no plan (a downgrade, say so)
 IMPLEMENTER_PLAN_MODEL=claude-opus-5
-IMPLEMENTER_BUILD_AGENT=cursor                # cursor | claude
-IMPLEMENTER_BUILD_MODEL=grok-4.7-high
+# Build on Opus 5.5 while Grok's Cursor quota is used up (reset 2026-10-02, Magnus 2026-09-28).
+# To return to Grok: IMPLEMENTER_BUILD_AGENT=cursor, IMPLEMENTER_BUILD_MODEL=grok-4.7-high.
+IMPLEMENTER_BUILD_AGENT=claude                # cursor | claude
+IMPLEMENTER_BUILD_MODEL=claude-opus-5-5
 IMPLEMENTER_REVIEW_AGENT=claude               # claude | none — never cursor
 IMPLEMENTER_REVIEW_MODEL=claude-opus-5
 

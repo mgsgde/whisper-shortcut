@@ -210,6 +210,9 @@ Tick log: `build/logs/implementer/tick-<date>.log`.
   one step earlier: the model that decided HOW is not the one that talks itself into
   believing the diff implements it. The IDs are config (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`,
   `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
+  **Suspended 2026-09-28:** the Cursor quota is used up until 2026-10-02, so the build runs on
+  `IMPLEMENTER_BUILD_AGENT=claude` / `IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` (Magnus). Builder and
+  reviewer are still different models (Opus 5.5 builds, Opus 5 judges); back to Grok only on his word.
   Scout/meta loops may propose adjusting them; they may never propose removing the plan
   step or the review step, and they may never put Cursor on a propose/plan/judge job.
   The *interactive* counterpart — Opus 5 session, Fable 5.1 advisor judges plan and diff, Grok
@@ -270,7 +273,7 @@ changes, re-measure it rather than editing the prose.
 | --- | --- | --- | --- |
 | The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars. Default model is `claude-opus-5` (usage-review used to default to Sonnet) | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
 | Implementer plan step | Max subscription (`claude-opus-5`) | $0 | 30-min timeout; writes one file; a planner that touches anything else fails the run |
-| Implementer build agent | **Cursor subscription**, model `grok-4.7-high` (since 2026-09-21; was `cursor-grok-4.6-high`) | quota only — Grok 4.7 sits in the same "Cursor Models" included-usage pool as 4.6/4.5/Composer 2.5 (cursor.com/docs/models/grok-4-7, verified 2026-09-22); same on-demand rate as 4.6 ($2/$0.5/$6 per M in/cached/out), `-fast` doubles it, >256k input doubles it again | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
+| Implementer build agent | **Since 2026-09-28: Max subscription, `claude-opus-5-5`** (Grok's Cursor quota used up until 2026-10-02). Before: **Cursor subscription**, model `grok-4.7-high` (since 2026-09-21; was `cursor-grok-4.6-high`) | quota only — Grok 4.7 sits in the same "Cursor Models" included-usage pool as 4.6/4.5/Composer 2.5 (cursor.com/docs/models/grok-4-7, verified 2026-09-22); same on-demand rate as 4.6 ($2/$0.5/$6 per M in/cached/out), `-fast` doubles it, >256k input doubles it again | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
 | Implementer review pass | Max subscription (`claude-opus-5`) | $0 | one rework cycle, then the run stops |
 | Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
 | Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
@@ -352,7 +355,7 @@ Sabaki):
 | | sabaki.dance | whisper-shortcut | Why |
 | --- | --- | --- | --- |
 | Scheduler/host | systemd timers on the minipc | launchd on this Mac | The data (usage logs, Keychain auth for `asc`/`gh`, audio pipeline) only exists here |
-| Agent runner | `cursor-agent` builds (`grok-4.7-high`); `claude -p` plans and judges (`claude-opus-5`) | same split; sabaki still pins `cursor-grok-4.6-high` | Same billing pools; both pin models + budget caps in the job script |
+| Agent runner | `claude -p` builds (`claude-opus-5-5`, since 2026-09-28; normally `cursor-agent` with `grok-4.7-high`); `claude -p` plans and judges (`claude-opus-5`) | same split; sabaki still pins `cursor-grok-4.6-high` | Same billing pools; both pin models + budget caps in the job script |
 | Ledger writes | paste-ready block, human pastes (a dirty tree breaks the minipc's deploy pull) | job appends directly (local working copy, user reviews via git diff) | Same auditability, one less manual step |
 | "Live" check | `deployment-status.ts` against `/api/version` | App Store version (`asc versions list`) / GitHub release for customer metrics; rebuilt local app for own-usage metrics | Different deploy targets, same deploy gate |
 | Implementer review surface | Branch deployed to a gated dev instance with sanitized prod data | The built app itself — you run the branch build (dogfood-as-review) | No server, no database; the app *is* the artifact |

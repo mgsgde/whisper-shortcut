@@ -132,12 +132,12 @@ the thing itself. After the Cursor reset on 2026-10-02, ask him whether Grok typ
 
 **Scheduled work is a different tier and does NOT follow this split.** The four launchd loops run
 on `claude-opus-5` (Max subscription, no API key), and the implementer pipeline keeps its own
-pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`,
+pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` while Grok is paused,
 `IMPLEMENTER_REVIEW_MODEL=claude-opus-5` — `plans/agent-loops.md`). This section is not a mandate
 to retune them; a meta-loop that wants Fable in the pipeline files that as a proposal.
-Open issue: `IMPLEMENTER_BUILD_MODEL=grok-4.7-high` needs the Cursor quota that is used up until
-2026-10-02, so the implementer's build step likely fails until then unless the pin moves to an
-Opus model; that change is Magnus's call.
+Build pin moved 2026-09-28 (Magnus): `IMPLEMENTER_BUILD_AGENT=claude`,
+`IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` in `~/.config/whispershortcut-implementer/env` and as the
+script defaults, while Grok's Cursor quota is used up (reset 2026-10-02). Back to Grok only on his word.
 
 ## Releasing is somebody else's job
 
