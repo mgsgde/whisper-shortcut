@@ -4,7 +4,8 @@
 //
 //  A small floating pill at the bottom-center of the screen (Wispr-Flow style) that
 //  accompanies the Dictate / Dictate Prompt lifecycle:
-//    recording  → live audio-level bars with ✕ (discard) and ✓ (stop & process)
+//    recording  → live audio-level bars with ✕ (discard) and ✓ (stop & process);
+//                 Dictate Prompt also shows a quick-action list directly above the pill
 //    processing → spinner with ✕ (cancel)
 //  and Read Aloud playback:
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
@@ -47,6 +48,10 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var received: TimeInterval = 0
   /// `.speaking` only: the user is dragging the scrubber; progress updates leave the knob alone.
   @Published var scrubPosition: TimeInterval?
+  /// Dictate Prompt: frequent instructions shown above the pill. Empty when the list is hidden.
+  @Published var quickActions: [QuickAction] = []
+  @Published var quickActionIndex = 0
+  @Published var quickActionsVisible = false
 
   func pushLevel(_ normalized: CGFloat) {
     var next = levels
@@ -207,6 +212,74 @@ private struct ScrubberView: View {
   }
 }
 
+private enum QuickActionListMetrics {
+  static let rowHeight: CGFloat = 28
+  static let verticalPadding: CGFloat = 6
+  static let gap: CGFloat = 4
+  static let maxWidth: CGFloat = 360
+  static let horizontalChrome: CGFloat = 46
+
+  static func height(count: Int) -> CGFloat {
+    CGFloat(count) * rowHeight + verticalPadding * 2
+  }
+
+  static func width(for texts: [String], minimum: CGFloat) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+    let widest = texts.reduce(CGFloat(0)) { partial, text in
+      max(partial, (text as NSString).size(withAttributes: [.font: font]).width)
+    }
+    return min(maxWidth, max(minimum, ceil(widest + horizontalChrome)))
+  }
+}
+
+private struct QuickActionListView: View {
+  let actions: [QuickAction]
+  let selectedIndex: Int
+  let onSelect: (Int) -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+        Button {
+          onSelect(index)
+        } label: {
+          HStack(spacing: 8) {
+            Text("\(index + 1)")
+              .font(.system(size: 11, weight: .semibold).monospacedDigit())
+              .foregroundColor(.white.opacity(index == selectedIndex ? 1 : 0.55))
+              .frame(width: 14, alignment: .trailing)
+            Text(action.text)
+              .font(.system(size: 12, weight: .medium))
+              .foregroundColor(.white)
+              .lineLimit(1)
+              .truncationMode(.tail)
+            Spacer(minLength: 0)
+          }
+          .padding(.horizontal, 8)
+          .frame(height: QuickActionListMetrics.rowHeight)
+          .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+              .fill(index == selectedIndex ? Color.white.opacity(0.16) : Color.clear)
+          )
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(action.text)
+        .accessibilityLabel("Quick action \(index + 1): \(action.text)")
+        .pointerCursorOnHover()
+      }
+    }
+    .padding(.vertical, QuickActionListMetrics.verticalPadding)
+    .padding(.horizontal, 4)
+    .background(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .fill(Color.black.opacity(0.92))
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Dictate Prompt quick actions")
+  }
+}
+
 struct RecordingIndicatorView: View {
   @ObservedObject var model: RecordingIndicatorModel
   let onCancel: () -> Void
@@ -215,6 +288,7 @@ struct RecordingIndicatorView: View {
   let onCycleSpeed: () -> Void
   let onSkip: (TimeInterval) -> Void
   let onSeek: (TimeInterval) -> Void
+  let onQuickAction: (Int) -> Void
 
   /// Seconds the ⏪ / ⏩ buttons jump.
   static let skipInterval: TimeInterval = 10
@@ -222,6 +296,23 @@ struct RecordingIndicatorView: View {
   static func timeLabel(_ seconds: TimeInterval) -> String {
     let whole = max(0, Int(seconds.rounded(.down)))
     return String(format: "%d:%02d", whole / 60, whole % 60)
+  }
+
+  /// Pill plus the quick-action list stacked above it. The list only contributes height
+  /// while recording, so processing and playback stay the pill's own size.
+  static func panelSize(
+    phase: RecordingIndicatorPhase,
+    quickActions: [QuickAction],
+    showsQuickActions: Bool
+  ) -> CGSize {
+    let pill = pillSize(for: phase)
+    let listVisible = showsQuickActions && phase == .recording && !quickActions.isEmpty
+    guard listVisible else { return pill }
+    let listWidth = QuickActionListMetrics.width(for: quickActions.map(\.text), minimum: pill.width)
+    let listHeight = QuickActionListMetrics.height(count: quickActions.count)
+    return CGSize(
+      width: max(pill.width, listWidth),
+      height: pill.height + listHeight + QuickActionListMetrics.gap)
   }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
@@ -235,7 +326,28 @@ struct RecordingIndicatorView: View {
   }
 
   var body: some View {
-    let size = Self.pillSize(for: model.phase)
+    let pill = Self.pillSize(for: model.phase)
+    let panel = Self.panelSize(
+      phase: model.phase,
+      quickActions: model.quickActions,
+      showsQuickActions: model.quickActionsVisible)
+    let showsList = panel.height > pill.height
+    VStack(spacing: showsList ? QuickActionListMetrics.gap : 0) {
+      if showsList {
+        QuickActionListView(
+          actions: model.quickActions,
+          selectedIndex: model.quickActionIndex,
+          onSelect: onQuickAction
+        )
+        .frame(width: panel.width)
+      }
+      pillBody(size: pill)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    .environment(\.colorScheme, .dark)
+  }
+
+  private func pillBody(size: CGSize) -> some View {
     HStack(spacing: 8) {
       switch model.phase {
       case .recording:
@@ -294,7 +406,6 @@ struct RecordingIndicatorView: View {
     .padding(.horizontal, 8)
     .frame(width: size.width, height: size.height)
     .background(Capsule().fill(Color.black.opacity(0.92)))
-    .environment(\.colorScheme, .dark)
     .accessibilityElement(children: .contain)
     .accessibilityLabel(accessibilityTitle)
   }
@@ -343,6 +454,8 @@ final class RecordingIndicatorManager {
   var onSkip: ((TimeInterval) -> Void)?
   /// Read Aloud: move the playhead to an absolute position in seconds. Set by MenuBarController.
   var onSeek: ((TimeInterval) -> Void)?
+  /// Dictate Prompt: the user clicked a quick action. The index is into `quickActions`.
+  var onQuickAction: ((Int) -> Void)?
 
   private(set) var isVisible = false
 
@@ -428,6 +541,31 @@ final class RecordingIndicatorManager {
     }
   }
 
+  /// Shows the Dictate Prompt quick-action list above the pill. Entry 1 starts highlighted.
+  func showQuickActions(_ actions: [QuickAction]) {
+    model.quickActions = actions
+    model.quickActionIndex = 0
+    model.quickActionsVisible = !actions.isEmpty
+    if isVisible, let panel { position(panel) }
+  }
+
+  func hideQuickActions() {
+    guard model.quickActionsVisible || !model.quickActions.isEmpty else { return }
+    model.quickActionsVisible = false
+    model.quickActions = []
+    model.quickActionIndex = 0
+    if isVisible, let panel { position(panel) }
+  }
+
+  func moveQuickActionSelection(by delta: Int) {
+    guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
+    let last = model.quickActions.count - 1
+    model.quickActionIndex = min(last, max(0, model.quickActionIndex + delta))
+  }
+
+  var quickActions: [QuickAction] { model.quickActions }
+  var quickActionIndex: Int { model.quickActionIndex }
+
   /// Feed one metering sample (average power in dB) into the bars.
   func updateLevel(dB: Float) {
     guard isVisible, model.phase == .recording else { return }
@@ -476,7 +614,8 @@ final class RecordingIndicatorManager {
       onTogglePause: { [weak self] in self?.onTogglePause?() },
       onCycleSpeed: { [weak self] in self?.onCycleSpeed?() },
       onSkip: { [weak self] seconds in self?.onSkip?(seconds) },
-      onSeek: { [weak self] seconds in self?.onSeek?(seconds) }
+      onSeek: { [weak self] seconds in self?.onSeek?(seconds) },
+      onQuickAction: { [weak self] index in self?.onQuickAction?(index) }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)
@@ -486,7 +625,10 @@ final class RecordingIndicatorManager {
   }
 
   private func currentPanelSize() -> NSSize {
-    let size = RecordingIndicatorView.pillSize(for: model.phase)
+    let size = RecordingIndicatorView.panelSize(
+      phase: model.phase,
+      quickActions: model.quickActions,
+      showsQuickActions: model.quickActionsVisible)
     return NSSize(width: size.width, height: size.height)
   }
 

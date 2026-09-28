@@ -21,7 +21,7 @@ class SpeechService {
 
   /// Placeholder used in conversation history when the parallel voice-to-text transcription
   /// fails or times out.
-  fileprivate static let voiceInstructionPlaceholder = "(voice instruction)"
+  static let voiceInstructionPlaceholder = "(voice instruction)"
 
   /// Fallback transcription instruction used when the user hasn't supplied a custom prompt.
   private static let defaultTranscriptionInstruction = "Transcribe this audio. Return only the transcribed text without any additional commentary or formatting."
@@ -596,10 +596,14 @@ class SpeechService {
   
 
   // MARK: - Prompt Modes (Public API with Task Tracking)
-  func executePrompt(audioURL: URL, mode: PromptMode = .togglePrompting) async throws -> String {
+  func executePrompt(
+    audioURL: URL,
+    mode: PromptMode = .togglePrompting,
+    instruction: String? = nil
+  ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performPrompt(audioURL: audioURL, mode: mode)
+      try await self.performPrompt(audioURL: audioURL, mode: mode, instruction: instruction)
     }
 
     currentPromptTask = task
@@ -637,7 +641,7 @@ class SpeechService {
   }
 
   // MARK: - Prompt Modes (Private Implementation)
-  private func performPrompt(audioURL: URL, mode: PromptMode) async throws -> String {
+  private func performPrompt(audioURL: URL, mode: PromptMode, instruction: String? = nil) async throws -> String {
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model reads the clipboard even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -672,17 +676,30 @@ class SpeechService {
       throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
     }
 
-    try validateAudioFileFormat(at: audioURL)
+    let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let textInstruction = (trimmedInstruction?.isEmpty == false) ? trimmedInstruction : nil
+    if let textInstruction {
+      DebugLogger.log(
+        "PROMPT-MODE: Quick action — text instruction (\(textInstruction.count) chars), audio not sent")
+    } else {
+      try validateAudioFileFormat(at: audioURL)
+    }
 
     switch selectedPromptModel.provider {
     case .gemini:
-      return try await executePromptWithGemini(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+      return try await executePromptWithGemini(
+        audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
+        model: selectedPromptModel, textInstruction: textInstruction)
     case .openai:
-      return try await executePromptWithOpenAI(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+      return try await executePromptWithOpenAI(
+        audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
+        model: selectedPromptModel, textInstruction: textInstruction)
     // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
     // the only difference, and that is decided inside.
     case .local, .localMLX:
-      return try await executePromptWithLocal(audioURL: audioURL, clipboardContext: clipboardContext, mode: mode, model: selectedPromptModel)
+      return try await executePromptWithLocal(
+        audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
+        model: selectedPromptModel, textInstruction: textInstruction)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -989,6 +1006,10 @@ class SpeechService {
       hadScreenshot: hadScreenshot
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
+    // The append is queued; refresh runs behind it on the same queue so the new row is on disk.
+    ContextLogger.shared.performAfterInteractionWrites {
+      QuickActionStore.shared.refresh()
+    }
   }
 
   // MARK: - Gemini Prompt Mode
@@ -1012,20 +1033,28 @@ class SpeechService {
     }
   }
 
-  private func executePromptWithGemini(audioURL: URL, clipboardContext: String?, mode: PromptMode, model: PromptModel) async throws -> String {
+  private func executePromptWithGemini(
+    audioURL: URL,
+    clipboardContext: String?,
+    mode: PromptMode,
+    model: PromptModel,
+    textInstruction: String? = nil
+  ) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
     }
 
     DebugLogger.log("PROMPT-MODE-GEMINI: Starting execution")
 
-    // Run transcription for history in parallel with main prompt (no extra latency)
-    let transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI") {
-      try await self.transcribeAudioForHistory(audioURL: audioURL, credential: credential)
+    // Run transcription for history in parallel with main prompt (no extra latency).
+    // A quick action already has the instruction as text, so it never starts this call.
+    var transcriptionTask: Task<String, Never>?
+    defer { transcriptionTask?.cancel() }
+    if textInstruction == nil {
+      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI") {
+        try await self.transcribeAudioForHistory(audioURL: audioURL, credential: credential)
+      }
     }
-    // If the main request throws before we await the task below, cancel the parallel
-    // transcription so it doesn't keep burning a second API call in the background.
-    defer { transcriptionTask.cancel() }
 
     let envelope = try await buildPromptEnvelope(
       mode: mode,
@@ -1036,27 +1065,33 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
 
-    // Audio goes after context so the model has the surrounding intent before processing speech.
-    let audioSize = getAudioFileSize(at: audioURL)
-    if audioSize > AppConstants.maxFileSizeBytes {
-      let mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
-      let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
+    if let textInstruction {
       userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: nil,
-        fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
-        url: nil
-      ))
+        text: "VOICE INSTRUCTION:\n\(textInstruction)",
+        inlineData: nil, fileData: nil, url: nil))
     } else {
-      let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
-        geminiClient.getMimeType(for: ext)
+      // Audio goes after context so the model has the surrounding intent before processing speech.
+      let audioSize = getAudioFileSize(at: audioURL)
+      if audioSize > AppConstants.maxFileSizeBytes {
+        let mimeType = geminiClient.getMimeType(for: audioURL.pathExtension.lowercased())
+        let fileURI = try await geminiClient.uploadFile(audioURL: audioURL, credential: credential)
+        userParts.append(GeminiChatRequest.GeminiChatPart(
+          text: nil,
+          inlineData: nil,
+          fileData: GeminiChatRequest.GeminiFileData(fileUri: fileURI, mimeType: mimeType),
+          url: nil
+        ))
+      } else {
+        let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+          geminiClient.getMimeType(for: ext)
+        }
+        userParts.append(GeminiChatRequest.GeminiChatPart(
+          text: nil,
+          inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: audioData.base64EncodedString()),
+          fileData: nil,
+          url: nil
+        ))
       }
-      userParts.append(GeminiChatRequest.GeminiChatPart(
-        text: nil,
-        inlineData: GeminiChatRequest.GeminiInlineData(mimeType: mimeType, data: audioData.base64EncodedString()),
-        fileData: nil,
-        url: nil
-      ))
     }
 
     let normalizedText = try await performGeminiPromptRequest(
@@ -1068,9 +1103,17 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-GEMINI"
     )
 
+    let instructionSource: PromptInstructionSource
+    if let textInstruction {
+      instructionSource = .known(textInstruction)
+    } else if let transcriptionTask {
+      instructionSource = .parallelTranscription(transcriptionTask)
+    } else {
+      instructionSource = .known(Self.voiceInstructionPlaceholder)
+    }
     await recordPromptTurn(
       normalizedText: normalizedText,
-      instruction: .parallelTranscription(transcriptionTask),
+      instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
@@ -1089,20 +1132,23 @@ class SpeechService {
     audioURL: URL,
     clipboardContext: String?,
     mode: PromptMode,
-    model: PromptModel
+    model: PromptModel,
+    textInstruction: String? = nil
   ) async throws -> String {
     let apiKey = try ProviderCredentials.require(.openAI)
 
     DebugLogger.log("PROMPT-MODE-OPENAI: Starting execution model=\(model.rawValue)")
 
     // Run transcription for history in parallel (mirrors the Gemini path). Uses the cheap
-    // gpt-4o-mini-transcribe so it doesn't require a Gemini key.
-    let transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI") {
-      try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
+    // gpt-4o-mini-transcribe so it doesn't require a Gemini key. A quick action already
+    // has the instruction as text, so it never starts this call.
+    var transcriptionTask: Task<String, Never>?
+    defer { transcriptionTask?.cancel() }
+    if textInstruction == nil {
+      transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI") {
+        try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
+      }
     }
-    // If the main request throws before we await the task below, cancel the parallel
-    // transcription so it doesn't keep burning a second API call in the background.
-    defer { transcriptionTask.cancel() }
 
     // gpt-4o-audio-preview is audio-only and rejects image_url content parts with HTTP 400
     // ("This model does not support image_url content."), so the envelope is told what this model
@@ -1116,34 +1162,41 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
 
-    // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
-    // front with an actionable error — Gemini falls back to the Files API for >20 MB inputs,
-    // but OpenAI's audio-preview endpoint has no equivalent here, so the request would simply
-    // fail with a body-size error after a long upload.
-    let audioFileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
-    if audioFileSize > AppConstants.maxFileSizeBytes {
-      let sizeMB = Double(audioFileSize) / 1_048_576.0
-      let limitMB = Double(AppConstants.maxFileSizeBytes) / 1_048_576.0
-      DebugLogger.logError("PROMPT-MODE-OPENAI: Audio too large (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit)")
-      throw TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
-    }
+    if let textInstruction {
+      userContent.append([
+        "type": "text",
+        "text": "VOICE INSTRUCTION:\n\(textInstruction)",
+      ])
+    } else {
+      // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
+      // front with an actionable error — Gemini falls back to the Files API for >20 MB inputs,
+      // but OpenAI's audio-preview endpoint has no equivalent here, so the request would simply
+      // fail with a body-size error after a long upload.
+      let audioFileSize = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int) ?? 0
+      if audioFileSize > AppConstants.maxFileSizeBytes {
+        let sizeMB = Double(audioFileSize) / 1_048_576.0
+        let limitMB = Double(AppConstants.maxFileSizeBytes) / 1_048_576.0
+        DebugLogger.logError("PROMPT-MODE-OPENAI: Audio too large (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit)")
+        throw TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
+      }
 
-    let audioData: Data
-    do {
-      audioData = try Data(contentsOf: audioURL)
-    } catch {
-      throw TranscriptionError.networkError("Could not read audio file: \(error.localizedDescription)")
+      let audioData: Data
+      do {
+        audioData = try Data(contentsOf: audioURL)
+      } catch {
+        throw TranscriptionError.networkError("Could not read audio file: \(error.localizedDescription)")
+      }
+      let fileExtension = audioURL.pathExtension.lowercased()
+      let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
+      let base64Audio = audioData.base64EncodedString()
+      userContent.append([
+        "type": "input_audio",
+        "input_audio": [
+          "data": base64Audio,
+          "format": audioFormat,
+        ] as [String: Any],
+      ])
     }
-    let fileExtension = audioURL.pathExtension.lowercased()
-    let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
-    let base64Audio = audioData.base64EncodedString()
-    userContent.append([
-      "type": "input_audio",
-      "input_audio": [
-        "data": base64Audio,
-        "format": audioFormat,
-      ] as [String: Any],
-    ])
 
     // Assemble messages: system → history → current user turn.
     var messages: [[String: Any]] = [["role": "system", "content": envelope.systemPrompt]]
@@ -1219,9 +1272,17 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
+    let instructionSource: PromptInstructionSource
+    if let textInstruction {
+      instructionSource = .known(textInstruction)
+    } else if let transcriptionTask {
+      instructionSource = .parallelTranscription(transcriptionTask)
+    } else {
+      instructionSource = .known(Self.voiceInstructionPlaceholder)
+    }
     await recordPromptTurn(
       normalizedText: normalizedText,
-      instruction: .parallelTranscription(transcriptionTask),
+      instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
@@ -1243,7 +1304,8 @@ class SpeechService {
     audioURL: URL,
     clipboardContext: String?,
     mode: PromptMode,
-    model: PromptModel
+    model: PromptModel,
+    textInstruction: String? = nil
   ) async throws -> String {
     // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
     // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
@@ -1263,16 +1325,25 @@ class SpeechService {
     // way to tell which of them the user was actually waiting on.
     let startTime = CFAbsoluteTimeGetCurrent()
 
-    // Step 1: transcribe the spoken instruction through the existing transcription pipeline.
-    // Use `performTranscription` directly so we don't disturb the `currentTranscriptionTask` slot
-    // that the public `transcribe` entry point manages.
-    let instruction = try await performTranscription(audioURL: audioURL)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    let transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
-    guard !instruction.isEmpty else {
-      throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
+    // Step 1: the spoken instruction. A quick action already has it as text, so the
+    // recording is never transcribed. Otherwise use `performTranscription` directly so we
+    // don't disturb the `currentTranscriptionTask` slot that the public `transcribe` entry
+    // point manages.
+    let instruction: String
+    let transcriptionTime: CFAbsoluteTime
+    if let textInstruction {
+      instruction = textInstruction
+      transcriptionTime = 0
+      DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
+    } else {
+      instruction = try await performTranscription(audioURL: audioURL)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
+      guard !instruction.isEmpty else {
+        throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
+      }
+      DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
     }
-    DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
 
     // Step 2: build the user turn (clipboard context + instruction) and prior history, in the
     // Gemini-format `contents` the provider expects. `supportsScreenshot: false` — local text

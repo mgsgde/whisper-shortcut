@@ -104,6 +104,15 @@ class MenuBarController: NSObject {
   /// to a superseded recording and dropped instead of being pasted out of idle.
   private var currentJobAudioURL: URL?
   private var processedAudioURLs: Set<URL> = []
+  /// Quick-action instruction, held until the recording's file URL exists, then keyed by that
+  /// URL so a retry sends the same text and the silence precheck can let it through.
+  private var pendingQuickActionInstruction: String?
+  private var quickActionInstructionByURL: [URL: String] = [:]
+  /// Set once per prompt recording so Escape, or stopping, does not bring the list back.
+  private var quickActionsOfferedThisRecording = false
+  /// A repeating Return must not launch the quick action twice before the recording stops.
+  private var quickActionDidRun = false
+  private var quickActionHotkeys: [HotKey] = []
 
   /// Owns Read Aloud playback: the audio graph, the chunk queue, and when an utterance is done.
   /// `appState` and `ttsDidStop` stay here — the session reports its lifecycle through these
@@ -288,6 +297,10 @@ class MenuBarController: NSObject {
     setupDelegates()
     setupNotifications()
     loadModelConfiguration()
+
+    Task.detached(priority: .utility) {
+      QuickActionStore.shared.refresh()
+    }
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
       ChatWindowManager.shared.preWarm()
@@ -529,6 +542,9 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onSeek = { [weak self] seconds in
       self?.ttsPlayback.seek(to: seconds)
     }
+    RecordingIndicatorManager.shared.onQuickAction = { [weak self] index in
+      self?.runQuickAction(at: index)
+    }
   }
 
   // MARK: - Recording Indicator
@@ -553,13 +569,19 @@ class MenuBarController: NSObject {
     // So the pill leaves with the recording phase rather than staying on screen as a dead button;
     // the menu bar reports the remaining wait.
     if activeMeetingSegment != nil, meetingSegmentIsProcessing {
+      dismissQuickActions()
       indicator.hide()
       return
     }
     switch presentedState {
+    case .recording(.prompt) where activeMeetingSegment == nil:
+      offerQuickActionsIfNeeded()
+      indicator.showRecording()
     case .recording(.transcription), .recording(.prompt), .recording(.voiceFeedback):
+      dismissQuickActions()
       indicator.showRecording()
     case .processing(let mode):
+      dismissQuickActions()
       // TTS has no recording phase, so summon the processing pill directly;
       // Dictate / Dictate Prompt already have it on screen from recording.
       // The meeting's stop drain is not summoned either — the menu bar and the meeting bar
@@ -567,6 +589,7 @@ class MenuBarController: NSObject {
       let summon = mode.isTTSContext
       indicator.showProcessing(summonIfNeeded: summon)
     default:
+      dismissQuickActions()
       // `.speaking` is the normal case here, but audio can also still be playing under a
       // later state: `.speaking` is not busy, so a dictation may start and finish while the
       // utterance runs on — the transport comes back once the pill is free again.
@@ -599,6 +622,9 @@ class MenuBarController: NSObject {
   /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
   private func handleIndicatorCancel() {
     if appState.isRecording || pendingRecordingMode != nil || pendingMeetingSegment != nil {
+      pendingQuickActionInstruction = nil
+      quickActionDidRun = false
+      dismissQuickActions()
       DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
       RecordingIndicatorManager.shared.hide()
       if audioRecorder.stopRecording() {
@@ -637,6 +663,84 @@ class MenuBarController: NSObject {
   /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
   private func handleIndicatorConfirm() {
     guard appState.isRecording else { return }
+    stopRecordingAfterTailDelay()
+  }
+
+  // MARK: - Dictate Prompt quick actions
+
+  /// Shows the cached list once per prompt recording. A live-meeting segment never reaches
+  /// this — `updateRecordingIndicator` only calls it when no meeting segment is active.
+  private func offerQuickActionsIfNeeded() {
+    guard !quickActionsOfferedThisRecording else { return }
+    quickActionsOfferedThisRecording = true
+    let actions = QuickActionStore.shared.current()
+    guard !actions.isEmpty else {
+      DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
+      return
+    }
+    RecordingIndicatorManager.shared.showQuickActions(actions)
+    registerQuickActionHotkeys()
+    DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+  }
+
+  private func dismissQuickActions() {
+    RecordingIndicatorManager.shared.hideQuickActions()
+    unregisterQuickActionHotkeys()
+  }
+
+  private func registerQuickActionHotkeys() {
+    unregisterQuickActionHotkeys()
+    let bindings: [(Key, () -> Void)] = [
+      (.return, { [weak self] in
+        let index = RecordingIndicatorManager.shared.quickActionIndex
+        self?.runQuickAction(at: index)
+      }),
+      (.escape, { [weak self] in
+        DebugLogger.log("QUICK-ACTIONS: List hidden — recording continues")
+        self?.dismissQuickActions()
+      }),
+      (.upArrow, { [weak self] in self?.moveQuickActionHighlight(by: -1) }),
+      (.downArrow, { [weak self] in self?.moveQuickActionHighlight(by: 1) }),
+      (.one, { [weak self] in self?.runQuickAction(at: 0) }),
+      (.two, { [weak self] in self?.runQuickAction(at: 1) }),
+      (.three, { [weak self] in self?.runQuickAction(at: 2) }),
+      (.four, { [weak self] in self?.runQuickAction(at: 3) }),
+      (.five, { [weak self] in self?.runQuickAction(at: 4) }),
+    ]
+    quickActionHotkeys = bindings.map { key, action in
+      let hotkey = HotKey(key: key, modifiers: [])
+      hotkey.keyDownHandler = {
+        DispatchQueue.main.async(execute: action)
+      }
+      return hotkey
+    }
+  }
+
+  private func unregisterQuickActionHotkeys() {
+    guard !quickActionHotkeys.isEmpty else { return }
+    quickActionHotkeys = []
+  }
+
+  private func moveQuickActionHighlight(by delta: Int) {
+    RecordingIndicatorManager.shared.moveQuickActionSelection(by: delta)
+  }
+
+  /// Stops the recording through the normal path and remembers the entry's text so
+  /// `performPrompting` sends it instead of the audio.
+  private func runQuickAction(at index: Int) {
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { [weak self] in self?.runQuickAction(at: index) }
+      return
+    }
+    guard !quickActionDidRun else { return }
+    guard activeMeetingSegment == nil else { return }
+    let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
+    guard recordingPrompt else { return }
+    let actions = RecordingIndicatorManager.shared.quickActions
+    guard actions.indices.contains(index) else { return }
+    quickActionDidRun = true
+    pendingQuickActionInstruction = actions[index].text
+    DebugLogger.log("QUICK-ACTIONS: Running entry \(index + 1) (\(actions[index].text.count) chars)")
     stopRecordingAfterTailDelay()
   }
 
@@ -1050,7 +1154,13 @@ class MenuBarController: NSObject {
   /// Skips the delay entirely when the last ~400 ms of audio was below the silence threshold
   /// — there's no tail to catch, and the user gets the result that much sooner.
   private func stopRecordingAfterTailDelay() {
+    // The list and its hotkeys leave with the decision to stop, so Return is not still
+    // captured during the tail. A quick action sets its instruction before calling this.
+    dismissQuickActions()
     if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
+      pendingQuickActionInstruction = nil
+      quickActionDidRun = false
+      quickActionsOfferedThisRecording = true
       cancelPendingRecordingStart()
       return
     }
@@ -1074,6 +1184,11 @@ class MenuBarController: NSObject {
     discardNextRecording = false
     pendingRecordingMode = meetingSegment == nil ? mode : nil
     pendingMeetingSegment = meetingSegment
+    if meetingSegment == nil, mode == .prompt {
+      quickActionsOfferedThisRecording = false
+      quickActionDidRun = false
+      pendingQuickActionInstruction = nil
+    }
     audioRecorder.startRecording()
   }
 
@@ -1087,6 +1202,8 @@ class MenuBarController: NSObject {
   private func handleStopRecordingResult(_ didStop: Bool) {
     guard !didStop else { return }
     DebugLogger.log("AUDIO: stopRecording found nothing running")
+    pendingQuickActionInstruction = nil
+    quickActionDidRun = false
     pendingRecordingMode = nil
     pendingMeetingSegment = nil
     discardNextRecording = false
@@ -1668,7 +1785,8 @@ class MenuBarController: NSObject {
             await self.performTranscription(audioURL: audioURL)
           case .prompt:
             self.appState = .processing(.prompting)
-            await self.performPrompting(audioURL: audioURL)
+            let instruction = self.quickActionInstructionByURL[audioURL]
+            await self.performPrompting(audioURL: audioURL, instruction: instruction)
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
@@ -1985,7 +2103,11 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func performPrompting(audioURL: URL, duringMeeting: Bool = false) async {
+  private func performPrompting(
+    audioURL: URL,
+    duringMeeting: Bool = false,
+    instruction: String? = nil
+  ) async {
     let spec = AudioJobSpec(
       mode: .prompt,
       logLabel: "Prompt",
@@ -2006,7 +2128,8 @@ class MenuBarController: NSObject {
       audioURL: audioURL,
       duringMeeting: duringMeeting,
       produce: {
-        try await self.speechService.executePrompt(audioURL: audioURL, mode: .togglePrompting)
+        try await self.speechService.executePrompt(
+          audioURL: audioURL, mode: .togglePrompting, instruction: instruction)
       })
   }
 
@@ -2234,6 +2357,14 @@ class MenuBarController: NSObject {
   /// Safely removes an audio file, logging any errors. Already-gone files are a normal
   /// outcome (cancel and completion paths can both try to clean the same recording).
   private func cleanupAudioFile(at url: URL?) {
+    if let url {
+      let forget = { _ = self.quickActionInstructionByURL.removeValue(forKey: url) }
+      if Thread.isMainThread {
+        forget()
+      } else {
+        DispatchQueue.main.async(execute: forget)
+      }
+    }
     guard let url = url, FileManager.default.fileExists(atPath: url.path) else { return }
     do {
       try FileManager.default.removeItem(at: url)
@@ -2642,6 +2773,7 @@ class MenuBarController: NSObject {
   }
 
   func cleanup() {
+    unregisterQuickActionHotkeys()
     stopBlinking()
     shortcuts.cleanup()
     audioRecorder.cleanup()
@@ -2682,6 +2814,8 @@ extension MenuBarController: AudioRecorderDelegate {
       // Cancelled via the recording indicator's ✕ — discard the audio, don't process
       if self.discardNextRecording {
         self.discardNextRecording = false
+        self.pendingQuickActionInstruction = nil
+        self.quickActionDidRun = false
         DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
         self.discardStreamingSession()
         self.cleanupAudioFile(at: audioURL)
@@ -2716,10 +2850,18 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
-      // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager)
+      if self.activeMeetingSegment == nil, let instruction = self.pendingQuickActionInstruction {
+        self.pendingQuickActionInstruction = nil
+        self.quickActionInstructionByURL[audioURL] = instruction
+      }
+      let quickActionInstruction = self.quickActionInstructionByURL[audioURL]
+
+      // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager).
+      // A quick action never sends the audio, so the cost warning does not apply.
       let threshold = ConfirmAboveDuration.loadFromUserDefaults()
 
-      if threshold != .never,
+      if quickActionInstruction == nil,
+         threshold != .never,
          let duration = self.speechService.getAudioDuration(url: audioURL),
          duration > threshold.rawValue
       {
@@ -2747,7 +2889,7 @@ extension MenuBarController: AudioRecorderDelegate {
       // Mark this URL as processed to prevent duplicate processing
       self.processedAudioURLs.insert(audioURL)
 
-      if self.audioRecorder.lastRecordingWasSilent {
+      if self.audioRecorder.lastRecordingWasSilent, quickActionInstruction == nil {
         // Only gate cloud-backed paths — offline Whisper has no API cost to protect against,
         // and gating silently has caused real recordings to be dropped on low-gain mics.
         let usesCloudAPI: Bool = {
@@ -2781,6 +2923,8 @@ extension MenuBarController: AudioRecorderDelegate {
         } else {
           DebugLogger.logWarning("AUDIO: Recording flagged silent, but proceeding with offline transcription")
         }
+      } else if quickActionInstruction != nil, self.audioRecorder.lastRecordingWasSilent {
+        DebugLogger.log("AUDIO: Quick action — skipping silence precheck for \(audioURL.lastPathComponent)")
       }
 
       // Both pipelines that can be cancelled mid-processing track their audio URL, so a result
@@ -2802,7 +2946,7 @@ extension MenuBarController: AudioRecorderDelegate {
           // transcription path, instead of one static "can take several minutes" line.
           await self.performTranscription(audioURL: audioURL)
         case .prompt:
-          await self.performPrompting(audioURL: audioURL)
+          await self.performPrompting(audioURL: audioURL, instruction: quickActionInstruction)
         case .voiceFeedback:
           await self.performVoiceFeedback(audioURL: audioURL)
         case .liveMeeting:
@@ -2814,6 +2958,9 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
+    pendingQuickActionInstruction = nil
+    quickActionDidRun = false
+    dismissQuickActions()
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")

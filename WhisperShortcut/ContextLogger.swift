@@ -692,6 +692,12 @@ class ContextLogger {
     return counts
   }
 
+  /// Runs `work` after interaction-log appends already queued on the write queue.
+  /// Dictate Prompt uses this so the quick-action cache rebuilds once the new row is on disk.
+  func performAfterInteractionWrites(_ work: @escaping () -> Void) {
+    queue.async(execute: work)
+  }
+
   /// Returns URLs of all interaction log files from the last N days, sorted by date ascending.
   func interactionLogFiles(lastDays: Int = 30) -> [URL] {
     logFiles(prefix: "interactions-", lastDays: lastDays)
