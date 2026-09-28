@@ -25,7 +25,7 @@ struct WritingStyleSettingsSection: View {
       VStack(alignment: .leading, spacing: 12) {
         Toggle("Use my writing style in Dictate Prompt", isOn: $isEnabled)
           .toggleStyle(.switch)
-          .help("Adds your style profile and a few of your own messages to Dictate Prompt, chosen by the app you are writing in (Mail, WhatsApp, Slack, …).")
+          .help("Sends your style profile and a few of your own messages with each Dictate Prompt request, chosen by the app you are writing in (Mail, WhatsApp, Slack, …). Not used with local models.")
 
         Text("Examples: " + WritingContext.allCases.map { "\($0.displayName) \(counts[$0] ?? 0)" }
           .joined(separator: " · "))
@@ -69,7 +69,7 @@ struct WritingStyleSettingsSection: View {
 
         if let statusMessage { caption(statusMessage) }
 
-        caption("Your messages stay on this Mac in the app's data folder. Profile updates are sent to the Smart Improvement model and shown for review before they are saved.")
+        caption("Stored on this Mac in the app's data folder. When on, your profile and a few of your messages are sent with each Dictate Prompt request to your Dictate Prompt model (cloud models only; local models do not get them). \"Update profile\" sends a sample of your messages to the Smart Improvement model and shows the result for review before saving.")
       }
     }
     .onAppear(perform: refreshCounts)
@@ -101,13 +101,13 @@ struct WritingStyleSettingsSection: View {
 
   private func importFromGmail() {
     run {
-      let added = try await WritingStyleImporter.importFromGmail()
+      let result = try await WritingStyleImporter.importFromGmail()
       await MainActor.run {
         refreshCounts()
-        statusMessage = "Imported \(added) new messages. Creating your profile…"
+        statusMessage = result.summary + " Creating your profile…"
       }
       let saved = try await WritingStyleImporter.deriveProfile()
-      return saved == nil ? "Imported \(added) new messages. Profile unchanged." : "Imported \(added) new messages and saved your profile."
+      return result.summary + (saved == nil ? " Profile unchanged." : " Profile saved.")
     }
   }
 

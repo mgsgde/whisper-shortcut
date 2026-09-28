@@ -39,6 +39,8 @@ enum WritingContextResolver {
       "com.readdle.sparkdesktop",
       "it.bloop.airmail2",
       "com.superhuman.electron",
+      "com.mimestream.mimestream",
+      "org.mozilla.thunderbird",
     ],
     .messenger: [
       "net.whatsapp.whatsapp",

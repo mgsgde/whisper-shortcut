@@ -32,8 +32,20 @@ enum WritingStyleImporter {
 
   // MARK: - Gmail Import
 
-  /// Imports up to `maxMessages` recent sent emails. Returns how many new samples were stored.
-  static func importFromGmail(maxMessages: Int = 200) async throws -> Int {
+  struct ImportResult {
+    let added: Int
+    /// Threads that could not be read (rate limit, server error). The import is partial then.
+    let failedThreads: Int
+
+    var summary: String {
+      failedThreads == 0
+        ? "Imported \(added) new messages."
+        : "Imported \(added) new messages; \(failedThreads) threads could not be read, try again later for the rest."
+    }
+  }
+
+  /// Imports up to `maxMessages` sent emails from the last year.
+  static func importFromGmail(maxMessages: Int = 200) async throws -> ImportResult {
     guard !OfflineMode.isEnabled else { throw ImportError.offlineMode }
     guard await GoogleAccountOAuthService.shared.isConnected else {
       throw ImportError.googleNotConnected
@@ -46,26 +58,30 @@ enum WritingStyleImporter {
     for ref in refs where !threadIDs.contains(ref.threadId) { threadIDs.append(ref.threadId) }
 
     var samples: [WritingSample] = []
+    var failed = 0
     for batchStart in stride(from: 0, to: threadIDs.count, by: threadFetchConcurrency) {
       try Task.checkCancellation()
       let batch = threadIDs[batchStart..<min(batchStart + threadFetchConcurrency, threadIDs.count)]
-      let threads = await withTaskGroup(of: [[String: Any]].self) { group in
+      let threads = await withTaskGroup(of: [[String: Any]]?.self) { group in
         for id in batch {
-          group.addTask { (try? await GmailAPIClient.shared.readThread(threadId: id)) ?? [] }
+          group.addTask { try? await GmailAPIClient.shared.readThread(threadId: id) }
         }
-        var result: [[[String: Any]]] = []
+        var result: [[[String: Any]]?] = []
         for await thread in group { result.append(thread) }
         return result
       }
+      try Task.checkCancellation()
       for thread in threads {
+        guard let thread else { failed += 1; continue }
         samples.append(contentsOf: samplesFromThread(thread, sentIDs: sentIDs))
       }
     }
 
+    samples = stripRepeatedSignatures(samples)
     let added = WritingStyleStore.shared.addSamples(samples)
     DebugLogger.log(
-      "WRITING-STYLE-IMPORT: sent=\(refs.count) threads=\(threadIDs.count) kept=\(samples.count) added=\(added)")
-    return added
+      "WRITING-STYLE-IMPORT: sent=\(refs.count) threads=\(threadIDs.count) failed=\(failed) kept=\(samples.count) added=\(added)")
+    return ImportResult(added: added, failedThreads: failed)
   }
 
   /// The user's sent messages in one thread, each paired with the length of the message it
@@ -77,6 +93,8 @@ enum WritingStyleImporter {
     for message in ordered {
       let labels = message["labels"] as? [String] ?? []
       let body = message["body"] as? String ?? ""
+      // An unsent draft is neither the user's sent voice nor a message they answered.
+      if labels.contains("DRAFT") { continue }
       guard labels.contains("SENT") else {
         lastIncomingChars = cleanBody(body).map(\.count)
         continue
@@ -130,30 +148,25 @@ enum WritingStyleImporter {
     }
 
     var cut = text.endIndex
-    // Reply headers carry a date (hence `\d`, so "Am Donnerstag … schrieb er:" in the body is not
-    // mistaken for one) and may be wrapped over two lines ("On …, Name <\nmail> wrote:"), hence `s`.
+    // A reply header is a line that starts with On/Am, carries a date and ENDS in "wrote:" /
+    // "schrieb …:". Matching within single lines keeps a sentence of the user's ("Am Donnerstag um
+    // 14 Uhr passt mir.") from becoming the cut point. The second pattern allows the one wrap mail
+    // clients produce ("On …, Name <\nmail> wrote:"), only after a line without closing punctuation.
     let cutPatterns = [
-      #"(?ms)^[ \t]*(On|Am)\b[^\n]{0,80}\d.{0,250}?(wrote|schrieb[^\n]*):[ \t]*$"#,
+      #"(?m)^[ \t]*(On|Am)\b[^\n]*\d[^\n]*(wrote|schrieb[^\n]*):[ \t]*$"#,
+      #"(?m)^[ \t]*(On|Am)\b[^\n]*\d[^\n]*[^.!?\n][ \t]*\n(?![ \t]*(On|Am)\b)[^\n]{0,120}(wrote|schrieb[^\n]*):[ \t]*$"#,
       #"(?m)^[ \t]*-{2,}[ \t]*(Original Message|Ursprüngliche Nachricht|Forwarded message|Weitergeleitete Nachricht)"#,
+      #"(?m)^[ \t]*_{10,}[ \t]*$"#,  // Outlook separator above the quoted message
       #"(?m)^-- ?$"#,
       #"(?m)^[ \t]*(Sent from my (iPhone|iPad)|Von meinem (iPhone|iPad) gesendet|Gesendet von meinem (iPhone|iPad))"#,
+      // Outlook header block: From/Von followed within three lines by another header field, so
+      // "Von: 10 Uhr" in the user's own text is not taken for one.
+      #"(?m)^[ \t]*(From|Von):[ \t][^\n]+\n(?:[^\n]*\n){0,2}[ \t]*(Sent|Gesendet|Date|Datum|To|An|Subject|Betreff):"#,
     ]
     for pattern in cutPatterns {
       if let range = text.range(of: pattern, options: .regularExpression), range.lowerBound < cut {
         cut = range.lowerBound
       }
-    }
-    // An Outlook-style "From:" block only counts after the first lines, so a message that starts
-    // by quoting a sender is not cut to nothing.
-    var secondLineEnd = text.endIndex
-    if let first = text.firstIndex(of: "\n") {
-      let afterFirst = text.index(after: first)
-      secondLineEnd = text[afterFirst...].firstIndex(of: "\n") ?? text.endIndex
-    }
-    if let range = text.range(of: #"(?m)^[ \t]*(From|Von):[ \t].+$"#, options: .regularExpression,
-                              range: secondLineEnd..<text.endIndex),
-      range.lowerBound < cut {
-      cut = range.lowerBound
     }
     text = String(text[..<cut])
 
@@ -178,9 +191,74 @@ enum WritingStyleImporter {
     for (pattern, replacement) in replacements {
       text = text.replacingOccurrences(of: pattern, with: replacement, options: .regularExpression)
     }
-    let entities = ["&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'"]
-    for (entity, char) in entities { text = text.replacingOccurrences(of: entity, with: char) }
-    return text
+    return decodeEntities(text)
+  }
+
+  /// Named and numeric HTML entities. `&amp;` goes last so "&amp;lt;" stays the literal "&lt;".
+  static func decodeEntities(_ html: String) -> String {
+    var text = html
+    let named = [
+      "&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&apos;": "'",
+      "&ndash;": "–", "&mdash;": "—", "&lsquo;": "‘", "&rsquo;": "’", "&ldquo;": "“",
+      "&rdquo;": "”", "&hellip;": "…", "&auml;": "ä", "&ouml;": "ö", "&uuml;": "ü",
+      "&Auml;": "Ä", "&Ouml;": "Ö", "&Uuml;": "Ü", "&szlig;": "ß", "&euro;": "€",
+    ]
+    for (entity, char) in named { text = text.replacingOccurrences(of: entity, with: char) }
+    for (pattern, radix) in [(#"&#([0-9]{1,7});"#, 10), (#"&#[xX]([0-9a-fA-F]{1,6});"#, 16)] {
+      guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+      let ns = text as NSString
+      var result = ""
+      var last = 0
+      for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+        result += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+        let digits = ns.substring(with: match.range(at: 1))
+        if let code = UInt32(digits, radix: radix), let scalar = Unicode.Scalar(code) {
+          result.unicodeScalars.append(scalar)
+        } else {
+          result += ns.substring(with: match.range)
+        }
+        last = match.range.location + match.range.length
+      }
+      result += ns.substring(from: last)
+      text = result
+    }
+    return text.replacingOccurrences(of: "&amp;", with: "&")
+  }
+
+  // MARK: - Signatures
+
+  /// Strips corporate signatures that repeat at the end of several messages. A repeated block is
+  /// cut only from its first contact-looking line (phone, email, URL, company form), so a
+  /// recurring sign-off like "Viele Grüße\nMagnus" above it — which is the user's voice — stays.
+  static func stripRepeatedSignatures(_ samples: [WritingSample], minRepeats: Int = 3) -> [WritingSample] {
+    let maxBlock = 8
+    var suffixCounts: [String: Int] = [:]
+    for sample in samples {
+      let lines = sample.text.components(separatedBy: "\n")
+      for k in 2...maxBlock where lines.count > k {
+        suffixCounts[lines.suffix(k).joined(separator: "\n"), default: 0] += 1
+      }
+    }
+    return samples.map { sample in
+      var lines = sample.text.components(separatedBy: "\n")
+      guard let k = (2...maxBlock).reversed().first(where: {
+        lines.count > $0 && suffixCounts[lines.suffix($0).joined(separator: "\n"), default: 0] >= minRepeats
+      }) else { return sample }
+      let block = Array(lines.suffix(k))
+      guard let contact = block.firstIndex(where: isContactLine) else { return sample }
+      lines.removeLast(k - contact)
+      let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !text.isEmpty else { return sample }
+      return WritingSample(
+        id: sample.id, context: sample.context, source: sample.source, recipient: sample.recipient,
+        sentAt: sample.sentAt, incomingChars: sample.incomingChars, text: text)
+    }
+  }
+
+  private static func isContactLine(_ line: String) -> Bool {
+    line.range(
+      of: #"(\+?\d[\d \-/().]{6,}\d)|@|www\.|https?://|\b(Tel|Phone|Fax|Mobil|Mobile|GmbH|AG|UG|Inc|Ltd|LLC)\b"#,
+      options: [.regularExpression, .caseInsensitive]) != nil
   }
 
   // MARK: - Profile Derivation
@@ -246,8 +324,13 @@ enum WritingStyleImporter {
       schemaName: "writing_style_profile",
       thinkingLevel: .low)
 
+    // A context without samples stays empty even if the model wrote filler ("No examples."), so
+    // the Default fallback in `promptBlock` still applies to it.
+    let contextsWithSamples = Set(samples.map(\.context))
     let suggested = WritingContext.allCases.map { context in
-      let lines = (result[context.rawValue] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      let lines = contextsWithSamples.contains(context)
+        ? (result[context.rawValue] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        : ""
       return "\(context.profileHeader)\n\(lines)\n"
     }.joined(separator: "\n")
 

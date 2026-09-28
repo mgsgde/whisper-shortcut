@@ -7,6 +7,11 @@ Deviations from the plan as written, all deliberate:
 - **No `stats.json`.** Median length and reply ratio are computed from the pool on each request (≤ 2,000 samples, milliseconds). One file fewer that can drift from the pool.
 - **Gmail import reads threads, not messages.** One `threads.get` per thread returns the user's sent messages *and* the message each one answered, so `incomingChars` (the reply-length ratio) comes for free instead of costing one extra request per message.
 - **Typed chat text is not a source yet.** Chat prompts are instructions to an assistant, not messages to people; feeding them in would teach the wrong voice. Revisit only if the `default` bucket turns out to be empty in practice.
+- **Gmail window is the last 365 days, capped at 200 sent messages** (plan said 180 days). A year catches rarer contexts; the cap keeps the first import fast.
+- **Local Dictate Prompt models get no style block.** A review of the first cut found that small local models follow the examples even for translate/correct instructions. Cloud models only; the Settings copy says so.
+- **The block sits before `promptModeOutputRule`,** so the output-format rule stays last in the system prompt.
+- **Signatures:** a trailing block repeated in ≥ 3 samples is cut from its first contact-looking line (phone, email, URL, company form). The recurring sign-off above it stays, since it is part of the voice.
+- **Privacy wording corrected:** with the feature on, profile and a few messages go out with every Dictate Prompt request to the Dictate Prompt model — the first cut's copy wrongly said they stay on the Mac.
 - **"Which instructions get the block?"** is solved at the instruction level: the block tells the model to apply it only when composing a message the user sends as themselves and to ignore it for translate/summarize/correct. Check the logs for misfires in Slice 2.
 **Audience:** LLM implementing the feature end-to-end
 **Goal:** When Dictate Prompt writes or rewrites text for the user (an email reply, a WhatsApp message, a Slack answer), the result should read like the user wrote it, not like an assistant. The app learns how the user writes, separately for each context (email vs. messenger, and eventually per recipient), from text the user actually wrote and sent.

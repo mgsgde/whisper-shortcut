@@ -41,6 +41,61 @@ struct WritingStyleTests {
     #expect(WritingStyleImporter.cleanSentBody(withQuotes) == "Yes, that works for me.")
   }
 
+  @Test("A sentence of the user's that starts with Am/On and has a digit is not a reply header")
+  func userSentenceIsNotHeader() {
+    let german = "Hi Anna,\nAm Donnerstag um 14 Uhr passt mir gut.\n\nViele Grüße\nMagnus\n\nAm Mi., 10. Sept. 2026 um 09:12 Uhr schrieb Anna Müller <anna@x.de>:\n> alt"
+    #expect(WritingStyleImporter.cleanSentBody(german) == "Hi Anna,\nAm Donnerstag um 14 Uhr passt mir gut.\n\nViele Grüße\nMagnus")
+
+    let english = "On Thursday at 3 works for me.\nThanks, Magnus\n\nOn Wed, Sep 10, 2026 at 9:12 AM Anna <a@x.de> wrote:\n> old"
+    #expect(WritingStyleImporter.cleanSentBody(english) == "On Thursday at 3 works for me.\nThanks, Magnus")
+
+    let noPunctuation = "Passt für mich.\nOn Monday 3pm\nOn Wed, Sep 10, 2026 at 9:12 AM Anna <a@x.de> wrote:\n> old"
+    #expect(WritingStyleImporter.cleanSentBody(noPunctuation) == "Passt für mich.\nOn Monday 3pm")
+  }
+
+  @Test("Outlook header needs a second header field; separator line is cut")
+  func outlookHeader() {
+    let ownText = "Hi Anna,\ndas Treffen:\nVon: 10 Uhr\nBis: 12 Uhr\nGrüße Magnus"
+    #expect(WritingStyleImporter.cleanSentBody(ownText) == ownText)
+
+    let outlook = "Passt, danke dir.\n\nVon: Anna Müller <anna@x.de>\nGesendet: Mittwoch, 10. September 2026 09:12\nAn: Magnus\nBetreff: Termin"
+    #expect(WritingStyleImporter.cleanSentBody(outlook) == "Passt, danke dir.")
+
+    let separator = "Klingt gut, bis Freitag.\n\n________________________________\nFrom: Anna"
+    #expect(WritingStyleImporter.cleanSentBody(separator) == "Klingt gut, bis Freitag.")
+  }
+
+  @Test("Numeric and named HTML entities are decoded")
+  func entities() {
+    #expect(WritingStyleImporter.decodeEntities("It&#8217;s 10&ndash;12 &amp; fine &#x2764;") == "It’s 10–12 & fine ❤")
+    #expect(WritingStyleImporter.decodeEntities("&amp;lt;") == "&lt;")
+  }
+
+  @Test("Drafts are neither samples nor the incoming message")
+  func draftsSkipped() {
+    let thread: [[String: Any]] = [
+      ["message_id": "a", "labels": ["INBOX"], "body": "Geht Mittwoch?", "internal_date_ms": "1000"],
+      ["message_id": "d", "labels": ["DRAFT"], "body": "Ein sehr langer alter Entwurf, der nie gesendet wurde.", "internal_date_ms": "1500"],
+      ["message_id": "b", "labels": ["SENT"], "body": "Mittwoch passt mir, bis dann.", "internal_date_ms": "2000"],
+    ]
+    let samples = WritingStyleImporter.samplesFromThread(thread, sentIDs: ["b", "d"])
+    #expect(samples.map(\.id) == ["b"])
+    #expect(samples.first?.incomingChars == "Geht Mittwoch?".count)
+  }
+
+  @Test("Repeated corporate signature is cut, the sign-off above it stays")
+  func signatures() {
+    let signature = "\n\nViele Grüße\nMagnus\n\nMagnus Gödde\nTel. +49 170 1234567\nwww.example.com"
+    let samples = ["Passt, danke.", "Mache ich morgen.", "Klingt gut, bis dann."].map {
+      sample($0 + signature)
+    }
+    let stripped = WritingStyleImporter.stripRepeatedSignatures(samples)
+    #expect(stripped[0].text == "Passt, danke.\n\nViele Grüße\nMagnus\n\nMagnus Gödde")
+    // Below the repeat threshold nothing is touched
+    let two = WritingStyleImporter.stripRepeatedSignatures(Array(samples.prefix(2)))
+    #expect(two[0].text == samples[0].text)
+  }
+
   @Test("Too short and forwards are rejected")
   func rejectsShortAndForwards() {
     #expect(WritingStyleImporter.cleanSentBody("ok") == nil)
@@ -133,8 +188,9 @@ struct WritingStyleTests {
     defer { store.clearAll() }
     store.addSamples([sample("hey, klingt gut", context: .defaultContext)])
     let block = store.promptBlock(for: .messenger, incoming: nil, maxChars: 4_000)
-    #expect(block?.contains("hey, klingt gut") == true)
-    #expect(block?.contains("context: Default") == true)
+    #expect(block?.text.contains("hey, klingt gut") == true)
+    #expect(block?.context == .defaultContext)
+    #expect(block?.exampleCount == 1)
   }
 
   @Test("Budget drops examples before the profile")
@@ -143,14 +199,16 @@ struct WritingStyleTests {
     let examples = (1...5).map { "Example message number \($0) " + String(repeating: "x", count: 300) }
     let full = WritingStyleStore.renderBlock(
       context: .email, profileSection: profile, targetWords: 40, examples: examples, maxChars: 10_000)
-    #expect(full.contains("--- example 5 ---"))
+    #expect(full.text.contains("--- example 5 ---"))
+    #expect(full.exampleCount == 5)
 
     let tight = WritingStyleStore.renderBlock(
       context: .email, profileSection: profile, targetWords: 40, examples: examples, maxChars: 1_300)
-    #expect(tight.contains(profile))
-    #expect(tight.contains("--- example 1 ---"))
-    #expect(!tight.contains("--- example 5 ---"))
-    #expect(tight.count <= 1_300)
+    #expect(tight.text.contains(profile))
+    #expect(tight.text.contains("--- example 1 ---"))
+    #expect(!tight.text.contains("--- example 5 ---"))
+    #expect(tight.text.count <= 1_300)
+    #expect(tight.exampleCount < 5)
   }
 
   @Test("Reply length follows the incoming text, clamped around the median")

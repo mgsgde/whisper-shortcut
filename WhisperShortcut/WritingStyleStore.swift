@@ -35,9 +35,9 @@ final class WritingStyleStore {
   static let maxSamplesPerContext = 500
   static let examplesPerPrompt = 5
   static let maxExampleChars = 800
-  /// Prompt budgets. Local models have small context windows.
-  static let localMaxChars = 1_500
-  static let cloudMaxChars = 4_000
+  /// Prompt budget. Local models get no block at all: a 4B model follows the examples even when
+  /// the instruction is to translate or correct, so the style would leak into those results.
+  static let maxChars = 4_000
 
   let directory: URL
   private let isEnabled: () -> Bool
@@ -175,9 +175,16 @@ final class WritingStyleStore {
 
   // MARK: - Prompt Block
 
-  /// The block appended to the Dictate Prompt system prompt, or nil when the feature is off or
-  /// there is nothing learned for this context (nor for the default context).
-  func promptBlock(for context: WritingContext, incoming: String?, maxChars: Int) -> String? {
+  struct PromptBlock {
+    let text: String
+    /// The context actually used — `.defaultContext` when the requested one had nothing learned.
+    let context: WritingContext
+    let exampleCount: Int
+  }
+
+  /// The block for the Dictate Prompt system prompt, or nil when the feature is off or there is
+  /// nothing learned for this context (nor for the default context).
+  func promptBlock(for context: WritingContext, incoming: String?, maxChars: Int) -> PromptBlock? {
     guard isEnabled() else { return nil }
     let profile = loadProfile()
     let all = loadSamples()
@@ -194,9 +201,10 @@ final class WritingStyleStore {
 
     let target = Self.targetWords(samples: samples, incoming: incoming)
     let examples = Self.pickExamples(from: samples, targetWords: target)
-    return Self.renderBlock(
+    let rendered = Self.renderBlock(
       context: effective, profileSection: section, targetWords: target,
       examples: examples.map(\.text), maxChars: maxChars)
+    return PromptBlock(text: rendered.text, context: effective, exampleCount: rendered.exampleCount)
   }
 
   static func wordCount(_ text: String) -> Int {
@@ -256,7 +264,7 @@ final class WritingStyleStore {
   static func renderBlock(
     context: WritingContext, profileSection: String, targetWords: Int?,
     examples: [String], maxChars: Int
-  ) -> String {
+  ) -> (text: String, exampleCount: Int) {
     var block = """
       === Writing style of the user ===
       Apply this section only when you compose a message the user will send as themselves (a reply, a new email or message). When the instruction is to translate, summarize, correct or otherwise transform existing text, ignore this section.
@@ -268,17 +276,19 @@ final class WritingStyleStore {
     if !profileSection.isEmpty {
       block += "\n\nProfile (\(context.displayName)):\n\(profileSection)"
     }
-    guard !examples.isEmpty else { return block }
+    guard !examples.isEmpty else { return (block, 0) }
 
     let header = "\n\nExamples of messages the user wrote (context: \(context.displayName)). They show voice only; do not copy their content:"
     var body = ""
+    var count = 0
     for (index, example) in examples.enumerated() {
       var text = example.trimmingCharacters(in: .whitespacesAndNewlines)
       if text.count > maxExampleChars { text = String(text.prefix(maxExampleChars)) + "…" }
       let part = "\n--- example \(index + 1) ---\n\(text)"
       guard block.count + header.count + body.count + part.count <= maxChars else { break }
       body += part
+      count += 1
     }
-    return body.isEmpty ? block : block + header + body
+    return body.isEmpty ? (block, 0) : (block + header + body, count)
   }
 }

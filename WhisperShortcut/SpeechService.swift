@@ -722,13 +722,15 @@ class SpeechService {
   /// `usesScreenshotSelection` comes from the model, not the build: a local text model reads the
   /// clipboard even in the App Store build, and telling it to read a highlighted region of a
   /// screenshot it never receives is how it ends up "editing" the instruction instead.
+  /// `styleBlock` (the learned writing style) goes before the output rule, so that rule stays last.
   static func buildDictatePromptSystemPrompt(
-    logPrefix: String, usesScreenshotSelection: Bool
+    logPrefix: String, usesScreenshotSelection: Bool, styleBlock: String = ""
   ) -> String {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
     if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
-      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + AppConstants.promptModeOutputRule
+      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
+        + AppConstants.promptModeOutputRule
     }
     let trimmed = SystemPromptsStore.shared
       .loadDictatePromptSystemPrompt()
@@ -741,7 +743,7 @@ class SpeechService {
       base = trimmed
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
-    return base + AppConstants.promptModeOutputRule
+    return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by
@@ -848,22 +850,24 @@ class SpeechService {
       clipboardText: clipboardText,
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
-        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode)
-        + writingStyleBlock(incoming: clipboardContext))
+        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
+        styleBlock: writingStyleBlock(incoming: clipboardContext)))
   }
 
-  /// The learned writing style for the app the user is writing in, or "" when off or unlearned.
-  /// Appended here rather than in `buildDictatePromptSystemPrompt`, which also serves previews.
+  /// The learned writing style for the app the user is writing in, or "" when off, unlearned, or
+  /// the Dictate Prompt model is local (small local models apply the examples even to translate /
+  /// correct instructions). Previews call `buildDictatePromptSystemPrompt` without it.
   private func writingStyleBlock(incoming: String?) -> String {
     let provider = getPromptModel().provider
-    let isLocal = provider == .local || provider == .localMLX
-    let context = WritingContextResolver.current()
+    guard provider != .local, provider != .localMLX else { return "" }
+    let requested = WritingContextResolver.current()
     guard let block = WritingStyleStore.shared.promptBlock(
-      for: context, incoming: incoming,
-      maxChars: isLocal ? WritingStyleStore.localMaxChars : WritingStyleStore.cloudMaxChars)
+      for: requested, incoming: incoming, maxChars: WritingStyleStore.maxChars)
     else { return "" }
-    DebugLogger.log("WRITING-STYLE: context=\(context.rawValue) blockChars=\(block.count)")
-    return "\n\n" + block
+    DebugLogger.log(
+      "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
+        + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
+    return "\n\n" + block.text
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
