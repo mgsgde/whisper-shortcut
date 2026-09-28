@@ -45,7 +45,7 @@ done
 # Cost controls for the unattended pass. This is a propose job — Claude Opus 5, never
 # Cursor or Sonnet (plans/agent-loops.md). `--max-budget-usd` is a hard stop enforced by
 # the CLI, so a runaway loop costs the cap and not a month's budget.
-REVIEW_MODEL="${REVIEW_MODEL:-claude-opus-5}"
+REVIEW_MODEL="${REVIEW_MODEL:-claude-opus-5-5}"
 REVIEW_EFFORT="${REVIEW_EFFORT:-high}"
 REVIEW_BUDGET_USD="${REVIEW_BUDGET_USD:-3}"
 

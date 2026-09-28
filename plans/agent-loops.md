@@ -167,7 +167,7 @@ plans/implementer-queue.md          ← YOU set Flag=BUILD, stop a row: veto.sh 
 scripts/implementer/run-implementer.sh   ← STEP 2, needs your checkout on main
         │ 1. kill switch, lock, main-branch check, pick topmost BUILD/OPEN row
         │ 2. worktree .claude/worktrees/implementer-<slug> on branch implementer/<slug>
-        │    Opus 5 writes plans/implementer-plans/row-<n>.md (one file, no code)
+        │    Opus 5.5 writes plans/implementer-plans/row-<n>.md (one file, no code)
         │    Grok 4.7 executes that plan via .agents/skills/implement-proposal/SKILL.md
         │ 3. gates re-run BY THE RUNNER: scope allowlist · clean tree · pollution check ·
         │    xcodebuild · full test plan   (an agent cannot skip what it does not control)
@@ -205,20 +205,19 @@ Tick log: `build/logs/implementer/tick-<date>.log`.
 
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
 
-- **Opus plans and judges, Grok builds.** Claude Opus 5 writes the plan and reviews the
+- **Opus plans and judges, Grok builds.** Claude Opus 5.5 writes the plan and reviews the
   diff; Grok 4.7 types the code. Same proposer-is-never-the-judge rule as the loops,
   one step earlier: the model that decided HOW is not the one that talks itself into
-  believing the diff implements it. The IDs are config (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`,
-  `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5`).
+  believing the diff implements it. The IDs are config (`IMPLEMENTER_PLAN_MODEL=claude-opus-5-5`,
+  `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`, `IMPLEMENTER_REVIEW_MODEL=claude-opus-5-5`).
   **Suspended 2026-09-28:** the Cursor quota is used up until 2026-10-02, so the build runs on
-  `IMPLEMENTER_BUILD_AGENT=claude` / `IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` (Magnus). Builder and
-  reviewer are still different models (Opus 5.5 builds, Opus 5 judges); back to Grok only on his word.
+  `IMPLEMENTER_BUILD_AGENT=claude` / `IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` (Magnus); from
+  2026-10-02 Grok builds again. Until then builder and reviewer are the same model but separate
+  `claude -p` runs with separate prompts — the reviewer never sees the builder's reasoning.
   Scout/meta loops may propose adjusting them; they may never propose removing the plan
   step or the review step, and they may never put Cursor on a propose/plan/judge job.
-  The *interactive* counterpart — Opus 5 session, Fable 5.1 advisor judges plan and diff, Grok
-  types — is `AGENTS.md` → "Model tiering"; it does not retune these pins. Its cost bet is
-  measured once, on the shared user-level setting, by sabaki.dance's falsifier
-  `opus-session-fable-advisor` (`~/sabaki.dance.v3/docs/agent-orchestration.md`).
+  The *interactive* counterpart — Opus 5.5 plans and judges, Grok types (paused until
+  2026-10-02) — is `AGENTS.md` → "Model tiering". No Fable anywhere (Magnus, 2026-09-28).
 - **Measurable-on-ship-day, on ONE user's logs.** A row whose falsifier cannot be measured when
   it ships is not eligible; the build must add the instrumentation in the same branch, or the
   proposal goes to `plans/instrumentation-gaps.md` first. And the only person this repo
@@ -271,10 +270,10 @@ changes, re-measure it rather than editing the prose.
 
 | Surface | Billed as | Per run | Brake |
 | --- | --- | --- | --- |
-| The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars. Default model is `claude-opus-5` (usage-review used to default to Sonnet) | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
-| Implementer plan step | Max subscription (`claude-opus-5`) | $0 | 30-min timeout; writes one file; a planner that touches anything else fails the run |
+| The four scheduled Claude jobs | **Max subscription** — no `ANTHROPIC_API_KEY` anywhere, so they spend rate-limit capacity, not dollars. Default model is `claude-opus-5-5` (since 2026-09-28; was `claude-opus-5`) (usage-review used to default to Sonnet) | $0 | `--max-budget-usd` (3–10) is a backstop that only binds if an API key ever enters the environment |
+| Implementer plan step | Max subscription (`claude-opus-5-5`) | $0 | 30-min timeout; writes one file; a planner that touches anything else fails the run |
 | Implementer build agent | **Since 2026-09-28: Max subscription, `claude-opus-5-5`** (Grok's Cursor quota used up until 2026-10-02). Before: **Cursor subscription**, model `grok-4.7-high` (since 2026-09-21; was `cursor-grok-4.6-high`) | quota only — Grok 4.7 sits in the same "Cursor Models" included-usage pool as 4.6/4.5/Composer 2.5 (cursor.com/docs/models/grok-4-7, verified 2026-09-22); same on-demand rate as 4.6 ($2/$0.5/$6 per M in/cached/out), `-fast` doubles it, >256k input doubles it again | 120-min per-run timeout · **10 runs/month** (`IMPLEMENTER_MAX_RUNS_PER_MONTH`) · one build per tick, and only when a row is actually released |
-| Implementer review pass | Max subscription (`claude-opus-5`) | $0 | one rework cycle, then the run stops |
+| Implementer review pass | Max subscription (`claude-opus-5-5`) | $0 | one rework cycle, then the run stops |
 | Implementer test gate | **Real dollars** — the live roundtrip tests use the provider keys in `.env` | 5 requests × 1.24 s audio ≈ **under $0.01** | gated per credential; tests skip when a key is absent |
 | Monthly model audit | Real dollars, same keys | ~400 short transcription requests ≈ **a few cents** | monthly cadence |
 | Voice Feedback selection | Real dollars, user's Gemini key | ≤2000 chars ≈ 500 extra tokens ≈ **$0.00005** | the 2000-char cap in `VoiceFeedbackService` |

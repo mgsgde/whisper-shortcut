@@ -72,14 +72,14 @@ fi
     || die "IMPLEMENTER_ENABLED is not 1 — kill switch engaged (config: ${CONFIG_FILE}; create it with scripts/implementer/install-implementer.sh)"
 
 PLAN_AGENT="${IMPLEMENTER_PLAN_AGENT:-claude}"
-PLAN_MODEL="${IMPLEMENTER_PLAN_MODEL:-claude-opus-5}"
+PLAN_MODEL="${IMPLEMENTER_PLAN_MODEL:-claude-opus-5-5}"
 PLAN_TIMEOUT_SECONDS="${IMPLEMENTER_PLAN_TIMEOUT_SECONDS:-1800}"
 # Opus 5.5 builds while the Cursor quota for Grok is used up (reset 2026-10-02, Magnus 2026-09-28);
-# grok-4.7-high via cursor comes back only on his word.
+# from 2026-10-02 set IMPLEMENTER_BUILD_AGENT=cursor / IMPLEMENTER_BUILD_MODEL=grok-4.7-high again.
 BUILD_AGENT="${IMPLEMENTER_BUILD_AGENT:-claude}"
 BUILD_MODEL="${IMPLEMENTER_BUILD_MODEL:-claude-opus-5-5}"
 REVIEW_AGENT="${IMPLEMENTER_REVIEW_AGENT:-claude}"
-REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-claude-opus-5}"
+REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-claude-opus-5-5}"
 TIMEOUT_SECONDS="${IMPLEMENTER_TIMEOUT_SECONDS:-7200}"
 SCOPE="${IMPLEMENTER_SCOPE:-app}"
 PUSH_PR="${IMPLEMENTER_PUSH_PR:-0}"
@@ -802,7 +802,7 @@ printf '| %s | %s | `%s` | %s | build+tests green | OPEN |\n' \
 git -C "$WT_DIR" add "$QUEUE_REL" "$LEDGER_REL"
 git -C "$WT_DIR" commit -q -m "docs(implementer): queue row #${Q_NUM} → ${STATUS_VALUE%% *}, ledger entry
 
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" || fail_run "bookkeeping commit failed"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" || fail_run "bookkeeping commit failed"
 [[ "$PUSH_PR" == "1" ]] && { git -C "$WT_DIR" push -q || fail_run "push of the bookkeeping commit failed"; }
 
 # --- Open the merge window ------------------------------------------------------------------

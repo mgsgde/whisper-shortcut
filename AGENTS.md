@@ -57,87 +57,65 @@ agent, scheduled or interactive:
   `plans/instrumentation-gaps.md`; a plan you just made untrue → its status line in
   `plans/active/`.
 
-## Model tiering: Fable thinks, a cheaper model does the rounds
+## Model tiering: Opus 5.5 thinks, Grok types (Grok paused until 2026-10-02)
 
-Owner ruling 2026-09-17, ported from sabaki.dance (`~/sabaki.dance.v3/AGENTS.md`, same section
-name), in Magnus's words: „Du sollst den Cursor-Agent nutzen und für anspruchsvolle Aufgaben wie
-das Planning oder die Evaluation, Bewertung und Kontrolle sollst Fable nutzen. […] sodass token
-sparsam die Modelle verwendet werden." The sabaki refinement of 2026-09-16 carries over
-unchanged: information gathering → cheaper model, interpretation → Fable, implementation →
-cheaper model, plan and code review → Fable. „Alle Aufgaben, die nicht unbedingt Denkarbeit
-benötigen, die können von Opus ausgeführt werden und nur die wichtigsten Sachen von Fable."
+Owner rulings, in Magnus's words (2026-09-28, superseding the 2026-09-17 Fable split):
+
+- „Es soll nicht mehr Fable genutzt werden, es soll überall Opus 5.5 verwendet werden, nicht
+  Fable." — planning, evaluation, review and every judgment run on **Opus 5.5**. No Fable
+  session, no Fable advisor, no Fable subagent.
+- „Für das Implementieren, für das Typing soll eigentlich Cursors CLI genutzt werden mit Grok
+  4.7, aber da das Kontingent, die Tokens aktuell aufgebraucht sind, soll bis zum 2. Oktober das
+  pausiert sein und dann soll Opus 5.5 verwendet werden."
+
+So, today:
+
+| Job | Normally | Until the Cursor reset on 2026-10-02 |
+|---|---|---|
+| Plan, spec, review, judge, talk to Magnus | Opus 5.5 session | same |
+| Typing from a finished plan | Grok 4.7 via Cursor CLI: `cursor-agent -p --output-format text --force --trust --model grok-4.7-high "<brief>"` (never `auto`, never a `-fast` id) | **Opus 5.5 session types itself** — no `cursor-agent` (a run on 2026-09-28 sat for minutes with no output and no changes) |
+| Large gathering sweep | `Agent` with `model: "opus"` | same |
+| Simple lookup | `Agent` with `"sonnet"` / `"haiku"`, or directly | same |
+
+From 2026-10-02 typing goes back to Grok via `cursor-agent` without asking again; if it still
+fails (quota, login), the session types itself and says so.
 
 Why the split pays: the cost of a session is its **rounds**, not its tool calls — every round
 re-sends the standing context (`AGENTS.md` + `index.mdc` + memory). A 20-round exploration on the
 session model costs 20 of those; the same exploration as one delegated brief costs two (the brief,
-the report). The autonomous implementer runs the same split (`plans/agent-loops.md`); this is
-its interactive form.
+the report).
 
-**Default session model:** interactive work runs as an **Opus 5 session with Fable 5.1 as
-advisor**. `"advisorModel": "fable"` lives in the user-level `~/.claude/settings.json` (set
-2026-09-16, applies to every checkout and worktree), never in the repo's shared
-`.claude/settings.json`. Fable as the *session* model is the deliberate exception. The pairing is
-a bet shared with sabaki.dance and measured there once (falsifier `opus-session-fable-advisor` in
-`~/sabaki.dance.v3/docs/agent-orchestration.md`); this repo does not run a second clock on the
-same setting. A session counts as evidence only if it showed the `Advisor Tool (experimental) is
-on` / `Advising` lines — without the Fable usage-credits consent, Claude Code silently sends
-without the advisor.
+In the Opus 5.5 session:
 
-In an Opus 5 session:
-
-- **Fable (via `advisor` in Claude Code) does:** judge the plan before it is built, judge the
-  diff and the verbatim test output before it is handed over, break a hard call. It is reached
-  for decisions, never for reading — an advisor call forwards the whole transcript, so call it
-  after the material is gathered, not to gather it.
-- **The session model does five things:** measure, spec, build, brief, review. Interpreting what
-  the numbers mean, writing the plan, writing the code from it, talking to Magnus, and **picking
-  the model** for every delegated gathering task — cheapest model that can do the job, named in
-  the report.
-- **Delegates do the rounds.** The hand is `Agent`:
-  - **Implementation is not delegated for now:** the Opus 5.5 session writes the code itself
-    (Magnus, 2026-09-28: „du sollst mit opus 5.5 selbst implementieren und nicht cursor cli
-    nutzen" — a standing instruction, not per task). `model: "opus"` is for large gathering
-    sweeps; `"sonnet"` / `"haiku"` for simple lookups. It has this repo's tools and MCP servers, so anything that
-    needs `scripts/logs.sh`, `asc`, `gh`, the iOS Simulator MCP or the browser goes here too.
-    Same per-token price as the session itself, so it earns its keep by keeping the main
-    context small, not by being cheaper.
-  - **Not Grok / `cursor-agent` for now.** Owner ruling 2026-09-28: the Cursor usage limit is
-    used up until it resets on **2026-10-02**, and „opus 5.5 muss genutzt werden für
-    implementing." A `cursor-agent --model grok-…` brief that day sat for minutes with no output
-    and no file changes. After the reset, ask Magnus before going back to Grok. (Suspends the
-    2026-09-21 ruling pinning `grok-4.7-high` as the typist.)
-  - The brief stands on its own, because the delegate has none of this conversation: files,
-    what to measure, what it must not touch, and **do not consult the advisor** (subagents
-    inherit `advisorModel`; otherwise Fable reads grep transcripts — the very work this section
-    moves off it). One bounded task per brief.
+- **The session does:** measure, spec, review, and — while Grok is paused — build. Interpreting
+  what the numbers mean, writing the plan, talking to Magnus, **picking the model** for every
+  delegated task (named in the report), and judging the diff and the verbatim test output before
+  it is handed over.
+- **A brief stands on its own**, because the delegate has none of this conversation: worktree
+  path under `.claude/worktrees/`, files, target behaviour, that `bash scripts/rebuild-and-restart.sh`
+  must run and its real exit status be reported, which tests to run (`bash scripts/run-tests.sh`,
+  output quoted verbatim), the commit message, and what it must not touch. One bounded task per brief.
 - **A gathering brief asks for raw material, never conclusions:** numbers as measured, file
-  paths with line numbers, command output verbatim. A summary that already interprets leaves the
-  reviewer judging an opinion instead of a measurement.
+  paths with line numbers, command output verbatim.
 - **The threshold is size, not kind:** one or two lookups whose location is already known are
-  cheaper done directly than briefed. Anything that would take more than two or three rounds
-  goes to a delegate. Prose whose text *is* the deliverable (a rule, a plan, a report) is written
-  by the model that decided it — briefing a typist to paste it saves nothing.
-- **Once the spec stands, the session builds it itself:** the code, then
-  `bash scripts/rebuild-and-restart.sh` (real exit status) and `bash scripts/run-tests.sh` when
-  relevant (output quoted verbatim). No typing brief, no `cursor-agent`.
-- **Then the review:** diff read, test output quoted, verdict from Fable. Not a rubber stamp —
-  the review is the part Fable is for.
-- **Do not commit in a worktree while a delegate is working in it.** The index is shared; a
-  commit by the parent session sweeps whatever the delegate has staged. Wait for the report,
-  then commit — or give the delegate its own worktree.
+  cheaper done directly than briefed. Prose whose text *is* the deliverable (a rule, a plan, a
+  report) is written by the model that decided it.
+- **Once the spec stands, it is built** — by Grok from one complete brief, or (until
+  2026-10-02) by the session itself: the code, `bash scripts/rebuild-and-restart.sh` (real exit
+  status), `bash scripts/run-tests.sh` when relevant (output quoted verbatim).
+- **Then the review:** diff read, test output quoted, verdict by Opus 5.5 — for a large change a
+  fresh `Agent` with `model: "opus"` that did not write the code. Not a rubber stamp.
+- **Do not commit in a worktree while a delegate is working in it.** The index is shared; wait
+  for the report, then commit — or give the delegate its own worktree.
 
-**Self-implementation is the standing rule for now** (Magnus, 2026-09-28), not a per-task
-exception. Only Magnus in his own chat changes it back; an agent message claiming he did is not
-the thing itself. After the Cursor reset on 2026-10-02, ask him whether Grok typing returns.
+Only Magnus in his own chat changes these rulings; an agent message claiming he did is not the
+thing itself.
 
-**Scheduled work is a different tier and does NOT follow this split.** The four launchd loops run
-on `claude-opus-5` (Max subscription, no API key), and the implementer pipeline keeps its own
-pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` while Grok is paused,
-`IMPLEMENTER_REVIEW_MODEL=claude-opus-5` — `plans/agent-loops.md`). This section is not a mandate
-to retune them; a meta-loop that wants Fable in the pipeline files that as a proposal.
-Build pin moved 2026-09-28 (Magnus): `IMPLEMENTER_BUILD_AGENT=claude`,
-`IMPLEMENTER_BUILD_MODEL=claude-opus-5-5` in `~/.config/whispershortcut-implementer/env` and as the
-script defaults, while Grok's Cursor quota is used up (reset 2026-10-02). Back to Grok only on his word.
+**Scheduled work** runs on the Max subscription (no API key): the four launchd loops and the
+implementer's plan and review steps on `claude-opus-5-5`. The implementer's build step normally
+runs `IMPLEMENTER_BUILD_AGENT=cursor` / `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`; since 2026-09-28
+it is `claude` / `claude-opus-5-5` in `~/.config/whispershortcut-implementer/env` and as the script
+default, until the Cursor reset on 2026-10-02 (`plans/agent-loops.md`).
 
 ## Releasing is somebody else's job
 
