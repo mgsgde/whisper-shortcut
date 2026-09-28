@@ -88,6 +88,11 @@ enum OutcomeSignal: String {
   /// `peakDb`, `durationMs`, and `logPrefix` are required so meeting chunks can
   /// be split from dictation (instrumentation gap #8 / ledger I3).
   case noSpeechDetected
+  /// The microphone delivered digital zero for a whole recording (peak ≤ −100 dB, ≥ 2 s) — TCC
+  /// denial for a stale binary path, a dead or unplugged input device. Never a quiet user, so it
+  /// is counted apart from `noSpeechDetected` (queue #11). `detail`: `peakDb`, `durationMs`,
+  /// `logPrefix`.
+  case noInputSignal
 }
 
 /// Which interaction a network/processing deadline belongs to. Raw values are the `mode` keys the
@@ -369,6 +374,17 @@ class ContextLogger {
       mode: "transcription",
       detail: [
         "source": source,
+        "peakDb": peakDb,
+        "durationMs": durationMs,
+        "logPrefix": logPrefix,
+      ])
+  }
+
+  func logNoInputSignal(peakDb: String, durationMs: String, logPrefix: String) {
+    logSignal(
+      .noInputSignal,
+      mode: "transcription",
+      detail: [
         "peakDb": peakDb,
         "durationMs": durationMs,
         "logPrefix": logPrefix,
