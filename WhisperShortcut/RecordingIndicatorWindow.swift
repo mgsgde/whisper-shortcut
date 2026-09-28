@@ -559,8 +559,9 @@ final class RecordingIndicatorManager {
 
   func moveQuickActionSelection(by delta: Int) {
     guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
-    let last = model.quickActions.count - 1
-    model.quickActionIndex = min(last, max(0, model.quickActionIndex + delta))
+    let count = model.quickActions.count
+    let index = model.quickActionIndex
+    model.quickActionIndex = ((index + delta) % count + count) % count
   }
 
   var quickActions: [QuickAction] { model.quickActions }
