@@ -42,6 +42,11 @@ class MenuBarController: NSObject {
   /// Display time for the benign "No speech detected" info popup — long enough to read,
   /// far shorter than the persistent error-popup duration.
   private static let noSpeechInfoDuration: TimeInterval = 4
+  /// At or below this peak a recording is digital zero, not a quiet room (quiet speech sits
+  /// between −100 and the −45 dB silence gate).
+  private static let digitalSilenceThresholdDb: Float = -100
+  /// Shorter taps can end before the first meter sample, leaving the −160 dB initial peak.
+  private static let digitalSilenceMinDurationMs = 2000
 
   // MARK: - Single Source of Truth
   private var appState: AppState = .idle {
@@ -2888,6 +2893,31 @@ extension MenuBarController: AudioRecorderDelegate {
 
       // Mark this URL as processed to prevent duplicate processing
       self.processedAudioURLs.insert(audioURL)
+
+      // Digital zero for a whole recording is never a quiet user: CoreAudio delivers all-zero
+      // input when TCC denies the process (e.g. an app launched from a since-deleted worktree),
+      // or the input device is dead. Surface it instead of the silent "didn't catch that" skip,
+      // on every path — offline Whisper cannot transcribe zeros either (queue #11).
+      if quickActionInstruction == nil,
+        self.audioRecorder.lastPeakPowerDb <= Self.digitalSilenceThresholdDb,
+        case let digitalSilenceDurationMs = Self.audioDurationMs(of: audioURL),
+        digitalSilenceDurationMs >= Self.digitalSilenceMinDurationMs
+      {
+        let peakDb = String(format: "%.1f", self.audioRecorder.lastPeakPowerDb)
+        DebugLogger.logWarning(
+          "AUDIO: No input signal — peak \(peakDb) dB over \(digitalSilenceDurationMs) ms, microphone delivered digital silence")
+        ContextLogger.shared.logNoInputSignal(
+          peakDb: peakDb, durationMs: String(digitalSilenceDurationMs), logPrefix: "DICTATION")
+        self.discardStreamingSession()
+        self.processedAudioURLs.remove(audioURL)
+        self.cleanupAudioFile(at: audioURL)
+        self.appState = self.appState.stopRecording()
+        self.appState = self.appState.finish()
+        PopupNotificationWindow.showError(
+          "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut.",
+          title: "No microphone input")
+        return
+      }
 
       if self.audioRecorder.lastRecordingWasSilent, quickActionInstruction == nil {
         // Only gate cloud-backed paths — offline Whisper has no API cost to protect against,
