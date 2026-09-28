@@ -222,14 +222,33 @@ fi
 
 # --- Pick the topmost eligible queue row ---------------------------------------------------
 [[ -f "$QUEUE_FILE" ]] || die "queue file missing: ${QUEUE_FILE}"
-ROW=$(grep -E '^\| *[0-9]+ *\|' "$QUEUE_FILE" | awk -F'|' '
+row_field() { echo "$ROW" | awk -F'|' -v n="$1" 'function trim(s){gsub(/^[ \t]+|[ \t]+$/,"",s);return s} {print trim($n)}'; }
+# A row whose run already failed today left its worktree for the post-mortem, and that run
+# already mailed. Picking it again can only die on `worktree dir already exists` — until
+# 2026-09-06 that happened before the monthly counter was checked (seven of September's ten
+# runs spent on nothing), and after that fix it still died every hour into the tick's failure
+# streak (queue #12). So the picker skips such a row and moves on to the next eligible one; the
+# row is picked again tomorrow, under a new slug, once the operator had a day to look.
+ROW=""
+SKIPPED_STALE=""
+while IFS= read -r _candidate; do
+    [[ -n "$_candidate" ]] || continue
+    ROW="$_candidate"
+    _num=$(row_field 2)
+    if [[ -e "${REPO_ROOT}/.claude/worktrees/implementer-q${_num}-$(date +%Y%m%d)" ]]; then
+        SKIPPED_STALE="${SKIPPED_STALE} #${_num}"
+        ROW=""
+        continue
+    fi
+    break
+done < <(grep -E '^\| *[0-9]+ *\|' "$QUEUE_FILE" | awk -F'|' '
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
-    trim($6) == "BUILD" && trim($7) == "OPEN" { print; exit }')
+    trim($6) == "BUILD" && trim($7) == "OPEN" { print }')
+[[ -n "$SKIPPED_STALE" ]] && log "skipped${SKIPPED_STALE}: a run already failed today and kept its worktree for the post-mortem (retried tomorrow; clean up with scripts/worktree-remove.sh)"
 if [[ -z "$ROW" ]]; then
-    log "no BUILD/OPEN row in the queue — nothing to do."
+    log "no buildable BUILD/OPEN row in the queue — nothing to do."
     exit 0
 fi
-row_field() { echo "$ROW" | awk -F'|' -v n="$1" 'function trim(s){gsub(/^[ \t]+|[ \t]+$/,"",s);return s} {print trim($n)}'; }
 Q_NUM=$(row_field 2); Q_SOURCE=$(row_field 3); Q_PROPOSAL=$(row_field 4); Q_FALSIFIER=$(row_field 5)
 
 SLUG="q${Q_NUM}-$(date +%Y%m%d)"
@@ -237,11 +256,8 @@ BRANCH="implementer/${SLUG}"
 WT_DIR="${REPO_ROOT}/.claude/worktrees/implementer-${SLUG}"
 RUN_DIR="${REPO_ROOT}/build/implementer/$(date +%F)-${SLUG}"
 
-# Checked HERE, before the monthly counter is spent, not down at `git worktree add`. A kept
-# post-mortem worktree makes every tick for the rest of the day pick the same row and the same
-# slug, and until 2026-09-06 each of those ticks incremented the counter and only then hit this
-# guard — seven of September's ten runs went on runs that did nothing at all. Refusing before
-# the spend is the difference between a stale worktree costing nothing and costing the month.
+# Still checked HERE, before the monthly counter is spent: the picker above skips a kept
+# worktree, so reaching this means something else created the path between the two lines.
 [[ -e "$WT_DIR" ]] && die "worktree dir already exists: ${WT_DIR} (clean up the previous run first: bash scripts/worktree-remove.sh '${WT_DIR}')"
 
 log "queue row #${Q_NUM}: ${Q_PROPOSAL:0:90}…"
@@ -334,6 +350,33 @@ worktree and logs are kept for the post-mortem (paths below)." \
         --meta "Queue row=#${Q_NUM}" --meta "Branch=${BRANCH}" --meta "Logs=${RUN_DIR}"
     notify "WhisperShortcut implementer FAILED" "$1"
     exit 1
+}
+
+# Take a row out of the build lane on MAIN — the one queue edit this runner makes outside its
+# branch. Every other bookkeeping cell travels on the branch, but a row that must NOT be built
+# again has to say so where the picker reads it, or tomorrow's first tick picks it once more:
+# row #10 was planned BLOCKED on two consecutive days (runs 3+4 of 10) because nothing moved it
+# (queue #12). Same shape as release-merges.sh's bookkeeping: shared checkout on main, queue
+# file free of the operator's own edits, pathspec commit, then push.
+#   park_row <status> <reason>   → Flag=ASK, Status=<status> (BLOCKED or OPEN)
+park_row() {
+    local status="$1" reason="$2" current
+    current=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD 2>/dev/null)
+    if [[ "$current" != "main" ]] \
+        || [[ -n "$(git -C "$REPO_ROOT" status --porcelain -- "$QUEUE_REL")" ]]; then
+        warn "could not park #${Q_NUM} as ASK/${status} (checkout not on main, or the queue has uncommitted edits) — set it by hand: python3 scripts/implementer/queue-edit.py set-flag ${Q_NUM} ASK"
+        return 0
+    fi
+    python3 "${SCRIPT_DIR}/queue-edit.py" set-flag "$Q_NUM" ASK >/dev/null \
+        && python3 "${SCRIPT_DIR}/queue-edit.py" set-status "$Q_NUM" "$status" >/dev/null \
+        || { warn "queue-edit.py could not park #${Q_NUM}"; return 0; }
+    git -C "$REPO_ROOT" commit -q -m "chore(implementer): #${Q_NUM} → ASK/${status} — ${reason}" -- "$QUEUE_REL" \
+        || { warn "could not commit the parked row #${Q_NUM}"; return 0; }
+    if [[ "${IMPLEMENTER_AUTO_PUSH_MAIN:-1}" == "1" ]]; then
+        git -C "$REPO_ROOT" push -q origin main \
+            || warn "push failed — #${Q_NUM} is parked on local main only; the next tick pins to origin/main"
+    fi
+    log "row #${Q_NUM} parked as ASK/${status} on main: ${reason}"
 }
 
 # --- Calling an agent CLI -------------------------------------------------------------------
@@ -470,6 +513,16 @@ MAIN_STATUS_BEFORE=$(git -C "$REPO_ROOT" status --porcelain | sort)
 PLAN_FILE_REL="plans/implementer-plans/row-${Q_NUM}.md"
 PLAN_CLAUSE=""
 
+# "Leading BLOCKED section" as planners actually write it: the first non-empty line after an
+# optional H1 title starts with BLOCKED (bare, as a heading, or bold). Row 10's plan opened
+# "# Row 10 — … (BLOCKED)" and then "## BLOCKED — every path this row needs is outside …".
+plan_is_blocked() { # plan_is_blocked <plan-file>
+    awk 'NF == 0 { next }
+         !seen_first++ && /^#[[:space:]]/ { next }
+         { exit (toupper($0) ~ /^[#*[:space:]]*BLOCKED/) ? 0 : 1 }
+         END { if (!NR) exit 1 }' "$1"
+}
+
 run_plan_agent() {
     if [[ -z "$PLAN_AGENT" ]]; then
         warn "plan step DISABLED (IMPLEMENTER_PLAN_AGENT is empty) — the build agent gets the raw queue row"
@@ -536,6 +589,37 @@ Be concrete and short. Your reader is an agent that will follow you literally."
 Written by ${PLAN_AGENT}/${PLAN_MODEL} before the build." \
         || fail_run "could not commit the plan"
     log "plan committed: ${PLAN_FILE_REL} (${plan_bytes} B)"
+
+    # The planner's one way of saying "this row needs paths outside IMPLEMENTER_SCOPE" is a
+    # leading BLOCKED section. Building anyway spent a build, a test plan and two reviews on a
+    # row that could only end BLOCKED again (queue #12). Stop here, park the row as BLOCKED —
+    # the status that says "reach the runner lacks", evidence for widening the scope — and
+    # refund the counter: nothing was built.
+    if plan_is_blocked "${WT_DIR}/${PLAN_FILE_REL}"; then
+        warn "the plan says BLOCKED — the row needs paths outside scope '${SCOPE}'; not building"
+        park_row BLOCKED "planner: needs paths outside IMPLEMENTER_SCOPE=${SCOPE}"
+        echo "$RUNS_THIS_MONTH" >"$COUNTER_FILE"
+        restore_user_app
+        local note="${RUN_DIR}/blocked.md"
+        {
+            echo "VERDICT: implementer skipped queue #${Q_NUM} — the plan is BLOCKED on scope '${SCOPE}'"
+            echo
+            echo "Queue #${Q_NUM}: ${Q_PROPOSAL}"
+            echo
+            cat "${WT_DIR}/${PLAN_FILE_REL}"
+        } >"$note"
+        report_out "WhisperShortcut implementer: #${Q_NUM} needs a wider scope" "$note" \
+            --verdict needs-decision --verdict-count 1 \
+            --verdict-detail "Queue row #${Q_NUM} needs paths outside IMPLEMENTER_SCOPE=${SCOPE}, so it \
+was not built and is now ASK/BLOCKED — no tick picks it again. Build it by hand, or widen the scope." \
+            --title "Implementer: #${Q_NUM} blocked on scope" \
+            --meta "Queue row=#${Q_NUM}" --meta "Plan=${PLAN_FILE_REL}"
+        bash "${REPO_ROOT}/scripts/worktree-remove.sh" "$WT_DIR" \
+            || warn "could not remove worktree ${WT_DIR}"
+        git -C "$REPO_ROOT" branch -D "$BRANCH" >/dev/null 2>&1
+        log "stopped before the build — nothing built, counter refunded."
+        exit 0
+    fi
 
     PLAN_CLAUSE="
 
@@ -748,7 +832,11 @@ EOF
         restore_user_app
         review_once 2
         VERDICT="$REVIEW_HEAD"
-        [[ "$VERDICT" == "APPROVE" ]] || fail_run "reviewer BLOCKED twice — a human decides now (see ${RUN_DIR}/review-2.md)"
+        if [[ "$VERDICT" != "APPROVE" ]]; then
+            # Otherwise the row stays BUILD/OPEN and tomorrow's tick builds it all over again.
+            park_row OPEN "reviewer BLOCKED twice, a human decides"
+            fail_run "reviewer BLOCKED twice — a human decides now; row set to ASK (see ${RUN_DIR}/review-2.md)"
+        fi
         REVIEW_VERDICT="approved after 1 rework"
     elif [[ "$VERDICT" == "APPROVE" ]]; then
         REVIEW_VERDICT="approved"
