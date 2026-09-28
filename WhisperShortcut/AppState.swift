@@ -274,6 +274,13 @@ extension AppState {
     return nil
   }
 
+  /// A transcription/prompt job is running — the span `processingMs` on outcome signals
+  /// measures. TTS is excluded: it is playback, not a job the user waits on to paste.
+  var isNonTTSProcessing: Bool {
+    if case .processing(let mode) = self { return !mode.isTTSContext }
+    return false
+  }
+
   /// Stable, content-free label for outcome signals: which phase the user cancelled out of.
   /// Chunk phases keep their identity — cancelling during `processingChunks` says something
   /// different (long audio taking too long) than cancelling a single request.

@@ -33,6 +33,23 @@ final class DictateStreamingSession {
     return _isCancelled
   }
   private let sessionStart = CFAbsoluteTimeGetCurrent()
+  /// Chunk indices whose transcription task has finished (either way). Guarded by `cancelLock`.
+  private var finishedChunks: Set<Int> = []
+
+  /// Chunk transcriptions still in flight — reported on a cancel signal so usage-review can
+  /// tell "cancelled while the last chunk was still uploading" from "cancelled after every
+  /// chunk was back" (queue #8).
+  var pendingChunkCount: Int {
+    cancelLock.lock()
+    defer { cancelLock.unlock() }
+    return chunkTasks.count - finishedChunks.count
+  }
+
+  private func markFinished(_ index: Int) {
+    cancelLock.lock()
+    finishedChunks.insert(index)
+    cancelLock.unlock()
+  }
 
   private init(speechService: SpeechService) {
     self.speechService = speechService
@@ -85,14 +102,18 @@ final class DictateStreamingSession {
     if isSilent {
       DebugLogger.logSpeech("STREAMING-DICTATE: Chunk \(index) is silent, skipping API call")
       chunkTasks[index] = Task { "" }
+      finishedChunks.insert(index)
       return
     }
     DebugLogger.logSpeech("STREAMING-DICTATE: Transcribing chunk \(index) in flight (\(url.lastPathComponent))")
-    chunkTasks[index] = Task { [speechService] in
+    chunkTasks[index] = Task { [weak self, speechService] in
+      defer { self?.markFinished(index) }
       // reportsProgress: false — a long chunk (>45s of speech without a silence boundary)
       // gets chunk-split internally; letting that drive the global progress delegate would
       // hijack the app state machine away from `.recording` and strand the main pipeline.
-      try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+      return try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
+        try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+      }
     }
   }
 
