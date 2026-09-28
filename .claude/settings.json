@@ -9,5 +9,18 @@
       "Bash(bash scripts/logs.sh*)",
       "Bash(xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut*)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/ensure-app-running.sh\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
   }
 }
