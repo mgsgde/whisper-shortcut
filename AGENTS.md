@@ -93,15 +93,16 @@ In an Opus 5 session:
   numbers mean, writing the plan, talking to Magnus, and **picking the model** for every delegated
   task — cheapest model that can do the job, named in the report.
 - **Delegates do the rounds.** The hand is `Agent`:
-  - `model: "opus"` for **typing from a finished plan** and for large sweeps; `"sonnet"` /
+  - `model: "opus"` (Opus 5.5) for **typing from a finished plan** and for large sweeps; `"sonnet"` /
     `"haiku"` for simple lookups. It has this repo's tools and MCP servers, so anything that
     needs `scripts/logs.sh`, `asc`, `gh`, the iOS Simulator MCP or the browser goes here too.
     Same per-token price as the session itself, so it earns its keep by keeping the main
     context small, not by being cheaper.
-  - **Not Grok / `cursor-agent`.** Owner ruling 2026-09-28: there is no Cursor usage quota for
-    Grok, so a `cursor-agent --model grok-…` brief either fails silently (a run that day sat for
-    minutes with no output and no file changes) or bills overage. Do not delegate interactive
-    work to it. (Superseded: the 2026-09-21 ruling pinning `grok-4.7-high` as the typist.)
+  - **Not Grok / `cursor-agent` for now.** Owner ruling 2026-09-28: the Cursor usage limit is
+    used up until it resets on **2026-10-02**, and „opus 5.5 muss genutzt werden für
+    implementing." A `cursor-agent --model grok-…` brief that day sat for minutes with no output
+    and no file changes. After the reset, ask Magnus before going back to Grok. (Suspends the
+    2026-09-21 ruling pinning `grok-4.7-high` as the typist.)
   - The brief stands on its own, because the delegate has none of this conversation:
     worktree path under `.claude/worktrees/`, files, target behaviour, that
     `bash scripts/rebuild-and-restart.sh` must run and its real exit status be reported, which
@@ -137,9 +138,9 @@ on `claude-opus-5` (Max subscription, no API key), and the implementer pipeline 
 pins (`IMPLEMENTER_PLAN_MODEL=claude-opus-5`, `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`,
 `IMPLEMENTER_REVIEW_MODEL=claude-opus-5` — `plans/agent-loops.md`). This section is not a mandate
 to retune them; a meta-loop that wants Fable in the pipeline files that as a proposal.
-Open issue: `IMPLEMENTER_BUILD_MODEL=grok-4.7-high` needs the same Cursor quota that the
-2026-09-28 ruling says does not exist, so the implementer's build step is likely failing until
-that pin is moved (e.g. to `claude-opus-5`); that change is Magnus's call.
+Open issue: `IMPLEMENTER_BUILD_MODEL=grok-4.7-high` needs the Cursor quota that is used up until
+2026-10-02, so the implementer's build step likely fails until then unless the pin moves to an
+Opus model; that change is Magnus's call.
 
 ## Releasing is somebody else's job
 
