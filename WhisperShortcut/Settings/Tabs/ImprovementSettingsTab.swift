@@ -22,6 +22,10 @@ struct ImprovementSettingsTab: View {
 
       SpacedSectionDivider()
 
+      WritingStyleSettingsSection()
+
+      SpacedSectionDivider()
+
       contextDataSection
     }
     .confirmationDialog("Delete context data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
