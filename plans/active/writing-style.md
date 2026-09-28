@@ -1,6 +1,13 @@
 # Writing Style — Drafts That Sound Like the User
 
-**Status:** Planned (2026-09-28). Nothing implemented yet.
+**Status:** Slice 1 implemented (2026-09-28, branch `feat/writing-style-slice1`). Off by default (`UserDefaultsKeys.writingStyleEnabled`). Touch points: `WritingContextResolver.swift` (bundle id → bucket), `WritingStyleStore.swift` (profile, pool, retrieval, prompt block), `WritingStyleImporter.swift` (Gmail import, cleaning, profile derivation + review panel), `GmailAPIClient.listMessageRefs` / `readThread`, `SpeechService.writingStyleBlock` (appended in `buildPromptEnvelope`, so all three provider paths get it), `Settings/Components/WritingStyleSettingsSection.swift` in the Smart Improvement tab, `WhisperShortcutTests/WritingStyleTests.swift`. Log markers `WRITING-STYLE:`, `WRITING-STYLE-IMPORT:`, `WRITING-STYLE-PROFILE:` (counts only). Next: Slice 2 (A/B evaluation) before anything else.
+
+Deviations from the plan as written, all deliberate:
+
+- **No `stats.json`.** Median length and reply ratio are computed from the pool on each request (≤ 2,000 samples, milliseconds). One file fewer that can drift from the pool.
+- **Gmail import reads threads, not messages.** One `threads.get` per thread returns the user's sent messages *and* the message each one answered, so `incomingChars` (the reply-length ratio) comes for free instead of costing one extra request per message.
+- **Typed chat text is not a source yet.** Chat prompts are instructions to an assistant, not messages to people; feeding them in would teach the wrong voice. Revisit only if the `default` bucket turns out to be empty in practice.
+- **"Which instructions get the block?"** is solved at the instruction level: the block tells the model to apply it only when composing a message the user sends as themselves and to ignore it for translate/summarize/correct. Check the logs for misfires in Slice 2.
 **Audience:** LLM implementing the feature end-to-end
 **Goal:** When Dictate Prompt writes or rewrites text for the user (an email reply, a WhatsApp message, a Slack answer), the result should read like the user wrote it, not like an assistant. The app learns how the user writes, separately for each context (email vs. messenger, and eventually per recipient), from text the user actually wrote and sent.
 

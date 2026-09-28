@@ -149,6 +149,9 @@ enum UserDefaultsKeys {
   static let selectedImprovementModel = "selectedImprovementModel"
   static let improveFromUsageAutoRunInterval = "improveFromUsageAutoRunInterval"
   static let lastAutoImprovementRunDate = "lastAutoImprovementRunDate"
+  /// Append the learned writing style (profile + example messages) to Dictate Prompt. Off by
+  /// default. See `WritingStyleStore`.
+  static let writingStyleEnabled = "writingStyleEnabled"
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"

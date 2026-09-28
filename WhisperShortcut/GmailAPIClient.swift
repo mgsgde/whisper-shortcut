@@ -53,6 +53,53 @@ actor GmailAPIClient {
     return parseMessage(json, includeBody: true)
   }
 
+  // MARK: - Bulk Reads (Writing Style import)
+
+  /// Message and thread ids matching `query`, paging past the 50-per-call cap of `searchMessages`.
+  func listMessageRefs(query: String, maxTotal: Int) async throws -> [(id: String, threadId: String)] {
+    var refs: [(id: String, threadId: String)] = []
+    var pageToken: String?
+    repeat {
+      try Task.checkCancellation()
+      var components = URLComponents(string: "\(baseURL)/messages")!
+      var items = [
+        URLQueryItem(name: "q", value: query),
+        URLQueryItem(name: "maxResults", value: String(min(100, maxTotal - refs.count))),
+      ]
+      if let pageToken { items.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+      components.queryItems = items
+      guard let url = components.url else { throw GmailAPIError.invalidURL }
+
+      let data = try await authorizedRequest(url: url, httpMethod: "GET")
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw GmailAPIError.invalidResponse
+      }
+      for message in json["messages"] as? [[String: Any]] ?? [] {
+        if let id = message["id"] as? String, let threadId = message["threadId"] as? String {
+          refs.append((id, threadId))
+        }
+      }
+      pageToken = json["nextPageToken"] as? String
+    } while pageToken != nil && refs.count < maxTotal
+    return Array(refs.prefix(maxTotal))
+  }
+
+  /// Every message of a thread with bodies, oldest first — one request instead of one per message.
+  func readThread(threadId: String) async throws -> [[String: Any]] {
+    let url = URL(string: "\(baseURL)/threads/\(threadId)?format=full")!
+    let data = try await authorizedRequest(url: url, httpMethod: "GET")
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw GmailAPIError.invalidResponse
+    }
+    return (json["messages"] as? [[String: Any]] ?? []).map { message in
+      var parsed = parseMessage(message, includeBody: true)
+      if let internalDate = message["internalDate"] as? String {
+        parsed["internal_date_ms"] = internalDate
+      }
+      return parsed
+    }
+  }
+
   // MARK: - Private Helpers
 
   private func getMessageSummary(messageId: String) async throws -> [String: Any] {

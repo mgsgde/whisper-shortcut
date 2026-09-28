@@ -848,7 +848,22 @@ class SpeechService {
       clipboardText: clipboardText,
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
-        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode))
+        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode)
+        + writingStyleBlock(incoming: clipboardContext))
+  }
+
+  /// The learned writing style for the app the user is writing in, or "" when off or unlearned.
+  /// Appended here rather than in `buildDictatePromptSystemPrompt`, which also serves previews.
+  private func writingStyleBlock(incoming: String?) -> String {
+    let provider = getPromptModel().provider
+    let isLocal = provider == .local || provider == .localMLX
+    let context = WritingContextResolver.current()
+    guard let block = WritingStyleStore.shared.promptBlock(
+      for: context, incoming: incoming,
+      maxChars: isLocal ? WritingStyleStore.localMaxChars : WritingStyleStore.cloudMaxChars)
+    else { return "" }
+    DebugLogger.log("WRITING-STYLE: context=\(context.rawValue) blockChars=\(block.count)")
+    return "\n\n" + block
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
