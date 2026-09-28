@@ -226,7 +226,14 @@ claude -p --dangerously-skip-permissions \
   "$(cat "$PROMPT_FILE")" 2>&1
 STATUS=$?
 
-if [ $STATUS -ne 0 ] || [ ! -f "$REPORT" ]; then
+# A file that exists is not a report that was written (loop-ledger L11, queue #14): the report
+# is VERDICT-first like the three digests, so it goes through the same gate — size floor,
+# VERDICT first line, no line-start provisional marker. No --section flags: the audit report
+# has no fixed digest sections.
+REPORT_WHY="$(bash "$REPO/scripts/loop-digest-check.sh" "$REPORT" 2>&1)"
+REPORT_OK=$?
+
+if [ $STATUS -ne 0 ] || [ $REPORT_OK -ne 0 ]; then
   # A failed audit still has value: the measurements ran, so mail those and say what broke.
   # Reporting the failure matters more than the report itself — an audit that silently stops
   # happening is worse than one that never existed, because it looks like everything is fine.
@@ -235,7 +242,7 @@ if [ $STATUS -ne 0 ] || [ ! -f "$REPORT" ]; then
     if [ $STATUS -ne 0 ]; then
       echo "VERDICT: audit FAILED — claude exited with status $STATUS."
     else
-      echo "VERDICT: audit INCOMPLETE — the judging pass wrote no report."
+      echo "VERDICT: audit INCOMPLETE — $REPORT_WHY"
     fi
     echo
     echo "The measurements did run and are attached. Log: $REPO/build/logs/model-audit.log"

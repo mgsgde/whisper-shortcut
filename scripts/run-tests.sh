@@ -136,7 +136,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ "${CI:-}" != "true" ]]; then
-  pkill -f "WhisperShortcut" 2>/dev/null || true
+  # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
+  # concurrent xcodebuild in another worktree (its args contain the project path), so two
+  # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).
+  pkill -x "WhisperShortcut" 2>/dev/null || true
   sleep 1
 fi
 
