@@ -173,4 +173,33 @@ struct ChatToolStepsTests {
     let record = try JSONDecoder().decode(ChatToolCallRecord.self, from: Data(json.utf8))
     #expect(record.status == .done)
   }
+
+  // MARK: - Slice 3: inline approval
+
+  /// The decision for every approval-gated tool, spelled out. A new gated tool fails this test
+  /// until someone decides on purpose whether a blanket "Allow for this chat" is safe for it.
+  private static let chatWideDecision: [String: Bool] = [
+    // Prompt-injection gated or able to exfiltrate: always ask.
+    ChatToolRegistry.rememberAboutUserToolName: false,
+    ChatToolRegistry.updateInstructionsToolName: false,
+    "open_url": false,
+    "write_text_file": false, "append_to_file": false, "edit_text_file": false,
+    // Destructive: always ask.
+    "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
+    // Create/update/move: may be allowed for the chat.
+    "google_calendar_create_event": true, "google_calendar_update_event": true,
+    "google_tasks_create": true, "google_tasks_update": true, "google_tasks_complete": true,
+    "trello_create_card": true, "trello_move_card": true, "trello_update_card": true,
+  ]
+
+  @Test func everyApprovalGatedToolHasAnExplicitChatWideDecision() {
+    let gated = allToolNames.filter { ChatToolRegistry.requiresUserApproval($0, args: ["action": "write"]) }
+    for name in gated {
+      guard let expected = Self.chatWideDecision[name] else {
+        Issue.record("No chat-wide approval decision for \(name)")
+        continue
+      }
+      #expect(ChatToolRegistry.allowsChatWideApproval(name) == expected, "\(name)")
+    }
+  }
 }

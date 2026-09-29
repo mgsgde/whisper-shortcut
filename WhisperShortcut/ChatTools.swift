@@ -71,7 +71,22 @@ enum ChatToolRegistry {
     }
   }
 
-  /// One-line summary for the approval alert.
+  /// Whether "Allow for this chat" may be offered. Never for the tools gated for prompt-injection
+  /// reasons (a page or mail the model just read must not be able to ride on an earlier blanket
+  /// yes — `open_url` included: a URL can carry private data out), and never for deletes/archives,
+  /// where each call destroys something different.
+  static func allowsChatWideApproval(_ name: String) -> Bool {
+    switch name {
+    case rememberAboutUserToolName, updateInstructionsToolName, "open_url",
+         "write_text_file", "append_to_file", "edit_text_file",
+         "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
+      return false
+    default:
+      return requiresUserApproval(name, args: ["action": "write"])
+    }
+  }
+
+  /// One-line summary for the approval card.
   static func approvalSummary(name: String, args: [String: Any]) -> String {
     func arg(_ key: String) -> String {
       (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
