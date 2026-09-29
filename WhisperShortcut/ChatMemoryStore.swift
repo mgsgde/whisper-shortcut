@@ -93,7 +93,7 @@ final class ChatMemoryStore {
     let removed = existing.count - kept.count
     if removed > 0 {
       write(kept)
-      DebugLogger.logSuccess("CHAT-MEMORY: Removed \(removed) fact(s) matching \"\(trimmed)\"")
+      DebugLogger.logSuccess("CHAT-MEMORY: Removed \(removed) fact(s) matching \(DebugLogger.redacted(trimmed))")
     }
     return removed
   }

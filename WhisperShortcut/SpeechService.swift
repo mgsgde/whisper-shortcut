@@ -129,7 +129,7 @@ class SpeechService {
 
     DebugLogger.log(
       "GLOSSARY: conditioning transcription with \(glossary.count) chars"
-        + " + \(parsed.corrections.count) tie-breaker(s): \(glossary.prefix(200))")
+        + " + \(parsed.corrections.count) tie-breaker(s)")
     return base.isEmpty ? block : base + "\n\n" + block
   }
 
@@ -1044,7 +1044,7 @@ class SpeechService {
     Task<String, Never> {
       do {
         let text = try await NoSpeechContext.run(.promptHistory, audioURL: audioURL) { try await transcribe() }
-        DebugLogger.log("\(logPrefix): Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
+        DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
       } catch {
         DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")

@@ -100,6 +100,43 @@ enum MLXModelPaths {
       .appendingPathComponent("MLXModels")
       .appendingPathComponent("hub")
   }
+
+  /// The complete on-disk copy of `type`, or nil while it is missing or half-downloaded.
+  static func localDirectory(for type: LocalLLMModelType) -> URL? {
+    let models = hubDirectory.appendingPathComponent("models")
+    var candidates = [models.appendingPathComponent(type.huggingFaceID)]
+    let parts = type.huggingFaceID.split(separator: "/").map(String.init)
+    if parts.count == 2 {
+      candidates.append(models.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
+    }
+    for repoPath in candidates {
+      if hasRequiredFiles(at: repoPath) { return repoPath }
+      let snapshots = repoPath.appendingPathComponent("snapshots")
+      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else { continue }
+      for hash in hashes {
+        let snap = snapshots.appendingPathComponent(hash)
+        if hasRequiredFiles(at: snap) { return snap }
+      }
+    }
+    return nil
+  }
+
+  /// `tokenizer.json` is required because Hub snapshot can finish `config.json` + the
+  /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
+  /// half-repo as "available" made Delete appear and the first load fail.
+  private static let requiredFileNames = ["config.json", "tokenizer.json"]
+
+  private static func hasRequiredFiles(at directory: URL) -> Bool {
+    let fileManager = FileManager.default
+    guard requiredFileNames.allSatisfy({
+      fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
+    }) else { return false }
+
+    guard let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
+      return false
+    }
+    return contents.contains { $0.hasSuffix(".safetensors") }
+  }
 }
 
 // MARK: - Manager
@@ -120,38 +157,7 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
   override nonisolated var rootDirectory: URL { MLXModelPaths.hubDirectory }
 
   override nonisolated func resolveModelPath(for type: LocalLLMModelType) -> URL? {
-    let models = rootDirectory.appendingPathComponent("models")
-    var candidates = [models.appendingPathComponent(type.huggingFaceID)]
-    let parts = type.huggingFaceID.split(separator: "/").map(String.init)
-    if parts.count == 2 {
-      candidates.append(models.appendingPathComponent(parts[0]).appendingPathComponent(parts[1]))
-    }
-    for repoPath in candidates {
-      if hasRequiredMLXFiles(at: repoPath) { return repoPath }
-      let snapshots = repoPath.appendingPathComponent("snapshots")
-      guard let hashes = try? fileManager.contentsOfDirectory(atPath: snapshots.path) else { continue }
-      for hash in hashes {
-        let snap = snapshots.appendingPathComponent(hash)
-        if hasRequiredMLXFiles(at: snap) { return snap }
-      }
-    }
-    return nil
-  }
-
-  /// `tokenizer.json` is required because Hub snapshot can finish `config.json` + the
-  /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
-  /// half-repo as "available" made Delete appear and the first load fail.
-  private static let requiredFileNames = ["config.json", "tokenizer.json"]
-
-  private nonisolated func hasRequiredMLXFiles(at directory: URL) -> Bool {
-    guard Self.requiredFileNames.allSatisfy({
-      fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
-    }) else { return false }
-
-    guard let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
-      return false
-    }
-    return contents.contains { $0.hasSuffix(".safetensors") }
+    MLXModelPaths.localDirectory(for: type)
   }
 
   /// Delete the repo, not just the snapshot. `resolveModelPath` may land on
@@ -222,17 +228,26 @@ actor MLXModelLoader {
     }
 
     let task = Task {
-      DebugLogger.log("MLX: loading \(type.huggingFaceID)")
-      let downloader = TransformersHubDownloader(
-        api: HubApi(downloadBase: MLXModelPaths.hubDirectory))
-      let context = try await loadModel(
-        from: downloader,
-        using: TransformersTokenizerLoader(),
-        id: type.huggingFaceID
-      ) { progress in
-        let pct = Int(progress.fractionCompleted * 100)
-        if pct % 10 == 0 {
-          DebugLogger.log("MLX: download/load \(pct)%")
+      let context: ModelContext
+      if let directory = MLXModelPaths.localDirectory(for: type) {
+        // Already on disk: load the folder. The Hub downloader asks huggingface.co for the repo's
+        // file list on every load, even with the model complete and Offline Mode on — seen as a
+        // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
+        DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
+        context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
+      } else {
+        DebugLogger.log("MLX: loading \(type.huggingFaceID) (not on disk, downloading)")
+        let downloader = TransformersHubDownloader(
+          api: HubApi(downloadBase: MLXModelPaths.hubDirectory))
+        context = try await loadModel(
+          from: downloader,
+          using: TransformersTokenizerLoader(),
+          id: type.huggingFaceID
+        ) { progress in
+          let pct = Int(progress.fractionCompleted * 100)
+          if pct % 10 == 0 {
+            DebugLogger.log("MLX: download/load \(pct)%")
+          }
         }
       }
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")

@@ -114,7 +114,7 @@ final class WorkspaceMapStore {
     let removed = existing.count - kept.count
     if removed > 0 {
       write(kept)
-      DebugLogger.logSuccess("WORKSPACE-MAP: Forgot \(removed) entr(ies) matching \"\(trimmed)\"")
+      DebugLogger.logSuccess("WORKSPACE-MAP: Forgot \(removed) entr(ies) matching \(DebugLogger.redacted(trimmed))")
     }
     return removed
   }
