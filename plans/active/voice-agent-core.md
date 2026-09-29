@@ -1,11 +1,13 @@
 # One Agent Core for Chat and Dictate Prompt (D11)
 
-**Status:** Slices 1 and 2 done (2026-09-29, branch `feat/agent-runner`, built on
-`feat/chat-approval-card`). Slice 2 covers the **Gemini** Dictate Prompt path only: OpenAI
-GPT-Audio runs on Chat Completions `input_audio`, which the chat's Responses provider does not
-speak, and local models are text-only — both keep the classic pipeline. Tool records are not yet
-kept in the Dictate Prompt history (`PromptConversationHistory` stores text only). Both are open.
-Deviation from decision 1: **no web grounding** on the Dictate Prompt path — Gemini's grounding also enables `url_context`, an exfiltration path for instructions planted in a selection or an email (review of aa79359).
+**Status:** Slices 1–3 done (2026-09-29). Slice 3 (this change) extends the agent path to OpenAI
+GPT-Audio (Chat Completions with `input_audio`, only when the recording is attached — the model
+rejects audio-less input) and to a local server (Ollama / LM Studio, transcript in). In-process MLX
+has no tool-calling path and keeps the single request. In Offline Mode only the shared-folder tools
+are offered. Still open: tool records in the Dictate Prompt history (`PromptConversationHistory`
+stores text only); a live test against a local server (none was running when this shipped).
+Deviation from decision 1: **no web grounding** on any Dictate Prompt path — Gemini's grounding
+also enables `url_context`, an exfiltration path for instructions planted in a selection or email.
 **Audience:** LLM implementing it end-to-end, one slice per PR.
 **Origin:** app review 2026-09-29, recommendation D11.
 

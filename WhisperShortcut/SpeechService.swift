@@ -1128,7 +1128,8 @@ class SpeechService {
       // a stuck Dictate Prompt hang for minutes.
       let raw = try await WallClockDeadline.run(seconds: NetworkDeadline.transcriptionRequestTimeout) {
         try await DictatePromptAgent.run(
-          model: model,
+          provider: LLMProviderFactory.provider(for: model),
+          requestModel: model.rawValue,
           contents: contents,
           systemPrompt: systemPrompt,
           tools: agentTools,
@@ -1205,6 +1206,8 @@ class SpeechService {
       usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
+    // Kept for the agent path, which builds its own request from the same ingredients.
+    var audioPayload: (base64: String, format: String)?
 
     if let textInstruction {
       userContent.append([
@@ -1233,6 +1236,7 @@ class SpeechService {
       let fileExtension = audioURL.pathExtension.lowercased()
       let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
       let base64Audio = audioData.base64EncodedString()
+      audioPayload = (base64Audio, audioFormat)
       userContent.append([
         "type": "input_audio",
         "input_audio": [
@@ -1242,9 +1246,88 @@ class SpeechService {
       ])
     }
 
+    // With a connected integration, run on the chat's agent core (read-only lookups). The same
+    // ingredients go in the Gemini-shaped contents `OpenAIChatProvider` converts to Chat Completions:
+    // `inline_data` audio becomes `input_audio`, the screenshot `image_url`.
+    // Only with the recording attached: GPT-Audio rejects a request whose input carries no audio
+    // ("This model requires that either input content or output modality contain audio"), so a
+    // quick action's text-only instruction keeps the classic request.
+    let rawText: String
+    let agentTools = audioPayload == nil ? [] : await DictatePromptAgent.availableTools()
+    if !agentTools.isEmpty {
+      var parts: [[String: Any]] = []
+      if let screenshot = envelope.screenshot {
+        parts.append(["text": envelope.screenshotLabel])
+        parts.append(["inline_data": ["mime_type": "image/jpeg", "data": screenshot.base64EncodedString()]])
+      }
+      if let clipboardText = envelope.clipboardText {
+        parts.append(["text": clipboardText])
+      }
+      if let textInstruction {
+        parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
+      } else if let audioPayload {
+        let mime = audioPayload.format == "mp3" ? "audio/mpeg" : "audio/wav"
+        parts.append(["inline_data": ["mime_type": mime, "data": audioPayload.base64]])
+      }
+      var contents: [[String: Any]] = envelope.history.map {
+        ["role": $0.isUser ? "user" : "model", "parts": [["text": $0.text]]]
+      }
+      contents.append(["role": "user", "parts": parts])
+      let systemPrompt = envelope.systemPrompt
+      rawText = try await WallClockDeadline.run(seconds: NetworkDeadline.transcriptionRequestTimeout) {
+        try await DictatePromptAgent.run(
+          provider: LLMProviderFactory.provider(for: model),
+          requestModel: model.rawValue,
+          contents: contents,
+          systemPrompt: systemPrompt,
+          tools: agentTools,
+          logPrefix: "PROMPT-MODE-OPENAI")
+      }
+    } else {
+      rawText = try await performOpenAIPromptRequest(
+        model: model, systemPrompt: envelope.systemPrompt,
+        history: envelope.history, userContent: userContent, apiKey: apiKey)
+    }
+
+    // gpt-audio-1.5 sometimes answers an edit instruction with a JSON edit object rather than the
+    // edited text. Unwrap it before anything else touches the string, or the JSON is what the user
+    // pastes. No-op for the plain-text replies that are the norm.
+    let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
+      rawText, selectedText: clipboardContext)
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
+
+    let instructionSource: PromptInstructionSource
+    if let textInstruction {
+      instructionSource = .known(textInstruction)
+    } else if let transcriptionTask {
+      instructionSource = .parallelTranscription(transcriptionTask)
+    } else {
+      instructionSource = .known(Self.voiceInstructionPlaceholder)
+    }
+    await recordPromptTurn(
+      normalizedText: normalizedText,
+      instruction: instructionSource,
+      mode: mode,
+      clipboardContext: clipboardContext,
+      model: model.rawValue,
+      hadScreenshot: envelope.hadScreenshot,
+      logPrefix: "PROMPT-MODE-OPENAI")
+    return normalizedText
+  }
+
+  /// The classic single Chat Completions request for OpenAI Dictate Prompt, used when no tools are
+  /// available. Returns the model's raw text.
+  private func performOpenAIPromptRequest(
+    model: PromptModel,
+    systemPrompt: String,
+    history: [PromptHistoryTurn],
+    userContent: [[String: Any]],
+    apiKey: String
+  ) async throws -> String {
     // Assemble messages: system → history → current user turn.
-    var messages: [[String: Any]] = [["role": "system", "content": envelope.systemPrompt]]
-    messages.append(contentsOf: envelope.history.map {
+    var messages: [[String: Any]] = [["role": "system", "content": systemPrompt]]
+    messages.append(contentsOf: history.map {
       ["role": $0.isUser ? "user" : "assistant", "content": $0.text]
     })
     messages.append(["role": "user", "content": userContent])
@@ -1308,31 +1391,7 @@ class SpeechService {
       throw TranscriptionError.networkError("OpenAI returned no text content")
     }
 
-    // gpt-audio-1.5 sometimes answers an edit instruction with a JSON edit object rather than the
-    // edited text. Unwrap it before anything else touches the string, or the JSON is what the user
-    // pastes. No-op for the plain-text replies that are the norm.
-    let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
-      rawText, selectedText: clipboardContext)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
-
-    let instructionSource: PromptInstructionSource
-    if let textInstruction {
-      instructionSource = .known(textInstruction)
-    } else if let transcriptionTask {
-      instructionSource = .parallelTranscription(transcriptionTask)
-    } else {
-      instructionSource = .known(Self.voiceInstructionPlaceholder)
-    }
-    await recordPromptTurn(
-      normalizedText: normalizedText,
-      instruction: instructionSource,
-      mode: mode,
-      clipboardContext: clipboardContext,
-      model: model.rawValue,
-      hadScreenshot: envelope.hadScreenshot,
-      logPrefix: "PROMPT-MODE-OPENAI")
-    return normalizedText
+    return rawText
   }
 
   // MARK: - Local Prompt Mode
@@ -1414,6 +1473,38 @@ class SpeechService {
 
     let systemInstruction: [String: Any]? = envelope.systemPrompt.isEmpty
       ? nil : ["parts": [["text": envelope.systemPrompt]]]
+
+    // A local server with tool calling runs on the agent core when there is something to look up
+    // (in Offline Mode: the shared folders only). MLX has no tool-calling path — see
+    // `DictatePromptAgent.supportsAgent`.
+    let agentTools = DictatePromptAgent.supportsAgent(model)
+      ? await DictatePromptAgent.availableTools() : []
+    if !agentTools.isEmpty {
+      let agentStart = CFAbsoluteTimeGetCurrent()
+      let raw = try await DictatePromptAgent.run(
+        provider: LLMProviderFactory.provider(for: model),
+        requestModel: requestModel,
+        contents: contents,
+        systemPrompt: envelope.systemPrompt,
+        tools: agentTools,
+        baseOptions: .textTransform,
+        logPrefix: "PROMPT-MODE-LOCAL")
+      let now = CFAbsoluteTimeGetCurrent()
+      DebugLogger.logSpeech(
+        "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
+      let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
+      let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
+      try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
+      await recordPromptTurn(
+        normalizedText: agentText,
+        instruction: .known(instruction),
+        mode: mode,
+        clipboardContext: clipboardContext,
+        model: "\(providerTag):\(modelLabel)",
+        hadScreenshot: false,
+        logPrefix: "PROMPT-MODE-LOCAL")
+      return agentText
+    }
 
     let requestTime = CFAbsoluteTimeGetCurrent()
     let stream = LLMProviderFactory.provider(for: model).sendChatStream(
