@@ -1,6 +1,6 @@
 # WhisperShortcut
 
-**Voice-first AI for your Mac.** Press ⌘1 anywhere, speak, and the transcription inserts at the cursor — auto-paste, off by default and direct-download only — or lands on the clipboard, ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
+**Voice-first AI for your Mac.** Press ⌃⌥1 anywhere, speak, and the transcription inserts at the cursor — auto-paste, off by default and direct-download only — or lands on the clipboard, ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
 
 Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or run fully offline with local Whisper. No account, no subscription, no backend. Open source (AGPL-3.0).
 
@@ -22,7 +22,7 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 - **Offline Mode**: One switch (Settings → Privacy & Permissions, also offered during onboarding) that makes the app device-local: dictation runs on an on-device Whisper model, requests the app itself builds are blocked at the network layer, and no transcript, prompt or audio sample is written to the usage log. Requests to your own machine or local network still work, so a Whisper server or Ollama on your network stays available. Downloading a Whisper or MLX model from Hugging Face still works (WhisperKit uses its own URLSession, which the Offline Mode guard does not wrap — that download carries no content of yours). Dictate Prompt keeps working through an in-process MLX model (Qwen3 4B Instruct, downloads itself, no server needed) or a local Ollama / LM Studio server if you prefer to run your own. Offline MLX and HTTP-local models read plain text, so they take the text to edit from your clipboard — in the App Store build, copy the text yourself (⌘C) before you start dictating, since that build cannot copy the selection for you. Chat can run on the same offline MLX models; Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations have no on-device equivalent and stop working while it is on. Built for regulated dictation — patient findings, case notes — where "the recording never leaves this device" has to hold whatever else is configured.
 - **Auto-paste**: Insert the result at the cursor via simulated ⌘V (Settings → Clipboard Behavior). Off by default; needs the Accessibility permission; direct-download only — the App Store build copies to the clipboard instead. Turn on **Restore clipboard** alongside it for a non-destructive paste: whatever you had copied before dictating goes back on the clipboard right after the text is pasted.
 - **Copy Last Transcription**: Every dictation result stays available in the menu bar — one entry re-copies the most recent transcription, and a **Recent Transcriptions** submenu holds the last five. Use it when an auto-paste landed in the wrong window, or when a later copy overwrote the clipboard.
-- **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models, in-process offline MLX models (no server), or a local Ollama / LM Studio server; optional screenshots can be included with the prompt. While recording, your most frequent instructions appear above the pill — Return or a number key runs one without speaking.
+- **Dictate Prompt**: Speak an instruction that edits the current clipboard text, for example "make this shorter" or "translate this to English". Supports Gemini and OpenAI audio-input models, in-process offline MLX models (no server), or a local Ollama / LM Studio server; optional screenshots can be included with the prompt. With Gemini and a connected Google account, Trello or shared folder, it can look things up while it writes (read-only: your calendar, tasks, email, Trello cards, shared files), for example "reply and offer my free slot on Thursday"; switch this off in Settings → Dictate Prompt. While recording, your most frequent instructions appear above the pill — Return or a number key runs one without speaking.
 - **Read Aloud**: Press the shortcut on any selected text to copy it and read it aloud with Gemini, OpenAI, xAI, or on-device macOS voices. Playback starts after the first sentence or two is synthesized (typically a few seconds) while the rest streams in behind it, so you do not wait for the whole text. Markdown and links are stripped before synthesis, an optional Smart Rewrite pass cleans up code, logs or messy notes (plain prose skips it, saving the extra round trip), and playback speed is configurable. While it reads, a player pill at the bottom of the screen offers Stop, Pause / Resume, ±10 s skip buttons, a draggable progress bar with elapsed / total time, and a speed button that steps through 0.75×–2× live (the chosen speed is kept as the new default); pressing the shortcut again also stops. In Offline Mode the macOS voice is selected automatically.
 - **Screenshot**: Capture the screen from the menu bar and optionally attach it to Dictate Prompt or chat, or save captures to a folder.
 - **Voice Feedback**: Press the shortcut and speak a correction or instruction about how the app should work. Select text first and it is taken as the authoritative spelling — select a name, say "remember how this is spelled", and the glossary gets the characters from your selection rather than from how the transcription heard them — for example "my name is spelled G-ö-d-d-e" or "stop capitalizing every noun in Dictate Prompt output". The app turns it into a proposed change to your dictation context (transcription prompt, Whisper glossary, Dictate Prompt, or Chat), which you review in a diff window before it is applied. It is the on-demand, spoken counterpart to Smart Improvement's automatic learning.
@@ -64,15 +64,17 @@ Default menu bar shortcuts (all configurable in Settings → General):
 
 | Action | Default shortcut |
 | --- | --- |
-| Dictate | ⌘1 |
-| Dictate Prompt | ⌘2 |
-| Screenshot | ⌘3 |
-| Read Aloud | ⌘4 |
-| Voice Feedback | ⌘5 |
-| Flag Meeting Moment | ⌘6 |
-| Add Selection to Glossary | ⌘7 |
+| Dictate | ⌃⌥1 |
+| Dictate Prompt | ⌃⌥2 |
+| Screenshot | ⌃⌥3 |
+| Read Aloud | ⌃⌥4 |
+| Voice Feedback | ⌃⌥5 |
+| Flag Meeting Moment | ⌃⌥6 |
+| Add Selection to Glossary | ⌃⌥7 |
 | Chat | ⌥Space |
-| Settings | ⌘0 |
+| Settings | ⌃⌥0 |
+
+Installs from before these defaults keep ⌘1–⌘7 and ⌘0. Every shortcut can be changed in Settings → General, and the in-app Chat always sees your current bindings.
 
 Press **Stop** in the menu bar (or use the active mode's shortcut again) to cancel recording, TTS playback, or in-flight processing.
 
@@ -131,7 +133,7 @@ Recommendations by what you care about:
 3. Speak an instruction, such as "turn this into bullet points".
 4. The edited result inserts at the cursor when auto-paste is on, and is always copied to the clipboard.
 
-Optional: capture a screenshot (⌘3 or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
+Optional: capture a screenshot (the Screenshot shortcut or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
 
 ### Read Aloud
 
@@ -159,7 +161,7 @@ Core slash commands:
 - `/workspace` — limit this chat to one of the shared folders (e.g. `/workspace notes`); `all` restores every folder, `off` drops file access for this chat
 - `/model` — switch model (e.g. `/model 3.5 flash`)
 - `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`)
-- `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat → Advanced
+- `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
 - `/settings` — open Settings
 - `/pin` / `/unpin` — keep the window open or close on focus loss
 - `/meeting` — start or stop live meeting recording

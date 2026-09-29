@@ -1,6 +1,6 @@
 # WhisperShortcut
 
-**Voice-first AI for your Mac.** Press ⌘1 anywhere, speak, and the transcription inserts at the cursor — auto-paste, off by default and direct-download only — or lands on the clipboard, ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
+**Voice-first AI for your Mac.** Press ⌃⌥1 anywhere, speak, and the transcription inserts at the cursor — auto-paste, off by default and direct-download only — or lands on the clipboard, ready to paste into any app. Speak an instruction (⌘2) to rewrite whatever you copied, have any selected text read aloud (⌘4), or open an AI chat that works with your Calendar, Gmail, Tasks, and Trello (⌥Space).
 
 Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or run fully offline with local Whisper. No account, no subscription, no backend. Open source (AGPL-3.0).
 
@@ -64,15 +64,17 @@ Default menu bar shortcuts (all configurable in Settings → General):
 
 | Action | Default shortcut |
 | --- | --- |
-| Dictate | ⌘1 |
-| Dictate Prompt | ⌘2 |
-| Screenshot | ⌘3 |
-| Read Aloud | ⌘4 |
-| Voice Feedback | ⌘5 |
-| Flag Meeting Moment | ⌘6 |
-| Add Selection to Glossary | ⌘7 |
+| Dictate | ⌃⌥1 |
+| Dictate Prompt | ⌃⌥2 |
+| Screenshot | ⌃⌥3 |
+| Read Aloud | ⌃⌥4 |
+| Voice Feedback | ⌃⌥5 |
+| Flag Meeting Moment | ⌃⌥6 |
+| Add Selection to Glossary | ⌃⌥7 |
 | Chat | ⌥Space |
-| Settings | ⌘0 |
+| Settings | ⌃⌥0 |
+
+Installs from before these defaults keep ⌘1–⌘7 and ⌘0. Every shortcut can be changed in Settings → General, and the in-app Chat always sees your current bindings.
 
 Press **Stop** in the menu bar (or use the active mode's shortcut again) to cancel recording, TTS playback, or in-flight processing.
 
@@ -131,7 +133,7 @@ Recommendations by what you care about:
 3. Speak an instruction, such as "turn this into bullet points".
 4. The edited result inserts at the cursor when auto-paste is on, and is always copied to the clipboard.
 
-Optional: capture a screenshot (⌘3 or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
+Optional: capture a screenshot (the Screenshot shortcut or chat `/screenshot`) before or during the prompt when screenshot-in-prompt mode is enabled.
 
 ### Read Aloud
 
