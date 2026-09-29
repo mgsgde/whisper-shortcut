@@ -184,6 +184,9 @@ enum UserDefaultsKeys {
   /// Whether Claude models get Anthropic's server-side web search (billed per search on the
   /// user's key). Unset → on. Settings → Chat → "Web Search for Claude".
   static let claudeWebSearchEnabled = "claudeWebSearchEnabled"
+  /// Dictate Prompt may call read-only tools (calendar, mail, Trello, shared files) when an
+  /// integration is connected. Default on. Read by `DictatePromptAgent.isEnabledInSettings`.
+  static let dictatePromptToolsEnabled = "dictatePromptToolsEnabled"
 
   // MARK: - Local LLM (OpenAI-compatible, e.g. Ollama / LM Studio)
   /// Base URL of the local OpenAI-compatible server (the part before `/chat/completions`),

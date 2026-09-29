@@ -1114,14 +1114,30 @@ class SpeechService {
       }
     }
 
-    let normalizedText = try await performGeminiPromptRequest(
-      model: model,
-      mode: mode,
-      userParts: userParts,
-      systemPrompt: envelope.systemPrompt,
-      credential: credential,
-      logPrefix: "PROMPT-MODE-GEMINI"
-    )
+    // With a connected integration, run on the chat's agent core so the instruction can look
+    // things up (read-only). Otherwise the single request below, unchanged.
+    let agentTools = await DictatePromptAgent.availableTools()
+    let normalizedText: String
+    if !agentTools.isEmpty {
+      let raw = try await DictatePromptAgent.run(
+        model: model,
+        history: PromptConversationHistory.shared.getContentsForAPI(mode: mode),
+        userParts: userParts,
+        systemPrompt: envelope.systemPrompt,
+        tools: agentTools,
+        logPrefix: "PROMPT-MODE-GEMINI")
+      normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
+      try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
+    } else {
+      normalizedText = try await performGeminiPromptRequest(
+        model: model,
+        mode: mode,
+        userParts: userParts,
+        systemPrompt: envelope.systemPrompt,
+        credential: credential,
+        logPrefix: "PROMPT-MODE-GEMINI"
+      )
+    }
 
     let instructionSource: PromptInstructionSource
     if let textInstruction {

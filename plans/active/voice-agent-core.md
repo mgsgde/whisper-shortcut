@@ -1,7 +1,10 @@
 # One Agent Core for Chat and Dictate Prompt (D11)
 
-**Status:** Slice 1 done (2026-09-29, branch `feat/agent-runner`, built on
-`feat/chat-approval-card`); slice 2 in progress. Decisions below are settled.
+**Status:** Slices 1 and 2 done (2026-09-29, branch `feat/agent-runner`, built on
+`feat/chat-approval-card`). Slice 2 covers the **Gemini** Dictate Prompt path only: OpenAI
+GPT-Audio runs on Chat Completions `input_audio`, which the chat's Responses provider does not
+speak, and local models are text-only — both keep the classic pipeline. Tool records are not yet
+kept in the Dictate Prompt history (`PromptConversationHistory` stores text only). Both are open.
 **Audience:** LLM implementing it end-to-end, one slice per PR.
 **Origin:** app review 2026-09-29, recommendation D11.
 
