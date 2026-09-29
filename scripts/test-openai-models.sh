@@ -28,6 +28,10 @@ declare -a CURRENT_CHAT_MODELS=(
   "gpt-5.6-sol"
   "gpt-5.6-terra"
   "gpt-5.6-luna"
+  # GPT-6 family, added 2026-09-29; the whole 5.6 family is hidden behind it (chatReplacement).
+  # gpt-6-astra is deliberately not offered (research price-performance, see PromptModel).
+  "gpt-6-sol"
+  "gpt-6-luna"
 )
 # gpt-audio (renamed from gpt-4o-audio-preview) requires audio modality — tested separately below.
 declare -a CURRENT_AUDIO_CHAT_MODELS=(

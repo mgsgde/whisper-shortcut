@@ -110,16 +110,17 @@ enum ChatModelCommandResolver {
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver
       // returns only the text-capable OpenAI models.
-      // gpt-5.5 / gpt-5.4 are Pareto-dominated by their same-price 5.6 twins and no longer
-      // offered; "5.5"/"5.4" still resolve, to the model that replaced them.
-      if normalized.contains("5.5") || normalized.contains("sol") {
-        candidates = [.openaiGPT56Sol]
-      } else if normalized.contains("5.4") || normalized.contains("terra") {
-        candidates = [.openaiGPT56Terra]
+      // The 5.x chat models are Pareto-dominated by GPT-6 and no longer offered; "5.5"/"5.4"/
+      // "terra" still resolve, to the model that replaced them. "mini" keeps 5.4 Mini.
+      if normalized.contains("mini") {
+        candidates = [.openaiGPT5Mini]
       } else if normalized.contains("luna") {
-        candidates = [.openaiGPT56Luna]
+        candidates = [.openaiGPT6Luna]
+      } else if normalized.contains("sol") || normalized.contains("terra")
+        || normalized.contains("5.5") || normalized.contains("5.4") || normalized.contains("6") {
+        candidates = [.openaiGPT6Sol]
       } else {
-        candidates = [.openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT56Terra, .openaiGPT56Sol]
+        candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT6Sol]
       }
     } else if normalized.contains("3.8") {
       candidates = [.gemini38Flash]

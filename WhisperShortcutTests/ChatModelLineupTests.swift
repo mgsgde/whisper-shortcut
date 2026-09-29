@@ -81,6 +81,10 @@ struct ChatModelLineupTests {
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.8-flash") == .gemini38Flash)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.7") == .grok47)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.6") == .grok47)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-sol") == .openaiGPT6Sol)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-terra") == .openaiGPT6Sol)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.6-luna") == .openaiGPT6Luna)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gpt-5.4-mini") == .openaiGPT5Mini)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
   }
 

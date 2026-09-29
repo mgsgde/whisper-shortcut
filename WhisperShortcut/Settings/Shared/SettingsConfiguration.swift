@@ -27,7 +27,7 @@ enum ChatModelProvider: String, CaseIterable {
     switch self {
     case .gemini: return .gemini38Flash
     case .grok:   return .grok47
-    case .openai: return .openaiGPT56Sol
+    case .openai: return .openaiGPT6Sol
     case .anthropic: return .claudeSonnet5
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
@@ -112,6 +112,14 @@ enum PromptModel: String, CaseIterable {
   case openaiGPT56Sol = "gpt-5.6-sol"
   case openaiGPT56Terra = "gpt-5.6-terra"
   case openaiGPT56Luna = "gpt-5.6-luna"
+  // GPT-6 family (GA, 1.05M context), prices verified 2026-09-29 at
+  // https://developers.openai.com/api/docs/pricing: sol $2/$10, luna $0.10/$0.50 per 1M. Both
+  // undercut their 5.6 counterparts at a newer generation, so the whole 5.6 family is hidden via
+  // `chatReplacement`. gpt-6-astra ($10/$50, "the hardest end-to-end work") is deliberately NOT
+  // offered: chat here is used for research and questions, not coding, and Astra's price buys
+  // nothing for that — pick models by research price-performance, not by top capability.
+  case openaiGPT6Sol = "gpt-6-sol"
+  case openaiGPT6Luna = "gpt-6-luna"
   /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
   /// counterpart to Gemini for Dictate Prompt (the model "hears" the audio directly).
   ///
@@ -215,6 +223,10 @@ enum PromptModel: String, CaseIterable {
       return "OpenAI GPT-5.6 Terra"
     case .openaiGPT56Luna:
       return "OpenAI GPT-5.6 Luna"
+    case .openaiGPT6Sol:
+      return "OpenAI GPT-6 Sol"
+    case .openaiGPT6Luna:
+      return "OpenAI GPT-6 Luna"
     case .openaiGPT4oAudio:
       return "OpenAI GPT Audio"
     case .claudeSonnet5:
@@ -273,6 +285,8 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT56Sol:    return "gpt56sol"
     case .openaiGPT56Terra:  return "gpt56terra"
     case .openaiGPT56Luna:   return "gpt56luna"
+    case .openaiGPT6Sol:     return "gpt6sol"
+    case .openaiGPT6Luna:    return "gpt6luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     case .claudeSonnet5:     return "claudesonnet5"
     case .claudeOpus5:       return "claudeopus5"
@@ -329,7 +343,11 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT56Terra:
       return "OpenAI's GPT-5.6 Terra • Balanced tier of the newest generation • Half the price of Sol • Needs an OpenAI API key"
     case .openaiGPT56Luna:
-      return "OpenAI's GPT-5.6 Luna • Cheapest of the newest generation • Fast everyday chat • Needs an OpenAI API key"
+      return "OpenAI's GPT-5.6 Luna • Previous-generation cheap tier • Needs an OpenAI API key"
+    case .openaiGPT6Sol:
+      return "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key"
+    case .openaiGPT6Luna:
+      return "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
     case .claudeSonnet5:
@@ -370,9 +388,9 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
       return "Medium"
     case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
-         .claudeSonnet5:
+         .openaiGPT6Sol, .claudeSonnet5:
       return "Medium"
-    case .openaiGPT5Mini, .openaiGPT56Luna:
+    case .openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT6Luna:
       return "Low"
     case .claudeOpus5, .claudeOpus48, .claudeFable5:
       return "High"
@@ -390,7 +408,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
       return .grok
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return .openai
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return .anthropic
@@ -552,8 +570,12 @@ enum PromptModel: String, CaseIterable {
     // used in earlier GPT-5 families") while 5.4-mini is the *mini* rung ("our strongest mini
     // model yet"). Different rungs of one price ladder are all frontier points, so both stay.
     // Prices re-verified 2026-08-02: https://developers.openai.com/api/docs/pricing
-    case .openaiGPT55: return .openaiGPT56Sol
-    case .openaiGPT5: return .openaiGPT56Terra
+    // 2026-09-29: the GPT-6 family undercuts all of 5.6 at a newer generation — luna $0.10/$0.50
+    // vs $0.20/$1.20 (same rung), sol $2/$10 vs terra $2/$12. 5.6 Sol ($4/$20) is hidden by
+    // owner decision: no published quality comparison against 6 Sol, but at half the price 6 Sol
+    // is the better research model, and research — not coding — is what chat is used for.
+    case .openaiGPT55, .openaiGPT5, .openaiGPT56Sol, .openaiGPT56Terra: return .openaiGPT6Sol
+    case .openaiGPT56Luna: return .openaiGPT6Luna
     // Anthropic: claude-opus-5 and claude-opus-4-8 are both $5/$25 per 1M with a 1M context and
     // 128k max output. Identical on every price and capacity axis, newer generation, later
     // knowledge cutoff (May 2026 vs Jan 2026) — and Anthropic itself files 4.8 under
@@ -608,7 +630,7 @@ enum PromptModel: String, CaseIterable {
     // Non-Gemini — ignored by other providers
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna,
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
          .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return nil
@@ -654,7 +676,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
       return nil // Grok models are text-only, no audio transcription
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna:
+         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
       return nil // Claude is chat-only here; no audio transcription endpoint

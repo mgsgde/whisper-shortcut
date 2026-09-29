@@ -10,7 +10,7 @@ import Testing
 struct ModelSelectionReconcilerTests {
 
   private let chatCandidates: [PromptModel] = [
-    .gemini37Flash, .openaiGPT56Sol, .grok43,
+    .gemini37Flash, .openaiGPT6Sol, .grok43,
   ]
 
   @Test("Preferred prompt model follows Gemini → OpenAI → Grok")
@@ -20,7 +20,7 @@ struct ModelSelectionReconcilerTests {
         == .gemini37Flash)
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .openai })
-        == .openaiGPT56Sol)
+        == .openaiGPT6Sol)
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .grok })
         == .grok43)
@@ -47,7 +47,7 @@ struct ModelSelectionReconcilerTests {
   @Test("Falls back to the first candidate of a keyed provider")
   func preferredPromptFallsBackToFirstCandidate() {
     // When the canonical default is in the list, prefer it even if it is not first.
-    let withDefault: [PromptModel] = [.openaiGPT5Mini, .openaiGPT56Sol]
+    let withDefault: [PromptModel] = [.openaiGPT5Mini, .openaiGPT6Sol]
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: withDefault, hasKey: { $0 == .openai })
         == ChatModelProvider.openai.defaultChatModel)
