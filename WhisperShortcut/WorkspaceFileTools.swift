@@ -233,7 +233,7 @@ enum WorkspaceFileTools {
     }
 
     DebugLogger.logSuccess(
-      "WORKSPACE-TOOL: search '\(trimmedQuery)' matched \(matches.count) file(s) after \(visited) visits")
+      "WORKSPACE-TOOL: search \(DebugLogger.redacted(trimmedQuery)) matched \(matches.count) file(s) after \(visited) visits")
     var result: [String: Any] = [
       "query": trimmedQuery, "matches": matches, "count": matches.count,
       "files_scanned": visited,

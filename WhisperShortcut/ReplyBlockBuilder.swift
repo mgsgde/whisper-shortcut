@@ -317,7 +317,7 @@ enum ReplyBlockBuilder {
       if let items = parseBulletItems(bulletPart) {
         blocks.append(.bulletList(items))
       } else {
-        DebugLogger.log("BLOCKS: bullet part failed parse: \(bulletPart.prefix(80))")
+        DebugLogger.log("BLOCKS: bullet part failed parse \(DebugLogger.redacted(bulletPart))")
         blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
       }
       return blocks

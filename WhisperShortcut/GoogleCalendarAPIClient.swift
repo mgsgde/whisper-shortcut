@@ -75,7 +75,7 @@ actor GoogleCalendarAPIClient {
   func createEvent(summary: String, startISO: String, endISO: String, timeZone: String,
                    location: String? = nil, description: String? = nil,
                    recurrence: [String]? = nil, allDay: Bool = false) async throws -> [String: Any] {
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(summary) start=\(startISO) end=\(endISO) allDay=\(allDay) recurrence=\(recurrence ?? [])")
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: createEvent summary=\(DebugLogger.redacted(summary)) start=\(startISO) end=\(endISO) allDay=\(allDay) recurrence=\(recurrence ?? [])")
 
     let dedupKey = "\(summary)|\(startISO)|\(endISO)|\((recurrence ?? []).joined(separator: ","))"
     let now = Date()

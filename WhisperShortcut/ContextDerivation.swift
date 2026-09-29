@@ -272,7 +272,7 @@ class ContextDerivation {
     // what lets a term mis-heard across the whole history (a distinctive word transcribed as a more
     // common one) get its audio in front of the verifier, instead of only whatever the newest clips were.
     let candidates = candidateTermsForVerification(refToText: refToText)
-    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count) top=[\(candidates.prefix(15).joined(separator: ", "))]")
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count)")
 
     let cap = AppConstants.audioSamplesPerRun
     let byteBudget = AppConstants.audioAttachmentMaxTotalBytes

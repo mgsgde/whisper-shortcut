@@ -129,7 +129,7 @@ class SpeechService {
 
     DebugLogger.log(
       "GLOSSARY: conditioning transcription with \(glossary.count) chars"
-        + " + \(parsed.corrections.count) tie-breaker(s): \(glossary.prefix(200))")
+        + " + \(parsed.corrections.count) tie-breaker(s)")
     return base.isEmpty ? block : base + "\n\n" + block
   }
 

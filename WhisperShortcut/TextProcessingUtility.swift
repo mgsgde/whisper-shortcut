@@ -225,7 +225,7 @@ enum TextProcessingUtility {
     else {
       DebugLogger.logError(
         "PROMPT-JSON-UNWRAP: response is a JSON object but no known shape matched — passing it "
-          + "through unchanged: \(trimmed.prefix(160))")
+          + "through unchanged \(DebugLogger.redacted(trimmed))")
       return text
     }
 
@@ -313,7 +313,7 @@ enum TextProcessingUtility {
     let maxPlausibleCharacters = Int(audioDurationSeconds * 60.0) + 40
     guard text.count > maxPlausibleCharacters else { return text }
     DebugLogger.logError(
-      "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters)): '\(text.prefix(120))'"
+      "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters))"
     )
     return ""
   }
@@ -354,7 +354,7 @@ enum TextProcessingUtility {
     guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
 
     DebugLogger.logError(
-      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms): '\(trimmed.prefix(120))'"
+      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms)"
     )
     return ""
   }
