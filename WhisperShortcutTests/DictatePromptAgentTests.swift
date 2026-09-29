@@ -70,6 +70,13 @@ struct DictatePromptAgentTests {
     }
   }
 
+  @Test("OpenAI quick actions use a text model, never the audio-only one")
+  func quickActionModel() {
+    #expect(SpeechService.openAIQuickActionModel.provider == .openai)
+    #expect(SpeechService.openAIQuickActionModel != .openaiGPT4oAudio)
+    #expect(!SpeechService.openAIQuickActionModel.supportsDirectAudioInput)
+  }
+
   @Test("Round cap stays small")
   func roundCap() {
     #expect(DictatePromptAgent.maxToolRounds == 3)
@@ -152,6 +159,24 @@ struct DictatePromptAgentLiveTests {
       tools: tools,
       logPrefix: "TEST-DICTATE-PROMPT-AGENT-OPENAI")
     #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "empty reply")
+  }
+
+  @Test(
+    "An OpenAI quick action (text instruction, no audio) succeeds on the text model",
+    .enabled(if: KeychainManager.shared.hasNonEmpty(.openAI), "No OpenAI key in .env"))
+  func openAIQuickActionOnTextModel() async throws {
+    let apiKey = try ProviderCredentials.require(.openAI)
+    let text = try await SpeechService().performOpenAIPromptRequest(
+      model: SpeechService.openAIQuickActionModel,
+      systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
+        logPrefix: "TEST", usesScreenshotSelection: false),
+      history: [],
+      userContent: [
+        ["type": "text", "text": "\(AppConstants.clipboardSelectionHeader)\n\nhelo wrold"],
+        ["type": "text", "text": "VOICE INSTRUCTION:\nFix the spelling."],
+      ],
+      apiKey: apiKey)
+    #expect(text.lowercased().contains("hello world"), "got: \(text)")
   }
 
   @Test(
