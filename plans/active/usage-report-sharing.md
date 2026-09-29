@@ -251,6 +251,10 @@ same `mailto:` / `wa.me` flow and ships today with "Data Not Collected". The usa
 what is prefilled, not how anything is transmitted. Re-check only if the app ever gains an
 automatic or background send path — that would fail criterion 3 immediately.
 
+**Superseded for the label (2026-09-29):** `plans/active/opt-in-telemetry.md` adds exactly that
+background path (opt-in, off by default). The App Store label must change to Usage Data +
+Diagnostics, *Not Linked to You* — see that plan. The Usage Report itself is unchanged.
+
 ---
 
 ## Risks and open questions

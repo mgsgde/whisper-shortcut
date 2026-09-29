@@ -1105,6 +1105,7 @@ class ChatViewModel: ObservableObject {
         // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
+        TelemetryService.shared.failed(.chat, error: error)
       }
     }
     sendTasks[sessionId] = task

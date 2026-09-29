@@ -1,6 +1,29 @@
 # Opt-in Anonymous Usage Statistics — Counts From Real Users, Off by Default
 
-**Status:** Planned (2026-09-29). Nothing implemented.
+**Status:** **Slices A–E implemented (2026-09-29), not yet released.** Server deployed
+(`whisper-telemetry`, europe-west1; request-log exclusion and BigQuery sink live, verified end to
+end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in
+`Settings/Components/UsageStatisticsSection.swift`, 14 tests in `TelemetryTests.swift`, report in
+`scripts/telemetry-report.sh`, review-growth Phase 1 reads it.
+
+**Before the release ships (human steps):**
+1. DNS at IONOS: `t` CNAME → `ghs.googlehosted.com.` (the app posts to `https://t.whispershortcut.com/v1/ping`;
+   the Cloud Run domain mapping exists and waits for it). Until then every send fails silently and is retried.
+2. App Store Connect → App Privacy: change the label as in the table below.
+3. Parent repo: `web/app/privacy/page.tsx` and `web/app/faq.ts`.
+
+**Deviations from the plan, found while building:**
+- Schema gained count name `started` (Read Aloud, meetings) and milestone `telemetry.enabled`,
+  which — not `dayIndex = 0` daily pings — is the cohort denominator: a day-0 user who quits and
+  never relaunches never sends their day-0 daily, but did send `telemetry.enabled` on the spot.
+- Failed daily sends are retried on the hourly flush, not once per launch: the app is a menu-bar
+  app that runs for weeks, so "per launch" would mean "almost never".
+- The server stores counts as `{key, n}` rows, not as the wire's keyed maps: a BigQuery log sink
+  turns every distinct key into a column. The sink also lowercases field names and adds a column
+  only once a row carried it, so `telemetry-report.sh` reads through JSON functions.
+- `promptRetry` is still detected only when "Save usage data" is on (detection lives behind
+  `ContextLogger`'s guard); every other signal is counted regardless.
+- Not built: the one-time notice for existing users. They find the switch in Settings only.
 **Audience:** LLM implementing the feature end-to-end
 **Decision (Magnus, 2026-09-29):** build opt-in telemetry, **off by default**.
 **Closes:** `plans/instrumentation-gaps.md` gap #2 (customer feature-level behavior is unmeasured —

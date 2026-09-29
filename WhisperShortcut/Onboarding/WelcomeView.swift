@@ -113,10 +113,12 @@ struct WelcomeView: View {
     .onAppear {
       refreshState()
       installArrowKeyMonitor()
+      TelemetryService.shared.onboardingStepReached(step)
     }
     .onChange(of: step) { newStep in
       // Persist progress so a mid-tour restart resumes here (see `onboardingCurrentStep`).
       UserDefaults.standard.set(newStep.rawValue, forKey: UserDefaultsKeys.onboardingCurrentStep)
+      TelemetryService.shared.onboardingStepReached(newStep)
     }
     .onDisappear { removeArrowKeyMonitor() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
