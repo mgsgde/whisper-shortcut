@@ -12,7 +12,15 @@ count derived from `resultJSON`. `ChatToolStepsView.swift` renders the collapsed
 streaming bubble shows it live from `ToolStepsBuffer` (web search excluded there, it has no record).
 Known gaps from its review: the group's expanded state resets when the streaming bubble
 re-enters the list at finalize (view identity changes); records of a round interrupted by Stop
-are dropped (pre-existing, queued separately). Slice 3 open.
+are dropped (pre-existing, queued separately).
+**Slice 3 implemented (2026-09-29, same branch):** `NSAlert.runModal()` is gone; `confirmToolCall`
+suspends on a `CheckedContinuation` held in `ChatViewModel.pendingApprovals` and the card
+(`ToolApprovalCardView`) answers it. Stop/cancellation and deleting the chat answer deny.
+"Allow for this chat" is gated by `ChatToolRegistry.allowsChatWideApproval`. Deviations: the
+"needs approval" badge is on the tab strip (the sidebar has no in-flight indicator to pair it
+with); steps auto-allowed for the chat don't carry an "Allowed for this chat" note; ↩/Esc act on
+the card only while the composer isn't focused (in the composer, Esc is Stop, which denies).
+All three slices done; delete this plan once merged.
 **Audience:** LLM implementing the feature end-to-end.
 **Goal:** The chat stops being a black box while it works. Every tool call becomes a visible,
 collapsible step; the typing indicator says which step is running and for how long; approval

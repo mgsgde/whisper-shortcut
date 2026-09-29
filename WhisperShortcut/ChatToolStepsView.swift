@@ -229,3 +229,52 @@ struct LiveChatToolStepsView: View {
     }
   }
 }
+
+/// Inline approval for a side-effectful tool call — replaces the old blocking `NSAlert`. The chat
+/// stays usable while it waits; Stop answers "deny".
+struct ToolApprovalCardView: View {
+  let request: ToolApprovalRequest
+  let onDecision: (ToolApprovalDecision) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: "hand.raised")
+          .foregroundColor(ChatTheme.secondaryText)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Allow this action?")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(ChatTheme.primaryText)
+          Text(request.summary)
+            .font(.system(size: 13))
+            .foregroundColor(ChatTheme.primaryText.opacity(0.85))
+            .lineLimit(8)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      HStack(spacing: 8) {
+        Spacer()
+        Button("Deny") { onDecision(.deny) }
+          .keyboardShortcut(.cancelAction)
+        if request.offersAllowForChat {
+          Button("Allow for this chat") { onDecision(.allowForChat) }
+        }
+        Button("Allow") { onDecision(.allow) }
+          .keyboardShortcut(.defaultAction)
+      }
+      .controlSize(.small)
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 12)
+        .fill(ChatTheme.controlBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12)
+        .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity * 2), lineWidth: 1)
+    )
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Approval needed: \(request.summary)")
+  }
+}
