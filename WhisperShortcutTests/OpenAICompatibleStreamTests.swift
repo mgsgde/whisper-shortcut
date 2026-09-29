@@ -297,6 +297,7 @@ struct OpenAICompatibleStreamTests {
     #expect(ChatViewModel.isTruncatedFinishReason("length"))
     #expect(ChatViewModel.isTruncatedFinishReason("MAX_TOKENS"))
     #expect(ChatViewModel.isTruncatedFinishReason("max_tokens"))
+    #expect(ChatViewModel.isTruncatedFinishReason("pause_turn"))
     #expect(!ChatViewModel.isTruncatedFinishReason("stop"))
     #expect(!ChatViewModel.isTruncatedFinishReason(nil))
   }

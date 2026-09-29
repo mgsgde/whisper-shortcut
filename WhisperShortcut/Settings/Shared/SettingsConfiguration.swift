@@ -694,10 +694,8 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen38B,
-         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
-      // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
-      // in this app (Claude web search would need a separate Anthropic tool wiring).
+         .localMLXQwen34BInstruct, .localMLXQwen38B:
+      // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
       return true

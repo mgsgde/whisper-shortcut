@@ -14,13 +14,51 @@ final class AnthropicChatProvider: LLMChatProvider {
 
   private init() {}
 
+  /// Anthropic's server-side web search, on for grounded chats like Gemini/GPT/Grok search. The basic
+  /// variant, deliberately: the dynamic-filtering versions run the search from inside code
+  /// execution, which adds block types this text-only history cannot replay. `max_uses` caps
+  /// the per-request bill ($10 per 1,000 searches on the user's key) and keeps the server loop
+  /// clear of `pause_turn`.
+  static let webSearchTool: [String: Any] = [
+    "type": "web_search_20250305",
+    "name": "web_search",
+    "max_uses": 5,
+  ]
+
+  /// Set once an org's admin turned web search off in the Anthropic Console: the API then rejects
+  /// every request that carries the tool with a 400. Remembered for the app run so each later chat
+  /// goes straight out without it instead of paying a failed round trip first.
+  private let searchStateLock = NSLock()
+  private var webSearchRejected = false
+
+  private var isWebSearchRejected: Bool {
+    searchStateLock.lock()
+    defer { searchStateLock.unlock() }
+    return webSearchRejected
+  }
+
+  private func markWebSearchRejected() {
+    searchStateLock.lock()
+    webSearchRejected = true
+    searchStateLock.unlock()
+  }
+
+  /// A 400 that names web search — the tool, not the chat, is what the API refused.
+  static func isWebSearchRejection(status: Int, body: String) -> Bool {
+    guard status == 400 else { return false }
+    let lower = body.lowercased()
+    return lower.contains("web search") || lower.contains("web_search")
+  }
+
+  private struct WebSearchRejected: Error {}
+
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    // Only `thinkingLevel` applies: Claude web search isn't wired in this app, there are no
-    // auto-enabled built-ins, and Anthropic caches via explicit cache_control breakpoints.
+    // `useGrounding` / `disableBuiltInTools` gate web search (see `webSearchTool`) and
+    // `thinkingLevel` maps to effort; Anthropic caches via explicit cache_control breakpoints.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
@@ -52,14 +90,18 @@ final class AnthropicChatProvider: LLMChatProvider {
           if let systemText, !systemText.isEmpty {
             body["system"] = systemText
           }
-          if !tools.isEmpty {
-            body["tools"] = tools.map { tool in
-              [
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.parameters,
-              ] as [String: Any]
-            }
+          let clientTools = tools.map { tool in
+            [
+              "name": tool.name,
+              "description": tool.description,
+              "input_schema": tool.parameters,
+            ] as [String: Any]
+          }
+          var includesSearch =
+            options.useGrounding && !options.disableBuiltInTools && !self.isWebSearchRejected
+          let allTools = (includesSearch ? [Self.webSearchTool] : []) + clientTools
+          if !allTools.isEmpty {
+            body["tools"] = allTools
           }
           if let effort = options.thinkingLevel.anthropicEffort,
              Self.supportsEffort(model: model) {
@@ -68,27 +110,63 @@ final class AnthropicChatProvider: LLMChatProvider {
 
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
           DebugLogger.logNetwork(
-            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
+            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) webSearch=\(includesSearch) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
           )
 
-          let bytes = try await RetryBackoff.withPreFirstTokenRetry(logTag: "ANTHROPIC-CHAT-STREAM") {
-            let (bytes, response) = try await self.session.bytes(for: request)
-            guard let http = response as? HTTPURLResponse else {
-              throw TranscriptionError.networkError("Invalid response from Anthropic API")
+          func openStream() async throws -> URLSession.AsyncBytes {
+            try await RetryBackoff.withPreFirstTokenRetry(logTag: "ANTHROPIC-CHAT-STREAM") {
+              let (bytes, response) = try await self.session.bytes(for: request)
+              guard let http = response as? HTTPURLResponse else {
+                throw TranscriptionError.networkError("Invalid response from Anthropic API")
+              }
+              if http.statusCode < 200 || http.statusCode >= 300 {
+                var errData = Data()
+                for try await b in bytes { errData.append(b) }
+                let text = String(data: errData, encoding: .utf8) ?? ""
+                DebugLogger.logError("ANTHROPIC-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
+                if includesSearch, Self.isWebSearchRejection(status: http.statusCode, body: text) {
+                  throw WebSearchRejected()
+                }
+                throw Self.mapHTTPError(status: http.statusCode, body: text)
+              }
+              return bytes
             }
-            if http.statusCode < 200 || http.statusCode >= 300 {
-              var errData = Data()
-              for try await b in bytes { errData.append(b) }
-              let text = String(data: errData, encoding: .utf8) ?? ""
-              DebugLogger.logError("ANTHROPIC-CHAT-STREAM: HTTP \(http.statusCode) body=\(text.prefix(500))")
-              throw Self.mapHTTPError(status: http.statusCode, body: text)
+          }
+
+          let bytes: URLSession.AsyncBytes
+          do {
+            bytes = try await openStream()
+          } catch is WebSearchRejected {
+            // Search is off for this org; the chat itself should still work.
+            DebugLogger.logWarning("ANTHROPIC-CHAT-STREAM: web search rejected by the API — retrying without it")
+            self.markWebSearchRejected()
+            includesSearch = false
+            if clientTools.isEmpty {
+              body.removeValue(forKey: "tools")
+            } else {
+              body["tools"] = clientTools
             }
-            return bytes
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            bytes = try await openStream()
           }
 
           var pendingToolUses: [(id: String, name: String, inputJSON: String)] = []
           var currentToolUseIndex: Int?
           var finishReason: String?
+          var citations = AnthropicCitationCollector()
+          // Characters yielded so far — the offsets citation supports are measured in, so they
+          // must count every separator we insert too.
+          var yieldedChars = 0
+          var currentBlockIsText = false
+          // Text after a search (or any non-text block) is a new thought: without a break the
+          // "I'll search for that." preamble runs straight into the answer.
+          var needsSeparator = false
+          var hasYieldedText = false
+          func yieldText(_ text: String) {
+            continuation.yield(.textDelta(text))
+            yieldedChars += text.count
+            hasYieldedText = true
+          }
 
           for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -101,10 +179,26 @@ final class AnthropicChatProvider: LLMChatProvider {
 
             switch type {
             case "content_block_start":
-              if let block = obj["content_block"] as? [String: Any],
-                 (block["type"] as? String) == "tool_use",
-                 let id = block["id"] as? String,
-                 let name = block["name"] as? String {
+              let block = obj["content_block"] as? [String: Any]
+              let blockType = block?["type"] as? String
+              currentBlockIsText = blockType == "text"
+              if currentBlockIsText {
+                if needsSeparator {
+                  yieldText("\n\n")
+                  needsSeparator = false
+                }
+                citations.textBlockStarted(at: yieldedChars)
+                if let initial = block?["text"] as? String, !initial.isEmpty { yieldText(initial) }
+              } else if hasYieldedText {
+                needsSeparator = true
+              }
+              if blockType == "server_tool_use" {
+                continuation.yield(.activity(.searchingWeb))
+                DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: server_tool_use name=\(block?["name"] as? String ?? "?")")
+              }
+              if blockType == "tool_use",
+                 let id = block?["id"] as? String,
+                 let name = block?["name"] as? String {
                 pendingToolUses.append((id: id, name: name, inputJSON: ""))
                 currentToolUseIndex = pendingToolUses.count - 1
                 DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: tool_use start name=\(name) id=\(id)")
@@ -115,7 +209,9 @@ final class AnthropicChatProvider: LLMChatProvider {
             case "content_block_delta":
               if let delta = obj["delta"] as? [String: Any] {
                 if let text = delta["text"] as? String, !text.isEmpty {
-                  continuation.yield(.textDelta(text))
+                  yieldText(text)
+                } else if let citation = delta["citation"] as? [String: Any] {
+                  citations.add(citation)
                 } else if let partial = delta["partial_json"] as? String,
                           let idx = currentToolUseIndex,
                           pendingToolUses.indices.contains(idx) {
@@ -124,6 +220,8 @@ final class AnthropicChatProvider: LLMChatProvider {
               }
 
             case "content_block_stop":
+              if currentBlockIsText { citations.textBlockEnded(at: yieldedChars) }
+              currentBlockIsText = false
               currentToolUseIndex = nil
 
             case "message_delta":
@@ -149,8 +247,15 @@ final class AnthropicChatProvider: LLMChatProvider {
             continuation.yield(.functionCall(name: tool.name, args: args, thoughtSignature: tool.id))
           }
 
-          DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: stream end, finishReason=\(finishReason ?? "nil")")
-          continuation.yield(.finished(sources: [], supports: [], finishReason: finishReason))
+          // `pause_turn` means the server-side search loop hit its iteration cap. Resuming needs the
+          // paused content blocks sent back verbatim, which this text-only history doesn't keep, so
+          // the reply ends with what streamed so far. `max_uses` keeps this rare.
+          if finishReason == "pause_turn" {
+            DebugLogger.logWarning("ANTHROPIC-CHAT-STREAM: pause_turn — reply ends at the paused search loop")
+          }
+          DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: stream end, finishReason=\(finishReason ?? "nil") sources=\(citations.sources.count) supports=\(citations.supports.count)")
+          continuation.yield(.finished(
+            sources: citations.sources, supports: citations.supports, finishReason: finishReason))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -378,5 +483,47 @@ enum AnthropicMessagesConverter {
       }
     }
     return result
+  }
+}
+
+// MARK: - Web search citations
+
+/// Turns the web-search citations Claude streams into the sources + paragraph supports the reply
+/// renderer already uses for Gemini grounding.
+///
+/// Claude splits its answer into text blocks and attaches `citations_delta` events to the block
+/// that makes the claim, so a block's character range in the streamed reply is exactly the span a
+/// source supports. Nothing is written into the reply text itself.
+struct AnthropicCitationCollector {
+  private(set) var sources: [GroundingSource] = []
+  private(set) var supports: [GroundingSupport] = []
+  private var blockStart = 0
+  private var blockSourceIndices: [Int] = []
+
+  mutating func textBlockStarted(at offset: Int) {
+    blockStart = offset
+    blockSourceIndices = []
+  }
+
+  /// One `citations_delta` citation. Only web results carry a URL; other kinds are ignored.
+  mutating func add(_ citation: [String: Any]) {
+    guard let url = (citation["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !url.isEmpty else { return }
+    let index: Int
+    if let existing = sources.firstIndex(where: { $0.uri == url }) {
+      index = existing
+    } else {
+      sources.append(GroundingSource(uri: url, title: GroundingSource.displayTitle(for: url)))
+      index = sources.count - 1
+    }
+    if !blockSourceIndices.contains(index) { blockSourceIndices.append(index) }
+  }
+
+  mutating func textBlockEnded(at offset: Int) {
+    if !blockSourceIndices.isEmpty, offset > blockStart {
+      supports.append(GroundingSupport(
+        startIndex: blockStart, endIndex: offset, groundingChunkIndices: blockSourceIndices))
+    }
+    blockSourceIndices = []
   }
 }

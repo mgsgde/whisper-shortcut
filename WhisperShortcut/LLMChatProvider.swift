@@ -161,8 +161,8 @@ enum GeminiSystemInstruction {
 /// parameters it ignores just to satisfy the protocol. Defaults describe a plain, ungrounded turn,
 /// so call sites name only what they actually want.
 struct ChatRequestOptions {
-  /// Web-search grounding: Gemini's `google_search` + `url_context`, or the hosted `web_search`
-  /// tool on the Grok/OpenAI Responses API. Anthropic and local models ignore it.
+  /// Web-search grounding: Gemini's `google_search` + `url_context`, the hosted `web_search` tool
+  /// on the Grok/OpenAI Responses API, or Anthropic's server-side `web_search`. Local models ignore it.
   var useGrounding: Bool = false
 
   /// Per-session reasoning intensity (set via `/think`). `.default` keeps the model's built-in

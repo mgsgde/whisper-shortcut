@@ -971,6 +971,9 @@ class ChatViewModel: ObservableObject {
           // Narration the model emits in THIS round; echoed back in the model turn that carries
           // the round's function calls so the re-sent history is faithful (see executeToolCalls).
           var roundText = ""
+          // Grounding supports index this round's own stream; earlier rounds' text (and any image
+          // markers) already sit in front of it in the final reply.
+          let roundOffset = (markerPrefix + streamed).count
           let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
@@ -1032,8 +1035,23 @@ class ChatViewModel: ObservableObject {
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, let finishReason):
-              finalSources = sources
-              finalSupports = supports
+              // Each round cites on its own: a search before a tool call must keep its chips when
+              // the next round answers without searching. Append this round's sources (reusing
+              // ones already listed) and remap its supports onto the combined list.
+              let indexMap = sources.map { source -> Int in
+                if let existing = finalSources.firstIndex(where: { $0.uri == source.uri }) {
+                  return existing
+                }
+                finalSources.append(source)
+                return finalSources.count - 1
+              }
+              finalSupports += supports.map {
+                GroundingSupport(
+                  startIndex: $0.startIndex + roundOffset, endIndex: $0.endIndex + roundOffset,
+                  groundingChunkIndices: $0.groundingChunkIndices.compactMap {
+                    indexMap.indices.contains($0) ? indexMap[$0] : nil
+                  })
+              }
               if Self.isTruncatedFinishReason(finishReason) { truncatedFinish = true }
             }
           }
@@ -1738,8 +1756,9 @@ class ChatViewModel: ObservableObject {
   nonisolated static func isTruncatedFinishReason(_ reason: String?) -> Bool {
     guard let reason else { return false }
     let lower = reason.lowercased()
+    // `pause_turn`: Anthropic's server-side search loop stopped before the answer was written.
     return lower == "length" || lower == "max_tokens" || lower.contains("max_token")
-      || lower == "incomplete"
+      || lower == "incomplete" || lower == "pause_turn"
   }
 
   /// Registers a streaming buffer for `messageId` so the bubble for that message can observe it.
