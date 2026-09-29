@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Download / progress / cancel card for a Whisper model. Used in onboarding and on the
-/// Privacy tab when Offline Mode is on. Defaults to Base (≈140 MB); Turbo is an upgrade
-/// offered in Settings → Dictate.
-struct WhisperModelDownloadCard: View {
-  var modelType: OfflineModelType = .whisperBase
+/// Download / progress / cancel card for an offline model. Used in onboarding and on the
+/// Privacy tab when Offline Mode is on. Defaults to the recommended model (Parakeet Ultra,
+/// ≈700 MB); the Whisper models, for other languages, are in Settings → Dictate.
+struct OfflineModelDownloadCard: View {
+  var modelType: OfflineModelType = OfflineModelType.mostAccurate
   var onReady: (() -> Void)? = nil
 
   @ObservedObject private var modelManager = ModelManager.shared
@@ -19,13 +19,15 @@ struct WhisperModelDownloadCard: View {
       HStack(spacing: 8) {
         Image(systemName: "laptopcomputer.and.arrow.down")
           .foregroundStyle(.tint)
-        Text("Run offline with local Whisper")
+        Text("Run offline with an on-device model")
           .font(.callout)
           .fontWeight(.semibold)
         Spacer()
       }
 
-      Text("No key required — audio never leaves your Mac. Whisper Base (≈\(OfflineModelType.whisperBase.estimatedSizeMB) MB) is enough to start. For higher accuracy, download Whisper Large v3 Turbo later in Settings → Dictate.")
+      Text(modelType.engine == .parakeet
+        ? "No key required — audio never leaves your Mac. \(modelType.displayName) transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate."
+        : "No key required — audio never leaves your Mac. \(modelType.displayName) runs on this Mac; other offline models are in Settings → Dictate.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
