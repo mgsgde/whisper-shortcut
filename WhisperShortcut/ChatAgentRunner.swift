@@ -53,6 +53,10 @@ final class ChatAgentRunner {
   private var markerPrefix = ""
   private var streamed = ""
   private(set) var records: [ChatToolCallRecord] = []
+  /// Characters of tool results sent back to the model this turn, and the largest single one —
+  /// logged per turn so a future context budget is decided on measured sizes (there were none).
+  private var toolResultChars = 0
+  private var largestToolResultChars = 0
 
   /// What the turn has shown so far, for a caller that keeps the partial after a throw.
   var partialText: String { ChatViewModel.stripLeakedThoughtTokens(markerPrefix + streamed) }
@@ -245,6 +249,10 @@ final class ChatAgentRunner {
     // A round-boundary paragraph break (above) dangles when the final round emitted only
     // function calls; a whitespace-only reply must count as empty.
     while let last = text.last, last.isWhitespace { text.removeLast() }
+    if executedToolCalls > 0 {
+      DebugLogger.log(
+        "CHAT-TOOL-BUDGET: calls=\(executedToolCalls) resultChars=\(toolResultChars) largest=\(largestToolResultChars) exhausted=\(toolLoopExhausted)")
+    }
     var finalRoundText = ChatViewModel.stripLeakedThoughtTokens(lastRoundText)
     while let last = finalRoundText.last, last.isWhitespace { finalRoundText.removeLast() }
     return Result(
@@ -337,7 +345,10 @@ final class ChatAgentRunner {
           stepId, phase: .done, summary: ChatToolRegistry.resultSummary(name: call.name, response: response))
       }
       DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(response))")
-      responseParts.append(["functionResponse": ["name": call.name, "response": response]])
+      let sent = ChatToolHistory.cappedForModel(response)
+      toolResultChars += sent.chars
+      largestToolResultChars = max(largestToolResultChars, sent.chars)
+      responseParts.append(["functionResponse": ["name": call.name, "response": sent.response]])
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
     let turns: [[String: Any]] = [
