@@ -31,6 +31,9 @@ struct GeminiUsageMetadataTests {
 
   @Test("Activity label is user-facing English")
   func activityLabel() {
-    #expect(ChatStreamActivity.searchingWeb.label == "Searching the web…")
+    // The activity is shown as the web-search tool step (ChatToolSteps.swift).
+    #expect(
+      ChatToolRegistry.stepLabel(name: ChatToolRegistry.webSearchStepName, args: [:], done: false)
+        == "Searching the web…")
   }
 }

@@ -1,6 +1,11 @@
 # Chat Tool Steps — Show What the Agent Is Doing
 
-**Status:** Spec, not started (2026-09-29).
+**Status:** Slice 1 implemented (2026-09-29, branch `feat/chat-tool-steps`): `ChatToolSteps.swift`
+(`ChatToolStep`, `ToolStepsBuffer`, `ChatToolRegistry.stepLabel` / `resultSummary`), wired into the
+send loop and `executeToolCalls`; the typing indicator shows the running step, "Step N ·" and
+elapsed seconds. It replaces `streamActivityBySession`. Web search is a step too. Deviation: the
+elapsed clock reuses the indicator's existing 60fps `TimelineView` instead of adding a 1 s one.
+Slices 2–3 open.
 **Audience:** LLM implementing the feature end-to-end.
 **Goal:** The chat stops being a black box while it works. Every tool call becomes a visible,
 collapsible step; the typing indicator says which step is running and for how long; approval
