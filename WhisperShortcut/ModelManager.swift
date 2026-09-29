@@ -2,8 +2,8 @@
 //  ModelManager.swift
 //  WhisperShortcut
 //
-//  Catalogue and WhisperKit-specific download/load path for offline dictation models.
-//  The shared download bookkeeping is `ModelStore`.
+//  Catalogue and download/load path for offline dictation models — WhisperKit and Parakeet
+//  (FluidAudio, see `ParakeetBackend`). The shared download bookkeeping is `ModelStore`.
 //
 
 import Foundation
@@ -11,6 +11,14 @@ import Combine
 import WhisperKit
 
 // MARK: - Model Type Enum
+
+/// Which on-device speech engine runs a model. `LocalSpeechService` and `ModelManager` branch on
+/// this; everything above them treats every offline model alike.
+enum OfflineEngine {
+  case whisperKit
+  case parakeet
+}
+
 enum OfflineModelType: String, CaseIterable, DownloadableModel {
   // Whisper models for transcription (WhisperKit CoreML models)
   case whisperTiny = "whisper-tiny"
@@ -20,6 +28,18 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
   case whisperLarge = "whisper-large"
   /// large-v3-turbo (the 2024-09-30 release): large-v3's encoder with a 4-layer decoder.
   case whisperLargeTurbo = "whisper-large-turbo"
+  /// NVIDIA Parakeet TDT 0.6B v3 retrained by Moondream ("Ultra"), plus the CTC model the
+  /// Glossary uses. 25 European languages. See `ParakeetBackend`.
+  case parakeetUltra = "parakeet-ultra"
+
+  var engine: OfflineEngine {
+    switch self {
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo:
+      return .whisperKit
+    case .parakeetUltra:
+      return .parakeet
+    }
+  }
 
   var displayName: String {
     switch self {
@@ -29,6 +49,7 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     case .whisperMedium: return "Whisper Medium"
     case .whisperLarge: return "Whisper Large"
     case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
+    case .parakeetUltra: return "Parakeet Ultra"
     }
   }
   
@@ -40,15 +61,43 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     case .whisperMedium: return 1500
     case .whisperLarge: return 3000  // full large-v3 ~3 GB; compressed variant exists at ~947 MB
     case .whisperLargeTurbo: return 1600  // full turbo ~1.6 GB; compressed variant exists at ~632 MB
+    case .parakeetUltra: return 700  // Ultra ~603 MB + CTC 110M ~98 MB, measured on disk
     }
   }
   
-  /// The model the list recommends: the one a user who does not want to research Whisper sizes
-  /// should take. That is turbo — large-v3 accuracy at half its download and several times its
-  /// speed. Base was recommended before turbo existed; a 140 MB model that mishears names is the
-  /// wrong default for dictation you intend to keep.
+  /// The model the list recommends: the one a user who does not want to research model sizes
+  /// should take. That is Parakeet Ultra since 2026-09-29 — turbo's accuracy on real German
+  /// dictation (8.1 % vs 8.4 % WER) at ~1/20 of the wait and under half the download
+  /// (`benchmarks/local-asr/README.md`). Magnus after dictating with it: „Das ist viel, viel besser als
+  /// Whisper Large."
+  /// Turbo held the star before; Base before that.
+  ///
+  /// Only where Parakeet covers the language, though: for anyone dictating outside its 25, turbo
+  /// keeps the star (see `recommended(forLanguage:)`).
   var isRecommended: Bool {
-    return self == .whisperLargeTurbo
+    return self == Self.mostAccurate
+  }
+
+  /// The 25 languages Parakeet TDT 0.6B v3 — and Moondream's Ultra retrain of it — transcribe
+  /// (NVIDIA model card).
+  static let parakeetLanguageCodes: Set<String> = [
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt",
+    "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+  ]
+
+  /// The language dictation is expected in: the Whisper language setting, or — on Auto — the Mac's.
+  static var expectedDictationLanguage: String? {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
+      ?? WhisperLanguage.auto.rawValue
+    if let code = WhisperLanguage(rawValue: raw)?.languageCode { return code }
+    return Locale.current.language.languageCode?.identifier
+  }
+
+  /// Parakeet Ultra where it covers the language (or the language is unknown), turbo otherwise —
+  /// Parakeet on Japanese audio produces Latin-script nonsense.
+  static func recommended(forLanguage code: String?) -> OfflineModelType {
+    guard let code, !parakeetLanguageCodes.contains(code) else { return .parakeetUltra }
+    return .whisperLargeTurbo
   }
 
   /// Shown instead of the star on the model that is merely the fastest way to *try* offline
@@ -67,7 +116,7 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
   var isSuperseded: Bool {
     switch self {
     case .whisperMedium, .whisperLarge: return true
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperLargeTurbo: return false
+    case .whisperTiny, .whisperBase, .whisperSmall, .whisperLargeTurbo, .parakeetUltra: return false
     }
   }
 
@@ -85,26 +134,33 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
   /// attempts, none of which ever reported a loaded model. On the GPU the same model loads in
   /// seconds with no compile step at all.
   ///
-  /// The small models compile in moments and keep the ANE, where it costs less power.
+  /// The small models compile in moments and keep the ANE, where it costs less power. Parakeet is
+  /// built for the ANE (FluidAudio's default placement) and its load comes from the compile cache.
   var usesNeuralEngine: Bool {
     switch self {
-    case .whisperTiny, .whisperBase: return true
+    case .whisperTiny, .whisperBase, .parakeetUltra: return true
     case .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo: return false
     }
   }
 
-  /// Offline models ordered worst to best transcript. Used to pick a sensible model on this Mac
-  /// without asking the user which Whisper size means what — Offline Mode walks it from the end.
+  /// Offline models ordered worst to best pick. Used to choose a sensible model on this Mac
+  /// without asking the user which size means what — Offline Mode walks it from the end.
+  /// Parakeet Ultra last where it covers the dictation language — it ties turbo on accuracy and is
+  /// ~20× faster — and first (worst) where it does not.
   static var byAccuracy: [OfflineModelType] {
-    [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo]
+    let whisper: [OfflineModelType] = [
+      .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
+    ]
+    return mostAccurate == .parakeetUltra ? whisper + [.parakeetUltra] : [.parakeetUltra] + whisper
   }
 
-  /// The on-device model to use when the transcript has to be right. Turbo rather than
-  /// `large-v3`: same accuracy, roughly half the download and several times faster.
-  static var mostAccurate: OfflineModelType { .whisperLargeTurbo }
+  /// The on-device model Offline Mode, onboarding and the Offline Mode card pick when none is
+  /// downloaded yet (D1 in `plans/active/parakeet-offline.md`: new setups get Parakeet where it
+  /// covers the language; nobody is switched silently).
+  static var mostAccurate: OfflineModelType { recommended(forLanguage: expectedDictationLanguage) }
   
-  // Map to WhisperKit model name (HuggingFace: openai_whisper-{name})
-  var whisperKitModelName: String {
+  // Map to WhisperKit model name (HuggingFace: openai_whisper-{name}); nil for other engines.
+  var whisperKitModelName: String? {
     switch self {
     case .whisperTiny: return "tiny"
     case .whisperBase: return "base"
@@ -115,17 +171,19 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     // `large-v3_turbo` there is the older v2-era conversion, so the dated variant is the one
     // that corresponds to OpenAI's large-v3-turbo.
     case .whisperLargeTurbo: return "large-v3-v20240930_turbo"
+    case .parakeetUltra: return nil
     }
   }
 }
 
 // MARK: - Model Manager
 
-/// WhisperKit models: the CoreML bundles under `Application Support/WhisperKit`.
+/// Offline speech models: WhisperKit's CoreML bundles under `Application Support/WhisperKit`, and
+/// Parakeet under FluidAudio's own directory (`ParakeetBackend.modelsRoot`).
 ///
 /// Everything about downloads, cancellation, readiness and deletion is `ModelStore`; this class
-/// only knows WhisperKit's folder layout, which compiled components make a download complete,
-/// and that loading means `LocalSpeechService`.
+/// only knows each engine's folder layout, what makes a download complete, and that loading means
+/// `LocalSpeechService`.
 final class ModelManager: ModelStore<OfflineModelType> {
   static let shared = ModelManager()
 
@@ -148,18 +206,24 @@ final class ModelManager: ModelStore<OfflineModelType> {
   }
 
   override nonisolated func resolveModelPath(for type: OfflineModelType) -> URL? {
+    guard let whisperKitModelName = type.whisperKitModelName else {
+      // Parakeet: the folder holding both of its models. Resolves while partial too, so Delete
+      // can clear an interrupted download; completeness is `isModelAvailable`'s job.
+      let root = ParakeetBackend.modelsRoot
+      return fileManager.fileExists(atPath: root.path) ? root : nil
+    }
     // Standard WhisperKit download structure first.
     let nestedPath = whisperKitRepoDirectory
-      .appendingPathComponent("openai_whisper-\(type.whisperKitModelName)")
+      .appendingPathComponent("openai_whisper-\(whisperKitModelName)")
     if fileManager.fileExists(atPath: nestedPath.path) {
       return nestedPath
     }
 
     // Simple location (legacy/manual downloads).
     let possibleSimpleNames = [
-      "openai_whisper-\(type.whisperKitModelName)",
-      "\(type.whisperKitModelName)",
-      "whisper-\(type.whisperKitModelName)"
+      "openai_whisper-\(whisperKitModelName)",
+      "\(whisperKitModelName)",
+      "whisper-\(whisperKitModelName)"
     ]
     for name in possibleSimpleNames {
       let path = rootDirectory.appendingPathComponent(name)
@@ -175,6 +239,9 @@ final class ModelManager: ModelStore<OfflineModelType> {
   /// Returns true only when the model folder exists and contains required WhisperKit files
   /// (e.g. AudioEncoder.mlmodelc). Avoids showing incomplete downloads as "available".
   override nonisolated func isModelAvailable(_ type: OfflineModelType) -> Bool {
+    if type.engine == .parakeet {
+      return ParakeetBackend.isDownloaded
+    }
     guard let modelPath = resolveModelPath(for: type) else {
       DebugLogger.logDebug("MODEL-MANAGER: Checking availability for \(type.displayName)")
       DebugLogger.logDebug("MODEL-MANAGER: WhisperKit directory: \(rootDirectory.path)")
@@ -268,12 +335,22 @@ final class ModelManager: ModelStore<OfflineModelType> {
   /// once per model and is minutes for the large ones, so it is worth naming rather than showing
   /// a spinner that looks stuck.
   override func preparingMessage(for type: OfflineModelType) -> String {
-    "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes."
+    // Parakeet's first load (ANE compile included) measured 0.5 s — the generic line fits.
+    if type.engine == .parakeet { return super.preparingMessage(for: type) }
+    return "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes."
   }
 
   /// Load failure after the folder looked complete is the verified-corrupt case — purge and
   /// fetch once more, because the user is waiting on a dictation.
   override var healsCorruptDownloadOnLoadFailure: Bool { true }
+
+  /// Whisper only. A Parakeet load failure is not evidence of a corrupt download (an ANE plan
+  /// that cannot run on this hardware fails the same way every time), and the heal would delete
+  /// the whole FluidAudio folder and fetch 700 MB while the user waits on a dictation — again on
+  /// every dictation. The error is surfaced instead; Delete + Download in Settings is the repair.
+  override func healsCorruptDownload(for model: OfflineModelType) -> Bool {
+    model.engine == .whisperKit
+  }
 
   override func load(_ type: OfflineModelType) async throws {
     try await LocalSpeechService.shared.initializeModel(type)
@@ -287,8 +364,12 @@ final class ModelManager: ModelStore<OfflineModelType> {
   // MARK: - Download
 
   override func fetch(_ type: OfflineModelType, onProgress: @escaping (Double) -> Void) async throws {
+    guard let whisperKitModelName = type.whisperKitModelName else {
+      try await fetchParakeet(onProgress: onProgress)
+      return
+    }
     try? fileManager.createDirectory(at: whisperKitRepoDirectory, withIntermediateDirectories: true)
-    let modelName = "openai_whisper-\(type.whisperKitModelName)"
+    let modelName = "openai_whisper-\(whisperKitModelName)"
 
     do {
       let downloadedModelPath = try await WhisperKit.download(
@@ -332,6 +413,36 @@ final class ModelManager: ModelStore<OfflineModelType> {
       DebugLogger.logError("MODEL-MANAGER: Error domain: \(nsError.domain), code: \(nsError.code)")
       DebugLogger.logError("MODEL-MANAGER: Error userInfo: \(nsError.userInfo)")
       throw ModelStoreError.downloadFailed("Failed to download WhisperKit model: \(errorMessage)")
+    }
+  }
+
+  /// FluidAudio fetches from HuggingFace with its own URLSession — like WhisperKit's, not wrapped
+  /// by the Offline Mode guard, and like it carrying nothing of the user's.
+  private func fetchParakeet(onProgress: @escaping (Double) -> Void) async throws {
+    // FluidAudio reports thousands of times per download (2 933 updates for the ~100 MB CTC part
+    // alone, measured), and each one is a main-actor hop and a Settings redraw. Half-percent steps
+    // look the same.
+    final class Throttle: @unchecked Sendable {
+      private let lock = NSLock()
+      private var last = -1.0
+      func shouldReport(_ fraction: Double) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard fraction >= 1 || fraction - last >= 0.005 else { return false }
+        last = fraction
+        return true
+      }
+    }
+    let throttle = Throttle()
+    do {
+      // `ModelStore.performDownload` hops every progress call to the main actor itself.
+      try await ParakeetBackend.download { fraction in
+        if throttle.shouldReport(fraction) { onProgress(fraction) }
+      }
+    } catch {
+      if Self.isCancellation(error) { throw CancellationError() }
+      DebugLogger.logError("MODEL-MANAGER: Parakeet download failed: \(error.localizedDescription)")
+      logDirectoryContents(ParakeetBackend.modelsRoot)
+      throw ModelStoreError.downloadFailed("Failed to download Parakeet Ultra: \(error.localizedDescription)")
     }
   }
 

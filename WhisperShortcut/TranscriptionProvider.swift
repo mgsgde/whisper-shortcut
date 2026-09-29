@@ -49,7 +49,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .xai: return "xAI (Grok)"
     case .openRouter: return "OpenRouter"
     case .selfHosted: return "Self-hosted"
-    case .offline: return "On-device Whisper"
+    case .offline: return "On-device"
     }
   }
 
@@ -105,7 +105,7 @@ enum TranscriptionProvider: String, CaseIterable {
   var credentialRequiredMessage: String {
     switch self {
     case .google:
-      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings."
+      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download an offline model in Speech-to-Text settings."
     case .openAI:
       return "Add your OpenAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
     case .xai:
@@ -115,7 +115,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .selfHosted:
       return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
     case .offline:
-      return "Download the selected Whisper model in Speech-to-Text settings, or pick a different transcription model."
+      return "Download the selected offline model in Speech-to-Text settings, or pick a different transcription model."
     }
   }
 }
@@ -137,7 +137,7 @@ extension TranscriptionModel {
     case .selfHostedTranscription:
       return .selfHosted
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo:
+         .whisperLargeTurbo, .parakeetUltra:
       return .offline
     }
   }

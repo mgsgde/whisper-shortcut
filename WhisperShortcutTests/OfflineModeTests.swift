@@ -103,7 +103,6 @@ struct OfflineModeTests {
 
   @Test("large-v3-turbo maps to the dated WhisperKit variant, not the v2-era one")
   func turboResolvesToTheRightVariant() {
-    #expect(OfflineModelType.mostAccurate == .whisperLargeTurbo)
     #expect(OfflineModelType.whisperLargeTurbo.whisperKitModelName == "large-v3-v20240930_turbo")
     #expect(TranscriptionModel.whisperLargeTurbo.offlineModelType == .whisperLargeTurbo)
     #expect(TranscriptionModel.forOfflineModel(.whisperLargeTurbo) == .whisperLargeTurbo)
@@ -121,10 +120,10 @@ struct OfflineModeTests {
   @Test("One on-device model is recommended, and both enums agree on which")
   func recommendationIsSingleAndConsistent() {
     let recommendedTypes = OfflineModelType.allCases.filter(\.isRecommended)
-    #expect(recommendedTypes == [.whisperLargeTurbo])
+    #expect(recommendedTypes == [OfflineModelType.mostAccurate])
 
     let recommendedModels = TranscriptionModel.allCases.filter { $0.isOffline && $0.isRecommended }
-    #expect(recommendedModels == [.whisperLargeTurbo])
+    #expect(recommendedModels == [TranscriptionModel.forOfflineModel(OfflineModelType.mostAccurate)])
 
     // The quick-start label is a separate slot, never a second recommendation.
     let quickStart = OfflineModelType.allCases.filter(\.isQuickStart)
@@ -138,7 +137,39 @@ struct OfflineModeTests {
   func offlineModelMappingRoundTrips() {
     for type in OfflineModelType.allCases {
       #expect(TranscriptionModel.forOfflineModel(type).offlineModelType == type, "\(type.rawValue)")
+      // Persisted selections and download state are keyed by these strings on both sides.
+      #expect(TranscriptionModel.forOfflineModel(type).rawValue == type.rawValue, "\(type.rawValue)")
     }
+  }
+
+  /// Parakeet covers 25 European languages; anywhere else it produces Latin-script nonsense, so it
+  /// must not be what onboarding, Offline Mode or the star pick for that user.
+  @Test("Parakeet is recommended only for languages it covers")
+  func recommendationFollowsLanguage() {
+    #expect(OfflineModelType.recommended(forLanguage: "de") == .parakeetUltra)
+    #expect(OfflineModelType.recommended(forLanguage: "en") == .parakeetUltra)
+    #expect(OfflineModelType.recommended(forLanguage: "uk") == .parakeetUltra)
+    #expect(OfflineModelType.recommended(forLanguage: nil) == .parakeetUltra)
+    for code in ["ja", "zh", "ko", "ar", "hi", "tr"] {
+      #expect(OfflineModelType.recommended(forLanguage: code) == .whisperLargeTurbo, "\(code)")
+    }
+    #expect(OfflineModelType.byAccuracy.last == OfflineModelType.mostAccurate)
+  }
+
+  /// Parakeet is offline but not WhisperKit: it must never be handed a WhisperKit variant name,
+  /// which would send `ModelManager` looking for (and downloading) a Whisper folder.
+  @Test("Only Whisper models carry a WhisperKit variant; Parakeet runs on its own engine")
+  func engineSplit() {
+    for type in OfflineModelType.allCases {
+      switch type.engine {
+      case .whisperKit: #expect(type.whisperKitModelName != nil, "\(type.rawValue)")
+      case .parakeet: #expect(type.whisperKitModelName == nil, "\(type.rawValue)")
+      }
+    }
+    #expect(OfflineModelType.parakeetUltra.engine == .parakeet)
+    #expect(TranscriptionModel.parakeetUltra.isOffline)
+    #expect(TranscriptionModel.parakeetUltra.isSelectableForDictation)
+    #expect(TranscriptionModel.selectableForDictation(offlineMode: true).contains(.parakeetUltra))
   }
 
   // MARK: - URLProtocol guard

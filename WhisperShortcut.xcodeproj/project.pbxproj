@@ -19,6 +19,8 @@
 		BFA8E0012F08A10100E00018 /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00016 /* Tokenizers */; };
 		BF9918262F697163008AB3ED /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BF99181C2F697163008AB3ED /* HotKey */; };
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
+		BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00021 /* FluidAudio */; };
+		BFA8E0012F08A10100E00024 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00023 /* FluidAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,6 +86,7 @@
 				BFA8E0012F08A10100E00013 /* Hub in Frameworks */,
 				BFA8E0012F08A10100E00014 /* Tokenizers in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
+				BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +100,7 @@
 				BFA8E0012F08A10100E00017 /* Hub in Frameworks */,
 				BFA8E0012F08A10100E00018 /* Tokenizers in Frameworks */,
 				BF9918262F697163008AB3ED /* HotKey in Frameworks */,
+				BFA8E0012F08A10100E00024 /* FluidAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -165,6 +169,7 @@
 				BFA8E0012F08A10100E00003 /* MLXLMCommon */,
 				BFA8E0012F08A10100E00011 /* Hub */,
 				BFA8E0012F08A10100E00012 /* Tokenizers */,
+				BFA8E0012F08A10100E00021 /* FluidAudio */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -193,6 +198,7 @@
 				BFA8E0012F08A10100E00007 /* MLXLMCommon */,
 				BFA8E0012F08A10100E00015 /* Hub */,
 				BFA8E0012F08A10100E00016 /* Tokenizers */,
+				BFA8E0012F08A10100E00023 /* FluidAudio */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF99182B2F697163008AB3ED /* WhisperShortcut-AppStore.app */;
@@ -258,6 +264,7 @@
 				BF31AC7A2EEB2B8200C1DEA3 /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 				BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -703,6 +710,14 @@
 				version = 1.1.9;
 			};
 		};
+		BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio";
+			requirement = {
+				kind = exactVersion;
+				version = 0.17.4;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -765,6 +780,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */;
 			productName = Tokenizers;
+		};
+		BFA8E0012F08A10100E00021 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		BFA8E0012F08A10100E00023 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

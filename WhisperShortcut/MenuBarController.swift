@@ -2127,7 +2127,7 @@ class MenuBarController: NSObject {
     let transcriptionModelForCapture = TranscriptionModel.loadSelected()
     let backendTag: String
     if transcriptionModelForCapture.isOffline {
-      backendTag = "whisper"
+      backendTag = transcriptionModelForCapture.offlineModelType?.engine == .parakeet ? "parakeet" : "whisper"
     } else if transcriptionModelForCapture.isOpenAI {
       backendTag = "openai"
     } else if transcriptionModelForCapture == .selfHostedTranscription {
@@ -2338,7 +2338,7 @@ class MenuBarController: NSObject {
   private static func voiceFeedbackFocusName(for section: SystemPromptSection) -> String {
     switch section {
     case .dictation: return "Dictation"
-    case .whisperGlossary: return "Whisper Glossary"
+    case .whisperGlossary: return "Glossary"
     case .promptMode: return "Dictate Prompt"
     case .chat: return "Chat"
     case .readAloudRewrite: return "Read Aloud"

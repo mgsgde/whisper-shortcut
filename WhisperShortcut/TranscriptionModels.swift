@@ -80,6 +80,10 @@ enum TranscriptionModel: String, CaseIterable {
   /// and several times faster than `whisperLarge` at the same accuracy, which makes it — not
   /// `large-v3` — the on-device model to reach for when the transcript has to be right.
   case whisperLargeTurbo = "whisper-large-turbo"
+  /// Offline, but not Whisper: NVIDIA Parakeet TDT (Moondream's "Ultra" retrain) through
+  /// FluidAudio. Same accuracy as turbo on the user's German at ~1/20 of the wait
+  /// (`benchmarks/local-asr/README.md`). Raw value matches `OfflineModelType.parakeetUltra`.
+  case parakeetUltra = "parakeet-ultra"
 
   // OpenAI transcription models (cloud, OpenAI API key required).
   // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
@@ -134,6 +138,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Large (Offline)"
     case .whisperLargeTurbo:
       return "Whisper Large v3 Turbo (Offline)"
+    case .parakeetUltra:
+      return "Parakeet Ultra (Offline)"
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -229,11 +235,14 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    // The offline recommendation is turbo, not Base: same accuracy as large-v3 at half the
-    // download and several times the speed, which makes it the one to take for dictation you
-    // intend to keep. Base remains the quick way to try offline at 140 MB.
-    case .gemini31FlashLite, .whisperLargeTurbo:
+    // The offline recommendation is Parakeet Ultra: turbo's accuracy on real German dictation at
+    // ~1/20 of the wait, and less than half the download (`benchmarks/local-asr/README.md`).
+    // Base remains the quick way to try offline at 140 MB.
+    case .gemini31FlashLite:
       return true
+    // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
+    case .parakeetUltra, .whisperLargeTurbo:
+      return offlineModelType?.isRecommended ?? false
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
@@ -253,7 +262,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro:
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo:
+         .whisperLargeTurbo, .parakeetUltra:
       return "Free (Offline)"
     case .openAIGPTTranscribe:
       return "Low"
@@ -289,7 +298,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
-      return "OpenAI Whisper Base • Recommended • ~140MB • Offline"
+      return "OpenAI Whisper Base • Smallest download • ~140MB • Offline"
     case .whisperSmall:
       return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
     case .whisperMedium:
@@ -298,6 +307,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
     case .whisperLargeTurbo:
       return "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline"
+    case .parakeetUltra:
+      return "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline"
     case .openAIGPTTranscribe:
       return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
     case .openAIGPT4oTranscribe:
@@ -415,7 +426,7 @@ enum TranscriptionModel: String, CaseIterable {
     // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
     // recommended — offline model was the one showing an inert prompt editor with no warning.
     case _ where provider == .offline:
-      return "Offline Whisper ignores the system prompt below — its API accepts no instructions. Only the Glossary reaches it, as conditioning text."
+      return "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for."
     default:
       return nil
     }
@@ -429,6 +440,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperMedium: return .whisperMedium
     case .whisperLarge: return .whisperLarge
     case .whisperLargeTurbo: return .whisperLargeTurbo
+    case .parakeetUltra: return .parakeetUltra
     default: return nil
     }
   }
@@ -442,6 +454,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperMedium: return .whisperMedium
     case .whisperLarge: return .whisperLarge
     case .whisperLargeTurbo: return .whisperLargeTurbo
+    case .parakeetUltra: return .parakeetUltra
     }
   }
   
@@ -544,8 +557,10 @@ enum TranscriptionModel: String, CaseIterable {
 
   var asymmetryClass: AsymmetryClass {
     switch self {
+    // Parakeet shares the class: what matters here is "not Gemini, so Gemini re-listening adds
+    // information", not which on-device engine produced the transcript.
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo:
+         .whisperLargeTurbo, .parakeetUltra:
       return .offlineWhisper
     case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio

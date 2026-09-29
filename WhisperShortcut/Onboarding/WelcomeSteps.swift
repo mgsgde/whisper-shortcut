@@ -15,7 +15,7 @@ struct WelcomeIntroStep: View {
           .font(.title3)
           .foregroundStyle(.secondary)
       }
-      Text("A quick setup: privacy, a provider API key — or fully offline Whisper, no key needed — and a couple of macOS permissions. Takes about a minute.")
+      Text("A quick setup: privacy, a provider API key — or fully offline dictation, no key needed — and a couple of macOS permissions. Takes about a minute.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
@@ -111,7 +111,7 @@ struct WelcomePrivacyStep: View {
         }
       Text(
         offlineMode
-          ? "On-device Whisper only. No cloud request, no usage log on disk — you can skip the API key step and download a model instead. Changeable later in Settings → Privacy & Permissions."
+          ? "On-device models only. No cloud request, no usage log on disk — you can skip the API key step and download a model instead. Changeable later in Settings → Privacy & Permissions."
           : "Turn this on for regulated dictation — patient findings, case notes — where the recording may not leave the device. You can also decide later in Settings → Privacy & Permissions."
       )
       .font(.caption)
@@ -223,7 +223,7 @@ struct WelcomeAPIKeysStep: View {
           Text("Add a key — or start offline")
             .font(.title2)
             .fontWeight(.semibold)
-          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or connect OpenRouter with one click and skip keys entirely — or skip the cloud altogether and dictate offline with local Whisper.")
+          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or connect OpenRouter with one click and skip keys entirely — or skip the cloud altogether and dictate offline with an on-device model.")
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -315,7 +315,7 @@ struct WelcomeAPIKeysStep: View {
           .font(.caption)
           .foregroundStyle(.green)
       } else {
-        Label("Add a key or download offline Whisper to continue.", systemImage: "exclamationmark.circle")
+        Label("Add a key or download the offline model to continue.", systemImage: "exclamationmark.circle")
           .font(.caption)
           .foregroundStyle(.orange)
       }
@@ -324,13 +324,14 @@ struct WelcomeAPIKeysStep: View {
   }
 }
 
-/// Lets a new user finish setup with no provider key by downloading Whisper Base
-/// (≈140 MB). Turbo is offered as an upgrade in Settings → Dictate.
+/// Lets a new user finish setup with no provider key by downloading the recommended offline
+/// model (Parakeet Ultra, ≈700 MB — `plans/active/parakeet-offline.md` D1: new setups get it).
 struct OnboardingOfflineRow: View {
   @Binding var offlineReady: Bool
+  private let modelType = OfflineModelType.mostAccurate
 
   var body: some View {
-    WhisperModelDownloadCard(modelType: .whisperBase, onReady: syncReady)
+    OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
   }
 
   /// Marks offline setup as ready and — only when no cloud key is configured —
@@ -345,10 +346,10 @@ struct OnboardingOfflineRow: View {
       || KeychainManager.shared.hasNonEmpty(.openRouter)
     if !hasCloudKey {
       UserDefaults.standard.set(
-        TranscriptionModel.forOfflineModel(.whisperBase).rawValue,
+        TranscriptionModel.forOfflineModel(modelType).rawValue,
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
       DebugLogger.log(
-        "ONBOARDING: offline Whisper Base ready; set as default transcription model")
+        "ONBOARDING: offline \(modelType.displayName) ready; set as default transcription model")
     }
   }
 }

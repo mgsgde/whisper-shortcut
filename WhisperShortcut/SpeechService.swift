@@ -520,12 +520,15 @@ class SpeechService {
         DebugLogger.log("LOCAL-SPEECH: Using language setting: \(savedLanguage.displayName) (\(savedLanguage.rawValue))")
       }
 
-      // Pass Whisper Glossary for offline conditioning (nil when empty)
+      // The Glossary, in the form each engine takes: Whisper conditions on the raw text (nil when
+      // empty), Parakeet boosts the parsed terms — the same list `gpt-transcribe` gets as keywords.
       let whisperGlossary = SystemPromptsStore.shared.loadWhisperGlossary().trimmingCharacters(in: .whitespacesAndNewlines)
       let whisperPrompt: String? = whisperGlossary.isEmpty ? nil : whisperGlossary
+      let vocabulary = model.offlineModelType?.engine == .parakeet ? glossaryKeywords() : []
 
       // Transcribe using local service
-      let result = try await LocalSpeechService.shared.transcribe(audioURL: audioURL, language: languageString, prompt: whisperPrompt)
+      let result = try await LocalSpeechService.shared.transcribe(
+        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result

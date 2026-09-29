@@ -10,11 +10,23 @@ struct DictateStreamingEligibilityTests {
 
   @Test("A downloaded on-device Whisper streams")
   func downloadedOfflineModelStreams() {
-    for model in TranscriptionModel.allCases where model.isOffline {
+    for model in TranscriptionModel.allCases
+    where model.isOffline && model.offlineModelType?.engine == .whisperKit {
       #expect(
         DictateStreamingSession.isEligible(
           model: model, hasCredential: false, offlineModelDownloaded: true),
         "\(model.rawValue) should stream once its weights are on disk")
+    }
+  }
+
+  /// Decision D2 in `plans/active/parakeet-offline.md`: a minute of audio decodes in ~0.5 s after
+  /// Stop, and the Glossary vocabulary works better on the whole recording than per chunk.
+  @Test("Parakeet never streams, downloaded or not")
+  func parakeetDoesNotStream() {
+    for downloaded in [true, false] {
+      #expect(
+        !DictateStreamingSession.isEligible(
+          model: .parakeetUltra, hasCredential: false, offlineModelDownloaded: downloaded))
     }
   }
 

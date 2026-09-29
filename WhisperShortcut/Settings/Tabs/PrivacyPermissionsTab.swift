@@ -65,7 +65,7 @@ struct OfflineModeSection: View {
         }
 
       Text(
-        "Everything runs on this Mac. Dictation uses an on-device Whisper model, no request may leave the machine, and no transcript, prompt or audio sample is written to the usage log. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured."
+        "Everything runs on this Mac. Dictation uses an on-device speech model, no request may leave the machine, and no transcript, prompt or audio sample is written to the usage log. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured."
       )
       .font(.callout)
       .foregroundColor(.secondary)
@@ -74,11 +74,11 @@ struct OfflineModeSection: View {
 
       if offlineMode {
         VStack(alignment: .leading, spacing: 6) {
-          offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
+          offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
           offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
-          offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a Whisper or MLX model from Hugging Face still works (it carries no content of yours).")
+          offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
           if !hasOfflineModel {
-            WhisperModelDownloadCard(modelType: .whisperBase) {
+            OfflineModelDownloadCard {
               hasOfflineModel = true
             }
           }

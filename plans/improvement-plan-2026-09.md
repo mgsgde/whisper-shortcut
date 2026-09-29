@@ -1,6 +1,6 @@
 # App Improvement Plan — September 2026
 
-**Status:** Implemented (F15 remaining half re-scoped 2026-09-03: Parakeet, not a shorter Whisper tail). Written against `main` at v8.05 (`2e2b058`).
+**Status:** Implemented (F15 remaining half re-scoped 2026-09-03: Parakeet, not a shorter Whisper tail); F15 candidates benchmarked 2026-09-29 — Parakeet Ultra matches Whisper turbo on real German at ~1/20 of the wait, see `benchmarks/local-asr/README.md` → Results). Written against `main` at v8.05 (`2e2b058`).
 **Audience:** The developer deciding what gets built next, and whoever implements a row.
 **How it was produced:** Five read-only audits of the source (dictation pipeline, onboarding and
 Settings, chat and providers, offline/local models, engineering health), cross-checked against
