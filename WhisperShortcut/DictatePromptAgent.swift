@@ -109,6 +109,21 @@ enum DictatePromptAgent {
     return try turns.map(Self.dictionary(from:))
   }
 
+  /// The system prompt the agent path sends: the tool preamble in front of the Dictate Prompt
+  /// prompt. One function so the local warm-up (`ConnectionPrewarmer`) primes the exact prefix.
+  static func systemPrompt(for base: String) -> String {
+    toolPreamble + base
+  }
+
+  /// The tools a local Dictate Prompt will actually send right now — empty when it will take the
+  /// single request instead (MLX, a model that refused tools this session, or nothing connected).
+  /// Shared by the real path and the local warm-up so both decide the same way.
+  @MainActor
+  static func localAgentTools(for model: PromptModel, requestModel: String) -> [LLMToolDeclaration] {
+    guard supportsAgent(model), !localModelsWithoutTools.contains(requestModel) else { return [] }
+    return availableTools()
+  }
+
   /// Runs one Dictate Prompt turn on the agent core and returns the text to paste (not yet
   /// normalized — the caller applies the same normalization and validation as the classic path).
   /// `requestModel` is the id sent to `provider` — the picker's rawValue, or the tag the user typed
@@ -124,7 +139,7 @@ enum DictatePromptAgent {
     baseOptions: ChatRequestOptions = ChatRequestOptions(),
     logPrefix: String
   ) async throws -> String {
-    let systemInstruction: [String: Any] = ["parts": [["text": toolPreamble + systemPrompt]]]
+    let systemInstruction: [String: Any] = ["parts": [["text": Self.systemPrompt(for: systemPrompt)]]]
     // No web grounding: Gemini's grounding also enables `url_context`, and an instruction planted in
     // the selection or in an email read with `gmail_read` could make Google fetch a URL carrying
     // private data — the reason the chat asks before `open_url`. The lookups here are the user's own.

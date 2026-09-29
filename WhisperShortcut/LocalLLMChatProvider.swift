@@ -35,12 +35,9 @@ final class LocalLLMChatProvider: LLMChatProvider {
     let messages = OpenAIChatCompletionsConverter.messages(
       from: contents, systemInstruction: systemInstruction)
 
-    var body = Self.requestBody(
+    let body = Self.requestBody(
       model: model, messages: messages, stream: true,
-      maxTokens: AppConstants.localPromptMaxOutputTokens)
-    if !tools.isEmpty {
-      body["tools"] = tools.map(\.chatCompletionsDeclaration)
-    }
+      maxTokens: AppConstants.localPromptMaxOutputTokens, tools: tools)
 
     DebugLogger.logNetwork("LOCAL-CHAT-STREAM: POST \(endpoint) model=\(model) tools=\(tools.count)")
     // No auth header: local servers don't require one. A refused connection and a 404 both get
@@ -67,10 +64,15 @@ final class LocalLLMChatProvider: LLMChatProvider {
   /// hit needs the server to render the *same* prefix both times. Every field below that steers
   /// chat-template rendering therefore has to appear in both bodies, and a second hand-written
   /// dictionary is exactly how that silently stops being true.
+  ///
+  /// `tools` belongs here for the same reason: the chat template renders tool definitions into the
+  /// prompt, ahead of the conversation, so a warm-up without them primes a different prefix than a
+  /// Dictate Prompt that looks things up.
   static func requestBody(
-    model: String, messages: [[String: Any]], stream: Bool, maxTokens: Int
+    model: String, messages: [[String: Any]], stream: Bool, maxTokens: Int,
+    tools: [LLMToolDeclaration] = []
   ) -> [String: Any] {
-    [
+    var body: [String: Any] = [
       "model": model,
       "messages": messages,
       "stream": stream,
@@ -91,6 +93,10 @@ final class LocalLLMChatProvider: LLMChatProvider {
       // rewrites never reach it; the caller warns when a reply stops here.
       "max_tokens": maxTokens,
     ]
+    if !tools.isEmpty {
+      body["tools"] = tools.map(\.chatCompletionsDeclaration)
+    }
+    return body
   }
 
   func generateStructured(

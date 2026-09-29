@@ -5,7 +5,8 @@ GPT-Audio (Chat Completions with `input_audio`, only when the recording is attac
 rejects audio-less input) and to a local server (Ollama / LM Studio, transcript in). In-process MLX
 has no tool-calling path and keeps the single request. In Offline Mode only the shared-folder tools
 are offered. Still open: tool records in the Dictate Prompt history (`PromptConversationHistory`
-stores text only); a live test against a local server (none was running when this shipped); the local prewarm (`ConnectionPrewarmer`) primes the tool-less prompt, so the agent path's first round misses the server's prompt cache (tool preamble + schemas change the prefix) — prime with the same preamble and tools when `availableTools()` is non-empty.
+stores text only); a live test against a local server (none was running when this shipped).
+The local warm-up primes the agent path's exact prefix (preamble + prompt + tools) since 2026-09-29.
 Deviation from decision 1: **no web grounding** on any Dictate Prompt path — Gemini's grounding
 also enables `url_context`, an exfiltration path for instructions planted in a selection or email.
 **Audience:** LLM implementing it end-to-end, one slice per PR.
