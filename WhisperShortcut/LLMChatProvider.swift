@@ -561,8 +561,8 @@ enum OpenAICompatibleStream {
           var functionCallNames: [String: String] = [:]  // item_id → function name
           var currentEventType: String?
           var finishReason: String?
-          // Unique URLs in first-seen order, so footer numbering ([1], [2], …) matches the
-          // inline markers the model appends in citation order.
+          // Unique URLs in first-seen order for the collapsed "Sources" list. Per-paragraph chips
+          // come from the `[[N]](url)` markers in the text itself (`InlineCitationExtractor`).
           var citationURLs: [String] = []
           var seenCitationURLs: Set<String> = []
           var hasYieldedText = false
@@ -655,7 +655,7 @@ enum OpenAICompatibleStream {
           }
 
           let sources = citationURLs.map {
-            GroundingSource(uri: $0, title: citationDisplayTitle(for: $0))
+            GroundingSource(uri: $0, title: GroundingSource.displayTitle(for: $0))
           }
           let summary = eventTypeCounts.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ",")
           DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count) messages=\(messageItemCount) textChars=\(textCharCount) events=\(summary)")
@@ -681,14 +681,6 @@ enum OpenAICompatibleStream {
       return [:]
     }
     return parsed
-  }
-
-  /// Display label for a citation footer entry. The providers' annotation `title` is often just the
-  /// citation number, so the URL host (minus a leading "www.") reads better and matches how the
-  /// source list renders for Gemini-grounded replies.
-  private static func citationDisplayTitle(for urlString: String) -> String {
-    guard let host = URL(string: urlString)?.host, !host.isEmpty else { return urlString }
-    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
   }
 }
 

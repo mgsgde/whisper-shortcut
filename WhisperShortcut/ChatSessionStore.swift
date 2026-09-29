@@ -11,6 +11,13 @@ struct GroundingSource: Codable, Equatable, Identifiable {
   var id: String { uri }
   let uri: String
   let title: String
+
+  /// Label for a source whose provider gives no usable title (annotation titles are often just the
+  /// citation number): the URL host minus a leading "www.", which is how Gemini titles its sources.
+  static func displayTitle(for urlString: String) -> String {
+    guard let host = URL(string: urlString)?.host, !host.isEmpty else { return urlString }
+    return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+  }
 }
 
 /// Maps a character range in the reply text to grounding chunk indices (1:1 with sources).
