@@ -1,6 +1,6 @@
 # Parakeet Ultra as the offline dictation engine
 
-**Status:** Planned 2026-09-29, not started. Decisions D1–D3 below wait for Magnus. Improvement
+**Status:** D1–D3 approved as recommended (Magnus, 2026-09-29: „Ja, passt so, fang mit Slice 1 an"). S1 in progress on `feat/parakeet-s1`. Improvement
 plan row: `plans/improvement-plan-2026-09.md` F15 (second half). Supersedes queue row 18 (Whisper
 glossary on >30 s audio) for everyone who switches.
 **Why now:** the Arztpraxis pilot rolls out offline from 2026-10-15; today's offline dictation
