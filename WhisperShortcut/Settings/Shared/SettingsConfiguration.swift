@@ -710,15 +710,14 @@ enum PromptModel: String, CaseIterable {
   /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
   /// - Grok: `web_search` tool via the Responses API.
   /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4, gpt-5.4-mini).
+  /// - Claude: Anthropic's server-side `web_search` tool (`AnthropicChatProvider.webSearchTool`).
   /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen38B,
-         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
-      // Audio-only, image-generation, proxy, local, and Anthropic models have no web-search path
-      // in this app (Claude web search would need a separate Anthropic tool wiring).
+         .localMLXQwen34BInstruct, .localMLXQwen38B:
+      // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
       return true

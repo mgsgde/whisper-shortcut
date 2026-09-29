@@ -1013,6 +1013,9 @@ class ChatViewModel: ObservableObject {
           // Narration the model emits in THIS round; echoed back in the model turn that carries
           // the round's function calls so the re-sent history is faithful (see executeToolCalls).
           var roundText = ""
+          // Grounding supports index this round's own stream; earlier rounds' text (and any image
+          // markers) already sit in front of it in the final reply.
+          let roundOffset = (markerPrefix + streamed).count
           let stream = provider.sendChatStream(
             model: model,
             contents: currentContents,
@@ -1074,8 +1077,23 @@ class ChatViewModel: ObservableObject {
             case .functionCall(let name, let args, let thoughtSignature):
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, let finishReason):
-              finalSources = sources
-              finalSupports = supports
+              // Each round cites on its own: a search before a tool call must keep its chips when
+              // the next round answers without searching. Append this round's sources (reusing
+              // ones already listed) and remap its supports onto the combined list.
+              let indexMap = sources.map { source -> Int in
+                if let existing = finalSources.firstIndex(where: { $0.uri == source.uri }) {
+                  return existing
+                }
+                finalSources.append(source)
+                return finalSources.count - 1
+              }
+              finalSupports += supports.map {
+                GroundingSupport(
+                  startIndex: $0.startIndex + roundOffset, endIndex: $0.endIndex + roundOffset,
+                  groundingChunkIndices: $0.groundingChunkIndices.compactMap {
+                    indexMap.indices.contains($0) ? indexMap[$0] : nil
+                  })
+              }
               if Self.isTruncatedFinishReason(finishReason) { truncatedFinish = true }
             }
           }
@@ -1802,8 +1820,9 @@ class ChatViewModel: ObservableObject {
   nonisolated static func isTruncatedFinishReason(_ reason: String?) -> Bool {
     guard let reason else { return false }
     let lower = reason.lowercased()
+    // `pause_turn`: Anthropic's server-side search loop stopped before the answer was written.
     return lower == "length" || lower == "max_tokens" || lower.contains("max_token")
-      || lower == "incomplete"
+      || lower == "incomplete" || lower == "pause_turn"
   }
 
   /// Registers a streaming buffer for `messageId` so the bubble for that message can observe it.
@@ -4500,6 +4519,50 @@ private enum ModelReplyRenderSegment {
   case table(ParsedTable)
   case codeBlock(String, String?)
   case image(NSImage)
+  case sources([GroundingSource])
+}
+
+// MARK: - Source Chips
+
+/// The sources one paragraph cites, as small clickable pills directly under it. A separate view
+/// rather than inline links because an inline `.link` run in selectable text hangs SwiftUI's
+/// macOS selection overlay (see `ModelReplyView`).
+private struct SourceChipRow: View {
+  let sources: [GroundingSource]
+
+  var body: some View {
+    FlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+      ForEach(sources) { source in
+        if let url = URL(string: source.uri) {
+          SourceChip(title: source.title, url: url)
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct SourceChip: View {
+  let title: String
+  let url: URL
+  @State private var isHovered = false
+
+  var body: some View {
+    Link(destination: url) {
+      Text(title)
+        .font(.caption)
+        .lineLimit(1)
+        .truncationMode(.middle)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .foregroundColor(isHovered ? .accentColor : ChatTheme.secondaryText)
+        .background(
+          Capsule().fill(isHovered ? Color.accentColor.opacity(0.14) : ChatTheme.primaryText.opacity(0.07)))
+    }
+    .help(url.absoluteString)
+    .onHover { isHovered = $0 }
+    .pointerCursorOnHover()
+  }
 }
 
 /// Boxes parsed reply segments so they can be stored in an NSCache (class-only values).
@@ -4741,6 +4804,11 @@ private struct ModelReplyView: View {
             .scaledToFit()
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+        case .sources(let sources):
+          // Pulled up against the paragraph it cites, so it reads as that paragraph's footnote
+          // rather than as a block of its own between two paragraphs.
+          SourceChipRow(sources: sources)
+            .padding(.top, -10)
         }
       }
     }
@@ -4895,6 +4963,9 @@ private struct ModelReplyView: View {
       case .image(let image):
         flushProse()
         segments.append(.image(image))
+      case .sources(let sources):
+        flushProse()
+        segments.append(.sources(sources))
       case .separator:
         if hasProse {
           prose.append(AttributedString("\n\n"))
@@ -5284,6 +5355,9 @@ private struct MessageBubbleView: View {
   @State private var isEditing = false
   @State private var draft = ""
 
+  /// The reply's full source list starts collapsed: each paragraph already shows its own sources.
+  @State private var showsAllSources = false
+
   var isUser: Bool { message.role == .user }
 
   var body: some View {
@@ -5518,27 +5592,32 @@ private struct MessageBubbleView: View {
   }
 
   /// Sources with wrapping: [1] Title1  [2] Title2  … flow onto multiple lines when horizontal space is limited.
+  /// Every source the reply consulted, behind a "Sources (N)" disclosure. The per-paragraph chips
+  /// carry what each claim rests on; this list is for browsing everything the search turned up.
   private var sourcesView: some View {
-    FlowLayout(horizontalSpacing: 10, verticalSpacing: 6) {
-      ForEach(Array(message.sources.enumerated()), id: \.element.id) { index, source in
-        if let url = URL(string: source.uri) {
-          Link(destination: url) {
-            HStack(spacing: 4) {
-              Text("[\(index + 1)]")
-                .font(.caption)
-                .fontWeight(.medium)
-              Text(source.title)
-                .font(.caption)
-            }
-            .foregroundColor(.accentColor)
-          }
-          .pointerCursorOnHover()
+    VStack(alignment: .leading, spacing: 6) {
+      Button {
+        withAnimation(.easeInOut(duration: 0.15)) { showsAllSources.toggle() }
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 9, weight: .semibold))
+            .rotationEffect(.degrees(showsAllSources ? 90 : 0))
+          Text("Sources (\(message.sources.count))")
+            .font(.caption)
         }
+        .foregroundColor(ChatTheme.secondaryText)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .pointerCursorOnHover()
+      if showsAllSources {
+        SourceChipRow(sources: message.sources)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 12)
-    .padding(.top, 6)
+    .padding(.horizontal, 16)
+    .padding(.top, 2)
   }
 }
 

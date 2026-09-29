@@ -94,6 +94,8 @@ enum SpeechTextSanitizer {
     text = replacing(text, #"\[([^\]]*)\]\[[^\]]*\]"#, with: "$1")
     // Bare citation markers left behind by a source list (`[1] samoburja.com`).
     text = replacing(text, #"\[{1,2}\s*\d+\s*\]{1,2}"#, with: "")
+    // Grok's leaked internal search tokens (`[web:9]`, `[x:3]`).
+    text = replacing(text, #"\[(?:web|x|post|news):\d+\]"#, with: "")
     // Autolinks and bare URLs.
     text = replacing(text, #"<(?:https?|mailto):[^>]*>"#, with: "")
     text = replacing(text, #"\b(?:https?://|www\.)\S+"#, with: "")

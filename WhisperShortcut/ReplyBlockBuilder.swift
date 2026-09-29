@@ -51,6 +51,90 @@ enum ParagraphCitationBuilder {
     return set.sorted()
   }
 }
+// MARK: - Inline citation markers
+
+/// Pulls the citation markers a provider writes INTO the reply text out of one paragraph.
+///
+/// - Grok's Responses API appends `[[N]](url)` after the claim it supports; occasionally it leaks
+///   its internal `[web:N]` / `[x:N]` search-result tokens instead.
+/// - OpenAI's web search appends a parenthesized domain link, `([nytimes.com](url?utm_source=openai))`.
+///
+/// None of these reads well inline, and a clickable inline link would hit the SwiftUI selection
+/// hang (see `ModelReplyView`). So markers are stripped from the prose and the URLs they carry
+/// become the paragraph's source chips. `[web:N]` carries no URL and its N is Grok's private search
+/// index — it does NOT match the order of the `url_citation` annotations — so those are dropped
+/// rather than guessed.
+enum InlineCitationExtractor {
+  /// A URL allowing one level of balanced parentheses inside it (Wikipedia).
+  private static let url = #"(?:[^()\s]|\([^()\s]*\))+"#
+  /// `[[3]](https://…)`.
+  private static let grokMarker = try! NSRegularExpression(
+    pattern: #"[ \t]*\[\[\d+\]\]\((\#(url))\)"#)
+  /// `([a.com](u1))`, or several in one pair of parentheses: `([a.com](u1), [b.com](u2))`.
+  private static let parenLinkGroup = try! NSRegularExpression(
+    pattern: #"[ \t]*\(\s*\[[^\]\n]+\]\(\#(url)\)(?:\s*[,;]\s*\[[^\]\n]+\]\(\#(url)\))*\s*\)"#)
+  private static let markdownLink = try! NSRegularExpression(
+    pattern: #"\[[^\]\n]+\]\((\#(url))\)"#)
+  /// `[web:3]`, `[x:12]`, `[post:1]` — Grok's internal search-result tokens.
+  private static let tokenMarker = try! NSRegularExpression(
+    pattern: #"[ \t]*\[(?:web|x|post|news):\d+\]"#)
+  /// A marker cut off by the stream (`… [[2]](https://exa`, `… ([nyt`), hidden until it completes.
+  private static let partialMarker = try! NSRegularExpression(
+    pattern: #"[ \t]*(?:\[(?:\[\d*\]?\]?(?:\([^()\s]*)?|(?:web|x|post|news)(?::\d*)?)|\(\[[^\]\n]*(?:\]\([^()\s]*)?)$"#)
+
+  /// The paragraph with every marker removed, plus the cited sources in first-cited order.
+  /// A URL that is also in the reply's footer list reuses that entry's title.
+  static func extract(
+    from paragraph: String, knownSources: [GroundingSource]
+  ) -> (text: String, sources: [GroundingSource]) {
+    guard paragraph.contains("[") else { return (paragraph, []) }
+    let ns = paragraph as NSString
+    let whole = NSRange(location: 0, length: ns.length)
+    var cited: [(location: Int, url: String)] = []
+    var removals: [NSRange] = []
+
+    for match in grokMarker.matches(in: paragraph, range: whole) {
+      cited.append((match.range.location, ns.substring(with: match.range(at: 1))))
+      removals.append(match.range)
+    }
+    // A parenthesized link is only a citation when the provider says so — its URL is one of the
+    // reply's annotated sources, or carries OpenAI's attribution tag (sources arrive only when the
+    // stream ends, so mid-stream the tag is all there is). A model's own "(see [docs](url))" stays.
+    let known = Set(knownSources.map(\.uri))
+    for match in parenLinkGroup.matches(in: paragraph, range: whole) {
+      let group = ns.substring(with: match.range) as NSString
+      let urls = markdownLink.matches(in: group as String, range: NSRange(location: 0, length: group.length))
+        .map { group.substring(with: $0.range(at: 1)) }
+      guard !urls.isEmpty,
+            urls.allSatisfy({ known.contains($0) || $0.contains("utm_source=openai") }) else { continue }
+      cited.append(contentsOf: urls.map { (match.range.location, $0) })
+      removals.append(match.range)
+    }
+    for match in tokenMarker.matches(in: paragraph, range: whole) {
+      removals.append(match.range)
+    }
+
+    var text = paragraph
+    for range in removals.sorted(by: { $0.location > $1.location }) {
+      text = (text as NSString).replacingCharacters(in: range, with: "")
+    }
+    text = partialMarker.stringByReplacingMatches(
+      in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+
+    var seen: Set<String> = []
+    // Enumerated tie-break: `sorted` is not stable, and a group's URLs share one location.
+    let ordered = cited.enumerated().sorted {
+      ($0.element.location, $0.offset) < ($1.element.location, $1.offset)
+    }.map(\.element)
+    let sources = ordered.compactMap { entry -> GroundingSource? in
+      guard seen.insert(entry.url).inserted else { return nil }
+      return knownSources.first { $0.uri == entry.url }
+        ?? GroundingSource(uri: entry.url, title: GroundingSource.displayTitle(for: entry.url))
+    }
+    return (text, sources)
+  }
+}
+
 // MARK: - Markdown Table / Block types (shared via MarkdownParsing.swift)
 
 enum ReplyContentBlock {
@@ -60,6 +144,7 @@ enum ReplyContentBlock {
   case separator
   case codeBlock(String, String?) // code content, optional language
   case image(NSImage) // inline image (e.g. from Gemini image generation)
+  case sources([GroundingSource]) // the sources one paragraph cites, rendered as a chip row under it
 }
 
 // MARK: - Code Block Extraction
@@ -174,31 +259,6 @@ enum ProseFontHint: AttributedStringKey {
 
 /// Markdown → `[ReplyContentBlock]`, for both grounded and ungrounded replies.
 enum ReplyBlockBuilder {
-  /// A citation marker like " [3]" as PLAIN text — deliberately NO `.link` and NO per-run
-  /// font. An inline `.link` run (or a per-run font that differs from the body font) inside a
-  /// `.textSelection(.enabled)` Text drives SwiftUI's macOS `SelectionOverlay` into a
-  /// non-terminating `setFont:` / `_effectiveFontDidChangeTo:` loop (100% CPU hang). The
-  /// clickable source still lives in `sourcesView`'s chip row, so nothing is lost.
-  private static func citationMarker(_ oneBased: Int) -> AttributedString {
-    AttributedString(" [\(oneBased)]")
-  }
-
-  /// Appends citation markers for every in-range chunk index. `sourcesCount` bounds the indices so
-  /// we never reference a source that doesn't exist.
-  private static func appendCitations(to attr: inout AttributedString, indices: [Int], sourcesCount: Int) {
-    for idx in indices where idx < sourcesCount {
-      attr.append(citationMarker(idx + 1))
-    }
-  }
-
-  /// One paragraph's rendered blocks, plus which of them a grounded paragraph's citation markers
-  /// attach to. The target is not always the last block — a "heading + bullets" paragraph cites on
-  /// the heading — so it is carried explicitly rather than re-derived.
-  struct ClassifiedParagraph {
-    var blocks: [ReplyContentBlock]
-    var citationTarget: Int?
-  }
-
   /// Turns one trimmed paragraph into render blocks.
   ///
   /// **The single classifier for both the grounded and ungrounded paths.** It used to be written
@@ -210,48 +270,43 @@ enum ReplyBlockBuilder {
     _ trimmed: String,
     codeBlocks: [CodeBlockExtractor.ExtractedCodeBlock],
     options: AttributedString.MarkdownParsingOptions
-  ) -> ClassifiedParagraph {
+  ) -> [ReplyContentBlock] {
     if let idx = CodeBlockExtractor.placeholderIndex(trimmed), idx < codeBlocks.count {
       let cb = codeBlocks[idx]
       if cb.language == "markdown" && Self.looksLikeStructuredAnswer(cb.code) {
         // A whole structured answer fenced as ```markdown — render it as the answer it is.
-        return ClassifiedParagraph(
-          blocks: buildBlocks(content: cb.code, sources: [], groundingSupports: []),
-          citationTarget: nil)
+        return buildBlocks(content: cb.code, sources: [], groundingSupports: [])
       }
-      return ClassifiedParagraph(blocks: [.codeBlock(cb.code, cb.language)], citationTarget: nil)
+      return [.codeBlock(cb.code, cb.language)]
     }
 
     if let pieces = Self.splitImageMarkerPieces(trimmed) {
-      // Generated image(s). Citations attach to the last text piece; an image-only paragraph
-      // drops them.
+      // Generated image(s) interleaved with the model's narration.
       var blocks: [ReplyContentBlock] = []
-      var target: Int?
       for piece in pieces {
         switch piece {
         case .image(let image):
           blocks.append(.image(image))
         case .text(let text):
           guard !GeminiAPIClient.isGeneratedImagePlaceholder(text) else { continue }
-          target = blocks.count
           blocks.append(.text(buildSingleParagraphAttributed(text, options: options)))
         }
       }
-      return ClassifiedParagraph(blocks: blocks, citationTarget: target)
+      return blocks
     }
 
     if MarkdownParsing.isSeparatorParagraph(trimmed) {
-      return ClassifiedParagraph(blocks: [.separator], citationTarget: nil)
+      return [.separator]
     }
 
     if MarkdownParsing.looksLikeMarkdownTable(trimmed),
        let parsed = MarkdownParsing.parseMarkdownTable(trimmed) {
-      return ClassifiedParagraph(blocks: [.table(parsed)], citationTarget: nil)
+      return [.table(parsed)]
     }
 
     if let bulletItems = parseBulletItems(trimmed) {
       DebugLogger.log("BLOCKS: bulletList with \(bulletItems.count) items")
-      return ClassifiedParagraph(blocks: [.bulletList(bulletItems)], citationTarget: 0)
+      return [.bulletList(bulletItems)]
     }
 
     if let (headingPart, bulletPart) = splitHeadingAndBullets(trimmed) {
@@ -265,41 +320,19 @@ enum ReplyBlockBuilder {
         DebugLogger.log("BLOCKS: bullet part failed parse: \(bulletPart.prefix(80))")
         blocks.append(.text(buildSingleParagraphAttributed(bulletPart, options: options)))
       }
-      // Heading gets the citations, bullets render separately.
-      return ClassifiedParagraph(blocks: blocks, citationTarget: 0)
+      return blocks
     }
 
     // A model may glue several `**…:**` sections into one \n\n-paragraph with no separators. Split
-    // them here (after citation offsets are already resolved, so alignment is unaffected) and
-    // attach the paragraph's citations to the last part.
+    // them here (after citation offsets are already resolved, so alignment is unaffected); the
+    // paragraph's source chips then follow the last part.
     DebugLogger.log("BLOCKS: text block: \(trimmed.prefix(80))")
     let subParts = MarkdownParsing.splitInlineSectionHeadings(trimmed)
       .components(separatedBy: "\n\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
-    let blocks = subParts.map {
+    return subParts.map {
       ReplyContentBlock.text(buildSingleParagraphAttributed($0, options: options))
-    }
-    return ClassifiedParagraph(blocks: blocks, citationTarget: blocks.isEmpty ? nil : blocks.count - 1)
-  }
-
-  /// Stamps a grounded paragraph's citation markers onto its designated block.
-  static func applyCitations(
-    to classified: inout ClassifiedParagraph, indices: [Int], sourcesCount: Int
-  ) {
-    guard !indices.isEmpty, let target = classified.citationTarget,
-          classified.blocks.indices.contains(target) else { return }
-    switch classified.blocks[target] {
-    case .text(var attr):
-      appendCitations(to: &attr, indices: indices, sourcesCount: sourcesCount)
-      classified.blocks[target] = .text(attr)
-    case .bulletList(var items):
-      guard var lastItem = items.popLast() else { return }
-      appendCitations(to: &lastItem, indices: indices, sourcesCount: sourcesCount)
-      items.append(lastItem)
-      classified.blocks[target] = .bulletList(items)
-    case .table, .separator, .codeBlock, .image:
-      break
     }
   }
 
@@ -333,9 +366,19 @@ enum ReplyBlockBuilder {
       let trimmed = para.text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty { continue }
       if Self.shouldSkipGeneratedImagePlaceholder(trimmed, in: content) { continue }
-      var classified = classify(trimmed, codeBlocks: codeBlocks, options: options)
-      applyCitations(to: &classified, indices: para.chunkIndices, sourcesCount: sources.count)
-      blocks.append(contentsOf: classified.blocks)
+      // Sources render as a chip row under the paragraph they support — grounding supports
+      // (Gemini) and in-text markers (Grok) alike — never as inline text. Code is left verbatim.
+      var cited = para.chunkIndices.filter { $0 < sources.count }.map { sources[$0] }
+      var prose = trimmed
+      if CodeBlockExtractor.placeholderIndex(trimmed) == nil {
+        let extracted = InlineCitationExtractor.extract(from: trimmed, knownSources: sources)
+        prose = extracted.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for source in extracted.sources where !cited.contains(source) { cited.append(source) }
+      }
+      if !prose.isEmpty {
+        blocks.append(contentsOf: classify(prose, codeBlocks: codeBlocks, options: options))
+      }
+      if !cited.isEmpty { blocks.append(.sources(cited)) }
     }
     // Strip markers in the fallback too: a message whose only marker failed to decode would
     // otherwise dump the raw multi-MB base64 into the UI as text.

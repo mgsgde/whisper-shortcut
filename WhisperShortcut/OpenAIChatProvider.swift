@@ -119,9 +119,9 @@ final class OpenAIChatProvider: LLMChatProvider {
       return OpenAICompatibleStream.responses(
         try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-RESPONSES", useCustomEndpoint: false),
         body: body,
-        // Grounded OpenAI replies do not carry inline [N] markers today, so no citation footer is
-        // rendered for them. Left off deliberately: enabling it is a UI change, not a refactor.
-        collectCitations: false)
+        // The url_citation annotations fill the collapsed "Sources" list; the per-paragraph chips
+        // come from the `([domain](url))` links GPT writes inline (`InlineCitationExtractor`).
+        collectCitations: true)
     } catch {
       return AsyncThrowingStream { $0.finish(throwing: error) }
     }
