@@ -2035,7 +2035,9 @@ class ChatViewModel: ObservableObject {
     UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     Self.recordModelUse(model)
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
-    appendModelMessage("Model set to **\(model.displayName)**.")
+    // Say it now rather than on the next send, which would fail with the same message.
+    let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
+    appendModelMessage("Model set to **\(model.displayName)**.\(setupHint)")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
   }
 
@@ -4290,15 +4292,31 @@ struct ChatInputAreaView: View {
         Spacer()
 
         Menu {
-          ForEach(PromptModel.chatModels, id: \.self) { model in
-            Button(action: {
-              selectedChatModelRaw = model.rawValue
-              ChatViewModel.recordModelUse(model) // keep autocomplete recency in sync with the picker
-              NotificationCenter.default.post(name: .promptModelChanged, object: model)
-            }) {
-              Text(model.displayName)
+          // Grouped by provider with a native checkmark on the active model. A provider without
+          // its key/endpoint stays selectable (the user may be about to add one) but says so,
+          // instead of letting the next send fail with a credential error.
+          let current = resolvedOpenGeminiModel
+          ForEach(ChatModelProvider.allCases, id: \.self) { provider in
+            let models = PromptModel.chatModels.filter { $0.provider == provider }
+            if !models.isEmpty {
+              Section(provider.pickerSectionTitle) {
+                let missingCredential = !provider.hasCredential
+                ForEach(models, id: \.self) { model in
+                  Toggle(
+                    missingCredential ? "\(model.displayName) — needs setup" : model.displayName,
+                    isOn: Binding(
+                      get: { model == current },
+                      set: { _ in
+                        selectedChatModelRaw = model.rawValue
+                        ChatViewModel.recordModelUse(model) // keep autocomplete recency in sync with the picker
+                        NotificationCenter.default.post(name: .promptModelChanged, object: model)
+                      }))
+                }
+              }
             }
           }
+          Divider()
+          Button("API Keys & Endpoints…") { SettingsManager.shared.showSettings() }
         } label: {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)

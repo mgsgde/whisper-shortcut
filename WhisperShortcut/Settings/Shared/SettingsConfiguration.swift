@@ -35,6 +35,19 @@ enum ChatModelProvider: String, CaseIterable {
     }
   }
 
+  /// Section title in the chat's model picker. Brand names, not company names (GPT, not OpenAI).
+  var pickerSectionTitle: String {
+    switch self {
+    case .gemini: return "Gemini"
+    case .grok: return "Grok"
+    case .openai: return "GPT"
+    case .anthropic: return "Claude"
+    case .customOpenAI: return "Custom endpoint"
+    case .local: return "Local server"
+    case .localMLX: return "On this Mac"
+    }
+  }
+
   /// Slash-command alias for the bare provider command (without the leading "/"), e.g. `/gemini`.
   /// Named after the model brand for consistency: Gemini / Grok / GPT / Claude (not the company).
   /// `/openai` and `/anthropic` are silent aliases in `ChatView`; see `modelCommandLookup`.

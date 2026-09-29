@@ -592,10 +592,10 @@ class MenuBarController: NSObject {
     switch presentedState {
     case .recording(.prompt) where activeMeetingSegment == nil:
       offerQuickActionsIfNeeded()
-      indicator.showRecording()
-    case .recording(.transcription), .recording(.prompt), .recording(.voiceFeedback):
+      indicator.showRecording(label: AppState.RecordingMode.prompt.pillLabel)
+    case .recording(let mode) where mode != .liveMeeting:
       dismissQuickActions()
-      indicator.showRecording()
+      indicator.showRecording(label: mode.pillLabel)
     case .processing(let mode):
       dismissQuickActions()
       // TTS has no recording phase, so summon the processing pill directly;
@@ -603,7 +603,7 @@ class MenuBarController: NSObject {
       // The meeting's stop drain is not summoned either — the menu bar and the meeting bar
       // report it, and a pill for it would appear over whatever the user turned to next.
       let summon = mode.isTTSContext
-      indicator.showProcessing(summonIfNeeded: summon)
+      indicator.showProcessing(summonIfNeeded: summon, label: mode.pillLabel)
     default:
       dismissQuickActions()
       // `.speaking` is the normal case here, but audio can also still be playing under a
