@@ -19,8 +19,9 @@ final class AnthropicChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    // Only `thinkingLevel` applies: Claude web search isn't wired in this app, there are no
-    // auto-enabled built-ins, and Anthropic caches via explicit cache_control breakpoints.
+    // Only `thinkingLevel` applies: Claude web search isn't wired in this app and there are no
+    // auto-enabled built-ins. `cacheKey` is unused — Anthropic caches by prefix via the
+    // `cache_control` breakpoints set below.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
@@ -53,14 +54,23 @@ final class AnthropicChatProvider: LLMChatProvider {
             body["system"] = systemText
           }
           if !tools.isEmpty {
-            body["tools"] = tools.map { tool in
+            var toolDefs: [[String: Any]] = tools.map { tool in
               [
                 "name": tool.name,
                 "description": tool.description,
                 "input_schema": tool.parameters,
               ] as [String: Any]
             }
+            // Explicit breakpoint on the last tool: tools render first and change only when an
+            // integration is connected, so this prefix is re-read across turns and tool rounds
+            // even when the system prompt's volatile tail (memory, meeting transcript) changes.
+            toolDefs[toolDefs.count - 1]["cache_control"] = ["type": "ephemeral"]
+            body["tools"] = toolDefs
           }
+          // Automatic caching for the growing tail: the API places this breakpoint on the last
+          // cacheable block and moves it forward each turn, so every tool round and follow-up
+          // re-reads the whole conversation instead of paying full input price again.
+          body["cache_control"] = ["type": "ephemeral"]
           if let effort = options.thinkingLevel.anthropicEffort,
              Self.supportsEffort(model: model) {
             body["output_config"] = ["effort": effort]
@@ -100,6 +110,16 @@ final class AnthropicChatProvider: LLMChatProvider {
                   let type = obj["type"] as? String else { continue }
 
             switch type {
+            case "message_start":
+              // Cache verification: reads staying at 0 across turns means something in the
+              // prefix changes per request (see buildSystemInstruction's ordering note).
+              if let usage = (obj["message"] as? [String: Any])?["usage"] as? [String: Any] {
+                DebugLogger.logNetwork(
+                  "ANTHROPIC-CHAT-STREAM: usage input=\(usage["input_tokens"] ?? 0) "
+                  + "cacheRead=\(usage["cache_read_input_tokens"] ?? 0) "
+                  + "cacheWrite=\(usage["cache_creation_input_tokens"] ?? 0)")
+              }
+
             case "content_block_start":
               if let block = obj["content_block"] as? [String: Any],
                  (block["type"] as? String) == "tool_use",

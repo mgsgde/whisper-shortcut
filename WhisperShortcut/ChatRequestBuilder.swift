@@ -38,6 +38,9 @@ enum ChatRequestBuilder {
     let unwatchableLinkMessageID: UUID? = isGemini
       ? nil
       : toSend.last { $0.role == .user && !YouTubeVideoLink.detect(in: $0.content).isEmpty }?.id
+    // Tool calls of recent assistant turns ride along as a text block ahead of the reply, so a
+    // follow-up ("move that card", "delete the event you just made") still has the IDs.
+    let replayedToolCallIDs = ChatToolHistory.replayedMessageIDs(in: toSend)
     // Re-send each user message's attached images on every turn, not just the
     // final one. Otherwise an image is visible to the model only on the turn it
     // was attached and is stripped to text afterwards — so a follow-up like
@@ -77,6 +80,10 @@ enum ChatRequestBuilder {
           parts.append(["text": text])
         }
         return ["role": msg.role.rawValue, "parts": parts]
+      }
+      if replayedToolCallIDs.contains(msg.id),
+         let toolText = ChatToolHistory.historyText(for: msg.toolCalls) {
+        return ["role": msg.role.rawValue, "parts": [["text": toolText + "\n\n" + text]]]
       }
       return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }

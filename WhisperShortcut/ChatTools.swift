@@ -47,15 +47,25 @@ struct ChatToolContext {
 
 enum ChatToolRegistry {
 
-  /// Tools that mutate the user's data or open a URL. Each call is confirmed in Chat
-  /// before it runs; the choice is per-turn and is not remembered.
-  static func requiresUserApproval(_ name: String) -> Bool {
+  /// Tools that mutate the user's data, open a URL, or write text that shapes future behavior.
+  /// Each call is confirmed in Chat before it runs; the choice is per-turn and is not remembered.
+  ///
+  /// The memory, instructions and file-write tools are gated for prompt-injection reasons, not
+  /// because they are destructive: a Gmail message, web page or shared file the model just read
+  /// could otherwise tell it to plant a permanent instruction in memory or a system prompt,
+  /// or to write into the user's files, with nothing visible to the user.
+  static func requiresUserApproval(_ name: String, args: [String: Any] = [:]) -> Bool {
     switch name {
     case "open_url",
          "google_calendar_create_event", "google_calendar_update_event", "google_calendar_delete_event",
          "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
-         "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card":
+         "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
+         rememberAboutUserToolName,
+         "write_text_file", "append_to_file", "edit_text_file":
       return true
+    case updateInstructionsToolName:
+      // Reading the current rules is harmless and is what the model is told to do first.
+      return (args["action"] as? String) != "read"
     default:
       return false
     }
@@ -65,6 +75,11 @@ enum ChatToolRegistry {
   static func approvalSummary(name: String, args: [String: Any]) -> String {
     func arg(_ key: String) -> String {
       (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+    // The user must see *what* gets written — that is the point of the prompt — but an alert
+    // cannot hold a whole file.
+    func preview(_ text: String, limit: Int = 600) -> String {
+      text.count > limit ? String(text.prefix(limit)) + "…" : text
     }
     switch name {
     case "open_url":
@@ -95,6 +110,27 @@ enum ChatToolRegistry {
       return "Update Trello card \(arg("card_id"))."
     case "trello_archive_card":
       return "Archive Trello card \(arg("card_id"))."
+    case rememberAboutUserToolName:
+      return "Remember about you (added to every future chat):\n\(preview(arg("fact")))"
+    case updateInstructionsToolName:
+      let action = arg("action")
+      let text = arg("text")
+      let verb: String
+      switch action {
+      case "append": verb = "Add a rule to"
+      case "replace": verb = "Replace"
+      case "remove": verb = "Remove rules from"
+      default: verb = "Change"
+      }
+      let line = "\(verb) the Dictate Prompt instructions."
+      return text.isEmpty ? line : line + "\n\n" + preview(text)
+    case "write_text_file":
+      let overwrite = (args["overwrite"] as? Bool) == true
+      return (overwrite ? "Overwrite file " : "Create file ") + "\(arg("path"))\n\n" + preview(arg("content"))
+    case "append_to_file":
+      return "Append to file \(arg("path")):\n\n" + preview(arg("content"))
+    case "edit_text_file":
+      return "Edit file \(arg("path")):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
     default:
       return "Allow the chat to run \(name)?"
     }

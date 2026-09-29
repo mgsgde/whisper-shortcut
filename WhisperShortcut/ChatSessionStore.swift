@@ -64,10 +64,13 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   var groundingSupports: [GroundingSupport]
   /// Image/file parts attached to this user message. Encoded as array; legacy single image decoded from attachedImageData/attachedFileMimeType/attachedFilename.
   var attachedImageParts: [AttachedImagePart]
+  /// Tool calls the model made while writing this (assistant) message, replayed as context on
+  /// later turns so IDs and results are not lost. See `ChatToolHistory`.
+  var toolCalls: [ChatToolCallRecord]
 
   enum CodingKeys: String, CodingKey {
     case id, role, content, timestamp, sources, groundingSupports
-    case attachedImageParts
+    case attachedImageParts, toolCalls
     case attachedImageData, attachedFileMimeType, attachedFilename // legacy, decode only
   }
 
@@ -78,7 +81,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     timestamp: Date = Date(),
     sources: [GroundingSource] = [],
     groundingSupports: [GroundingSupport] = [],
-    attachedImageParts: [AttachedImagePart] = []
+    attachedImageParts: [AttachedImagePart] = [],
+    toolCalls: [ChatToolCallRecord] = []
   ) {
     self.id = id
     self.role = role
@@ -87,6 +91,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.sources = sources
     self.groundingSupports = groundingSupports
     self.attachedImageParts = attachedImageParts
+    self.toolCalls = toolCalls
   }
 
   init(from decoder: Decoder) throws {
@@ -106,6 +111,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     } else {
       attachedImageParts = []
     }
+    toolCalls = try c.decodeIfPresent([ChatToolCallRecord].self, forKey: .toolCalls) ?? []
   }
 
   func encode(to encoder: Encoder) throws {
@@ -117,6 +123,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     try c.encode(sources, forKey: .sources)
     try c.encode(groundingSupports, forKey: .groundingSupports)
     try c.encode(attachedImageParts, forKey: .attachedImageParts)
+    if !toolCalls.isEmpty { try c.encode(toolCalls, forKey: .toolCalls) }
   }
 }
 
