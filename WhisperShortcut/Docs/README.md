@@ -159,7 +159,7 @@ Core slash commands:
 - `/workspace` — limit this chat to one of the shared folders (e.g. `/workspace notes`); `all` restores every folder, `off` drops file access for this chat
 - `/model` — switch model (e.g. `/model 3.5 flash`)
 - `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`)
-- `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
+- `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat → Advanced
 - `/settings` — open Settings
 - `/pin` / `/unpin` — keep the window open or close on focus loss
 - `/meeting` — start or stop live meeting recording

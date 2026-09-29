@@ -19,10 +19,6 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
-      XSearchHandlesSection()
-
-      SpacedSectionDivider()
-
       ClaudeWebSearchSection()
 
       SpacedSectionDivider()
@@ -58,25 +54,19 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
-      meetingChunkIntervalSection
-
-      SpacedSectionDivider()
-
-      meetingTranscriptionModelSection
-
-      SpacedSectionDivider()
-
-      meetingSummaryModelSection
-
-      SpacedSectionDivider()
-
       usageSection
 
       SpacedSectionDivider()
 
+      // Knobs most people never touch: the defaults are the tuned choice, and every visible row is
+      // one more thing a new user has to read past. Values are unchanged — only where they live.
       AdvancedSettingsGroup {
-        windowBehaviorSection
+        XSearchHandlesSection()
+        meetingChunkIntervalSection
+        meetingTranscriptionModelSection
+        meetingSummaryModelSection
         meetingSafeguardSection
+        windowBehaviorSection
       }
     }
   }
