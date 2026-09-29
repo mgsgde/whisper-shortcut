@@ -4,7 +4,8 @@ import Testing
 @testable import WhisperShortcut_AppStore
 
 /// Parakeet Ultra as an offline engine (`plans/active/parakeet-offline.md`, slice 1).
-@Suite("Parakeet offline engine")
+/// Serialized: the live tests time decodes, and two of them sharing the Neural Engine inflates both.
+@Suite("Parakeet offline engine", .serialized)
 struct ParakeetOfflineTests {
 
   /// The Offline Mode guarantee, checked without a network: FluidAudio's loader re-downloads a
@@ -94,6 +95,74 @@ struct ParakeetOfflineTests {
       #expect(!transcript.isEmpty)
       #expect(decode < budget, "\(label): \(f(decode)) s against a \(budget) s budget")
     }
+  }
+
+  /// S2's acceptance: the Glossary, handed to Parakeet as terms, must lift the practice terms the
+  /// benchmark scored (18/24 → 23/24 there) without costing more than a fraction of a second.
+  @Test(
+    "Glossary vocabulary lifts practice terms",
+    .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
+  func glossaryVocabulary() async throws {
+    setvbuf(stdout, nil, _IONBF, 0)
+    try await ModelManager.shared.ensureReady(.parakeetUltra)
+    try await LocalSpeechService.shared.initializeModel(.parakeetUltra)
+
+    let terms = [
+      "Lumbalgie", "Faszieneinschränkung", "Sacrum", "Halswirbelsäule", "Iliosakralgelenks",
+      "osteopathisch", "myofasziale", "craniosacrale", "Triggerpunkte", "paravertebral",
+      "Abwehrspannung", "Sonographie", "Abdomens", "Ramipril", "Entzündungswerte",
+    ]
+    let text = """
+      Die Patientin kommt mit akuter Lumbalgie nach einer Hebebewegung. \
+      Palpation zeigt eine deutliche Faszieneinschränkung im Bereich des Sacrum und der Halswirbelsäule. \
+      Verdacht auf Blockade des Iliosakralgelenks. \
+      Behandlung osteopathisch mit Fokus auf myofasziale Techniken und craniosacrale Impulse. \
+      Triggerpunkte paravertebral links. \
+      Die Untersuchung zeigt einen weichen Bauch ohne Abwehrspannung. \
+      Die Sonographie des Abdomens ergibt keinen Hinweis auf Gallensteine. \
+      Im Labor sind die Entzündungswerte leicht erhöht. \
+      Der Patient nimmt weiterhin Ramipril einmal täglich ein.
+      """
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("parakeet-vocab-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("practice.wav")
+    try Self.say(text, to: url)
+
+    func hits(_ transcript: String) -> Int {
+      let folded = transcript.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+      return terms.filter {
+        folded.contains($0.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil))
+      }.count
+    }
+
+    var results: [String: (hits: Int, seconds: Double)] = [:]
+    // Vocabulary arm twice: the first run builds the CTC session (one-off), the second is the
+    // per-dictation cost.
+    let file = try AVAudioFile(forReading: url)
+    let audioSeconds = Double(file.length) / file.fileFormat.sampleRate
+    print("BENCH-PARAKEET-VOCAB audioS=\(String(format: "%.2f", audioSeconds))")
+    for (arm, vocabulary) in [("none", [String]()), ("vocab-build", terms), ("vocab", terms)] {
+      let start = Date()
+      let transcript = try await LocalSpeechService.shared.transcribe(
+        audioURL: url, language: "de", vocabulary: vocabulary)
+      let seconds = Date().timeIntervalSince(start)
+      results[arm] = (hits(transcript), seconds)
+      print(
+        "BENCH-PARAKEET-VOCAB arm=\(arm) hits=\(hits(transcript))/\(terms.count) "
+          + "decodeS=\(String(format: "%.2f", seconds))")
+    }
+    let none = try #require(results["none"])
+    let vocab = try #require(results["vocab"])
+    #expect(vocab.hits > none.hits, "the Glossary should recover terms the plain decode misses")
+    // The CTC spotter runs a second encoder over the whole recording (FluidAudio documents ~26×
+    // realtime), so its cost scales with length: measured +1.8 s on 36.8 s of audio (M1 Pro,
+    // 2026-09-29), ~5 %. The budget is 8 % of the audio with a 0.5 s floor.
+    let budget = max(0.5, 0.08 * audioSeconds)
+    #expect(
+      vocab.seconds - none.seconds < budget,
+      "boosting cost \(vocab.seconds - none.seconds) s on \(audioSeconds) s of audio; budget \(budget) s")
   }
 
   private static func say(_ text: String, to url: URL) throws {

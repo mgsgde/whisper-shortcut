@@ -65,12 +65,14 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     }
   }
   
-  /// The model the list recommends: the one a user who does not want to research Whisper sizes
-  /// should take. That is turbo — large-v3 accuracy at half its download and several times its
-  /// speed. Base was recommended before turbo existed; a 140 MB model that mishears names is the
-  /// wrong default for dictation you intend to keep.
+  /// The model the list recommends: the one a user who does not want to research model sizes
+  /// should take. That is Parakeet Ultra since 2026-09-29 — turbo's accuracy on real German
+  /// dictation (8.1 % vs 8.4 % WER) at ~1/20 of the wait and under half the download
+  /// (`benchmarks/local-asr/README.md`). Magnus after dictating with it: „Das ist viel, viel besser als
+  /// Whisper Large."
+  /// Turbo held the star before; Base before that.
   var isRecommended: Bool {
-    return self == .whisperLargeTurbo
+    return self == .parakeetUltra
   }
 
   /// Shown instead of the star on the model that is merely the fastest way to *try* offline
@@ -116,15 +118,16 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     }
   }
 
-  /// Offline models ordered worst to best transcript. Used to pick a sensible model on this Mac
-  /// without asking the user which Whisper size means what — Offline Mode walks it from the end.
+  /// Offline models ordered worst to best pick. Used to choose a sensible model on this Mac
+  /// without asking the user which size means what — Offline Mode walks it from the end.
+  /// Parakeet Ultra last: it ties turbo on accuracy and is ~20× faster.
   static var byAccuracy: [OfflineModelType] {
-    [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .parakeetUltra, .whisperLargeTurbo]
+    [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo, .parakeetUltra]
   }
 
-  /// The on-device model to use when the transcript has to be right. Turbo rather than
-  /// `large-v3`: same accuracy, roughly half the download and several times faster.
-  static var mostAccurate: OfflineModelType { .whisperLargeTurbo }
+  /// The on-device model Offline Mode picks when none is downloaded yet (D1 in
+  /// `plans/active/parakeet-offline.md`: new setups get Parakeet; nobody is switched silently).
+  static var mostAccurate: OfflineModelType { .parakeetUltra }
   
   // Map to WhisperKit model name (HuggingFace: openai_whisper-{name}); nil for other engines.
   var whisperKitModelName: String? {

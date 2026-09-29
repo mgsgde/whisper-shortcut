@@ -235,14 +235,14 @@ enum TranscriptionModel: String, CaseIterable {
 
   var isRecommended: Bool {
     switch self {
-    // The offline recommendation is turbo, not Base: same accuracy as large-v3 at half the
-    // download and several times the speed, which makes it the one to take for dictation you
-    // intend to keep. Base remains the quick way to try offline at 140 MB.
-    case .gemini31FlashLite, .whisperLargeTurbo:
+    // The offline recommendation is Parakeet Ultra: turbo's accuracy on real German dictation at
+    // ~1/20 of the wait, and less than half the download (`benchmarks/local-asr/README.md`).
+    // Base remains the quick way to try offline at 140 MB.
+    case .gemini31FlashLite, .parakeetUltra:
       return true
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .parakeetUltra, .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+         .whisperLargeTurbo, .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
     }
@@ -295,7 +295,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperTiny:
       return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
     case .whisperBase:
-      return "OpenAI Whisper Base • Recommended • ~140MB • Offline"
+      return "OpenAI Whisper Base • Smallest download • ~140MB • Offline"
     case .whisperSmall:
       return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
     case .whisperMedium:
@@ -423,7 +423,7 @@ enum TranscriptionModel: String, CaseIterable {
     // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
     // recommended — offline model was the one showing an inert prompt editor with no warning.
     case _ where provider == .offline:
-      return "Offline Whisper ignores the system prompt below — its API accepts no instructions. Only the Glossary reaches it, as conditioning text."
+      return "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for."
     default:
       return nil
     }

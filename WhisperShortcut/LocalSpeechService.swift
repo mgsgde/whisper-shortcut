@@ -342,8 +342,11 @@ actor LocalSpeechService {
   ///   and the seams lose words. Eight percent does not buy that. The parameter stays so the
   ///   comparison can be re-run (`OfflineWhisperBenchmarkTests.chunkingStrategyComparison`); the
   ///   lever that actually removes the wait is streaming, not intra-file parallelism.
+  /// - Parameter vocabulary: the Glossary as terms, for Parakeet (CTC vocabulary boosting).
+  ///   Whisper ignores it and conditions on `prompt` instead.
   func transcribe(
     audioURL: URL, language: String? = nil, prompt: String? = nil,
+    vocabulary: [String] = [],
     chunkingStrategy: ChunkingStrategy? = nil
   ) async throws -> String {
     let transcribeStartTime = CFAbsoluteTimeGetCurrent()
@@ -410,12 +413,10 @@ actor LocalSpeechService {
     let text: String
     let decodeElapsed: Double
     if let parakeet {
-      // The Glossary becomes Parakeet vocabulary in S2 (`plans/active/parakeet-offline.md`);
-      // until then `prompt` is not used on this engine.
       let decodeStart = CFAbsoluteTimeGetCurrent()
       text = try await performParakeetTranscription(
-        parakeet, audioURL: audioURL, language: language, deadline: deadline,
-        audioSeconds: audioDuration)
+        parakeet, audioURL: audioURL, language: language, vocabulary: vocabulary,
+        deadline: deadline, audioSeconds: audioDuration)
       decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
     } else if let whisperKit {
       (text, decodeElapsed) = try await transcribeWithWhisper(
@@ -496,12 +497,12 @@ actor LocalSpeechService {
 
   /// Parakeet's decode under the same wall-clock deadline and error mapping as Whisper's.
   private func performParakeetTranscription(
-    _ backend: ParakeetBackend, audioURL: URL, language: String?, deadline: TimeInterval,
-    audioSeconds: Double?
+    _ backend: ParakeetBackend, audioURL: URL, language: String?, vocabulary: [String],
+    deadline: TimeInterval, audioSeconds: Double?
   ) async throws -> String {
     do {
       return try await WallClockDeadline.run(seconds: deadline) {
-        try await backend.transcribe(audioURL: audioURL, language: language)
+        try await backend.transcribe(audioURL: audioURL, language: language, vocabulary: vocabulary)
       }
     } catch TranscriptionError.requestTimeout {
       let audioSecondsText = audioSeconds.map { String(format: "%.1f", $0) } ?? "?"

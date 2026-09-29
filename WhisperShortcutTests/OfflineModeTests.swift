@@ -103,7 +103,7 @@ struct OfflineModeTests {
 
   @Test("large-v3-turbo maps to the dated WhisperKit variant, not the v2-era one")
   func turboResolvesToTheRightVariant() {
-    #expect(OfflineModelType.mostAccurate == .whisperLargeTurbo)
+    #expect(OfflineModelType.mostAccurate == .parakeetUltra)
     #expect(OfflineModelType.whisperLargeTurbo.whisperKitModelName == "large-v3-v20240930_turbo")
     #expect(TranscriptionModel.whisperLargeTurbo.offlineModelType == .whisperLargeTurbo)
     #expect(TranscriptionModel.forOfflineModel(.whisperLargeTurbo) == .whisperLargeTurbo)
@@ -121,10 +121,10 @@ struct OfflineModeTests {
   @Test("One on-device model is recommended, and both enums agree on which")
   func recommendationIsSingleAndConsistent() {
     let recommendedTypes = OfflineModelType.allCases.filter(\.isRecommended)
-    #expect(recommendedTypes == [.whisperLargeTurbo])
+    #expect(recommendedTypes == [.parakeetUltra])
 
     let recommendedModels = TranscriptionModel.allCases.filter { $0.isOffline && $0.isRecommended }
-    #expect(recommendedModels == [.whisperLargeTurbo])
+    #expect(recommendedModels == [.parakeetUltra])
 
     // The quick-start label is a separate slot, never a second recommendation.
     let quickStart = OfflineModelType.allCases.filter(\.isQuickStart)

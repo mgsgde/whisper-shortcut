@@ -99,7 +99,7 @@ struct SpeechToTextSettingsTab: View {
     SystemPromptSectionEditor(
       title: "Glossary",
       systemImage: "character.book.closed",
-      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
+      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
       section: .whisperGlossary,
       defaultContent: AppConstants.defaultWhisperGlossary
     )
@@ -320,7 +320,7 @@ struct SpeechToTextSettingsTab: View {
       SectionHeader(
         title: "Available Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Download and manage offline Whisper models for transcription"
+        subtitle: "Download and manage offline transcription models"
       )
 
       Text("Offline models allow you to transcribe audio without an internet connection. Models are automatically downloaded from HuggingFace and cached locally.")

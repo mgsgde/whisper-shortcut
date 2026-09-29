@@ -2328,7 +2328,7 @@ class MenuBarController: NSObject {
   private static func voiceFeedbackFocusName(for section: SystemPromptSection) -> String {
     switch section {
     case .dictation: return "Dictation"
-    case .whisperGlossary: return "Whisper Glossary"
+    case .whisperGlossary: return "Glossary"
     case .promptMode: return "Dictate Prompt"
     case .chat: return "Chat"
     case .readAloudRewrite: return "Read Aloud"

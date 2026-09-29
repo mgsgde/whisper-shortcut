@@ -49,7 +49,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .xai: return "xAI (Grok)"
     case .openRouter: return "OpenRouter"
     case .selfHosted: return "Self-hosted"
-    case .offline: return "On-device Whisper"
+    case .offline: return "On-device"
     }
   }
 
@@ -115,7 +115,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .selfHosted:
       return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
     case .offline:
-      return "Download the selected Whisper model in Speech-to-Text settings, or pick a different transcription model."
+      return "Download the selected offline model in Speech-to-Text settings, or pick a different transcription model."
     }
   }
 }

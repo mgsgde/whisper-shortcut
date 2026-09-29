@@ -11,7 +11,7 @@ enum GenerationKind: Equatable, Codable {
   var improvementDisplayName: String {
     switch self {
     case .dictation: return "Dictation Prompt"
-    case .whisperGlossary: return "Whisper Glossary"
+    case .whisperGlossary: return "Glossary"
     case .promptMode: return "Dictate Prompt System Prompt"
     case .chat: return "Chat System Prompt"
     }
