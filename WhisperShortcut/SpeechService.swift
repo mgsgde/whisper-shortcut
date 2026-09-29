@@ -1249,11 +1249,16 @@ class SpeechService {
     // With a connected integration, run on the chat's agent core (read-only lookups). The same
     // ingredients go in the Gemini-shaped contents `OpenAIChatProvider` converts to Chat Completions:
     // `inline_data` audio becomes `input_audio`, the screenshot `image_url`.
-    // Only with the recording attached: GPT-Audio rejects a request whose input carries no audio
-    // ("This model requires that either input content or output modality contain audio"), so a
-    // quick action's text-only instruction keeps the classic request.
+    // GPT-Audio rejects any request whose input carries no audio ("This model requires that either
+    // input content or output modality contain audio"), and a quick action sends none — its
+    // instruction is already text. So a quick action runs on the cheap text model instead, same
+    // key: faster and cheaper than the audio model, and nothing for it to mishear.
+    let requestModel = audioPayload == nil ? Self.openAIQuickActionModel : model
+    if requestModel != model {
+      DebugLogger.log("PROMPT-MODE-OPENAI: Quick action — using \(requestModel.rawValue) (\(model.rawValue) needs audio)")
+    }
     let rawText: String
-    let agentTools = audioPayload == nil ? [] : await DictatePromptAgent.availableTools()
+    let agentTools = await DictatePromptAgent.availableTools()
     if !agentTools.isEmpty {
       var parts: [[String: Any]] = []
       if let screenshot = envelope.screenshot {
@@ -1263,8 +1268,9 @@ class SpeechService {
       if let clipboardText = envelope.clipboardText {
         parts.append(["text": clipboardText])
       }
-      // The agent only runs with the recording attached (see above), never with a quick action.
-      if let audioPayload {
+      if let textInstruction {
+        parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
+      } else if let audioPayload {
         let mime = audioPayload.format == "mp3" ? "audio/mpeg" : "audio/wav"
         parts.append(["inline_data": ["mime_type": mime, "data": audioPayload.base64]])
       }
@@ -1275,8 +1281,8 @@ class SpeechService {
       let systemPrompt = envelope.systemPrompt
       rawText = try await WallClockDeadline.run(seconds: NetworkDeadline.transcriptionRequestTimeout) {
         try await DictatePromptAgent.run(
-          provider: LLMProviderFactory.provider(for: model),
-          requestModel: model.rawValue,
+          provider: LLMProviderFactory.provider(for: requestModel),
+          requestModel: requestModel.rawValue,
           contents: contents,
           systemPrompt: systemPrompt,
           tools: agentTools,
@@ -1284,7 +1290,7 @@ class SpeechService {
       }
     } else {
       rawText = try await performOpenAIPromptRequest(
-        model: model, systemPrompt: envelope.systemPrompt,
+        model: requestModel, systemPrompt: envelope.systemPrompt,
         history: envelope.history, userContent: userContent, apiKey: apiKey)
     }
 
@@ -1309,15 +1315,19 @@ class SpeechService {
       instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
-      model: model.rawValue,
+      model: requestModel.rawValue,
       hadScreenshot: envelope.hadScreenshot,
       logPrefix: "PROMPT-MODE-OPENAI")
     return normalizedText
   }
 
+  /// Text model for OpenAI Dictate Prompt quick actions (no recording to send). The cheapest
+  /// current GPT tier — a quick action is a short, fixed rewrite instruction.
+  static let openAIQuickActionModel: PromptModel = .openaiGPT6Luna
+
   /// The classic single Chat Completions request for OpenAI Dictate Prompt, used when no tools are
-  /// available. Returns the model's raw text.
-  private func performOpenAIPromptRequest(
+  /// available. Returns the model's raw text. Internal for the live test.
+  func performOpenAIPromptRequest(
     model: PromptModel,
     systemPrompt: String,
     history: [PromptHistoryTurn],
@@ -1331,11 +1341,14 @@ class SpeechService {
     })
     messages.append(["role": "user", "content": userContent])
 
-    let body: [String: Any] = [
+    var body: [String: Any] = [
       "model": model.rawValue,
-      "modalities": ["text"],
       "messages": messages,
     ]
+    // Only the audio model takes `modalities`; text models reject it ("Unknown parameter").
+    if model.supportsDirectAudioInput {
+      body["modalities"] = ["text"]
+    }
 
     guard let endpointURL = URL(string: "https://api.openai.com/v1/chat/completions") else {
       throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
