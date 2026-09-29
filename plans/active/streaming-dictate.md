@@ -454,7 +454,7 @@ Sources: [Parakeety: Wispr Flow does not run locally](https://www.parakeety.com/
 - No partial-text UI during recording (result still lands in the clipboard as one piece; menu-bar icon behavior unchanged).
 - ~~No provider work beyond Gemini~~ Extended 2026-07-08: streaming covers all cloud STT providers (Gemini, OpenAI, xAI) — usage data showed dictation alternates between OpenAI and Gemini week to week, and the session already routed chunks through the provider-agnostic `SpeechService.transcribe`, so the gate widening was ~3 lines. Self-hosted endpoints stay excluded. Offline Whisper is **no longer a non-goal** — it is slice 4 above, built 2026-09-02.
 - No change to Dictate Prompt mode (audio→prompt is a single multimodal call; chunked transcription doesn't apply).
-- No Parakeet / FastConformer / other local ASR in this plan. That is F15's second half and a new model ecosystem, not a streaming-Dictate slice.
+- No Parakeet / FastConformer / other local ASR in this plan. That is F15's second half and a new model ecosystem, not a streaming-Dictate slice. (Built separately in `plans/active/parakeet-offline.md`; Parakeet does not use this streaming path.)
 
 ## Verification
 
