@@ -314,6 +314,19 @@ final class AnthropicChatProvider: LLMChatProvider {
                 finishReason = stop
               }
 
+            case "error":
+              // A mid-stream failure (e.g. `overloaded_error`) arrives as an SSE event on an HTTP 200.
+              // Ignoring it ended the turn as an empty "(no response)"; throwing keeps the partial
+              // reply and shows the failed-turn row with Retry.
+              let error = obj["error"] as? [String: Any]
+              let kind = error?["type"] as? String ?? "error"
+              let message = error?["message"] as? String ?? "Unknown error"
+              DebugLogger.logError("ANTHROPIC-CHAT-STREAM: error event \(kind): \(message)")
+              throw TranscriptionError.networkError(
+                kind == "overloaded_error"
+                  ? "Claude is overloaded right now. Try again in a moment."
+                  : "Claude stopped mid-reply: \(message)")
+
             default:
               break
             }

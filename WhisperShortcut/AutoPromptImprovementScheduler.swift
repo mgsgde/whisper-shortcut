@@ -29,7 +29,20 @@ class AutoPromptImprovementScheduler {
       }
       return
     }
-    guard GeminiCredentialProvider.shared.hasCredential() else { return }
+    // The run needs a credential for the *selected* improvement model — any provider works
+    // (ContextDerivation routes non-Gemini models through the text path). Checking only for a
+    // Gemini key silently did nothing for users who picked GPT or Claude.
+    let improvementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+    guard improvementModel.provider.hasCredential else {
+      DebugLogger.log("SMART-IMPROVEMENT: No credential for \(improvementModel.displayName), skipping run")
+      if !fromAutoRun {
+        PopupNotificationWindow.showError(
+          improvementModel.provider.credentialRequiredMessage, title: "Smart Improvement")
+      }
+      return
+    }
 
     // Cooldown gate: throttle manual triggers.
     if !fromAutoRun, let last = lastRunStartedAt {

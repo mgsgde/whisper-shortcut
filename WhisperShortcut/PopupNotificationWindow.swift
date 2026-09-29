@@ -975,8 +975,10 @@ extension PopupNotificationWindow {
   }
 
   /// Shared tail of every `show*` entry point: bail when popups are disabled, then retain and show.
-  private static func present(_ make: () -> PopupNotificationWindow) {
-    guard arePopupNotificationsEnabled else { return }
+  /// Errors pass `ignoresPreference`: "popups off" means no result/info toasts, not "hide why it
+  /// failed" — with it off, a failed dictation left no trace at all.
+  private static func present(ignoresPreference: Bool = false, _ make: () -> PopupNotificationWindow) {
+    guard ignoresPreference || arePopupNotificationsEnabled else { return }
     let popup = make()
     activePopups.insert(popup)
     popup.show()
@@ -1019,7 +1021,7 @@ extension PopupNotificationWindow {
   }
 
   static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
-    present {
+    present(ignoresPreference: true) {
       PopupNotificationWindow(
         title: title,
         text: error,
