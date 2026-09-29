@@ -1075,10 +1075,14 @@ struct TTSVoice: Identifiable, Hashable {
 //   OpenAI — https://platform.openai.com/docs/guides/text-to-speech (/v1/audio/speech)
 //   xAI    — https://docs.x.ai/developers/model-capabilities/audio/text-to-speech (/v1/tts)
 enum TTSModel: String, CaseIterable {
-  // Google's only current Gemini TTS model. It replaced the 2.5 Flash/Pro TTS previews (shut down
-  // 2026-10-16); persisted selections of those forward here via migrateLegacyReadAloudRawValue.
-  // Verified live via scripts/test-gemini-models.sh.
-  case gemini31FlashTTS = "gemini-3.1-flash-tts-preview"
+  // Gemini 3.8 TTS (Stable), prices verified 2026-09-29 at https://ai.google.dev/gemini-api/docs/pricing:
+  // Flash-Lite $0.50 text / $6 audio, Flash $0.50 / $9 per 1M — vs $1 / $20 for the replaced
+  // gemini-3.1-flash-tts-preview. Measured the same day (Charon, German, streaming): Flash-Lite
+  // first audio 0.6–0.75 s at ~6.5× realtime, Flash 1.1–1.5 s at ~2.7×; neither paused on a
+  // 397-char chunk. Flash-Lite dominates 3.1 on price, speed and stability → default. Persisted
+  // 3.1 / 2.5 selections forward via migrateLegacyReadAloudRawValue.
+  case gemini38FlashLiteTTS = "gemini-3.8-flash-lite-tts"
+  case gemini38FlashTTS = "gemini-3.8-flash-tts"
   case openAIGpt4oMiniTTS = "gpt-4o-mini-tts"
   case grokVoiceTTS = "grok-voice-tts-1.0"
   /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
@@ -1086,7 +1090,7 @@ enum TTSModel: String, CaseIterable {
 
   var provider: TTSProvider {
     switch self {
-    case .gemini31FlashTTS: return .gemini
+    case .gemini38FlashLiteTTS, .gemini38FlashTTS: return .gemini
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
@@ -1095,7 +1099,8 @@ enum TTSModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .gemini31FlashTTS: return "Gemini 3.1 Flash TTS"
+    case .gemini38FlashLiteTTS: return "Gemini 3.8 Flash-Lite TTS"
+    case .gemini38FlashTTS: return "Gemini 3.8 Flash TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return "macOS (On-Device)"
@@ -1104,8 +1109,10 @@ enum TTSModel: String, CaseIterable {
 
   var description: String {
     switch self {
-    case .gemini31FlashTTS:
-      return "Google's Gemini 3.1 Flash TTS • Latest preview • Fast and efficient • Recommended"
+    case .gemini38FlashLiteTTS:
+      return "Google's Gemini 3.8 Flash-Lite TTS • Fastest start, lowest cost • 100+ languages • Recommended"
+    case .gemini38FlashTTS:
+      return "Google's Gemini 3.8 Flash TTS • Highest voice quality • Slower to start than Flash-Lite"
     case .openAIGpt4oMiniTTS:
       return "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key"
     case .grokVoiceTTS:
@@ -1191,16 +1198,17 @@ enum TTSModel: String, CaseIterable {
 
   /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
   static var readAloudModels: [TTSModel] {
-    [.systemMacOS, .gemini31FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+    [.systemMacOS, .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
   }
 
   /// Maps removed/renamed persisted raw values onto current cases.
   static func migrateLegacyReadAloudRawValue(_ raw: String) -> String {
     switch raw {
-    case "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts":
-      // Both 2.5 TTS previews shut down 2026-10-16; Gemini 3.1 Flash TTS is Google's replacement.
-      return TTSModel.gemini31FlashTTS.rawValue
+    case "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts", "gemini-3.1-flash-tts-preview":
+      // 2.5 previews shut down 2026-10-16; 3.1 preview replaced 2026-09-29 by the cheaper, faster,
+      // stable 3.8 Flash-Lite TTS (see the TTSModel note).
+      return TTSModel.gemini38FlashLiteTTS.rawValue
     default:
       return raw
     }
@@ -1902,7 +1910,7 @@ struct SettingsDefaults {
   // MARK: - Read Aloud (Chat TTS)
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
   /// under `UserDefaultsKeys.selectedReadAloudModel` and read via `ReadAloudPreferences.model`.
-  static let readAloudModel: TTSModel = .gemini31FlashTTS
+  static let readAloudModel: TTSModel = .gemini38FlashLiteTTS
   /// When true, the global Read Aloud shortcut first runs a "rewrite for speech" pass before TTS.
   static let readAloudSmartRewriteEnabled = true
   /// Playback rate applied locally during TTS playback. Pitch is preserved.

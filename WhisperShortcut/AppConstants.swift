@@ -270,7 +270,9 @@ Output rules (CRITICAL):
   /// complete in 3.5 s; 260 chars → 16 s in 6.7 s), while anything above that mark got its first
   /// ~17 s of audio and then a ~15 s server pause before the rest arrived in a burst (403 chars:
   /// 16.3 s of audio by t=6 s, the remainder at t=21 s). Capping at 260 keeps every chunk inside
-  /// the segment the server streams without pausing. With `ttsFirstChunkSizeChars` and
+  /// the segment the server streams without pausing. (The 3.8 TTS models that replaced 3.1 on
+  /// 2026-09-29 streamed a 397-char chunk — 23 s of audio — with no gap above 0.07 s, so the cap
+  /// is now conservative rather than necessary.) With `ttsFirstChunkSizeChars` and
   /// `ttsChunkGrowthFactor` the ramp becomes 120 → 180 → 260 → 260 …. If the buffering
   /// indicator shows up mid-text on Gemini, this cap is the first suspect.
   static let ttsGeminiChunkSizeChars: Int = 260
