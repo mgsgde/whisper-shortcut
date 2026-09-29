@@ -88,25 +88,57 @@ class MenuBarController: NSObject {
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
   private let voiceFeedbackService = VoiceFeedbackService()
-  /// Text the user had selected when Voice Feedback started, if any. Optional context: a spoken
-  /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
-  /// the selection is where a correct spelling can actually come from. Cleared after each run.
-  private var voiceFeedbackSelection: String?
   private let shortcuts: Shortcuts
   private let fnDictationToggle = FnDictationToggle()
   private let reviewPrompter: ReviewPrompter
   
   // MARK: - State Tracking (Prevent Race Conditions)
-  /// Set when the user hits ✕ on the recording indicator: the next
-  /// `audioRecorderDidFinishRecording` discards the audio instead of processing it.
-  private var discardNextRecording = false
-  /// Intended recording mode while mic permission is still pending. `.recording` is
-  /// entered only from `audioRecorderDidBeginRecording`, so a second shortcut press
-  /// during the system prompt cannot strand the app (D6).
-  private var pendingRecordingMode: AppState.RecordingMode?
-  /// Same idea for a live-meeting segment: `beginMeetingSegment` waits until the
-  /// recorder actually starts.
-  private var pendingMeetingSegment: MeetingSegment?
+
+  /// One recording, from the shortcut press until its audio is handed to a `VoiceJob` (or
+  /// discarded). Its fields used to be eight loose properties, and each start path reset a
+  /// different subset of them — the quick-action fields only for a prompt outside a meeting — so a
+  /// flag from one recording could carry into the next. A recording now starts from a fresh value
+  /// (`beginAudioCapture`) and ends by dropping it (`audioRecorderDidFinishRecording`, the fail and
+  /// cancel paths). Same shape as `VoiceJob` on the processing side (refactor ledger R52).
+  private struct RecordingIntent {
+    enum Target: Equatable {
+      case mode(AppState.RecordingMode)
+      case meetingSegment(MeetingSegment)
+    }
+    let target: Target
+    /// False while mic permission is still pending. `.recording` / the meeting segment is entered
+    /// only from `audioRecorderDidBeginRecording`, so a second shortcut press during the system
+    /// prompt cannot strand the app (D6).
+    var captureStarted = false
+    /// Set when the user hits ✕ on the indicator (or discards an Fn dictation): the finished audio
+    /// is thrown away instead of processed.
+    var discardOnFinish = false
+    /// Set once per prompt recording so Escape, or stopping, does not bring the list back.
+    var quickActionsOffered = false
+    /// A repeating Return must not launch the quick action twice before the recording stops.
+    var quickActionRan = false
+    /// Quick-action instruction, held until the recording's file URL exists, then keyed by that
+    /// URL (`quickActionInstructionByURL`) so a retry sends the same text.
+    var quickActionInstruction: String?
+    /// Text the user had selected when Voice Feedback started, if any. Optional context: a spoken
+    /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
+    /// the selection is where a correct spelling can actually come from.
+    var voiceFeedbackSelection: String?
+
+    var pendingMode: AppState.RecordingMode? {
+      if case .mode(let mode) = target, !captureStarted { return mode }
+      return nil
+    }
+    var pendingSegment: MeetingSegment? {
+      if case .meetingSegment(let segment) = target, !captureStarted { return segment }
+      return nil
+    }
+  }
+  private var recording: RecordingIntent?
+  /// The mode a recording will enter once the recorder confirms capture; nil once it has.
+  private var pendingRecordingMode: AppState.RecordingMode? { recording?.pendingMode }
+  /// Same for a live-meeting segment: `beginMeetingSegment` waits until the recorder starts.
+  private var pendingMeetingSegment: MeetingSegment? { recording?.pendingSegment }
 
   /// Per-recording streaming session (slice 2 of plans/active/streaming-dictate.md).
   /// Non-nil only while a Dictate recording on a cloud STT model (Gemini/OpenAI/xAI) is
@@ -135,14 +167,9 @@ class MenuBarController: NSObject {
     return currentJob !== job
   }
   private var processedAudioURLs: Set<URL> = []
-  /// Quick-action instruction, held until the recording's file URL exists, then keyed by that
-  /// URL so a retry sends the same text and the silence precheck can let it through.
-  private var pendingQuickActionInstruction: String?
+  /// A finished recording's quick-action instruction, keyed by its audio URL so a retry sends the
+  /// same text and the silence precheck can let it through. Outlives the `RecordingIntent`.
   private var quickActionInstructionByURL: [URL: String] = [:]
-  /// Set once per prompt recording so Escape, or stopping, does not bring the list back.
-  private var quickActionsOfferedThisRecording = false
-  /// A repeating Return must not launch the quick action twice before the recording stops.
-  private var quickActionDidRun = false
   private var quickActionHotkeys: [HotKey] = []
 
   /// Owns Read Aloud playback: the audio graph, the chunk queue, and when an utterance is done.
@@ -230,7 +257,7 @@ class MenuBarController: NSObject {
   private var meetingIsFinishing = false
 
   // MARK: - Meeting Segment (parallel action during live meeting)
-  private enum MeetingSegment {
+  private enum MeetingSegment: Equatable {
     case dictation
     case prompt
   }
@@ -655,13 +682,13 @@ class MenuBarController: NSObject {
   /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
   private func handleIndicatorCancel() {
     if appState.isRecording || pendingRecordingMode != nil || pendingMeetingSegment != nil {
-      pendingQuickActionInstruction = nil
-      quickActionDidRun = false
+      recording?.quickActionInstruction = nil
+      recording?.quickActionRan = false
       dismissQuickActions()
       DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
       RecordingIndicatorManager.shared.hide()
       if audioRecorder.stopRecording() {
-        discardNextRecording = true
+        recording?.discardOnFinish = true
       } else {
         cancelPendingRecordingStart()
         if case .recording = appState { appState = appState.finish() }
@@ -704,8 +731,8 @@ class MenuBarController: NSObject {
   /// Shows the cached list once per prompt recording. A live-meeting segment never reaches
   /// this — `updateRecordingIndicator` only calls it when no meeting segment is active.
   private func offerQuickActionsIfNeeded() {
-    guard !quickActionsOfferedThisRecording else { return }
-    quickActionsOfferedThisRecording = true
+    guard recording?.quickActionsOffered == false else { return }
+    recording?.quickActionsOffered = true
     let actions = QuickActionStore.shared.current()
     guard !actions.isEmpty else {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
@@ -765,14 +792,14 @@ class MenuBarController: NSObject {
       DispatchQueue.main.async { [weak self] in self?.runQuickAction(at: index) }
       return
     }
-    guard !quickActionDidRun else { return }
+    guard recording?.quickActionRan == false else { return }
     guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
     guard recordingPrompt else { return }
     let actions = RecordingIndicatorManager.shared.quickActions
     guard actions.indices.contains(index) else { return }
-    quickActionDidRun = true
-    pendingQuickActionInstruction = actions[index].text
+    recording?.quickActionRan = true
+    recording?.quickActionInstruction = actions[index].text
     DebugLogger.log("QUICK-ACTIONS: Running entry \(index + 1) (\(actions[index].text.count) chars)")
     stopRecordingAfterTailDelay()
   }
@@ -1191,9 +1218,6 @@ class MenuBarController: NSObject {
     // captured during the tail. A quick action sets its instruction before calling this.
     dismissQuickActions()
     if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
-      pendingQuickActionInstruction = nil
-      quickActionDidRun = false
-      quickActionsOfferedThisRecording = true
       cancelPendingRecordingStart()
       return
     }
@@ -1214,32 +1238,19 @@ class MenuBarController: NSObject {
     mode: AppState.RecordingMode,
     meetingSegment: MeetingSegment? = nil
   ) {
-    discardNextRecording = false
-    pendingRecordingMode = meetingSegment == nil ? mode : nil
-    pendingMeetingSegment = meetingSegment
-    if meetingSegment == nil, mode == .prompt {
-      quickActionsOfferedThisRecording = false
-      quickActionDidRun = false
-      pendingQuickActionInstruction = nil
-    }
+    recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     audioRecorder.startRecording()
   }
 
   private func cancelPendingRecordingStart() {
-    pendingRecordingMode = nil
-    pendingMeetingSegment = nil
-    discardNextRecording = false
+    recording = nil
     _ = audioRecorder.stopRecording()
   }
 
   private func handleStopRecordingResult(_ didStop: Bool) {
     guard !didStop else { return }
     DebugLogger.log("AUDIO: stopRecording found nothing running")
-    pendingQuickActionInstruction = nil
-    quickActionDidRun = false
-    pendingRecordingMode = nil
-    pendingMeetingSegment = nil
-    discardNextRecording = false
+    recording = nil
     if case .recording = appState {
       appState = appState.finish()
     }
@@ -1858,7 +1869,8 @@ class MenuBarController: NSObject {
           case .voiceFeedback:
             self.appState = .processing(.contextEditing)
             self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
-              await self.performVoiceFeedback(audioURL: audioURL, job: job)
+              // One run, one selection: a retry goes without it, as before.
+              await self.performVoiceFeedback(audioURL: audioURL, job: job, selection: nil)
             }
           }
         }
@@ -2224,7 +2236,7 @@ class MenuBarController: NSObject {
   /// turn it into a proposed change to one `system-prompts.md` section, present that in the
   /// Smart Improvement review modal, and apply it on Accept.
   @MainActor
-  private func performVoiceFeedback(audioURL: URL, job: VoiceJob) async {
+  private func performVoiceFeedback(audioURL: URL, job: VoiceJob, selection: String?) async {
     // Every `appState` write below is guarded: after a cancel the state machine belongs to whatever
     // the user does next, and a stale `finish()` / `showSuccess` would clobber it.
     func finishIfCurrent() {
@@ -2246,8 +2258,6 @@ class MenuBarController: NSObject {
         return
       }
 
-      let selection = voiceFeedbackSelection
-      voiceFeedbackSelection = nil  // one run, one selection
       let proposal = try await voiceFeedbackService.proposeChange(
         instruction: trimmed, selectedText: selection)
       try Task.checkCancellation()
@@ -2673,8 +2683,10 @@ class MenuBarController: NSObject {
   /// `NSPasteboard.changeCount` rather than sleeping a fixed interval, because "nothing was
   /// copied" and "the app was slow to copy" are otherwise indistinguishable, and mistaking the
   /// first for the second would feed the user's unrelated clipboard to the model.
+  /// Called just before `beginAudioCapture(.voiceFeedback)`. The copied text arrives
+  /// asynchronously (≥ 15 ms later), by which point that call has created this recording's intent,
+  /// so the selection lands on it and cannot outlive the recording.
   private func captureVoiceFeedbackSelection() {
-    voiceFeedbackSelection = nil
     guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
       DebugLogger.log("VOICE-FEEDBACK: No Accessibility permission — proceeding without a selection")
       return
@@ -2690,7 +2702,7 @@ class MenuBarController: NSObject {
         let text = NSPasteboard.general.string(forType: .string)?
           .trimmingCharacters(in: .whitespacesAndNewlines)
         if let text, !text.isEmpty {
-          self?.voiceFeedbackSelection = text
+          self?.recording?.voiceFeedbackSelection = text
           DebugLogger.log("VOICE-FEEDBACK: Captured selection (\(text.count) chars)")
         }
         return
@@ -2894,14 +2906,13 @@ class MenuBarController: NSObject {
 // MARK: - AudioRecorderDelegate (Clean State Transitions)
 extension MenuBarController: AudioRecorderDelegate {
   func audioRecorderDidBeginRecording() {
-    if let segment = pendingMeetingSegment {
-      pendingMeetingSegment = nil
-      pendingRecordingMode = nil
+    guard var intent = recording, !intent.captureStarted else { return }
+    intent.captureStarted = true
+    recording = intent
+    switch intent.target {
+    case .meetingSegment(let segment):
       beginMeetingSegment(segment)
-      return
-    }
-    if let mode = pendingRecordingMode {
-      pendingRecordingMode = nil
+    case .mode(let mode):
       appState = appState.startRecording(mode)
     }
   }
@@ -2919,11 +2930,13 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
+      // The recording is over: its intent goes with this audio and nowhere else, so nothing from it
+      // can reach the next recording.
+      let intent = self.recording
+      self.recording = nil
+
       // Cancelled via the recording indicator's ✕ — discard the audio, don't process
-      if self.discardNextRecording {
-        self.discardNextRecording = false
-        self.pendingQuickActionInstruction = nil
-        self.quickActionDidRun = false
+      if intent?.discardOnFinish == true {
         DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
         self.discardStreamingSession()
         self.cleanupAudioFile(at: audioURL)
@@ -2958,8 +2971,7 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
-      if self.activeMeetingSegment == nil, let instruction = self.pendingQuickActionInstruction {
-        self.pendingQuickActionInstruction = nil
+      if self.activeMeetingSegment == nil, let instruction = intent?.quickActionInstruction {
         self.quickActionInstructionByURL[audioURL] = instruction
       }
       let quickActionInstruction = self.quickActionInstructionByURL[audioURL]
@@ -3078,8 +3090,9 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performPrompting(audioURL: audioURL, job: job, instruction: quickActionInstruction)
         }
       case .voiceFeedback:
+        let selection = intent?.voiceFeedbackSelection
         self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
-          await self.performVoiceFeedback(audioURL: audioURL, job: job)
+          await self.performVoiceFeedback(audioURL: audioURL, job: job, selection: selection)
         }
       case .liveMeeting:
         DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
@@ -3089,15 +3102,11 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
-    pendingQuickActionInstruction = nil
-    quickActionDidRun = false
+    recording = nil
     dismissQuickActions()
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
     DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
-    discardNextRecording = false
-    pendingRecordingMode = nil
-    pendingMeetingSegment = nil
     discardStreamingSession()
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
@@ -3350,7 +3359,7 @@ extension MenuBarController: FnDictationToggleDelegate {
     DebugLogger.log("AUDIO: Discarding Fn dictation recording")
     RecordingIndicatorManager.shared.hide()
     if audioRecorder.stopRecording() {
-      discardNextRecording = true
+      recording?.discardOnFinish = true
     } else {
       cancelPendingRecordingStart()
       if case .recording = appState { appState = appState.finish() }
