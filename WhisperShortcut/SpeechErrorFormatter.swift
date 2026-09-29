@@ -469,6 +469,15 @@ struct SpeechErrorFormatter {
       if body.isEmpty { body = trimmedFormatted }
       return (shortTitle, body)
     }
+    // The long form often opens with its own, differently worded heading ("⚠️ No Gemini
+    // Credential" under the title "⚠️ No Google API Key"). Same leading symbol + a short first
+    // line = a heading; drop it so the popup doesn't show two titles.
+    let split = trimmedFormatted.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+    if split.count == 2, let first = split.first, first.count <= 60,
+       let symbol = titleToRemove.first, !symbol.isLetter, !symbol.isNumber, first.first == symbol {
+      let body = String(split[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+      if !body.isEmpty { return (shortTitle, body) }
+    }
     return (shortTitle, trimmedFormatted)
   }
 

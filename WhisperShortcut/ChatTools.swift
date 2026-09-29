@@ -1115,6 +1115,17 @@ enum ChatToolRegistry {
   }
 
   // Internal (not private): ChatView's generate_image interception reuses it for its args.
+  /// `all_day` for `google_calendar_update_event`. The description promises that omitting it leaves
+  /// the event's timing type unchanged; defaulting to `false` turned a re-dated all-day event into a
+  /// midnight-to-midnight timed one. Without the event at hand, the new start/end is the evidence:
+  /// a date-only value ("2026-10-01") means all-day.
+  static func updateEventAllDay(_ args: [String: Any]) -> Bool {
+    if args["all_day"] != nil { return boolArgument(args, "all_day", default: false) }
+    let iso = (args["start_iso8601"] as? String) ?? (args["end_iso8601"] as? String) ?? ""
+    return iso.trimmingCharacters(in: .whitespaces).range(
+      of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
+  }
+
   static func boolArgument(_ args: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
     if let value = args[key] as? Bool { return value }
     if let value = args[key] as? NSNumber { return value.boolValue }
@@ -1330,7 +1341,7 @@ enum ChatToolRegistry {
           location: args["location"] as? String,
           description: args["description"] as? String,
           recurrence: args["recurrence"] as? [String],
-          allDay: args["all_day"] as? Bool ?? false)
+          allDay: updateEventAllDay(args))
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {

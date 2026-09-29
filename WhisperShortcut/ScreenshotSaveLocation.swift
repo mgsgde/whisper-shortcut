@@ -5,7 +5,7 @@ import Foundation
 /// Because the app is sandboxed, writing outside the container requires a
 /// security-scoped bookmark obtained from a folder picker; this type is the
 /// single place that creates, resolves, and accesses that bookmark so both
-/// capture paths (⌘3 and the in-chat button) stay consistent.
+/// capture paths (the Screenshot shortcut and the in-chat button) stay consistent.
 enum ScreenshotSaveLocation {
   static var isEnabled: Bool {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotSaveEnabled)

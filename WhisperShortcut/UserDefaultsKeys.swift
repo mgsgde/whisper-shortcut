@@ -77,7 +77,7 @@ enum UserDefaultsKeys {
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
-  /// When true, captured screenshots (⌘3 and the in-chat button) are also written
+  /// When true, captured screenshots (the Screenshot shortcut and the in-chat button) are also written
   /// as PNG files into the user-selected folder, in addition to the clipboard.
   static let screenshotSaveEnabled = "screenshotSaveEnabled"
   /// Security-scoped bookmark (Data) for the folder screenshots are saved into.

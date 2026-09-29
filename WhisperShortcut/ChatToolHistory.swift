@@ -45,6 +45,23 @@ enum ChatToolHistory {
   /// but are not sent, which bounds the token cost of long sessions.
   static let replayedMessageLimit = 10
 
+  /// Hard cap on one tool result as sent back to the model *within* a turn. Equal to
+  /// `read_text_file`'s default read, so ordinary reads pass untouched; it stops outliers (a
+  /// 400 KB read, a huge email body) from riding along on every later round of the loop.
+  static let maxResultCharsForModel = 100_000
+
+  /// `response` as the model should see it this turn, and its size in characters (for the
+  /// per-turn budget log line).
+  static func cappedForModel(_ response: [String: Any]) -> (response: [String: Any], chars: Int) {
+    let json = compactJSON(response)
+    guard json.count > maxResultCharsForModel else { return (response, json.count) }
+    let capped: [String: Any] = [
+      "truncated_result": String(json.prefix(maxResultCharsForModel)),
+      "note": "Result truncated at \(maxResultCharsForModel) of \(json.count) characters. Ask for a narrower range (offset/limit, a more specific query) if you need the rest.",
+    ]
+    return (capped, maxResultCharsForModel)
+  }
+
   static let blockHeader = "[Tool calls made while writing this reply — private context, not shown to the user]"
   static let blockFooter = "[End of tool calls]"
 

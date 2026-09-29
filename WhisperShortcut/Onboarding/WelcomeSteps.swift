@@ -594,6 +594,35 @@ struct OnboardingAPIKeyRow: View {
   }
 }
 
+/// The first successful dictation, as early as the tour can offer it: a provider or offline model
+/// is set up (previous steps) and the microphone is granted. Everything after this is optional.
+struct WelcomeTryItStep: View {
+  private var dictateShortcut: String {
+    ShortcutConfigManager.shared.loadConfiguration().startRecording.displayStringWithSeparator
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      HStack(spacing: 12) {
+        Image(systemName: "waveform")
+          .font(.system(size: 32))
+          .foregroundStyle(.tint)
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Try it now")
+            .font(.title2)
+            .fontWeight(.semibold)
+          Text("Say a sentence. Later, \(dictateShortcut) does the same in any app and puts the text where your cursor is.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      OnboardingTryItPanel()
+      Spacer(minLength: 0)
+    }
+  }
+}
+
 struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
 
@@ -917,9 +946,6 @@ struct WelcomeDoneStep: View {
           .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
       )
 
-      OnboardingTryItPanel()
-        .frame(maxWidth: 560)
-
       onboardingShortcutRecorder
         .frame(maxWidth: 560)
 
@@ -952,7 +978,7 @@ struct WelcomeDoneStep: View {
       Text("Shortcuts")
         .font(.callout)
         .fontWeight(.semibold)
-      Text("⌘1 / ⌘2 / ⌘3 switch tabs in many apps. Record a different combination here if that happens — existing installs keep their current shortcuts.")
+      Text("Record a different combination for any of these if it clashes with an app you use.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

@@ -1,17 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// "Try it" panel on the Done step: record a few seconds, transcribe, show the text.
+/// "Try it" panel on its own onboarding step, right after the microphone permission: record a few
+/// seconds, transcribe, show the text.
 /// Continue is never gated on this — a hung transcription must not trap the user.
 struct OnboardingTryItPanel: View {
   @StateObject private var controller = OnboardingTryItController()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text("Try it")
-        .font(.callout)
-        .fontWeight(.semibold)
-      Text("Record a few seconds and see the transcript here before you finish. You can skip this.")
+      Text("Record a few seconds and see the transcript here. You can skip this.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
