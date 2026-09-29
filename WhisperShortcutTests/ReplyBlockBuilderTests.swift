@@ -202,6 +202,36 @@ struct ReplyBlockBuilderTests {
     #expect(Self.plainText(blocks) == "Validators can no longer censor.")
   }
 
+  @Test("GPT's ([domain](url)) citations become chips; a model's own parenthesized link stays")
+  func openAIParenCitationsBecomeChips() {
+    let content = """
+      Rates held steady. ([reuters.com](https://www.reuters.com/a?utm_source=openai))
+
+      Two at once. ([a.example](https://a.example/x), [b.example](https://b.example/y))
+
+      See the guide ([docs](https://docs.example/guide)) for details.
+      """
+    let footer = [
+      GroundingSource(uri: "https://a.example/x", title: "a.example"),
+      GroundingSource(uri: "https://b.example/y", title: "b.example"),
+    ]
+    let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: footer, groundingSupports: [])
+    #expect(Self.kinds(blocks) == ["text", "sources", "text", "sources", "text"])
+    #expect(Self.citedAfter("Rates", in: blocks) == ["https://www.reuters.com/a?utm_source=openai"])
+    #expect(Self.citedAfter("Two at once", in: blocks) == ["https://a.example/x", "https://b.example/y"])
+    let text = Self.plainText(blocks)
+    #expect(text.contains("Rates held steady.\n"), "marker left residue: \(text)")
+    #expect(!text.contains("reuters"))
+    #expect(text.contains("docs"), "a non-citation link was stripped: \(text)")
+  }
+
+  @Test("A GPT citation cut off mid-stream is hidden until it completes")
+  func partialOpenAICitationHidden() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "Rates held steady. ([reuters.com](https://www.reu", sources: [], groundingSupports: [])
+    #expect(Self.plainText(blocks) == "Rates held steady.")
+  }
+
   @Test("A marker cut off mid-stream is hidden until it completes")
   func partialMarkerHiddenWhileStreaming() {
     let blocks = ReplyBlockBuilder.buildBlocks(

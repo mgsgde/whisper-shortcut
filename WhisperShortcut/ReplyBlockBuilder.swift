@@ -55,22 +55,32 @@ enum ParagraphCitationBuilder {
 
 /// Pulls the citation markers a provider writes INTO the reply text out of one paragraph.
 ///
-/// Grok's Responses API appends `[[N]](url)` after the claim it supports; occasionally it leaks its
-/// internal `[web:N]` / `[x:N]` search-result tokens instead. Neither reads well inline, and a
-/// clickable inline link would hit the SwiftUI selection hang (see `ModelReplyView`). So markers
-/// are stripped from the prose and the URLs they carry become the paragraph's source chips.
-/// `[web:N]` carries no URL and its N is Grok's private search index — it does NOT match the order
-/// of the `url_citation` annotations — so those are dropped rather than guessed.
+/// - Grok's Responses API appends `[[N]](url)` after the claim it supports; occasionally it leaks
+///   its internal `[web:N]` / `[x:N]` search-result tokens instead.
+/// - OpenAI's web search appends a parenthesized domain link, `([nytimes.com](url?utm_source=openai))`.
+///
+/// None of these reads well inline, and a clickable inline link would hit the SwiftUI selection
+/// hang (see `ModelReplyView`). So markers are stripped from the prose and the URLs they carry
+/// become the paragraph's source chips. `[web:N]` carries no URL and its N is Grok's private search
+/// index — it does NOT match the order of the `url_citation` annotations — so those are dropped
+/// rather than guessed.
 enum InlineCitationExtractor {
-  /// `[[3]](https://…)`, allowing one level of balanced parentheses inside the URL (Wikipedia).
-  private static let linkMarker = try! NSRegularExpression(
-    pattern: #"[ \t]*\[\[\d+\]\]\(((?:[^()\s]|\([^()\s]*\))+)\)"#)
+  /// A URL allowing one level of balanced parentheses inside it (Wikipedia).
+  private static let url = #"(?:[^()\s]|\([^()\s]*\))+"#
+  /// `[[3]](https://…)`.
+  private static let grokMarker = try! NSRegularExpression(
+    pattern: #"[ \t]*\[\[\d+\]\]\((\#(url))\)"#)
+  /// `([a.com](u1))`, or several in one pair of parentheses: `([a.com](u1), [b.com](u2))`.
+  private static let parenLinkGroup = try! NSRegularExpression(
+    pattern: #"[ \t]*\(\s*\[[^\]\n]+\]\(\#(url)\)(?:\s*[,;]\s*\[[^\]\n]+\]\(\#(url)\))*\s*\)"#)
+  private static let markdownLink = try! NSRegularExpression(
+    pattern: #"\[[^\]\n]+\]\((\#(url))\)"#)
   /// `[web:3]`, `[x:12]`, `[post:1]` — Grok's internal search-result tokens.
   private static let tokenMarker = try! NSRegularExpression(
     pattern: #"[ \t]*\[(?:web|x|post|news):\d+\]"#)
-  /// A marker cut off by the stream (`… [[2]](https://exa`), hidden until it completes.
+  /// A marker cut off by the stream (`… [[2]](https://exa`, `… ([nyt`), hidden until it completes.
   private static let partialMarker = try! NSRegularExpression(
-    pattern: #"[ \t]*\[(?:\[\d*\]?\]?(?:\([^()\s]*)?|(?:web|x|post|news)(?::\d*)?)$"#)
+    pattern: #"[ \t]*(?:\[(?:\[\d*\]?\]?(?:\([^()\s]*)?|(?:web|x|post|news)(?::\d*)?)|\(\[[^\]\n]*(?:\]\([^()\s]*)?)$"#)
 
   /// The paragraph with every marker removed, plus the cited sources in first-cited order.
   /// A URL that is also in the reply's footer list reuses that entry's title.
@@ -79,20 +89,47 @@ enum InlineCitationExtractor {
   ) -> (text: String, sources: [GroundingSource]) {
     guard paragraph.contains("[") else { return (paragraph, []) }
     let ns = paragraph as NSString
-    var urls: [String] = []
-    for match in linkMarker.matches(in: paragraph, range: NSRange(location: 0, length: ns.length)) {
-      urls.append(ns.substring(with: match.range(at: 1)))
+    let whole = NSRange(location: 0, length: ns.length)
+    var cited: [(location: Int, url: String)] = []
+    var removals: [NSRange] = []
+
+    for match in grokMarker.matches(in: paragraph, range: whole) {
+      cited.append((match.range.location, ns.substring(with: match.range(at: 1))))
+      removals.append(match.range)
     }
+    // A parenthesized link is only a citation when the provider says so — its URL is one of the
+    // reply's annotated sources, or carries OpenAI's attribution tag (sources arrive only when the
+    // stream ends, so mid-stream the tag is all there is). A model's own "(see [docs](url))" stays.
+    let known = Set(knownSources.map(\.uri))
+    for match in parenLinkGroup.matches(in: paragraph, range: whole) {
+      let group = ns.substring(with: match.range) as NSString
+      let urls = markdownLink.matches(in: group as String, range: NSRange(location: 0, length: group.length))
+        .map { group.substring(with: $0.range(at: 1)) }
+      guard !urls.isEmpty,
+            urls.allSatisfy({ known.contains($0) || $0.contains("utm_source=openai") }) else { continue }
+      cited.append(contentsOf: urls.map { (match.range.location, $0) })
+      removals.append(match.range)
+    }
+    for match in tokenMarker.matches(in: paragraph, range: whole) {
+      removals.append(match.range)
+    }
+
     var text = paragraph
-    for regex in [linkMarker, tokenMarker, partialMarker] {
-      text = regex.stringByReplacingMatches(
-        in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    for range in removals.sorted(by: { $0.location > $1.location }) {
+      text = (text as NSString).replacingCharacters(in: range, with: "")
     }
+    text = partialMarker.stringByReplacingMatches(
+      in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+
     var seen: Set<String> = []
-    let sources = urls.compactMap { url -> GroundingSource? in
-      guard seen.insert(url).inserted else { return nil }
-      return knownSources.first { $0.uri == url }
-        ?? GroundingSource(uri: url, title: GroundingSource.displayTitle(for: url))
+    // Enumerated tie-break: `sorted` is not stable, and a group's URLs share one location.
+    let ordered = cited.enumerated().sorted {
+      ($0.element.location, $0.offset) < ($1.element.location, $1.offset)
+    }.map(\.element)
+    let sources = ordered.compactMap { entry -> GroundingSource? in
+      guard seen.insert(entry.url).inserted else { return nil }
+      return knownSources.first { $0.uri == entry.url }
+        ?? GroundingSource(uri: entry.url, title: GroundingSource.displayTitle(for: entry.url))
     }
     return (text, sources)
   }
