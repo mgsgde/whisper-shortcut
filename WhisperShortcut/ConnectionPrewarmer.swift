@@ -67,15 +67,27 @@ enum ConnectionPrewarmer {
   /// won't say better a moment later (with a message pointing at the settings), so it is logged
   /// rather than surfaced.
   private static func warmLocalModel() {
+    Task { @MainActor in
+      // Decided like the real request: with tools available the Dictate Prompt runs on the agent
+      // path, whose prefix is the tool preamble + the prompt + the rendered tool definitions. A
+      // warm-up without them primed a prefix the real request never sent, so the first round paid
+      // the full prefill anyway.
+      let model = LocalLLMPreferences.modelID
+      let tools = DictatePromptAgent.localAgentTools(for: .localModel, requestModel: model)
+      sendLocalWarmUp(model: model, tools: tools)
+    }
+  }
+
+  private static func sendLocalWarmUp(model: String, tools: [LLMToolDeclaration]) {
     let endpoint = LocalLLMPreferences.chatCompletionsURL
-    let model = LocalLLMPreferences.modelID
     guard let url = URL(string: endpoint) else { return }
 
     // `false` because this warms the *local* model, and a local text model always takes its
     // selection from the clipboard. Priming with the screenshot prompt would prime a prefix the
     // real request never sends.
-    let systemPrompt = SpeechService.buildDictatePromptSystemPrompt(
+    let basePrompt = SpeechService.buildDictatePromptSystemPrompt(
       logPrefix: "PREWARM", usesScreenshotSelection: false)
+    let systemPrompt = tools.isEmpty ? basePrompt : DictatePromptAgent.systemPrompt(for: basePrompt)
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -92,7 +104,8 @@ enum ConnectionPrewarmer {
         ["role": "user", "content": "hi"],
       ],
       stream: false,
-      maxTokens: 1)
+      maxTokens: 1,
+      tools: tools)
     guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
     request.httpBody = httpBody
 
@@ -101,7 +114,7 @@ enum ConnectionPrewarmer {
         _ = try await LLMHTTPSession.shared.data(for: request)
       } onSuccess: { elapsedMs in
         DebugLogger.log(
-          "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt)")
+          "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt, \(tools.count) tool(s))")
       } onFailure: { error in
         DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
       }

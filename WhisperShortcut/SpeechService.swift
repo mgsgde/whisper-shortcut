@@ -1489,9 +1489,7 @@ class SpeechService {
     // A local server with tool calling runs on the agent core when there is something to look up
     // (in Offline Mode: the shared folders only). MLX has no tool-calling path — see
     // `DictatePromptAgent.supportsAgent`.
-    let agentTools = DictatePromptAgent.supportsAgent(model)
-      && !DictatePromptAgent.localModelsWithoutTools.contains(requestModel)
-      ? await DictatePromptAgent.availableTools() : []
+    let agentTools = await DictatePromptAgent.localAgentTools(for: model, requestModel: requestModel)
     var agentRaw: String?
     let agentStart = CFAbsoluteTimeGetCurrent()
     if !agentTools.isEmpty {
