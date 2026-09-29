@@ -35,6 +35,25 @@ enum DictatePromptAgent {
     }
   }
 
+  /// Local model ids whose server refused `tools` this session (Ollama: "… does not support
+  /// tools" for gemma, phi, older deepseek-r1). Those skip the agent path so Dictate Prompt keeps
+  /// working instead of failing on every request once an integration is connected. Main thread and
+  /// the prompt path only touch it in sequence; a lost insert just means one more fallback.
+  static var localModelsWithoutTools: Set<String> = []
+
+  /// True when a local server rejected the request because the model has no tool support.
+  static func isToolsUnsupported(_ error: Error) -> Bool {
+    let text: String
+    if case TranscriptionError.networkError(let message) = error {
+      text = message
+    } else {
+      text = error.localizedDescription
+    }
+    let lower = text.lowercased()
+    return lower.contains("support tools") || lower.contains("does not support tool")
+      || lower.contains("tools are not supported") || lower.contains("tool calling is not supported")
+  }
+
   static var isEnabledInSettings: Bool {
     UserDefaults.standard.object(forKey: UserDefaultsKeys.dictatePromptToolsEnabled) as? Bool ?? true
   }

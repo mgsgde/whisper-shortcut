@@ -975,6 +975,12 @@ enum ChatProviderHTTPError {
       return invalidKey
     }
     if status == 429 {
+      // OpenAI reports "no credit on the account" as 429 insufficient_quota. That is a billing
+      // problem with a top-up link, not a rate limit to wait out (same rule as the transcription
+      // path and the classic Dictate Prompt request).
+      if body.contains("insufficient_quota") {
+        return TranscriptionError.billingRequired()
+      }
       return TranscriptionError.rateLimited(retryAfter: nil)
     }
     if (500...599).contains(status) {

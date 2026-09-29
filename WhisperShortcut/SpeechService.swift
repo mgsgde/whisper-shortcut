@@ -1263,9 +1263,8 @@ class SpeechService {
       if let clipboardText = envelope.clipboardText {
         parts.append(["text": clipboardText])
       }
-      if let textInstruction {
-        parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
-      } else if let audioPayload {
+      // The agent only runs with the recording attached (see above), never with a quick action.
+      if let audioPayload {
         let mime = audioPayload.format == "mp3" ? "audio/mpeg" : "audio/wav"
         parts.append(["inline_data": ["mime_type": mime, "data": audioPayload.base64]])
       }
@@ -1478,17 +1477,29 @@ class SpeechService {
     // (in Offline Mode: the shared folders only). MLX has no tool-calling path — see
     // `DictatePromptAgent.supportsAgent`.
     let agentTools = DictatePromptAgent.supportsAgent(model)
+      && !DictatePromptAgent.localModelsWithoutTools.contains(requestModel)
       ? await DictatePromptAgent.availableTools() : []
+    var agentRaw: String?
+    let agentStart = CFAbsoluteTimeGetCurrent()
     if !agentTools.isEmpty {
-      let agentStart = CFAbsoluteTimeGetCurrent()
-      let raw = try await DictatePromptAgent.run(
-        provider: LLMProviderFactory.provider(for: model),
-        requestModel: requestModel,
-        contents: contents,
-        systemPrompt: envelope.systemPrompt,
-        tools: agentTools,
-        baseOptions: .textTransform,
-        logPrefix: "PROMPT-MODE-LOCAL")
+      do {
+        agentRaw = try await DictatePromptAgent.run(
+          provider: LLMProviderFactory.provider(for: model),
+          requestModel: requestModel,
+          contents: contents,
+          systemPrompt: envelope.systemPrompt,
+          tools: agentTools,
+          baseOptions: .textTransform,
+          logPrefix: "PROMPT-MODE-LOCAL")
+      } catch where DictatePromptAgent.isToolsUnsupported(error) {
+        // Many local models have no tool template. Remember it and answer with the single request
+        // below, as before tools existed — a connected integration must not break Dictate Prompt.
+        DictatePromptAgent.localModelsWithoutTools.insert(requestModel)
+        DebugLogger.logWarning(
+          "PROMPT-MODE-LOCAL: \(requestModel) does not support tools — falling back to the single request")
+      }
+    }
+    if let raw = agentRaw {
       let now = CFAbsoluteTimeGetCurrent()
       DebugLogger.logSpeech(
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")

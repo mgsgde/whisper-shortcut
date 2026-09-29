@@ -51,6 +51,25 @@ struct DictatePromptAgentTests {
     #expect(names.isDisjoint(with: cloud))
   }
 
+  @Test("A local server's 'no tools' refusal is recognised, other errors are not")
+  func toolsUnsupportedDetection() {
+    #expect(DictatePromptAgent.isToolsUnsupported(
+      TranscriptionError.networkError("Local LLM API error: registry.ollama.ai/library/gemma2:latest does not support tools")))
+    #expect(!DictatePromptAgent.isToolsUnsupported(TranscriptionError.networkError("Local LLM API error: HTTP 400")))
+    #expect(!DictatePromptAgent.isToolsUnsupported(TranscriptionError.rateLimited(retryAfter: nil)))
+  }
+
+  @Test("OpenAI insufficient_quota is a billing problem, not a rate limit")
+  func insufficientQuotaIsBilling() {
+    let error = ChatProviderHTTPError.map(
+      provider: "OpenAI", status: 429,
+      body: #"{"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}"#)
+    guard case TranscriptionError.billingRequired = error else {
+      Issue.record("expected billingRequired, got \(error)")
+      return
+    }
+  }
+
   @Test("Round cap stays small")
   func roundCap() {
     #expect(DictatePromptAgent.maxToolRounds == 3)
@@ -133,5 +152,40 @@ struct DictatePromptAgentLiveTests {
       tools: tools,
       logPrefix: "TEST-DICTATE-PROMPT-AGENT-OPENAI")
     #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "empty reply")
+  }
+
+  @Test(
+    "GPT-Audio completes a real tool round with the recording attached",
+    .enabled(if: KeychainManager.shared.hasNonEmpty(.openAI), "No OpenAI key in .env"))
+  func openAIToolRoundWithAudio() async throws {
+    let tools = ChatToolRegistry.workspaceFunctionDeclarations.compactMap { decl -> LLMToolDeclaration? in
+      guard let name = decl["name"] as? String, name == "list_workspace_folders",
+            let desc = decl["description"] as? String,
+            let params = decl["parameters"] as? [String: Any] else { return nil }
+      return LLMToolDeclaration(name: name, description: desc, parameters: params)
+    }
+    let audioURL = try #require(
+      Bundle(for: TestResourceAnchor.self).url(forResource: "sample", withExtension: "wav"))
+    let audio = try Data(contentsOf: audioURL).base64EncodedString()
+    let contents: [[String: Any]] = [[
+      "role": "user",
+      "parts": [
+        ["text": "Before answering, call list_workspace_folders exactly once. Then reply with one short sentence saying how many shared folders there are. Ignore the recording's content."],
+        ["inline_data": ["mime_type": "audio/wav", "data": audio]],
+      ],
+    ]]
+    // The runner directly, so the test can see that a tool round actually happened.
+    let runner = ChatAgentRunner(
+      provider: LLMProviderFactory.provider(for: .openaiGPT4oAudio),
+      model: PromptModel.openaiGPT4oAudio.rawValue,
+      tools: tools, maxToolRounds: DictatePromptAgent.maxToolRounds, steps: ToolStepsBuffer(),
+      systemInstruction: { ["parts": [["text": "You are a helpful assistant."]]] },
+      options: { _ in ChatRequestOptions(useGrounding: false, disableBuiltInTools: true) },
+      toolContext: { ChatToolContext(workspaceScope: .all) },
+      approve: { _, _, _ in false },
+      onDisplayText: { _, _ in })
+    let result = try await runner.run(contents: contents)
+    #expect(result.executedToolCalls >= 1, "the model never called the tool")
+    #expect(!result.finalRoundText.isEmpty, "no answer after the tool round")
   }
 }
