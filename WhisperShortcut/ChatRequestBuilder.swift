@@ -16,9 +16,10 @@ enum ChatRequestBuilder {
   ) -> [[String: Any]] {
     // Queued sends can target a session that is no longer the visible one,
     // so the history must come from the target session — not `messages`.
-    let history = sessionId == currentSessionId
+    // Local command notices are UI-only; the model never said them.
+    let history = (sessionId == currentSessionId
       ? messages
-      : (store.session(by: sessionId)?.messages ?? [])
+      : (store.session(by: sessionId)?.messages ?? [])).filter { !$0.isLocalNotice }
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
     let maxMessages = AppConstants.chatFullHistoryMaxMessages
@@ -38,6 +39,9 @@ enum ChatRequestBuilder {
     let unwatchableLinkMessageID: UUID? = isGemini
       ? nil
       : toSend.last { $0.role == .user && !YouTubeVideoLink.detect(in: $0.content).isEmpty }?.id
+    // Tool calls of recent assistant turns ride along as a text block ahead of the reply, so a
+    // follow-up ("move that card", "delete the event you just made") still has the IDs.
+    let replayedToolCallIDs = ChatToolHistory.replayedMessageIDs(in: toSend)
     // Re-send each user message's attached images on every turn, not just the
     // final one. Otherwise an image is visible to the model only on the turn it
     // was attached and is stripped to text afterwards — so a follow-up like
@@ -77,6 +81,10 @@ enum ChatRequestBuilder {
           parts.append(["text": text])
         }
         return ["role": msg.role.rawValue, "parts": parts]
+      }
+      if replayedToolCallIDs.contains(msg.id),
+         let toolText = ChatToolHistory.historyText(for: msg.toolCalls) {
+        return ["role": msg.role.rawValue, "parts": [["text": toolText + "\n\n" + text]]]
       }
       return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }

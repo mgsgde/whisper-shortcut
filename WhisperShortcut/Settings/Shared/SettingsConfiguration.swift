@@ -28,7 +28,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .gemini: return .gemini38Flash
     case .grok:   return .grok47
     case .openai: return .openaiGPT6Sol
-    case .anthropic: return .claudeSonnet5
+    case .anthropic: return .claudeSonnet55
     case .customOpenAI: return .customOpenAIEndpoint
     case .local:  return .localModel
     case .localMLX: return .localMLXQwen34BInstruct
@@ -144,8 +144,15 @@ enum PromptModel: String, CaseIterable {
   /// persisted selections still resolve and forward.
   case claudeOpus48 = "claude-opus-4-8"
   case claudeHaiku45 = "claude-haiku-4-5-20251001"
-  /// Anthropic's most capable widely released model (GA since 2026-06-09), $10/$50 per 1M.
+  /// Hidden via `chatReplacement` (→ Opus 5.5): $10/$50 per 1M buys long-horizon agentic depth,
+  /// not better research answers. Fable 5.1 is deliberately not added (owner, 2026-09-29).
   case claudeFable5 = "claude-fable-5"
+  /// 5.5 generation (prices verified 2026-09-29, https://platform.claude.com/docs/en/about-claude/pricing):
+  /// Sonnet 5.5 $2/$10 = Sonnet 5's price, Opus 5.5 $4/$20 undercuts Opus 5's $5/$25; same 1M
+  /// context and 128k output. Both think on every request and reject forced `tool_choice` —
+  /// see `AnthropicChatProvider` for the thinking round-trip and structured-output path.
+  case claudeSonnet55 = "claude-sonnet-5-5"
+  case claudeOpus55 = "claude-opus-5-5"
 
   // Local model served by an OpenAI-compatible server on the user's machine (Ollama / LM Studio).
   // The rawValue is a stable sentinel — the *actual* model tag sent to the server is configurable
@@ -239,6 +246,10 @@ enum PromptModel: String, CaseIterable {
       return "Claude Haiku 4.5"
     case .claudeFable5:
       return "Claude Fable 5"
+    case .claudeSonnet55:
+      return "Claude Sonnet 5.5"
+    case .claudeOpus55:
+      return "Claude Opus 5.5"
     case .customOpenAIEndpoint:
       // Names the endpoint that is actually configured. "Custom endpoint (OpenRouter / proxy)" was
       // 36 characters in a chip that sits next to the composer's slash-command row — it squeezed
@@ -293,6 +304,8 @@ enum PromptModel: String, CaseIterable {
     case .claudeOpus48:      return "claudeopus48"
     case .claudeHaiku45:     return "claudehaiku45"
     case .claudeFable5:      return "claudefable5"
+    case .claudeSonnet55:    return "claudesonnet55"
+    case .claudeOpus55:      return "claudeopus55"
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
@@ -357,7 +370,11 @@ enum PromptModel: String, CaseIterable {
     case .claudeOpus48:
       return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
     case .claudeFable5:
-      return "Anthropic's Claude Fable 5 • Most capable Claude • Next-generation intelligence for long-running agents • Needs an Anthropic API key"
+      return "Anthropic's Claude Fable 5 • Long-running agents • Needs an Anthropic API key"
+    case .claudeSonnet55:
+      return "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key"
+    case .claudeOpus55:
+      return "Anthropic's Claude Opus 5.5 • Deeper reasoning for hard questions • Text + images • 1M context • Needs an Anthropic API key"
     case .claudeHaiku45:
       return "Anthropic's Claude Haiku 4.5 • Fastest, most cost-efficient Claude • Text + images • Requires Anthropic API key"
     case .customOpenAIEndpoint:
@@ -388,11 +405,11 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
       return "Medium"
     case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
-         .openaiGPT6Sol, .claudeSonnet5:
+         .openaiGPT6Sol, .claudeSonnet5, .claudeSonnet55:
       return "Medium"
     case .openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT6Luna:
       return "Low"
-    case .claudeOpus5, .claudeOpus48, .claudeFable5:
+    case .claudeOpus5, .claudeOpus48, .claudeFable5, .claudeOpus55:
       return "High"
     }
   }
@@ -410,7 +427,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return .openai
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
@@ -581,7 +598,11 @@ enum PromptModel: String, CaseIterable {
     // knowledge cutoff (May 2026 vs Jan 2026) — and Anthropic itself files 4.8 under
     // "Legacy models". Dominated.
     // https://platform.claude.com/docs/en/about-claude/models/overview
-    case .claudeOpus48: return .claudeOpus5
+    // 2026-09-29: Opus 5.5 ($4/$20) undercuts Opus 5 / 4.8 ($5/$25) at the same 1M/128k, newer
+    // generation; Sonnet 5.5 costs exactly what Sonnet 5 costs. Fable 5 ($10/$50) is dropped by
+    // owner decision — chat is for research, where Fable's agentic depth isn't worth 2.5× Opus.
+    case .claudeOpus48, .claudeOpus5, .claudeFable5: return .claudeOpus55
+    case .claudeSonnet5: return .claudeSonnet55
     // Gemini Flash: 3.5 and 3.6 are dominated by 3.7 on price, tier, and (for 3.6) speed.
     // Point at 3.7, not 3.8 — the 2026-09-03 audit's probe had 3.8 ~12% slower than 3.7,
     // so 3.7 stays selectable until an interleaved latency run decides otherwise.
@@ -631,7 +652,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
-         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5,
+         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55,
          .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return nil
     }
@@ -678,7 +699,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen38B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
@@ -689,6 +710,7 @@ enum PromptModel: String, CaseIterable {
   /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
   /// - Grok: `web_search` tool via the Responses API.
   /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4, gpt-5.4-mini).
+  /// - Claude: Anthropic's server-side `web_search` tool (`AnthropicChatProvider.webSearchTool`).
   /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {

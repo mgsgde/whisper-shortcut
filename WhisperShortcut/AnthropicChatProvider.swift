@@ -58,7 +58,8 @@ final class AnthropicChatProvider: LLMChatProvider {
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
     // `useGrounding` / `disableBuiltInTools` gate web search (see `webSearchTool`) and
-    // `thinkingLevel` maps to effort; Anthropic caches via explicit cache_control breakpoints.
+    // `thinkingLevel` maps to effort. `cacheKey` is unused — Anthropic caches by prefix via the
+    // `cache_control` breakpoints set below.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = Self.validateAttachments(in: contents) {
@@ -90,7 +91,7 @@ final class AnthropicChatProvider: LLMChatProvider {
           if let systemText, !systemText.isEmpty {
             body["system"] = systemText
           }
-          let clientTools = tools.map { tool in
+          let clientTools: [[String: Any]] = tools.map { tool in
             [
               "name": tool.name,
               "description": tool.description,
@@ -99,10 +100,25 @@ final class AnthropicChatProvider: LLMChatProvider {
           }
           var includesSearch =
             options.useGrounding && !options.disableBuiltInTools && !self.isWebSearchRejected
-          let allTools = (includesSearch ? [Self.webSearchTool] : []) + clientTools
-          if !allTools.isEmpty {
-            body["tools"] = allTools
+          // Web search leads so the client tools' breakpoint below still covers the whole list.
+          func toolDefinitions() -> [[String: Any]] {
+            var defs = (includesSearch ? [Self.webSearchTool] : []) + clientTools
+            // Explicit breakpoint on the last tool: tools render first and change only when an
+            // integration is connected, so this prefix is re-read across turns and tool rounds
+            // even when the system prompt's volatile tail (memory, meeting transcript) changes.
+            if !clientTools.isEmpty {
+              defs[defs.count - 1]["cache_control"] = ["type": "ephemeral"]
+            }
+            return defs
           }
+          let toolDefs = toolDefinitions()
+          if !toolDefs.isEmpty {
+            body["tools"] = toolDefs
+          }
+          // Automatic caching for the growing tail: the API places this breakpoint on the last
+          // cacheable block and moves it forward each turn, so every tool round and follow-up
+          // re-reads the whole conversation instead of paying full input price again.
+          body["cache_control"] = ["type": "ephemeral"]
           if let effort = options.thinkingLevel.anthropicEffort,
              Self.supportsEffort(model: model) {
             body["output_config"] = ["effort": effort]
@@ -141,10 +157,11 @@ final class AnthropicChatProvider: LLMChatProvider {
             DebugLogger.logWarning("ANTHROPIC-CHAT-STREAM: web search rejected by the API — retrying without it")
             self.markWebSearchRejected()
             includesSearch = false
-            if clientTools.isEmpty {
+            let retryTools = toolDefinitions()
+            if retryTools.isEmpty {
               body.removeValue(forKey: "tools")
             } else {
-              body["tools"] = clientTools
+              body["tools"] = retryTools
             }
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             bytes = try await openStream()
@@ -152,6 +169,19 @@ final class AnthropicChatProvider: LLMChatProvider {
 
           var pendingToolUses: [(id: String, name: String, inputJSON: String)] = []
           var currentToolUseIndex: Int?
+          // Thinking / redacted_thinking blocks, in stream order. Opus 5.5 and later think on every
+          // request and reject a tool-use loop whose assistant turn comes back without them, so
+          // they ride along with the first tool call (see `AnthropicToolCallEnvelope`).
+          var thinkingBlocks: [[String: Any]] = []
+          var currentThinkingIndex: Int?
+          // Web-search blocks (`server_tool_use` + `web_search_tool_result`) ride in the same list
+          // and layout: a turn that searched and then called a client tool must be replayed with
+          // them in place, or its thinking blocks no longer match the history they were made in.
+          var currentServerToolIndex: Int?
+          var serverToolInputJSON = ""
+          // Stream order of thinking / text / tool_use blocks, so the converter can rebuild the
+          // turn exactly: interleaved thinking moved ahead of an earlier tool_use is a 400.
+          var layout: [String] = []
           var finishReason: String?
           var citations = AnthropicCitationCollector()
           // Characters yielded so far — the offsets citation supports are measured in, so they
@@ -178,6 +208,16 @@ final class AnthropicChatProvider: LLMChatProvider {
                   let type = obj["type"] as? String else { continue }
 
             switch type {
+            case "message_start":
+              // Cache verification: reads staying at 0 across turns means something in the
+              // prefix changes per request (see buildSystemInstruction's ordering note).
+              if let usage = (obj["message"] as? [String: Any])?["usage"] as? [String: Any] {
+                DebugLogger.logNetwork(
+                  "ANTHROPIC-CHAT-STREAM: usage input=\(usage["input_tokens"] ?? 0) "
+                  + "cacheRead=\(usage["cache_read_input_tokens"] ?? 0) "
+                  + "cacheWrite=\(usage["cache_creation_input_tokens"] ?? 0)")
+              }
+
             case "content_block_start":
               let block = obj["content_block"] as? [String: Any]
               let blockType = block?["type"] as? String
@@ -201,9 +241,31 @@ final class AnthropicChatProvider: LLMChatProvider {
                  let name = block?["name"] as? String {
                 pendingToolUses.append((id: id, name: name, inputJSON: ""))
                 currentToolUseIndex = pendingToolUses.count - 1
+                currentThinkingIndex = nil
+                layout.append(AnthropicToolCallEnvelope.toolUseSlot(id))
                 DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: tool_use start name=\(name) id=\(id)")
-              } else {
+              } else if let block, blockType == "server_tool_use" || blockType == "web_search_tool_result" {
+                thinkingBlocks.append(block)
+                currentThinkingIndex = nil
                 currentToolUseIndex = nil
+                currentServerToolIndex = blockType == "server_tool_use" ? thinkingBlocks.count - 1 : nil
+                serverToolInputJSON = ""
+                layout.append(AnthropicToolCallEnvelope.thinkingSlot(thinkingBlocks.count - 1))
+              } else if let block = obj["content_block"] as? [String: Any],
+                        let blockType = block["type"] as? String,
+                        blockType == "thinking" || blockType == "redacted_thinking" {
+                thinkingBlocks.append(block)
+                currentThinkingIndex = thinkingBlocks.count - 1
+                currentToolUseIndex = nil
+                layout.append(AnthropicToolCallEnvelope.thinkingSlot(thinkingBlocks.count - 1))
+              } else {
+                if let block = obj["content_block"] as? [String: Any],
+                   (block["type"] as? String) == "text",
+                   !layout.contains(AnthropicToolCallEnvelope.textSlot) {
+                  layout.append(AnthropicToolCallEnvelope.textSlot)
+                }
+                currentToolUseIndex = nil
+                currentThinkingIndex = nil
               }
 
             case "content_block_delta":
@@ -216,13 +278,29 @@ final class AnthropicChatProvider: LLMChatProvider {
                           let idx = currentToolUseIndex,
                           pendingToolUses.indices.contains(idx) {
                   pendingToolUses[idx].inputJSON += partial
+                } else if let partial = delta["partial_json"] as? String, currentServerToolIndex != nil {
+                  serverToolInputJSON += partial
+                } else if let idx = currentThinkingIndex, thinkingBlocks.indices.contains(idx) {
+                  // Accumulate verbatim — the API rejects an edited thinking block.
+                  if let thinking = delta["thinking"] as? String {
+                    thinkingBlocks[idx]["thinking"] = ((thinkingBlocks[idx]["thinking"] as? String) ?? "") + thinking
+                  } else if let signature = delta["signature"] as? String {
+                    thinkingBlocks[idx]["signature"] = ((thinkingBlocks[idx]["signature"] as? String) ?? "") + signature
+                  }
                 }
               }
 
             case "content_block_stop":
               if currentBlockIsText { citations.textBlockEnded(at: yieldedChars) }
+              if let idx = currentServerToolIndex, thinkingBlocks.indices.contains(idx),
+                 let data = serverToolInputJSON.data(using: .utf8),
+                 let input = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                thinkingBlocks[idx]["input"] = input
+              }
+              currentServerToolIndex = nil
               currentBlockIsText = false
               currentToolUseIndex = nil
+              currentThinkingIndex = nil
 
             case "message_delta":
               if let delta = obj["delta"] as? [String: Any],
@@ -235,7 +313,7 @@ final class AnthropicChatProvider: LLMChatProvider {
             }
           }
 
-          for tool in pendingToolUses {
+          for (index, tool) in pendingToolUses.enumerated() {
             let args: [String: Any]
             if let d = tool.inputJSON.data(using: .utf8),
                let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
@@ -244,7 +322,10 @@ final class AnthropicChatProvider: LLMChatProvider {
               args = [:]
             }
             DebugLogger.logNetwork("ANTHROPIC-CHAT-STREAM: functionCall name=\(tool.name) id=\(tool.id)")
-            continuation.yield(.functionCall(name: tool.name, args: args, thoughtSignature: tool.id))
+            let signature = index == 0
+              ? AnthropicToolCallEnvelope.encode(toolUseId: tool.id, thinking: thinkingBlocks, layout: layout)
+              : tool.id
+            continuation.yield(.functionCall(name: tool.name, args: args, thoughtSignature: signature))
           }
 
           // `pause_turn` means the server-side search loop hit its iteration cap. Resuming needs the
@@ -281,31 +362,34 @@ final class AnthropicChatProvider: LLMChatProvider {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     Self.applyCommonHeaders(to: &request, apiKey: apiKey)
-    request.timeoutInterval = 120
+    // Non-streaming, so the idle timeout caps the whole call — and always-on thinking (Opus 5.5+)
+    // runs before the first byte. Same budget as the chat stream.
+    request.timeoutInterval = 300
 
-    // Force a single tool call whose input must match `schema` — reliable structured output
-    // without relying on free-text JSON parsing.
-    let toolName = schemaName.isEmpty ? "structured_output" : schemaName
+    // Structured outputs (`output_config.format`), not a forced tool call: Opus 5.5 and later
+    // reject `tool_choice` `tool`/`any` with a 400. Supported on every current Claude model incl.
+    // Haiku 4.5; objects need `additionalProperties: false`, which `strictified` adds.
+    // https://platform.claude.com/docs/en/build-with-claude/structured-outputs
+    var outputConfig: [String: Any] = [
+      "format": [
+        "type": "json_schema",
+        "schema": StructuredOutputSchema.strictified(schema),
+      ] as [String: Any]
+    ]
+    if let effort = thinkingLevel.anthropicEffort,
+       Self.supportsEffort(model: model) {
+      outputConfig["effort"] = effort
+    }
     var body: [String: Any] = [
       "model": model,
       "messages": AnthropicMessagesConverter.messages(from: contents),
-      "max_tokens": 4096,
+      // Covers thinking plus the JSON on always-thinking models (Opus 5.5+).
+      "max_tokens": 16384,
       "stream": false,
-      "tools": [
-        [
-          "name": toolName,
-          "description": "Return the result as structured data matching the schema.",
-          "input_schema": schema,
-        ] as [String: Any]
-      ],
-      "tool_choice": ["type": "tool", "name": toolName],
+      "output_config": outputConfig,
     ]
     if let systemText = GeminiSystemInstruction.text(from: systemInstruction), !systemText.isEmpty {
       body["system"] = systemText
-    }
-    if let effort = thinkingLevel.anthropicEffort,
-       Self.supportsEffort(model: model) {
-      body["output_config"] = ["effort": effort]
     }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -324,12 +408,24 @@ final class AnthropicChatProvider: LLMChatProvider {
           let content = obj["content"] as? [[String: Any]] else {
       throw TranscriptionError.networkError("Anthropic structured response was not valid JSON")
     }
-    for block in content {
-      guard (block["type"] as? String) == "tool_use",
-            let input = block["input"] as? [String: Any] else { continue }
-      return input
+    // Select by block type: thinking blocks come first on always-thinking models.
+    let text = content
+      .filter { ($0["type"] as? String) == "text" }
+      .compactMap { $0["text"] as? String }
+      .joined()
+    guard let json = text.data(using: .utf8),
+          let result = try? JSONSerialization.jsonObject(with: json) as? [String: Any] else {
+      switch obj["stop_reason"] as? String {
+      case "refusal":
+        throw TranscriptionError.networkError("Claude declined this request.")
+      case "max_tokens":
+        throw TranscriptionError.networkError("Claude's structured reply was cut off at the token limit.")
+      default:
+        break
+      }
+      throw TranscriptionError.networkError("Anthropic structured response did not include valid JSON")
     }
-    throw TranscriptionError.networkError("Anthropic structured response did not include a tool_use block")
+    return result
   }
 
   // MARK: - Helpers
@@ -353,7 +449,7 @@ final class AnthropicChatProvider: LLMChatProvider {
         "Anthropic API key is invalid. Check the key in Settings → General."))
   }
 
-  /// Effort / adaptive thinking is supported on Sonnet 5 and Opus 4.8 family models, not Haiku 4.5.
+  /// Effort / adaptive thinking is supported on Sonnet, Opus and Fable models, not Haiku 4.5.
   private static func supportsEffort(model: String) -> Bool {
     model.contains("sonnet") || model.contains("opus") || model.contains("fable")
   }
@@ -396,11 +492,21 @@ enum AnthropicMessagesConverter {
   /// Converts Gemini-format `contents` (role/parts) to Anthropic Messages `messages`.
   /// Tool-call IDs round-trip via `thoughtSignature` on functionCall parts; tool results are
   /// paired positionally against the preceding assistant turn's tool_use ids (same as OpenAI).
+  ///
+  /// Thinking blocks are re-sent only for tool-call turns after the last plain user message —
+  /// the open tool loop, which is where the API requires them. Older turns drop them: the API
+  /// ignores earlier thinking anyway, and a signature from another model (after `/model`) must not
+  /// reach this one.
   static func messages(from contents: [[String: Any]]) -> [[String: Any]] {
     var result: [[String: Any]] = []
     var lastToolUseIds: [String] = []
+    let lastUserTextIndex = contents.lastIndex { content in
+      let role = (content["role"] as? String) ?? "user"
+      let parts = (content["parts"] as? [[String: Any]]) ?? []
+      return role == "user" && !parts.contains { $0["functionResponse"] != nil }
+    }
 
-    for content in contents {
+    for (contentIndex, content) in contents.enumerated() {
       let role = (content["role"] as? String) ?? "user"
       let parts = (content["parts"] as? [[String: Any]]) ?? []
 
@@ -408,16 +514,24 @@ enum AnthropicMessagesConverter {
       if !functionCallParts.isEmpty {
         var blocks: [[String: Any]] = []
         var toolUseIds: [String] = []
-        let textParts = parts.compactMap { $0["text"] as? String }.filter { !$0.isEmpty }
-        for text in textParts {
-          blocks.append(["type": "text", "text": text])
-        }
+        let inOpenToolLoop = contentIndex > (lastUserTextIndex ?? -1)
+        let textBlocks: [[String: Any]] = parts.compactMap { $0["text"] as? String }
+          .filter { !$0.isEmpty }
+          .map { ["type": "text", "text": $0] }
+        var toolUseBlocks: [[String: Any]] = []
+        var thinking: [[String: Any]] = []
+        var layout: [String] = []
         for (idx, part) in functionCallParts.enumerated() {
           guard let call = part["functionCall"] as? [String: Any],
                 let name = call["name"] as? String else { continue }
           let args = (call["args"] as? [String: Any]) ?? [:]
-          let id = (part["thoughtSignature"] as? String) ?? "toolu_\(idx)"
-          blocks.append([
+          let envelope = AnthropicToolCallEnvelope.decode(part["thoughtSignature"] as? String)
+          let id = envelope.toolUseId ?? "toolu_\(idx)"
+          if inOpenToolLoop && !envelope.thinking.isEmpty {
+            thinking = envelope.thinking
+            layout = envelope.layout
+          }
+          toolUseBlocks.append([
             "type": "tool_use",
             "id": id,
             "name": name,
@@ -425,6 +539,8 @@ enum AnthropicMessagesConverter {
           ])
           toolUseIds.append(id)
         }
+        blocks = AnthropicToolCallEnvelope.assemble(
+          thinking: thinking, text: textBlocks, toolUses: toolUseBlocks, layout: layout)
         if !blocks.isEmpty {
           result.append(["role": "assistant", "content": blocks])
         }
@@ -525,5 +641,73 @@ struct AnthropicCitationCollector {
         startIndex: blockStart, endIndex: offset, groundingChunkIndices: blockSourceIndices))
     }
     blockSourceIndices = []
+  }
+}
+
+// MARK: - Tool-call envelope
+
+/// Packs a tool call's `tool_use` id — plus, on the first call of a turn, that turn's thinking
+/// blocks (and any web-search blocks, which must stay in place around them) — into the opaque
+/// `thoughtSignature` string that the chat loop already round-trips
+/// untouched (`ChatView.executeToolCalls`). Keeps the Anthropic-only requirement "echo thinking
+/// blocks unmodified in tool loops" inside this file instead of widening `ChatStreamEvent`.
+/// A bare id (no prefix) is the pre-envelope format and still decodes.
+enum AnthropicToolCallEnvelope {
+  private static let prefix = "anthropic-v1:"
+
+  static let textSlot = "text"
+  static func thinkingSlot(_ index: Int) -> String { "thinking:\(index)" }
+  static func toolUseSlot(_ id: String) -> String { "tool_use:\(id)" }
+
+  static func encode(toolUseId: String, thinking: [[String: Any]], layout: [String] = []) -> String {
+    guard !thinking.isEmpty,
+          let data = try? JSONSerialization.data(
+            withJSONObject: ["id": toolUseId, "thinking": thinking, "layout": layout])
+    else { return toolUseId }
+    return prefix + data.base64EncodedString()
+  }
+
+  static func decode(_ signature: String?)
+    -> (toolUseId: String?, thinking: [[String: Any]], layout: [String])
+  {
+    guard let signature else { return (nil, [], []) }
+    guard signature.hasPrefix(prefix),
+          let data = Data(base64Encoded: String(signature.dropFirst(prefix.count))),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return (signature, [], []) }
+    return (obj["id"] as? String, (obj["thinking"] as? [[String: Any]]) ?? [],
+            (obj["layout"] as? [String]) ?? [])
+  }
+
+  /// Rebuilds an assistant turn in the order the stream produced it. Without a layout (no
+  /// thinking, or a closed loop) it is text then tool_use; blocks the layout doesn't name are
+  /// appended so nothing is ever dropped.
+  static func assemble(
+    thinking: [[String: Any]], text: [[String: Any]], toolUses: [[String: Any]], layout: [String]
+  ) -> [[String: Any]] {
+    guard !thinking.isEmpty else { return text + toolUses }
+    var result: [[String: Any]] = []
+    var usedThinking = Set<Int>()
+    var usedToolIds = Set<String>()
+    var textPlaced = false
+    for slot in layout {
+      if slot == textSlot {
+        if !textPlaced { result += text; textPlaced = true }
+      } else if slot.hasPrefix("thinking:"), let i = Int(slot.dropFirst("thinking:".count)),
+                thinking.indices.contains(i), !usedThinking.contains(i) {
+        result.append(thinking[i]); usedThinking.insert(i)
+      } else if slot.hasPrefix("tool_use:") {
+        let id = String(slot.dropFirst("tool_use:".count))
+        if let block = toolUses.first(where: { ($0["id"] as? String) == id }), !usedToolIds.contains(id) {
+          result.append(block); usedToolIds.insert(id)
+        }
+      }
+    }
+    // Leftovers: unplaced thinking still leads (API requirement), then text, then tool_use.
+    let leftoverThinking = thinking.indices.filter { !usedThinking.contains($0) }.map { thinking[$0] }
+    result.insert(contentsOf: leftoverThinking, at: 0)
+    if !textPlaced { result += text }
+    result += toolUses.filter { !usedToolIds.contains(($0["id"] as? String) ?? "") }
+    return result
   }
 }
