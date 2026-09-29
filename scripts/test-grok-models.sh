@@ -23,10 +23,11 @@ declare -a CURRENT_MODELS=(
   "grok-4.20-0309-non-reasoning"
   "grok-4.20-0309-reasoning"
   "grok-4.3"
-  # Previous flagship — kept in the enum (chatReplacement → 4.6) so persisted selections resolve.
+  # Previous flagships — kept in the enum (chatReplacement → 4.7) so persisted selections resolve.
   "grok-4.5"
-  # xAI's current flagship. Same $2/$6 / 500k as 4.5; does NOT replace grok-4.3 (cheaper, 1M ctx).
   "grok-4.6"
+  # xAI's current flagship. Same $2/$6 / 500k as 4.5/4.6; does NOT replace grok-4.3 (cheaper, 1M ctx).
+  "grok-4.7"
 )
 # Legacy slugs that we accept via migrateLegacyPromptRawValue but no longer expose in fresh
 # selections. xAI silently redirects these to grok-4.3 (per May-15-2026 retirement notice).

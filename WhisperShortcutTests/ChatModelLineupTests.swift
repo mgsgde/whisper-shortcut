@@ -79,7 +79,8 @@ struct ChatModelLineupTests {
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3-flash-preview") == .gemini37Flash)
     // Already there, and unrelated picks, must not be swept up.
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "gemini-3.8-flash") == .gemini38Flash)
-    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.6") == .grok46)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.7") == .grok47)
+    #expect(PromptModel.resolvedChatSlotModel(forRawValue: "grok-4.6") == .grok47)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
   }
 
