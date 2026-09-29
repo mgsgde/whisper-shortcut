@@ -34,6 +34,9 @@ final class RecordingIndicatorModel: ObservableObject {
   static let barCount = 10
 
   @Published var phase: RecordingIndicatorPhase = .recording
+  /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
+  /// so Dictate, Dictate Prompt and Voice Feedback no longer all read "Listening"/"Transcribing".
+  @Published var statusLabel = "Listening"
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
   @Published var isPaused = false
@@ -355,7 +358,7 @@ struct RecordingIndicatorView: View {
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Discard recording", action: onCancel)
         LevelBarsView(levels: model.levels)
-        Text("Listening")
+        Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
         PillCircleButton(
@@ -366,7 +369,7 @@ struct RecordingIndicatorView: View {
           symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
           accessibilityLabel: "Cancel processing", action: onCancel)
         SpinnerView()
-        Text("Transcribing")
+        Text(model.statusLabel)
           .font(.system(size: 11, weight: .semibold))
           .foregroundColor(.white)
       case .speaking:
@@ -412,8 +415,7 @@ struct RecordingIndicatorView: View {
 
   private var accessibilityTitle: String {
     switch model.phase {
-    case .recording: return "Listening"
-    case .processing: return "Transcribing"
+    case .recording, .processing: return model.statusLabel
     case .speaking:
       if model.isPaused { return "Read Aloud paused" }
       if model.isBuffering { return "Reading aloud — loading" }
@@ -474,8 +476,9 @@ final class RecordingIndicatorManager {
 
   // MARK: Phase transitions
 
-  func showRecording() {
+  func showRecording(label: String = "Listening") {
     model.resetLevels()
+    model.statusLabel = label
     model.phase = .recording
     orderFrontPanel()
   }
@@ -485,7 +488,8 @@ final class RecordingIndicatorManager {
   /// with no recording phase (Read Aloud / TTS) pass `summonIfNeeded: true` to pull the
   /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
   /// (e.g. file-based processing) don't suddenly grow a pill.
-  func showProcessing(summonIfNeeded: Bool = false) {
+  func showProcessing(summonIfNeeded: Bool = false, label: String = "Transcribing") {
+    model.statusLabel = label
     model.phase = .processing
     if isVisible, let panel {
       position(panel)
@@ -644,5 +648,31 @@ final class RecordingIndicatorManager {
       y: visible.minY + Constants.bottomMargin
     )
     panel.setFrame(NSRect(origin: origin, size: size), display: true)
+  }
+}
+
+// MARK: - Pill status words
+
+extension AppState.RecordingMode {
+  /// Short enough for the fixed recording pill width (see `pillSize`).
+  var pillLabel: String {
+    switch self {
+    case .transcription, .liveMeeting: return "Listening"
+    case .prompt: return "Prompting"
+    case .voiceFeedback: return "Feedback"
+    }
+  }
+}
+
+extension AppState.ProcessingMode {
+  /// Short enough for the fixed processing pill width (see `pillSize`).
+  var pillLabel: String {
+    switch self {
+    case .transcribing: return "Transcribing"
+    case .prompting, .contextEditing: return "Thinking"
+    case .ttsProcessing: return "Preparing"
+    case .splitting, .processingChunks, .merging:
+      return isTTSContext ? "Preparing" : "Transcribing"
+    }
   }
 }
