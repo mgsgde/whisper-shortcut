@@ -238,11 +238,14 @@ enum TranscriptionModel: String, CaseIterable {
     // The offline recommendation is Parakeet Ultra: turbo's accuracy on real German dictation at
     // ~1/20 of the wait, and less than half the download (`benchmarks/local-asr/README.md`).
     // Base remains the quick way to try offline at 140 MB.
-    case .gemini31FlashLite, .parakeetUltra:
+    case .gemini31FlashLite:
       return true
+    // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
+    case .parakeetUltra, .whisperLargeTurbo:
+      return offlineModelType?.isRecommended ?? false
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+         .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
     }

@@ -105,7 +105,7 @@ enum TranscriptionProvider: String, CaseIterable {
   var credentialRequiredMessage: String {
     switch self {
     case .google:
-      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download a Whisper model in Speech-to-Text settings."
+      return "Add your Gemini API key in Settings (General tab) to use dictation. For offline use, download an offline model in Speech-to-Text settings."
     case .openAI:
       return "Add your OpenAI API key in Settings (General tab) to use dictation, or pick a different transcription model in Dictate settings."
     case .xai:

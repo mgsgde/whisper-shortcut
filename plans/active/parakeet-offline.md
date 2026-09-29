@@ -130,6 +130,29 @@ Each slice is one branch, one PR, green `bash scripts/run-tests.sh`, rebuilt app
   `LocalSpeechService` doc comment item 1, `plans/active/streaming-dictate.md` :457 non-goal
   pointer, queue row 18 marked superseded for Parakeet users.
 
+## Review follow-ups (Opus review 2026-09-29)
+
+Fixed before handover: unload no longer calls FluidAudio `cleanup()` under a running decode
+(dropped reference only, plus one reload-and-retry on `notInitialized`); Parakeet recommended /
+auto-picked only where it covers the dictation language (`recommended(forLanguage:)`, turbo
+elsewhere); `invalidAudioData` → no-speech, no more "corrupted, re-download" for decode errors;
+the delete-and-re-download self-heal is Whisper-only; FluidAudio's network switch is shut once
+per process and only `download` opens it; CTC load cached as a task; copy and credits (CTC 110M,
+Core ML conversions).
+
+Deferred, deliberately:
+- **Before bumping FluidAudio:** `ParakeetBackend.isDownloaded` checks files, while FluidAudio's
+  offline load also checks a revision marker. A marker change in a new version would fail every
+  load as "missing" while Settings shows the model downloaded, and Download would no-op
+  (`AsrModels.download` sees the files). Check the marker in `isDownloaded`, or force the
+  download, as part of that bump.
+- Progress bar sits at 86 % during the ~100 MB CTC phase (`CtcModels.download` reports none);
+  cancelling in that phase may surface as a failure popup instead of silence (unverified).
+- "Glossary Full — Whisper only reads the first ~224 tokens" (`MenuBarController`) also caps
+  Parakeet users, who have no such limit.
+- No hermetic test covers `LocalSpeechService` engine routing or the Parakeet error mapping;
+  both are exercised only by the opt-in live suite.
+
 ## Decisions for Magnus
 
 - **D1 — existing offline users.** Recommended: **do not switch anyone silently.** New offline

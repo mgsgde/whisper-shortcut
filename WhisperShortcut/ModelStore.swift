@@ -108,6 +108,10 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// waiting on a dictation would otherwise sit on a permanent "Model Not Downloaded".
   var healsCorruptDownloadOnLoadFailure: Bool { false }
 
+  /// Per-model refinement of `healsCorruptDownloadOnLoadFailure`, for a family whose engines
+  /// disagree on whether a load failure means a corrupt download.
+  func healsCorruptDownload(for model: Model) -> Bool { healsCorruptDownloadOnLoadFailure }
+
   /// What `deleteModel` removes. MLX overrides this to delete the whole Hub repo, not just the
   /// snapshot `resolveModelPath` lands on.
   nonisolated func deletionTarget(for modelPath: URL) -> URL { modelPath }
@@ -153,7 +157,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     onProgress?(preparingMessage(for: model))
     do {
       try await load(model)
-    } catch where healsCorruptDownloadOnLoadFailure && !Self.isCancellation(error) && !Self.isDeadline(error) {
+    } catch where healsCorruptDownload(for: model) && !Self.isCancellation(error) && !Self.isDeadline(error) {
       // A network drop mid-download must NOT wipe the tree: Hub skips files that already
       // landed, so a retry resumes instead of looping from zero. Only a load failure on a
       // complete-looking folder gets here. A load that ran out of time or was cancelled is

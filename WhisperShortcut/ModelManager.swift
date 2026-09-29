@@ -71,8 +71,33 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
   /// (`benchmarks/local-asr/README.md`). Magnus after dictating with it: „Das ist viel, viel besser als
   /// Whisper Large."
   /// Turbo held the star before; Base before that.
+  ///
+  /// Only where Parakeet covers the language, though: for anyone dictating outside its 25, turbo
+  /// keeps the star (see `recommended(forLanguage:)`).
   var isRecommended: Bool {
-    return self == .parakeetUltra
+    return self == Self.mostAccurate
+  }
+
+  /// The 25 languages Parakeet TDT 0.6B v3 — and Moondream's Ultra retrain of it — transcribe
+  /// (NVIDIA model card).
+  static let parakeetLanguageCodes: Set<String> = [
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt",
+    "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+  ]
+
+  /// The language dictation is expected in: the Whisper language setting, or — on Auto — the Mac's.
+  static var expectedDictationLanguage: String? {
+    let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
+      ?? WhisperLanguage.auto.rawValue
+    if let code = WhisperLanguage(rawValue: raw)?.languageCode { return code }
+    return Locale.current.language.languageCode?.identifier
+  }
+
+  /// Parakeet Ultra where it covers the language (or the language is unknown), turbo otherwise —
+  /// Parakeet on Japanese audio produces Latin-script nonsense.
+  static func recommended(forLanguage code: String?) -> OfflineModelType {
+    guard let code, !parakeetLanguageCodes.contains(code) else { return .parakeetUltra }
+    return .whisperLargeTurbo
   }
 
   /// Shown instead of the star on the model that is merely the fastest way to *try* offline
@@ -120,14 +145,19 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
 
   /// Offline models ordered worst to best pick. Used to choose a sensible model on this Mac
   /// without asking the user which size means what — Offline Mode walks it from the end.
-  /// Parakeet Ultra last: it ties turbo on accuracy and is ~20× faster.
+  /// Parakeet Ultra last where it covers the dictation language — it ties turbo on accuracy and is
+  /// ~20× faster — and first (worst) where it does not.
   static var byAccuracy: [OfflineModelType] {
-    [.whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo, .parakeetUltra]
+    let whisper: [OfflineModelType] = [
+      .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
+    ]
+    return mostAccurate == .parakeetUltra ? whisper + [.parakeetUltra] : [.parakeetUltra] + whisper
   }
 
-  /// The on-device model Offline Mode picks when none is downloaded yet (D1 in
-  /// `plans/active/parakeet-offline.md`: new setups get Parakeet; nobody is switched silently).
-  static var mostAccurate: OfflineModelType { .parakeetUltra }
+  /// The on-device model Offline Mode, onboarding and the Offline Mode card pick when none is
+  /// downloaded yet (D1 in `plans/active/parakeet-offline.md`: new setups get Parakeet where it
+  /// covers the language; nobody is switched silently).
+  static var mostAccurate: OfflineModelType { recommended(forLanguage: expectedDictationLanguage) }
   
   // Map to WhisperKit model name (HuggingFace: openai_whisper-{name}); nil for other engines.
   var whisperKitModelName: String? {
@@ -313,6 +343,14 @@ final class ModelManager: ModelStore<OfflineModelType> {
   /// Load failure after the folder looked complete is the verified-corrupt case — purge and
   /// fetch once more, because the user is waiting on a dictation.
   override var healsCorruptDownloadOnLoadFailure: Bool { true }
+
+  /// Whisper only. A Parakeet load failure is not evidence of a corrupt download (an ANE plan
+  /// that cannot run on this hardware fails the same way every time), and the heal would delete
+  /// the whole FluidAudio folder and fetch 700 MB while the user waits on a dictation — again on
+  /// every dictation. The error is surfaced instead; Delete + Download in Settings is the repair.
+  override func healsCorruptDownload(for model: OfflineModelType) -> Bool {
+    model.engine == .whisperKit
+  }
 
   override func load(_ type: OfflineModelType) async throws {
     try await LocalSpeechService.shared.initializeModel(type)

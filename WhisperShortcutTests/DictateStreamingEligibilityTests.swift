@@ -19,8 +19,6 @@ struct DictateStreamingEligibilityTests {
     }
   }
 
-  /// The load-bearing half of the offline gate: an in-flight chunk must never be what starts a
-  /// multi-gigabyte download, mid-recording, behind the user's back.
   /// Decision D2 in `plans/active/parakeet-offline.md`: a minute of audio decodes in ~0.5 s after
   /// Stop, and the Glossary vocabulary works better on the whole recording than per chunk.
   @Test("Parakeet never streams, downloaded or not")
@@ -32,6 +30,8 @@ struct DictateStreamingEligibilityTests {
     }
   }
 
+  /// The load-bearing half of the offline gate: an in-flight chunk must never be what starts a
+  /// multi-gigabyte download, mid-recording, behind the user's back.
   @Test("An on-device Whisper that is not downloaded does not stream")
   func undownloadedOfflineModelDoesNotStream() {
     for model in TranscriptionModel.allCases where model.isOffline {

@@ -24,7 +24,7 @@ import FluidAudio
 /// (`VocabularyBoostingSession`) looks the CTC tokenizer up in the default directory, whatever
 /// directory the models were loaded from.
 final class ParakeetBackend: @unchecked Sendable {
-  // `@unchecked`: both stored properties are actors, set once in `load`.
+  // `@unchecked`: every stored property is an actor or `Sendable`, and none is reassigned.
   private let manager: AsrManager
   private let vocabulary = VocabularyBooster()
   private static let version: AsrModelVersion = .ultra
@@ -55,6 +55,7 @@ final class ParakeetBackend: @unchecked Sendable {
   /// Downloads Ultra (~600 MB), then the CTC model (~100 MB) the Glossary needs. Progress is one
   /// 0…1 fraction across both, weighted by size, so Settings shows a single bar.
   static func download(onProgress: @escaping @Sendable (Double) -> Void) async throws {
+    _ = networkShutByDefault
     ModelHub.offlineMode = false
     defer { ModelHub.offlineMode = true }
     let ultraShare = 0.86
@@ -90,14 +91,20 @@ final class ParakeetBackend: @unchecked Sendable {
   /// The FluidAudio load call with the network switch shut. Separate so a test can point it at
   /// an empty folder and see it fail as "missing" instead of reaching for HuggingFace.
   static func loadModelsOffline(from directory: URL) async throws -> AsrModels {
-    ModelHub.offlineMode = true
+    _ = networkShutByDefault
     return try await AsrModels.load(from: directory, version: version)
   }
 
-  func unload() async {
-    await manager.cleanup()
-    await vocabulary.reset()
-  }
+  /// FluidAudio's network switch, shut once per process before its first use. Loads only read
+  /// it — writing it from every load could flip it back on under a running Settings download,
+  /// which FluidAudio checks per request and would abort. Only `download` opens it, and puts it
+  /// back when done.
+  fileprivate static let networkShutByDefault: Void = { ModelHub.offlineMode = true }()
+
+  // No `unload()`: `AsrManager.cleanup()` nils the models a decode in flight is still reading
+  // across its suspension points, which failed dictations as "not initialized" when memory
+  // pressure or a model switch unloaded mid-decode. Dropping the last reference to this object
+  // frees everything once any running decode has let go of it.
 
   // MARK: - Transcribe
 
@@ -112,13 +119,25 @@ final class ParakeetBackend: @unchecked Sendable {
   func transcribe(audioURL: URL, language: String?, vocabulary terms: [String]) async throws -> String {
     var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
     let hint = language.flatMap(Language.init(rawValue:))
-    guard !terms.isEmpty else {
-      return try await manager.transcribe(audioURL, decoderState: &state, language: hint).text
+    if let language, hint == nil {
+      DebugLogger.logWarning(
+        "LOCAL-SPEECH: Parakeet does not cover language '\(language)'; transcribing without a hint")
     }
-    // The spotter needs the samples too, so decode from them rather than reading the file twice.
-    let samples = try converter.resampleAudioFile(audioURL)
-    let result = try await manager.transcribe(samples, decoderState: &state, language: hint)
-    return await vocabulary.rescore(result, samples: samples, terms: terms)
+    do {
+      guard !terms.isEmpty else {
+        return try await manager.transcribe(audioURL, decoderState: &state, language: hint).text
+      }
+      // The spotter needs the samples too, so decode from them rather than reading the file twice.
+      let samples = try converter.resampleAudioFile(audioURL)
+      let result = try await manager.transcribe(samples, decoderState: &state, language: hint)
+      return await vocabulary.rescore(result, samples: samples, terms: terms)
+    } catch let error as ASRError {
+      switch error {
+      case .invalidAudioData: throw ParakeetBackendError.audioTooShort
+      case .notInitialized: throw ParakeetBackendError.notLoaded
+      default: throw error
+      }
+    }
   }
 }
 
@@ -128,7 +147,9 @@ final class ParakeetBackend: @unchecked Sendable {
 /// the first dictation that has a glossary and reused until the glossary text changes. An actor
 /// because a meeting's live chunks and a dictation can decode side by side.
 private actor VocabularyBooster {
-  private var ctcModels: CtcModels?
+  /// A task, not a value: two cold-cache rescores (a meeting chunk and a dictation) would
+  /// otherwise both pass a nil check across the `await` and load the ~100 MB model twice.
+  private var ctcLoad: Task<CtcModels, Error>?
   private var session: (terms: [String], session: VocabularyBoostingSession)?
 
   /// The rescored transcript, or the plain one when boosting cannot run — a missing CTC model or
@@ -150,19 +171,21 @@ private actor VocabularyBooster {
     }
   }
 
-  func reset() {
-    ctcModels = nil
-    session = nil
-  }
-
   private func session(for terms: [String]) async throws -> VocabularyBoostingSession {
     if let cached = session, cached.terms == terms { return cached.session }
-    if ctcModels == nil {
+    let load = ctcLoad ?? Task {
       // Same network rule as the transcriber: the CTC model goes through FluidAudio's ModelHub.
-      ModelHub.offlineMode = true
-      ctcModels = try await CtcModels.load(from: CtcModels.defaultCacheDirectory(for: .ctc110m))
+      _ = ParakeetBackend.networkShutByDefault
+      return try await CtcModels.load(from: CtcModels.defaultCacheDirectory(for: .ctc110m))
     }
-    guard let ctcModels else { throw ParakeetBackendError.notDownloaded }
+    ctcLoad = load
+    let ctcModels: CtcModels
+    do {
+      ctcModels = try await load.value
+    } catch {
+      ctcLoad = nil  // retry on the next dictation rather than caching the failure
+      throw error
+    }
     let context = CustomVocabularyContext(terms: terms.map { CustomVocabularyTerm(text: $0) })
     let built = try await VocabularyBoostingSession(vocabulary: context, ctcModels: ctcModels)
     session = (terms, built)
@@ -173,10 +196,16 @@ private actor VocabularyBooster {
 
 enum ParakeetBackendError: LocalizedError {
   case notDownloaded
+  /// FluidAudio refuses audio under 0.3 s — a tap, not a dictation.
+  case audioTooShort
+  /// The models went away under a decode; the caller reloads once and retries.
+  case notLoaded
 
   var errorDescription: String? {
     switch self {
     case .notDownloaded: return "Parakeet Ultra is not fully downloaded."
+    case .audioTooShort: return "The recording is too short to transcribe."
+    case .notLoaded: return "Parakeet Ultra was not loaded."
     }
   }
 }

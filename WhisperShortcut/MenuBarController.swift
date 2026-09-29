@@ -2117,7 +2117,7 @@ class MenuBarController: NSObject {
     let transcriptionModelForCapture = TranscriptionModel.loadSelected()
     let backendTag: String
     if transcriptionModelForCapture.isOffline {
-      backendTag = "whisper"
+      backendTag = transcriptionModelForCapture.offlineModelType?.engine == .parakeet ? "parakeet" : "whisper"
     } else if transcriptionModelForCapture.isOpenAI {
       backendTag = "openai"
     } else if transcriptionModelForCapture == .selfHostedTranscription {

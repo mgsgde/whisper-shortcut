@@ -48,7 +48,7 @@ struct AboutSettingsTab: View {
       Text("Acknowledgements")
         .font(.callout)
         .fontWeight(.medium)
-      Text("Offline dictation: Parakeet Ultra by Moondream, a retraining of NVIDIA Parakeet TDT 0.6B v3 — both licensed CC BY 4.0 — run through FluidAudio (Apache 2.0) by FluidInference. Whisper models by OpenAI (MIT), run through WhisperKit (MIT) by Argmax.")
+      Text("Offline dictation: Parakeet Ultra by Moondream, a retraining of NVIDIA Parakeet TDT 0.6B v3, and NVIDIA Parakeet CTC 110M for Glossary terms — all licensed CC BY 4.0 — downloaded as FluidInference's Core ML conversions and run through FluidAudio (Apache 2.0). Whisper models by OpenAI (MIT), run through WhisperKit (MIT) by Argmax.")
         .font(.caption)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)

@@ -282,9 +282,8 @@ actor LocalSpeechService {
     guard hasLoadedModel || currentModelType != nil else { return }
     DebugLogger.log("LOCAL-SPEECH: Unloading model (\(reason))")
     whisperKit = nil
-    if let parakeet {
-      Task { await parakeet.unload() }
-    }
+    // Dropping the reference is the whole unload — see the note in `ParakeetBackend` on why it
+    // must not call FluidAudio's `cleanup()` while a decode may still be running.
     parakeet = nil
     currentModelType = nil
     lifetime.cancelIdleUnload()
@@ -414,9 +413,23 @@ actor LocalSpeechService {
     let decodeElapsed: Double
     if let parakeet {
       let decodeStart = CFAbsoluteTimeGetCurrent()
-      text = try await performParakeetTranscription(
-        parakeet, audioURL: audioURL, language: language, vocabulary: vocabulary,
-        deadline: deadline, audioSeconds: audioDuration)
+      do {
+        text = try await performParakeetTranscription(
+          parakeet, audioURL: audioURL, language: language, vocabulary: vocabulary,
+          deadline: deadline, audioSeconds: audioDuration)
+      } catch ParakeetBackendError.notLoaded {
+        // Defensive: the backend object is never torn down under a decode any more, but if
+        // FluidAudio still reports "not initialized", one clean reload is cheap (0.2 s) and
+        // beats losing the dictation.
+        guard let reloadType = currentModelType ?? lastLoadedModelType else { throw TranscriptionError.fileError("Offline model not initialized") }
+        DebugLogger.logWarning("LOCAL-SPEECH: Parakeet reported not initialized — reloading once and retrying")
+        unloadModel(reason: "not initialized")
+        try await initializeModel(reloadType)
+        guard let reloaded = self.parakeet else { throw TranscriptionError.fileError("Offline model not initialized") }
+        text = try await performParakeetTranscription(
+          reloaded, audioURL: audioURL, language: language, vocabulary: vocabulary,
+          deadline: deadline, audioSeconds: audioDuration)
+      }
       decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
     } else if let whisperKit {
       (text, decodeElapsed) = try await transcribeWithWhisper(
@@ -517,10 +530,16 @@ actor LocalSpeechService {
       throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
     } catch is CancellationError {
       throw CancellationError()
+    } catch ParakeetBackendError.audioTooShort {
+      throw TranscriptionError.noSpeechDetected
+    } catch ParakeetBackendError.notLoaded {
+      throw ParakeetBackendError.notLoaded
     } catch {
+      // Not "corrupted, download again": the files passed the completeness check before this
+      // load, and sending someone to re-download 700 MB for a decode error helps nobody.
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Parakeet transcription failed: \(errorMessage)")
-      throw TranscriptionError.fileError("Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+      throw TranscriptionError.fileError("Offline transcription failed: \(errorMessage)")
     }
   }
   
