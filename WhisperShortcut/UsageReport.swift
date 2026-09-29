@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The app has never had analytics, and this does not add any: nothing here transmits. `build()`
 /// returns a string, the user reads it in full, and it leaves the machine only if they press Send
-/// in their own mail or WhatsApp client. That is what keeps `PrivacyCopy.promiseBullets` — "no
-/// hidden telemetry and no third-party tracking, we don't run a server" — literally true.
+/// in their own mail or WhatsApp client. (The separate, opt-in `TelemetryService` sends anonymous
+/// counts on its own schedule; this report is independent of it and needs no consent switch.)
 ///
 /// **Why this can exist at all:** `signals-YYYY-MM-DD.jsonl` was designed content-free (see
 /// `SignalLogEntry`), so the verdicts it holds are safe to aggregate. The interaction stream is

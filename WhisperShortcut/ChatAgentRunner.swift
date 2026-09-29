@@ -325,7 +325,7 @@ final class ChatAgentRunner {
           continue
         }
       }
-      DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
+      DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.shapeDescription(call.args))")
       let response: [String: Any]
       if let cached = memo.cachedResponse(name: call.name, args: call.args) {
         // Identical read-only call, same turn: the answer cannot have changed, and re-running it
@@ -344,7 +344,7 @@ final class ChatAgentRunner {
         steps.finish(
           stepId, phase: .done, summary: ChatToolRegistry.resultSummary(name: call.name, response: response))
       }
-      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(response))")
+      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.shapeDescription(response))")
       let sent = ChatToolHistory.cappedForModel(response)
       toolResultChars += sent.chars
       largestToolResultChars = max(largestToolResultChars, sent.chars)
@@ -365,10 +365,9 @@ final class ChatAgentRunner {
     return (turns, imageMarkers, roundRecords)
   }
 
-  /// Compact, length-capped JSON string for logging tool-call args/results
-  /// without flooding the log. Lets us see exactly what the model passed and
-  /// got back (e.g. the precise event_id), which plain name-only logging hid.
-  static func compactDescription(_ value: [String: Any], maxLength: Int = 600) -> String {
+  /// Keys and size of tool-call args/results for the log, never their values: those carry email
+  /// bodies, calendar entries, task titles and file contents (see `DebugLogger.redacted`).
+  static func shapeDescription(_ value: [String: Any]) -> String {
     let raw: String
     if let data = try? JSONSerialization.data(withJSONObject: value),
        let json = String(data: data, encoding: .utf8) {
@@ -376,6 +375,6 @@ final class ChatAgentRunner {
     } else {
       raw = String(describing: value)
     }
-    return raw.count > maxLength ? String(raw.prefix(maxLength)) + "…(\(raw.count) chars)" : raw
+    return "keys=[\(value.keys.sorted().joined(separator: ","))] \(DebugLogger.redacted(raw))"
   }
 }

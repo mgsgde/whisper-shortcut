@@ -64,7 +64,7 @@ enum TextProcessingUtility {
     // Never hand back an empty transcript: if the preamble was the whole answer, the caller's
     // validation should see the original and reject it, not silently receive "".
     guard !result.isEmpty else { return text }
-    DebugLogger.log("PROMPT-CLEANUP: Removed model preamble '\(text[stripped].trimmingCharacters(in: .whitespacesAndNewlines))'")
+    DebugLogger.log("PROMPT-CLEANUP: Removed model preamble \(DebugLogger.redacted(text[stripped]))")
     return result
   }
 
@@ -225,7 +225,7 @@ enum TextProcessingUtility {
     else {
       DebugLogger.logError(
         "PROMPT-JSON-UNWRAP: response is a JSON object but no known shape matched — passing it "
-          + "through unchanged: \(trimmed.prefix(160))")
+          + "through unchanged \(DebugLogger.redacted(trimmed))")
       return text
     }
 
@@ -313,7 +313,7 @@ enum TextProcessingUtility {
     let maxPlausibleCharacters = Int(audioDurationSeconds * 60.0) + 40
     guard text.count > maxPlausibleCharacters else { return text }
     DebugLogger.logError(
-      "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters)): '\(text.prefix(120))'"
+      "\(mode): Discarding implausible transcript (\(text.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, max plausible \(maxPlausibleCharacters))"
     )
     return ""
   }
@@ -354,7 +354,7 @@ enum TextProcessingUtility {
     guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
 
     DebugLogger.logError(
-      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms): '\(trimmed.prefix(120))'"
+      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms)"
     )
     return ""
   }
@@ -397,7 +397,7 @@ enum TextProcessingUtility {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     
     // Debug logging to see what Whisper actually returned
-    DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count)): '\(trimmedText)'")
+    DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count))")
     
     // An empty result means the model heard nothing intelligible (silence, accidental
     // trigger). Surface that as "no speech detected" rather than the misleading "text too
@@ -440,7 +440,7 @@ enum TextProcessingUtility {
         if lowercasedText == phrase { return true }
         return isShortRefusal && lowercasedText.contains(phrase)
       }) {
-        DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription: '\(trimmedText.prefix(80))'")
+        DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription \(DebugLogger.redacted(trimmedText))")
         throw TranscriptionError.noSpeechDetected
       }
     }

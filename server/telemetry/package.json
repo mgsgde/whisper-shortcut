@@ -1,0 +1,11 @@
+{
+  "name": "whispershortcut-telemetry",
+  "private": true,
+  "description": "Opt-in anonymous usage statistics endpoint for WhisperShortcut",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=22" }
+}

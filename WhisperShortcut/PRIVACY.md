@@ -1,10 +1,12 @@
 # WhisperShortcut Privacy Policy
 
-WhisperShortcut runs entirely on your Mac. We do not operate a server.
+WhisperShortcut runs on your Mac. Your content never passes through a server of ours.
 
 ## What we collect
 
-Nothing leaves your Mac for us. The app has no telemetry, no analytics SDKs, and no third-party tracking. We do not operate a server.
+By default, nothing leaves your Mac for us. The app has no analytics SDKs and no third-party tracking.
+
+**Anonymous usage statistics (optional, off by default).** If you turn on "Share anonymous usage statistics" (setup or Settings → Privacy & Permissions), the app sends a daily summary of counts to a small server we operate: how often features were used and whether they worked, failure classes such as "network", which built-in models were used (models you named yourself are sent as `custom`), which providers have a key (never the key), app and macOS version, and how many days since first launch. Never transcripts, prompts, replies, audio, clipboard, the apps you paste into, error messages, or any identifier. The server keeps summaries for 400 days, does not store IP addresses, and its code is public under `server/telemetry/`. "See exactly what is sent" shows the exact JSON; turning it off deletes anything not yet sent. Unavailable in Offline Mode; administrators can force it off with the `telemetryForceDisabled` preference.
 
 The one thing that can reach us is the optional **Usage Report** in Settings → About, and only because you send it: the app composes it locally, shows you the complete text, and it travels only if you then press send in your own mail or WhatsApp app.
 

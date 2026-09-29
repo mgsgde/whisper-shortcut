@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "maxBytes": 4096,
+  "builds": [
+    "appstore",
+    "direct"
+  ],
+  "kinds": [
+    "daily",
+    "milestone"
+  ],
+  "areas": [
+    "dictation",
+    "prompt",
+    "chat",
+    "readAloud",
+    "meeting",
+    "smartImprovement",
+    "other"
+  ],
+  "countNames": [
+    "started",
+    "completed",
+    "failed",
+    "pasted",
+    "dictationRestart",
+    "cancelledWhileProcessing",
+    "chatStopped",
+    "chatRetry",
+    "chatAbandoned",
+    "promptRetry",
+    "promptNoSelection",
+    "requestTimedOut",
+    "noSpeechDetected",
+    "noInputSignal"
+  ],
+  "errorClasses": [
+    "noAPIKey",
+    "invalidKey",
+    "permissionDenied",
+    "countryNotSupported",
+    "invalidRequest",
+    "modelUnavailable",
+    "rateLimited",
+    "quotaExceeded",
+    "billingRequired",
+    "serverError",
+    "network",
+    "timeout",
+    "file",
+    "noSpeech",
+    "noSelection",
+    "offlineModelMissing",
+    "other"
+  ],
+  "milestones": [
+    "telemetry.enabled",
+    "onboarding.step.intro",
+    "onboarding.step.privacy",
+    "onboarding.step.apiKeys",
+    "onboarding.step.permissions",
+    "onboarding.step.tryIt",
+    "onboarding.step.autoPaste",
+    "onboarding.step.smartImprovement",
+    "onboarding.step.done",
+    "onboarding.completed",
+    "activation.firstDictation",
+    "activation.firstDictationFailed",
+    "activation.firstPrompt",
+    "activation.firstChat"
+  ],
+  "setupFlags": [
+    "offlineWhisperModel",
+    "smartImprovement",
+    "autoPaste"
+  ],
+  "providers": [
+    "gemini",
+    "openai",
+    "xai",
+    "anthropic",
+    "openrouter"
+  ],
+  "modelKinds": [
+    "transcription",
+    "prompt",
+    "chat"
+  ],
+  "modelIdPattern": "^[a-z0-9][a-z0-9._:-]{0,47}$",
+  "maxModelsPerKind": 20
+}

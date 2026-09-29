@@ -60,12 +60,17 @@ data warehouse. Compare the last 30 days against the 30 before where the source 
    "unmeasured" anywhere, and do not re-argue a registered gap in prose. If a measurement gap
    blocks a factor of the value equation, an instrumentation fix ranks above any feature
    recommendation of comparable size — say so.
-4. **Where effort actually went:** `git log --oneline --since="3 weeks ago"` — cluster
+4. **Customer behavior (opt-in telemetry):** `bash scripts/telemetry-report.sh -d 30` — the
+   onboarding/activation funnel, first-dictation failure classes, cohort retention, feature use
+   and models from users who turned "Share anonymous usage statistics" on. Self-selected sample:
+   quote ratios within it (which step loses people), not absolute counts. Empty tables mean the
+   release is not live or nobody opted in yet — say which, never "no drop-off".
+5. **Where effort actually went:** `git log --oneline --since="3 weeks ago"` — cluster
    commits into 3–5 themes with rough share. This is what "alignment" is judged against.
-5. **Product health, don't recompute it:** read the newest `../business/usage-reviews/LATEST.md`
+6. **Product health, don't recompute it:** read the newest `../business/usage-reviews/LATEST.md`
    and open entries in `plans/improvement-ledger.md`. Note honestly: local usage logs are
    the developer's own usage, not customers' — they measure product quality, not demand.
-6. **Competitors** (light touch): one WebSearch pass for pricing/positioning moves by the
+7. **Competitors** (light touch): one WebSearch pass for pricing/positioning moves by the
    usual suspects (superwhisper, Wispr Flow, MacWhisper, VoiceInk). A deep dive is
    `/competitor-teardown`'s job, not yours — reference `plans/research/` if fresh teardowns
    exist. Note anything that changes OUR pricing/positioning calculus, ignore the rest.

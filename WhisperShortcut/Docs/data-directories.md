@@ -13,6 +13,7 @@ This path is used for:
 - `UserContext/`: interaction logs, user context, system prompts, prompt history, short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`, and the Writing Style profile and example messages in `UserContext/writing-style/` (`profile.md`, `samples.jsonl`).
 - `Meetings/`: saved live meetings. Each one is up to three files sharing a stem: `<meeting>.txt` (the transcript), `<meeting>.notes.md` (the live notes taken during the meeting), and `<meeting>.summary.md` (the summary written when it ended).
 - `WhisperKit/`: downloaded local Whisper models.
+- `telemetry-pending.json`: opt-in anonymous usage statistics not yet sent (counts only). Exists only while "Share anonymous usage statistics" is on; deleted when it is turned off. See `WhisperShortcut/Telemetry/TelemetryService.swift`.
 - Chat/session data and other app support files.
 
 ## Why The Path Looks Sandboxed

@@ -153,7 +153,7 @@ class TextChunker {
 
         DebugLogger.log("TTS-CHUNKER: Split text into \(chunks.count) chunks (total: \(trimmedText.count) chars)")
         for (idx, chunk) in chunks.enumerated() {
-            DebugLogger.logDebug("TTS-CHUNKER: Chunk \(idx): \(chunk.text.count) chars, preview: '\(String(chunk.text.prefix(50)))...'")
+            DebugLogger.logDebug("TTS-CHUNKER: Chunk \(idx): \(chunk.text.count) chars")
         }
         return chunks
     }

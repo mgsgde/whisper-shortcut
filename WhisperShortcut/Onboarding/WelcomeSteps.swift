@@ -77,6 +77,10 @@ struct WelcomePrivacyStep: View {
 
           offlineModeCard
 
+          // Asked here, before the API key step, on purpose: that step is where most setups stall,
+          // and a question asked at the end only ever hears from people who got through it.
+          UsageStatisticsSection()
+
           Button {
             if let url = URL(string: AppConstants.privacyPolicyURL) {
               NSWorkspace.shared.open(url)

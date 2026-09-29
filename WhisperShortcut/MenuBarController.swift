@@ -1771,6 +1771,15 @@ class MenuBarController: NSObject {
     PopupNotificationWindow.showError(message ?? shortTitle, title: shortTitle, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
+  private static func telemetryArea(for mode: AppState.RecordingMode) -> TelemetryArea {
+    switch mode {
+    case .transcription: return .dictation
+    case .prompt: return .prompt
+    case .liveMeeting: return .meeting
+    case .voiceFeedback: return .other
+    }
+  }
+
   /// Accidental hotkey taps and near-silent recordings are misses, not failures.
   private static func isBenignNoResult(_ error: TranscriptionError) -> Bool {
     switch error {
@@ -1810,6 +1819,7 @@ class MenuBarController: NSObject {
 
       // Log error to file (replaces CrashLogger)
       DebugLogger.logError(error, context: "Processing error for \(mode)", state: self.appState)
+      TelemetryService.shared.failed(Self.telemetryArea(for: mode), error: error)
 
       let (shortTitle, errorMessage): (String, String)
       let transcriptionError: TranscriptionError?
@@ -2246,7 +2256,7 @@ class MenuBarController: NSObject {
       let instruction = try await speechService.transcribe(audioURL: audioURL)
       try Task.checkCancellation()
       let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-      DebugLogger.log("VOICE-FEEDBACK: Heard instruction: \(trimmed)")
+      DebugLogger.log("VOICE-FEEDBACK: Heard instruction \(DebugLogger.redacted(trimmed))")
 
       guard !trimmed.isEmpty else {
         cleanupAudioFile(at: audioURL)
@@ -2561,6 +2571,7 @@ class MenuBarController: NSObject {
   ) {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
+    TelemetryService.shared.started(.readAloud)
     ttsPlayback.begin(expectedCharacters: text.count)
 
     currentReadAloudTask = Task { [weak self] in
@@ -2604,6 +2615,7 @@ class MenuBarController: NSObject {
           return
         }
         DebugLogger.logError("READ-ALOUD-ERROR: \(error.localizedDescription)")
+        TelemetryService.shared.failed(.readAloud, error: error)
         let userMessage: String
         let shortTitle: String
         if let chunkedError = error as? ChunkedTTSError,
@@ -3493,7 +3505,7 @@ extension MenuBarController: ChunkProgressDelegate {
       .completed, at: index,
       logIfSkipped: "Chunk \(index) completed while already playing back")
     else { return }
-    DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed (\(text.prefix(50))...)")
+    DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed \(DebugLogger.redacted(text))")
   }
 
   func chunkFailed(index: Int, error: Error, willRetry: Bool) {

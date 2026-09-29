@@ -87,14 +87,14 @@ final class GlossaryFastLearner {
         glossary = cleaned
         prunedWrongSpelling = true
         SystemPromptsStore.shared.updateSection(.whisperGlossary, content: glossary)
-        DebugLogger.log("GLOSSARY-LEARN: chat tool removed competing spelling '\(wrong)'")
+        DebugLogger.log("GLOSSARY-LEARN: chat tool removed competing spelling \(DebugLogger.redacted(wrong))")
       }
     }
 
     let glossaryTokens = Set(tokenize(glossary).map(fold))
     let termTokens = tokenize(term).map(fold)
     if !termTokens.isEmpty, termTokens.allSatisfy({ glossaryTokens.contains($0) }) {
-      DebugLogger.log("GLOSSARY-LEARN: chat tool — '\(term)' already in glossary")
+      DebugLogger.log("GLOSSARY-LEARN: chat tool — term \(DebugLogger.redacted(term)) already in glossary")
       return [
         "ok": true, "status": prunedWrongSpelling ? "cleaned_up" : "already_in_glossary",
         "term": term,
@@ -112,7 +112,7 @@ final class GlossaryFastLearner {
     let entry = misheardAs.map { "\(term) (not \"\($0)\")" } ?? term
     let newGlossary = glossary.isEmpty ? entry : glossary + "\n" + entry
     SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary)
-    DebugLogger.log("GLOSSARY-LEARN: chat tool added '\(entry)' to glossary")
+    DebugLogger.log("GLOSSARY-LEARN: chat tool added \(DebugLogger.redacted(entry)) to glossary")
     return [
       "ok": true, "status": "added", "glossary_entry": entry,
       "note": "Saved. All future dictations are conditioned with this term.",
@@ -249,8 +249,7 @@ final class GlossaryFastLearner {
       ? additions.joined(separator: "\n")
       : glossary + "\n" + additions.joined(separator: "\n")
     SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary)
-    let matchLog = pairs.map { "\($0.typed)←\($0.transcript)" }.joined(separator: ", ")
-    DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text: [\(matchLog)]")
+    DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
   }
 
   private func recentTranscriptionResults() -> [String] {

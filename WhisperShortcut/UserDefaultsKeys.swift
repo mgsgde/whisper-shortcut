@@ -141,6 +141,23 @@ enum UserDefaultsKeys {
   /// disk. See `OfflineMode`.
   static let offlineModeEnabled = "offlineModeEnabled"
 
+  // MARK: - Opt-in usage statistics (TelemetryService)
+  /// The user's "Share anonymous usage statistics" choice. Off unless set.
+  static let telemetryEnabled = "telemetryEnabled"
+  /// Administrator override — `defaults write <bundle id> telemetryForceDisabled -bool true`, or a
+  /// managed preference. Forces sharing off and hides the switch (regulated installs).
+  static let telemetryForceDisabled = "telemetryForceDisabled"
+  /// Local only, never sent: first launch of a telemetry-aware build, for `dayIndex`/`cohortWeek`.
+  static let telemetryFirstLaunchDate = "telemetryFirstLaunchDate"
+  /// Local only: this install finished onboarding before telemetry existed (cohort unknown).
+  static let telemetryPreExistingInstall = "telemetryPreExistingInstall"
+  /// Local only: once-per-install milestones already queued, so none is sent twice.
+  static let telemetrySentMilestones = "telemetrySentMilestones"
+  /// Local only: activation "firsts" that already happened, whether or not sharing was on.
+  static let telemetryActivationSeen = "telemetryActivationSeen"
+  /// The last payload actually delivered, shown verbatim in Settings.
+  static let telemetryLastSentPayload = "telemetryLastSentPayload"
+
   // MARK: - Context Settings
   static let contextLoggingEnabled = "userContextLoggingEnabled"
   static let contextInPromptEnabled = "userContextInPromptEnabled"
