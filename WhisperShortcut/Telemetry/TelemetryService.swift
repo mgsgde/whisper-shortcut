@@ -88,7 +88,9 @@ final class TelemetryService: @unchecked Sendable {
       guard isEnabled else { return }
       DebugLogger.log("TELEMETRY: sharing turned on")
       lock.lock()
-      let buffered = preConsentMilestones
+      // The buffer only stands for consent given *during* onboarding. Opting in later from
+      // Settings must not replay steps walked through with the switch off.
+      let buffered = env.defaults.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) ? [] : preConsentMilestones
       preConsentMilestones = []
       lock.unlock()
       milestone(.telemetryEnabled)
@@ -96,10 +98,15 @@ final class TelemetryService: @unchecked Sendable {
     } else {
       DebugLogger.log("TELEMETRY: sharing turned off — pending data deleted")
       lock.lock()
+      loadIfNeeded()
+      // Milestones that were queued but never delivered are "unsent" again, so a later opt-in
+      // still reports them — above all `telemetry.enabled`, the cohort denominator.
+      var sent = Set(env.defaults.stringArray(forKey: UserDefaultsKeys.telemetrySentMilestones) ?? [])
+      pendingMilestones.compactMap { $0.milestone?.rawValue }.forEach { sent.remove($0) }
+      env.defaults.set(sent.sorted(), forKey: UserDefaultsKeys.telemetrySentMilestones)
       days = [:]
       pendingMilestones = []
       preConsentMilestones = []
-      loaded = true
       lock.unlock()
       try? FileManager.default.removeItem(at: env.storeURL)
       env.defaults.removeObject(forKey: UserDefaultsKeys.telemetryLastSentPayload)
@@ -162,15 +169,17 @@ final class TelemetryService: @unchecked Sendable {
       bufferBeforeConsent(milestone)
       return
     }
-    var sent = Set(env.defaults.stringArray(forKey: UserDefaultsKeys.telemetrySentMilestones) ?? [])
-    guard !sent.contains(milestone.rawValue) else { return }
-    sent.insert(milestone.rawValue)
-    env.defaults.set(sent.sorted(), forKey: UserDefaultsKeys.telemetrySentMilestones)
-
     var ping = envelope(kind: .milestone, dayIndex: dayIndex(of: env.now()))
     ping.milestone = milestone
     ping.errorClass = errorClass
     lock.lock()
+    var sent = Set(env.defaults.stringArray(forKey: UserDefaultsKeys.telemetrySentMilestones) ?? [])
+    guard !sent.contains(milestone.rawValue) else {
+      lock.unlock()
+      return
+    }
+    sent.insert(milestone.rawValue)
+    env.defaults.set(sent.sorted(), forKey: UserDefaultsKeys.telemetrySentMilestones)
     loadIfNeeded()
     pendingMilestones.append(ping)
     persist()
@@ -184,6 +193,8 @@ final class TelemetryService: @unchecked Sendable {
   /// still filling up — which is what keeps it to one daily ping per calendar day.
   func flush() async {
     guard isEnabled else { return }
+    // Keychain and model-folder reads, done before taking the lock that recording calls wait on.
+    let setup = env.setup()
     lock.lock()
     guard !isFlushing else {
       lock.unlock()
@@ -196,7 +207,7 @@ final class TelemetryService: @unchecked Sendable {
     let todayKey = dayKey(env.now())
     var due: [(key: String, ping: TelemetryPing)] = []
     for key in days.keys.filter({ $0 < todayKey }).sorted() {
-      if let day = days[key], let ping = dailyPing(key: key, day: day) {
+      if let day = days[key], let ping = dailyPing(key: key, day: day, setup: setup) {
         due.append((key, ping))
       } else {
         days[key] = nil
@@ -205,21 +216,26 @@ final class TelemetryService: @unchecked Sendable {
     persist()
     lock.unlock()
 
-    var sentMilestones = 0
+    // `isEnabled` is re-checked before every send: turning the switch off or Offline Mode on
+    // mid-flush (sends can take seconds each) must stop what has not gone out yet.
+    var deliveredMilestones: [TelemetryPing] = []
     for ping in milestones {
-      guard await deliver(ping) else { break }
-      sentMilestones += 1
+      guard isEnabled, await deliver(ping) else { break }
+      deliveredMilestones.append(ping)
     }
     var deliveredDays: [String] = []
     for item in due {
-      guard await deliver(item.ping) else { break }
+      guard isEnabled, await deliver(item.ping) else { break }
       deliveredDays.append(item.key)
     }
 
     lock.lock()
     // A turn-off during the await already cleared everything; do not resurrect it.
     if storedFlag {
-      pendingMilestones.removeFirst(min(sentMilestones, pendingMilestones.count))
+      // By identity, not by count: a turn-off/on during the await may have queued new ones.
+      for ping in deliveredMilestones {
+        if let index = pendingMilestones.firstIndex(of: ping) { pendingMilestones.remove(at: index) }
+      }
       deliveredDays.forEach { days[$0] = nil }
       persist()
     }
@@ -250,11 +266,12 @@ final class TelemetryService: @unchecked Sendable {
   /// Everything that is queued, as the exact JSON that would be sent — including today's counts
   /// so far. Shown verbatim in Settings → "Show what's sent".
   func previewJSON() -> String {
+    let setup = env.setup()
     lock.lock()
     loadIfNeeded()
     var pings = pendingMilestones
     for key in days.keys.sorted() {
-      if let day = days[key], let ping = dailyPing(key: key, day: day) { pings.append(ping) }
+      if let day = days[key], let ping = dailyPing(key: key, day: day, setup: setup) { pings.append(ping) }
     }
     lock.unlock()
     guard !pings.isEmpty else { return "" }
@@ -318,10 +335,15 @@ final class TelemetryService: @unchecked Sendable {
   /// Records a "first" locally whether or not sharing is on, and sends it only if it is — so a
   /// user who opts in on day 10 does not report their 50th dictation as their first.
   private func noteActivation(_ milestone: TelemetryMilestone, errorClass: TelemetryErrorClass? = nil) {
+    lock.lock()
     var seen = env.defaults.stringArray(forKey: UserDefaultsKeys.telemetryActivationSeen) ?? []
-    guard !seen.contains(milestone.rawValue) else { return }
+    guard !seen.contains(milestone.rawValue) else {
+      lock.unlock()
+      return
+    }
     seen.append(milestone.rawValue)
     env.defaults.set(seen, forKey: UserDefaultsKeys.telemetryActivationSeen)
+    lock.unlock()
     if isEnabled { self.milestone(milestone, errorClass: errorClass) }
   }
 
@@ -334,10 +356,10 @@ final class TelemetryService: @unchecked Sendable {
     lock.unlock()
   }
 
-  private func dailyPing(key: String, day: TelemetryDay) -> TelemetryPing? {
+  private func dailyPing(key: String, day: TelemetryDay, setup: TelemetrySetup) -> TelemetryPing? {
     guard !day.isEmpty, let date = date(fromDayKey: key) else { return nil }
     var ping = envelope(kind: .daily, dayIndex: dayIndex(of: date))
-    ping.setup = env.setup()
+    ping.setup = setup
     ping.counts = day.counts.isEmpty ? nil : day.counts
     ping.errors = day.errors.isEmpty ? nil : day.errors
     ping.models = day.models.isEmpty ? nil : day.models
@@ -440,6 +462,9 @@ struct URLSessionTelemetryTransport: TelemetryTransport {
     config.urlCache = nil
     config.timeoutIntervalForRequest = 10
     config.timeoutIntervalForResource = 15
+    // Belt and braces: `isEnabled` already refuses while Offline Mode is on, but every session the
+    // app builds carries the Offline Mode guard, so this one does too.
+    OfflineModeURLProtocol.install(on: config)
     return URLSession(configuration: config)
   }()
 
@@ -453,7 +478,9 @@ struct URLSessionTelemetryTransport: TelemetryTransport {
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
       switch status {
       case 200..<300: return .delivered
-      case 400..<500 where status != 429: return .rejected(status)
+      // Only "your ping is malformed" drops it. A 404/403/429 is the endpoint or routing being
+      // wrong for now (e.g. a domain mapping not live yet), and the data must survive it.
+      case 400, 413, 422: return .rejected(status)
       default: return .failed
       }
     } catch {

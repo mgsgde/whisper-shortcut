@@ -17,6 +17,8 @@ struct TelemetryTests {
     private let lock = NSLock()
     private var _bodies: [Data] = []
     var result: TelemetrySendResult = .delivered
+    /// Runs inside each send, before it returns — to change state mid-flush.
+    var onSend: (() -> Void)?
 
     var bodies: [Data] {
       lock.lock(); defer { lock.unlock() }
@@ -31,6 +33,7 @@ struct TelemetryTests {
 
     func send(_ body: Data) async -> TelemetrySendResult {
       lock.lock(); _bodies.append(body); lock.unlock()
+      onSend?()
       return result
     }
   }
@@ -209,12 +212,54 @@ struct TelemetryTests {
     #expect(!FileManager.default.fileExists(atPath: h.storeURL.path))
     #expect(h.service.previewJSON().isEmpty)
 
-    // Back on: only the fresh events, and `telemetry.enabled` is not sent twice.
+    // Back on: none of the deleted counts come back, but `telemetry.enabled` — queued the first
+    // time and never delivered — is queued again, or the cohort denominator would lose this install.
     h.defaults.set(true, forKey: UserDefaultsKeys.telemetryEnabled)
     h.service.consentChanged(true)
     h.clock.advance(days: 1)
     await h.service.flush()
-    #expect(h.transport.bodies.isEmpty)
+    #expect(h.transport.pings.compactMap { $0["milestone"] as? String } == ["telemetry.enabled"])
+    #expect(!h.transport.pings.contains { $0["kind"] as? String == "daily" })
+  }
+
+  @Test("A delivered milestone is not sent again after turning sharing off and on")
+  func deliveredMilestoneStaysSent() async {
+    let h = makeHarness()
+    h.enable()
+    await h.service.flush()
+    h.defaults.set(false, forKey: UserDefaultsKeys.telemetryEnabled)
+    h.service.consentChanged(false)
+    h.enable()
+    await h.service.flush()
+    #expect(h.transport.pings.compactMap { $0["milestone"] as? String } == ["telemetry.enabled"])
+  }
+
+  @Test("Opting in from Settings after onboarding does not replay steps walked with the switch off")
+  func noReplayAfterOnboarding() async {
+    let h = makeHarness()
+    h.service.onboardingStepReached(.intro)
+    h.service.onboardingStepReached(.privacy)
+    h.service.milestone(.onboardingCompleted)
+    h.defaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
+    h.enable()
+    await h.service.flush()
+    #expect(h.transport.pings.compactMap { $0["milestone"] as? String } == ["telemetry.enabled"])
+  }
+
+  @Test("Turning sharing off mid-flush stops the sends that have not gone out yet")
+  func turnOffMidFlush() async {
+    let h = makeHarness()
+    h.enable()
+    for day in 0..<3 {
+      h.service.count(.dictation, .completed)
+      if day < 2 { h.clock.advance(days: 1) }
+    }
+    h.clock.advance(days: 1)
+    h.transport.onSend = {
+      h.defaults.set(false, forKey: UserDefaultsKeys.telemetryEnabled)
+    }
+    await h.service.flush()
+    #expect(h.transport.bodies.count == 1, "only the send already in flight")
   }
 
   // MARK: - Schedule

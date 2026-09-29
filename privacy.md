@@ -144,9 +144,11 @@ WhisperShortcut can send anonymous usage statistics to a small server we operate
 - One-time notes when you reach an onboarding step or use a feature for the first time.
 - App version, build type (App Store or direct), macOS major version, the calendar week of your first launch and the number of days since then.
 
-**What is never sent:** transcripts, spoken instructions, prompts, chat messages, model replies, selected or clipboard text, audio, screenshots, file names, the names of apps you paste into, error messages, API keys, or any identifier. There is no device ID, install ID or account; two summaries cannot be linked to each other or to you.
+**What is never sent:** transcripts, spoken instructions, prompts, chat messages, model replies, selected or clipboard text, audio, screenshots, file names, the names of apps you paste into, error messages, API keys, or any identifier. No device ID, install ID or account is sent. Summaries are not tied to a person, but with few users a combination of fields (first-launch week, app version, configured providers) could in principle narrow one down, which is why the server keeps no IP addresses and the fields are kept coarse.
 
 **On the server:** the receiving service stores each accepted summary for 400 days and drops any field it does not know. It does not store IP addresses or other request metadata. Its source code is public in the app's repository under `server/telemetry/`.
+
+**Kept on your Mac regardless:** to compute "days since first launch" correctly if you opt in later, the app stores its first-launch date and whether you have already used each main feature once. Both stay in local preferences and are never sent unless the switch is on.
 
 **See it and stop it:** Settings → Privacy & Permissions → "See exactly what is sent" shows the exact JSON queued and the last one sent. Turning the switch off deletes everything not yet sent. Administrators can force it off for a managed Mac with `defaults write com.magnusgoedde.whispershortcut telemetryForceDisabled -bool true` or the same key in a configuration profile.
 
