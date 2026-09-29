@@ -45,6 +45,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
   }
 
   func finish() {
+    TelemetryService.shared.milestone(.onboardingCompleted)
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
     UserDefaults.standard.set(0, forKey: UserDefaultsKeys.onboardingCurrentStep)
     NotificationCenter.default.post(name: .onboardingStatusDidChange, object: nil)

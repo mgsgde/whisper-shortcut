@@ -260,6 +260,9 @@ class ContextLogger {
   // MARK: - Public Logging Methods
 
   func logTranscription(result: String, model: String?, audioRef: String? = nil, transcriptionModel: String? = nil) {
+    // Before the guard: opt-in usage statistics are independent of "Save usage data". Only the
+    // model id goes in — never `result`.
+    TelemetryService.shared.completed(.dictation, modelKind: .transcription, model: transcriptionModel)
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
@@ -279,6 +282,7 @@ class ContextLogger {
   }
 
   func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil, hadScreenshot: Bool? = nil) {
+    TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
     noteSelectionForRetryDetection(selectedText)
@@ -329,6 +333,7 @@ class ContextLogger {
 
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
   func logChat(userMessage: String, modelResponse: String, model: String?) {
+    TelemetryService.shared.completed(.chat, modelKind: .chat, model: model)
     guard isLoggingEnabled else { return }
     // Generated-image responses embed the full base64 JPEG inline as a ⟦GEMINI_IMG:…⟧
     // marker (~1 MB+ each). Replace it with a short placeholder before writing so the JSONL
@@ -359,6 +364,8 @@ class ContextLogger {
   /// `refTs` and `gapMs` are filled in from the last interaction logged in `mode`, so callers only
   /// have to say what the user did. Keep `detail` free of user content — see `SignalLogEntry`.
   func logSignal(_ kind: OutcomeSignal, mode: String?, detail: [String: String]? = nil) {
+    // `detail` deliberately stays here: it is free-form and has no path into a telemetry ping.
+    TelemetryService.shared.signal(kind, mode: mode)
     guard isLoggingEnabled else { return }
 
     var refTs: String?

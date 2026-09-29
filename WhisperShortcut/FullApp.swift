@@ -93,6 +93,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     migrateNotificationPositionDefault()
 
+    // Opt-in usage statistics: records the (local-only) first-launch date and, if the user turned
+    // sharing on, sends what is due. Does nothing on the network otherwise.
+    TelemetryService.shared.start()
+
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
 

@@ -116,6 +116,7 @@ final class LiveMeetingSession: NSObject {
   /// when the transcript file can't be created, so the caller leaves `appState` untouched.
   func start(resuming: Bool) -> Bool {
     DebugLogger.log("LIVE-MEETING: Starting session (resuming=\(resuming))")
+    if !resuming { TelemetryService.shared.started(.meeting) }
 
     // For a fresh meeting, clear any retained state from a previous (finished) meeting
     // so a new stem is generated and the chat sink doesn't reattach to the old session.

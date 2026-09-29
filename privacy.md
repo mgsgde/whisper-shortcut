@@ -1,18 +1,18 @@
 # Privacy Policy for WhisperShortcut
 
-**Last updated:** September 2, 2026
+**Last updated:** September 29, 2026
 
 ## Overview
 
 WhisperShortcut is a macOS menu bar app for dictation, voice editing, AI chat, text-to-speech, live meeting transcription, and related productivity workflows. This policy explains what data is stored locally, what may be sent to third-party services when you use cloud features, and what controls you have.
 
-WhisperShortcut is local-first and bring-your-own-key. The app has no backend service operated by us and does not sell user data.
+WhisperShortcut is local-first and bring-your-own-key. Your content never passes through a server of ours, and we do not sell user data. The only server we operate receives the optional, anonymous usage statistics described below — and only if you turn them on.
 
 ## Data Collection Summary
 
 WhisperShortcut is designed to minimize data collection:
 
-- No analytics or tracking. The app never sends usage data anywhere on its own; the optional Usage Report described below is composed on your Mac, shown to you in full, and leaves your machine only if you press send in your own email or WhatsApp client.
+- No third-party analytics or tracking. Anonymous usage statistics (counts only, no identifier) are sent to our own server **only if you turn them on**; they are off by default. The optional Usage Report described below is composed on your Mac, shown to you in full, and leaves your machine only if you press send in your own email or WhatsApp client.
 - No crash reporting operated by us.
 - No data sold to third parties.
 - App data is stored locally on your Mac.
@@ -132,9 +132,27 @@ If you connect Trello, WhisperShortcut can use Trello's API when you ask chat to
 
 Trello uses a manual token flow. Your Trello Power-Up API key and user token are stored in Keychain. You can disconnect Trello in Settings or with the `/disconnect-trello` chat command. Trello's processing and retention are governed by Atlassian/Trello policies and terms.
 
+## Anonymous Usage Statistics (Optional, Off By Default)
+
+WhisperShortcut can send anonymous usage statistics to a small server we operate, **only if you turn on "Share anonymous usage statistics"** — during setup (privacy step) or in Settings → Privacy & Permissions. It is off unless you turn it on, and it is unavailable while Offline Mode is on.
+
+**What is sent** — counts, never content:
+
+- A daily summary for each day you used the app: how many dictations, Dictate Prompt runs, chat turns, Read Aloud runs and meetings were started, completed or failed; the outcome signals the app already records (for example "result was pasted", "dictation was redone", "chat answer was retried"); and failure *classes* such as "network" or "invalid key".
+- Which built-in model ids were used, with counts. Model names you typed yourself (custom endpoints, OpenRouter, local servers) are sent only as `custom`.
+- A setup snapshot: which providers have a key configured (never the key), and whether an offline Whisper model, Save usage data and auto-paste are on.
+- One-time notes when you reach an onboarding step or use a feature for the first time.
+- App version, build type (App Store or direct), macOS major version, the calendar week of your first launch and the number of days since then.
+
+**What is never sent:** transcripts, spoken instructions, prompts, chat messages, model replies, selected or clipboard text, audio, screenshots, file names, the names of apps you paste into, error messages, API keys, or any identifier. There is no device ID, install ID or account; two summaries cannot be linked to each other or to you.
+
+**On the server:** the receiving service stores each accepted summary for 400 days and drops any field it does not know. It does not store IP addresses or other request metadata. Its source code is public in the app's repository under `server/telemetry/`.
+
+**See it and stop it:** Settings → Privacy & Permissions → "See exactly what is sent" shows the exact JSON queued and the last one sent. Turning the switch off deletes everything not yet sent. Administrators can force it off for a managed Mac with `defaults write com.magnusgoedde.whispershortcut telemetryForceDisabled -bool true` or the same key in a configuration profile.
+
 ## What You Can Choose To Send Us
 
-Settings → About has a **Share Usage Report** button. It builds a short summary on your Mac from the interaction logs that "Save usage data" already keeps locally, and shows you the complete text before anything happens. The report leaves your Mac only if you then press send in your own email or WhatsApp client — the app itself never transmits it, and there is no server of ours to receive it.
+Settings → About has a **Share Usage Report** button. It builds a short summary on your Mac from the interaction logs that "Save usage data" already keeps locally, and shows you the complete text before anything happens. The report leaves your Mac only if you then press send in your own email or WhatsApp client — the app itself never transmits it.
 
 The report contains counts and timings only:
 
@@ -150,7 +168,7 @@ It never contains transcripts, spoken instructions, model replies, selected text
 ## What We Do Not Collect
 
 - Personal information for analytics or tracking.
-- Usage analytics collected automatically — the Usage Report above is built only when you ask for it and sent only if you press send.
+- Usage statistics without your consent — they are off unless you turn them on, and they never contain content or an identifier.
 - Crash reports operated by us.
 - Audio recordings beyond temporary processing and the short-lived Smart Improvement verification samples described above.
 - Clipboard content except when needed for a user-triggered feature.
@@ -167,7 +185,7 @@ We apply the following safeguards to sensitive data, including API keys, OAuth t
 - **User-controlled access and revocation:** You can disconnect your Google account at any time from in-app Settings or with the `/disconnect-google` chat command, which deletes the locally stored OAuth tokens. You can additionally revoke the app's access at any time in your [Google Account permissions](https://myaccount.google.com/permissions).
 - **User-controlled Trello revocation:** You can disconnect Trello at any time from in-app Settings or with the `/disconnect-trello` chat command. You can also revoke the token in Trello/Atlassian account settings.
 - **Retention and deletion controls:** Temporary audio files are deleted after processing. Smart Improvement audio verification samples are capped and deleted at the start of the next Smart Improvement run or when interaction data is deleted. Interaction logs older than 90 days are deleted automatically; only the last 30 days are read for Smart Improvement features. You can delete API keys, chat sessions, meeting transcripts, and interaction data at any time from in-app Settings.
-- **No server-side storage by WhisperShortcut:** WhisperShortcut does not operate a backend that receives, stores, or processes user content, API keys, or OAuth tokens. All credentials and user data remain on your device or are sent directly from your device to the third-party API provider you configured.
+- **No server-side storage of user content by WhisperShortcut:** WhisperShortcut does not operate a backend that receives, stores, or processes user content, API keys, or OAuth tokens. (The optional usage statistics server receives anonymous counts only.) All credentials and user data remain on your device or are sent directly from your device to the third-party API provider you configured.
 - **No sale of personal data:** We do not sell, rent, or trade personal data to third parties.
 - **AI/ML training disclosure for Workspace APIs:** Data accessed from Google Workspace APIs (Calendar, Tasks, Gmail) through this app is used solely to provide the user-requested feature in that session and is **not used by WhisperShortcut to develop, improve, or train generalized AI/ML models**. Workspace data is not shared with third parties for AI/ML training. When such data is included in a request to a configured cloud AI provider (e.g. Google Gemini using your own API key) to produce the response you asked for, that provider's own terms and policies apply to its handling.
 
@@ -177,6 +195,7 @@ We apply the following safeguards to sensitive data, including API keys, OAuth t
 - Disconnect Google in Settings or with `/disconnect-google`.
 - Disconnect Trello in Settings or with `/disconnect-trello`.
 - Disable **Save usage data** in Smart Improvement settings.
+- Turn **Share anonymous usage statistics** on or off in Settings → Privacy & Permissions (off by default).
 - Delete interaction data from Settings.
 - Delete meeting transcripts from the `Meetings/` folder.
 - Revoke microphone or accessibility permissions in macOS System Settings.
