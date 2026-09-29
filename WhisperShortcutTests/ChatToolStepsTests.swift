@@ -104,4 +104,59 @@ struct ChatToolStepsTests {
     #expect(buffer.activeStep == nil)
     #expect(buffer.steps.first?.phase == .done)
   }
+
+  // MARK: - Slice 2: persisted display
+
+  @Test func recordsCarryStepOutcome() {
+    let buffer = ToolStepsBuffer()
+    let ok = buffer.begin(name: "gmail_search", args: ["query": "a"])
+    buffer.finish(ok, phase: .done, summary: "2 results")
+    let denied = buffer.begin(name: "google_tasks_delete", args: [:], phase: .awaitingApproval)
+    buffer.finish(denied, phase: .denied)
+    let records = ChatToolHistory.records(
+      calls: [("gmail_search", ["query": "a"]), ("google_tasks_delete", [:])],
+      responses: [["messages": [1, 2]], ["error": "The user denied this google_tasks_delete call."]],
+      steps: [buffer.step(ok), buffer.step(denied)])
+    #expect(records.map(\.status) == [.done, .denied])
+    #expect(records[0].summary == "2 results")
+    #expect(records[0].durationMs != nil)
+  }
+
+  @Test func legacyRecordWithoutDisplayFieldsIsDerived() throws {
+    let json = #"{"name":"gmail_search","argsJSON":"{\"query\":\"invoice\"}","resultJSON":"{\"messages\":[1,2,3]}"}"#
+    let record = try JSONDecoder().decode(ChatToolCallRecord.self, from: Data(json.utf8))
+    #expect(record.status == nil)
+    let display = ChatToolStepDisplay.from(record: record, index: 0)
+    #expect(display.label == "Searched Gmail for \"invoice\"")
+    #expect(display.status == .done)
+    #expect(display.summary == "3 results")
+
+    let deniedJSON = #"{"name":"google_tasks_delete","argsJSON":"{}","resultJSON":"{\"error\":\"The user denied this google_tasks_delete call.\"}"}"#
+    let denied = try JSONDecoder().decode(ChatToolCallRecord.self, from: Data(deniedJSON.utf8))
+    #expect(ChatToolStepDisplay.from(record: denied, index: 1).status == .denied)
+  }
+
+  @Test func displayFieldsRoundTripAndStayOptional() throws {
+    var record = ChatToolCallRecord(name: "gmail_read", argsJSON: "{}", resultJSON: "{}")
+    let bare = String(decoding: try JSONEncoder().encode(record), as: UTF8.self)
+    #expect(!bare.contains("status"))
+    record.status = .failed
+    record.summary = "Not found"
+    record.durationMs = 120
+    let decoded = try JSONDecoder().decode(ChatToolCallRecord.self, from: JSONEncoder().encode(record))
+    #expect(decoded == record)
+  }
+
+  @Test func groupHeader() {
+    func step(_ label: String, _ status: ChatToolStepDisplay.Status, _ summary: String? = nil) -> ChatToolStepDisplay {
+      ChatToolStepDisplay(
+        id: label, label: label, status: status, summary: summary, argsJSON: nil, resultJSON: nil)
+    }
+    #expect(ChatToolStepsSummary.header(for: [step("Searched Gmail", .done, "3 results")])
+      == "Searched Gmail · 3 results")
+    #expect(ChatToolStepsSummary.header(for: [step("a", .done), step("b", .failed), step("c", .denied)])
+      == "Used 3 tools · 1 failed · 1 denied")
+    #expect(ChatToolStepsSummary.header(for: [step("a", .done), step("Creating task…", .running)])
+      == "Creating task…")
+  }
 }

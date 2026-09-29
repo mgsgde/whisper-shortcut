@@ -5,7 +5,12 @@
 send loop and `executeToolCalls`; the typing indicator shows the running step, "Step N ·" and
 elapsed seconds. It replaces `streamActivityBySession`. Web search is a step too. Deviation: the
 elapsed clock reuses the indicator's existing 60fps `TimelineView` instead of adding a 1 s one.
-Slices 2–3 open.
+**Slice 2 implemented (2026-09-29, same branch):** `ChatToolCallRecord` gained optional
+`status` / `summary` / `durationMs`; labels are *derived* at render from name + `argsJSON` rather
+than persisted, so records written before this slice (since 3e8af05) render too, with status and
+count derived from `resultJSON`. `ChatToolStepsView.swift` renders the collapsed group; the
+streaming bubble shows it live from `ToolStepsBuffer` (web search excluded there, it has no record).
+Slice 3 open.
 **Audience:** LLM implementing the feature end-to-end.
 **Goal:** The chat stops being a black box while it works. Every tool call becomes a visible,
 collapsible step; the typing indicator says which step is running and for how long; approval

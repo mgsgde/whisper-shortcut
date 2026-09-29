@@ -1286,11 +1286,13 @@ class ChatViewModel: ObservableObject {
     // carries a short status, so megabytes of base64 never enter the model's context.
     var imageMarkers: [String] = []
     let context = makeToolContext(sessionId: sessionId)
+    var stepIds: [UUID] = []
     for call in calls {
       try Task.checkCancellation()
       let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
       let stepId = steps.begin(
         name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)
+      stepIds.append(stepId)
       if needsApproval {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
         let allowed = await confirmToolCall(name: call.name, summary: summary)
@@ -1339,7 +1341,8 @@ class ChatViewModel: ObservableObject {
       calls: calls.map { ($0.name, $0.args) },
       responses: responseParts.map {
         (($0["functionResponse"] as? [String: Any])?["response"] as? [String: Any]) ?? [:]
-      })
+      },
+      steps: stepIds.map { steps.step($0) })
     return (turns, imageMarkers, records)
   }
 
@@ -3363,7 +3366,8 @@ struct ChatView: View {
             MessageBubbleView(
               message: detached.message,
               streamingBuffer: detached.buffer,
-              onTapAttachedImage: { previewImageData = $0 })
+              onTapAttachedImage: { previewImageData = $0 },
+              liveToolSteps: viewModel.currentToolSteps)
               .id(detached.message.id)
           }
 
@@ -5299,6 +5303,8 @@ private struct MessageBubbleView: View {
   var onEdit: ((String) -> Void)? = nil
   /// The newest user message and reply keep their actions visible; older turns show them on hover.
   var isLatestTurn: Bool = false
+  /// Set only on the detached streaming bubble: the turn's live tool steps.
+  var liveToolSteps: ToolStepsBuffer? = nil
 
   @State private var isHovered = false
   @State private var isEditing = false
@@ -5460,14 +5466,31 @@ private struct MessageBubbleView: View {
           NSCursor.pop()
         }
       }
-    } else if let buffer = streamingBuffer {
-      StreamingModelReplyView(buffer: buffer, fallback: message)
     } else {
-      ModelReplyView(
-        content: message.content,
-        sources: message.sources,
-        groundingSupports: message.groundingSupports,
-        isStreaming: false)
+      VStack(alignment: .leading, spacing: 10) {
+        toolStepsGroup
+        if let buffer = streamingBuffer {
+          StreamingModelReplyView(buffer: buffer, fallback: message)
+        } else {
+          ModelReplyView(
+            content: message.content,
+            sources: message.sources,
+            groundingSupports: message.groundingSupports,
+            isStreaming: false)
+        }
+      }
+    }
+  }
+
+  /// Collapsed tool steps above the reply: live from the turn's buffer while streaming, from the
+  /// persisted records afterwards.
+  @ViewBuilder
+  private var toolStepsGroup: some View {
+    if let liveToolSteps {
+      LiveChatToolStepsView(buffer: liveToolSteps)
+    } else if !message.toolCalls.isEmpty {
+      ChatToolStepsView(
+        steps: message.toolCalls.enumerated().map { ChatToolStepDisplay.from(record: $1, index: $0) })
     }
   }
 

@@ -36,6 +36,8 @@ final class ToolStepsBuffer: ObservableObject {
 
   var activeStep: ChatToolStep? { steps.last(where: \.isActive) }
 
+  func step(_ id: UUID) -> ChatToolStep? { steps.first { $0.id == id } }
+
   @discardableResult
   func begin(name: String, args: [String: Any], phase: ChatToolStep.Phase = .running) -> UUID {
     let step = ChatToolStep(

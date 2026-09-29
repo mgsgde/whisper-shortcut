@@ -15,6 +15,15 @@ struct ChatToolCallRecord: Codable, Equatable {
   let argsJSON: String
   /// Tool response as compact JSON, already capped at `ChatToolHistory.maxResultChars`.
   let resultJSON: String
+
+  // Display-only fields for the transcript's tool-step rows (plans/active/chat-tool-steps.md,
+  // Slice 2). Optional: records written before them decode with nil and are derived from
+  // `resultJSON` instead (`ChatToolStepDisplay`). Not part of the model replay.
+  enum Status: String, Codable { case done, failed, denied }
+  var status: Status? = nil
+  /// "3 results", or the error text for `.failed`.
+  var summary: String? = nil
+  var durationMs: Int? = nil
 }
 
 enum ChatToolHistory {
@@ -31,15 +40,29 @@ enum ChatToolHistory {
   static let blockFooter = "[End of tool calls]"
 
   /// Builds persistable records from one round's calls and their responses (same order).
+  /// `steps`, when given, is the live step of each call (same order) and supplies the display fields.
   static func records(
     calls: [(name: String, args: [String: Any])],
-    responses: [[String: Any]]
+    responses: [[String: Any]],
+    steps: [ChatToolStep?] = []
   ) -> [ChatToolCallRecord] {
-    zip(calls, responses).map { call, response in
-      ChatToolCallRecord(
+    zip(calls, responses).enumerated().map { index, pair in
+      let (call, response) = pair
+      var record = ChatToolCallRecord(
         name: call.name,
         argsJSON: compactJSON(call.args),
         resultJSON: capped(compactJSON(response), limit: maxResultChars))
+      if index < steps.count, let step = steps[index] {
+        switch step.phase {
+        case .done: record.status = .done
+        case .failed: record.status = .failed
+        case .denied: record.status = .denied
+        case .running, .awaitingApproval: break
+        }
+        record.summary = step.resultSummary
+        record.durationMs = step.finishedAt.map { Int($0.timeIntervalSince(step.startedAt) * 1000) }
+      }
+      return record
     }
   }
 
