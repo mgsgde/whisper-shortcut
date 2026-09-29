@@ -40,7 +40,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --project="$PROJECT_ID" \
   --platform=managed \
   --min-instances=0 \
-  --max-instances=2 \
+  --max-instances=1 \
   --memory=128Mi \
   --cpu=1 \
   --concurrency=80 \
