@@ -86,7 +86,7 @@ enum Datasets {
   ///
   /// `limit` clips are picked evenly across the duration range so short and long dictations are
   /// both represented.
-  static func real(limit: Int, glossaryTerms: [String]) throws -> [Clip] {
+  static func real(limit: Int, maxSeconds: Double, glossaryTerms: [String]) throws -> [Clip] {
     let samplesDir = userContextDir.appendingPathComponent("audio-samples")
     let wavs = Set(try FileManager.default.contentsOfDirectory(atPath: samplesDir.path).filter { $0.hasSuffix(".wav") })
 
@@ -118,9 +118,16 @@ enum Datasets {
         reference: reference, terms: glossaryTerms))
     }
     candidates.sort { $0.seconds < $1.seconds }
-    guard candidates.count > limit, limit > 0 else { return candidates }
-    let step = Double(candidates.count - 1) / Double(limit - 1)
-    return (0..<limit).map { candidates[Int((Double($0) * step).rounded())] }
+    var picked = candidates
+    if candidates.count > limit, limit > 1 {
+      let step = Double(candidates.count - 1) / Double(limit - 1)
+      picked = (0..<limit).map { candidates[Int((Double($0) * step).rounded())] }
+    }
+    // Rounding can land two picks on one clip. The length cap applies after picking so that
+    // raising it never changes which of the shorter clips are in the set: an 11-minute recording
+    // is a meeting, not a dictation, and on 2026-09-29 Whisper+glossary sat on one until killed.
+    var seen = Set<String>()
+    return picked.filter { $0.seconds <= maxSeconds && seen.insert($0.id).inserted }
   }
 
   /// The user's Whisper Glossary section from system-prompts.md, split into terms.

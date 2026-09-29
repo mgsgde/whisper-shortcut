@@ -17,6 +17,7 @@ struct Options {
     "apple", "apple+ctx",
   ]
   var realLimit = 60
+  var maxSeconds = 120.0
   var skipReal = false
   var skipSynthetic = false
   var out = FileManager.default.homeDirectoryForCurrentUser
@@ -30,6 +31,7 @@ while let argument = arguments.popFirst() {
   switch argument {
   case "--engines": options.engines = (arguments.popFirst() ?? "").split(separator: ",").map(String.init)
   case "--real-limit": options.realLimit = Int(arguments.popFirst() ?? "") ?? options.realLimit
+  case "--max-seconds": options.maxSeconds = Double(arguments.popFirst() ?? "") ?? options.maxSeconds
   case "--skip-real": options.skipReal = true
   case "--skip-synthetic": options.skipSynthetic = true
   case "--out": options.out = URL(fileURLWithPath: arguments.popFirst() ?? ".")
@@ -87,7 +89,7 @@ try FileManager.default.createDirectory(at: audioDir, withIntermediateDirectorie
 let glossary = Datasets.glossary()
 var clips: [Clip] = []
 if !options.skipSynthetic { clips += try Datasets.synthetic(in: audioDir) }
-if !options.skipReal { clips += try Datasets.real(limit: options.realLimit, glossaryTerms: glossary.terms) }
+if !options.skipReal { clips += try Datasets.real(limit: options.realLimit, maxSeconds: options.maxSeconds, glossaryTerms: glossary.terms) }
 
 let host = ProcessInfo.processInfo
 print("BENCH machine=\(machineName()) os=\(host.operatingSystemVersionString) ramGB=\(host.physicalMemory / 1_073_741_824)")
