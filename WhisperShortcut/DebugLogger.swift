@@ -67,6 +67,16 @@ struct DebugLogger {
   private static let speechLog = OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "Speech")
   private static let errorLog = OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "Error")
   
+  // MARK: - User content
+
+  /// Stand-in for user content in a log line. Dictated text, clipboard and selection, chat
+  /// replies, tool results and glossary terms never reach the log file, the error log or the
+  /// unified log — only their size does. The logs are plain files kept for days, and a practice
+  /// dictating findings has to be able to say "no content is written to disk".
+  static func redacted(_ content: some StringProtocol) -> String {
+    "<\(content.count) chars>"
+  }
+
   // MARK: - File Logging
   private static let fileLogger = FileLogger.shared
   private static let errorFileWriter = ErrorFileWriter.shared

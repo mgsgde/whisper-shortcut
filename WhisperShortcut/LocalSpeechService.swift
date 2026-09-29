@@ -491,11 +491,7 @@ actor LocalSpeechService {
     if filtered.count > maxPromptTokens {
       DebugLogger.log("LOCAL-SPEECH: Whisper glossary truncated from \(filtered.count) to \(maxPromptTokens) tokens")
     }
-    let previewLen = 80
-    let preview = promptText.count <= previewLen
-      ? promptText
-      : String(promptText.prefix(previewLen)).trimmingCharacters(in: .whitespaces) + "..."
-    DebugLogger.log("LOCAL-SPEECH: Whisper glossary sent as conditioning prompt (\(truncated.count) tokens). Preview: \"\(preview)\"")
+    DebugLogger.log("LOCAL-SPEECH: Whisper glossary sent as conditioning prompt (\(truncated.count) tokens, \(DebugLogger.redacted(promptText)))")
     
     return truncated
   }

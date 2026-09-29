@@ -54,7 +54,7 @@ extension GeminiAPIClient {
 
     let endpoint = model.apiEndpoint
     DebugLogger.log("\(mode): Using model: \(model.displayName) (\(model.rawValue)) at \(endpoint)")
-    DebugLogger.log("\(mode): Using prompt: \(instruction.prefix(100))...")
+    DebugLogger.log("\(mode): Using prompt \(DebugLogger.redacted(instruction))")
 
     let transcriptionRequest = GeminiTranscriptionRequest(
       contents: [

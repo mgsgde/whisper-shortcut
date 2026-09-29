@@ -326,7 +326,7 @@ enum ReplyBlockBuilder {
     // A model may glue several `**…:**` sections into one \n\n-paragraph with no separators. Split
     // them here (after citation offsets are already resolved, so alignment is unaffected); the
     // paragraph's source chips then follow the last part.
-    DebugLogger.log("BLOCKS: text block: \(trimmed.prefix(80))")
+    DebugLogger.log("BLOCKS: text block \(DebugLogger.redacted(trimmed))")
     let subParts = MarkdownParsing.splitInlineSectionHeadings(trimmed)
       .components(separatedBy: "\n\n")
       .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

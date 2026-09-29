@@ -419,13 +419,7 @@ class AutoPromptImprovementScheduler {
   }
 
   private func logSystemPromptChange(kind: String, previous: String, applied: String) {
-    let prevLen = previous.count
-    let newLen = applied.count
-    let firstLineBefore = previous.split(separator: "\n").first.map(String.init) ?? ""
-    let firstLineAfter = applied.split(separator: "\n").first.map(String.init) ?? ""
-    let beforePreview = firstLineBefore.count > 80 ? String(firstLineBefore.prefix(80)) + "…" : firstLineBefore
-    let afterPreview = firstLineAfter.count > 80 ? String(firstLineAfter.prefix(80)) + "…" : firstLineAfter
-    DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(prevLen) chars, new \(newLen) chars. First line before: \"\(beforePreview)\" first line after: \"\(afterPreview)\"")
+    DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(previous.count) chars, new \(applied.count) chars")
   }
 }
 

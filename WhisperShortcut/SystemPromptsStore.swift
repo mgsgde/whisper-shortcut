@@ -146,7 +146,7 @@ final class SystemPromptsStore {
 
     let updated = existing.isEmpty ? term : existing + ", " + term
     updateSection(.whisperGlossary, content: updated)
-    DebugLogger.log("GLOSSARY: Added \"\(term)\" (\(updated.count) chars total)")
+    DebugLogger.log("GLOSSARY: Added \(DebugLogger.redacted(term)) (\(updated.count) chars total)")
     return .added(term)
   }
 

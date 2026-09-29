@@ -64,7 +64,7 @@ enum TextProcessingUtility {
     // Never hand back an empty transcript: if the preamble was the whole answer, the caller's
     // validation should see the original and reject it, not silently receive "".
     guard !result.isEmpty else { return text }
-    DebugLogger.log("PROMPT-CLEANUP: Removed model preamble '\(text[stripped].trimmingCharacters(in: .whitespacesAndNewlines))'")
+    DebugLogger.log("PROMPT-CLEANUP: Removed model preamble \(DebugLogger.redacted(text[stripped]))")
     return result
   }
 
@@ -397,7 +397,7 @@ enum TextProcessingUtility {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     
     // Debug logging to see what Whisper actually returned
-    DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count)): '\(trimmedText)'")
+    DebugLogger.log("VALIDATION: Received text from \(mode) (length: \(trimmedText.count))")
     
     // An empty result means the model heard nothing intelligible (silence, accidental
     // trigger). Surface that as "no speech detected" rather than the misleading "text too
@@ -440,7 +440,7 @@ enum TextProcessingUtility {
         if lowercasedText == phrase { return true }
         return isShortRefusal && lowercasedText.contains(phrase)
       }) {
-        DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription: '\(trimmedText.prefix(80))'")
+        DebugLogger.log("PROMPT-DETECTION: Detected assistant-mode refusal in transcription \(DebugLogger.redacted(trimmedText))")
         throw TranscriptionError.noSpeechDetected
       }
     }

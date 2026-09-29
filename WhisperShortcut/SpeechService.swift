@@ -1044,7 +1044,7 @@ class SpeechService {
     Task<String, Never> {
       do {
         let text = try await NoSpeechContext.run(.promptHistory, audioURL: audioURL) { try await transcribe() }
-        DebugLogger.log("\(logPrefix): Transcribed voice instruction for history: \"\(text.prefix(50))...\"")
+        DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
       } catch {
         DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")

@@ -2246,7 +2246,7 @@ class MenuBarController: NSObject {
       let instruction = try await speechService.transcribe(audioURL: audioURL)
       try Task.checkCancellation()
       let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-      DebugLogger.log("VOICE-FEEDBACK: Heard instruction: \(trimmed)")
+      DebugLogger.log("VOICE-FEEDBACK: Heard instruction \(DebugLogger.redacted(trimmed))")
 
       guard !trimmed.isEmpty else {
         cleanupAudioFile(at: audioURL)
@@ -3493,7 +3493,7 @@ extension MenuBarController: ChunkProgressDelegate {
       .completed, at: index,
       logIfSkipped: "Chunk \(index) completed while already playing back")
     else { return }
-    DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed (\(text.prefix(50))...)")
+    DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) completed \(DebugLogger.redacted(text))")
   }
 
   func chunkFailed(index: Int, error: Error, willRetry: Bool) {
