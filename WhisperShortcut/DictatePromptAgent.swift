@@ -1,6 +1,6 @@
 import Foundation
 
-/// Dictate Prompt on the chat's agent core (plans/active/voice-agent-core.md, slice 2).
+/// Dictate Prompt on the chat's agent core (plans/active/voice-agent-core.md, slices 2 and 3).
 ///
 /// "Answer this and offer my free slot on Thursday" or "fill in the ticket number from the Trello
 /// card" need a lookup before the rewrite. With a connected integration, Dictate Prompt now runs
@@ -25,6 +25,16 @@ enum DictatePromptAgent {
     "list_workspace_folders", "list_directory", "read_text_file", "search_files",
   ]
 
+  /// Dictate Prompt paths that can run the agent: a streaming chat API with tool calling. Gemini
+  /// and OpenAI GPT-Audio take the recording directly; a local server (Ollama / LM Studio) gets
+  /// the transcript. In-process MLX has no tool-calling path and keeps the single request.
+  static func supportsAgent(_ model: PromptModel) -> Bool {
+    switch model.provider {
+    case .gemini, .openai, .local: return true
+    case .grok, .anthropic, .customOpenAI, .localMLX: return false
+    }
+  }
+
   static var isEnabledInSettings: Bool {
     UserDefaults.standard.object(forKey: UserDefaultsKeys.dictatePromptToolsEnabled) as? Bool ?? true
   }
@@ -36,12 +46,16 @@ enum DictatePromptAgent {
   static func availableTools() -> [LLMToolDeclaration] {
     guard isEnabledInSettings else { return [] }
     var decls: [[String: Any]] = []
-    if GoogleAccountOAuthService.shared.isConnected {
-      decls += ChatToolRegistry.calendarFunctionDeclarations + ChatToolRegistry.tasksFunctionDeclarations
-        + ChatToolRegistry.gmailFunctionDeclarations
-    }
-    if TrelloOAuthService.shared.isConnected {
-      decls += ChatToolRegistry.trelloFunctionDeclarations
+    // Offline Mode blocks Google and Trello at the network layer; offering them would only produce
+    // failed lookups. The shared-folder tools read this Mac and stay.
+    if !OfflineMode.isEnabled {
+      if GoogleAccountOAuthService.shared.isConnected {
+        decls += ChatToolRegistry.calendarFunctionDeclarations + ChatToolRegistry.tasksFunctionDeclarations
+          + ChatToolRegistry.gmailFunctionDeclarations
+      }
+      if TrelloOAuthService.shared.isConnected {
+        decls += ChatToolRegistry.trelloFunctionDeclarations
+      }
     }
     if !WorkspaceFolders.displayPaths(scope: .all).isEmpty {
       decls += ChatToolRegistry.workspaceFunctionDeclarations
@@ -78,12 +92,17 @@ enum DictatePromptAgent {
 
   /// Runs one Dictate Prompt turn on the agent core and returns the text to paste (not yet
   /// normalized — the caller applies the same normalization and validation as the classic path).
+  /// `requestModel` is the id sent to `provider` — the picker's rawValue, or the tag the user typed
+  /// for a local server. `baseOptions` carries the path's own request knobs (the local path's
+  /// `.textTransform`); grounding and built-in tools are always off here.
   @MainActor
   static func run(
-    model: PromptModel,
+    provider: LLMChatProvider,
+    requestModel: String,
     contents: [[String: Any]],
     systemPrompt: String,
     tools: [LLMToolDeclaration],
+    baseOptions: ChatRequestOptions = ChatRequestOptions(),
     logPrefix: String
   ) async throws -> String {
     let systemInstruction: [String: Any] = ["parts": [["text": toolPreamble + systemPrompt]]]
@@ -94,13 +113,18 @@ enum DictatePromptAgent {
       "\(logPrefix): Agent path — \(tools.count) read-only tool(s), max \(maxToolRounds) round(s)")
 
     let runner = ChatAgentRunner(
-      provider: LLMProviderFactory.provider(for: model),
-      model: model.rawValue,
+      provider: provider,
+      model: requestModel,
       tools: tools,
       maxToolRounds: maxToolRounds,
       steps: ToolStepsBuffer(),
       systemInstruction: { systemInstruction },
-      options: { _ in ChatRequestOptions(useGrounding: false, disableBuiltInTools: true) },
+      options: { _ in
+        var options = baseOptions
+        options.useGrounding = false
+        options.disableBuiltInTools = true
+        return options
+      },
       toolContext: { ChatToolContext(workspaceScope: .all) },
       // Every tool offered here is read-only; a call to anything else is refused, not asked about.
       approve: { name, _, _ in
