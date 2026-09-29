@@ -60,7 +60,7 @@ struct ScreenshotSettingsTab: View {
         VStack(alignment: .leading, spacing: 2) {
           Text("Save screenshots to a folder")
             .font(.callout)
-          Text("Applies to both the ⌘3 shortcut and the in-chat Screenshot button. The clipboard still receives the image as before.")
+          Text("Applies to both the Screenshot shortcut and the in-chat Screenshot button. The clipboard still receives the image as before.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

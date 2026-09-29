@@ -6,6 +6,9 @@ enum WelcomeStep: Int, CaseIterable {
   case privacy
   case apiKeys
   case permissions
+  /// Right after the microphone permission: the first successful dictation comes before the
+  /// optional setup (auto-paste, Smart Improvement), not after it.
+  case tryIt
   case autoPaste
   case smartImprovement
   case done
@@ -86,6 +89,8 @@ struct WelcomeView: View {
           )
         case .permissions:
           WelcomePermissionsStep(micStatus: $micStatus)
+        case .tryIt:
+          WelcomeTryItStep()
         case .autoPaste:
           WelcomeAutoPasteStep(autoPasteEnabled: $autoPasteEnabled)
         case .smartImprovement:

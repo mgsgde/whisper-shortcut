@@ -124,7 +124,24 @@ struct ShortcutConfig: Codable {
   /// actions; ⌘7 was the first free one.
   var addToGlossary: ShortcutDefinition
 
+  /// Defaults for new installs: ⌃⌥ + digit. ⌘1/⌘2/⌘3 switch tabs in every browser, Slack, VS Code
+  /// and Finder, so a new user's first ⌘1 often switched a tab instead of dictating
+  /// (improvement-plan-2026-09 O14). Chat keeps ⌥Space. Installs that ran an earlier version keep
+  /// `legacyCommandDigit` — see the pin in `ShortcutConfigManager.loadConfiguration`.
   static let `default` = ShortcutConfig(
+    startRecording: ShortcutDefinition(key: .one, modifiers: [.control, .option]),
+    startPrompting: ShortcutDefinition(key: .two, modifiers: [.control, .option]),
+    openSettings: ShortcutDefinition(key: .zero, modifiers: [.control, .option], isEnabled: true),
+    openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
+    screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.control, .option], isEnabled: true),
+    readAloud: ShortcutDefinition(key: .four, modifiers: [.control, .option], isEnabled: true),
+    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.control, .option], isEnabled: true),
+    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.control, .option], isEnabled: true),
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: true)
+  )
+
+  /// The ⌘-digit defaults every install before the ⌃⌥ switch was running on.
+  static let legacyCommandDigit = ShortcutConfig(
     startRecording: ShortcutDefinition(key: .one, modifiers: [.command]),
     startPrompting: ShortcutDefinition(key: .two, modifiers: [.command]),
     openSettings: ShortcutDefinition(key: .zero, modifiers: [.command], isEnabled: true),
@@ -389,6 +406,36 @@ class ShortcutConfigManager {
 
   // MARK: - Load/Save Configuration
   func loadConfiguration() -> ShortcutConfig {
+    // Pin existing installs to the ⌘-digit shortcuts before the defaults below resolve to ⌃⌥.
+    // Most users never saved a binding (unset = "use the default"), so without this every update
+    // would silently move their muscle-memory shortcuts. "Existing" = an earlier version already
+    // ran its shortcut migrations, or the user finished onboarding. A fresh install has neither and
+    // gets the new defaults. Runs once.
+    let ctrlOptionPinKey = "shortcut_defaults_ctrl_option_v1"
+    if !userDefaults.bool(forKey: ctrlOptionPinKey) {
+      let ranBefore = userDefaults.bool(forKey: "shortcut_settings_screenshot_swap_v1")
+        || userDefaults.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
+      if ranBefore {
+        let legacy = ShortcutConfig.legacyCommandDigit
+        let pins: [(String, ShortcutDefinition)] = [
+          (Constants.startRecordingKey, legacy.startRecording),
+          (Constants.startPromptingKey, legacy.startPrompting),
+          (Constants.openSettingsKey, legacy.openSettings),
+          (Constants.openChatKey, legacy.openChat),
+          (Constants.screenshotCaptureKey, legacy.screenshotCapture),
+          (Constants.readAloudKey, legacy.readAloud),
+          (Constants.voiceFeedbackKey, legacy.voiceFeedback),
+          (Constants.meetingMarkerKey, legacy.meetingMarker),
+          (Constants.addToGlossaryKey, legacy.addToGlossary),
+        ]
+        for (key, shortcut) in pins where loadShortcut(for: key) == nil {
+          saveShortcut(shortcut, for: key)
+        }
+        DebugLogger.log("SHORTCUTS: existing install — unset shortcuts pinned to the ⌘-digit defaults")
+      }
+      userDefaults.set(true, forKey: ctrlOptionPinKey)
+    }
+
     // One-time migration: swap ⌘3/⌘4 so Screenshot=⌘3, Settings=⌘4 —
     // but only for users who actually had the old default Settings=⌘3.
     // Custom Settings shortcuts are left untouched.
