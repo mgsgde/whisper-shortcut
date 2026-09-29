@@ -962,6 +962,8 @@ class ChatViewModel: ObservableObject {
       // Three of these must stop the stream even though `streamed` stayed at one copy.
       var duplicateStatusStreak = 0
       var loopDeltaIndex = 0
+      // Every tool call of this turn, persisted on the reply so later turns keep IDs and results.
+      var toolRecords: [ChatToolCallRecord] = []
       persistLastSendError(nil, sessionId: sessionId)
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
@@ -1087,9 +1089,10 @@ class ChatViewModel: ObservableObject {
             break toolLoop
           }
           executedToolCalls += pendingCalls.count
-          let (turns, imageMarkers) = try await executeToolCalls(
+          let (turns, imageMarkers, records) = try await executeToolCalls(
             pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId,
             memo: toolMemo)
+          toolRecords.append(contentsOf: records)
           // Generated images go straight into the streaming bubble: the image shows up the
           // moment the tool finishes, and the model's follow-up narration streams below it.
           // The marker becomes part of the persisted message content (rendered inline);
@@ -1165,7 +1168,7 @@ class ChatViewModel: ObservableObject {
         self.detachStreamingBuffer(for: placeholderId)
         self.updateStreamingMessage(
           id: placeholderId, sessionId: sessionId,
-          content: reply, sources: finalSources, supports: finalSupports)
+          content: reply, sources: finalSources, supports: finalSupports, toolCalls: toolRecords)
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: reply, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
@@ -1201,11 +1204,11 @@ class ChatViewModel: ObservableObject {
           ])
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), toolCalls: toolRecords)
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
+          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), toolCalls: toolRecords)
         let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
         // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
@@ -1255,7 +1258,7 @@ class ChatViewModel: ObservableObject {
     narration: String,
     sessionId: UUID,
     memo: ChatToolTurnMemo
-  ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
+  ) async throws -> (turns: [[String: Any]], imageMarkers: [String], records: [ChatToolCallRecord]) {
     var callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
       if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
@@ -1276,7 +1279,7 @@ class ChatViewModel: ObservableObject {
     let context = makeToolContext(sessionId: sessionId)
     for call in calls {
       try Task.checkCancellation()
-      if ChatToolRegistry.requiresUserApproval(call.name) {
+      if ChatToolRegistry.requiresUserApproval(call.name, args: call.args) {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
         let allowed = await confirmToolCall(name: call.name, summary: summary)
         if !allowed {
@@ -1311,7 +1314,13 @@ class ChatViewModel: ObservableObject {
       ["role": "model", "parts": callParts],
       ["role": "user", "parts": responseParts],
     ]
-    return (turns, imageMarkers)
+    // One response part per call, in call order (denied calls included), so they zip 1:1.
+    let records = ChatToolHistory.records(
+      calls: calls.map { ($0.name, $0.args) },
+      responses: responseParts.map {
+        (($0["functionResponse"] as? [String: Any])?["response"] as? [String: Any]) ?? [:]
+      })
+    return (turns, imageMarkers, records)
   }
 
   /// Per-turn confirmation for mutating tools. Nothing is remembered.
@@ -1605,10 +1614,66 @@ class ChatViewModel: ObservableObject {
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
-    let commandsList = commandSuggestionsForDisplay
+    // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
+    // prefix caching): stable blocks first, blocks that change within a session last. Anything
+    // that changes invalidates the cache for everything after it.
+    // Canonical order, not `commandSuggestionsForDisplay`: that one re-sorts by recency, so every
+    // `/model` switch would change the prompt prefix and miss the cache.
+    let commandsList = Self.commandSuggestions
+      .filter { !singleChatOnly || $0.command != "/new" }
       .map { "- `\($0.command)` — \($0.description)" }
       .joined(separator: "\n")
     text += "\n\nAvailable slash commands in this chat:\n\(commandsList)"
+    if GoogleAccountOAuthService.shared.isConnected {
+      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_update_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
+    }
+    // Mirrors the gating in buildToolDeclarations: the tool exists iff a Gemini credential does.
+    if GeminiCredentialProvider.shared.hasCredential() {
+      text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
+    }
+    text += "\n\nMEMORY: Use `remember_about_user` to save durable facts the user shares or asks you to keep, and `forget_about_user` to drop ones that are wrong or outdated (the tool descriptions spell out what qualifies). Acknowledge briefly what changed — never dump the whole memory back."
+    text += "\n\nCHANGING THE APP'S BEHAVIOR: The user can reconfigure WhisperShortcut by asking you, instead of opening Settings. Route each kind of request to the right tool: a lasting rule for how Dictate Prompt should rewrite text → `update_app_instructions` (section 'dictate_prompt'); the correct spelling of a name or term for dictation → `remember_dictation_term`; a durable fact about the user → `remember_about_user`. With `update_app_instructions` ALWAYS read first and then replace or remove a conflicting rule instead of appending a contradictory second one — two rules that fight each other degrade the mode in ways the user cannot trace back. Never claim you changed the app's behavior unless the tool call succeeded."
+    // Mirrors buildToolDeclarations' meetingContext gating.
+    if s.isMeeting {
+      text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
+    }
+    text += "\n\nEARLIER TOOL CALLS: An earlier reply of yours may begin with a bracketed block listing the tool calls you made while writing it, with their (possibly truncated) results. It is private context: use the IDs and facts in it for follow-ups instead of guessing, and call the tool again when you need fresher or complete data. Never write such a block yourself and never show it to the user."
+    let workspaceScope = workspaceScope(for: s)
+    // Shared folders + what we've learned about them. The folder list is injected directly rather
+    // than left to `list_workspace_folders`: it is one line per folder and always accurate, and
+    // spending a whole tool round just to learn "which folders exist" delays every file answer.
+    // Mirrors the gating in buildToolDeclarations.
+    let sharedFolders = WorkspaceFolders.displayPaths(scope: workspaceScope)
+    if !sharedFolders.isEmpty {
+      let list = sharedFolders
+        .map { "- `\(($0 as NSString).abbreviatingWithTildeInPath)`" }
+        .joined(separator: "\n")
+      text += "\n\n---\n\nFILES: The user has shared these folders on their Mac with you:\n\(list)\nYou can read them with `list_directory`, `read_text_file`, and `search_files` — read-only, and nothing outside these folders is reachable. When the user refers to their own notes, documents, or projects, look there instead of saying you have no access."
+      text += "\n\nWhenever you discover something durable about the layout of these folders (what a directory holds, how its files are named), call `remember_file_location` so future conversations start there instead of searching again. Record directories and stable collections, not one-off files. Use `forget_file_location` for entries that are wrong or outdated."
+      // AGENTS.md / CLAUDE.md / .cursor/rules — the user's own agent instructions, loaded in full
+      // exactly as Cursor and Claude Code load them. Injected rather than left to a tool call: a
+      // folder is shared *because* its context should shape every answer, and a model that has to
+      // decide to go read the rules first will often simply not.
+      if WorkspaceWriteAccess.isEnabled {
+        text += "\n\nYou can also CHANGE files in these folders: `write_text_file` creates one, `append_to_file` adds to the end of one, `edit_text_file` replaces an exact piece of text. Reach for `append_to_file` and `edit_text_file` before `write_text_file` with overwrite — they cannot lose text the user wrote. Read a file before editing it, and say plainly what you changed. There is no delete and no rename tool; if the user wants a file removed, tell them to do it in Finder."
+      } else {
+        text += "\n\nYou can only READ these folders. If the user asks you to write, edit, or save something into them, say that file editing is off and that they can turn it on in Settings → Chat → Workspace Folders. Never claim to have written a file."
+      }
+      text += WorkspaceContextFiles.contextBlock(roots: WorkspaceFolders.roots(scope: workspaceScope))
+    }
+    // Changes whenever `remember_file_location` runs, so it sits after the stable blocks.
+    if !sharedFolders.isEmpty {
+      let map = WorkspaceMapStore.shared.loadMap()
+      if !map.isEmpty {
+        text += "\n\n---\n\nFILES — what you have learned about where things live in the shared folders:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
+      }
+    }
+    // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
+    // Injected into every chat request; empty when the user has no memory (then nothing is added).
+    let memory = ChatMemoryStore.shared.loadMemory()
+    if !memory.isEmpty {
+      text += "\n\n---\n\nPersistent memory — durable facts you have remembered about the user. Use them to personalize answers; do not repeat them back verbatim unless relevant.\n\(memory)"
+    }
     // Inject meeting context whenever the current chat is a meeting tab:
     // - live or just-ended (live store still owns this stem): live notes + the FULL transcript;
     // - past meeting (live store empty or moved on): summary + full transcript from disk.
@@ -1624,52 +1689,6 @@ class ChatViewModel: ObservableObject {
     }()
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
-    }
-    // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
-    // Injected into every chat request; empty when the user has no memory (then nothing is added).
-    let memory = ChatMemoryStore.shared.loadMemory()
-    if !memory.isEmpty {
-      text += "\n\n---\n\nPersistent memory — durable facts you have remembered about the user. Use them to personalize answers; do not repeat them back verbatim unless relevant.\n\(memory)"
-    }
-    // Shared folders + what we've learned about them. The folder list is injected directly rather
-    // than left to `list_workspace_folders`: it is one line per folder and always accurate, and
-    // spending a whole tool round just to learn "which folders exist" delays every file answer.
-    // Mirrors the gating in buildToolDeclarations.
-    let workspaceScope = workspaceScope(for: s)
-    let sharedFolders = WorkspaceFolders.displayPaths(scope: workspaceScope)
-    if !sharedFolders.isEmpty {
-      let list = sharedFolders
-        .map { "- `\(($0 as NSString).abbreviatingWithTildeInPath)`" }
-        .joined(separator: "\n")
-      text += "\n\n---\n\nFILES: The user has shared these folders on their Mac with you:\n\(list)\nYou can read them with `list_directory`, `read_text_file`, and `search_files` — read-only, and nothing outside these folders is reachable. When the user refers to their own notes, documents, or projects, look there instead of saying you have no access."
-      let map = WorkspaceMapStore.shared.loadMap()
-      if !map.isEmpty {
-        text += "\n\nWhat you have learned about where things live:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
-      }
-      text += "\n\nWhenever you discover something durable about the layout of these folders (what a directory holds, how its files are named), call `remember_file_location` so future conversations start there instead of searching again. Record directories and stable collections, not one-off files. Use `forget_file_location` for entries that are wrong or outdated."
-      // AGENTS.md / CLAUDE.md / .cursor/rules — the user's own agent instructions, loaded in full
-      // exactly as Cursor and Claude Code load them. Injected rather than left to a tool call: a
-      // folder is shared *because* its context should shape every answer, and a model that has to
-      // decide to go read the rules first will often simply not.
-      if WorkspaceWriteAccess.isEnabled {
-        text += "\n\nYou can also CHANGE files in these folders: `write_text_file` creates one, `append_to_file` adds to the end of one, `edit_text_file` replaces an exact piece of text. Reach for `append_to_file` and `edit_text_file` before `write_text_file` with overwrite — they cannot lose text the user wrote. Read a file before editing it, and say plainly what you changed. There is no delete and no rename tool; if the user wants a file removed, tell them to do it in Finder."
-      } else {
-        text += "\n\nYou can only READ these folders. If the user asks you to write, edit, or save something into them, say that file editing is off and that they can turn it on in Settings → Chat → Workspace Folders. Never claim to have written a file."
-      }
-      text += WorkspaceContextFiles.contextBlock(roots: WorkspaceFolders.roots(scope: workspaceScope))
-    }
-    if GoogleAccountOAuthService.shared.isConnected {
-      text += "\n\nIMPORTANT — you are CONNECTED to the user's own Google account with LIVE access to their Calendar, Tasks, and Gmail through the tools below. When the user asks anything about their email, inbox, messages, calendar, schedule, events, meetings, appointments, tasks, to-dos, or reminders, you MUST call the relevant tool to fetch the real data BEFORE answering — on the very first turn, without waiting to be asked again. NEVER reply that you lack access, cannot see their inbox/calendar, or that they should paste/forward/attach the content: you have direct access, so use it. You have three distinct Google integrations:\n1. **Google Calendar** (scheduled events with start/end times): google_calendar_list_events, google_calendar_create_event, google_calendar_delete_event\n2. **Google Tasks** (to-do items, reminders): google_tasks_list_tasklists, google_tasks_list, google_tasks_create, google_tasks_update, google_tasks_complete, google_tasks_delete\n3. **Gmail** (read-only email access): gmail_search, gmail_read\nWhen the user says 'task', 'to-do', or 'reminder', ALWAYS use google_tasks_* tools. Only use google_calendar_* when the user explicitly asks for a calendar event, meeting, or appointment with a specific time.\nThe user has multiple task lists. Call google_tasks_list_tasklists first to discover available lists and their IDs, then pass the correct task_list_id to other google_tasks_* tools.\nTo CHANGE an existing task (due date, title, notes, status) always call google_tasks_update — never delete and re-create it.\nWhen an instruction affects several items (e.g. re-dating five tasks), emit ALL the independent calls together in ONE turn instead of one call per turn — the number of tool rounds per answer is limited, and one-at-a-time editing runs out of rounds before the batch is finished.\nFor Gmail: use gmail_search to find emails (supports Gmail query syntax like 'is:unread', 'from:user@example.com', 'newer_than:2d'). Use gmail_read to get the full body of a specific email. Gmail access is read-only.\nUse the user's local time zone (\(TimeZone.current.identifier)) when creating calendar events. Always confirm details before creating, deleting, or modifying events and tasks."
-    }
-    // Mirrors the gating in buildToolDeclarations: the tool exists iff a Gemini credential does.
-    if GeminiCredentialProvider.shared.hasCredential() {
-      text += "\n\nIMAGE GENERATION: You can create and edit real images via the `generate_image` tool. When the user asks you to draw, create, render, visualize, edit, or annotate an image, ALWAYS call generate_image — never approximate with ASCII art, SVG, or code blocks. To annotate or edit an image the user attached, pass use_attached_image=true with a precise instruction. The finished image appears in the chat automatically."
-    }
-    text += "\n\nMEMORY: Use `remember_about_user` to save durable facts the user shares or asks you to keep, and `forget_about_user` to drop ones that are wrong or outdated (the tool descriptions spell out what qualifies). Acknowledge briefly what changed — never dump the whole memory back."
-    text += "\n\nCHANGING THE APP'S BEHAVIOR: The user can reconfigure WhisperShortcut by asking you, instead of opening Settings. Route each kind of request to the right tool: a lasting rule for how Dictate Prompt should rewrite text → `update_app_instructions` (section 'dictate_prompt'); the correct spelling of a name or term for dictation → `remember_dictation_term`; a durable fact about the user → `remember_about_user`. With `update_app_instructions` ALWAYS read first and then replace or remove a conflicting rule instead of appending a contradictory second one — two rules that fight each other degrade the mode in ways the user cannot trace back. Never claim you changed the app's behavior unless the tool call succeeded."
-    // Mirrors buildToolDeclarations' meetingContext gating.
-    if s.isMeeting {
-      text += "\n\nMEETING EDITING: This chat is attached to a meeting. When the user asks to change, refine, reformat, shorten, or correct the meeting SUMMARY, call `refine_meeting_summary` with their instruction — do not just reply with a rewritten summary in chat. When the user points out a misrecognized name or term in the TRANSCRIPT (e.g. 'it's ParkDepot, not Park Depot'), call `correct_transcript_term` with the exact wrong and corrected spelling — this is a literal find-and-replace that keeps the transcript faithful; never rewrite or paraphrase the transcript yourself."
     }
     return ["parts": [["text": text]]]
   }
@@ -1702,7 +1721,8 @@ class ChatViewModel: ObservableObject {
   /// running full session-store normalization on every token.
   private func updateStreamingMessage(
     id: UUID, sessionId: UUID, content: String,
-    sources: [GroundingSource], supports: [GroundingSupport], persist: Bool = true
+    sources: [GroundingSource], supports: [GroundingSupport],
+    toolCalls: [ChatToolCallRecord]? = nil, persist: Bool = true
   ) {
     guard let resolved = resolveSession(sessionId) else { return }
     let isCurrentSession = resolved.isCurrent
@@ -1718,6 +1738,7 @@ class ChatViewModel: ObservableObject {
     target.messages[idx].content = content
     target.messages[idx].sources = sources
     target.messages[idx].groundingSupports = supports
+    if let toolCalls { target.messages[idx].toolCalls = toolCalls }
     target.lastUpdated = Date()
     if persist {
       store.save(target)
@@ -1737,15 +1758,18 @@ class ChatViewModel: ObservableObject {
   /// non-streaming render path. An empty partial leaves nothing worth showing, so the
   /// placeholder is removed rather than persisted as an empty assistant turn.
   private func commitPartialOrRemove(
-    placeholderId: UUID, sessionId: UUID, partial: String
+    placeholderId: UUID, sessionId: UUID, partial: String, toolCalls: [ChatToolCallRecord] = []
   ) {
     detachStreamingBuffer(for: placeholderId)
-    if partial.isEmpty {
+    if partial.isEmpty && toolCalls.isEmpty {
       removeMessage(id: placeholderId, fromSessionId: sessionId)
     } else {
+      // Tools that already ran (an event created, a card moved) must stay in history even when
+      // the turn was stopped before any text — otherwise the next turn cannot refer to them.
       updateStreamingMessage(
         id: placeholderId, sessionId: sessionId,
-        content: partial, sources: [], supports: [])
+        content: partial.isEmpty ? "_(stopped after running tools)_" : partial,
+        sources: [], supports: [], toolCalls: toolCalls)
     }
   }
 
