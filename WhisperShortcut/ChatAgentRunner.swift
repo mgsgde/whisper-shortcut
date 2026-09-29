@@ -19,6 +19,9 @@ final class ChatAgentRunner {
     /// Model text with image markers, thought tokens stripped, trailing whitespace trimmed.
     /// Empty when the model wrote nothing — the caller picks the fallback copy.
     let text: String
+    /// Only the text of the round that ended the turn — no lead-in narration from rounds that
+    /// called tools ("Let me check your calendar."). What a paste wants; the chat shows `text`.
+    let finalRoundText: String
     let sources: [GroundingSource]
     let supports: [GroundingSupport]
     let records: [ChatToolCallRecord]
@@ -102,6 +105,7 @@ final class ChatAgentRunner {
     // the same fruitless lookup is answered from the cache and told it is repeating itself,
     // instead of burning another provider round trip per repeat (see ChatToolTurnMemo).
     let toolMemo = ChatToolTurnMemo()
+    var lastRoundText = ""
 
     toolLoop: for round in 0..<(maxToolRounds + 1) {
       // Final round: strip every tool so the model is forced to synthesize an answer from
@@ -166,6 +170,7 @@ final class ChatAgentRunner {
               "CHAT: stream loop detected — stopping this reply without dropping the queue (chars=\(streamed.count))")
             streamed = ChatStreamLoopGuard.appendStopNotice(to: streamed)
             onDisplayText(markerPrefix + streamed, true)
+            lastRoundText = roundText
             break toolLoop
           }
         case .functionCall(let name, let args, let thoughtSignature):
@@ -192,6 +197,7 @@ final class ChatAgentRunner {
           if ChatViewModel.isTruncatedFinishReason(finishReason) { truncatedFinish = true }
         }
       }
+      lastRoundText = roundText
       if pendingCalls.isEmpty { break toolLoop }
       // Tools were already disabled this round, yet the model still emitted only function
       // calls and no usable text — nothing left to try, so surface the exhaustion.
@@ -239,8 +245,11 @@ final class ChatAgentRunner {
     // A round-boundary paragraph break (above) dangles when the final round emitted only
     // function calls; a whitespace-only reply must count as empty.
     while let last = text.last, last.isWhitespace { text.removeLast() }
+    var finalRoundText = ChatViewModel.stripLeakedThoughtTokens(lastRoundText)
+    while let last = finalRoundText.last, last.isWhitespace { finalRoundText.removeLast() }
     return Result(
-      text: text, sources: finalSources, supports: finalSupports, records: records,
+      text: text, finalRoundText: finalRoundText,
+      sources: finalSources, supports: finalSupports, records: records,
       executedToolCalls: executedToolCalls, toolLoopExhausted: toolLoopExhausted,
       truncated: truncatedFinish)
   }
@@ -268,9 +277,26 @@ final class ChatAgentRunner {
     // megabytes of base64 never enter the model's context.
     var imageMarkers: [String] = []
     let context = toolContext()
+    // Gemini 3.x sometimes calls tools it was never offered. Only declared tools run: the caller's
+    // tool list is the policy (Dictate Prompt offers read-only tools only), and an undeclared call
+    // such as `copy_to_clipboard` must not slip past it just because it needs no approval.
+    let declaredNames = Set(tools.map(\.name))
     var stepIds: [UUID] = []
     for call in calls {
       try Task.checkCancellation()
+      guard declaredNames.contains(call.name) else {
+        let stepId = steps.begin(name: call.name, args: call.args)
+        stepIds.append(stepId)
+        steps.finish(stepId, phase: .failed, summary: "Not available here")
+        DebugLogger.logWarning("CHAT-TOOL-UNDECLARED: refused \(call.name)")
+        responseParts.append([
+          "functionResponse": [
+            "name": call.name,
+            "response": ["error": "The tool \(call.name) is not available in this conversation."],
+          ]
+        ])
+        continue
+      }
       let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
       let stepId = steps.begin(
         name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)

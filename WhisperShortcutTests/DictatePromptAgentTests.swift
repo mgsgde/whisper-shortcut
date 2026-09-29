@@ -69,8 +69,7 @@ struct DictatePromptAgentLiveTests {
     ]
     let text = try await DictatePromptAgent.run(
       model: SettingsDefaults.selectedPromptModel,
-      history: [],
-      userParts: parts,
+      contents: try DictatePromptAgent.makeContents(history: [], userParts: parts),
       systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
         logPrefix: "TEST", usesScreenshotSelection: false),
       tools: tools,

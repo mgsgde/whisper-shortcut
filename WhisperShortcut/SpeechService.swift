@@ -1119,13 +1119,21 @@ class SpeechService {
     let agentTools = await DictatePromptAgent.availableTools()
     let normalizedText: String
     if !agentTools.isEmpty {
-      let raw = try await DictatePromptAgent.run(
-        model: model,
+      // Encoded here, off the main actor: the inline audio can be megabytes of base64.
+      let contents = try DictatePromptAgent.makeContents(
         history: PromptConversationHistory.shared.getContentsForAPI(mode: mode),
-        userParts: userParts,
-        systemPrompt: envelope.systemPrompt,
-        tools: agentTools,
-        logPrefix: "PROMPT-MODE-GEMINI")
+        userParts: userParts)
+      let systemPrompt = envelope.systemPrompt
+      // Same 60 s budget as the classic request: the streaming path's own stall timers would let
+      // a stuck Dictate Prompt hang for minutes.
+      let raw = try await WallClockDeadline.run(seconds: NetworkDeadline.transcriptionRequestTimeout) {
+        try await DictatePromptAgent.run(
+          model: model,
+          contents: contents,
+          systemPrompt: systemPrompt,
+          tools: agentTools,
+          logPrefix: "PROMPT-MODE-GEMINI")
+      }
       normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
       try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {

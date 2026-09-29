@@ -30,18 +30,23 @@ enum DictatePromptAgent {
   }
 
   /// Declarations for the read-only tools the user's connections make available. Empty means the
-  /// agent path has nothing to offer and the classic pipeline should run.
+  /// agent path has nothing to offer and the classic pipeline should run. Built from the per-area
+  /// arrays rather than `allDeclarations`, which returns nothing while the *chat* runs on MLX.
   @MainActor
   static func availableTools() -> [LLMToolDeclaration] {
     guard isEnabledInSettings else { return [] }
-    return ChatToolRegistry.allDeclarations(
-      calendarConnected: GoogleAccountOAuthService.shared.isConnected,
-      trelloConnected: TrelloOAuthService.shared.isConnected,
-      imageGenerationAvailable: false,
-      meetingContext: false,
-      workspaceAvailable: !WorkspaceFolders.displayPaths(scope: .all).isEmpty,
-      workspaceWritable: false
-    ).compactMap { decl in
+    var decls: [[String: Any]] = []
+    if GoogleAccountOAuthService.shared.isConnected {
+      decls += ChatToolRegistry.calendarFunctionDeclarations + ChatToolRegistry.tasksFunctionDeclarations
+        + ChatToolRegistry.gmailFunctionDeclarations
+    }
+    if TrelloOAuthService.shared.isConnected {
+      decls += ChatToolRegistry.trelloFunctionDeclarations
+    }
+    if !WorkspaceFolders.displayPaths(scope: .all).isEmpty {
+      decls += ChatToolRegistry.workspaceFunctionDeclarations
+    }
+    return decls.compactMap { decl in
       guard let name = decl["name"] as? String, readOnlyToolNames.contains(name),
             let desc = decl["description"] as? String,
             let params = decl["parameters"] as? [String: Any] else { return nil }
@@ -60,24 +65,33 @@ enum DictatePromptAgent {
 
     """
 
-  /// Runs one Dictate Prompt turn on the agent core and returns the model's final text (not yet
+  /// History plus this turn as the `[String: Any]` contents the runner takes. Not main-actor: the
+  /// inline audio can be megabytes of base64, and encoding it must not hitch the UI at paste time.
+  static func makeContents(
+    history: [GeminiChatRequest.GeminiChatContent],
+    userParts: [GeminiChatRequest.GeminiChatPart]
+  ) throws -> [[String: Any]] {
+    var turns = history
+    turns.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
+    return try turns.map(Self.dictionary(from:))
+  }
+
+  /// Runs one Dictate Prompt turn on the agent core and returns the text to paste (not yet
   /// normalized — the caller applies the same normalization and validation as the classic path).
   @MainActor
   static func run(
     model: PromptModel,
-    history: [GeminiChatRequest.GeminiChatContent],
-    userParts: [GeminiChatRequest.GeminiChatPart],
+    contents: [[String: Any]],
     systemPrompt: String,
     tools: [LLMToolDeclaration],
     logPrefix: String
   ) async throws -> String {
-    var turns = history
-    turns.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
-    let contents = try turns.map(Self.dictionary(from:))
     let systemInstruction: [String: Any] = ["parts": [["text": toolPreamble + systemPrompt]]]
-    let useGrounding = model.supportsGrounding
+    // No web grounding: Gemini's grounding also enables `url_context`, and an instruction planted in
+    // the selection or in an email read with `gmail_read` could make Google fetch a URL carrying
+    // private data — the reason the chat asks before `open_url`. The lookups here are the user's own.
     DebugLogger.log(
-      "\(logPrefix): Agent path — \(tools.count) read-only tool(s), max \(maxToolRounds) round(s), grounding=\(useGrounding)")
+      "\(logPrefix): Agent path — \(tools.count) read-only tool(s), max \(maxToolRounds) round(s)")
 
     let runner = ChatAgentRunner(
       provider: LLMProviderFactory.provider(for: model),
@@ -86,9 +100,7 @@ enum DictatePromptAgent {
       maxToolRounds: maxToolRounds,
       steps: ToolStepsBuffer(),
       systemInstruction: { systemInstruction },
-      options: { isFinalRound in
-        ChatRequestOptions(useGrounding: useGrounding, disableBuiltInTools: isFinalRound)
-      },
+      options: { _ in ChatRequestOptions(useGrounding: false, disableBuiltInTools: true) },
       toolContext: { ChatToolContext(workspaceScope: .all) },
       // Every tool offered here is read-only; a call to anything else is refused, not asked about.
       approve: { name, _, _ in
@@ -99,7 +111,13 @@ enum DictatePromptAgent {
     let result = try await runner.run(contents: contents)
     DebugLogger.log(
       "\(logPrefix): Agent finished — \(result.executedToolCalls) tool call(s) [\(result.records.map(\.name).joined(separator: ", "))]")
-    return result.text
+    if result.finalRoundText.isEmpty, result.toolLoopExhausted {
+      // Otherwise the empty text would surface as "no speech detected", which is not what happened.
+      throw TranscriptionError.networkError(
+        "Dictate Prompt kept looking things up and didn't finish. Try again, or say more precisely what to look up.")
+    }
+    // Only the last round: earlier rounds' lead-ins ("Let me check your calendar.") must not be pasted.
+    return result.finalRoundText
   }
 
   /// Gemini-typed content → the `[String: Any]` shape `LLMChatProvider` takes. The typed structs

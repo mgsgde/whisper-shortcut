@@ -5,6 +5,7 @@
 GPT-Audio runs on Chat Completions `input_audio`, which the chat's Responses provider does not
 speak, and local models are text-only — both keep the classic pipeline. Tool records are not yet
 kept in the Dictate Prompt history (`PromptConversationHistory` stores text only). Both are open.
+Deviation from decision 1: **no web grounding** on the Dictate Prompt path — Gemini's grounding also enables `url_context`, an exfiltration path for instructions planted in a selection or an email (review of aa79359).
 **Audience:** LLM implementing it end-to-end, one slice per PR.
 **Origin:** app review 2026-09-29, recommendation D11.
 

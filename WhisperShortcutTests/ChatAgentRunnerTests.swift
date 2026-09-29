@@ -50,11 +50,16 @@ struct ChatAgentRunnerTests {
   private func makeRunner(
     _ provider: ScriptedProvider,
     maxToolRounds: Int = 16,
+    extraTools: [String] = [],
     handlers: [String: ChatToolContext.Handler] = [:],
     approve: @escaping (String, String, UUID) async -> Bool = { _, _, _ in true }
   ) -> ChatAgentRunner {
     ChatAgentRunner(
-      provider: provider, model: "test-model", tools: [tool], maxToolRounds: maxToolRounds,
+      provider: provider, model: "test-model",
+      tools: [tool] + extraTools.map {
+        LLMToolDeclaration(name: $0, description: "test", parameters: ["type": "object"])
+      },
+      maxToolRounds: maxToolRounds,
       steps: ToolStepsBuffer(),
       systemInstruction: { ["parts": [["text": "sys"]]] },
       options: { isFinal in ChatRequestOptions(disableBuiltInTools: isFinal) },
@@ -113,6 +118,35 @@ struct ChatAgentRunnerTests {
     #expect(provider.requests.last?.disableBuiltIns == true)
   }
 
+  @Test("An undeclared tool is refused even when it needs no approval")
+  func undeclaredToolRefused() async throws {
+    let provider = ScriptedProvider([
+      [.functionCall(name: "copy_to_clipboard", args: ["text": "x"], thoughtSignature: nil)],
+      [.textDelta("Done.")],
+    ])
+    var ran = false
+    let runner = makeRunner(provider, handlers: [
+      "copy_to_clipboard": { _ in ran = true; return ChatToolOutcome(response: ["ok": true]) }
+    ])
+    let result = try await runner.run(contents: [["role": "user", "parts": [["text": "go"]]]])
+    #expect(!ran)
+    #expect(result.records.first?.resultJSON.contains("not available") == true)
+  }
+
+  @Test("finalRoundText drops the lead-in narration of tool rounds")
+  func finalRoundTextDropsNarration() async throws {
+    let provider = ScriptedProvider([
+      [.textDelta("Let me check."), .functionCall(name: "fake_lookup", args: [:], thoughtSignature: nil)],
+      [.textDelta("Thursday 3 pm works.")],
+    ])
+    let runner = makeRunner(provider, handlers: [
+      "fake_lookup": { _ in ChatToolOutcome(response: ["slot": "Thu 15:00"]) }
+    ])
+    let result = try await runner.run(contents: [["role": "user", "parts": [["text": "slot?"]]]])
+    #expect(result.text.contains("Let me check."))
+    #expect(result.finalRoundText == "Thursday 3 pm works.")
+  }
+
   @Test("A denied approval never runs the tool and tells the model")
   func deniedApproval() async throws {
     let provider = ScriptedProvider([
@@ -122,6 +156,7 @@ struct ChatAgentRunnerTests {
     var ran = false
     let runner = makeRunner(
       provider,
+      extraTools: ["remember_about_user"],
       handlers: ["remember_about_user": { _ in ran = true; return ChatToolOutcome(response: ["ok": true]) }],
       approve: { _, _, _ in false })
     let result = try await runner.run(contents: [["role": "user", "parts": [["text": "remember"]]]])
