@@ -2,7 +2,7 @@
 //  LocalSpeechService.swift
 //  WhisperShortcut
 //
-//  Offline speech-to-text using WhisperKit (CoreML)
+//  Offline speech-to-text using WhisperKit or Parakeet (CoreML)
 //
 
 import Foundation
@@ -11,7 +11,10 @@ import CoreML
 import Darwin
 import WhisperKit
 
-/// Offline dictation through WhisperKit.
+/// Offline dictation through WhisperKit — or, for `OfflineEngine.parakeet`, through
+/// `ParakeetBackend`. Loading, the silence gate, idle/memory-pressure unloads, deadlines and the
+/// `SPEED:` lines are shared; only the decode call differs. Everything below about the ~3 s floor
+/// is Whisper's.
 ///
 /// # Why offline dictation feels slow, and what does not fix it (measured 2026-09-03)
 ///
@@ -47,7 +50,9 @@ import WhisperKit
 /// What is actually left, in order of expected payoff — none of it measured yet, none of it
 /// started:
 ///
-/// 1. **A FastConformer/TDT model instead of Whisper** (Parakeet TDT 0.6B v3 via FluidAudio,
+/// 1. **A FastConformer/TDT model instead of Whisper** — *done as `OfflineModelType.parakeetUltra`
+///    (`plans/active/parakeet-offline.md`); measured at ~0.1 s for a sentence on the same M1 Pro.*
+///    Original note: Parakeet TDT 0.6B v3 via FluidAudio,
 ///    CoreML/ANE, 25 European languages incl. German). Its encoder is ~20 ms per window against
 ///    Whisper's seconds, so a 2 s tail would cost ~100 ms rather than ~3 s. This is the only path
 ///    to the latency users compare us against — and note that **Wispr Flow, the usual comparison,
@@ -63,6 +68,7 @@ actor LocalSpeechService {
   static let shared = LocalSpeechService()
   
   private var whisperKit: WhisperKit?
+  private var parakeet: ParakeetBackend?
   private var currentModelType: OfflineModelType?
   /// The last model that was loaded, kept across unloads so `transcribe` can put it back.
   /// `currentModelType` is cleared by `unloadModel`; this deliberately is not.
@@ -109,23 +115,31 @@ actor LocalSpeechService {
     let kit: WhisperKit
     init(_ kit: WhisperKit) { self.kit = kit }
   }
+
+  /// Weights of either engine are in memory.
+  private var hasLoadedModel: Bool { whisperKit != nil || parakeet != nil }
   
   private init() {}
   
   // MARK: - Initialize Model
   func initializeModel(_ modelType: OfflineModelType) async throws {
     // Check if already initialized with the same model
-    if let current = currentModelType, current == modelType, whisperKit != nil {
+    if let current = currentModelType, current == modelType, hasLoadedModel {
       DebugLogger.log("LOCAL-SPEECH: Model \(modelType.displayName) already loaded")
       scheduleIdleUnload()
       return
     }
 
-    DebugLogger.log("LOCAL-SPEECH: Initializing WhisperKit model: \(modelType.displayName)")
+    DebugLogger.log("LOCAL-SPEECH: Initializing model: \(modelType.displayName)")
     
     // Unload previous model if exists
-    if whisperKit != nil {
+    if hasLoadedModel {
       unloadModel()
+    }
+
+    if modelType.engine == .parakeet {
+      try await initializeParakeet(modelType)
+      return
     }
     
     // Resolve the actual model path using ModelManager
@@ -213,15 +227,65 @@ actor LocalSpeechService {
     }
   }
   
+  /// Parakeet's half of `initializeModel`: same completeness gate, deadline, state and log line.
+  /// The completeness check is not a formality here — FluidAudio downloads a missing file on load.
+  private func initializeParakeet(_ modelType: OfflineModelType) async throws {
+    guard ModelManager.shared.isModelAvailable(modelType) else {
+      DebugLogger.logError(
+        "LOCAL-SPEECH: Not loading \(modelType.displayName) — its model folder is incomplete; the download has to finish first")
+      throw TranscriptionError.modelNotAvailable(modelType)
+    }
+    let loadStart = CFAbsoluteTimeGetCurrent()
+    do {
+      let backend = try await WallClockDeadline.run(seconds: Self.modelLoadDeadline) {
+        try await ParakeetBackend.load()
+      }
+      parakeet = backend
+      currentModelType = modelType
+      lastLoadedModelType = modelType
+      startLifetimeGuardsIfNeeded()
+      scheduleIdleUnload()
+      let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
+      DebugLogger.logSuccess(
+        "LOCAL-SPEECH: Model initialized successfully in \(String(format: "%.1f", elapsed))s")
+      DebugLogger.logSpeech(
+        "SPEED: LOCAL-SPEECH load model=\(modelType.rawValue) "
+          + "loadMs=\(String(format: "%.0f", elapsed * 1000))")
+    } catch TranscriptionError.requestTimeout {
+      DebugLogger.logError(
+        "LOCAL-SPEECH: model load exceeded \(Int(Self.modelLoadDeadline))s wall-clock deadline for \(modelType.displayName) — aborting (LocalDeadline)")
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(Self.modelLoadDeadline),
+        logPrefix: "LOCAL-SPEECH",
+        origin: .transcription,
+        stage: "modelLoad",
+        model: modelType.rawValue)
+      throw TranscriptionError.localProcessingTimeout(
+        stage: .modelLoad, seconds: Int(Self.modelLoadDeadline))
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch ParakeetBackendError.notDownloaded {
+      throw TranscriptionError.modelNotAvailable(modelType)
+    } catch {
+      let errorMessage = error.localizedDescription
+      DebugLogger.logError("LOCAL-SPEECH: Parakeet initialization failed: \(errorMessage)")
+      throw TranscriptionError.fileError("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+    }
+  }
+
   // MARK: - Unload Model
   func unloadModel() {
     unloadModel(reason: "explicit")
   }
 
   private func unloadModel(reason: String) {
-    guard whisperKit != nil || currentModelType != nil else { return }
+    guard hasLoadedModel || currentModelType != nil else { return }
     DebugLogger.log("LOCAL-SPEECH: Unloading model (\(reason))")
     whisperKit = nil
+    if let parakeet {
+      Task { await parakeet.unload() }
+    }
+    parakeet = nil
     currentModelType = nil
     lifetime.cancelIdleUnload()
   }
@@ -296,14 +360,14 @@ actor LocalSpeechService {
     //
     // Reloading here closes the race for good, because inside the actor the check and the decode
     // cannot be separated by an unload.
-    if whisperKit == nil, let reloadType = lastLoadedModelType {
+    if !hasLoadedModel, let reloadType = lastLoadedModelType {
       DebugLogger.logWarning(
         "LOCAL-SPEECH: Model was unloaded since the caller checked — reloading \(reloadType.displayName)")
       try await initializeModel(reloadType)
     }
 
-    guard let whisperKit = whisperKit, currentModelType != nil else {
-      throw TranscriptionError.fileError("WhisperKit not initialized")
+    guard hasLoadedModel, currentModelType != nil else {
+      throw TranscriptionError.fileError("Offline model not initialized")
     }
     
     DebugLogger.log("LOCAL-SPEECH: Starting transcription")
@@ -342,7 +406,53 @@ actor LocalSpeechService {
       DebugLogger.log("LOCAL-SPEECH: Could not determine audio duration")
     }
     let deadline = Self.decodeDeadline(forAudioSeconds: audioDuration)
+
+    let text: String
+    let decodeElapsed: Double
+    if let parakeet {
+      // The Glossary becomes Parakeet vocabulary in S2 (`plans/active/parakeet-offline.md`);
+      // until then `prompt` is not used on this engine.
+      let decodeStart = CFAbsoluteTimeGetCurrent()
+      text = try await performParakeetTranscription(
+        parakeet, audioURL: audioURL, language: language, deadline: deadline,
+        audioSeconds: audioDuration)
+      decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
+    } else if let whisperKit {
+      (text, decodeElapsed) = try await transcribeWithWhisper(
+        whisperKit, audioURL: audioURL, language: language, prompt: prompt,
+        chunkingStrategy: chunkingStrategy, deadline: deadline)
+    } else {
+      throw TranscriptionError.fileError("Offline model not initialized")
+    }
+
+    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
+    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "LOCAL-SPEECH")
     
+    let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
+    DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
+    DebugLogger.logSpeech("SPEED: Offline transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
+    // One greppable line per offline transcription carrying everything the streaming decision
+    // needs: `rtf` well below 1 means chunks can be decoded during the recording; near or above 1
+    // means in-flight chunks would queue up behind the speech and streaming would make it worse.
+    let rtfText = audioDuration.map { duration -> String in
+      duration > 0 ? String(format: "%.3f", decodeElapsed / duration) : "n/a"
+    } ?? "n/a"
+    DebugLogger.logSpeech(
+      "SPEED: LOCAL-SPEECH rtf model=\(currentModelType?.rawValue ?? "unknown") "
+        + "audioS=\(audioDuration.map { String(format: "%.2f", $0) } ?? "n/a") "
+        + "decodeS=\(String(format: "%.2f", decodeElapsed)) "
+        + "totalS=\(String(format: "%.2f", totalElapsedTime)) "
+        + "rtf=\(rtfText)")
+    
+    return normalizedText
+  }
+
+  /// Whisper's decode: glossary as `promptTokens`, the empty-result retry without them, and the
+  /// segments joined. Returns the raw text and the decode time (retry included).
+  private func transcribeWithWhisper(
+    _ whisperKit: WhisperKit, audioURL: URL, language: String?, prompt: String?,
+    chunkingStrategy: ChunkingStrategy?, deadline: TimeInterval
+  ) async throws -> (String, Double) {
     // Build promptTokens from dictation prompt if available
     let promptTokens: [Int]? = buildPromptTokens(prompt: prompt, whisperKit: whisperKit)
     let usedPrompt = promptTokens != nil && !(promptTokens!.isEmpty)
@@ -381,28 +491,36 @@ actor LocalSpeechService {
     }
     
     // Extract text from all segments
-    let text = transcriptionResults.map { $0.text }.joined(separator: " ")
-    
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "LOCAL-SPEECH")
-    
-    let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
-    DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
-    DebugLogger.logSpeech("SPEED: Whisper transcription total time: \(String(format: "%.3f", totalElapsedTime))s (\(String(format: "%.0f", totalElapsedTime * 1000))ms)")
-    // One greppable line per offline transcription carrying everything the streaming decision
-    // needs: `rtf` well below 1 means chunks can be decoded during the recording; near or above 1
-    // means in-flight chunks would queue up behind the speech and streaming would make it worse.
-    let rtfText = audioDuration.map { duration -> String in
-      duration > 0 ? String(format: "%.3f", decodeElapsed / duration) : "n/a"
-    } ?? "n/a"
-    DebugLogger.logSpeech(
-      "SPEED: LOCAL-SPEECH rtf model=\(currentModelType?.rawValue ?? "unknown") "
-        + "audioS=\(audioDuration.map { String(format: "%.2f", $0) } ?? "n/a") "
-        + "decodeS=\(String(format: "%.2f", decodeElapsed)) "
-        + "totalS=\(String(format: "%.2f", totalElapsedTime)) "
-        + "rtf=\(rtfText)")
-    
-    return normalizedText
+    return (transcriptionResults.map { $0.text }.joined(separator: " "), decodeElapsed)
+  }
+
+  /// Parakeet's decode under the same wall-clock deadline and error mapping as Whisper's.
+  private func performParakeetTranscription(
+    _ backend: ParakeetBackend, audioURL: URL, language: String?, deadline: TimeInterval,
+    audioSeconds: Double?
+  ) async throws -> String {
+    do {
+      return try await WallClockDeadline.run(seconds: deadline) {
+        try await backend.transcribe(audioURL: audioURL, language: language)
+      }
+    } catch TranscriptionError.requestTimeout {
+      let audioSecondsText = audioSeconds.map { String(format: "%.1f", $0) } ?? "?"
+      DebugLogger.logError(
+        "LOCAL-SPEECH: decode exceeded \(Int(deadline))s wall-clock deadline (audio \(audioSecondsText)s) — aborting (LocalDeadline)")
+      ContextLogger.shared.logRequestTimedOut(
+        timeoutSeconds: Int(deadline),
+        logPrefix: "LOCAL-SPEECH",
+        origin: .transcription,
+        stage: "decode",
+        model: currentModelType?.rawValue ?? "unknown")
+      throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      let errorMessage = error.localizedDescription
+      DebugLogger.logError("LOCAL-SPEECH: Parakeet transcription failed: \(errorMessage)")
+      throw TranscriptionError.fileError("Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+    }
   }
   
   // MARK: - Prompt Token Building
@@ -684,7 +802,7 @@ actor LocalSpeechService {
   
   // MARK: - Check if Model is Ready
   func isReady() -> Bool {
-    return currentModelType != nil && whisperKit != nil
+    return currentModelType != nil && hasLoadedModel
   }
 
   /// Returns true if the given model type is currently loaded (so we use the selected model, not a previously pre-loaded one).

@@ -138,7 +138,25 @@ struct OfflineModeTests {
   func offlineModelMappingRoundTrips() {
     for type in OfflineModelType.allCases {
       #expect(TranscriptionModel.forOfflineModel(type).offlineModelType == type, "\(type.rawValue)")
+      // Persisted selections and download state are keyed by these strings on both sides.
+      #expect(TranscriptionModel.forOfflineModel(type).rawValue == type.rawValue, "\(type.rawValue)")
     }
+  }
+
+  /// Parakeet is offline but not WhisperKit: it must never be handed a WhisperKit variant name,
+  /// which would send `ModelManager` looking for (and downloading) a Whisper folder.
+  @Test("Only Whisper models carry a WhisperKit variant; Parakeet runs on its own engine")
+  func engineSplit() {
+    for type in OfflineModelType.allCases {
+      switch type.engine {
+      case .whisperKit: #expect(type.whisperKitModelName != nil, "\(type.rawValue)")
+      case .parakeet: #expect(type.whisperKitModelName == nil, "\(type.rawValue)")
+      }
+    }
+    #expect(OfflineModelType.parakeetUltra.engine == .parakeet)
+    #expect(TranscriptionModel.parakeetUltra.isOffline)
+    #expect(TranscriptionModel.parakeetUltra.isSelectableForDictation)
+    #expect(TranscriptionModel.selectableForDictation(offlineMode: true).contains(.parakeetUltra))
   }
 
   // MARK: - URLProtocol guard

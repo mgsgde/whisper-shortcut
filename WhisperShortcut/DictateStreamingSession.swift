@@ -89,7 +89,13 @@ final class DictateStreamingSession {
   static func isEligible(
     model: TranscriptionModel, hasCredential: Bool, offlineModelDownloaded: Bool
   ) -> Bool {
-    if model.isOffline { return offlineModelDownloaded }
+    if model.isOffline {
+      // Parakeet does not stream (plans/active/parakeet-offline.md, D2): it decodes a whole minute
+      // in ~0.5 s after Stop, less than Whisper's tail chunk alone, and its Glossary vocabulary is
+      // more accurate on the complete recording than per chunk.
+      if model.offlineModelType?.engine == .parakeet { return false }
+      return offlineModelDownloaded
+    }
     guard model.isGemini || model.isOpenAI || model.isXAI else { return false }
     return hasCredential
   }

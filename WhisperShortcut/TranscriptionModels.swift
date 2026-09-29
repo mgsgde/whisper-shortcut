@@ -80,6 +80,10 @@ enum TranscriptionModel: String, CaseIterable {
   /// and several times faster than `whisperLarge` at the same accuracy, which makes it — not
   /// `large-v3` — the on-device model to reach for when the transcript has to be right.
   case whisperLargeTurbo = "whisper-large-turbo"
+  /// Offline, but not Whisper: NVIDIA Parakeet TDT (Moondream's "Ultra" retrain) through
+  /// FluidAudio. Same accuracy as turbo on the user's German at ~1/20 of the wait
+  /// (`benchmarks/local-asr/README.md`). Raw value matches `OfflineModelType.parakeetUltra`.
+  case parakeetUltra = "parakeet-ultra"
 
   // OpenAI transcription models (cloud, OpenAI API key required).
   // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
@@ -134,6 +138,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "Whisper Large (Offline)"
     case .whisperLargeTurbo:
       return "Whisper Large v3 Turbo (Offline)"
+    case .parakeetUltra:
+      return "Parakeet Ultra (Offline)"
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -236,7 +242,7 @@ enum TranscriptionModel: String, CaseIterable {
       return true
     case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+         .parakeetUltra, .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
     }
@@ -253,7 +259,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro:
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo:
+         .whisperLargeTurbo, .parakeetUltra:
       return "Free (Offline)"
     case .openAIGPTTranscribe:
       return "Low"
@@ -298,6 +304,8 @@ enum TranscriptionModel: String, CaseIterable {
       return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
     case .whisperLargeTurbo:
       return "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline"
+    case .parakeetUltra:
+      return "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline"
     case .openAIGPTTranscribe:
       return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
     case .openAIGPT4oTranscribe:
@@ -429,6 +437,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperMedium: return .whisperMedium
     case .whisperLarge: return .whisperLarge
     case .whisperLargeTurbo: return .whisperLargeTurbo
+    case .parakeetUltra: return .parakeetUltra
     default: return nil
     }
   }
@@ -442,6 +451,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperMedium: return .whisperMedium
     case .whisperLarge: return .whisperLarge
     case .whisperLargeTurbo: return .whisperLargeTurbo
+    case .parakeetUltra: return .parakeetUltra
     }
   }
   
@@ -544,8 +554,10 @@ enum TranscriptionModel: String, CaseIterable {
 
   var asymmetryClass: AsymmetryClass {
     switch self {
+    // Parakeet shares the class: what matters here is "not Gemini, so Gemini re-listening adds
+    // information", not which on-device engine produced the transcript.
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo:
+         .whisperLargeTurbo, .parakeetUltra:
       return .offlineWhisper
     case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio

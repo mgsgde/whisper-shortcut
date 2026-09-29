@@ -10,7 +10,8 @@ struct DictateStreamingEligibilityTests {
 
   @Test("A downloaded on-device Whisper streams")
   func downloadedOfflineModelStreams() {
-    for model in TranscriptionModel.allCases where model.isOffline {
+    for model in TranscriptionModel.allCases
+    where model.isOffline && model.offlineModelType?.engine == .whisperKit {
       #expect(
         DictateStreamingSession.isEligible(
           model: model, hasCredential: false, offlineModelDownloaded: true),
@@ -20,6 +21,17 @@ struct DictateStreamingEligibilityTests {
 
   /// The load-bearing half of the offline gate: an in-flight chunk must never be what starts a
   /// multi-gigabyte download, mid-recording, behind the user's back.
+  /// Decision D2 in `plans/active/parakeet-offline.md`: a minute of audio decodes in ~0.5 s after
+  /// Stop, and the Glossary vocabulary works better on the whole recording than per chunk.
+  @Test("Parakeet never streams, downloaded or not")
+  func parakeetDoesNotStream() {
+    for downloaded in [true, false] {
+      #expect(
+        !DictateStreamingSession.isEligible(
+          model: .parakeetUltra, hasCredential: false, offlineModelDownloaded: downloaded))
+    }
+  }
+
   @Test("An on-device Whisper that is not downloaded does not stream")
   func undownloadedOfflineModelDoesNotStream() {
     for model in TranscriptionModel.allCases where model.isOffline {
