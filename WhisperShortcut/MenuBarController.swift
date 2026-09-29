@@ -682,8 +682,6 @@ class MenuBarController: NSObject {
   /// ✕ on the indicator: discard an active recording, or cancel in-flight processing.
   private func handleIndicatorCancel() {
     if appState.isRecording || pendingRecordingMode != nil || pendingMeetingSegment != nil {
-      recording?.quickActionInstruction = nil
-      recording?.quickActionRan = false
       dismissQuickActions()
       DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
       RecordingIndicatorManager.shared.hide()
@@ -2685,7 +2683,9 @@ class MenuBarController: NSObject {
   /// first for the second would feed the user's unrelated clipboard to the model.
   /// Called just before `beginAudioCapture(.voiceFeedback)`. The copied text arrives
   /// asynchronously (≥ 15 ms later), by which point that call has created this recording's intent,
-  /// so the selection lands on it and cannot outlive the recording.
+  /// so the selection lands on it and cannot outlive the recording. On a tap shorter than the copy
+  /// (the poll allows 500 ms) the recording can finish first and the selection is dropped — a
+  /// recording that short carries no instruction worth editing the context with anyway.
   private func captureVoiceFeedbackSelection() {
     guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
       DebugLogger.log("VOICE-FEEDBACK: No Accessibility permission — proceeding without a selection")
@@ -2932,8 +2932,11 @@ extension MenuBarController: AudioRecorderDelegate {
 
       // The recording is over: its intent goes with this audio and nowhere else, so nothing from it
       // can reach the next recording.
-      let intent = self.recording
-      self.recording = nil
+      // Only an intent whose capture started belongs to this audio. A new recording that is still
+      // waiting for mic permission (possible when a double stop already returned the app to idle)
+      // is not this recording's, and taking it would strand that recorder.
+      let intent = self.recording?.captureStarted == true ? self.recording : nil
+      if intent != nil { self.recording = nil }
 
       // Cancelled via the recording indicator's ✕ — discard the audio, don't process
       if intent?.discardOnFinish == true {
