@@ -176,32 +176,30 @@ struct ChatToolStepsTests {
 
   // MARK: - Slice 3: inline approval
 
-  @Test func chatWideApprovalIsNeverOfferedForInjectionGatedOrDestructiveTools() {
-    let alwaysAsk = [
-      ChatToolRegistry.rememberAboutUserToolName, ChatToolRegistry.updateInstructionsToolName,
-      "write_text_file", "append_to_file", "edit_text_file",
-      "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card",
-    ]
-    for name in alwaysAsk {
-      #expect(!ChatToolRegistry.allowsChatWideApproval(name), "\(name)")
-    }
-    for name in ["google_calendar_create_event", "google_tasks_complete", "trello_move_card", "open_url"] {
-      #expect(ChatToolRegistry.allowsChatWideApproval(name), "\(name)")
-    }
-  }
+  /// The decision for every approval-gated tool, spelled out. A new gated tool fails this test
+  /// until someone decides on purpose whether a blanket "Allow for this chat" is safe for it.
+  private static let chatWideDecision: [String: Bool] = [
+    // Prompt-injection gated or able to exfiltrate: always ask.
+    ChatToolRegistry.rememberAboutUserToolName: false,
+    ChatToolRegistry.updateInstructionsToolName: false,
+    "open_url": false,
+    "write_text_file": false, "append_to_file": false, "edit_text_file": false,
+    // Destructive: always ask.
+    "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
+    // Create/update/move: may be allowed for the chat.
+    "google_calendar_create_event": true, "google_calendar_update_event": true,
+    "google_tasks_create": true, "google_tasks_update": true, "google_tasks_complete": true,
+    "trello_create_card": true, "trello_move_card": true, "trello_update_card": true,
+  ]
 
-  /// Every tool that asks at all is covered by an explicit decision, so a new mutating tool
-  /// can't slip into "allow for this chat" unnoticed: it must appear in one of the two lists.
-  @Test func everyApprovalGatedToolHasAChatWideDecision() {
-    let decided: Set<String> = [
-      ChatToolRegistry.rememberAboutUserToolName, ChatToolRegistry.updateInstructionsToolName,
-      "write_text_file", "append_to_file", "edit_text_file",
-      "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card",
-      "google_calendar_create_event", "google_calendar_update_event",
-      "google_tasks_create", "google_tasks_update", "google_tasks_complete",
-      "trello_create_card", "trello_move_card", "trello_update_card", "open_url",
-    ]
+  @Test func everyApprovalGatedToolHasAnExplicitChatWideDecision() {
     let gated = allToolNames.filter { ChatToolRegistry.requiresUserApproval($0, args: ["action": "write"]) }
-    #expect(Set(gated).subtracting(decided).isEmpty, "Undecided: \(Set(gated).subtracting(decided))")
+    for name in gated {
+      guard let expected = Self.chatWideDecision[name] else {
+        Issue.record("No chat-wide approval decision for \(name)")
+        continue
+      }
+      #expect(ChatToolRegistry.allowsChatWideApproval(name) == expected, "\(name)")
+    }
   }
 }

@@ -2308,6 +2308,22 @@ class ChatViewModel: ObservableObject {
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
+    stopTurnsWaitingInHiddenChats()
+  }
+
+  /// A chat that was closed, archived or deleted while its turn waited on the approval card would
+  /// stay suspended with no card anyone can see (and block its queue). Every store mutation ends in
+  /// `refreshRecentSessions`, so this one check covers close, archive, bulk archive and delete:
+  /// such a turn is stopped as if the user had pressed Stop, which answers the card with deny.
+  private func stopTurnsWaitingInHiddenChats() {
+    guard !pendingApprovals.isEmpty else { return }
+    // Not `recentSessions`: that is capped at 20 tabs, and a chat past the cap is still open.
+    let visible = Set(allSessionsList.filter { !$0.archived }.map(\.id))
+    for sessionId in pendingApprovals.keys where !visible.contains(sessionId) {
+      DebugLogger.log("CHAT-TOOL-APPROVAL: chat \(sessionId) hidden while waiting — stopping its turn")
+      userCancelledSessions[sessionId] = 0
+      sendTasks[sessionId]?.cancel()
+    }
   }
 
   /// After a store mutation, switch to the store's current session when the one on screen
@@ -2884,9 +2900,9 @@ class ChatViewModel: ObservableObject {
       NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
       meetingSessionId = nil
     }
-    if let pending = pendingApprovals[id] {
-      resolveApproval(sessionId: id, requestId: pending.id, decision: .deny)
-    }
+    // Stop the deleted chat's turn outright: denying only the pending card would let the next
+    // gated call of the same turn wait on a card that can no longer be shown.
+    sendTasks[id]?.cancel()
     chatWideApprovals.removeValue(forKey: id)
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
