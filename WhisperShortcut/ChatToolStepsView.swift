@@ -84,10 +84,10 @@ enum ChatToolStepsSummary {
     return parts.joined(separator: " · ")
   }
 
-  /// "3 results" / "Failed" / "Denied by you" for one step.
+  /// "3 results" / "Failed: ‹error›" / "Denied by you" for one step.
   static func statusSuffix(_ step: ChatToolStepDisplay) -> String? {
     switch step.status {
-    case .failed: return "Failed"
+    case .failed: return step.summary.map { "Failed: \($0)" } ?? "Failed"
     case .denied: return "Denied by you"
     case .done: return step.summary
     case .running, .awaitingApproval: return nil

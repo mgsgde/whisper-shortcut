@@ -19,7 +19,16 @@ struct ChatToolCallRecord: Codable, Equatable {
   // Display-only fields for the transcript's tool-step rows (plans/active/chat-tool-steps.md,
   // Slice 2). Optional: records written before them decode with nil and are derived from
   // `resultJSON` instead (`ChatToolStepDisplay`). Not part of the model replay.
-  enum Status: String, Codable { case done, failed, denied }
+  enum Status: String, Codable {
+    case done, failed, denied
+
+    /// Unknown values (a newer build's status, read after a downgrade) decode as `.done` instead
+    /// of failing the whole record — and with it the message and its session.
+    init(from decoder: Decoder) throws {
+      let raw = try decoder.singleValueContainer().decode(String.self)
+      self = Status(rawValue: raw) ?? .done
+    }
+  }
   var status: Status? = nil
   /// "3 results", or the error text for `.failed`.
   var summary: String? = nil

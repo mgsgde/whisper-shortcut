@@ -159,4 +159,18 @@ struct ChatToolStepsTests {
     #expect(ChatToolStepsSummary.header(for: [step("a", .done), step("Creating task…", .running)])
       == "Creating task…")
   }
+
+  @Test func failedStepsShowTheirError() throws {
+    let json = #"{"name":"gmail_read","argsJSON":"{}","resultJSON":"{\"error\":\"Message not found\"}"}"#
+    let record = try JSONDecoder().decode(ChatToolCallRecord.self, from: Data(json.utf8))
+    let display = ChatToolStepDisplay.from(record: record, index: 0)
+    #expect(display.status == .failed)
+    #expect(ChatToolStepsSummary.statusSuffix(display) == "Failed: Message not found")
+  }
+
+  @Test func unknownStatusDecodesInsteadOfFailing() throws {
+    let json = #"{"name":"gmail_read","argsJSON":"{}","resultJSON":"{}","status":"cancelled"}"#
+    let record = try JSONDecoder().decode(ChatToolCallRecord.self, from: Data(json.utf8))
+    #expect(record.status == .done)
+  }
 }

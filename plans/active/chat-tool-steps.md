@@ -10,7 +10,9 @@ elapsed clock reuses the indicator's existing 60fps `TimelineView` instead of ad
 than persisted, so records written before this slice (since 3e8af05) render too, with status and
 count derived from `resultJSON`. `ChatToolStepsView.swift` renders the collapsed group; the
 streaming bubble shows it live from `ToolStepsBuffer` (web search excluded there, it has no record).
-Slice 3 open.
+Known gaps from its review: the group's expanded state resets when the streaming bubble
+re-enters the list at finalize (view identity changes); records of a round interrupted by Stop
+are dropped (pre-existing, queued separately). Slice 3 open.
 **Audience:** LLM implementing the feature end-to-end.
 **Goal:** The chat stops being a black box while it works. Every tool call becomes a visible,
 collapsible step; the typing indicator says which step is running and for how long; approval
