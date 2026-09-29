@@ -79,7 +79,7 @@ struct SettingsSlotRoundTripTests {
     // Chat-capable models only: `loadChatSlotModel` validates `supportsTextChat` and falls back
     // to the default when it fails, which would mask a key mismatch.
     data.selectedChatModel = .grok43
-    data.selectedImprovementModel = .claudeSonnet5
+    data.selectedImprovementModel = .claudeSonnet55
     data.whisperLanguage = .de
     data.transcriptionTemperature = .balanced
     data.transcriptionThinkingEffort = .high
