@@ -94,6 +94,9 @@ extension ChatToolRegistry {
     var object: StepObject? = nil
     /// Noun for the result count ("3 results"); nil = no count.
     var countNoun: String? = nil
+    /// Wording when the object argument is missing, where `running`/`done` would dangle
+    /// ("Searching Gmail for…"). Nil = `running`/`done` read fine on their own.
+    var bare: (running: String, done: String)? = nil
   }
 
   /// One entry per tool the chat declares. `ChatToolStepsTests` fails when a declared tool is
@@ -102,7 +105,9 @@ extension ChatToolRegistry {
     webSearchStepName: .init(running: "Searching the web", done: "Searched the web"),
     "read_clipboard": .init(running: "Reading the clipboard", done: "Read the clipboard"),
     "copy_to_clipboard": .init(running: "Copying to the clipboard", done: "Copied to the clipboard"),
-    "open_url": .init(running: "Opening", done: "Opened", object: .plain("url")),
+    "open_url": .init(
+      running: "Opening", done: "Opened", object: .plain("url"),
+      bare: ("Opening a link", "Opened a link")),
     "remember_dictation_term": .init(
       running: "Saving dictation term", done: "Saved dictation term", object: .quoted("term")),
     "google_calendar_list_events": .init(
@@ -121,7 +126,7 @@ extension ChatToolRegistry {
     "google_tasks_delete": .init(running: "Deleting task", done: "Deleted task"),
     "gmail_search": .init(
       running: "Searching Gmail for", done: "Searched Gmail for", object: .quoted("query"),
-      countNoun: "results"),
+      countNoun: "results", bare: ("Searching Gmail", "Searched Gmail")),
     "gmail_read": .init(running: "Reading an email", done: "Read an email"),
     "trello_list_boards": .init(
       running: "Listing Trello boards", done: "Listed Trello boards", countNoun: "boards"),
@@ -137,17 +142,27 @@ extension ChatToolRegistry {
     "read_whisper_shortcut_doc": .init(running: "Reading the app docs", done: "Read the app docs"),
     "list_workspace_folders": .init(running: "Listing shared folders", done: "Listed shared folders"),
     "list_directory": .init(
-      running: "Listing", done: "Listed", object: .filename("path"), countNoun: "entries"),
-    "read_text_file": .init(running: "Reading", done: "Read", object: .filename("path")),
+      running: "Listing", done: "Listed", object: .filename("path"), countNoun: "entries",
+      bare: ("Listing a folder", "Listed a folder")),
+    "read_text_file": .init(
+      running: "Reading", done: "Read", object: .filename("path"),
+      bare: ("Reading a file", "Read a file")),
     "search_files": .init(
       running: "Searching files for", done: "Searched files for", object: .quoted("query"),
-      countNoun: "matches"),
+      countNoun: "matches", bare: ("Searching files", "Searched files")),
     "remember_file_location": .init(
-      running: "Remembering where to find", done: "Remembered where to find", object: .filename("path")),
+      running: "Remembering where to find", done: "Remembered where to find", object: .filename("path"),
+      bare: ("Remembering a file location", "Remembered a file location")),
     "forget_file_location": .init(running: "Forgetting a file location", done: "Forgot a file location"),
-    "write_text_file": .init(running: "Writing", done: "Wrote", object: .filename("path")),
-    "append_to_file": .init(running: "Appending to", done: "Appended to", object: .filename("path")),
-    "edit_text_file": .init(running: "Editing", done: "Edited", object: .filename("path")),
+    "write_text_file": .init(
+      running: "Writing", done: "Wrote", object: .filename("path"),
+      bare: ("Writing a file", "Wrote a file")),
+    "append_to_file": .init(
+      running: "Appending to", done: "Appended to", object: .filename("path"),
+      bare: ("Appending to a file", "Appended to a file")),
+    "edit_text_file": .init(
+      running: "Editing", done: "Edited", object: .filename("path"),
+      bare: ("Editing a file", "Edited a file")),
     generateImageToolName: .init(running: "Generating an image", done: "Generated an image"),
     refineMeetingSummaryToolName: .init(
       running: "Refining the meeting summary", done: "Refined the meeting summary"),
@@ -174,6 +189,8 @@ extension ChatToolRegistry {
     var label = done ? wording.done : wording.running
     if let object = wording.object, let text = objectText(object, args: args) {
       label += " " + text
+    } else if let bare = wording.bare {
+      label = done ? bare.done : bare.running
     }
     return done ? label : label + "…"
   }

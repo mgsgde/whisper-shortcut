@@ -8,19 +8,22 @@ import Foundation
 @Suite("Chat tool steps")
 struct ChatToolStepsTests {
 
+  /// Every declaration the chat can offer, composed directly: `allDeclarations` returns nothing
+  /// when the local MLX provider is selected, which would make these tests depend on the machine.
   private var allToolNames: [String] {
-    ChatToolRegistry.allDeclarations(
-      calendarConnected: true,
-      trelloConnected: true,
-      imageGenerationAvailable: true,
-      meetingContext: true,
-      workspaceAvailable: true,
-      workspaceWritable: true
-    ).compactMap { $0["name"] as? String }
+    let groups: [[[String: Any]]] = [
+      ChatToolRegistry.functionDeclarations, ChatToolRegistry.appDocsFunctionDeclarations,
+      ChatToolRegistry.memoryFunctionDeclarations, ChatToolRegistry.instructionsFunctionDeclarations,
+      ChatToolRegistry.workspaceFunctionDeclarations, ChatToolRegistry.workspaceWriteFunctionDeclarations,
+      ChatToolRegistry.imageFunctionDeclarations, ChatToolRegistry.calendarFunctionDeclarations,
+      ChatToolRegistry.tasksFunctionDeclarations, ChatToolRegistry.gmailFunctionDeclarations,
+      ChatToolRegistry.trelloFunctionDeclarations, ChatToolRegistry.meetingFunctionDeclarations,
+    ]
+    return groups.flatMap { $0 }.compactMap { $0["name"] as? String }
   }
 
   @Test func everyDeclaredToolHasWording() {
-    #expect(allToolNames.count > 20, "Declarations empty — is the local MLX provider selected?")
+    #expect(allToolNames.count > 20)
     let missing = allToolNames.filter { !ChatToolRegistry.hasStepWording($0) }
     #expect(missing.isEmpty, "Tools without a step label: \(missing)")
   }
@@ -31,6 +34,21 @@ struct ChatToolStepsTests {
         let label = ChatToolRegistry.stepLabel(name: name, args: [:], done: done)
         #expect(!label.isEmpty)
         #expect(!label.contains("_"), "\(name) → \(label)")
+      }
+    }
+  }
+
+  /// Without its argument a label must still read as a sentence, not "Searching Gmail for…".
+  @Test func labelsWithoutArgumentsDoNotDangle() {
+    let dangling = [" for", " to", " find", " of"]
+    let danglingAlone = ["Opening", "Opened", "Reading", "Read", "Listing", "Listed", "Writing", "Wrote",
+      "Editing", "Edited"]
+    for name in allToolNames {
+      for done in [false, true] {
+        var label = ChatToolRegistry.stepLabel(name: name, args: [:], done: done)
+        if label.hasSuffix("…") { label.removeLast() }
+        #expect(!dangling.contains { label.hasSuffix($0) }, "\(name) → \(label)")
+        #expect(!danglingAlone.contains(label), "\(name) → \(label)")
       }
     }
   }
