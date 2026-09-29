@@ -99,10 +99,12 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var sendingSessionIds: Set<UUID> = []
   /// True when the currently visible session has an in-flight request.
   var isSending: Bool { sendingSessionIds.contains(session.id) }
-  /// What the in-flight request is doing while its bubble is still empty (e.g. a web-search
-  /// round), per session. Cleared on the first text delta and at teardown.
-  @Published private(set) var streamActivityBySession: [UUID: ChatStreamActivity] = [:]
-  var streamActivity: ChatStreamActivity? { streamActivityBySession[session.id] }
+  /// Live tool steps of each in-flight turn (web search, Gmail, calendar, …), per session.
+  /// Not `@Published`, like `streamingBuffers`: set/removed in the same MainActor step as
+  /// `sendingSessionIds`, which triggers the re-render that reads it; per-step updates are
+  /// observed on the buffer itself by the typing indicator only.
+  private(set) var toolStepsBuffers: [UUID: ToolStepsBuffer] = [:]
+  var currentToolSteps: ToolStepsBuffer? { toolStepsBuffers[session.id] }
   @Published var errorMessage: String? = nil
   /// Last send failure for the visible session (also persisted on `ChatSession.lastSendError`
   /// so a background-tab failure is still visible after the user switches back).
@@ -902,6 +904,8 @@ class ChatViewModel: ObservableObject {
     // Marked *before* the Task so `isSending` is true the instant this returns. The Task body
     // starts one MainActor hop later; a message sent inside that window would otherwise skip
     // the queue and be dispatched concurrently, out of order.
+    let toolSteps = ToolStepsBuffer()
+    toolStepsBuffers[sessionId] = toolSteps
     sendingSessionIds.insert(sessionId)
     let task = Task {
       // Freeze-relevant state snapshot: a hang during send/stream wedges the main thread and
@@ -919,8 +923,8 @@ class ChatViewModel: ObservableObject {
       defer {
         DebugLogger.log("CHAT-SEND: teardown session=\(sessionId)")
         MainThreadWatchdog.shared.note("idle")
+        if toolStepsBuffers[sessionId] === toolSteps { toolStepsBuffers.removeValue(forKey: sessionId) }
         sendingSessionIds.remove(sessionId)
-        streamActivityBySession.removeValue(forKey: sessionId)
         sendTasks.removeValue(forKey: sessionId)
         StallCancellationRegistry.shared.unregister(sessionId)
         // `ChatViewModel` is `@MainActor`, so this Task inherits MainActor — no explicit hop needed.
@@ -1033,13 +1037,16 @@ class ChatViewModel: ObservableObject {
             try Task.checkCancellation()
             switch event {
             case .activity(let activity):
-              if streamActivityBySession[sessionId] != activity {
-                DebugLogger.log("CHAT-SEND: activity=\(activity) session=\(sessionId)")
-                streamActivityBySession[sessionId] = activity
+              switch activity {
+              case .searchingWeb:
+                if toolSteps.activeStep?.name != ChatToolRegistry.webSearchStepName {
+                  DebugLogger.log("CHAT-SEND: activity=\(activity) session=\(sessionId)")
+                  toolSteps.begin(name: ChatToolRegistry.webSearchStepName, args: [:])
+                }
               }
             case .textDelta(let delta):
-              if streamActivityBySession[sessionId] != nil {
-                streamActivityBySession.removeValue(forKey: sessionId)
+              if toolSteps.activeStep?.name == ChatToolRegistry.webSearchStepName {
+                toolSteps.finishActive(named: ChatToolRegistry.webSearchStepName)
               }
               roundText = ChatStreamLoopGuard.mergeDelta(streamed: roundText, delta: delta)
               let merge = ChatStreamLoopGuard.merge(streamed: streamed, delta: delta)
@@ -1075,6 +1082,7 @@ class ChatViewModel: ObservableObject {
                 break toolLoop
               }
             case .functionCall(let name, let args, let thoughtSignature):
+              toolSteps.finishActive(named: ChatToolRegistry.webSearchStepName)
               pendingCalls.append((name, args, thoughtSignature))
             case .finished(let sources, let supports, let finishReason):
               // Each round cites on its own: a search before a tool call must keep its chips when
@@ -1109,7 +1117,7 @@ class ChatViewModel: ObservableObject {
           executedToolCalls += pendingCalls.count
           let (turns, imageMarkers, records) = try await executeToolCalls(
             pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId,
-            memo: toolMemo)
+            memo: toolMemo, steps: toolSteps)
           toolRecords.append(contentsOf: records)
           // Generated images go straight into the streaming bubble: the image shows up the
           // moment the tool finishes, and the model's follow-up narration streams below it.
@@ -1275,7 +1283,8 @@ class ChatViewModel: ObservableObject {
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
     narration: String,
     sessionId: UUID,
-    memo: ChatToolTurnMemo
+    memo: ChatToolTurnMemo,
+    steps: ToolStepsBuffer
   ) async throws -> (turns: [[String: Any]], imageMarkers: [String], records: [ChatToolCallRecord]) {
     var callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
@@ -1295,12 +1304,19 @@ class ChatViewModel: ObservableObject {
     // carries a short status, so megabytes of base64 never enter the model's context.
     var imageMarkers: [String] = []
     let context = makeToolContext(sessionId: sessionId)
+    var stepIds: [UUID] = []
     for call in calls {
       try Task.checkCancellation()
-      if ChatToolRegistry.requiresUserApproval(call.name, args: call.args) {
+      let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
+      let stepId = steps.begin(
+        name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)
+      stepIds.append(stepId)
+      if needsApproval {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
         let allowed = await confirmToolCall(name: call.name, summary: summary)
+        if allowed { steps.setPhase(stepId, .running) }
         if !allowed {
+          steps.finish(stepId, phase: .denied)
           DebugLogger.log("CHAT-TOOL-DENIED: \(call.name)")
           responseParts.append([
             "functionResponse": [
@@ -1324,6 +1340,12 @@ class ChatViewModel: ObservableObject {
         imageMarkers.append(contentsOf: outcome.imageMarkers)
         response = memo.record(name: call.name, args: call.args, response: outcome.response)
       }
+      if let error = ChatToolRegistry.resultError(response) {
+        steps.finish(stepId, phase: .failed, summary: error)
+      } else {
+        steps.finish(
+          stepId, phase: .done, summary: ChatToolRegistry.resultSummary(name: call.name, response: response))
+      }
       DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(response))")
       responseParts.append(["functionResponse": ["name": call.name, "response": response]])
     }
@@ -1337,7 +1359,8 @@ class ChatViewModel: ObservableObject {
       calls: calls.map { ($0.name, $0.args) },
       responses: responseParts.map {
         (($0["functionResponse"] as? [String: Any])?["response"] as? [String: Any]) ?? [:]
-      })
+      },
+      steps: stepIds.map { steps.step($0) })
     return (turns, imageMarkers, records)
   }
 
@@ -3364,7 +3387,8 @@ struct ChatView: View {
             MessageBubbleView(
               message: detached.message,
               streamingBuffer: detached.buffer,
-              onTapAttachedImage: { previewImageData = $0 })
+              onTapAttachedImage: { previewImageData = $0 },
+              liveToolSteps: viewModel.currentToolSteps)
               .id(detached.message.id)
           }
 
@@ -3423,7 +3447,7 @@ struct ChatView: View {
           // Constrain to the same centered 660px column + 24px gutter as the message
           // list so the dots align with the conversation text instead of pinning to the
           // pane's far-left edge in a wide window.
-          TypingIndicatorView(label: viewModel.streamActivity?.label)
+          LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
             .frame(maxWidth: 660, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 24)
@@ -5368,6 +5392,8 @@ private struct MessageBubbleView: View {
   var onEdit: ((String) -> Void)? = nil
   /// The newest user message and reply keep their actions visible; older turns show them on hover.
   var isLatestTurn: Bool = false
+  /// Set only on the detached streaming bubble: the turn's live tool steps.
+  var liveToolSteps: ToolStepsBuffer? = nil
 
   @State private var isHovered = false
   @State private var isEditing = false
@@ -5532,14 +5558,31 @@ private struct MessageBubbleView: View {
           NSCursor.pop()
         }
       }
-    } else if let buffer = streamingBuffer {
-      StreamingModelReplyView(buffer: buffer, fallback: message)
     } else {
-      ModelReplyView(
-        content: message.content,
-        sources: message.sources,
-        groundingSupports: message.groundingSupports,
-        isStreaming: false)
+      VStack(alignment: .leading, spacing: 10) {
+        toolStepsGroup
+        if let buffer = streamingBuffer {
+          StreamingModelReplyView(buffer: buffer, fallback: message)
+        } else {
+          ModelReplyView(
+            content: message.content,
+            sources: message.sources,
+            groundingSupports: message.groundingSupports,
+            isStreaming: false)
+        }
+      }
+    }
+  }
+
+  /// Collapsed tool steps above the reply: live from the turn's buffer while streaming, from the
+  /// persisted records afterwards.
+  @ViewBuilder
+  private var toolStepsGroup: some View {
+    if let liveToolSteps {
+      LiveChatToolStepsView(buffer: liveToolSteps)
+    } else if !message.toolCalls.isEmpty {
+      ChatToolStepsView(
+        steps: message.toolCalls.enumerated().map { ChatToolStepDisplay.from(record: $1, index: $0) })
     }
   }
 
@@ -5641,9 +5684,35 @@ private struct MessageBubbleView: View {
 
 // MARK: - Typing Indicator
 
+/// Typing indicator bound to the turn's live tool steps. The `@ObservedObject` lives here so a
+/// step change re-renders only the indicator (see `ToolStepsBuffer`).
+private struct LiveTypingIndicatorView: View {
+  let steps: ToolStepsBuffer?
+
+  var body: some View {
+    if let steps {
+      ObservingTypingIndicator(steps: steps)
+    } else {
+      TypingIndicatorView()
+    }
+  }
+
+  private struct ObservingTypingIndicator: View {
+    @ObservedObject var steps: ToolStepsBuffer
+
+    var body: some View {
+      TypingIndicatorView(label: steps.indicatorLabel, since: steps.turnStartedAt)
+    }
+  }
+}
+
 private struct TypingIndicatorView: View {
-  /// Optional reason the reply is still empty ("Searching the web…"), shown after the dots.
+  /// What the turn is doing right now ("Searching Gmail for "invoice"…"), shown after the dots.
   var label: String? = nil
+  /// Turn start. With a label, the elapsed seconds are appended once they pass
+  /// `elapsedThreshold`, so a long tool loop visibly keeps moving.
+  var since: Date? = nil
+  private static let elapsedThreshold: TimeInterval = 3
   // Drive the pulse from a single TimelineView clock and derive each dot's
   // scale from (time + index offset). Avoids per-dot @State + repeatForever
   // + scaleEffect inside a ScrollView, which on AppKit can occasionally leave
@@ -5672,8 +5741,12 @@ private struct TypingIndicatorView: View {
             .scaleEffect(scale(at: t, index: i), anchor: .center)
         }
         if let label {
-          Text(label)
+          // The dots' 60fps clock drives this too; the text only changes once per second.
+          let elapsed = since.map { Int(context.date.timeIntervalSince($0)) } ?? 0
+          Text(Double(elapsed) >= Self.elapsedThreshold ? "\(label) · \(elapsed)s" : label)
             .font(.system(size: 12))
+            .lineLimit(1)
+            .truncationMode(.middle)
             .foregroundStyle(ChatTheme.secondaryText)
             .padding(.leading, 6)
         }
