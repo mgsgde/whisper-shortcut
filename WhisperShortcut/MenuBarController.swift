@@ -113,10 +113,27 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
-  /// Audio URL of the Dictate or Dictate Prompt job currently being processed, outside a live
-  /// meeting. Cancelling clears it, which is how a late-arriving result is recognised as belonging
-  /// to a superseded recording and dropped instead of being pasted out of idle.
-  private var currentJobAudioURL: URL?
+  /// The Dictate, Dictate Prompt or Voice Feedback job currently being processed, outside a live
+  /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
+  /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
+  /// being pasted out of idle or finishing a recording the user has started since. See `VoiceJob`.
+  private var currentJob: VoiceJob?
+
+  /// Creates the job for a finished recording, makes it current, and runs `work` on the main actor.
+  private func startVoiceJob(
+    mode: AppState.RecordingMode, audioURL: URL, _ work: @escaping @MainActor (VoiceJob) async -> Void
+  ) {
+    let job = VoiceJob(mode: mode, audioURL: audioURL)
+    currentJob = job
+    job.run { await work(job) }
+  }
+
+  /// True when `job` has been cancelled or replaced. Meeting segments pass nil: they are never
+  /// superseded this way.
+  private func isSuperseded(_ job: VoiceJob?) -> Bool {
+    guard let job else { return false }
+    return currentJob !== job
+  }
   private var processedAudioURLs: Set<URL> = []
   /// Quick-action instruction, held until the recording's file URL exists, then keyed by that
   /// URL so a retry sends the same text and the silence precheck can let it through.
@@ -1370,10 +1387,13 @@ class MenuBarController: NSObject {
       return
     }
 
-    // Cancel an in-flight context-editing pass.
+    // Cancel an in-flight context-editing pass. Cancelling the job also stops the second stage
+    // (`proposeChange`), which the transcription cancel alone never reached.
     if case .processing(.contextEditing) = appState {
+      let job = currentJob
       speechService.cancelTranscription()
-      transitionToIdleAndCleanup()
+      job?.cancel()
+      transitionToIdleAndCleanup(cleanupAudioURL: job?.audioURL)
       return
     }
 
@@ -1479,16 +1499,18 @@ class MenuBarController: NSObject {
   private func cancelInFlightTranscription() {
     ContextLogger.shared.logSignal(
       .cancelledWhileProcessing, mode: "transcription", detail: cancelSignalDetail())
+    let job = currentJob
     discardStreamingSession()
     speechService.cancelTranscription()
+    job?.cancel()
     // Keep the audio instead of deleting it: a cancel is one keystroke and can be an accident,
     // and the recording is the only copy of what the user said. "Transcribe Cancelled Recording"
     // in the status menu turns an unrecoverable loss into one extra click.
-    retainCancelledRecording(currentJobAudioURL)
-    transitionToIdleAndCleanup(cleanupAudioURL: nil)
-    if let url = currentJobAudioURL {
-      currentJobAudioURL = nil
-      processedAudioURLs.remove(url)
+    retainCancelledRecording(job?.audioURL)
+    transitionToIdleAndCleanup(cleanupAudioURL: nil, clearChunkStatuses: true)
+    if let job {
+      currentJob = nil
+      processedAudioURLs.remove(job.audioURL)
     }
   }
 
@@ -1524,23 +1546,26 @@ class MenuBarController: NSObject {
     // Hand ownership back to the normal pipeline, which deletes the file when it is done with it.
     cancelledRecordingURL = nil
     processedAudioURLs.insert(url)
-    currentJobAudioURL = url
     appState = .processing(.transcribing)
-    Task { await self.performTranscription(audioURL: url) }
+    startVoiceJob(mode: .transcription, audioURL: url) { job in
+      await self.performTranscription(audioURL: url, job: job)
+    }
   }
 
   /// Cancels a running Dictate Prompt. Reached from both the toggle shortcut and the Stop menu
   /// item, which is why it is a method rather than two copies.
   ///
-  /// Passing the URL is what makes the cancellation stick: `transitionToIdleAndCleanup` clears
-  /// `currentJobAudioURL`, so a reply that is already in flight is recognised as stale by
-  /// `runAudioJob` and dropped instead of being pasted into whatever the user has since focused.
-  /// It also removes the recording, which the previous no-argument call left on disk.
+  /// Passing the URL is what makes the cancellation stick: `transitionToIdleAndCleanup` drops
+  /// `currentJob`, so a reply that is already in flight is recognised as stale by `runAudioJob` and
+  /// dropped instead of being pasted into whatever the user has since focused. It also removes the
+  /// recording.
   private func cancelInFlightPrompt() {
     ContextLogger.shared.logSignal(
       .cancelledWhileProcessing, mode: "prompt", detail: cancelSignalDetail())
+    let job = currentJob
     speechService.cancelPrompt()
-    transitionToIdleAndCleanup(cleanupAudioURL: currentJobAudioURL)
+    job?.cancel()
+    transitionToIdleAndCleanup(cleanupAudioURL: job?.audioURL)
   }
 
   /// True when any transcription pipeline phase is active (single request or chunked).
@@ -1742,6 +1767,7 @@ class MenuBarController: NSObject {
   ///   - error: The error that occurred
   ///   - audioURL: The URL of the audio file being processed
   ///   - mode: The recording mode (.transcription or .prompt)
+  @MainActor
   private func handleProcessingError(error: Error, audioURL: URL, mode: AppState.RecordingMode) async {
     await MainActor.run {
       // Dismiss any processing popup before showing error
@@ -1802,26 +1828,30 @@ class MenuBarController: NSObject {
             DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
             try? await Task.sleep(nanoseconds: 3_000_000_000)
           }
-          // `runAudioJob`'s catch tail clears `currentJobAudioURL` after the popup is shown.
-          // Restore ownership the same way `transcribeCancelledRecording` does, or the
-          // staleness guard drops a successful retry as a cancelled recording.
+          // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
+          // job, the same way `transcribeCancelledRecording` starts one.
           self.processedAudioURLs.insert(audioURL)
-          self.currentJobAudioURL = audioURL
           DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
           switch mode {
           case .transcription:
             self.appState = .processing(.transcribing)
-            await self.performTranscription(audioURL: audioURL)
+            self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
+              await self.performTranscription(audioURL: audioURL, job: job)
+            }
           case .prompt:
             self.appState = .processing(.prompting)
             let instruction = self.quickActionInstructionByURL[audioURL]
-            await self.performPrompting(audioURL: audioURL, instruction: instruction)
+            self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
+              await self.performPrompting(audioURL: audioURL, job: job, instruction: instruction)
+            }
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
           case .voiceFeedback:
             self.appState = .processing(.contextEditing)
-            await self.performVoiceFeedback(audioURL: audioURL)
+            self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
+              await self.performVoiceFeedback(audioURL: audioURL, job: job)
+            }
           }
         }
       } : nil
@@ -1887,6 +1917,7 @@ class MenuBarController: NSObject {
   /// by the prompt pipeline and Voice Feedback, which handle a cancelled recording identically.
   /// Transcription does not use it — it routes through `transitionToIdleAndCleanup` instead, which
   /// additionally clears chunk state.
+  @MainActor
   private func cancelAudioJob(logLabel: String, error: Error, audioURL: URL) async {
     DebugLogger.log("CANCELLATION: \(logLabel) task was cancelled (\(type(of: error)))")
     await MainActor.run {
@@ -1900,22 +1931,24 @@ class MenuBarController: NSObject {
   /// Runs one finished recording: produce the text, deliver it, and clean up — or handle
   /// cancellation, staleness and failure. `afterCopy` runs after the clipboard write and
   /// auto-paste (logging and history), so it cannot delay the paste.
+  @MainActor
   private func runAudioJob(
     _ spec: AudioJobSpec,
     audioURL: URL,
-    duringMeeting: Bool,
+    job: VoiceJob?,
     produce: () async throws -> String,
     afterCopy: (String) async -> Void = { _ in }
   ) async {
+    // Meeting segments run without a job: they can't be cancelled or superseded this way.
+    let duringMeeting = job == nil
     do {
       let result = try await produce()
 
-      // A shortcut press during processing cancels the job (the cancel paths clear
-      // `currentJobAudioURL`), but a result already in flight can still arrive afterwards — drop it
-      // instead of pasting a cancelled result out of idle. Same staleness check as the error path
-      // below. Meeting segments are exempt: they don't track a URL and can't be cancelled this way.
+      // A shortcut press during processing cancels the job (the cancel paths drop `currentJob`),
+      // but a result already in flight can still arrive afterwards — drop it instead of pasting a
+      // cancelled result out of idle. Same staleness check as the error path below.
       let wasCancelled: Bool = await MainActor.run {
-        if !duringMeeting, self.currentJobAudioURL != audioURL {
+        if self.isSuperseded(job) {
           DebugLogger.log(
             "CANCELLATION: Dropping \(spec.logLabel.lowercased()) result for cancelled recording \(audioURL.lastPathComponent)")
           self.processedAudioURLs.remove(audioURL)
@@ -1967,8 +2000,8 @@ class MenuBarController: NSObject {
         // pipeline populated `chunkStatuses` (only long, chunked recordings do), leaving it set
         // would carry stale progress into whatever the user does next. A no-op when already empty.
         self.chunkStatuses = []
-        if self.currentJobAudioURL == audioURL {
-          self.currentJobAudioURL = nil
+        if let job, self.currentJob === job {
+          self.currentJob = nil
         }
         self.processedAudioURLs.remove(audioURL)
       }
@@ -1979,7 +2012,13 @@ class MenuBarController: NSObject {
       // later job would silently undo whatever the user copied in the meantime.
       await MainActor.run { self.clipboardManager.discardRestorePoint() }
       if Self.isCancellation(error) {
-        if duringMeeting {
+        if isSuperseded(job) {
+          // The cancel path already reset the state machine and the popups. Touching `appState`
+          // now could finish a recording the user started since; only this job's file is left.
+          DebugLogger.log("CANCELLATION: \(spec.logLabel) task ended after its job was cancelled")
+          processedAudioURLs.remove(audioURL)
+          cleanupAudioFile(at: audioURL)
+        } else if duringMeeting {
           DebugLogger.log("CANCELLATION: \(spec.logLabel) task was cancelled (\(type(of: error)))")
           await MainActor.run {
             self.clearMeetingSegment()
@@ -1999,7 +2038,7 @@ class MenuBarController: NSObject {
       }
 
       let isStale: Bool = await MainActor.run {
-        if !duringMeeting, self.currentJobAudioURL != audioURL {
+        if self.isSuperseded(job) {
           DebugLogger.log(
             "CANCELLATION: Ignoring \(spec.logLabel.lowercased()) error for stale audio URL \(audioURL.lastPathComponent)")
           self.processedAudioURLs.remove(audioURL)
@@ -2023,8 +2062,8 @@ class MenuBarController: NSObject {
         await handleProcessingError(error: error, audioURL: audioURL, mode: spec.mode)
         await MainActor.run {
           self.chunkStatuses = []
-          if self.currentJobAudioURL == audioURL {
-            self.currentJobAudioURL = nil
+          if let job, self.currentJob === job {
+            self.currentJob = nil
           }
           self.processedAudioURLs.remove(audioURL)
         }
@@ -2032,7 +2071,10 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func performTranscription(audioURL: URL, duringMeeting: Bool = false) async {
+  /// `job` is nil for a live-meeting segment.
+  @MainActor
+  private func performTranscription(audioURL: URL, job: VoiceJob?) async {
+    let duringMeeting = job == nil
     // Capture the session but leave the property set: cancelInFlightTranscription must
     // still be able to cancel it while we await the chunk transcripts below. Cleared on
     // exit (identity-checked so a newer recording's session is never clobbered).
@@ -2100,7 +2142,7 @@ class MenuBarController: NSObject {
     await runAudioJob(
       spec,
       audioURL: audioURL,
-      duringMeeting: duringMeeting,
+      job: job,
       produce: {
         let stopTime = CFAbsoluteTimeGetCurrent()
         if let streamed = try await streamingSession?.finalTranscript() {
@@ -2136,9 +2178,11 @@ class MenuBarController: NSObject {
     }
   }
 
+  /// `job` is nil for a live-meeting segment.
+  @MainActor
   private func performPrompting(
     audioURL: URL,
-    duringMeeting: Bool = false,
+    job: VoiceJob?,
     instruction: String? = nil
   ) async {
     let spec = AudioJobSpec(
@@ -2159,7 +2203,7 @@ class MenuBarController: NSObject {
     await runAudioJob(
       spec,
       audioURL: audioURL,
-      duringMeeting: duringMeeting,
+      job: job,
       produce: {
         try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction)
@@ -2169,49 +2213,54 @@ class MenuBarController: NSObject {
   /// Voice Feedback pipeline: transcribe the spoken instruction, ask the improvement model to
   /// turn it into a proposed change to one `system-prompts.md` section, present that in the
   /// Smart Improvement review modal, and apply it on Accept.
-  private func performVoiceFeedback(audioURL: URL) async {
+  @MainActor
+  private func performVoiceFeedback(audioURL: URL, job: VoiceJob) async {
+    // Every `appState` write below is guarded: after a cancel the state machine belongs to whatever
+    // the user does next, and a stale `finish()` / `showSuccess` would clobber it.
+    func finishIfCurrent() {
+      guard !isSuperseded(job) else { return }
+      currentJob = nil
+      appState = appState.finish()
+    }
     do {
       let instruction = try await speechService.transcribe(audioURL: audioURL)
+      try Task.checkCancellation()
       let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
       DebugLogger.log("VOICE-FEEDBACK: Heard instruction: \(trimmed)")
 
       guard !trimmed.isEmpty else {
         cleanupAudioFile(at: audioURL)
-        await MainActor.run {
-          PopupNotificationWindow.showInfo("No speech detected.", title: "Voice Feedback")
-          self.appState = self.appState.finish()
-          self.processedAudioURLs.remove(audioURL)
-        }
+        processedAudioURLs.remove(audioURL)
+        PopupNotificationWindow.showInfo("No speech detected.", title: "Voice Feedback")
+        finishIfCurrent()
         return
       }
 
-      let selection = await MainActor.run { () -> String? in
-        let s = self.voiceFeedbackSelection
-        self.voiceFeedbackSelection = nil  // one run, one selection
-        return s
-      }
+      let selection = voiceFeedbackSelection
+      voiceFeedbackSelection = nil  // one run, one selection
       let proposal = try await voiceFeedbackService.proposeChange(
         instruction: trimmed, selectedText: selection)
+      try Task.checkCancellation()
 
       // The instruction text is captured; the audio is no longer needed.
       cleanupAudioFile(at: audioURL)
-      await MainActor.run { self.processedAudioURLs.remove(audioURL) }
+      processedAudioURLs.remove(audioURL)
 
       guard proposal.shouldChange else {
         DebugLogger.log("VOICE-FEEDBACK: Model returned no_change")
-        await MainActor.run {
-          PopupNotificationWindow.showInfo(
-            "No context change suggested from that feedback.", title: "Voice Feedback")
-          self.appState = self.appState.finish()
-        }
+        PopupNotificationWindow.showInfo(
+          "No context change suggested from that feedback.", title: "Voice Feedback")
+        finishIfCurrent()
         return
       }
 
       let section = proposal.section
       let current = SystemPromptsStore.shared.loadSection(section) ?? ""
 
-      // Reviewing is user time, not processing — drop the pill before the modal opens.
-      await MainActor.run { self.appState = self.appState.finish() }
+      // Reviewing is user time, not processing — drop the pill before the modal opens. The job
+      // ends here: from now on the user is free to record, so nothing after the panel may assume
+      // the state machine is still ours.
+      finishIfCurrent()
 
       let edited = await SmartImprovementReviewPanel.present(
         focusDisplayName: Self.voiceFeedbackFocusName(for: section),
@@ -2219,32 +2268,41 @@ class MenuBarController: NSObject {
         suggestedText: proposal.suggestion,
         rationale: proposal.rationale.isEmpty ? nil : proposal.rationale)
 
-      await MainActor.run {
-        guard let edited = edited,
-          !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        else {
-          DebugLogger.log("VOICE-FEEDBACK: Review cancelled — no change applied")
-          return
-        }
-        SystemPromptsStore.shared.updateSection(section, content: edited)
-        ContextLogger.shared.appendSystemPromptsHistory(
-          section: section, previousLength: current.count, newLength: edited.count,
-          content: edited, model: nil, source: "voice-feedback")
-        DebugLogger.log("VOICE-FEEDBACK-CHANGE: Applied change to section \(section.rawValue)")
-        self.appState = self.appState.showSuccess("Context updated")
+      guard let edited = edited,
+        !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else {
+        DebugLogger.log("VOICE-FEEDBACK: Review cancelled — no change applied")
+        return
+      }
+      // The user accepted in the panel, so the change applies even if something else is running.
+      SystemPromptsStore.shared.updateSection(section, content: edited)
+      ContextLogger.shared.appendSystemPromptsHistory(
+        section: section, previousLength: current.count, newLength: edited.count,
+        content: edited, model: nil, source: "voice-feedback")
+      DebugLogger.log("VOICE-FEEDBACK-CHANGE: Applied change to section \(section.rawValue)")
+      // Only the success pill waits for a free state machine: over a running recording it would
+      // replace the recording state.
+      if case .idle = appState {
+        appState = appState.showSuccess("Context updated")
       }
     } catch {
+      if isSuperseded(job) {
+        DebugLogger.log("CANCELLATION: Voice feedback ended after its job was cancelled (\(type(of: error)))")
+        processedAudioURLs.remove(audioURL)
+        cleanupAudioFile(at: audioURL)
+        return
+      }
       if Self.isCancellation(error) {
+        currentJob = nil
         await cancelAudioJob(logLabel: "Voice feedback", error: error, audioURL: audioURL)
         return
       }
+      currentJob = nil
       await handleProcessingError(error: error, audioURL: audioURL, mode: .voiceFeedback)
-      await MainActor.run {
-        // A Voice Feedback instruction long enough to be chunked leaves progress behind when the
-        // transcription fails before `mergingStarted` clears it; same tail as the other pipelines.
-        self.chunkStatuses = []
-        self.processedAudioURLs.remove(audioURL)
-      }
+      // A Voice Feedback instruction long enough to be chunked leaves progress behind when the
+      // transcription fails before `mergingStarted` clears it; same tail as the other pipelines.
+      chunkStatuses = []
+      processedAudioURLs.remove(audioURL)
     }
   }
 
@@ -2374,8 +2432,8 @@ class MenuBarController: NSObject {
       chunkStatuses = []
     }
     if let url = cleanupAudioURL {
-      if currentJobAudioURL == url {
-        currentJobAudioURL = nil
+      if currentJob?.audioURL == url {
+        currentJob = nil
       }
       cleanupAudioFile(at: url)
       processedAudioURLs.remove(url)
@@ -2399,6 +2457,12 @@ class MenuBarController: NSObject {
       }
     }
     guard let url = url, FileManager.default.fileExists(atPath: url.path) else { return }
+    // The retained cancelled recording outlives its job on purpose (see `retainCancelledRecording`);
+    // the cancelled job's own cleanup tail must not delete it.
+    if url == cancelledRecordingURL {
+      DebugLogger.logDebug("Keeping retained cancelled recording: \(url.lastPathComponent)")
+      return
+    }
     do {
       try FileManager.default.removeItem(at: url)
       DebugLogger.logDebug("Cleaned up audio file: \(url.lastPathComponent)")
@@ -2867,12 +2931,12 @@ extension MenuBarController: AudioRecorderDelegate {
         DebugLogger.log("MEETING-SEGMENT: Recording finished for segment \(segment), dispatching pipeline")
         self.processedAudioURLs.insert(audioURL)
         self.markMeetingSegmentProcessing()
-        Task {
+        Task { @MainActor in
           switch segment {
           case .dictation:
-            await self.performTranscription(audioURL: audioURL, duringMeeting: true)
+            await self.performTranscription(audioURL: audioURL, job: nil)
           case .prompt:
-            await self.performPrompting(audioURL: audioURL, duringMeeting: true)
+            await self.performPrompting(audioURL: audioURL, job: nil)
           }
         }
         return
@@ -2986,32 +3050,29 @@ extension MenuBarController: AudioRecorderDelegate {
         DebugLogger.log("AUDIO: Quick action — skipping silence precheck for \(audioURL.lastPathComponent)")
       }
 
-      // Both pipelines that can be cancelled mid-processing track their audio URL, so a result
-      // arriving after cancellation can be recognised as stale. Voice Feedback is excluded: it has
-      // no clipboard/paste step, so a late result can't paste into the user's document.
-      if recordingMode == .transcription || recordingMode == .prompt {
-        self.currentJobAudioURL = audioURL
-      }
-
       if !self.appState.isProcessing {
         self.appState = self.appState.stopRecording()
       }
 
-      Task {
-        switch recordingMode {
-        case .transcription:
-          // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
-          // actually happening (downloading N%, preparing, transcribing) from inside the
-          // transcription path, instead of one static "can take several minutes" line.
-          await self.performTranscription(audioURL: audioURL)
-        case .prompt:
-          await self.performPrompting(audioURL: audioURL, instruction: quickActionInstruction)
-        case .voiceFeedback:
-          await self.performVoiceFeedback(audioURL: audioURL)
-        case .liveMeeting:
-          DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
-          self.cleanupAudioFile(at: audioURL)
+      switch recordingMode {
+      case .transcription:
+        // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
+        // actually happening (downloading N%, preparing, transcribing) from inside the
+        // transcription path, instead of one static "can take several minutes" line.
+        self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
+          await self.performTranscription(audioURL: audioURL, job: job)
         }
+      case .prompt:
+        self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
+          await self.performPrompting(audioURL: audioURL, job: job, instruction: quickActionInstruction)
+        }
+      case .voiceFeedback:
+        self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
+          await self.performVoiceFeedback(audioURL: audioURL, job: job)
+        }
+      case .liveMeeting:
+        DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
+        self.cleanupAudioFile(at: audioURL)
       }
     }
   }
