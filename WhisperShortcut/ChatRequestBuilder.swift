@@ -16,9 +16,10 @@ enum ChatRequestBuilder {
   ) -> [[String: Any]] {
     // Queued sends can target a session that is no longer the visible one,
     // so the history must come from the target session — not `messages`.
-    let history = sessionId == currentSessionId
+    // Local command notices are UI-only; the model never said them.
+    let history = (sessionId == currentSessionId
       ? messages
-      : (store.session(by: sessionId)?.messages ?? [])
+      : (store.session(by: sessionId)?.messages ?? [])).filter { !$0.isLocalNotice }
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
     let maxMessages = AppConstants.chatFullHistoryMaxMessages

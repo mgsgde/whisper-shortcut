@@ -64,10 +64,14 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   var groundingSupports: [GroundingSupport]
   /// Image/file parts attached to this user message. Encoded as array; legacy single image decoded from attachedImageData/attachedFileMimeType/attachedFilename.
   var attachedImageParts: [AttachedImagePart]
+  /// App-side reply to a local slash command ("Model set to …"). Shown as a muted system line and
+  /// never sent to the model as history, so the model doesn't read it as something it said itself.
+  var isLocalNotice: Bool
 
   enum CodingKeys: String, CodingKey {
     case id, role, content, timestamp, sources, groundingSupports
     case attachedImageParts
+    case isLocalNotice
     case attachedImageData, attachedFileMimeType, attachedFilename // legacy, decode only
   }
 
@@ -78,7 +82,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     timestamp: Date = Date(),
     sources: [GroundingSource] = [],
     groundingSupports: [GroundingSupport] = [],
-    attachedImageParts: [AttachedImagePart] = []
+    attachedImageParts: [AttachedImagePart] = [],
+    isLocalNotice: Bool = false
   ) {
     self.id = id
     self.role = role
@@ -87,6 +92,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.sources = sources
     self.groundingSupports = groundingSupports
     self.attachedImageParts = attachedImageParts
+    self.isLocalNotice = isLocalNotice
   }
 
   init(from decoder: Decoder) throws {
@@ -106,6 +112,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     } else {
       attachedImageParts = []
     }
+    isLocalNotice = try c.decodeIfPresent(Bool.self, forKey: .isLocalNotice) ?? false
   }
 
   func encode(to encoder: Encoder) throws {
@@ -117,6 +124,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     try c.encode(sources, forKey: .sources)
     try c.encode(groundingSupports, forKey: .groundingSupports)
     try c.encode(attachedImageParts, forKey: .attachedImageParts)
+    if isLocalNotice { try c.encode(true, forKey: .isLocalNotice) }
   }
 }
 

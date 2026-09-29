@@ -501,6 +501,41 @@ class ChatViewModel: ObservableObject {
   /// attachments are dispatched as a fresh send. Only offered on the last user message,
   /// so nothing the user still cares about gets truncated.
   func retryMessage(id: UUID) {
+    resend(id: id, replacingTypedText: nil)
+  }
+
+  /// Edit-and-resend: swaps the typed part of the last user message for `newText` (pasted blocks
+  /// and attachments stay as they were), then truncates and re-sends like `retryMessage`.
+  func editAndResend(id: UUID, newText: String) {
+    let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    resend(id: id, replacingTypedText: trimmed)
+  }
+
+  /// Whether the typed part of a user message can be swapped out safely: plain legacy content, or
+  /// exactly one `<typed_by_user>` block. Several typed blocks interleaved with pasted content
+  /// can't be mapped back onto one text field, so those messages don't offer Edit.
+  static func editableTypedText(of content: String) -> String? {
+    let open = "<typed_by_user>"
+    let close = "</typed_by_user>"
+    let opens = content.components(separatedBy: open).count - 1
+    if opens == 0 {
+      return content.contains("<pasted_") || content.contains("<quoted_from_meeting>") ? nil : content
+    }
+    guard opens == 1, let r1 = content.range(of: open), let r2 = content.range(of: close),
+          r1.upperBound <= r2.lowerBound else { return nil }
+    return String(content[r1.upperBound..<r2.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  static func replacingTypedText(in content: String, with newText: String) -> String? {
+    guard editableTypedText(of: content) != nil else { return nil }
+    let open = "<typed_by_user>"
+    let close = "</typed_by_user>"
+    guard let r1 = content.range(of: open), let r2 = content.range(of: close) else { return newText }
+    return content.replacingCharacters(in: r1.upperBound..<r2.lowerBound, with: "\n\(newText)\n")
+  }
+
+  private func resend(id: UUID, replacingTypedText newText: String?) {
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
@@ -513,6 +548,11 @@ class ChatViewModel: ObservableObject {
     guard let index = session.messages.firstIndex(where: { $0.id == id }),
           session.messages[index].role == .user else { return }
     let original = session.messages[index]
+    var content = original.content
+    if let newText {
+      guard let edited = Self.replacingTypedText(in: original.content, with: newText) else { return }
+      content = edited
+    }
     var target = session
     target.messages.removeSubrange(index...)
     target.lastUpdated = Date()
@@ -524,12 +564,12 @@ class ChatViewModel: ObservableObject {
     errorMessage = nil
     lastSendError = nil
     DebugLogger.log(
-      "CHAT: Retry message (contentLen=\(original.content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
+      "CHAT: \(newText == nil ? "Retry" : "Edit") message (contentLen=\(content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
       .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
-    performSend(content: original.content, attachedParts: original.attachedImageParts)
+    performSend(content: content, attachedParts: original.attachedImageParts)
   }
 
   func captureScreenshot() async {
@@ -1167,8 +1207,8 @@ class ChatViewModel: ObservableObject {
           placeholderId: placeholderId, sessionId: sessionId,
           partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed))
         let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
+        // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
-        if sessionId == session.id { errorMessage = friendly }
         DebugLogger.logError("CHAT: \(error.localizedDescription)")
       }
     }
@@ -1816,7 +1856,7 @@ class ChatViewModel: ObservableObject {
     // a chat may open with a local command reply (e.g. "Model set to Grok 4.7." from `/grok`).
     guard let target = store.session(by: sessionId),
           let userIdx = target.messages.firstIndex(where: { $0.role == .user }),
-          let replyIdx = target.messages[(userIdx + 1)...].firstIndex(where: { $0.role == .model })
+          let replyIdx = target.messages[(userIdx + 1)...].firstIndex(where: { $0.role == .model && !$0.isLocalNotice })
     else { return }
     let userText = String(target.messages[userIdx].content.prefix(400))
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
@@ -1927,10 +1967,11 @@ class ChatViewModel: ObservableObject {
 
   // MARK: - Local model messages (slash commands)
 
-  /// Appends a model message directly to the chat (used for local command responses).
+  /// Appends a local command response. Rendered as a muted system line, not an assistant turn,
+  /// and filtered out of the model's history (`ChatRequestBuilder`).
   @MainActor
   private func appendModelMessage(_ content: String) {
-    let msg = ChatMessage(role: .model, content: content)
+    let msg = ChatMessage(role: .model, content: content, isLocalNotice: true)
     messages.append(msg)
     session.messages = messages
     store.save(session)
@@ -3215,6 +3256,11 @@ struct ChatView: View {
 
   private func messageList(scrollActions: ChatScrollActions) -> some View {
     let lastUserMessageId = viewModel.messages.last(where: { $0.role == .user })?.id
+    let lastTurnMessage = viewModel.messages.last(where: { !$0.isLocalNotice })
+    // Regenerate sits on the reply (like Claude); Retry stays on the user bubble only while that
+    // turn has no reply yet (e.g. a stop before the first token). Failed sends retry via FailedTurnRow.
+    let lastReplyId = lastTurnMessage?.role == .model ? lastTurnMessage?.id : nil
+    let userRetryId = lastTurnMessage?.role == .user ? lastTurnMessage?.id : nil
     // The actively streaming bubble is rendered OUTSIDE the LazyVStack (as a plain sibling
     // below it) so its per-flush height growth cannot trigger a lazy placement pass or a
     // scroll-anchor re-resolution over the whole history. Those two together were the freeze:
@@ -3252,8 +3298,12 @@ struct ChatView: View {
                     // below, outside this lazy list, so per-token growth can't relayout it.
                     streamingBuffer: viewModel.streamingBuffers[message.id],
                     onTapAttachedImage: { previewImageData = $0 },
-                    onRetry: message.id == lastUserMessageId
-                      ? { viewModel.retryMessage(id: message.id) } : nil)
+                    onRetry: message.id == userRetryId || message.id == lastReplyId
+                      ? { if let id = lastUserMessageId { viewModel.retryMessage(id: id) } } : nil,
+                    onEdit: message.id == lastUserMessageId && !viewModel.isSending
+                      && ChatViewModel.editableTypedText(of: message.content) != nil
+                      ? { viewModel.editAndResend(id: message.id, newText: $0) } : nil,
+                    isLatestTurn: message.id == lastUserMessageId || message.id == lastReplyId)
                     .id(message.id)
                 }
               }
@@ -5017,24 +5067,49 @@ private struct FailedTurnRow: View {
   let onRetry: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(message)
-        .font(.system(size: 14))
-        .foregroundColor(ChatTheme.secondaryText)
-        .fixedSize(horizontal: false, vertical: true)
-      RetryButtonView(action: onRetry)
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      // Only the icon carries color; the card itself stays in the muted palette.
+      Image(systemName: "exclamationmark.circle")
+        .font(.system(size: 13))
+        .foregroundColor(Color.red.opacity(0.8))
+      VStack(alignment: .leading, spacing: 6) {
+        Text(message)
+          .font(.system(size: 14))
+          .foregroundColor(ChatTheme.secondaryText)
+          .fixedSize(horizontal: false, vertical: true)
+        RetryButtonView(action: onRetry)
+      }
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 12)
-        .fill(Color.red.opacity(0.12))
-    )
     .overlay(
       RoundedRectangle(cornerRadius: 12)
-        .strokeBorder(Color.red.opacity(0.35), lineWidth: 1)
+        .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
     )
+  }
+}
+
+// MARK: - Local command notice
+
+/// App-side reply to a slash command ("Model set to …"): a small muted system line, visibly not
+/// an assistant turn. Inline markdown (bold, code) only.
+private struct LocalNoticeRow: View {
+  let content: String
+
+  var body: some View {
+    let attributed = (try? AttributedString(
+      markdown: content,
+      options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content)
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Image(systemName: "info.circle")
+        .font(.system(size: 11))
+      Text(attributed)
+        .font(.system(size: 13))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .foregroundColor(ChatTheme.secondaryText)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
 
@@ -5173,26 +5248,82 @@ private struct MessageBubbleView: View {
   /// don't force a `LazyVStack` diff. See `StreamingBuffer` doc.
   var streamingBuffer: StreamingBuffer? = nil
   var onTapAttachedImage: ((Data) -> Void)? = nil
-  /// Non-nil only on the last user message: re-sends it and regenerates the response.
+  /// Re-sends the last user message and regenerates the response. Set on the last reply
+  /// (Regenerate) or, while a turn has no reply yet, on that user message (Retry).
   var onRetry: (() -> Void)? = nil
+  /// Non-nil only on the last user message when its typed text can be edited and re-sent.
+  var onEdit: ((String) -> Void)? = nil
+  /// The newest user message and reply keep their actions visible; older turns show them on hover.
+  var isLatestTurn: Bool = false
+
+  @State private var isHovered = false
+  @State private var isEditing = false
+  @State private var draft = ""
 
   var isUser: Bool { message.role == .user }
 
   var body: some View {
-    VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
-      bubbleContent
-      if !message.sources.isEmpty {
-        sourcesView
+    if message.isLocalNotice {
+      LocalNoticeRow(content: message.content)
+    } else {
+      VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
+        if isEditing, let onEdit {
+          editBox(onEdit: onEdit)
+        } else {
+          bubbleContent
+          if !message.sources.isEmpty {
+            sourcesView
+          }
+          // Opacity, not removal: toggling the row's presence on hover would shift the transcript.
+          Group {
+            if isUser {
+              userCopyButtonRow
+            } else {
+              assistantCopyButtonRow
+            }
+          }
+          .opacity(isLatestTurn || isHovered ? 1 : 0)
+        }
       }
-      if isUser {
-        userCopyButtonRow
-      } else {
-        assistantCopyButtonRow
-      }
+      // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
+      .frame(maxWidth: isUser ? 520 : .infinity, alignment: isUser ? .trailing : .leading)
+      .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+      .onHover { isHovered = $0 }
     }
-    // Inner frame constrains bubble width; outer fills the row so alignment spans full width.
-    .frame(maxWidth: isUser ? 520 : .infinity, alignment: isUser ? .trailing : .leading)
-    .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+  }
+
+  /// Inline editor that replaces the user bubble while editing. ⌘↩ sends, Esc cancels.
+  private func editBox(onEdit: @escaping (String) -> Void) -> some View {
+    let canSend = !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    return VStack(alignment: .trailing, spacing: 8) {
+      TextEditor(text: $draft)
+        .font(Font(ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize, weight: ChatTheme.bodyRegularNSWeight)))
+        .foregroundColor(ChatTheme.primaryText)
+        .scrollContentBackground(.hidden)
+        .frame(minHeight: 60, maxHeight: 240)
+      HStack(spacing: 8) {
+        Button("Cancel") { isEditing = false }
+          .keyboardShortcut(.cancelAction)
+        Button("Send") {
+          isEditing = false
+          onEdit(draft)
+        }
+        .keyboardShortcut(.return, modifiers: .command)
+        .disabled(!canSend)
+      }
+      .controlSize(.small)
+    }
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+    .frame(maxWidth: .infinity)
+    .background(
+      RoundedRectangle(cornerRadius: 14)
+        .fill(ChatTheme.userBubbleBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14)
+        .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity * 2), lineWidth: 1)
+    )
   }
 
   /// Whether an attachment can be shown in the full-size preview sheet (`NSImage(data:)`-decodable).
@@ -5296,18 +5427,29 @@ private struct MessageBubbleView: View {
     }
   }
 
-  /// Retry (last user message only) and Copy. Copy joins pasted/selection blocks plus
-  /// the typed text, in display order; it is hidden for attachment-only messages.
+  /// Retry (unanswered last turn only), Edit (last user message) and Copy. Copy joins
+  /// pasted/selection blocks plus the typed text, in display order; it is hidden for
+  /// attachment-only messages.
   private var userCopyButtonRow: some View {
     let parsed = parseUserMessagePastedXML(message.content)
     var parts = parsed.sections.map { $0.body.trimmingCharacters(in: .whitespacesAndNewlines) }
     parts.append(parsed.userText.trimmingCharacters(in: .whitespacesAndNewlines))
     let text = parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
     return Group {
-      if !text.isEmpty || onRetry != nil {
+      if !text.isEmpty || onRetry != nil || onEdit != nil {
         HStack(spacing: 2) {
           if let onRetry {
             RetryButtonView(action: onRetry)
+          }
+          if onEdit != nil {
+            MessageActionButton(
+              systemImage: "pencil",
+              help: "Edit this message and send it again",
+              accessibilityText: "Edit and resend this message"
+            ) {
+              draft = ChatViewModel.editableTypedText(of: message.content) ?? parsed.userText
+              isEditing = true
+            }
           }
           if !text.isEmpty {
             CopyReplyButtonView(text: { text })
@@ -5336,6 +5478,14 @@ private struct MessageBubbleView: View {
           CopyReplyButtonView(text: { GeminiAPIClient.stripImageMarkers(message.content) })
           if hasMarker {
             DownloadImageButtonView(image: { GeminiAPIClient.firstImageMarker(in: message.content) })
+          }
+          if let onRetry {
+            MessageActionButton(
+              systemImage: "arrow.clockwise",
+              help: "Regenerate this response",
+              accessibilityText: "Regenerate this response",
+              action: onRetry
+            )
           }
         }
         .padding(.top, 6)
