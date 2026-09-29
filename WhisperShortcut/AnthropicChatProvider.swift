@@ -25,6 +25,11 @@ final class AnthropicChatProvider: LLMChatProvider {
     "max_uses": 5,
   ]
 
+  /// The user's switch in Settings → Chat (`ClaudeWebSearchSection`). Unset means on.
+  static var isWebSearchEnabledInSettings: Bool {
+    UserDefaults.standard.object(forKey: UserDefaultsKeys.claudeWebSearchEnabled) as? Bool ?? true
+  }
+
   /// Set once an org's admin turned web search off in the Anthropic Console: the API then rejects
   /// every request that carries the tool with a 400. Remembered for the app run so each later chat
   /// goes straight out without it instead of paying a failed round trip first.
@@ -99,7 +104,8 @@ final class AnthropicChatProvider: LLMChatProvider {
             ] as [String: Any]
           }
           var includesSearch =
-            options.useGrounding && !options.disableBuiltInTools && !self.isWebSearchRejected
+            options.useGrounding && !options.disableBuiltInTools && Self.isWebSearchEnabledInSettings
+            && !self.isWebSearchRejected
           // Web search leads so the client tools' breakpoint below still covers the whole list.
           func toolDefinitions() -> [[String: Any]] {
             var defs = (includesSearch ? [Self.webSearchTool] : []) + clientTools
