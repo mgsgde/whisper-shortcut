@@ -105,6 +105,14 @@ class ChatViewModel: ObservableObject {
   /// observed on the buffer itself by the typing indicator only.
   private(set) var toolStepsBuffers: [UUID: ToolStepsBuffer] = [:]
   var currentToolSteps: ToolStepsBuffer? { toolStepsBuffers[session.id] }
+  /// Tool calls waiting on the inline approval card, per session. Published: the card appears and
+  /// disappears with it (once per approval, not per token).
+  @Published private(set) var pendingApprovals: [UUID: ToolApprovalRequest] = [:]
+  var currentPendingApproval: ToolApprovalRequest? { pendingApprovals[session.id] }
+  func needsApproval(_ sessionId: UUID) -> Bool { pendingApprovals[sessionId] != nil }
+  /// Tools the user allowed for the rest of a chat ("Allow for this chat"). In memory only:
+  /// a relaunch asks again.
+  private var chatWideApprovals: [UUID: Set<String>] = [:]
   @Published var errorMessage: String? = nil
   /// Last send failure for the visible session (also persisted on `ChatSession.lastSendError`
   /// so a background-tab failure is still visible after the user switches back).
@@ -1313,7 +1321,8 @@ class ChatViewModel: ObservableObject {
       stepIds.append(stepId)
       if needsApproval {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
-        let allowed = await confirmToolCall(name: call.name, summary: summary)
+        let allowed = await confirmToolCall(
+          name: call.name, summary: summary, sessionId: sessionId, requestId: stepId)
         if allowed { steps.setPhase(stepId, .running) }
         if !allowed {
           steps.finish(stepId, phase: .denied)
@@ -1364,16 +1373,49 @@ class ChatViewModel: ObservableObject {
     return (turns, imageMarkers, records)
   }
 
-  /// Per-turn confirmation for mutating tools. Nothing is remembered.
-  @MainActor
-  private func confirmToolCall(name: String, summary: String) async -> Bool {
-    let alert = NSAlert()
-    alert.messageText = "Allow \(name)?"
-    alert.informativeText = summary
-    alert.alertStyle = .informational
-    alert.addButton(withTitle: "Allow")
-    alert.addButton(withTitle: "Deny")
-    return alert.runModal() == .alertFirstButtonReturn
+  /// Asks the user on the inline approval card and suspends the turn until they answer. Stop
+  /// (task cancellation) and deleting the chat answer "deny", so the send task never leaks.
+  /// "Allow for this chat" answers later calls of the same tool without asking.
+  private func confirmToolCall(
+    name: String, summary: String, sessionId: UUID, requestId: UUID
+  ) async -> Bool {
+    if chatWideApprovals[sessionId]?.contains(name) == true {
+      DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) allowed for this chat")
+      return true
+    }
+    let decision = await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<ToolApprovalDecision, Never>) in
+        // Cancelled before the card went up: answer at once instead of showing it.
+        if Task.isCancelled {
+          continuation.resume(returning: .deny)
+          return
+        }
+        pendingApprovals[sessionId] = ToolApprovalRequest(
+          id: requestId,
+          toolName: name,
+          summary: summary,
+          offersAllowForChat: ChatToolRegistry.allowsChatWideApproval(name),
+          continuation: continuation)
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        self?.resolveApproval(sessionId: sessionId, requestId: requestId, decision: .deny)
+      }
+    }
+    DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) → \(decision)")
+    if decision == .allowForChat {
+      chatWideApprovals[sessionId, default: []].insert(name)
+    }
+    return decision != .deny
+  }
+
+  /// Answers the pending approval of `sessionId`. Idempotent: the entry is removed before
+  /// resuming, so a late cancel after a button press can't resume twice. `requestId` guards
+  /// against a stale answer reaching the next card of the same chat.
+  func resolveApproval(sessionId: UUID, requestId: UUID, decision: ToolApprovalDecision) {
+    guard let request = pendingApprovals[sessionId], request.id == requestId else { return }
+    pendingApprovals.removeValue(forKey: sessionId)
+    request.continuation.resume(returning: decision)
   }
 
   /// Registers this session's tool handlers with the registry. Each one needs state the registry
@@ -2266,6 +2308,22 @@ class ChatViewModel: ObservableObject {
   private func refreshRecentSessions() {
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
+    stopTurnsWaitingInHiddenChats()
+  }
+
+  /// A chat that was closed, archived or deleted while its turn waited on the approval card would
+  /// stay suspended with no card anyone can see (and block its queue). Every store mutation ends in
+  /// `refreshRecentSessions`, so this one check covers close, archive, bulk archive and delete:
+  /// such a turn is stopped as if the user had pressed Stop, which answers the card with deny.
+  private func stopTurnsWaitingInHiddenChats() {
+    guard !pendingApprovals.isEmpty else { return }
+    // Not `recentSessions`: that is capped at 20 tabs, and a chat past the cap is still open.
+    let visible = Set(allSessionsList.filter { !$0.archived }.map(\.id))
+    for sessionId in pendingApprovals.keys where !visible.contains(sessionId) {
+      DebugLogger.log("CHAT-TOOL-APPROVAL: chat \(sessionId) hidden while waiting — stopping its turn")
+      userCancelledSessions[sessionId] = 0
+      sendTasks[sessionId]?.cancel()
+    }
   }
 
   /// After a store mutation, switch to the store's current session when the one on screen
@@ -2842,6 +2900,10 @@ class ChatViewModel: ObservableObject {
       NotificationCenter.default.post(name: .chatStopLiveMeeting, object: nil)
       meetingSessionId = nil
     }
+    // Stop the deleted chat's turn outright: denying only the pending card would let the next
+    // gated call of the same turn wait on a card that can no longer be shown.
+    sendTasks[id]?.cancel()
+    chatWideApprovals.removeValue(forKey: id)
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
@@ -3217,7 +3279,12 @@ struct ChatView: View {
 
     return Button(action: { viewModel.switchToSession(id: session.id) }) {
       HStack(spacing: 5) {
-        if isProcessing {
+        if viewModel.needsApproval(session.id) {
+          Image(systemName: "hand.raised.fill")
+            .font(.system(size: 10))
+            .foregroundColor(Color.accentColor)
+            .help("Waiting for your approval")
+        } else if isProcessing {
           ProgressView().controlSize(.mini).frame(width: 12, height: 12)
         }
         Text(title)
@@ -3443,17 +3510,28 @@ struct ChatView: View {
       // re-layout every frame, which could wedge the main thread when a large
       // grounded reply was finalized (sources appended in one shot). See TypingIndicatorView.
       .overlay(alignment: .bottom) {
-        if viewModel.isSending {
-          // Constrain to the same centered 660px column + 24px gutter as the message
-          // list so the dots align with the conversation text instead of pinning to the
-          // pane's far-left edge in a wide window.
-          LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
-            .frame(maxWidth: 660, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 12)
-            .allowsHitTesting(false)
+        // Constrain to the same centered 660px column + 24px gutter as the message
+        // list so the dots align with the conversation text instead of pinning to the
+        // pane's far-left edge in a wide window.
+        VStack(alignment: .leading, spacing: 8) {
+          // The approval card floats with the indicator so it is visible wherever the user
+          // has scrolled; it is the only interactive part of this overlay.
+          if let approval = viewModel.currentPendingApproval {
+            ToolApprovalCardView(request: approval) { decision in
+              viewModel.resolveApproval(
+                sessionId: viewModel.currentSessionId, requestId: approval.id, decision: decision)
+            }
+            .id(approval.id)
+          }
+          if viewModel.isSending {
+            LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
+              .allowsHitTesting(false)
+          }
         }
+        .frame(maxWidth: 660, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
       }
       .onAppear {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
