@@ -34,6 +34,18 @@ When you touch one of the code areas listed above, run this short check before f
 
 5. **Apply the Pareto rule in both directions — prune AND keep.** See the section below. Adding without pruning rots the picker into a list of dead models; pruning by version number alone silently deletes the cheap end of the lineup, which is worse.
 
+## What the chat models are for: research, not coding (owner, 2026-09-29)
+
+> The chat models are used above all for research and questions, not for programming. So don't
+> recommend the most capable model — recommend the one with the best price-performance for
+> research and Q&A.
+
+Apply this on top of the Pareto rule: it decides **defaults and whether a top-tier model is added
+at all**. A flagship positioned for coding/agentic "hardest work" (e.g. gpt-6-astra at $10/$50)
+stays out of the lineup even though it is a frontier point, and the provider default (`/gpt`,
+`/claude`, …) is the model with the best research value — web search support, good synthesis,
+moderate price — not the top of the ladder. Name this reasoning in every lineup recommendation.
+
 ## The Pareto rule (the user's standing requirement)
 
 > Every model we offer must sit on the price/performance frontier. No model may be **dominated**: another model of the same provider being *better in every respect at the same or lower price*.
