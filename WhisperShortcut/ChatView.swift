@@ -946,7 +946,7 @@ class ChatViewModel: ObservableObject {
 
       let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
       appendMessage(userMsg, toSessionId: sessionId)
-      var currentContents = ChatRequestBuilder.buildContents(
+      let currentContents = ChatRequestBuilder.buildContents(
         sessionId: sessionId,
         currentSessionId: session.id,
         messages: messages,
@@ -958,24 +958,10 @@ class ChatViewModel: ObservableObject {
       let thinkingLevel = sendingSession?.thinkingLevel ?? .default
       let xHandles = sendingSession.map(effectiveXHandles(for:)) ?? XSearchHandles.defaultHandles
       let placeholderId = UUID()
-      // Reply accumulation is split in two so the per-token work below never re-scans marker
-      // bytes: `markerPrefix` holds finalized content including ⟦GEMINI_IMG:…⟧ markers
-      // (multi-MB base64), `streamed` only the model text since the last marker fold. The
-      // displayed/persisted reply is always `markerPrefix + streamed`.
-      var markerPrefix = ""
-      var streamed = ""
-      // Gemini 3.x can leak `start_thought`/`end_thought` into the visible answer, but only ever
-      // in its opening region (see `stripLeakedThoughtTokens`). Once the reply has grown past that
-      // zone we stop re-scanning the whole accumulated string on every token — that scan was O(N)
-      // per token (O(N²) over the reply) on the MainActor. Reset when `streamed` restarts after an
-      // image-marker fold, since fresh narration begins there.
-      var thoughtStripSettled = false
-      // Consecutive in-place-status ignores (same trailing sentence, not appended).
-      // Three of these must stop the stream even though `streamed` stayed at one copy.
-      var duplicateStatusStreak = 0
-      var loopDeltaIndex = 0
-      // Every tool call of this turn, persisted on the reply so later turns keep IDs and results.
-      var toolRecords: [ChatToolCallRecord] = []
+      // The agent loop itself (rounds, tools, guards) lives in `ChatAgentRunner`; this method is
+      // the chat window's adapter around it. Held outside `do` so a Stop or a provider error can
+      // still keep the partial reply and the tool records of calls that already ran.
+      var runner: ChatAgentRunner?
       persistLastSendError(nil, sessionId: sessionId)
       do {
         let placeholder = ChatMessage(id: placeholderId, role: .model, content: "")
@@ -994,187 +980,59 @@ class ChatViewModel: ObservableObject {
           NotificationCenter.default.post(name: .liveMeetingNotesRefreshRequested, object: nil)
         }
 
-        var finalSources: [GroundingSource] = []
-        var finalSupports: [GroundingSupport] = []
-        var truncatedFinish = false
         let tools = buildToolDeclarations(for: sendingSession)
+        let useGrounding = selectedModel.supportsGrounding
         // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
         // discovering the list and then one per task, because the model emits its edits one call at
         // a time even though they are independent. Hitting the cap mid-batch leaves the user's data
         // half-changed with no summary, which is far worse than a few extra round trips.
-        let maxToolRounds = 16
-        let useGrounding = selectedModel.supportsGrounding
-        var toolLoopExhausted = false
-        // Counts the tool calls executed this turn. Lets us tell an empty final turn that
-        // *followed* tool work (model searched, found nothing relevant, returned no summary) apart
-        // from a model that just said nothing — the two warrant different fallback copy — and lets
-        // the exhaustion copy say how much work actually ran.
-        var executedToolCalls = 0
-        // Remembers the read-only calls this turn already made, so a model that keeps re-issuing
-        // the same fruitless lookup is answered from the cache and told it is repeating itself,
-        // instead of burning another provider round trip per repeat (see ChatToolTurnMemo).
-        let toolMemo = ChatToolTurnMemo()
-
-        toolLoop: for round in 0..<(maxToolRounds + 1) {
-          // Final round: strip every tool so the model is forced to synthesize an answer from
-          // what it already gathered, instead of firing yet another tool call we'd discard. Without
-          // this, a model that keeps searching (e.g. re-querying Gmail with reworded terms) ends the
-          // loop on an unanswered batch of function calls and the user is shown nothing.
-          let isFinalRound = (round == maxToolRounds)
-          var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
-          // Narration the model emits in THIS round; echoed back in the model turn that carries
-          // the round's function calls so the re-sent history is faithful (see executeToolCalls).
-          var roundText = ""
-          // Grounding supports index this round's own stream; earlier rounds' text (and any image
-          // markers) already sit in front of it in the final reply.
-          let roundOffset = (markerPrefix + streamed).count
-          let stream = provider.sendChatStream(
-            model: model,
-            contents: currentContents,
-            systemInstruction: self.buildSystemInstruction(for: sendingSession),
-            tools: isFinalRound ? [] : tools,
-            options: ChatRequestOptions(
+        let turnRunner = ChatAgentRunner(
+          provider: provider,
+          model: model,
+          tools: tools,
+          maxToolRounds: 16,
+          steps: toolSteps,
+          systemInstruction: { self.buildSystemInstruction(for: sendingSession) },
+          options: { isFinalRound in
+            ChatRequestOptions(
               useGrounding: useGrounding,
               thinkingLevel: thinkingLevel,
               disableBuiltInTools: isFinalRound,
               // Stable per-session key → provider prompt-cache hits across turns
               // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
               cacheKey: sessionId.uuidString,
-              xHandles: xHandles))
-          for try await event in stream {
-            try Task.checkCancellation()
-            switch event {
-            case .activity(let activity):
-              switch activity {
-              case .searchingWeb:
-                if toolSteps.activeStep?.name != ChatToolRegistry.webSearchStepName {
-                  DebugLogger.log("CHAT-SEND: activity=\(activity) session=\(sessionId)")
-                  toolSteps.begin(name: ChatToolRegistry.webSearchStepName, args: [:])
-                }
-              }
-            case .textDelta(let delta):
-              if toolSteps.activeStep?.name == ChatToolRegistry.webSearchStepName {
-                toolSteps.finishActive(named: ChatToolRegistry.webSearchStepName)
-              }
-              roundText = ChatStreamLoopGuard.mergeDelta(streamed: roundText, delta: delta)
-              let merge = ChatStreamLoopGuard.merge(streamed: streamed, delta: delta)
-              streamed = merge.text
-              let trimmedDelta = delta.trimmingCharacters(in: .whitespacesAndNewlines)
-              if merge.kind == .ignored, !trimmedDelta.isEmpty {
-                duplicateStatusStreak += 1
-              } else if merge.kind != .ignored {
-                duplicateStatusStreak = 0
-              }
-              // Only strip while still in the marker zone. Once stripped, `streamed` never
-              // re-acquires a start-anchored marker (deltas append at the end), so re-scanning
-              // the whole string every subsequent token is pure waste.
-              if !thoughtStripSettled {
-                streamed = Self.stripLeakedThoughtTokens(streamed)
-                if streamed.utf8.count > 512 { thoughtStripSettled = true }
-              }
-              streamingBuffer.enqueueUpdate(markerPrefix + streamed)
-              loopDeltaIndex += 1
-              // Gemini can repeat the same status sentence for minutes. Stop only this
-              // stream so the good prefix is kept. Do NOT call `cancelSend()` — that
-              // also drops the session queue, which would discard the "1 queued" turn.
-              // Breaking `toolLoop` releases the AsyncThrowingStream iterator; Gemini's
-              // `onTermination` cancels the URLSession task the same way a consumer stop
-              // does, then we finalize the partial normally (queue still drains).
-              if ChatStreamLoopGuard.shouldStop(
-                streamed: streamed, ignoredStreak: duplicateStatusStreak, deltaIndex: loopDeltaIndex
-              ) {
-                DebugLogger.logWarning(
-                  "CHAT: stream loop detected — stopping this reply without dropping the queue (chars=\(streamed.count))")
-                streamed = ChatStreamLoopGuard.appendStopNotice(to: streamed)
-                streamingBuffer.setContentImmediate(markerPrefix + streamed)
-                break toolLoop
-              }
-            case .functionCall(let name, let args, let thoughtSignature):
-              toolSteps.finishActive(named: ChatToolRegistry.webSearchStepName)
-              pendingCalls.append((name, args, thoughtSignature))
-            case .finished(let sources, let supports, let finishReason):
-              // Each round cites on its own: a search before a tool call must keep its chips when
-              // the next round answers without searching. Append this round's sources (reusing
-              // ones already listed) and remap its supports onto the combined list.
-              let indexMap = sources.map { source -> Int in
-                if let existing = finalSources.firstIndex(where: { $0.uri == source.uri }) {
-                  return existing
-                }
-                finalSources.append(source)
-                return finalSources.count - 1
-              }
-              finalSupports += supports.map {
-                GroundingSupport(
-                  startIndex: $0.startIndex + roundOffset, endIndex: $0.endIndex + roundOffset,
-                  groundingChunkIndices: $0.groundingChunkIndices.compactMap {
-                    indexMap.indices.contains($0) ? indexMap[$0] : nil
-                  })
-              }
-              if Self.isTruncatedFinishReason(finishReason) { truncatedFinish = true }
+              xHandles: xHandles)
+          },
+          toolContext: { self.makeToolContext(sessionId: sessionId) },
+          approve: { name, summary, stepId in
+            await self.confirmToolCall(
+              name: name, summary: summary, sessionId: sessionId, requestId: stepId)
+          },
+          onDisplayText: { text, immediate in
+            if immediate {
+              streamingBuffer.setContentImmediate(text)
+            } else {
+              streamingBuffer.enqueueUpdate(text)
             }
-          }
-          if pendingCalls.isEmpty { break toolLoop }
-          // Tools were already disabled this round, yet the model still emitted only function
-          // calls and no usable text — nothing left to try, so surface the exhaustion.
-          if isFinalRound {
-            DebugLogger.logWarning(
-              "CHAT: tool loop exceeded \(maxToolRounds) rounds after \(executedToolCalls) call(s) — stopping (final round wanted \(pendingCalls.map(\.name).joined(separator: ", ")))")
-            toolLoopExhausted = true
-            break toolLoop
-          }
-          executedToolCalls += pendingCalls.count
-          let (turns, imageMarkers, records) = try await executeToolCalls(
-            pendingCalls, narration: Self.stripLeakedThoughtTokens(roundText), sessionId: sessionId,
-            memo: toolMemo, steps: toolSteps)
-          toolRecords.append(contentsOf: records)
-          // Generated images go straight into the streaming bubble: the image shows up the
-          // moment the tool finishes, and the model's follow-up narration streams below it.
-          // The marker becomes part of the persisted message content (rendered inline);
-          // buildContents strips it again before re-sending history.
-          if !imageMarkers.isEmpty {
-            let joined = imageMarkers.joined(separator: "\n\n")
-            // Trailing break: the model's follow-up narration streams directly after the
-            // marker block, and a glued `…⟧Text` paragraph wouldn't render as an image.
-            let current = markerPrefix + streamed
-            markerPrefix = (current.isEmpty ? joined : current + "\n\n" + joined) + "\n\n"
-            streamed = ""
-            thoughtStripSettled = false
-            duplicateStatusStreak = 0
-            loopDeltaIndex = 0
-            streamingBuffer.setContentImmediate(markerPrefix)
-          } else if let last = streamed.last, !last.isNewline {
-            // The next round's narration streams into the same bubble. Without a paragraph
-            // break it glues onto this round's last sentence ("…zu Grok 4.7.Noch kurz…").
-            streamed += "\n\n"
-          }
-          currentContents.append(contentsOf: turns)
-        }
-
-        // A cancelled turn must never reach the fallback copy below: cancelling the task makes
-        // the provider's `AsyncThrowingStream` *finish* rather than throw, so the loop above
-        // exits normally with an empty reply and the turn would be persisted as "(no response)".
-        // This check routes cancellation to the `CancellationError` handler instead.
-        try Task.checkCancellation()
+          })
+        runner = turnRunner
+        let turn = try await turnRunner.run(contents: currentContents)
+        let finalSources = turn.sources
+        let finalSupports = turn.supports
 
         // Make sure the user sees *something* if the model produced no text.
         // This happens e.g. when the tool loop exhausts mid-batch (lots of
         // function calls, no narration) — the assistant bubble would otherwise
         // be empty, hiding the failure.
-        // Final belt-and-suspenders strip: streaming now stops re-scanning past the marker zone
-        // (see `thoughtStripSettled`), so a marker leaking later would otherwise reach the saved
-        // message. One strip here restores the "user never sees them" guarantee at O(N)-once cost.
-        var reply = Self.stripLeakedThoughtTokens(markerPrefix + streamed)
-        // A round-boundary paragraph break (above) dangles when the final round emitted only
-        // function calls; a whitespace-only reply must also reach the fallback copy.
-        while let last = reply.last, last.isWhitespace { reply.removeLast() }
+        var reply = turn.text
         if reply.isEmpty {
-          if toolLoopExhausted {
+          if turn.toolLoopExhausted {
             // Say what actually happened: the model kept working and hit the round cap. The old
             // copy claimed nothing was found, which reads as a failure even though every one of
             // those calls ran — a create/delete batch had already changed the user's data.
-            let calls = executedToolCalls == 1 ? "1 tool call" : "\(executedToolCalls) tool calls"
+            let calls = turn.executedToolCalls == 1 ? "1 tool call" : "\(turn.executedToolCalls) tool calls"
             reply = "_I hit the tool-call round limit after \(calls) and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._"
-          } else if executedToolCalls > 0 {
+          } else if turn.executedToolCalls > 0 {
             // The model ran tools (e.g. gmail_search) but then ended its turn
             // with no summary — typically because the results were empty or
             // unrelated. A bare "(no response)" hides that; say what happened.
@@ -1184,7 +1042,7 @@ class ChatViewModel: ObservableObject {
             reply = "_(no response)_"
           }
         }
-        if truncatedFinish {
+        if turn.truncated {
           let note = "_Reply was truncated._"
           if reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             reply = note
@@ -1202,7 +1060,7 @@ class ChatViewModel: ObservableObject {
         self.detachStreamingBuffer(for: placeholderId)
         self.updateStreamingMessage(
           id: placeholderId, sessionId: sessionId,
-          content: reply, sources: finalSources, supports: finalSupports, toolCalls: toolRecords)
+          content: reply, sources: finalSources, supports: finalSupports, toolCalls: turn.records)
         DebugLogger.log("CHAT-SEND: final UI update committed session=\(sessionId)")
         let result = (text: reply, sources: finalSources, supports: finalSupports)
         // Strip generated-image markers (multi-MB base64) before the interaction log.
@@ -1225,7 +1083,7 @@ class ChatViewModel: ObservableObject {
         ReviewPrompter.shared.recordSuccessfulOperation()
         self.persistLastSendError(nil, sessionId: sessionId)
       } catch is CancellationError {
-        let partialChars = markerPrefix.count + streamed.count
+        let partialChars = runner?.partialText.count ?? 0
         let droppedByUser = self.userCancelledSessions.removeValue(forKey: sessionId)
         DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars))")
         ContextLogger.shared.logSignal(
@@ -1238,11 +1096,11 @@ class ChatViewModel: ObservableObject {
           ])
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), toolCalls: toolRecords)
+          partial: runner?.partialText ?? "", toolCalls: runner?.records ?? [])
       } catch {
         self.commitPartialOrRemove(
           placeholderId: placeholderId, sessionId: sessionId,
-          partial: Self.stripLeakedThoughtTokens(markerPrefix + streamed), toolCalls: toolRecords)
+          partial: runner?.partialText ?? "", toolCalls: runner?.records ?? [])
         let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
         // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
@@ -1285,92 +1143,6 @@ class ChatViewModel: ObservableObject {
             let params = decl["parameters"] as? [String: Any] else { return nil }
       return LLMToolDeclaration(name: name, description: desc, parameters: params)
     }
-  }
-
-  private func executeToolCalls(
-    _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
-    narration: String,
-    sessionId: UUID,
-    memo: ChatToolTurnMemo,
-    steps: ToolStepsBuffer
-  ) async throws -> (turns: [[String: Any]], imageMarkers: [String], records: [ChatToolCallRecord]) {
-    var callParts: [[String: Any]] = calls.map { call in
-      var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
-      if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
-      return part
-    }
-    // Echo the narration the model emitted alongside the calls: the function-calling contract
-    // (Gemini docs; the Responses/Chat Completions converters mirror it) expects the model turn
-    // re-sent as received. Without it the model can't see what it already told the user
-    // mid-loop and may repeat itself across rounds.
-    if !narration.isEmpty {
-      callParts.insert(["text": narration], at: 0)
-    }
-    var responseParts: [[String: Any]] = []
-    // ⟦GEMINI_IMG:…⟧ markers produced by generate_image. They go straight into the chat
-    // bubble (via performSend), NOT back through the model — the functionResponse only
-    // carries a short status, so megabytes of base64 never enter the model's context.
-    var imageMarkers: [String] = []
-    let context = makeToolContext(sessionId: sessionId)
-    var stepIds: [UUID] = []
-    for call in calls {
-      try Task.checkCancellation()
-      let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
-      let stepId = steps.begin(
-        name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)
-      stepIds.append(stepId)
-      if needsApproval {
-        let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
-        let allowed = await confirmToolCall(
-          name: call.name, summary: summary, sessionId: sessionId, requestId: stepId)
-        if allowed { steps.setPhase(stepId, .running) }
-        if !allowed {
-          steps.finish(stepId, phase: .denied)
-          DebugLogger.log("CHAT-TOOL-DENIED: \(call.name)")
-          responseParts.append([
-            "functionResponse": [
-              "name": call.name,
-              "response": ["error": "The user denied this \(call.name) call."],
-            ]
-          ])
-          continue
-        }
-      }
-      DebugLogger.log("CHAT-TOOL-CALL: \(call.name) args=\(Self.compactDescription(call.args))")
-      let response: [String: Any]
-      if let cached = memo.cachedResponse(name: call.name, args: call.args) {
-        // Identical read-only call, same turn: the answer cannot have changed, and re-running it
-        // would hide from the model that it is going in circles.
-        DebugLogger.log("CHAT-TOOL-REPEAT: \(call.name) served from this turn's cache")
-        response = cached
-      } else {
-        let outcome = await ChatToolRegistry.execute(
-          name: call.name, args: call.args, context: context)
-        imageMarkers.append(contentsOf: outcome.imageMarkers)
-        response = memo.record(name: call.name, args: call.args, response: outcome.response)
-      }
-      if let error = ChatToolRegistry.resultError(response) {
-        steps.finish(stepId, phase: .failed, summary: error)
-      } else {
-        steps.finish(
-          stepId, phase: .done, summary: ChatToolRegistry.resultSummary(name: call.name, response: response))
-      }
-      DebugLogger.log("CHAT-TOOL-RESULT: \(call.name) -> \(Self.compactDescription(response))")
-      responseParts.append(["functionResponse": ["name": call.name, "response": response]])
-    }
-    DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
-    let turns: [[String: Any]] = [
-      ["role": "model", "parts": callParts],
-      ["role": "user", "parts": responseParts],
-    ]
-    // One response part per call, in call order (denied calls included), so they zip 1:1.
-    let records = ChatToolHistory.records(
-      calls: calls.map { ($0.name, $0.args) },
-      responses: responseParts.map {
-        (($0["functionResponse"] as? [String: Any])?["response"] as? [String: Any]) ?? [:]
-      },
-      steps: stepIds.map { steps.step($0) })
-    return (turns, imageMarkers, records)
   }
 
   /// Asks the user on the inline approval card and suspends the turn until they answer. Stop
@@ -1514,20 +1286,6 @@ class ChatViewModel: ObservableObject {
       onUnterminatedMarker: { text += $0 }
     )
     return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
-  }
-
-  /// Compact, length-capped JSON string for logging tool-call args/results
-  /// without flooding the log. Lets us see exactly what the model passed and
-  /// got back (e.g. the precise event_id), which plain name-only logging hid.
-  private static func compactDescription(_ value: [String: Any], maxLength: Int = 600) -> String {
-    let raw: String
-    if let data = try? JSONSerialization.data(withJSONObject: value),
-       let json = String(data: data, encoding: .utf8) {
-      raw = json
-    } else {
-      raw = String(describing: value)
-    }
-    return raw.count > maxLength ? String(raw.prefix(maxLength)) + "…(\(raw.count) chars)" : raw
   }
 
   /// Auto-processes the next queued message once the current one finishes.

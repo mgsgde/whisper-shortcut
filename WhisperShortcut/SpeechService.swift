@@ -1114,14 +1114,38 @@ class SpeechService {
       }
     }
 
-    let normalizedText = try await performGeminiPromptRequest(
-      model: model,
-      mode: mode,
-      userParts: userParts,
-      systemPrompt: envelope.systemPrompt,
-      credential: credential,
-      logPrefix: "PROMPT-MODE-GEMINI"
-    )
+    // With a connected integration, run on the chat's agent core so the instruction can look
+    // things up (read-only). Otherwise the single request below, unchanged.
+    let agentTools = await DictatePromptAgent.availableTools()
+    let normalizedText: String
+    if !agentTools.isEmpty {
+      // Encoded here, off the main actor: the inline audio can be megabytes of base64.
+      let contents = try DictatePromptAgent.makeContents(
+        history: PromptConversationHistory.shared.getContentsForAPI(mode: mode),
+        userParts: userParts)
+      let systemPrompt = envelope.systemPrompt
+      // Same 60 s budget as the classic request: the streaming path's own stall timers would let
+      // a stuck Dictate Prompt hang for minutes.
+      let raw = try await WallClockDeadline.run(seconds: NetworkDeadline.transcriptionRequestTimeout) {
+        try await DictatePromptAgent.run(
+          model: model,
+          contents: contents,
+          systemPrompt: systemPrompt,
+          tools: agentTools,
+          logPrefix: "PROMPT-MODE-GEMINI")
+      }
+      normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
+      try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
+    } else {
+      normalizedText = try await performGeminiPromptRequest(
+        model: model,
+        mode: mode,
+        userParts: userParts,
+        systemPrompt: envelope.systemPrompt,
+        credential: credential,
+        logPrefix: "PROMPT-MODE-GEMINI"
+      )
+    }
 
     let instructionSource: PromptInstructionSource
     if let textInstruction {

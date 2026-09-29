@@ -1,9 +1,11 @@
 # One Agent Core for Chat and Dictate Prompt (D11)
 
-**Status:** Spec, not started (2026-09-29). **Blocked on** `chat-tool-steps.md` slice 3
-(inline approval card, branch `feat/chat-approval-card`): slice 1 below extracts exactly the code
-that slice edits (`performSend`, `executeToolCalls`, `confirmToolCall` in `ChatView.swift`).
-Start once that branch is merged.
+**Status:** Slices 1 and 2 done (2026-09-29, branch `feat/agent-runner`, built on
+`feat/chat-approval-card`). Slice 2 covers the **Gemini** Dictate Prompt path only: OpenAI
+GPT-Audio runs on Chat Completions `input_audio`, which the chat's Responses provider does not
+speak, and local models are text-only — both keep the classic pipeline. Tool records are not yet
+kept in the Dictate Prompt history (`PromptConversationHistory` stores text only). Both are open.
+Deviation from decision 1: **no web grounding** on the Dictate Prompt path — Gemini's grounding also enables `url_context`, an exfiltration path for instructions planted in a selection or an email (review of aa79359).
 **Audience:** LLM implementing it end-to-end, one slice per PR.
 **Origin:** app review 2026-09-29, recommendation D11.
 
@@ -55,7 +57,10 @@ The loop guards move with it unchanged: round cap + final tool-less round, `Chat
 - Output: the final reply text is pasted exactly as today; tool records are kept in the prompt
   history so a follow-up Dictate Prompt still knows the IDs.
 
-## Decisions needed from Magnus before slice 2
+## Decisions (settled 2026-09-29)
+
+Magnus: „Ja, nimm deine Empfehlungen für D11" — so all three recommendations below apply.
+
 
 1. **Which tools may Dictate Prompt use?** Recommendation: read-only only (calendar/tasks list,
    Gmail search/read, Trello read, workspace read, web grounding). Mutating tools would raise an

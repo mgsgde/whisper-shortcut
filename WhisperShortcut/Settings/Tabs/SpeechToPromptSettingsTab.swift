@@ -29,6 +29,10 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
+      DictatePromptToolsSection()
+
+      SpacedSectionDivider()
+
       // Dictate Prompt system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",
