@@ -165,6 +165,36 @@ struct ParakeetOfflineTests {
       "boosting cost \(vocab.seconds - none.seconds) s on \(audioSeconds) s of audio; budget \(budget) s")
   }
 
+  /// The download reports progress through the CTC phase too, instead of sitting at 86 % for the
+  /// last ~100 MB. Removes only the CTC folder and fetches it again through `ModelManager`.
+  @Test(
+    "Download progress moves through the CTC phase",
+    .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
+  func ctcDownloadProgress() async throws {
+    setvbuf(stdout, nil, _IONBF, 0)
+    try await ModelManager.shared.ensureReady(.parakeetUltra)
+    try FileManager.default.removeItem(at: ParakeetBackend.ctcDirectory)
+    #expect(!ModelManager.shared.isModelAvailable(.parakeetUltra))
+
+    final class Recorder: @unchecked Sendable {
+      var values: [Double] = []
+    }
+    let recorder = Recorder()
+    try await ModelManager.shared.downloadModel(.parakeetUltra) { fraction in
+      recorder.values.append(fraction)
+    }
+    // `performDownload` hops progress to the main actor; let the last hops land.
+    try await Task.sleep(for: .milliseconds(200))
+    let ctcPhase = recorder.values.filter { $0 > 0.86 && $0 < 1 }
+    print(
+      "BENCH-PARAKEET-PROGRESS updates=\(recorder.values.count) ctcPhase=\(ctcPhase.count) "
+        + "last=\(recorder.values.last ?? -1)")
+    #expect(ModelManager.shared.isModelAvailable(.parakeetUltra))
+    #expect(ctcPhase.count >= 3, "the bar should move between 86 % and 100 %")
+    #expect(recorder.values.count <= 250, "progress is throttled to half-percent steps")
+    #expect(recorder.values.last == 1)
+  }
+
   private static func say(_ text: String, to url: URL) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")

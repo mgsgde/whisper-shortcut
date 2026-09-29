@@ -146,8 +146,8 @@ Deferred, deliberately:
   load as "missing" while Settings shows the model downloaded, and Download would no-op
   (`AsrModels.download` sees the files). Check the marker in `isDownloaded`, or force the
   download, as part of that bump.
-- Progress bar sits at 86 % during the ~100 MB CTC phase (`CtcModels.download` reports none);
-  cancelling in that phase may surface as a failure popup instead of silence (unverified).
+- Cancelling during the CTC phase may surface as a failure popup instead of silence
+  (unverified). (The progress bar itself now moves through that phase — fixed after review.)
 - "Glossary Full — Whisper only reads the first ~224 tokens" (`MenuBarController`) also caps
   Parakeet users, who have no such limit.
 - No hermetic test covers `LocalSpeechService` engine routing or the Parakeet error mapping;

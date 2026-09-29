@@ -43,7 +43,8 @@ final class ParakeetBackend: @unchecked Sendable {
   }
 
   private static var ultraDirectory: URL { AsrModels.defaultCacheDirectory(for: version) }
-  private static var ctcDirectory: URL { CtcModels.defaultCacheDirectory(for: .ctc110m) }
+  /// Internal (not private) so the live test can remove just this part and watch it re-download.
+  static var ctcDirectory: URL { CtcModels.defaultCacheDirectory(for: .ctc110m) }
 
   /// Every file the transcriber and (from S2) the vocabulary booster load. Checked before any
   /// load, so a partial download surfaces as "not downloaded" rather than as a load attempt.
@@ -63,7 +64,19 @@ final class ParakeetBackend: @unchecked Sendable {
       onProgress(progress.fractionCompleted * ultraShare)
     }
     try Task.checkCancellation()
-    try await CtcModels.download(variant: .ctc110m)
+    // `CtcModels.download` reports no progress, which left the bar sitting at 86 % for the whole
+    // ~100 MB. The ModelHub call underneath it does report, so the files come from there…
+    if !CtcModels.modelsExist(at: ctcDirectory) {
+      try await ModelHub.download(
+        CtcModelVariant.ctc110m.repo, to: ctcDirectory.deletingLastPathComponent()
+      ) { progress in
+        onProgress(ultraShare + progress.fractionCompleted * (1 - ultraShare))
+      }
+    }
+    try Task.checkCancellation()
+    // …and one load compiles the model now, as `CtcModels.download` did, so the first dictation
+    // with a Glossary does not pay for it.
+    _ = try await CtcModels.load(from: ctcDirectory)
     onProgress(1)
   }
 

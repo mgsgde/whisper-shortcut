@@ -419,9 +419,25 @@ final class ModelManager: ModelStore<OfflineModelType> {
   /// FluidAudio fetches from HuggingFace with its own URLSession — like WhisperKit's, not wrapped
   /// by the Offline Mode guard, and like it carrying nothing of the user's.
   private func fetchParakeet(onProgress: @escaping (Double) -> Void) async throws {
+    // FluidAudio reports thousands of times per download (2 933 updates for the ~100 MB CTC part
+    // alone, measured), and each one is a main-actor hop and a Settings redraw. Half-percent steps
+    // look the same.
+    final class Throttle: @unchecked Sendable {
+      private let lock = NSLock()
+      private var last = -1.0
+      func shouldReport(_ fraction: Double) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard fraction >= 1 || fraction - last >= 0.005 else { return false }
+        last = fraction
+        return true
+      }
+    }
+    let throttle = Throttle()
     do {
       // `ModelStore.performDownload` hops every progress call to the main actor itself.
-      try await ParakeetBackend.download { fraction in onProgress(fraction) }
+      try await ParakeetBackend.download { fraction in
+        if throttle.shouldReport(fraction) { onProgress(fraction) }
+      }
     } catch {
       if Self.isCancellation(error) { throw CancellationError() }
       DebugLogger.logError("MODEL-MANAGER: Parakeet download failed: \(error.localizedDescription)")
