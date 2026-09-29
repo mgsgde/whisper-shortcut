@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Biweekly provider-lineup check (scripts/model-lineup-check.sh). Fires daily; the script's
+  13-day gate makes it biweekly. StartInterval rather than StartCalendarInterval because a
+  calendar slot that falls while the laptop lid is shut is simply lost.
+
+  Install:
+      cp scripts/com.whispershortcut.model-lineup-check.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.whispershortcut.model-lineup-check.plist
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.model-lineup-check</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/scripts/model-lineup-check.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>86400</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/model-lineup-check.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/model-lineup-check-error.log</string>
+  </dict>
+</plist>
