@@ -48,6 +48,12 @@ MODELS = {
     "gemini-3.6-flash": "gemini",
     "gemini-3.7-flash": "gemini",
     "gemini-3.8-flash": "gemini",
+    # Dedicated STT model (Stable). Two request shapes, because they are two different products:
+    # generateContent takes no vocabulary field (returns `parts[].audioTranscription.text`), and
+    # custom vocabulary biasing (up to 1,000 terms) exists only on the Interactions API
+    # (`generation_config.transcription_config.custom_vocabulary`). Probed 2026-09-29.
+    "gemini-3.5-transcribe": "gemini-transcribe",
+    "gemini-3.5-transcribe+vocab": "gemini-transcribe-vocab",
     "gpt-transcribe": "openai-keywords",
     "gpt-4o-transcribe": "openai-prompt",
     "gpt-4o-mini-transcribe": "openai-prompt",
@@ -257,6 +263,36 @@ def transcribe(model, wav, prompt, terms):
             payload = json.load(r)
         parts = ((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
         return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+
+    if kind == "gemini-transcribe":
+        audio = base64.b64encode(open(wav, "rb").read()).decode()
+        body = json.dumps({"contents": [{"parts": [
+            {"inline_data": {"mimeType": "audio/wav", "data": audio}}]}]}).encode()
+        req = urllib.request.Request(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-transcribe:generateContent"
+            f"?key={os.environ['GEMINI_API_KEY']}",
+            data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            payload = json.load(r)
+        parts = ((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
+        return "".join((p.get("audioTranscription") or {}).get("text", "") for p in parts).strip()
+
+    if kind == "gemini-transcribe-vocab":
+        audio = base64.b64encode(open(wav, "rb").read()).decode()
+        body = json.dumps({
+            "model": "gemini-3.5-transcribe",
+            "input": [{"type": "audio", "data": audio, "mime_type": "audio/wav"}],
+            "generation_config": {"transcription_config": {"custom_vocabulary": list(terms)}},
+        }).encode()
+        req = urllib.request.Request(
+            "https://generativelanguage.googleapis.com/v1beta/interactions"
+            f"?key={os.environ['GEMINI_API_KEY']}",
+            data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            payload = json.load(r)
+        return "".join(c.get("text", "") for step in payload.get("steps") or []
+                       if step.get("type") == "model_output"
+                       for c in step.get("content") or [] if c.get("type") == "text").strip()
 
     if kind == "xai":
         cmd = ["curl", "-sS", "-m", "90", "-X", "POST", "https://api.x.ai/v1/stt",
