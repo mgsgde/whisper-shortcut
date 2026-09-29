@@ -1,0 +1,3 @@
+*.test.js
+README.md
+deploy.sh
