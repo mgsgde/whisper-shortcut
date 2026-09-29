@@ -1506,7 +1506,13 @@ class MenuBarController: NSObject {
     // Keep the audio instead of deleting it: a cancel is one keystroke and can be an accident,
     // and the recording is the only copy of what the user said. "Transcribe Cancelled Recording"
     // in the status menu turns an unrecoverable loss into one extra click.
-    retainCancelledRecording(job?.audioURL)
+    // Only for dictation: a long Voice Feedback instruction also runs through the chunked
+    // transcription states, and re-transcribing it would paste the instruction as dictation.
+    if job?.mode == .transcription {
+      retainCancelledRecording(job?.audioURL)
+    } else {
+      cleanupAudioFile(at: job?.audioURL)
+    }
     transitionToIdleAndCleanup(cleanupAudioURL: nil, clearChunkStatuses: true)
     if let job {
       currentJob = nil
@@ -1520,11 +1526,13 @@ class MenuBarController: NSObject {
 
   private func retainCancelledRecording(_ url: URL?) {
     guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
-    // Replace any older retained recording so at most one is ever held.
-    if let previous = cancelledRecordingURL, previous != url {
+    // Replace any older retained recording so at most one is ever held. Point at the new one first:
+    // `cleanupAudioFile` refuses to delete whatever `cancelledRecordingURL` names.
+    let previous = cancelledRecordingURL
+    cancelledRecordingURL = url
+    if let previous, previous != url {
       cleanupAudioFile(at: previous)
     }
-    cancelledRecordingURL = url
     let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? nil
     DebugLogger.log(
       "CANCELLATION: Retained cancelled recording \(url.lastPathComponent) (\(size ?? 0) bytes) — recoverable from the status menu")
@@ -2027,11 +2035,13 @@ class MenuBarController: NSObject {
           cleanupAudioFile(at: audioURL)
         } else if spec.cancelsViaTransitionToIdle {
           DebugLogger.log("CANCELLATION: \(spec.logLabel) task was cancelled (\(type(of: error)))")
-          // Also dismisses the popup, clears chunk state, drops the URL and removes the file.
+          // Also dismisses the popup, clears chunk state, drops the job and removes the file.
           await MainActor.run {
             self.transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
           }
         } else {
+          // Cancelled from inside SpeechService rather than by a cancel path: the job is over.
+          if let job, currentJob === job { currentJob = nil }
           await cancelAudioJob(logLabel: spec.logLabel, error: error, audioURL: audioURL)
         }
         return
@@ -2458,8 +2468,9 @@ class MenuBarController: NSObject {
     }
     guard let url = url, FileManager.default.fileExists(atPath: url.path) else { return }
     // The retained cancelled recording outlives its job on purpose (see `retainCancelledRecording`);
-    // the cancelled job's own cleanup tail must not delete it.
-    if url == cancelledRecordingURL {
+    // the cancelled job's own cleanup tail must not delete it. `cancelledRecordingURL` is main-only;
+    // the off-main callers (live-meeting chunks) never hold that URL.
+    if Thread.isMainThread, url == cancelledRecordingURL {
       DebugLogger.logDebug("Keeping retained cancelled recording: \(url.lastPathComponent)")
       return
     }
