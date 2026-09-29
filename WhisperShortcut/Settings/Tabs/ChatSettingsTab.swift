@@ -23,6 +23,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      ClaudeWebSearchSection()
+
+      SpacedSectionDivider()
+
       // Chat system prompt editor
       SystemPromptSectionEditor(
         title: "System prompt",

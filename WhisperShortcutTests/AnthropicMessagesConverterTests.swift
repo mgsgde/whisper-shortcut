@@ -83,6 +83,32 @@ struct AnthropicMessagesConverterTests {
     #expect(blocks[4]["id"] as? String == "toolu_2")
   }
 
+  @Test("A web search before a client tool call is replayed in place, verbatim")
+  func webSearchBlocksKeepPosition() {
+    let preserved: [[String: Any]] = [
+      ["type": "thinking", "thinking": "", "signature": "sig-abc"],
+      ["type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": ["query": "q"]],
+      ["type": "web_search_tool_result", "tool_use_id": "srvtoolu_1",
+       "content": [["type": "web_search_result", "url": "https://a.example", "encrypted_content": "enc"]]],
+    ]
+    let layout = [
+      AnthropicToolCallEnvelope.thinkingSlot(0), AnthropicToolCallEnvelope.textSlot,
+      AnthropicToolCallEnvelope.thinkingSlot(1), AnthropicToolCallEnvelope.thinkingSlot(2),
+      AnthropicToolCallEnvelope.toolUseSlot("toolu_1"),
+    ]
+    let sig = AnthropicToolCallEnvelope.encode(toolUseId: "toolu_1", thinking: preserved, layout: layout)
+    let messages = AnthropicMessagesConverter.messages(from: [
+      ["role": "user", "parts": [["text": "What time is it?"]]],
+      toolTurn(signature: sig),
+      toolResult,
+    ])
+    let blocks = messages[1]["content"] as? [[String: Any]] ?? []
+    #expect(blocks.map { $0["type"] as? String }
+      == ["thinking", "text", "server_tool_use", "web_search_tool_result", "tool_use"])
+    let result = blocks[3]["content"] as? [[String: Any]]
+    #expect(result?.first?["encrypted_content"] as? String == "enc")
+  }
+
   @Test("Closed tool loop from an earlier question drops its thinking")
   func closedLoopDropsThinking() {
     let sig = AnthropicToolCallEnvelope.encode(toolUseId: "toolu_1", thinking: thinking)

@@ -22,6 +22,7 @@ struct ReplyBlockBuilderTests {
       case .separator: return "separator"
       case .codeBlock: return "codeBlock"
       case .image: return "image"
+      case .sources: return "sources"
       }
     }
   }
@@ -104,7 +105,7 @@ struct ReplyBlockBuilderTests {
       content: content,
       sources: [GroundingSource(uri: "https://example.com", title: "S")],
       groundingSupports: [GroundingSupport(startIndex: 0, endIndex: 9, groundingChunkIndices: [0])])
-    #expect(Self.kinds(ungrounded) == Self.kinds(grounded))
+    #expect(Self.kinds(ungrounded) == Self.kinds(grounded).filter { $0 != "sources" })
   }
 
   // MARK: - Citations still land where they did
@@ -142,40 +143,107 @@ struct ReplyBlockBuilderTests {
     let blocks = ReplyBlockBuilder.buildBlocks(
       content: content, sources: sources, groundingSupports: supports)
 
-    let texts = blocks.compactMap { if case .text(let a) = $0 { return String(a.characters) } else { return nil } }
-    let apples = texts.first { $0.contains("apples") }
-    let oranges = texts.first { $0.contains("oranges") }
-    #expect(apples?.contains("[1]") == true, "first paragraph lost its citation: \(apples ?? "nil")")
-    #expect(oranges?.contains("[2]") == true, "second paragraph cited wrong source: \(oranges ?? "nil")")
-    #expect(apples?.contains("[2]") == false, "citation bled into the wrong paragraph")
+    #expect(Self.citedAfter("apples", in: blocks) == ["https://example.com/1"])
+    #expect(Self.citedAfter("oranges", in: blocks) == ["https://example.com/2"])
   }
 
-  // MARK: - Citation attachment targets
+  /// The sources row that directly follows the text block containing `needle`, as URIs.
+  private static func citedAfter(_ needle: String, in blocks: [ReplyContentBlock]) -> [String]? {
+    guard let i = blocks.firstIndex(where: { block in
+      if case .text(let a) = block { return String(a.characters).contains(needle) }
+      if case .bulletList(let items) = block {
+        return items.contains { String($0.characters).contains(needle) }
+      }
+      return false
+    }), i + 1 < blocks.count, case .sources(let sources) = blocks[i + 1] else { return nil }
+    return sources.map(\.uri)
+  }
 
-  @Test("A bullet paragraph cites on its last item, not on a new block")
-  func bulletCitationTarget() {
+  // MARK: - Source chips
+
+  @Test("A grounded paragraph gets a sources row, never an inline [N] marker")
+  func groundedParagraphGetsSourcesRow() {
     let content = "- alpha\n- beta"
     let blocks = ReplyBlockBuilder.buildBlocks(
       content: content,
       sources: [GroundingSource(uri: "https://example.com", title: "S")],
       groundingSupports: [GroundingSupport(startIndex: 0, endIndex: 14, groundingChunkIndices: [0])])
-    #expect(Self.kinds(blocks) == ["bulletList"])
-    guard case .bulletList(let items) = blocks[0] else { return }
-    #expect(String(items.last!.characters).contains("[1]"))
-    #expect(!String(items.first!.characters).contains("[1]"))
+    #expect(Self.kinds(blocks) == ["bulletList", "sources"])
+    #expect(!Self.plainText(blocks).contains("[1]"))
   }
 
-  /// A "heading then bullets" paragraph cites on the HEADING — deliberately not the last block.
-  @Test("A heading-plus-bullets paragraph cites on the heading")
-  func headingCitationTarget() {
-    let content = "Some intro line\n- alpha\n- beta"
+  @Test("Grok's [[N]](url) markers become the paragraph's chips and leave the prose")
+  func grokLinkMarkersBecomeChips() {
+    let content = """
+      FOCIL forces inclusion lists.[[1]](https://a.example/x)[[2]](https://www.b.example/y_(z))
+
+      Second claim. [[1]](https://a.example/x)
+      """
+    let footer = [GroundingSource(uri: "https://a.example/x", title: "a.example")]
+    let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: footer, groundingSupports: [])
+    #expect(Self.kinds(blocks) == ["text", "sources", "text", "sources"])
+    #expect(Self.citedAfter("FOCIL", in: blocks) == ["https://a.example/x", "https://www.b.example/y_(z)"])
+    #expect(Self.citedAfter("Second", in: blocks) == ["https://a.example/x"])
+    let text = Self.plainText(blocks)
+    #expect(!text.contains("[["), "marker leaked into prose: \(text)")
+    #expect(text.contains("inclusion lists."))
+    guard case .sources(let chips) = blocks[1] else { return }
+    #expect(chips.map(\.title) == ["a.example", "b.example"])
+  }
+
+  @Test("Grok's leaked [web:N] tokens are stripped without inventing a source")
+  func grokWebTokensAreStripped() {
+    let content = "Validators can no longer censor. [web:9][web:11]"
     let blocks = ReplyBlockBuilder.buildBlocks(
       content: content,
-      sources: [GroundingSource(uri: "https://example.com", title: "S")],
-      groundingSupports: [GroundingSupport(startIndex: 0, endIndex: 30, groundingChunkIndices: [0])])
-    #expect(Self.kinds(blocks) == ["text", "bulletList"])
-    guard case .text(let heading) = blocks[0] else { return }
-    #expect(String(heading.characters).contains("[1]"))
+      sources: (0..<12).map { GroundingSource(uri: "https://s\($0).example", title: "s\($0)") },
+      groundingSupports: [])
+    #expect(Self.kinds(blocks) == ["text"])
+    #expect(Self.plainText(blocks) == "Validators can no longer censor.")
+  }
+
+  @Test("GPT's ([domain](url)) citations become chips; a model's own parenthesized link stays")
+  func openAIParenCitationsBecomeChips() {
+    let content = """
+      Rates held steady. ([reuters.com](https://www.reuters.com/a?utm_source=openai))
+
+      Two at once. ([a.example](https://a.example/x), [b.example](https://b.example/y))
+
+      See the guide ([docs](https://docs.example/guide)) for details.
+      """
+    let footer = [
+      GroundingSource(uri: "https://a.example/x", title: "a.example"),
+      GroundingSource(uri: "https://b.example/y", title: "b.example"),
+    ]
+    let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: footer, groundingSupports: [])
+    #expect(Self.kinds(blocks) == ["text", "sources", "text", "sources", "text"])
+    #expect(Self.citedAfter("Rates", in: blocks) == ["https://www.reuters.com/a?utm_source=openai"])
+    #expect(Self.citedAfter("Two at once", in: blocks) == ["https://a.example/x", "https://b.example/y"])
+    let text = Self.plainText(blocks)
+    #expect(text.contains("Rates held steady.\n"), "marker left residue: \(text)")
+    #expect(!text.contains("reuters"))
+    #expect(text.contains("docs"), "a non-citation link was stripped: \(text)")
+  }
+
+  @Test("A GPT citation cut off mid-stream is hidden until it completes")
+  func partialOpenAICitationHidden() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "Rates held steady. ([reuters.com](https://www.reu", sources: [], groundingSupports: [])
+    #expect(Self.plainText(blocks) == "Rates held steady.")
+  }
+
+  @Test("A marker cut off mid-stream is hidden until it completes")
+  func partialMarkerHiddenWhileStreaming() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "Almost done.[[2]](https://exa", sources: [], groundingSupports: [])
+    #expect(Self.plainText(blocks) == "Almost done.")
+  }
+
+  @Test("Markers inside fenced code are left alone")
+  func markersInCodeUntouched() {
+    let content = "Example:\n\n```\nlet a = b[[1]](x)\n```"
+    let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: [], groundingSupports: [])
+    #expect(Self.codeBlocks(blocks).first?.0 == "let a = b[[1]](x)")
   }
 
   @Test("Code blocks and separators never take a citation marker")
