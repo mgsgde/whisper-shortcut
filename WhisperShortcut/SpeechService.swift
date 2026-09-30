@@ -1601,8 +1601,8 @@ class SpeechService {
     }
     let base64Audio = audioData.base64EncodedString()
 
-    // Audio input dominates the cost here, so track the default (cheapest-audio) Flash-Lite tier.
-    let endpoint = SettingsDefaults.selectedTranscriptionModel.apiEndpoint
+    // Gemini-only call; audio input dominates the cost, so use the best-measured Flash-Lite tier.
+    let endpoint = TranscriptionModel.gemini31FlashLite.apiEndpoint
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
     let userParts: [GeminiChatRequest.GeminiChatPart] = [

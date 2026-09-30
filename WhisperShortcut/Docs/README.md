@@ -102,10 +102,10 @@ Longer recordings (roughly ten seconds and up) start transcribing in the backgro
 | Model | Latency (1.3 s / 8.2 s / 21.3 s of audio) | Cost per minute | Notable |
 |---|---|---|---|
 | Grok Speech-to-Text | 0.39 s / 0.77 s / 1.33 s | low | Fastest on short and medium takes; empty on silence |
-| GPT Transcribe | 0.74 s / 0.86 s / 1.30 s | $0.0045 flat | Fastest on longer takes; empty on silence; best glossary of the cloud models |
+| GPT Transcribe | 0.74 s / 0.86 s / 1.30 s | $0.0045 flat | Default and recommended; fastest on longer takes; empty on silence; best glossary of the cloud models |
 | GPT-4o Mini Transcribe | 0.72 s / 0.85 s / 1.30 s | ~$0.003 | Cheapest cloud option at OpenAI; shuts down 2027-02-26 |
 | GPT-4o Transcribe | 0.74 s / 1.03 s / 1.63 s | ~$0.006 | Follows Dictation-prompt instructions; shuts down 2027-02-26 |
-| Gemini 3.1 Flash-Lite | 1.01 s / 1.17 s / 1.48 s | ~$0.001 | Default; best glossary of the Gemini Lite tiers |
+| Gemini 3.1 Flash-Lite | 1.01 s / 1.17 s / 1.48 s | ~$0.001 | Default if you only have a Gemini key; best glossary of the Gemini Lite tiers |
 | Gemini 3.5 Flash-Lite | 0.96 s / 1.20 s / 1.40 s | ~$0.001 | See the silence caveat below |
 | Whisper (offline) | depends on your Mac and model size | free | Runs locally, nothing leaves your machine |
 

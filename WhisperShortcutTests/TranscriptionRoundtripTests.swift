@@ -97,7 +97,7 @@ struct TranscriptionRoundtripTests {
     func gemini() async throws {
         // Track the shipped default so this roundtrip always exercises the model users actually
         // dictate with (past audio-payload bugs passed on one Gemini tier and failed on another).
-        try await Self.expectTranscript(SettingsDefaults.selectedTranscriptionModel, "Gemini")
+        try await Self.expectTranscript(.gemini31FlashLite, "Gemini")
     }
 
     @Test(

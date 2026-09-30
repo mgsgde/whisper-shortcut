@@ -1893,18 +1893,16 @@ struct SettingsDefaults {
   // roughly 3× the output price of Flash-Lite.
   // https://ai.google.dev/gemini-api/docs/pricing
   //
-  // Dictation is the exception: it defaults to *3.1* Flash-Lite, not 3.5, even though 3.5 is the
-  // cheaper audio tier ($0.30/1M vs $0.50/1M, and audio input dominates that bill at ~32 tokens/s).
-  // Measured 2026-08-03 against the live app container (36 glossary terms, 3 runs/case, 10
-  // interleaved latency rounds): 3.1 reproduces glossary terms better (94% vs 85%), invents fewer
-  // transcripts from silence (3/9 vs 7/9 leaks), and is faster at every audio length
-  // (1.3 s: 1626 vs 2079 ms · 8.2 s: 1213 vs 2872 ms · 21.3 s: 1591 vs 4961 ms).
-  // Caveat worth keeping in view: 3.1 is *not* leak-free, and every OpenAI/xAI transcription model
-  // measured 0/9 — `discardingImplausibleTranscript` is still load-bearing here.
-  // Numbers: plans/model-audits/2026-08-03-audit.md. Note 3.1 Flash-Lite shuts down 2027-05-07;
-  // Google's named replacement (3.5 Flash-Lite) is the model it beats on every axis above, so the
-  // migration waits for a better Flash-Lite rather than following the pointer.
-  static let selectedTranscriptionModel = TranscriptionModel.gemini31FlashLite
+  // Dictation defaults to OpenAI's `gpt-transcribe`, not a Gemini tier. Measured 2026-09-03 against
+  // the live app container (17 glossary terms, 3 runs/case, 10 interleaved latency rounds), it
+  // beat the previous default `gemini-3.1-flash-lite` on every axis: 0/9 vs 3/9 transcripts
+  // invented from silence, 76% vs 71% glossary, and faster at every audio length
+  // (1.3 s: 735 vs 1010 ms · 8.2 s: 864 vs 1165 ms · 21.3 s: 1295 vs 1478 ms).
+  // Numbers: plans/model-audits/2026-09-03-audit.md. It costs $0.0045/min vs roughly a third of
+  // that for Flash-Lite — negligible for dictation. It ignores the Dictation prompt (the glossary
+  // still goes as keyword hints). A user without an OpenAI key is moved to their own provider's
+  // model by `ModelSelectionReconciler.transcriptionReplacement` — Gemini users keep 3.1 Flash-Lite.
+  static let selectedTranscriptionModel = TranscriptionModel.openAIGPTTranscribe
   /// Verbatim by default: transcription should reproduce speech, not sample alternatives.
   static let transcriptionTemperature = TranscriptionTemperature.verbatim
   /// Unchanged from what the app has always sent — raising it costs latency on every dictation,

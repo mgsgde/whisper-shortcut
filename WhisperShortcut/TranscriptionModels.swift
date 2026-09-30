@@ -48,7 +48,7 @@ enum TranscriptionTuning {
 // dictation**, see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
-// measurement note on `SettingsDefaults.selectedTranscriptionModel`. Revisit by early 2027.
+// measurement note in `plans/model-audits/2026-09-03-audit.md`. Revisit by early 2027.
 // Removed and forwarded via migrateLegacyTranscriptionRawValue: both Pro slugs
 // (gemini-3-pro-preview, shut down by Google 2026-03-09, and gemini-3.1-pro-preview, withdrawn
 // 2026-08-03 because it never answers a short dictation) → gemini-3.1-flash-lite; the Gemini 2.5
@@ -238,14 +238,15 @@ enum TranscriptionModel: String, CaseIterable {
     // The offline recommendation is Parakeet Ultra: turbo's accuracy on real German dictation at
     // ~1/20 of the wait, and less than half the download (`benchmarks/local-asr/README.md`).
     // Base remains the quick way to try offline at 140 MB.
-    case .gemini31FlashLite:
+    // Cloud: the app default, see `SettingsDefaults.selectedTranscriptionModel`.
+    case .openAIGPTTranscribe:
       return true
     // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
     case .parakeetUltra, .whisperLargeTurbo:
       return offlineModelType?.isRecommended ?? false
-    case .gemini31Pro, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+         .gemini37Flash, .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
+         .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
     }

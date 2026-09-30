@@ -62,10 +62,10 @@ struct ModelSelectionReconcilerTests {
   func transcriptionReplacementTable() {
     #expect(
       ModelSelectionReconciler.transcriptionReplacement(for: .gemini)
-        == SettingsDefaults.selectedTranscriptionModel)
+        == .gemini31FlashLite)
     #expect(
       ModelSelectionReconciler.transcriptionReplacement(for: .openai)
-        == .openAIGPT4oMiniTranscribe)
+        == .openAIGPTTranscribe)
     #expect(ModelSelectionReconciler.transcriptionReplacement(for: .grok) == .xaiTranscribe)
     for provider: ChatModelProvider in [.local, .localMLX, .customOpenAI, .anthropic] {
       #expect(ModelSelectionReconciler.transcriptionReplacement(for: provider) == nil)

@@ -270,8 +270,10 @@ enum ModelSelectionReconciler {
   /// has none. Split out of `replaceTranscriptionSelection` so the table can be tested directly.
   static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
     switch provider {
-    case .gemini: return SettingsDefaults.selectedTranscriptionModel
-    case .openai: return .openAIGPT4oMiniTranscribe
+    // Each provider's best-measured tier (plans/model-audits/2026-09-03-audit.md). Gemini is named
+    // explicitly: the app-wide default is now an OpenAI model and would dead-end a Gemini-only user.
+    case .gemini: return .gemini31FlashLite
+    case .openai: return .openAIGPTTranscribe
     case .grok: return .xaiTranscribe
     // `providerPreference` never includes these; Anthropic has no transcription models here.
     case .local, .localMLX, .customOpenAI, .anthropic: return nil
