@@ -79,20 +79,23 @@ struct LocalLLMTests {
     #expect(LocalLLMModelType.defaultModel == .qwen34BInstruct2507)
     #expect(LocalLLMModelType.qwen34BInstruct2507.huggingFaceID
       == "mlx-community/Qwen3-4B-Instruct-2507-4bit")
-    #expect(LocalLLMModelType.qwen38B.huggingFaceID == "mlx-community/Qwen3-8B-4bit")
     #expect(LocalLLMModelType.qwen34BInstruct2507.isRecommended)
-    #expect(!LocalLLMModelType.qwen38B.isRecommended)
 
     #expect(
       PromptModel.forLocalLLMModel(.qwen34BInstruct2507) == .localMLXQwen34BInstruct)
     #expect(PromptModel.localMLXQwen34BInstruct.localMLXModelType == .qwen34BInstruct2507)
-    #expect(PromptModel.localMLXQwen38B.localMLXModelType == .qwen38B)
+  }
+
+  @Test("A persisted Qwen3 8B selection forwards to the offline 4B default, not to the cloud")
+  func retiredQwen38BMigratesToOffline4B() {
+    let migrated = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue("local-mlx-qwen3-8b"))
+    #expect(migrated == .localMLXQwen34BInstruct)
+    #expect(migrated?.localMLXModelType != nil)
   }
 
   @Test("Offline MLX models use the clipboard, not screenshot selection")
   func mlxModelAlwaysUsesClipboard() {
     #expect(PromptModel.localMLXQwen34BInstruct.dictatePromptUsesScreenshotSelection == false)
-    #expect(PromptModel.localMLXQwen38B.dictatePromptUsesScreenshotSelection == false)
   }
 
   @Test("MLX models route through MLXChatProvider")

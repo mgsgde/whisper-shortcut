@@ -1,6 +1,6 @@
 # Local LLM without a server — Dictate Prompt on MLX
 
-**Status:** Proposed, not started. Written 2026-08-31 against `main` at v8.02.
+**Status:** Shipped (in-process MLX provider, catalogue, download UI). 2026-09-30: Qwen3 8B removed from the catalogue after the offline Dictate Prompt benchmark (`scripts/benchmark-offline-prompt.py`) had it below 4B Instruct on rules (30/36 vs 34/36) at twice the latency; persisted selections forward to 4B, its weights are deleted on launch. Successor candidates (Qwen3.5 4B/9B, Gemma 4 E2B) measured, none adopted — see `plans/model-audits/2026-09-30-offline-prompt.md`. The design text below is the original 2026-08-31 proposal.
 **Goal:** Make an offline LLM for Dictate Prompt as easy to pick as an offline Whisper model — select it, it downloads in the background, it works. No Ollama, no LM Studio, no port.
 **Audience:** Whoever implements this. Read [The dependency blocker](#the-dependency-blocker-read-this-first) before estimating anything.
 
