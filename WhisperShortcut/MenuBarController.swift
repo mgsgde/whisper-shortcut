@@ -960,6 +960,7 @@ class MenuBarController: NSObject {
       prepareModelInBackground(ModelManager.shared, offlineModelType, label: "offline", reason: "launch", downloadIfMissing: false)
     }
 
+    MLXModelPaths.removeRetiredWeights()
     let selectedPrompt = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedPromptModel,
       default: SettingsDefaults.selectedPromptModel)

@@ -17,12 +17,15 @@ import MLXLMCommon
 
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
-  case qwen38B = "qwen3-8b"
+  // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
+  // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
+  // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
+  // Persisted selections forward via `PromptModel.migrateLegacyPromptRawValue`; its weights are
+  // removed by `MLXModelPaths.removeRetiredWeights`.
 
   var displayName: String {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
-    case .qwen38B: return "Qwen3 8B"
     }
   }
 
@@ -30,14 +33,12 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var huggingFaceID: String {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
-    case .qwen38B: return "mlx-community/Qwen3-8B-4bit"
     }
   }
 
   var estimatedSizeMB: Int {
     switch self {
     case .qwen34BInstruct2507: return 2300
-    case .qwen38B: return 4500
     }
   }
 
@@ -61,22 +62,16 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     #endif
   }
 
-  /// 8B weights are ~4.5 GB. An 8 GB Mac already holding Whisper Turbo cannot also hold them.
-  private static let qwen38BMinimumRAMBytes: UInt64 = 16 * 1024 * 1024 * 1024
-
-  /// Whether Settings / pickers may offer this catalogue entry on this Mac.
+  /// Whether Settings / pickers may offer this catalogue entry on this Mac. A per-model RAM floor
+  /// belongs here when a catalogue entry needs one (Qwen3 8B had 16 GB).
   var isOfferable: Bool {
-    guard Self.isSupportedOnThisMac else { return false }
-    if self == .qwen38B {
-      return ProcessInfo.processInfo.physicalMemory >= Self.qwen38BMinimumRAMBytes
-    }
-    return true
+    Self.isSupportedOnThisMac
   }
 
   /// Preference order for Offline Mode: larger models last so a downloaded smaller model wins
   /// when both exist, and the recommended default is chosen when none are on disk yet.
   static var byPreference: [LocalLLMModelType] {
-    [.qwen34BInstruct2507, .qwen38B].filter(\.isOfferable)
+    [.qwen34BInstruct2507].filter(\.isOfferable)
   }
 
   static var offerable: [LocalLLMModelType] { allCases.filter(\.isOfferable) }
@@ -125,6 +120,26 @@ enum MLXModelPaths {
   /// `.safetensors` shard and still be cancelled before the tokenizer lands. Treating that
   /// half-repo as "available" made Delete appear and the first load fail.
   private static let requiredFileNames = ["config.json", "tokenizer.json"]
+
+  /// Weights of catalogue entries that were removed. Nothing in Settings can reach them any more,
+  /// so without this a user who had downloaded one keeps gigabytes they cannot see or delete.
+  private static let retiredHuggingFaceIDs = ["mlx-community/Qwen3-8B-4bit"]
+
+  /// Deletes the weights of removed catalogue entries. Cheap when there is nothing to do (one
+  /// `fileExists` per entry), so it runs on every launch.
+  static func removeRetiredWeights() {
+    let models = hubDirectory.appendingPathComponent("models")
+    for id in retiredHuggingFaceIDs {
+      let dir = models.appendingPathComponent(id)
+      guard FileManager.default.fileExists(atPath: dir.path) else { continue }
+      do {
+        try FileManager.default.removeItem(at: dir)
+        DebugLogger.log("MLX: removed weights of retired model \(id)")
+      } catch {
+        DebugLogger.logWarning("MLX: could not remove retired model \(id): \(error.localizedDescription)")
+      }
+    }
+  }
 
   private static func hasRequiredFiles(at directory: URL) -> Bool {
     let fileManager = FileManager.default
