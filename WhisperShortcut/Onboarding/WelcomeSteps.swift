@@ -331,7 +331,10 @@ struct OnboardingOfflineRow: View {
   private let modelType = OfflineModelType.mostAccurate
 
   var body: some View {
-    OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
+    VStack(alignment: .leading, spacing: 8) {
+      OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
+      if offlineReady { OnboardingOfflinePromptNote() }
+    }
   }
 
   /// Marks offline setup as ready and — only when no cloud key is configured —
@@ -350,6 +353,67 @@ struct OnboardingOfflineRow: View {
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
       DebugLogger.log(
         "ONBOARDING: offline \(modelType.displayName) ready; set as default transcription model")
+    }
+    prepareOfflinePromptModel()
+  }
+
+  /// Without a key Dictate Prompt and Chat would otherwise fail on their first use. The reconciler
+  /// selects the offline MLX default for them; this fetches it in the background so the first
+  /// Dictate Prompt does not start with a 2.3 GB wait. Download only — loading into RAM happens
+  /// on first use or at the next launch.
+  ///
+  /// Keyed to the reconciler's rule, not to "any cloud key": Grok, Claude and OpenRouter keys cannot
+  /// run Dictate Prompt, so those users land on the offline model too and need it downloaded.
+  private func prepareOfflinePromptModel() {
+    guard ModelSelectionReconciler.keylessOfflineModel(
+      among: PromptModel.dictatePromptCapableModels,
+      hasKey: { ModelSelectionReconciler.hasKey($0) }) != nil
+    else { return }
+    ModelSelectionReconciler.reconcileAll()
+    let model = LocalLLMModelType.defaultModel
+    let manager = LocalLLMModelManager.shared
+    guard !manager.isModelAvailable(model), !manager.downloadingModels.contains(model) else { return }
+    DebugLogger.log("ONBOARDING: no cloud key — downloading \(model.displayName) for Dictate Prompt")
+    Task {
+      do {
+        try await manager.downloadModel(model)
+      } catch {
+        DebugLogger.logWarning(
+          "ONBOARDING: \(model.displayName) download failed: \(error.localizedDescription)")
+      }
+    }
+  }
+}
+
+/// Tells a key-less user that Dictate Prompt works offline too, with the download's state. Shown
+/// only while Dictate Prompt is on the offline model — with a usable key it is not, and there is
+/// nothing to say.
+struct OnboardingOfflinePromptNote: View {
+  @ObservedObject private var manager = LocalLLMModelManager.shared
+  private let model = LocalLLMModelType.defaultModel
+
+  private var applies: Bool {
+    LocalLLMModelType.isSupportedOnThisMac
+      && PromptModel.loadPromptModel(
+        forKey: UserDefaultsKeys.selectedPromptModel,
+        default: SettingsDefaults.selectedPromptModel).localMLXModelType != nil
+  }
+
+  var body: some View {
+    if applies {
+      if manager.isModelAvailable(model) {
+        Label("Dictate Prompt runs offline too — \(model.displayName) is ready.",
+              systemImage: "checkmark.circle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else if manager.downloadingModels.contains(model) {
+        let percent = Int((manager.downloadProgress[model] ?? 0) * 100)
+        Label("Dictate Prompt runs offline too — downloading \(model.displayName) (\(model.estimatedSizeLabel)) in the background… \(percent)%. You can continue.",
+              systemImage: "arrow.down.circle")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
     }
   }
 }

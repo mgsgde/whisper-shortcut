@@ -964,7 +964,14 @@ class MenuBarController: NSObject {
       forKey: UserDefaultsKeys.selectedPromptModel,
       default: SettingsDefaults.selectedPromptModel)
     if let mlxType = selectedPrompt.localMLXModelType {
-      prepareModelInBackground(LocalLLMModelManager.shared, mlxType, label: "MLX", reason: "launch")
+      // Not when the key-less fallback picked it: a fresh install has no key yet, and pulling
+      // 2.3 GB before the user has even said whether they will add one is not our call. The
+      // onboarding's offline path downloads it on purpose; otherwise the first use offers it.
+      let keylessFallback = ModelSelectionReconciler.keylessOfflineFallback(
+        key: UserDefaultsKeys.selectedPromptModel, current: selectedPrompt) != nil
+      prepareModelInBackground(
+        LocalLLMModelManager.shared, mlxType, label: "MLX", reason: "launch",
+        downloadIfMissing: !keylessFallback)
     }
 
     // Setup shortcuts

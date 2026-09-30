@@ -234,5 +234,10 @@ enum UserDefaultsKeys {
   /// Snapshot of model selections taken when Offline Mode is turned on, restored when it is
   /// turned off. Dictionary of UserDefaults key → raw value. See `ModelSelectionReconciler`.
   static let offlineModePreOfflineSelections = "offlineModePreOfflineSelections"
+
+  /// Selections the reconciler put on the offline MLX model because no cloud key existed.
+  /// Dictionary of UserDefaults key → ["fallback": raw, "previous": raw]; until the offline model is
+  /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
+  static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
 }
 
