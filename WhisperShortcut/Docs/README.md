@@ -227,6 +227,12 @@ For development, build and restart the app with:
 bash scripts/rebuild-and-restart.sh
 ```
 
+Build prerequisites:
+
+- **Metal Toolchain**: mlx-swift compiles Metal shaders, so Xcode needs the Metal Toolchain component (about 690 MB). Without it the build fails early with `cannot execute tool 'metal'`. Install it once with `xcodebuild -downloadComponent MetalToolchain`.
+- **Package plugin validation**: mlx-swift ships a build plugin, so a plain `xcodebuild` needs `-skipPackagePluginValidation`. The scripts above already pass it.
+- **Tests need macOS 26.5**: the test target's deployment target is macOS 26.5, while the app itself runs on 15.5 and later. On an older macOS, `xcodebuild build` works but `scripts/run-tests.sh` does not.
+
 Useful scripts:
 
 - `scripts/rebuild-and-restart.sh`: Build Debug, sync bundled docs, and restart the local app.
