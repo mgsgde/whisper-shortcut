@@ -4,3 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Major bumps of transitive packages (swift-crypto, swift-syntax, …) fall
+      # outside what the declaring package allows, so Package.resolved no
+      # longer resolves and CI fails. Majors are upgraded by hand.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
