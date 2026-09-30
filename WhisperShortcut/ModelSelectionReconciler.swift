@@ -65,6 +65,9 @@ enum ModelSelectionReconciler {
     // actively fights the mode — an OpenAI key entered for something else is enough for it to
     // rewrite dictation to a cloud model, the exact failure the mode exists to make impossible.
     if OfflineMode.isEnabled {
+      // Turning Offline Mode on is a decision for on-device models; a later key must not read the
+      // key-less fallback as "never chosen" and move these slots to the cloud once the mode is off.
+      adoptKeylessOfflineFallbacks()
       snapshotPreOfflineSelectionsIfNeeded()
       reconcileForOfflineMode()
       return
@@ -72,10 +75,12 @@ enum ModelSelectionReconciler {
     restorePreOfflineSelectionsIfNeeded()
     reconcilePromptSelection(key: UserDefaultsKeys.selectedChatModel,
                              candidates: PromptModel.chatModels,
-                             fallback: SettingsDefaults.selectedChatModel)
+                             fallback: SettingsDefaults.selectedChatModel,
+                             offlineWhenKeyless: true)
     reconcilePromptSelection(key: UserDefaultsKeys.selectedPromptModel,
                              candidates: PromptModel.dictatePromptCapableModels,
-                             fallback: SettingsDefaults.selectedPromptModel)
+                             fallback: SettingsDefaults.selectedPromptModel,
+                             offlineWhenKeyless: true)
     reconcilePromptSelection(key: UserDefaultsKeys.selectedImprovementModel,
                              candidates: PromptModel.chatModels,
                              fallback: SettingsDefaults.selectedImprovementModel)
@@ -202,7 +207,13 @@ enum ModelSelectionReconciler {
 
   // MARK: - PromptModel-backed features (chat, dictate prompt, improvement, meeting summary)
 
-  private static func reconcilePromptSelection(key: String, candidates: [PromptModel], fallback: PromptModel) {
+  /// `offlineWhenKeyless`: with no cloud key at all, fall back to the offline MLX default instead of
+  /// leaving a cloud model selected that can only fail. Only for Dictate Prompt and Chat — the
+  /// features a new user tries by hand. Smart Improvement and meeting summaries run unattended, and
+  /// a 4B model grinding through them in the background is not a default anyone chose.
+  private static func reconcilePromptSelection(
+    key: String, candidates: [PromptModel], fallback: PromptModel, offlineWhenKeyless: Bool = false
+  ) {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? fallback
     if let mlx = current.localMLXModelType, !mlx.isOfferable {
@@ -213,10 +224,102 @@ enum ModelSelectionReconciler {
         "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (MLX not offerable)")
       return
     }
+    // A slot the key-less fallback put on MLX — and that has not been used offline since — goes
+    // back once a cloud key exists: to what it held before if that provider has a key again (a
+    // keychain read that failed at launch looks exactly like "no keys"), else to the keyed
+    // provider's default. `hasKey(.localMLX)` is always true, so this runs before the return below.
+    if offlineWhenKeyless, let record = keylessOfflineFallback(key: key, current: current) {
+      guard let upgrade = keylessUpgrade(
+        previous: record.previous, among: candidates, hasKey: { hasKey($0) })
+      else { return }
+      UserDefaults.standard.set(upgrade.rawValue, forKey: key)
+      setKeylessOfflineFallback(key: key, record: nil)
+      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(upgrade.rawValue) (key added)")
+      return
+    }
     if hasKey(current.provider) { return }
-    guard let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) }) else { return }
-    UserDefaults.standard.set(replacement.rawValue, forKey: key)
-    DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider))")
+    if let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) }) {
+      UserDefaults.standard.set(replacement.rawValue, forKey: key)
+      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider))")
+      return
+    }
+    guard offlineWhenKeyless,
+      let offline = keylessOfflineModel(among: candidates, hasKey: { hasKey($0) })
+    else { return }
+    UserDefaults.standard.set(offline.rawValue, forKey: key)
+    setKeylessOfflineFallback(
+      key: key, record: KeylessOfflineRecord(fallback: offline, previous: current))
+    DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(offline.rawValue) (no cloud key — offline)")
+  }
+
+  /// The offline MLX default, when it is among `candidates` (Apple Silicon) and no cloud provider
+  /// in them has a key. A configured custom endpoint counts as a key; the local HTTP server does
+  /// not — it may not be running, and nothing about a fresh install suggests one is.
+  static func keylessOfflineModel(
+    among candidates: [PromptModel],
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> PromptModel? {
+    let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    guard candidates.contains(offline) else { return nil }
+    let anyCloudKey = candidates.contains {
+      $0.provider != .local && $0.provider != .localMLX && hasKeyForProvider($0.provider)
+    }
+    return anyCloudKey ? nil : offline
+  }
+
+  /// Where a key-less fallback slot goes once a cloud key exists, or nil while none does: the
+  /// previous selection if its provider is keyed again, else `preferredPromptModel`, else the first
+  /// keyed cloud candidate — which covers Anthropic and custom-endpoint keys that
+  /// `providerPreference` never substitutes.
+  static func keylessUpgrade(
+    previous: PromptModel?,
+    among candidates: [PromptModel],
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> PromptModel? {
+    func isKeyedCloud(_ model: PromptModel) -> Bool {
+      model.provider != .local && model.provider != .localMLX && hasKeyForProvider(model.provider)
+    }
+    if let previous, candidates.contains(previous), isKeyedCloud(previous) { return previous }
+    return preferredPromptModel(among: candidates, hasKey: hasKeyForProvider)
+      ?? candidates.first(where: isKeyedCloud)
+  }
+
+  struct KeylessOfflineRecord {
+    let fallback: PromptModel
+    let previous: PromptModel?
+  }
+
+  /// The record for `key` while the slot still holds the value the fallback wrote. A slot the user
+  /// has since changed drops its record, so a later manual pick of the same model is not upgraded.
+  nonisolated static func keylessOfflineFallback(key: String, current: PromptModel) -> KeylessOfflineRecord? {
+    let records = UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.keylessOfflineFallbacks)
+    guard let entry = records?[key] as? [String: String],
+      let fallback = entry["fallback"].flatMap(PromptModel.init(rawValue:))
+    else { return nil }
+    guard fallback == current else {
+      setKeylessOfflineFallback(key: key, record: nil)
+      return nil
+    }
+    return KeylessOfflineRecord(fallback: fallback, previous: entry["previous"].flatMap(PromptModel.init(rawValue:)))
+  }
+
+  /// The user has now run a request on the offline model (or turned Offline Mode on): from here it
+  /// is their model, and adding a key later must not move them to the cloud without a word — the
+  /// same rule `reconcileTranscription` states for offline dictation.
+  nonisolated static func adoptKeylessOfflineFallbacks() {
+    guard UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.keylessOfflineFallbacks) != nil else { return }
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.keylessOfflineFallbacks)
+    DebugLogger.log("MODEL-RECONCILE: key-less offline selections adopted — no automatic cloud upgrade")
+  }
+
+  nonisolated private static func setKeylessOfflineFallback(key: String, record: KeylessOfflineRecord?) {
+    var records = UserDefaults.standard.dictionary(forKey: UserDefaultsKeys.keylessOfflineFallbacks) ?? [:]
+    records[key] = record.map { r -> [String: String] in
+      var entry = ["fallback": r.fallback.rawValue]
+      entry["previous"] = r.previous?.rawValue
+      return entry
+    }
+    UserDefaults.standard.set(records, forKey: UserDefaultsKeys.keylessOfflineFallbacks)
   }
 
   /// `hasKey` is passed in rather than read here, so the ordering rule can be tested without the

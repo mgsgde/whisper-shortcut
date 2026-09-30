@@ -58,6 +58,46 @@ struct ModelSelectionReconcilerTests {
         == .openaiGPT5Mini)
   }
 
+  @Test("Key-less fallback picks the offline MLX default only when no cloud provider has a key")
+  func keylessOfflineModelRule() {
+    let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    let candidates: [PromptModel] = chatCandidates + [.claudeOpus55, .localModel, offline]
+    // No key anywhere: offline. The always-"keyed" local server must not count as a cloud key.
+    #expect(
+      ModelSelectionReconciler.keylessOfflineModel(
+        among: candidates, hasKey: { $0 == .local || $0 == .localMLX }) == offline)
+    // Any cloud key — including Anthropic, which `preferredPromptModel` never substitutes — wins.
+    for provider: ChatModelProvider in [.gemini, .openai, .grok, .anthropic] {
+      #expect(
+        ModelSelectionReconciler.keylessOfflineModel(among: candidates, hasKey: { $0 == provider })
+          == nil)
+    }
+    // Intel / no MLX in the list: nothing to fall back to.
+    #expect(ModelSelectionReconciler.keylessOfflineModel(among: chatCandidates, hasKey: { _ in false }) == nil)
+  }
+
+  @Test("Key-less upgrade restores the previous pick, then the preferred default, then any keyed cloud model")
+  func keylessUpgradeOrder() {
+    let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    let candidates: [PromptModel] = chatCandidates + [.gemini31Pro, .claudeOpus55, .localModel, offline]
+    // A keychain read that failed at launch: the explicit pick comes back, not the provider default.
+    #expect(
+      ModelSelectionReconciler.keylessUpgrade(
+        previous: .gemini31Pro, among: candidates, hasKey: { $0 == .gemini }) == .gemini31Pro)
+    // Previous provider still keyless, another keyed: that provider's default.
+    #expect(
+      ModelSelectionReconciler.keylessUpgrade(
+        previous: .gemini31Pro, among: candidates, hasKey: { $0 == .openai }) == .openaiGPT6Sol)
+    // Anthropic is never a `providerPreference` substitute, but a Claude key still ends the fallback.
+    #expect(
+      ModelSelectionReconciler.keylessUpgrade(
+        previous: nil, among: candidates, hasKey: { $0 == .anthropic }) == .claudeOpus55)
+    // Still no cloud key (the local server does not count): stay.
+    #expect(
+      ModelSelectionReconciler.keylessUpgrade(
+        previous: .gemini31Pro, among: candidates, hasKey: { $0 == .local || $0 == .localMLX }) == nil)
+  }
+
   @Test("Transcription replacement maps each cloud provider and rejects the rest")
   func transcriptionReplacementTable() {
     #expect(

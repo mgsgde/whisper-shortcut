@@ -81,6 +81,7 @@ final class MLXChatProvider: LLMChatProvider {
             }
           }
           continuation.yield(.finished(sources: [], supports: [], finishReason: "stop"))
+          ModelSelectionReconciler.adoptKeylessOfflineFallbacks()
           continuation.finish()
         } catch is CancellationError {
           continuation.finish()
