@@ -19,9 +19,14 @@
 #   OpenAI    GET api.openai.com/v1/models                          (OPENAI_API_KEY)
 #   Anthropic model IDs scraped from the public models overview page — there is deliberately no
 #             ANTHROPIC_API_KEY on this machine (scheduled jobs run on the subscription).
+#   hf-*      Offline models on HuggingFace (MLX LLMs for Dictate Prompt, WhisperKit variants,
+#             FluidAudio/Parakeet ASR) via scripts/hf-offline-lineup.py — filtered to what the
+#             pinned packages can load. Added 2026-09-30: no loop watched offline models, so
+#             Parakeet Ultra and Qwen3.5 were only found by hand.
 #
 # State lives in build/model-lineup/ (gitignored): one seen-<provider>.txt per provider plus the
-# last-run stamp. Delete the directory to re-seed.
+# last-run stamp. Delete the directory to re-seed. A provider without a seen file (a newly added
+# source) seeds itself quietly on its first run instead of mailing its whole back catalogue.
 #
 # Cadence: launchd fires daily (StartInterval — a calendar slot that falls while the lid is shut
 # is simply lost on a laptop); the 13-day gate below is what makes it biweekly.
@@ -127,33 +132,43 @@ fetch_anthropic() {
     grep -vE -- '-[0-9]{8}$'
 }
 
+# Offline sources print `<id>\t<note>`; the note (size, example repo) goes into the mail.
+fetch_hf_mlx()        { python3 "$REPO/scripts/hf-offline-lineup.py" mlx; }
+fetch_hf_whisperkit() { python3 "$REPO/scripts/hf-offline-lineup.py" whisperkit; }
+fetch_hf_fluidaudio() { python3 "$REPO/scripts/hf-offline-lineup.py" fluidaudio; }
+
 NEW_FILE="$(mktemp)"
 FAIL_FILE="$(mktemp)"
 trap 'rm -f "$NEW_FILE" "$FAIL_FILE"' EXIT
 SWIFT_SOURCES="$REPO/WhisperShortcut"
 
-for provider in gemini xai openai anthropic; do
+for provider in gemini xai openai anthropic hf-mlx hf-whisperkit hf-fluidaudio; do
   current="$(mktemp)"
-  if ! "fetch_$provider" 2>/dev/null | sort -u >"$current" || [ ! -s "$current" ]; then
+  if ! "fetch_${provider//-/_}" 2>/dev/null | sort -u >"$current" || [ ! -s "$current" ]; then
     echo "$provider" >>"$FAIL_FILE"
     echo "  $provider: FETCH FAILED"
     rm -f "$current"
     continue
   fi
   seen="$STATE_DIR/seen-$provider.txt"
+  quiet="$SEED"
+  if [ ! -f "$seen" ]; then
+    quiet=1
+    echo "  $provider: first run — seeding without mail"
+  fi
   touch "$seen"
   count=0
-  while IFS= read -r id; do
+  while IFS=$'\t' read -r id note; do
     grep -qxF "$id" "$seen" && continue
     # Already wired into the app (any rawValue / string literal) → not news.
     grep -rqF "\"$id\"" "$SWIFT_SOURCES" --include='*.swift' && continue
     echo "    unseen: $id"
-    [ "$SEED" -eq 1 ] || echo "$provider	$id" >>"$NEW_FILE"
+    [ "$quiet" -eq 1 ] || printf '%s\t%s\t%s\n' "$provider" "$id" "$note" >>"$NEW_FILE"
     count=$((count + 1))
   done <"$current"
   echo "  $provider: $(wc -l <"$current" | tr -d ' ') listed, $count unseen & not in app"
   # Union, not replace: a model the provider briefly hides must not re-alert when it returns.
-  sort -u "$seen" "$current" -o "$seen"
+  cut -f1 "$current" | sort -u - "$seen" -o "$seen"
   rm -f "$current"
 done
 
@@ -181,11 +196,16 @@ BODY="$STATE_DIR/$STAMP-report.md"
     echo "Provider model IDs that appeared since the last check and are not referenced anywhere"
     echo "in the app yet:"
     echo
-    while IFS=$'\t' read -r p id; do echo "- **$p**: \`$id\`"; done <"$NEW_FILE"
+    while IFS=$'\t' read -r p id note; do
+      echo "- **$p**: \`$id\`${note:+ — $note}"
+    done <"$NEW_FILE"
     echo
     echo "This is a heads-up, not a verdict. To decide, open a session and ask for the"
     echo "llm-model-docs lineup check (Pareto rule: add the frontier point, set chatReplacement"
     echo "on whatever it dominates). Otherwise the monthly model audit picks it up."
+    echo "For \`hf-*\` (offline) entries the decision is a benchmark against the shipped offline"
+    echo "model — scripts/benchmark-dictate-prompt.py for MLX, the Parakeet method in"
+    echo "plans/active/parakeet-offline.md for speech — not a price/Pareto check."
     echo
   fi
   if [ "$FAIL_COUNT" -gt 0 ]; then
@@ -193,7 +213,8 @@ BODY="$STATE_DIR/$STAMP-report.md"
     echo
     while IFS= read -r p; do echo "- $p"; done <"$FAIL_FILE"
     echo
-    echo "Check the key in whisper-shortcut/.env, or the page for anthropic. Re-run:"
+    echo "Check the key in whisper-shortcut/.env, the page for anthropic, or huggingface.co /"
+    echo "raw.githubusercontent.com for hf-*. Re-run:"
     echo "\`bash scripts/model-lineup-check.sh --force\`"
   fi
 } >"$BODY"
