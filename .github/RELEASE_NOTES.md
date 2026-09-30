@@ -1,18 +1,20 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Offline dictation
-- **Parakeet Ultra (Offline)** is the new recommended on-device dictation model for the 25 languages it covers. It is about as accurate as Whisper Large v3 Turbo and returns text in a fraction of the time — around 0.1 s for a short sentence instead of about 2 s. Download size is about 700 MB. For other languages Whisper Large v3 Turbo stays recommended.
-- Your **Glossary** also works with Parakeet Ultra, as a vocabulary for names and technical terms ("Whisper Glossary" is now just "Glossary").
-- Onboarding without an API key and turning on Offline Mode without a downloaded model now offer Parakeet Ultra. **Your current model selection is never changed.**
-- The download progress bar moves all the way to 100 %.
-- Settings → About lists the open models the app uses, with their licenses.
+## Works without an API key
+- **Dictate Prompt and Chat now work offline without any key.** If you have no cloud API key and your Mac has Apple Silicon, both use the on-device model Qwen3 4B Instruct (about 2.3 GB). The offline path in onboarding downloads it in the background and shows the progress.
+- If you add a key before you have used the offline model, Dictate Prompt and Chat move to your provider's model. Once you have used the offline model or turned on Offline Mode, the app never switches you to the cloud on its own.
 
-## Privacy
-- **Offline Mode now makes no network request at all.** A local chat model that is already downloaded loads straight from disk; before, every load asked Hugging Face for the model's file list.
-- **Your content no longer appears in the app's log files.** Transcripts, selected text, chat replies, tool results, glossary terms and prompt previews are logged only by their length.
-- **Anonymous usage statistics (opt-in, off by default).** A new switch in onboarding and Settings → Privacy & Permissions sends a daily summary of counts — which features were used and whether they worked, failure classes, which built-in models ran — if you turn it on. Never transcripts, prompts, replies, audio, the apps you paste into, or any identifier. "See exactly what is sent" shows the exact data; turning it off deletes anything queued. Unavailable in Offline Mode. The server code is public in `server/telemetry/`.
+## Dictation
+- **GPT Transcribe is the new default and recommended cloud dictation model.** In our measurements it never invented text on silence, recognized glossary terms most reliably and was the fastest at every recording length. It is a pure speech-recognition model: filler-word removal and formatting instructions in the dictation prompt do not apply to it, while your Glossary does. If you only have a Gemini key, dictation uses Gemini 3.1 Flash-Lite.
+
+## Offline models
+- **Qwen3 8B (Offline) was removed.** The smaller Qwen3 4B Instruct followed the rules of our Dictate Prompt benchmark more closely (34 of 36 vs 30 of 36) and answers about twice as fast. If you had selected Qwen3 8B, the app switches you to Qwen3 4B Instruct — still offline — and deletes the 8B files (about 4.5 GB).
+
+## Under the hood
+- Updated swift-asn1 to 1.7.3.
+- The README lists the prerequisites for building from source.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.27...v8.28
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.28...v8.29
