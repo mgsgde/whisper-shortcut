@@ -35,7 +35,8 @@ function reply(res, status) {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET' && req.url === '/healthz') return reply(res, 204);
+  // Not /healthz: Cloud Run's front end reserves paths ending in "z" and answers them itself (404).
+  if (req.method === 'GET' && req.url === '/health') return reply(res, 204);
   if (req.method !== 'POST' || req.url !== '/v1/ping') return reply(res, 404);
   if (!String(req.headers['content-type'] || '').startsWith('application/json')) return reply(res, 400);
 
