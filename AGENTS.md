@@ -136,8 +136,16 @@ branch, HEAD sha, PR; the test result quoted, not summarised; which build varian
 touches (direct/GitHub vs App Store — `#if APP_STORE` paths); anything that needs a human word
 before it ships (a user-visible behaviour change, a default that changed), **in Magnus's own
 words, quoted** — a paraphrase cannot be checked by the receiving agent. It is a handover, not an
-authorization: an approval that arrives only through an agent is not an approval, and the
-receiving side lays it before Magnus and waits for his word in his own chat. Falsifier clocks
+authorization for a release: an approval that arrives only through an agent is not an approval,
+and the receiving side lays it before Magnus and waits for his word in his own chat.
+
+**Merging needs no go, releasing goes as one daily batch** (owner ruling 2026-10-01: „Merge nach
+main ohne mein Go, sobald die Tests grün sind. Release nur einmal am Tag als Sammelfreigabe."
+A month of sessions showed ~84 replies here that were only „push", „merge", „go"). The
+deployment session merges a handed-over PR into `main` as soon as the quoted tests are green,
+without asking. Releases (GitHub, App Store) wait for one daily list in its own chat: every
+merged change since the last release, one line each, user-visible changes marked. Magnus's one
+go clears exactly that list; a go for one batch is never standing authorization for the next. Falsifier clocks
 that start at this release go in the message with their baseline numbers.
 
 ## Git: commit your own work, never touch anyone else's
@@ -148,8 +156,8 @@ else is here; theirs live under `.claude/worktrees/`). Both halves of this rule 
 1. **Finish the job by committing.** Uncommitted work is not delivered: a parallel `git reset`,
    `git clean` or the implementer's merge sweep will destroy it or sweep it into someone else's
    commit. Ask before committing only when you genuinely do not know whether the change is
-   wanted. Committing is not releasing — leave `push`, tags and the release scripts alone unless
-   asked (parent skill `commit-push-by-scope`: commit unprompted, push on request).
+   wanted. Committing is not releasing — push your own branch and open the PR unprompted (owner
+   ruling 2026-10-01), but leave tags and the release scripts alone.
 2. **Commit ONLY the files you changed.** Never `git add .` / `git add -A` / `git commit -a`.
    List paths explicitly; before committing, `git status` — every staged path must be one you
    touched this session.
