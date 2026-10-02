@@ -1,12 +1,12 @@
 # Opt-in Anonymous Usage Statistics — Counts From Real Users, Off by Default
 
-**Status:** **Slices A–E implemented (2026-09-29), not yet released.** Server deployed
+**Status:** **Slices A–E implemented (2026-09-29); ships with 8.30, submitted to App Store review 2026-10-02.** Server deployed
 (`whisper-telemetry`, europe-west1; request-log exclusion and BigQuery sink live, verified end to
 end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in
 `Settings/Components/UsageStatisticsSection.swift`, 14 tests in `TelemetryTests.swift`, report in
 `scripts/telemetry-report.sh`, review-growth Phase 1 reads it.
 
-**Before the release ships (human steps):**
+**Before the release ships (human steps) — all three verified done 2026-10-02:** DNS resolves and `/health` answers 204; App Privacy label published; web privacy/FAQ live.
 1. DNS at IONOS: `t` CNAME → `ghs.googlehosted.com.` (the app posts to `https://t.whispershortcut.com/v1/ping`;
    the Cloud Run domain mapping exists and waits for it). Until then every send fails silently and is retried.
 2. App Store Connect → App Privacy: change the label as in the table below.
