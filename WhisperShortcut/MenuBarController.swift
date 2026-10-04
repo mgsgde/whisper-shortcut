@@ -3573,4 +3573,13 @@ extension MenuBarController: NSMenuDelegate {
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
   }
+
+  /// The one-time usage statistics notice waits for the menu to close: a window opened while the
+  /// menu is tracking would sit behind it. If the chosen item opened Settings or Chat, that
+  /// window's own firing point gets there first and this call finds the notice already spent.
+  func menuDidClose(_ menu: NSMenu) {
+    DispatchQueue.main.async {
+      UsageStatisticsNotice.shared.showIfDue()
+    }
+  }
 }

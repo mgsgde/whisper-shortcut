@@ -32,6 +32,7 @@ class ChatWindowManager {
     // users may never open the status-item menu, but opening chat means they're focused on
     // this app, so prompting here can't steal focus from another app.
     Task { @MainActor in
+      if UsageStatisticsNotice.shared.showIfDue() { return }
       ReviewPrompter.shared.showPendingPromptIfNeeded()
     }
   }

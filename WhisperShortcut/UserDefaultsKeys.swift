@@ -157,6 +157,8 @@ enum UserDefaultsKeys {
   static let telemetryActivationSeen = "telemetryActivationSeen"
   /// The last payload actually delivered, shown verbatim in Settings.
   static let telemetryLastSentPayload = "telemetryLastSentPayload"
+  /// Local only: the one-time invitation for pre-telemetry installs was shown (`UsageStatisticsNotice`).
+  static let usageStatisticsNoticeShown = "usageStatisticsNoticeShown"
 
   // MARK: - Context Settings
   static let contextLoggingEnabled = "userContextLoggingEnabled"

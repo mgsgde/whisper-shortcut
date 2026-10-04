@@ -23,7 +23,9 @@ end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in
   only once a row carried it, so `telemetry-report.sh` reads through JSON functions.
 - `promptRetry` is still detected only when "Save usage data" is on (detection lives behind
   `ContextLogger`'s guard); every other signal is counted regardless.
-- Not built: the one-time notice for existing users. They find the switch in Settings only.
+- One-time notice for existing users (added 2026-10-04, `Telemetry/UsageStatisticsNotice.swift`):
+  pre-telemetry installs that never chose get one app-modal invitation, on the next Settings/Chat
+  open or status-menu close, never at launch. Spent on display; waits under Offline Mode/admin key.
 **Audience:** LLM implementing the feature end-to-end
 **Decision (Magnus, 2026-09-29):** build opt-in telemetry, **off by default**.
 **Closes:** `plans/instrumentation-gaps.md` gap #2 (customer feature-level behavior is unmeasured —
