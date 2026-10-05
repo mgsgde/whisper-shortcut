@@ -109,7 +109,13 @@ class ChatViewModel: ObservableObject {
   /// disappears with it (once per approval, not per token).
   @Published private(set) var pendingApprovals: [UUID: ToolApprovalRequest] = [:]
   var currentPendingApproval: ToolApprovalRequest? { pendingApprovals[session.id] }
-  func needsApproval(_ sessionId: UUID) -> Bool { pendingApprovals[sessionId] != nil }
+  func needsApproval(_ sessionId: UUID) -> Bool {
+    pendingApprovals[sessionId] != nil || pendingMailCredentials[sessionId] != nil
+  }
+  /// `connect_mail_account` calls waiting on the inline password card, per session. Same lifecycle
+  /// as `pendingApprovals`; the password itself lives only in the card's view state.
+  @Published private(set) var pendingMailCredentials: [UUID: MailCredentialRequest] = [:]
+  var currentPendingMailCredential: MailCredentialRequest? { pendingMailCredentials[session.id] }
   /// Tools the user allowed for the rest of a chat ("Allow for this chat"). In memory only:
   /// a relaunch asks again.
   private var chatWideApprovals: [UUID: Set<String>] = [:]
@@ -1137,7 +1143,9 @@ class ChatViewModel: ObservableObject {
       imageGenerationAvailable: imageGenerationAvailable,
       meetingContext: s.isMeeting,
       workspaceAvailable: !WorkspaceFolders.displayPaths(scope: workspaceScope(for: s)).isEmpty,
-      workspaceWritable: WorkspaceWriteAccess.isEnabled
+      workspaceWritable: WorkspaceWriteAccess.isEnabled,
+      mailAvailable: !OfflineMode.isEnabled,
+      mailAccountsConnected: MailAccountStore.hasAccounts
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,
@@ -1191,6 +1199,69 @@ class ChatViewModel: ObservableObject {
     request.continuation.resume(returning: decision)
   }
 
+  /// Executes `connect_mail_account`: resolves the server from the address, shows the password
+  /// card and suspends the turn until the user connects or cancels. The model only ever gets the
+  /// outcome — the password goes from the card to the IMAP login and the Keychain.
+  private func executeConnectMailAccountTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
+    let email = (args["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard email.contains("@"), !email.hasPrefix("@"), !email.hasSuffix("@") else {
+      return ["error": "Ask the user for the full email address of the mailbox to connect."]
+    }
+    let requestedHost = (args["host"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let server: MailCredentialRequest.Server
+    switch MailProviderPresets.lookup(email: email) {
+    case .unsupported(let reason):
+      return ["error": reason]
+    case .preset(let preset):
+      // A provider's own address: the server is fixed, whatever the model passed.
+      server = .fixed(host: preset.host, port: preset.port, note: preset.note)
+    case .unknown(let suggestedHost):
+      // Own domain: the mailbox may live at any host (mail@example.de at IONOS). The user picks the
+      // provider on the card. A model-supplied host only preselects when it is a known provider's
+      // server or under the address's own domain, so injected text can't route the password to an
+      // arbitrary server the user might not notice.
+      server = .choose(initialHost: MailCredentialRequest.trustedInitialHost(
+        requested: requestedHost, email: email, fallback: suggestedHost))
+    }
+    let requestId = UUID()
+    let outcome = await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<MailCredentialOutcome, Never>) in
+        if Task.isCancelled {
+          continuation.resume(returning: .cancelled)
+          return
+        }
+        pendingMailCredentials[sessionId] = MailCredentialRequest(
+          id: requestId, sessionId: sessionId, email: email, server: server, continuation: continuation)
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        self?.resolveMailCredential(sessionId: sessionId, requestId: requestId, outcome: .cancelled)
+      }
+    }
+    switch outcome {
+    case .connected(let account, let summary):
+      DebugLogger.log("CHAT-MAIL: connected an IMAP account (\(summary.folderCount) folders)")
+      return [
+        "status": "connected",
+        "account": account.email,
+        "server": account.host,
+        "folders": summary.folderCount,
+        "inbox_messages": summary.inboxCount,
+        "note": "Read-only access. The mail_search and mail_read tools are available from the user's next message on.",
+      ]
+    case .cancelled:
+      DebugLogger.log("CHAT-MAIL: password card cancelled")
+      return ["status": "cancelled", "message": "The user closed the password card without connecting."]
+    }
+  }
+
+  /// Answers the pending password card of `sessionId`. Idempotent, like `resolveApproval`.
+  func resolveMailCredential(sessionId: UUID, requestId: UUID, outcome: MailCredentialOutcome) {
+    guard let request = pendingMailCredentials[sessionId], request.id == requestId else { return }
+    pendingMailCredentials.removeValue(forKey: sessionId)
+    request.continuation.resume(returning: outcome)
+  }
+
   /// Registers this session's tool handlers with the registry. Each one needs state the registry
   /// can't reach — the session's attached images, its meeting files on disk, its `@Published`
   /// properties — so it lives here; the registry still owns dispatch.
@@ -1221,6 +1292,11 @@ class ChatViewModel: ObservableObject {
       ChatToolRegistry.forgetAboutUserToolName: { [weak self] args in
         guard self != nil else { return ChatToolOutcome(response: [:]) }
         return ChatToolOutcome(response: ChatMemoryTools.executeForgetAboutUserTool(args: args))
+      },
+      ChatToolRegistry.connectMailAccountToolName: { [weak self] args in
+        guard let self else { return ChatToolOutcome(response: [:]) }
+        return ChatToolOutcome(
+          response: await self.executeConnectMailAccountTool(args: args, sessionId: sessionId))
       },
     ])
   }
@@ -2075,10 +2151,11 @@ class ChatViewModel: ObservableObject {
   /// `refreshRecentSessions`, so this one check covers close, archive, bulk archive and delete:
   /// such a turn is stopped as if the user had pressed Stop, which answers the card with deny.
   private func stopTurnsWaitingInHiddenChats() {
-    guard !pendingApprovals.isEmpty else { return }
+    guard !pendingApprovals.isEmpty || !pendingMailCredentials.isEmpty else { return }
     // Not `recentSessions`: that is capped at 20 tabs, and a chat past the cap is still open.
     let visible = Set(allSessionsList.filter { !$0.archived }.map(\.id))
-    for sessionId in pendingApprovals.keys where !visible.contains(sessionId) {
+    let waiting = Set(pendingApprovals.keys).union(pendingMailCredentials.keys)
+    for sessionId in waiting where !visible.contains(sessionId) {
       DebugLogger.log("CHAT-TOOL-APPROVAL: chat \(sessionId) hidden while waiting — stopping its turn")
       userCancelledSessions[sessionId] = 0
       sendTasks[sessionId]?.cancel()
@@ -3281,6 +3358,15 @@ struct ChatView: View {
                 sessionId: viewModel.currentSessionId, requestId: approval.id, decision: decision)
             }
             .id(approval.id)
+          }
+          if let credential = viewModel.currentPendingMailCredential {
+            MailCredentialCardView(request: credential) { outcome in
+              // The request's own session, not the visible one: the login can finish after the
+              // user switched tabs.
+              viewModel.resolveMailCredential(
+                sessionId: credential.sessionId, requestId: credential.id, outcome: outcome)
+            }
+            .id(credential.id)
           }
           if viewModel.isSending {
             LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
