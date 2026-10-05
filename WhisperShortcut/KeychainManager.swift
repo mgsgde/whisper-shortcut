@@ -15,6 +15,12 @@ protocol KeychainManaging {
   /// only presence matters.
   func hasNonEmpty(_ credential: KeychainCredential) -> Bool
 
+  /// A secret addressed by a raw Keychain account name. IMAP passwords use `imap:` plus the email.
+  /// Same cache, lock, accessibility class, and update-then-add path as the typed credentials.
+  func saveSecret(_ value: String, account: String) -> Bool
+  func secret(account: String) -> String?
+  @discardableResult func deleteSecret(account: String) -> Bool
+
   // The custom-transcription headers are the one credential with a shape of its own (a JSON
   // array), so they keep dedicated accessors on top of the generic string storage.
   func saveCustomTranscriptionHeaders(_ headers: [[String: String]]) -> Bool
@@ -134,7 +140,14 @@ class KeychainManager: KeychainManaging {
   // (`KeychainCredential`).
 
   func save(_ value: String, for credential: KeychainCredential) -> Bool {
-    let accountName = credential.accountName
+    writeSecret(value, account: credential.accountName)
+  }
+
+  func saveSecret(_ value: String, account: String) -> Bool {
+    writeSecret(value, account: account)
+  }
+
+  private func writeSecret(_ value: String, account accountName: String) -> Bool {
     guard let data = value.data(using: .utf8) else {
       return false
     }
@@ -143,11 +156,7 @@ class KeychainManager: KeychainManaging {
     // delete-then-add sequence was destructive: when SecItemAdd failed (locked/broken
     // login keychain, sandbox denial), the old key was already deleted — observed in the
     // wild as "my API keys disappear".
-    let match: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: accountName,
-    ]
+    let match = itemQuery(account: accountName)
     // ThisDeviceOnly so a Keychain dump / iCloud Keychain sync cannot take the
     // API keys off this Mac. Included on UPDATE as well as add so items written
     // before this accessibility class are repaired in place rather than left
@@ -195,20 +204,23 @@ class KeychainManager: KeychainManaging {
 
   func get(_ credential: KeychainCredential) -> String? {
     if let injected = environmentOverride(for: credential) { return injected }
-    let accountName = credential.accountName
+    return readSecret(account: credential.accountName)
+  }
+
+  func secret(account: String) -> String? {
+    readSecret(account: account)
+  }
+
+  private func readSecret(account accountName: String) -> String? {
 
     lock.lock()
     if let cached = valueCache[accountName] { lock.unlock(); return cached }
     if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }
     lock.unlock()
 
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: accountName,
-      kSecReturnData as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
+    var query = itemQuery(account: accountName)
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
 
     var result: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -238,12 +250,16 @@ class KeychainManager: KeychainManaging {
 
   @discardableResult
   func delete(_ credential: KeychainCredential) -> Bool {
-    let accountName = credential.accountName
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: accountName,
-    ]
+    deleteItem(account: credential.accountName)
+  }
+
+  @discardableResult
+  func deleteSecret(account: String) -> Bool {
+    deleteItem(account: account)
+  }
+
+  private func deleteItem(account accountName: String) -> Bool {
+    let query = itemQuery(account: accountName)
     let status = SecItemDelete(query as CFDictionary)
     lock.lock()
     valueCache.removeValue(forKey: accountName)
@@ -263,13 +279,9 @@ class KeychainManager: KeychainManaging {
     lock.unlock()
 
     // Check if key exists in keychain without reading the data
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: accountName,
-      kSecReturnAttributes as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
+    var query = itemQuery(account: accountName)
+    query[kSecReturnAttributes as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
 
     var result: AnyObject?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -283,6 +295,13 @@ class KeychainManager: KeychainManaging {
     return status == errSecSuccess
   }
 
+  private func itemQuery(account accountName: String) -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: Constants.serviceName,
+      kSecAttrAccount as String: accountName,
+    ]
+  }
 
   // MARK: - Custom Transcription Headers
   //

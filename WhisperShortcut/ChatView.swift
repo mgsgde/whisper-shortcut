@@ -1143,7 +1143,9 @@ class ChatViewModel: ObservableObject {
       imageGenerationAvailable: imageGenerationAvailable,
       meetingContext: s.isMeeting,
       workspaceAvailable: !WorkspaceFolders.displayPaths(scope: workspaceScope(for: s)).isEmpty,
-      workspaceWritable: WorkspaceWriteAccess.isEnabled
+      workspaceWritable: WorkspaceWriteAccess.isEnabled,
+      mailAvailable: !OfflineMode.isEnabled,
+      mailAccountsConnected: MailAccountStore.hasAccounts
     ).compactMap { decl in
       guard let name = decl["name"] as? String,
             let desc = decl["description"] as? String,

@@ -147,6 +147,13 @@ extension ChatToolRegistry {
       running: "Searching Gmail for", done: "Searched Gmail for", object: .quoted("query"),
       countNoun: "results", bare: ("Searching Gmail", "Searched Gmail")),
     "gmail_read": .init(running: "Reading an email", done: "Read an email"),
+    connectMailAccountToolName: .init(
+      running: "Connecting your mailbox", done: "Connected your mailbox"),
+    "mail_list_accounts": .init(
+      running: "Listing mail accounts", done: "Listed mail accounts", countNoun: "accounts"),
+    "mail_search": .init(
+      running: "Searching your mail", done: "Searched your mail", countNoun: "emails"),
+    "mail_read": .init(running: "Reading an email", done: "Read an email"),
     "trello_list_boards": .init(
       running: "Listing Trello boards", done: "Listed Trello boards", countNoun: "boards"),
     "trello_list_lists": .init(
