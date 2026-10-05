@@ -603,7 +603,9 @@ actor IMAPSession {
       DebugLogger.log("IMAP: \(tag) LOGIN <redacted>")
       return
     }
-    DebugLogger.log("IMAP: \(tag)\(scrub(blob))")
+    // Command verb only: SEARCH criteria and mailbox names are the user's data.
+    let words = blob.split(separator: " ", maxSplits: 3).prefix(2).joined(separator: " ")
+    DebugLogger.log("IMAP: \(tag) \(scrub(words))")
   }
 
   private func logResponse(_ response: ServerResponse, tag: String) {

@@ -28,7 +28,7 @@ struct MailProviderPresetsTests {
 
   @Test func gmailUnsupported() {
     #expect(MailProviderPresets.lookup(email: "a@gmail.com") == .unsupported(
-      reason: "Connect Google in Settings → Integrations; Gmail is read through that connection."))
+      reason: "Gmail is read through the Google connection: Settings → Chat → Google Account."))
   }
 
   @Test func unknownDomain() {
@@ -42,6 +42,6 @@ struct MailProviderPresetsTests {
     #expect(MailProviderPresets.lookup(email: "A@Gmx.NET") == .preset(
       MailServerPreset(host: "imap.gmx.net", port: 993, note: nil)))
     #expect(MailProviderPresets.lookup(email: "A@Gmail.com") == .unsupported(
-      reason: "Connect Google in Settings → Integrations; Gmail is read through that connection."))
+      reason: "Gmail is read through the Google connection: Settings → Chat → Google Account."))
   }
 }

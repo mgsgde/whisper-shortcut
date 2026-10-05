@@ -30,7 +30,7 @@ enum MailProviderPresets {
       return .unsupported(reason: "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet.")
     }
     if domain == "gmail.com" || domain == "googlemail.com" {
-      return .unsupported(reason: "Connect Google in Settings → Integrations; Gmail is read through that connection.")
+      return .unsupported(reason: "Gmail is read through the Google connection: Settings → Chat → Google Account.")
     }
     if let preset = presets[domain] {
       return .preset(MailServerPreset(host: preset.host, port: 993, note: preset.note))
