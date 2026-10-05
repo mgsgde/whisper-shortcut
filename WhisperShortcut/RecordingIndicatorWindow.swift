@@ -55,9 +55,8 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var quickActions: [QuickAction] = []
   @Published var quickActionIndex = 0
   @Published var quickActionsVisible = false
-  /// Dictate Prompt: the last list row turned into a text field (Tab or click). While true the
-  /// panel takes keyboard focus so the user can type their own instruction.
-  @Published var isTypingPrompt = false
+  /// Dictate Prompt: what the user typed into the field under the list. Non-empty text
+  /// replaces the spoken instruction.
   @Published var typedPrompt = ""
 
   func pushLevel(_ normalized: CGFloat) {
@@ -223,53 +222,47 @@ private enum QuickActionListMetrics {
   static let rowHeight: CGFloat = 28
   static let verticalPadding: CGFloat = 6
   static let gap: CGFloat = 4
-  static let maxWidth: CGFloat = 360
-  static let horizontalChrome: CGFloat = 46
+  /// Wide enough to type a real instruction into the field.
+  static let width: CGFloat = 360
 
-  static let typeRowTitle = "Type a prompt…"
-  static let typeFieldPlaceholder = "Type your instruction, ↩ to run"
+  static let typeFieldPlaceholder = "Type an instruction, or just speak"
 
-  /// `count` quick actions plus the trailing "Type a prompt…" row.
+  /// `count` quick actions plus the trailing text field.
   static func height(count: Int) -> CGFloat {
     CGFloat(count + 1) * rowHeight + verticalPadding * 2
   }
-
-  static func width(for texts: [String], minimum: CGFloat, typing: Bool) -> CGFloat {
-    if typing { return max(minimum, maxWidth) }
-    let font = NSFont.systemFont(ofSize: 12, weight: .medium)
-    let widest = texts.reduce(CGFloat(0)) { partial, text in
-      max(partial, (text as NSString).size(withAttributes: [.font: font]).width)
-    }
-    return min(maxWidth, max(minimum, ceil(widest + horizontalChrome)))
-  }
 }
 
+/// Quick actions plus a text field that has keyboard focus from the start: typing goes
+/// straight in. While the field is empty, ↑/↓, ↩ and 1–5 drive the list as before.
 private struct QuickActionListView: View {
   let actions: [QuickAction]
   let selectedIndex: Int
-  @Binding var isTyping: Bool
   @Binding var typedText: String
   let onSelect: (Int) -> Void
-  let onStartTyping: () -> Void
   let onSubmitTyped: () -> Void
-  let onCancelTyping: () -> Void
+  let onMove: (Int) -> Void
+  let onDismiss: () -> Void
 
   @FocusState private var fieldFocused: Bool
+
+  private var isTyping: Bool { !typedText.isEmpty }
 
   var body: some View {
     VStack(spacing: 0) {
       ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+        let highlighted = !isTyping && index == selectedIndex
         Button {
           onSelect(index)
         } label: {
           HStack(spacing: 8) {
             Text("\(index + 1)")
               .font(.system(size: 11, weight: .semibold).monospacedDigit())
-              .foregroundColor(.white.opacity(index == selectedIndex ? 1 : 0.55))
+              .foregroundColor(.white.opacity(highlighted ? 1 : 0.55))
               .frame(width: 14, alignment: .trailing)
             Text(action.text)
               .font(.system(size: 12, weight: .medium))
-              .foregroundColor(.white)
+              .foregroundColor(.white.opacity(isTyping ? 0.55 : 1))
               .lineLimit(1)
               .truncationMode(.tail)
             Spacer(minLength: 0)
@@ -278,7 +271,7 @@ private struct QuickActionListView: View {
           .frame(height: QuickActionListMetrics.rowHeight)
           .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-              .fill(index == selectedIndex ? Color.white.opacity(0.16) : Color.clear)
+              .fill(highlighted ? Color.white.opacity(0.16) : Color.clear)
           )
           .contentShape(Rectangle())
         }
@@ -287,7 +280,7 @@ private struct QuickActionListView: View {
         .accessibilityLabel("Quick action \(index + 1): \(action.text)")
         .pointerCursorOnHover()
       }
-      typeRow
+      fieldRow
     }
     .padding(.vertical, QuickActionListMetrics.verticalPadding)
     .padding(.horizontal, 4)
@@ -299,56 +292,54 @@ private struct QuickActionListView: View {
     .accessibilityLabel("Dictate Prompt quick actions")
   }
 
-  /// Last row: "Type a prompt…" until chosen, then an inline field that runs on ↩.
-  @ViewBuilder private var typeRow: some View {
-    if isTyping {
-      HStack(spacing: 8) {
-        Image(systemName: "keyboard")
-          .font(.system(size: 10, weight: .semibold))
-          .foregroundColor(.white)
-          .frame(width: 14, alignment: .trailing)
-        TextField(QuickActionListMetrics.typeFieldPlaceholder, text: $typedText)
-          .textFieldStyle(.plain)
-          .font(.system(size: 12, weight: .medium))
-          .foregroundColor(.white)
-          .focused($fieldFocused)
-          .onSubmit(onSubmitTyped)
-          .onExitCommand(perform: onCancelTyping)
-          .accessibilityLabel("Your instruction")
-      }
-      .padding(.horizontal, 8)
-      .frame(height: QuickActionListMetrics.rowHeight)
-      .background(
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .fill(Color.white.opacity(0.16))
-      )
-      .onAppear {
-        // The panel only accepts key status once typing starts; focus on the next turn.
-        DispatchQueue.main.async { fieldFocused = true }
-      }
-    } else {
-      Button(action: onStartTyping) {
-        HStack(spacing: 8) {
-          Image(systemName: "keyboard")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(.white.opacity(0.55))
-            .frame(width: 14, alignment: .trailing)
-          Text(QuickActionListMetrics.typeRowTitle)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(.white.opacity(0.75))
-          Spacer(minLength: 0)
-          Text("Tab")
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(.white.opacity(0.45))
+  private var fieldRow: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "keyboard")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundColor(.white.opacity(isTyping ? 1 : 0.55))
+        .frame(width: 14, alignment: .trailing)
+      TextField(QuickActionListMetrics.typeFieldPlaceholder, text: $typedText)
+        .textFieldStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(.white)
+        .focused($fieldFocused)
+        .onSubmit {
+          if isTyping { onSubmitTyped() } else { onSelect(selectedIndex) }
         }
-        .padding(.horizontal, 8)
-        .frame(height: QuickActionListMetrics.rowHeight)
-        .contentShape(Rectangle())
+        .onExitCommand(perform: onDismiss)
+        .onKeyPress(.upArrow) { moveIfEmpty(-1) }
+        .onKeyPress(.downArrow) { moveIfEmpty(1) }
+        .onChange(of: typedText) { old, new in
+          // A lone digit typed into the empty field picks that entry, as the number keys
+          // always did. Anything longer is the user's own instruction.
+          guard old.isEmpty, new.count == 1, let digit = Int(new),
+                actions.indices.contains(digit - 1) else { return }
+          typedText = ""
+          onSelect(digit - 1)
+        }
+        .accessibilityLabel("Type your own instruction")
+      if isTyping {
+        Text("↩")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white.opacity(0.55))
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("Type your own prompt")
-      .pointerCursorOnHover()
     }
+    .padding(.horizontal, 8)
+    .frame(height: QuickActionListMetrics.rowHeight)
+    .background(
+      RoundedRectangle(cornerRadius: 6, style: .continuous)
+        .fill(isTyping ? Color.white.opacity(0.16) : Color.white.opacity(0.06))
+    )
+    .onAppear {
+      // The panel takes key status as the list appears; focus on the next turn.
+      DispatchQueue.main.async { fieldFocused = true }
+    }
+  }
+
+  private func moveIfEmpty(_ delta: Int) -> KeyPress.Result {
+    guard !isTyping else { return .ignored }
+    onMove(delta)
+    return .handled
   }
 }
 
@@ -361,9 +352,9 @@ struct RecordingIndicatorView: View {
   let onSkip: (TimeInterval) -> Void
   let onSeek: (TimeInterval) -> Void
   let onQuickAction: (Int) -> Void
-  let onStartTyping: () -> Void
   let onSubmitTyped: () -> Void
-  let onCancelTyping: () -> Void
+  let onMoveQuickAction: (Int) -> Void
+  let onDismissQuickActions: () -> Void
 
   /// Seconds the ⏪ / ⏩ buttons jump.
   static let skipInterval: TimeInterval = 10
@@ -378,15 +369,12 @@ struct RecordingIndicatorView: View {
   static func panelSize(
     phase: RecordingIndicatorPhase,
     quickActions: [QuickAction],
-    showsQuickActions: Bool,
-    isTyping: Bool
+    showsQuickActions: Bool
   ) -> CGSize {
     let pill = pillSize(for: phase)
     let listVisible = showsQuickActions && phase == .recording && !quickActions.isEmpty
     guard listVisible else { return pill }
-    let listWidth = QuickActionListMetrics.width(
-      for: quickActions.map(\.text) + [QuickActionListMetrics.typeRowTitle + "  Tab"],
-      minimum: pill.width, typing: isTyping)
+    let listWidth = max(pill.width, QuickActionListMetrics.width)
     let listHeight = QuickActionListMetrics.height(count: quickActions.count)
     return CGSize(
       width: max(pill.width, listWidth),
@@ -408,20 +396,18 @@ struct RecordingIndicatorView: View {
     let panel = Self.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
-      showsQuickActions: model.quickActionsVisible,
-      isTyping: model.isTypingPrompt)
+      showsQuickActions: model.quickActionsVisible)
     let showsList = panel.height > pill.height
     VStack(spacing: showsList ? QuickActionListMetrics.gap : 0) {
       if showsList {
         QuickActionListView(
           actions: model.quickActions,
           selectedIndex: model.quickActionIndex,
-          isTyping: $model.isTypingPrompt,
           typedText: $model.typedPrompt,
           onSelect: onQuickAction,
-          onStartTyping: onStartTyping,
           onSubmitTyped: onSubmitTyped,
-          onCancelTyping: onCancelTyping
+          onMove: onMoveQuickAction,
+          onDismiss: onDismissQuickActions
         )
         .frame(width: panel.width)
       }
@@ -509,7 +495,8 @@ struct RecordingIndicatorView: View {
 
 /// Borderless, non-activating panel so button clicks never steal focus from the
 /// app the user is dictating into. It takes key status only while the user types a
-/// Dictate Prompt instruction — non-activating, so the target app stays frontmost.
+/// Dictate Prompt instruction (while the quick-action list is up) — non-activating, so
+/// the target app stays frontmost.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   override var canBecomeKey: Bool { acceptsKeyInput }
@@ -541,9 +528,6 @@ final class RecordingIndicatorManager {
   var onSeek: ((TimeInterval) -> Void)?
   /// Dictate Prompt: the user clicked a quick action. The index is into `quickActions`.
   var onQuickAction: ((Int) -> Void)?
-  /// Dictate Prompt: the "Type a prompt…" field opened (true) or closed (false). Lets the
-  /// controller drop its global list hotkeys so they don't swallow typed keys.
-  var onTypingChanged: ((Bool) -> Void)?
   /// Dictate Prompt: the user pressed ↩ in the field. Carries the trimmed, non-empty text.
   var onTypedPrompt: ((String) -> Void)?
 
@@ -620,6 +604,7 @@ final class RecordingIndicatorManager {
   }
 
   func hide() {
+    releaseKeyFocus()
     guard isVisible, let panel else {
       isVisible = false
       return
@@ -633,16 +618,22 @@ final class RecordingIndicatorManager {
     }
   }
 
-  /// Shows the Dictate Prompt quick-action list above the pill. Entry 1 starts highlighted.
+  /// Shows the Dictate Prompt quick-action list above the pill. Entry 1 starts highlighted
+  /// and the field under it takes keyboard focus, so the user can type right away.
   func showQuickActions(_ actions: [QuickAction]) {
     model.quickActions = actions
     model.quickActionIndex = 0
+    model.typedPrompt = ""
     model.quickActionsVisible = !actions.isEmpty
-    if isVisible, let panel { position(panel) }
+    if isVisible, let panel {
+      position(panel)
+      takeKeyFocusIfListed(panel)
+    }
   }
 
   func hideQuickActions() {
-    endTyping(notify: false)
+    releaseKeyFocus()
+    model.typedPrompt = ""
     guard model.quickActionsVisible || !model.quickActions.isEmpty else { return }
     model.quickActionsVisible = false
     model.quickActions = []
@@ -659,45 +650,42 @@ final class RecordingIndicatorManager {
 
   var quickActions: [QuickAction] { model.quickActions }
   var quickActionIndex: Int { model.quickActionIndex }
-  var isTypingPrompt: Bool { model.isTypingPrompt }
   var typedPrompt: String {
     model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Turns the last list row into a text field and gives the panel keyboard focus.
-  func beginTyping() {
-    guard model.quickActionsVisible, !model.isTypingPrompt, let panel else { return }
-    typingReturnApp = NSWorkspace.shared.frontmostApplication
-    model.typedPrompt = ""
-    model.isTypingPrompt = true
+  /// The app the user was in when the field took focus. Reactivated when the list goes,
+  /// so the result pastes there.
+  private var keyFocusReturnApp: NSRunningApplication?
+
+  private func takeKeyFocusIfListed(_ panel: RecordingIndicatorPanel) {
+    guard model.quickActionsVisible, !panel.acceptsKeyInput else { return }
+    keyFocusReturnApp = NSWorkspace.shared.frontmostApplication
     panel.acceptsKeyInput = true
-    position(panel)
-    panel.makeKeyAndOrderFront(nil)
-    onTypingChanged?(true)
+    panel.makeKey()
   }
 
-  /// Closes the field and hands keyboard focus back to the app the user was in, so the
-  /// result pastes there.
-  func endTyping(notify: Bool = true) {
-    guard model.isTypingPrompt else { return }
-    model.isTypingPrompt = false
-    model.typedPrompt = ""
-    if let panel {
-      panel.acceptsKeyInput = false
-      panel.resignKey()
-      if isVisible { position(panel) }
+  private func releaseKeyFocus() {
+    guard let panel, panel.acceptsKeyInput else { return }
+    let hadKey = panel.isKeyWindow
+    panel.acceptsKeyInput = false
+    panel.resignKey()
+    // Only hand focus back if the user didn't move on to another app meanwhile.
+    if hadKey, let app = keyFocusReturnApp, app == NSWorkspace.shared.frontmostApplication {
+      app.activate()
     }
-    typingReturnApp?.activate()
-    typingReturnApp = nil
-    if notify { onTypingChanged?(false) }
+    keyFocusReturnApp = nil
   }
-
-  private var typingReturnApp: NSRunningApplication?
 
   private func submitTyped() {
     let text = typedPrompt
     guard !text.isEmpty else { return }
     onTypedPrompt?(text)
+  }
+
+  private func dismissQuickActionsByUser() {
+    DebugLogger.log("QUICK-ACTIONS: List hidden — recording continues")
+    hideQuickActions()
   }
 
   /// Feed one metering sample (average power in dB) into the bars.
@@ -718,6 +706,7 @@ final class RecordingIndicatorManager {
     panel.alphaValue = 0
     panel.orderFront(nil)
     isVisible = true
+    takeKeyFocusIfListed(panel)
     NSAnimationContext.runAnimationGroup { context in
       context.duration = Constants.fadeDuration
       panel.animator().alphaValue = 1
@@ -750,9 +739,9 @@ final class RecordingIndicatorManager {
       onSkip: { [weak self] seconds in self?.onSkip?(seconds) },
       onSeek: { [weak self] seconds in self?.onSeek?(seconds) },
       onQuickAction: { [weak self] index in self?.onQuickAction?(index) },
-      onStartTyping: { [weak self] in self?.beginTyping() },
       onSubmitTyped: { [weak self] in self?.submitTyped() },
-      onCancelTyping: { [weak self] in self?.endTyping() }
+      onMoveQuickAction: { [weak self] delta in self?.moveQuickActionSelection(by: delta) },
+      onDismissQuickActions: { [weak self] in self?.dismissQuickActionsByUser() }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)
@@ -765,8 +754,7 @@ final class RecordingIndicatorManager {
     let size = RecordingIndicatorView.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
-      showsQuickActions: model.quickActionsVisible,
-      isTyping: model.isTypingPrompt)
+      showsQuickActions: model.quickActionsVisible)
     return NSSize(width: size.width, height: size.height)
   }
 

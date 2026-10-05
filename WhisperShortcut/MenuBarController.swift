@@ -170,7 +170,6 @@ class MenuBarController: NSObject {
   /// A finished recording's quick-action instruction, keyed by its audio URL so a retry sends the
   /// same text and the silence precheck can let it through. Outlives the `RecordingIntent`.
   private var quickActionInstructionByURL: [URL: String] = [:]
-  private var quickActionHotkeys: [HotKey] = []
 
   /// Owns Read Aloud playback: the audio graph, the chunk queue, and when an utterance is done.
   /// `appState` and `ttsDidStop` stay here — the session reports its lifecycle through these
@@ -605,9 +604,6 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onQuickAction = { [weak self] index in
       self?.runQuickAction(at: index)
     }
-    RecordingIndicatorManager.shared.onTypingChanged = { [weak self] typing in
-      if typing { self?.unregisterQuickActionHotkeys() } else { self?.registerQuickActionHotkeys() }
-    }
     RecordingIndicatorManager.shared.onTypedPrompt = { [weak self] text in
       self?.runPromptInstruction(text, source: "typed")
     }
@@ -727,13 +723,7 @@ class MenuBarController: NSObject {
   /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
   private func handleIndicatorConfirm() {
     guard appState.isRecording else { return }
-    // ✓ while the "Type a prompt…" field holds text runs that text, like ↩ would.
-    let typed = RecordingIndicatorManager.shared.typedPrompt
-    if RecordingIndicatorManager.shared.isTypingPrompt, !typed.isEmpty {
-      runPromptInstruction(typed, source: "typed")
-      return
-    }
-    stopRecordingAfterTailDelay()
+    stopPromptOrRunTyped()
   }
 
   // MARK: - Dictate Prompt quick actions
@@ -749,51 +739,22 @@ class MenuBarController: NSObject {
       return
     }
     RecordingIndicatorManager.shared.showQuickActions(actions)
-    registerQuickActionHotkeys()
     DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
   }
 
   private func dismissQuickActions() {
     RecordingIndicatorManager.shared.hideQuickActions()
-    unregisterQuickActionHotkeys()
   }
 
-  private func registerQuickActionHotkeys() {
-    unregisterQuickActionHotkeys()
-    let bindings: [(Key, () -> Void)] = [
-      (.return, { [weak self] in
-        let index = RecordingIndicatorManager.shared.quickActionIndex
-        self?.runQuickAction(at: index)
-      }),
-      (.escape, { [weak self] in
-        DebugLogger.log("QUICK-ACTIONS: List hidden — recording continues")
-        self?.dismissQuickActions()
-      }),
-      (.upArrow, { [weak self] in self?.moveQuickActionHighlight(by: -1) }),
-      (.downArrow, { [weak self] in self?.moveQuickActionHighlight(by: 1) }),
-      (.one, { [weak self] in self?.runQuickAction(at: 0) }),
-      (.two, { [weak self] in self?.runQuickAction(at: 1) }),
-      (.three, { [weak self] in self?.runQuickAction(at: 2) }),
-      (.four, { [weak self] in self?.runQuickAction(at: 3) }),
-      (.five, { [weak self] in self?.runQuickAction(at: 4) }),
-      (.tab, { RecordingIndicatorManager.shared.beginTyping() }),
-    ]
-    quickActionHotkeys = bindings.map { key, action in
-      let hotkey = HotKey(key: key, modifiers: [])
-      hotkey.keyDownHandler = {
-        DispatchQueue.main.async(execute: action)
-      }
-      return hotkey
+  /// ⌘2 again or ✓: text in the field runs as the instruction; an empty field stops the
+  /// recording and the spoken instruction is used.
+  private func stopPromptOrRunTyped() {
+    let typed = RecordingIndicatorManager.shared.typedPrompt
+    if !typed.isEmpty, recording?.quickActionRan == false {
+      runPromptInstruction(typed, source: "typed")
+      return
     }
-  }
-
-  private func unregisterQuickActionHotkeys() {
-    guard !quickActionHotkeys.isEmpty else { return }
-    quickActionHotkeys = []
-  }
-
-  private func moveQuickActionHighlight(by delta: Int) {
-    RecordingIndicatorManager.shared.moveQuickActionSelection(by: delta)
+    stopRecordingAfterTailDelay()
   }
 
   /// Stops the recording through the normal path and remembers the entry's text so
@@ -818,8 +779,6 @@ class MenuBarController: NSObject {
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
     DebugLogger.log("QUICK-ACTIONS: Running \(source) (\(text.count) chars)")
-    // Hand focus back before the result pastes into the user's app.
-    RecordingIndicatorManager.shared.endTyping(notify: false)
     stopRecordingAfterTailDelay()
   }
 
@@ -1241,8 +1200,8 @@ class MenuBarController: NSObject {
   /// Skips the delay entirely when the last ~400 ms of audio was below the silence threshold
   /// — there's no tail to catch, and the user gets the result that much sooner.
   private func stopRecordingAfterTailDelay() {
-    // The list and its hotkeys leave with the decision to stop, so Return is not still
-    // captured during the tail. A quick action sets its instruction before calling this.
+    // The list and its text field leave with the decision to stop, handing keyboard focus
+    // back during the tail. A quick action sets its instruction before calling this.
     dismissQuickActions()
     if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
       cancelPendingRecordingStart()
@@ -1394,7 +1353,7 @@ class MenuBarController: NSObject {
 
     switch appState.recordingMode {
     case .prompt:
-      stopRecordingAfterTailDelay()
+      stopPromptOrRunTyped()
     case .none:
       if pendingRecordingMode != nil {
         stopRecordingAfterTailDelay()
@@ -2934,7 +2893,6 @@ class MenuBarController: NSObject {
   }
 
   func cleanup() {
-    unregisterQuickActionHotkeys()
     stopBlinking()
     shortcuts.cleanup()
     audioRecorder.cleanup()
