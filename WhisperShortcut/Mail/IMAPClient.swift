@@ -81,6 +81,11 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
         switch state {
         case .ready:
           if once.claim() { continuation.resume() }
+        case .waiting(let error):
+          if case .dns = error, once.claim() {
+            connection.cancel()
+            continuation.resume(throwing: IMAPError.connectionFailed(self.displayedHost))
+          }
         case .failed(let error):
           if once.claim() { continuation.resume(throwing: self.map(error)) }
         case .cancelled:
