@@ -605,6 +605,12 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onQuickAction = { [weak self] index in
       self?.runQuickAction(at: index)
     }
+    RecordingIndicatorManager.shared.onTypingChanged = { [weak self] typing in
+      if typing { self?.unregisterQuickActionHotkeys() } else { self?.registerQuickActionHotkeys() }
+    }
+    RecordingIndicatorManager.shared.onTypedPrompt = { [weak self] text in
+      self?.runPromptInstruction(text, source: "typed")
+    }
   }
 
   // MARK: - Recording Indicator
@@ -721,6 +727,12 @@ class MenuBarController: NSObject {
   /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
   private func handleIndicatorConfirm() {
     guard appState.isRecording else { return }
+    // ✓ while the "Type a prompt…" field holds text runs that text, like ↩ would.
+    let typed = RecordingIndicatorManager.shared.typedPrompt
+    if RecordingIndicatorManager.shared.isTypingPrompt, !typed.isEmpty {
+      runPromptInstruction(typed, source: "typed")
+      return
+    }
     stopRecordingAfterTailDelay()
   }
 
@@ -764,6 +776,7 @@ class MenuBarController: NSObject {
       (.three, { [weak self] in self?.runQuickAction(at: 2) }),
       (.four, { [weak self] in self?.runQuickAction(at: 3) }),
       (.five, { [weak self] in self?.runQuickAction(at: 4) }),
+      (.tab, { RecordingIndicatorManager.shared.beginTyping() }),
     ]
     quickActionHotkeys = bindings.map { key, action in
       let hotkey = HotKey(key: key, modifiers: [])
@@ -790,15 +803,23 @@ class MenuBarController: NSObject {
       DispatchQueue.main.async { [weak self] in self?.runQuickAction(at: index) }
       return
     }
+    let actions = RecordingIndicatorManager.shared.quickActions
+    guard actions.indices.contains(index) else { return }
+    runPromptInstruction(actions[index].text, source: "entry \(index + 1)")
+  }
+
+  /// Shared by list entries and the "Type a prompt…" field: the text replaces the audio
+  /// as the Dictate Prompt instruction.
+  private func runPromptInstruction(_ text: String, source: String) {
     guard recording?.quickActionRan == false else { return }
     guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
     guard recordingPrompt else { return }
-    let actions = RecordingIndicatorManager.shared.quickActions
-    guard actions.indices.contains(index) else { return }
     recording?.quickActionRan = true
-    recording?.quickActionInstruction = actions[index].text
-    DebugLogger.log("QUICK-ACTIONS: Running entry \(index + 1) (\(actions[index].text.count) chars)")
+    recording?.quickActionInstruction = text
+    DebugLogger.log("QUICK-ACTIONS: Running \(source) (\(text.count) chars)")
+    // Hand focus back before the result pastes into the user's app.
+    RecordingIndicatorManager.shared.endTyping(notify: false)
     stopRecordingAfterTailDelay()
   }
 
