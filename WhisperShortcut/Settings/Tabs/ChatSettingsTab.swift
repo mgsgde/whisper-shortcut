@@ -50,6 +50,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      MailAccountsSection()
+
+      SpacedSectionDivider()
+
       meetingMarkerSection
 
       SpacedSectionDivider()
