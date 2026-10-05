@@ -1216,12 +1216,26 @@ class ChatViewModel: ObservableObject {
       // A provider's own address: the server is fixed, whatever the model passed.
       server = .fixed(host: preset.host, port: preset.port, note: preset.note)
     case .unknown(let suggestedHost):
-      // Own domain: the mailbox may live at any host (mail@example.de at IONOS). The user picks the
-      // provider on the card. A model-supplied host only preselects when it is a known provider's
-      // server or under the address's own domain, so injected text can't route the password to an
-      // arbitrary server the user might not notice.
-      server = .choose(initialHost: MailCredentialRequest.trustedInitialHost(
-        requested: requestedHost, email: email, fallback: suggestedHost))
+      // Own domain: the mailbox may live at any host (mail@example.de at IONOS). The domain's MX
+      // records usually say where; the user can still change it on the card. Without a match, a
+      // model-supplied host only preselects when it is a known provider's server or under the
+      // address's own domain, so injected text can't route the password to an arbitrary server
+      // the user might not notice.
+      let domain = String(email.split(separator: "@").last ?? "").lowercased()
+      switch await MailHostDetector.detect(domain: domain) {
+      case .google:
+        return ["error": "\(domain) receives its mail through Google Workspace. Gmail is read through the Google connection: Settings → Chat → Google Account."]
+      case .microsoft:
+        return ["error": "\(domain) receives its mail through Microsoft 365. Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet."]
+      case .imapHost(let host):
+        DebugLogger.log("CHAT-MAIL: provider detected from MX records")
+        server = .choose(initialHost: host, detected: true)
+      case nil:
+        server = .choose(
+          initialHost: MailCredentialRequest.trustedInitialHost(
+            requested: requestedHost, email: email, fallback: suggestedHost),
+          detected: false)
+      }
     }
     let requestId = UUID()
     let outcome = await withTaskCancellationHandler {
