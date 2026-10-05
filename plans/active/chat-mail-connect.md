@@ -1,6 +1,6 @@
 # Connect a Mail Account from Chat (IMAP, password card)
 
-**Status:** Spec (2026-10-05). Not started.
+**Status:** Slices 1–4 shipped to main (PR #98, 2026-10-05), live-tested against IONOS. Follow-ups (MX preselect, Cancel while checking, DNS fail-fast) are queue row 19.
 **Audience:** LLM implementing it end-to-end, one slice per PR. UI (slice 1 card, slice 4 settings
 row) is written by the Opus session; IMAP client, tools and tests go to the cheap hand.
 **Origin:** Magnus, 2026-10-05: "say in chat 'connect my IONOS mailbox', get asked for the
