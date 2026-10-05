@@ -17,6 +17,7 @@ struct ChatToolStepsTests {
       ChatToolRegistry.workspaceFunctionDeclarations, ChatToolRegistry.workspaceWriteFunctionDeclarations,
       ChatToolRegistry.imageFunctionDeclarations, ChatToolRegistry.calendarFunctionDeclarations,
       ChatToolRegistry.tasksFunctionDeclarations, ChatToolRegistry.gmailFunctionDeclarations,
+      ChatToolRegistry.mailConnectFunctionDeclarations, ChatToolRegistry.mailFunctionDeclarations,
       ChatToolRegistry.trelloFunctionDeclarations, ChatToolRegistry.meetingFunctionDeclarations,
     ]
     return groups.flatMap { $0 }.compactMap { $0["name"] as? String }
@@ -80,6 +81,8 @@ struct ChatToolStepsTests {
     #expect(ChatToolRegistry.resultCount(["ok": true]) == nil)
     #expect(ChatToolRegistry.resultCount(["error": "nope", "results": [1]]) == nil)
     #expect(ChatToolRegistry.resultSummary(name: "gmail_search", response: ["messages": [1, 2]]) == "2 results")
+    #expect(ChatToolRegistry.resultSummary(name: "mail_search", response: ["emails": [1, 2, 3]]) == "3 emails")
+    #expect(ChatToolRegistry.resultSummary(name: "mail_list_accounts", response: ["accounts": [1]]) == "1 accounts")
     #expect(ChatToolRegistry.resultSummary(name: "read_text_file", response: ["lines": [1]]) == nil)
   }
 
