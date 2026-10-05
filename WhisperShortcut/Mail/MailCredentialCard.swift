@@ -15,8 +15,9 @@ struct MailCredentialRequest: Identifiable {
   enum Server: Equatable {
     /// The address belongs to a known provider (gmx.de, web.de, …): the server is not editable.
     case fixed(host: String, port: Int, note: String?)
-    /// Own domain: the user picks where the mailbox is hosted.
-    case choose(initialHost: String)
+    /// Own domain: the user picks where the mailbox is hosted. `detected`: `initialHost` came from
+    /// the domain's MX records rather than a guess.
+    case choose(initialHost: String, detected: Bool)
   }
 
   let id: UUID
@@ -32,11 +33,14 @@ struct MailCredentialRequest: Identifiable {
   static let hostedProviders: [(name: String, host: String)] = [
     ("IONOS", "imap.ionos.de"),
     ("Strato", "imap.strato.de"),
+    ("GMX", "imap.gmx.net"),
+    ("WEB.DE", "imap.web.de"),
     ("Hetzner", "mail.your-server.de"),
     ("iCloud+ custom domain", "imap.mail.me.com"),
     ("mailbox.org", "imap.mailbox.org"),
     ("Fastmail", "imap.fastmail.com"),
     ("Zoho Mail (EU)", "imap.zoho.eu"),
+    ("Zoho Mail", "imap.zoho.com"),
     ("Hostinger", "imap.hostinger.com"),
   ]
 
@@ -75,6 +79,8 @@ struct MailCredentialCardView: View {
   @State private var providerTag = ""
   @State private var customHost = ""
   @FocusState private var focusedField: Field?
+  /// The running login, so Cancel can stop it.
+  @State private var loginTask: Task<Void, Never>?
 
   private enum Field { case password, host }
 
@@ -132,7 +138,7 @@ struct MailCredentialCardView: View {
             .foregroundColor(ChatTheme.secondaryText)
             .textSelection(.enabled)
         }
-      case .choose:
+      case .choose(_, let detected):
         GridRow {
           label("Hosted at")
           Picker("", selection: $providerTag) {
@@ -146,6 +152,14 @@ struct MailCredentialCardView: View {
           .pickerStyle(.menu)
           .fixedSize()
           .disabled(phase == .verifying)
+        }
+        if detected && providerTag == initialHost {
+          GridRow {
+            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+            Text("Detected from your domain's mail settings.")
+              .font(.system(size: 11))
+              .foregroundColor(ChatTheme.secondaryText)
+          }
         }
         if providerTag == Self.otherProviderTag {
           GridRow {
@@ -191,9 +205,9 @@ struct MailCredentialCardView: View {
       }
       HStack(spacing: 8) {
         Spacer()
-        Button("Cancel") { onResolve(.cancelled) }
+        // Stays enabled while checking: a server that never answers must not trap the user.
+        Button("Cancel", action: cancel)
           .keyboardShortcut(.cancelAction)
-          .disabled(phase == .verifying)
         if phase == .verifying {
           HStack(spacing: 6) {
             ProgressView().controlSize(.small)
@@ -225,6 +239,11 @@ struct MailCredentialCardView: View {
     return nil
   }
 
+  private var initialHost: String? {
+    if case .choose(let host, _) = request.server { return host }
+    return nil
+  }
+
   private var selectedHost: String {
     switch request.server {
     case .fixed(let host, _, _): return host
@@ -244,7 +263,7 @@ struct MailCredentialCardView: View {
   }
 
   private func setUp() {
-    if case .choose(let initialHost) = request.server {
+    if case .choose(let initialHost, _) = request.server {
       if MailCredentialRequest.hostedProviders.contains(where: { $0.host == initialHost }) {
         providerTag = initialHost
       } else {
@@ -263,10 +282,16 @@ struct MailCredentialCardView: View {
     let port = selectedPort
     let secret = password
     phase = .verifying
-    Task { @MainActor in
+    loginTask = Task { @MainActor in
       do {
         let summary = try await MailAccountStore.connect(
           email: email, host: host, port: port, password: secret)
+        // Cancelled while the login was still in flight but it went through anyway: the user
+        // said no, so don't keep the account.
+        if Task.isCancelled {
+          MailAccountStore.remove(email: email)
+          return
+        }
         password = ""
         phase = .connected
         // Long enough to read the confirmation before the card leaves with the step.
@@ -275,9 +300,17 @@ struct MailCredentialCardView: View {
           account: MailAccount(email: email, host: host, port: port, connectedAt: Date()),
           summary: summary))
       } catch {
+        guard !Task.isCancelled else { return }
         phase = .failed(error.localizedDescription)
         focusedField = .password
       }
     }
+  }
+
+  private func cancel() {
+    loginTask?.cancel()
+    loginTask = nil
+    password = ""
+    onResolve(.cancelled)
   }
 }
