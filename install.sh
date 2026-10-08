@@ -35,7 +35,7 @@ xcodebuild clean -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -con
 
 # Build the app
 echo "🔨 Building app..."
-xcodebuild build -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release -derivedDataPath build
+xcodebuild build -project WhisperShortcut.xcodeproj -scheme WhisperShortcut -configuration Release -derivedDataPath build -skipPackagePluginValidation PROVISIONING_PROFILE_SPECIFIER=
 
 # Check if build was successful
 if [ ! -d "build/Build/Products/Release/WhisperShortcut.app" ]; then
