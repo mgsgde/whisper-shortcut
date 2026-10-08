@@ -188,6 +188,10 @@ class MenuBarController: NSObject {
       // auto-resets to idle via the `appState` didSet.
       if case .speaking = self.appState {
         self.appState = self.appState.showSuccess("Audio playback completed")
+      } else {
+        // A dictation during playback already moved `appState` on, so no state change will
+        // repaint the pill — without this the finished transport stays on screen at 100 %.
+        self.updateRecordingIndicator()
       }
     },
     onFailure: { [weak self] error in
