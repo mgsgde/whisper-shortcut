@@ -26,6 +26,10 @@ end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in
 - One-time notice for existing users (added 2026-10-04, `Telemetry/UsageStatisticsNotice.swift`):
   pre-telemetry installs that never chose get one app-modal invitation, on the next Settings/Chat
   open or status-menu close, never at launch. Spent on display; waits under Offline Mode/admin key.
+  **Not in 8.30** (submitted 2026-10-02, before the notice landed): App Store users first see it
+  with 8.33. Until 8.33 is live, zero `build = appstore` pings are `TOO EARLY`, not a finding.
+  Verified 2026-10-09 in an App Store-scheme build with a reset pre-telemetry state: notice shown,
+  "Share Statistics" turned sharing on.
 **Audience:** LLM implementing the feature end-to-end
 **Decision (Magnus, 2026-09-29):** build opt-in telemetry, **off by default**.
 **Closes:** `plans/instrumentation-gaps.md` gap #2 (customer feature-level behavior is unmeasured —
