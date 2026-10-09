@@ -47,7 +47,7 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 8. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` rather than asking.
 9. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
 10. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
-11. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit
+11. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist` and `.github/RELEASE_NOTES.md` must be included in the commit, plus `WhisperShortcut/Docs/README.md` when step 10 changed it (the rebuild copies `README.md` there, and CI bundles the committed copy, so an uncommitted sync ships the old README to the in-app Chat — v8.36 did)
 12. Detect the current branch with `git branch --show-current`
 13. Push the current branch with `git push origin <current-branch>`
 14. **Create and push the tag with the script — do not run `git tag` / `git push` by hand:**
