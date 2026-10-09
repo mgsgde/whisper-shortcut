@@ -602,11 +602,13 @@ class SpeechService {
   func executePrompt(
     audioURL: URL,
     mode: PromptMode = .togglePrompting,
-    instruction: String? = nil
+    instruction: String? = nil,
+    selectedText: String? = nil
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      try await self.performPrompt(audioURL: audioURL, mode: mode, instruction: instruction)
+      try await self.performPrompt(
+        audioURL: audioURL, mode: mode, instruction: instruction, selectedText: selectedText)
     }
 
     currentPromptTask = task
@@ -644,28 +646,44 @@ class SpeechService {
   }
 
   // MARK: - Prompt Modes (Private Implementation)
-  private func performPrompt(audioURL: URL, mode: PromptMode, instruction: String? = nil) async throws -> String {
+  /// Whether a Dictate Prompt turn has nothing to edit. Screenshot-selection runs never compose:
+  /// there the selection lives in the screenshot, so having no text selection is the normal case.
+  static func isComposeTurn(usesScreenshotSelection: Bool, selectedText: String?) -> Bool {
+    !usesScreenshotSelection && selectedText == nil
+  }
+
+  /// `selectedText` is the selection captured for THIS recording (`DictatePromptSelectionCapture`),
+  /// never a fresh clipboard read — the clipboard can hold something copied long ago.
+  private func performPrompt(
+    audioURL: URL, mode: PromptMode, instruction: String? = nil, selectedText: String?
+  ) async throws -> String {
     // Which model runs decides where the selection comes from, so it has to be known first: a
-    // local text model reads the clipboard even in the App Store build, because a screenshot
+    // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
     let selectedPromptModel = getPromptModel()
     let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
 
-    // Get clipboard context. In screenshot-selection mode this is skipped so the model relies
-    // solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
-    let clipboardContext = usesScreenshotSelection ? nil : getClipboardContext()
+    // In screenshot-selection mode the copied text is ignored so the model relies solely on the
+    // highlighted region in the screenshot. Cleaned like any copied text (URL query strings,
+    // runaway repeats).
+    let clipboardContext: String? = usesScreenshotSelection
+      ? nil
+      : DictatePromptSelectionDecision.selectionText(
+        from: selectedText.map { clipboardManager?.cleanText($0) ?? $0 })
 
-    // With nothing selected there is no material to edit, and the model reliably "edits" the
-    // instruction instead — a user who said "formuliere Antwort, mein Geburtsdatum ist 15.08.91"
-    // got back that same sentence, tidied up. Refusing here is cheaper and far clearer than
-    // pasting the user's own words back at them. Screenshot-selection runs are exempt: there
-    // the selection lives in the screenshot, so a nil clipboard is the normal case.
-    if !usesScreenshotSelection, clipboardContext == nil {
-      DebugLogger.log("PROMPT-MODE: No selected text — refusing to send, nothing to edit")
+    // Nothing selected used to be refused (`TranscriptionError.noSelectedText`): the model, told to
+    // edit a selection that wasn't there, "edited" the instruction instead — a user who said
+    // "formuliere Antwort, mein Geburtsdatum ist 15.08.91" got back that same sentence, tidied up.
+    // Now it is a compose turn: the request carries an explicit NO SELECTED TEXT marker, and the
+    // output rule tells the model to carry out the spoken request and write the requested text
+    // (pasted at the cursor) rather than echo it. That is what dictating a note into an empty
+    // field needs. Compose turns send no earlier turns as history — those may belong to a
+    // different document (in a practice: a different patient).
+    if Self.isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
+      DebugLogger.log("PROMPT-MODE: No selection captured for this recording — compose turn, no history")
       ContextLogger.shared.logSignal(
         .promptNoSelection, mode: "prompt",
-        detail: ["reason": clipboardManager == nil ? "clipboardUnavailable" : "emptySelection"])
-      throw TranscriptionError.noSelectedText
+        detail: ["reason": "composeTurn", "model": selectedPromptModel.rawValue])
     }
 
     // The selected text is user-curated ground-truth spelling (unlike the voice instruction,
@@ -779,8 +797,9 @@ class SpeechService {
     let screenshot: Data?
     /// Introduces the screenshot. Only meaningful when `screenshot` is non-nil.
     let screenshotLabel: String
-    /// Fully formatted, header included — nil when there is no selection to send.
-    let clipboardText: String?
+    /// The selection with its header, or — on a compose turn — the NO SELECTED TEXT marker. Nil only
+    /// in screenshot-selection mode, where the selection is the highlighted region of the image.
+    let selectionBlock: String?
     let history: [PromptHistoryTurn]
     let systemPrompt: String
 
@@ -828,16 +847,21 @@ class SpeechService {
       DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
     }
 
-    let clipboardText: String?
+    let isComposeTurn = Self.isComposeTurn(
+      usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
+    let selectionBlock: String?
     if let context = clipboardContext, !context.isEmpty {
       DebugLogger.log("\(logPrefix): Adding clipboard context (length: \(context.count) chars)")
-      clipboardText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
+      selectionBlock = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
+    } else if isComposeTurn {
+      DebugLogger.log("\(logPrefix): Compose turn — no selected text, sending the compose marker")
+      selectionBlock = AppConstants.dictatePromptComposeMarker
     } else {
       DebugLogger.log("\(logPrefix): No clipboard context to add")
-      clipboardText = nil
+      selectionBlock = nil
     }
 
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    let historyContents = Self.promptHistoryContents(mode: mode, isComposeTurn: isComposeTurn)
     if historyContents.count / 2 > 0 {
       DebugLogger.log("\(logPrefix): Including \(historyContents.count / 2) previous turns from conversation history")
     }
@@ -850,11 +874,21 @@ class SpeechService {
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
         : "Current screen:",
-      clipboardText: clipboardText,
+      selectionBlock: selectionBlock,
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
         styleBlock: writingStyleBlock(incoming: clipboardContext)))
+  }
+
+  /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
+  /// selected the turn starts a new text, and the previous turns may be about something else
+  /// entirely (in a practice: the previous patient). Edit turns keep their history as before.
+  static func promptHistoryContents(
+    mode: PromptMode, isComposeTurn: Bool
+  ) -> [GeminiChatRequest.GeminiChatContent] {
+    guard !isComposeTurn else { return [] }
+    return PromptConversationHistory.shared.getContentsForAPI(mode: mode)
   }
 
   /// The learned writing style for the app the user is writing in, or "" when off, unlearned, or
@@ -886,9 +920,9 @@ class SpeechService {
         fileData: nil,
         url: nil))
     }
-    if let clipboardText = envelope.clipboardText {
+    if let selectionBlock = envelope.selectionBlock {
       parts.append(GeminiChatRequest.GeminiChatPart(
-        text: clipboardText, inlineData: nil, fileData: nil, url: nil))
+        text: selectionBlock, inlineData: nil, fileData: nil, url: nil))
     }
     return parts
   }
@@ -904,8 +938,8 @@ class SpeechService {
         "image_url": ["url": "data:image/jpeg;base64,\(screenshot.base64EncodedString())"],
       ])
     }
-    if let clipboardText = envelope.clipboardText {
-      content.append(["type": "text", "text": clipboardText])
+    if let selectionBlock = envelope.selectionBlock {
+      content.append(["type": "text", "text": selectionBlock])
     }
     return content
   }
@@ -915,7 +949,7 @@ class SpeechService {
   /// extracts + normalizes the text response.
   private func performGeminiPromptRequest(
     model: PromptModel,
-    mode: PromptMode,
+    history historyContents: [GeminiChatRequest.GeminiChatContent],
     userParts: [GeminiChatRequest.GeminiChatPart],
     systemPrompt: String,
     credential: GeminiCredential,
@@ -930,11 +964,6 @@ class SpeechService {
 
     var request = try geminiClient.createRequest(endpoint: endpoint, credential: credential)
 
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
-    let historyCount = historyContents.count / 2
-    if historyCount > 0 {
-      DebugLogger.log("\(logPrefix): Including \(historyCount) previous turns from conversation history")
-    }
     var contents: [GeminiChatRequest.GeminiChatContent] = historyContents
     contents.append(GeminiChatRequest.GeminiChatContent(role: "user", parts: userParts))
 
@@ -1087,6 +1116,11 @@ class SpeechService {
       usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
+    let historyContents = Self.promptHistoryContents(
+      mode: mode,
+      isComposeTurn: Self.isComposeTurn(
+        usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+        selectedText: clipboardContext))
 
     if let textInstruction {
       userParts.append(GeminiChatRequest.GeminiChatPart(
@@ -1124,7 +1158,7 @@ class SpeechService {
     if !agentTools.isEmpty {
       // Encoded here, off the main actor: the inline audio can be megabytes of base64.
       let contents = try DictatePromptAgent.makeContents(
-        history: PromptConversationHistory.shared.getContentsForAPI(mode: mode),
+        history: historyContents,
         userParts: userParts)
       let systemPrompt = envelope.systemPrompt
       // Same 60 s budget as the classic request: the streaming path's own stall timers would let
@@ -1143,7 +1177,7 @@ class SpeechService {
     } else {
       normalizedText = try await performGeminiPromptRequest(
         model: model,
-        mode: mode,
+        history: historyContents,
         userParts: userParts,
         systemPrompt: envelope.systemPrompt,
         credential: credential,
@@ -1268,8 +1302,8 @@ class SpeechService {
         parts.append(["text": envelope.screenshotLabel])
         parts.append(["inline_data": ["mime_type": "image/jpeg", "data": screenshot.base64EncodedString()]])
       }
-      if let clipboardText = envelope.clipboardText {
-        parts.append(["text": clipboardText])
+      if let selectionBlock = envelope.selectionBlock {
+        parts.append(["text": selectionBlock])
       }
       if let textInstruction {
         parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
@@ -1454,7 +1488,11 @@ class SpeechService {
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      instruction = try await performTranscription(audioURL: audioURL)
+      let transcript = try await performTranscription(audioURL: audioURL)
+      // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
+      // feeds the local model should arrive with the layout the user spoke.
+      instruction = (TranscriptionModel.loadSelected().isOffline
+        ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       guard !instruction.isEmpty else {
@@ -1476,8 +1514,8 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-LOCAL")
 
     var userText = ""
-    if let clipboardText = envelope.clipboardText {
-      userText += "\(clipboardText)\n\n"
+    if let selectionBlock = envelope.selectionBlock {
+      userText += "\(selectionBlock)\n\n"
     }
     userText += "VOICE INSTRUCTION:\n\(instruction)"
 
@@ -2776,25 +2814,6 @@ class SpeechService {
       return UserDefaults.standard.bool(forKey: UserDefaultsKeys.screenshotInPromptMode)
     }
     return SettingsDefaults.screenshotInPromptMode
-  }
-
-  private func getClipboardContext() -> String? {
-    guard let clipboardManager = clipboardManager else {
-      DebugLogger.log("PROMPT-MODE: Clipboard manager is nil")
-      return nil
-    }
-    guard let clipboardText = clipboardManager.getCleanedClipboardText() else {
-      DebugLogger.log("PROMPT-MODE: No clipboard text found")
-      return nil
-    }
-
-    let trimmedText = clipboardText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedText.isEmpty else {
-      DebugLogger.log("PROMPT-MODE: Clipboard text is empty after trimming")
-      return nil
-    }
-    DebugLogger.log("PROMPT-MODE: Clipboard context found (length: \(trimmedText.count) chars)")
-    return trimmedText
   }
 
   // MARK: - Shared Infrastructure Helpers

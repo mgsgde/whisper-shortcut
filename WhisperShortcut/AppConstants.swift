@@ -52,8 +52,18 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
 """
 
   /// Appended to every prompt-mode system prompt so the model always returns only raw result, never meta.
+  ///
+  /// Covers both turn shapes in ONE string on purpose: a compose turn (nothing selected) is marked
+  /// in the request itself (`dictatePromptComposeMarker`), not by a second system prompt. The local
+  /// MLX prompt cache is keyed on the exact system prompt, and a second variant would make every
+  /// switch between edit and compose pay the full ~8 s prefill again.
   static let promptModeOutputRule =
-    "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
+    "\n\nCRITICAL – Output format: Return ONLY the edited/transformed text (the result of applying the voice instruction to the selected text). Never return the original selected text with the user's spoken words appended; the voice is a command to edit, not dictation to add. Exception — when the request is marked NO SELECTED TEXT, there is nothing to edit: write the text the user dictated or asked for, and return ONLY that text. Carry out a spoken request instead of echoing it (\"write a reply saying I can come on Friday\" → the reply itself, not a tidied copy of the request); dictated content comes back as the finished text, shaped by the instructions above. No meta-information, no explanations, no preamble (e.g. \"Here is...\"), no closing phrases. No decorative markdown (**bold**, # headers); bullet points with leading dash and space (- ) are allowed—use spaces to indent sub-bullets. Just the plain result that the user can paste directly."
+
+  /// Opens the user turn of a Dictate Prompt compose turn — nothing was selected for this recording,
+  /// so there is no SELECTED TEXT block. `promptModeOutputRule` tells the model what to do with it.
+  static let dictatePromptComposeMarker =
+    "NO SELECTED TEXT (nothing was selected — write the text the voice instruction dictates or asks for; it will be inserted at the cursor)."
 
   /// Labels the copied selection in every Dictate Prompt request. It is written into the live
   /// request by each provider path *and* replayed by `PromptConversationHistory` when prior turns

@@ -25,6 +25,11 @@ class ClipboardManager {
   /// `changeCount` immediately after the last `copyToClipboard` write. Restore is skipped
   /// if the pasteboard changed in the meantime (user ⌘C, another dictation).
   private var changeCountAfterLastWrite: Int = 0
+  /// `changeCount` right after the app's own most recent pasteboard write (a result copy or a
+  /// clipboard restore). Unlike `changeCountAfterLastWrite` it is never reset, because its job is
+  /// different: it lets Dictate Prompt tell "the user copied something" from "the pasteboard still
+  /// holds what we put there" (`DictatePromptSelectionDecision.clipboardIsFreshSelection`).
+  private(set) var lastOwnWriteChangeCount: Int?
 
   // MARK: - Constants
   private enum Constants {
@@ -39,6 +44,7 @@ class ClipboardManager {
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
     changeCountAfterLastWrite = pasteboard.changeCount
+    lastOwnWriteChangeCount = pasteboard.changeCount
   }
 
   /// Copies dictation transcript text with capitalization and trailing punctuation.
@@ -108,6 +114,7 @@ class ClipboardManager {
     }
     guard !items.isEmpty else { return false }
     pasteboard.writeObjects(items)
+    lastOwnWriteChangeCount = pasteboard.changeCount
     return true
   }
 
