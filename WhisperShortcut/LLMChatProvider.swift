@@ -565,6 +565,11 @@ enum OpenAICompatibleStream {
           var eventTypeCounts: [String: Int] = [:]
           var messageItemCount = 0
           var textCharCount = 0
+          // Latency split for "why was this slow" reports: wait before the first visible word
+          // (reasoning + search rounds) vs. the actual text stream.
+          let startedAt = Date()
+          var firstTextAt: Date?
+          var searchRounds = 0
 
           for try await line in bytes.lines {
             try Task.checkCancellation()
@@ -594,7 +599,16 @@ enum OpenAICompatibleStream {
                 }
                 continuation.yield(.textDelta(delta))
                 hasYieldedText = true
+                if firstTextAt == nil { firstTextAt = Date() }
                 textCharCount += delta.count
+              }
+
+            case let type where type.hasSuffix("_search_call.in_progress"):
+              // Built-in web/X search round (`web_search_call`, `x_search_call`). Surface it like
+              // Gemini/Anthropic do, otherwise the UI shows bare dots for the whole round.
+              searchRounds += 1
+              if !hasYieldedText {
+                continuation.yield(.activity(.searchingWeb))
               }
 
             case "response.function_call_arguments.done":
@@ -652,6 +666,9 @@ enum OpenAICompatibleStream {
             GroundingSource(uri: $0, title: GroundingSource.displayTitle(for: $0))
           }
           let summary = eventTypeCounts.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: ",")
+          let total = Date().timeIntervalSince(startedAt)
+          let firstText = firstTextAt.map { String(format: "%.1fs", $0.timeIntervalSince(startedAt)) } ?? "none"
+          DebugLogger.logNetwork("SPEED: \(config.logTag): firstText=\(firstText) total=\(String(format: "%.1fs", total)) searchRounds=\(searchRounds)")
           DebugLogger.logNetwork("\(config.logTag): stream end, finishReason=\(finishReason ?? "nil") sources=\(sources.count) messages=\(messageItemCount) textChars=\(textCharCount) events=\(summary)")
           // No `supports`: these providers write inline [N] markers into the reply text themselves,
           // so emitting grounding supports would render a second, duplicate set of markers.
