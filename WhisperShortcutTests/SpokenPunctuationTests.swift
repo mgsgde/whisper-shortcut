@@ -28,11 +28,11 @@ struct SpokenPunctuationTests {
     #expect(SpokenPunctuation.apply(to: "Befund DOPPELPUNKT Inspektion") == "Befund: Inspektion")
   }
 
-  @Test("\"neuer Absatz\" becomes a blank line, without stray spaces or commas")
+  @Test("\"neuer Absatz\" becomes a blank line; a comma before it ends the sentence")
   func paragraphBreak() {
     #expect(
       SpokenPunctuation.apply(to: "Patient klagt über Schmerzen, neuer Absatz, Befund unauffällig")
-        == "Patient klagt über Schmerzen\n\nBefund unauffällig")
+        == "Patient klagt über Schmerzen.\n\nBefund unauffällig")
     #expect(
       SpokenPunctuation.apply(to: "Patient klagt über Schmerzen. Neuer Absatz. Befund unauffällig")
         == "Patient klagt über Schmerzen.\n\nBefund unauffällig")
@@ -93,5 +93,18 @@ struct SpokenPunctuationExtraTests {
         == "Anamnese: Schmerzen.\n\nBefund: Tonus erhöht")
     #expect(SpokenPunctuation.apply(to: "Erstens neue Zeile zweitens") == "Erstens\nzweitens")
     #expect(SpokenPunctuation.apply(to: "Doppelpunkte zählen") == "Doppelpunkte zählen")
+  }
+
+  @Test("Parakeet glues \"Doppelpunkt\" onto the next word (live capture 2026-10-09)")
+  func gluedColon() {
+    let raw =
+      "Anamnese Doppelpunkt Schmerzen im unteren Rücken seit drei Wochen, neuer Absatz, "
+      + "Befund Doppelpunktdruckschmerz L4 bis S1, neuer Absatz, "
+      + "Therapie Doppelpunkt Mobilisation der LWS, das ist der wichtigste Punkt."
+    #expect(
+      SpokenPunctuation.apply(to: raw)
+        == "Anamnese: Schmerzen im unteren Rücken seit drei Wochen.\n\nBefund: Druckschmerz L4 bis S1.\n\n"
+        + "Therapie: Mobilisation der LWS, das ist der wichtigste Punkt.")
+    #expect(SpokenPunctuation.apply(to: "Die Doppelpunkten und des Doppelpunktes") == "Die Doppelpunkten und des Doppelpunktes")
   }
 }

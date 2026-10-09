@@ -21,10 +21,30 @@ enum SpokenPunctuation {
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
     // Eats the punctuation the ASR put around the word on both sides.
     rule(#"[ \t,.;]*\bdoppelpunkt\b[ \t,.;:]*"#, ": "),
+    // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
+    // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
+    // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.
+    rule(#"[ \t,.;]*\bdoppelpunkt(?!(?:e|en|es|s)\b)(?=\p{L})"#, ": \u{1}"),
+    // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
+    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, ".\n\n"),
     // Paragraph break. A sentence end before it (". ! ? :") is kept, a stray comma is not.
     rule(#"[ \t,;]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n"),
     rule(#"[ \t,;]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n"),
   ]
+
+  /// The glued-colon rule leaves a U+0001 marker before the word it split off; this upper-cases that
+  /// word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.
+  private static func capitalizeAfterGluedColon(_ text: String) -> String {
+    guard text.contains("\u{1}") else { return text }
+    var out = ""
+    var upperNext = false
+    for ch in text {
+      if ch == "\u{1}" { upperNext = true; continue }
+      out += upperNext ? ch.uppercased() : String(ch)
+      upperNext = false
+    }
+    return out
+  }
 
   private static let trailingSpaceBeforeBreak = rule(#"[ \t]+(?=\n|$)"#, "")
   private static let excessBreaks = rule(#"\n{3,}"#, "\n\n")
@@ -49,6 +69,7 @@ enum SpokenPunctuation {
       changed = true
     }
     guard changed else { return text }
+    result = capitalizeAfterGluedColon(result)
     for cleanup in [trailingSpaceBeforeBreak, excessBreaks] {
       let range = NSRange(result.startIndex..., in: result)
       result = cleanup.regex.stringByReplacingMatches(
