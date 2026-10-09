@@ -74,9 +74,11 @@ enum OutcomeSignal: String {
   /// the next instruction) is deliberately excluded: that is normal iterative editing, not a
   /// verdict. Without this, retry chains are only visible by eyeballing timestamps.
   case promptRetry
-  /// Dictate Prompt was invoked with nothing selected, so no request was sent. `detail.reason`
-  /// separates "clipboard held no text" from "clipboard was unreachable" — a distinction the
-  /// interaction log could not previously make, since neither wrote a record at all.
+  /// Dictate Prompt ran as a compose turn: nothing was selected for this recording, so the model
+  /// wrote new text instead of editing a selection (`detail.reason` = `composeTurn`, `detail.model`).
+  /// Until 2026-10 this meant the request was refused (`reason` `emptySelection` /
+  /// `clipboardUnavailable`); the raw value is kept so the telemetry schema and older logs still
+  /// line up.
   case promptNoSelection
   /// A network round-trip (or local processing step) hit the client deadline instead of returning.
   /// Distinct from `cancelledWhileProcessing`: the app gave up, the user did not. `mode` is the

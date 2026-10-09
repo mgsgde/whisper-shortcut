@@ -124,6 +124,10 @@ class MenuBarController: NSObject {
     /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
     /// the selection is where a correct spelling can actually come from.
     var voiceFeedbackSelection: String?
+    /// Dictate Prompt: the selection captured for THIS recording (nil in screenshot-selection mode,
+    /// where the selection lives in the screenshot). Set when the intent is created, so it can
+    /// never be lost to the copy finishing after a short recording — the job awaits it.
+    var promptSelection: DictatePromptSelectionCapture?
 
     var pendingMode: AppState.RecordingMode? {
       if case .mode(let mode) = target, !captureStarted { return mode }
@@ -170,6 +174,13 @@ class MenuBarController: NSObject {
   /// A finished recording's quick-action instruction, keyed by its audio URL so a retry sends the
   /// same text and the silence precheck can let it through. Outlives the `RecordingIntent`.
   private var quickActionInstructionByURL: [URL: String] = [:]
+  /// A finished Dictate Prompt recording's selection, keyed like `quickActionInstructionByURL` so
+  /// a retry edits the same selection instead of re-reading a pasteboard that has moved on.
+  private var promptSelectionByURL: [URL: DictatePromptSelectionCapture] = [:]
+  /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
+  /// last Dictate Prompt took its clipboard decision on. Starts at launch, so whatever was on the
+  /// pasteboard before the app started never counts as a selection.
+  private var lastConsumedPromptClipboardChangeCount = NSPasteboard.general.changeCount
 
   /// Owns Read Aloud playback: the audio graph, the chunk queue, and when an utterance is done.
   /// `appState` and `ttsDidStop` stay here — the session reports its lifecycle through these
@@ -1226,9 +1237,11 @@ class MenuBarController: NSObject {
   /// recorder reports that capture actually began (permission granted + `record()` succeeded).
   private func beginAudioCapture(
     mode: AppState.RecordingMode,
-    meetingSegment: MeetingSegment? = nil
+    meetingSegment: MeetingSegment? = nil,
+    promptSelection: DictatePromptSelectionCapture? = nil
   ) {
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
+    recording?.promptSelection = promptSelection
     audioRecorder.startRecording()
   }
 
@@ -1338,11 +1351,13 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if promptModel.hasRequiredCredentialForDictatePrompt {
-        if !prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT", model: promptModel) { return }
+        let preparation = prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT", model: promptModel)
+        guard preparation.ready else { return }
         DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
         ConnectionPrewarmer.prewarm(for: promptModel)
         discardStreamingSession()  // prompt recordings never stream
-        beginAudioCapture(mode: .prompt, meetingSegment: .prompt)
+        beginAudioCapture(
+          mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
@@ -1366,10 +1381,11 @@ class MenuBarController: NSObject {
       let promptModel = PromptModel.loadPromptModel(
         forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
       if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredentialForDictatePrompt, hasOfflineModel: false) {
-        if !prepareDictatePromptSelection(logPrefix: "PROMPT-MODE", model: promptModel) { return }
+        let preparation = prepareDictatePromptSelection(logPrefix: "PROMPT-MODE", model: promptModel)
+        guard preparation.ready else { return }
         ConnectionPrewarmer.prewarm(for: promptModel)
         discardStreamingSession()  // prompt recordings never stream
-        beginAudioCapture(mode: .prompt)
+        beginAudioCapture(mode: .prompt, promptSelection: preparation.selection)
       } else {
         PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
@@ -1860,8 +1876,12 @@ class MenuBarController: NSObject {
           case .prompt:
             self.appState = .processing(.prompting)
             let instruction = self.quickActionInstructionByURL[audioURL]
+            // Same selection as the first attempt; none on record means compose, never a fresh
+            // pasteboard read.
+            let selection = self.promptSelectionByURL[audioURL]
             self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
-              await self.performPrompting(audioURL: audioURL, job: job, instruction: instruction)
+              await self.performPrompting(
+                audioURL: audioURL, job: job, instruction: instruction, selection: selection)
             }
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
@@ -2167,19 +2187,26 @@ class MenuBarController: NSObject {
       job: job,
       produce: {
         let stopTime = CFAbsoluteTimeGetCurrent()
+        let transcript: String
         if let streamed = try await streamingSession?.finalTranscript() {
           let waitMs = (CFAbsoluteTimeGetCurrent() - stopTime) * 1000
           DebugLogger.logSpeech(
             "SPEED: STREAMING-DICTATE: Transcript ready \(String(format: "%.0f", waitMs))ms after stop")
-          return streamed
+          transcript = streamed
+        } else {
+          // Single-shot: non-Gemini model, no rotation happened, or a chunk failed —
+          // transcribe the merged WAV exactly as before streaming existed.
+          transcript = try await NoSpeechContext.run(
+            duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
+          ) {
+            try await self.speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+          }
         }
-        // Single-shot: non-Gemini model, no rotation happened, or a chunk failed —
-        // transcribe the merged WAV exactly as before streaming existed.
-        return try await NoSpeechContext.run(
-          duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
-        ) {
-          try await self.speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
-        }
+        // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
+        // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
+        // attaches to the word before it.
+        return transcriptionModelForCapture.isOffline
+          ? SpokenPunctuation.apply(to: transcript) : transcript
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
@@ -2202,10 +2229,13 @@ class MenuBarController: NSObject {
 
   /// `job` is nil for a live-meeting segment.
   @MainActor
+  /// `selection` is the capture taken for this recording; nil means nothing was selected (or the
+  /// selection is read from a screenshot), and the turn runs as compose.
   private func performPrompting(
     audioURL: URL,
     job: VoiceJob?,
-    instruction: String? = nil
+    instruction: String? = nil,
+    selection: DictatePromptSelectionCapture?
   ) async {
     let spec = AudioJobSpec(
       mode: .prompt,
@@ -2227,8 +2257,12 @@ class MenuBarController: NSObject {
       audioURL: audioURL,
       job: job,
       produce: {
-        try await self.speechService.executePrompt(
-          audioURL: audioURL, mode: .togglePrompting, instruction: instruction)
+        // Bounded by the copy poll (≤ 0.5 s after the shortcut press), so in practice already
+        // resolved by the time a recording has been spoken and stopped.
+        let selectedText = await selection?.value()
+        return try await self.speechService.executePrompt(
+          audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
+          selectedText: selectedText)
       })
   }
 
@@ -2469,7 +2503,10 @@ class MenuBarController: NSObject {
   /// outcome (cancel and completion paths can both try to clean the same recording).
   private func cleanupAudioFile(at url: URL?) {
     if let url {
-      let forget = { _ = self.quickActionInstructionByURL.removeValue(forKey: url) }
+      let forget = {
+        _ = self.quickActionInstructionByURL.removeValue(forKey: url)
+        _ = self.promptSelectionByURL.removeValue(forKey: url)
+      }
       if Thread.isMainThread {
         forget()
       } else {
@@ -2646,35 +2683,76 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   /// Ensures the permission Dictate Prompt needs for the current selection-capture mode is granted,
-  /// preparing the selection as a side effect. In screenshot-selection mode (App Store build) this
-  /// gates on Screen Recording — the selection is read from a screenshot, so we abort before
-  /// recording audio when it's missing. Otherwise it gates on Accessibility and copies the selection
-  /// via ⌘C. Returns false (after showing guidance) when the required permission is missing.
-  private func prepareDictatePromptSelection(logPrefix: String, model: PromptModel) -> Bool {
+  /// and starts capturing this recording's selection. In screenshot-selection mode (App Store build)
+  /// this gates on Screen Recording — the selection is read from a screenshot, so we abort before
+  /// recording audio when it's missing — and returns no capture. Otherwise it gates on
+  /// Accessibility and copies the selection via ⌘C. `ready` is false (after showing guidance) when
+  /// the required permission is missing.
+  ///
+  /// The returned capture is the ONLY source of selected text for this recording: a selection
+  /// counts only when the pasteboard demonstrably changed for it. Nothing selected → the capture
+  /// resolves to nil and the turn runs as compose, instead of feeding the model whatever was copied
+  /// last (in a practice: possibly the previous patient's note).
+  private func prepareDictatePromptSelection(
+    logPrefix: String, model: PromptModel
+  ) -> (ready: Bool, selection: DictatePromptSelectionCapture?) {
     if model.dictatePromptUsesScreenshotSelection {
       if PermissionStatusChecker.status(for: .screenRecording) != .granted {
         DebugLogger.logWarning("\(logPrefix): Screen Recording missing — Dictate Prompt needs it for the screenshot")
         Self.showScreenRecordingPermissionError()
-        return false
+        return (false, nil)
       }
-      return true
+      return (true, nil)
     }
     // A local model in the App Store build: the selection comes from the clipboard, but the
-    // synthetic ⌘C below is exactly the Accessibility permission this build exists to avoid. Read
-    // the pasteboard as the user left it — they copy first — rather than reintroducing the
-    // permission for one model.
+    // synthetic ⌘C is exactly the Accessibility permission this build exists to avoid. The user
+    // copies first. The clipboard counts as a selection only if it changed since the last Dictate
+    // Prompt took its decision (or since launch) and the change was not the app's own result copy
+    // or restore — see `DictatePromptSelectionDecision.clipboardIsFreshSelection` for the residual
+    // risk (a stale copy the user made by hand still looks fresh).
     if AppConstants.dictatePromptUsesScreenshotSelection {
-      DebugLogger.log("\(logPrefix): Local model — using the clipboard as-is (no synthetic ⌘C in this build)")
-      return true
+      let current = NSPasteboard.general.changeCount
+      let fresh = DictatePromptSelectionDecision.clipboardIsFreshSelection(
+        currentChangeCount: current,
+        lastConsumedChangeCount: lastConsumedPromptClipboardChangeCount,
+        lastOwnWriteChangeCount: clipboardManager.lastOwnWriteChangeCount)
+      lastConsumedPromptClipboardChangeCount = current
+      let text = fresh ? NSPasteboard.general.string(forType: .string) : nil
+      let selection = DictatePromptSelectionCapture.resolved(text)
+      DebugLogger.log(
+        "\(logPrefix): Local model, no synthetic ⌘C in this build — "
+          + (fresh ? "clipboard changed since the last run, using it as the selection"
+            : "clipboard unchanged or our own write, running as compose"))
+      return (true, selection)
     }
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return false }
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return (false, nil) }
     // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
+    let selection = DictatePromptSelectionCapture()
+    let before = NSPasteboard.general.changeCount
     simulateCopy()
-    return true
+    // Same polling as Voice Feedback: "nothing was copied" and "the app was slow to copy" are
+    // otherwise indistinguishable. The capture is held strongly by this task, so it always
+    // resolves within the deadline and a waiting job can never hang on it.
+    Task { @MainActor in
+      let deadline = Date().addingTimeInterval(DictatePromptSelectionCapture.pollDeadline)
+      while Date() < deadline {
+        try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
+        let after = NSPasteboard.general.changeCount
+        guard DictatePromptSelectionDecision.copyProducedSelection(
+          changeCountBefore: before, changeCountAfter: after)
+        else { continue }
+        let text = NSPasteboard.general.string(forType: .string)
+        selection.resolve(text)
+        DebugLogger.log("\(logPrefix): Captured selection (\(text?.count ?? 0) chars)")
+        return
+      }
+      selection.resolve(nil)
+      DebugLogger.log("\(logPrefix): Nothing selected (⌘C copied nothing) — compose turn")
+    }
+    return (true, selection)
   }
 
   /// Best-effort snapshot of the current selection for Voice Feedback.
@@ -2766,6 +2844,7 @@ class MenuBarController: NSObject {
   }
   #endif
 
+  /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   private func simulateCopy() {
     // Use a private event source so modifier keys physically held (e.g. Option from the
     // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
@@ -2966,7 +3045,8 @@ extension MenuBarController: AudioRecorderDelegate {
           case .dictation:
             await self.performTranscription(audioURL: audioURL, job: nil)
           case .prompt:
-            await self.performPrompting(audioURL: audioURL, job: nil)
+            await self.performPrompting(
+              audioURL: audioURL, job: nil, selection: intent?.promptSelection)
           }
         }
         return
@@ -2981,6 +3061,10 @@ extension MenuBarController: AudioRecorderDelegate {
         self.quickActionInstructionByURL[audioURL] = instruction
       }
       let quickActionInstruction = self.quickActionInstructionByURL[audioURL]
+      if let selection = intent?.promptSelection {
+        self.promptSelectionByURL[audioURL] = selection
+      }
+      let promptSelection = self.promptSelectionByURL[audioURL]
 
       // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager).
       // A quick action never sends the audio, so the cost warning does not apply.
@@ -3093,7 +3177,9 @@ extension MenuBarController: AudioRecorderDelegate {
         }
       case .prompt:
         self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
-          await self.performPrompting(audioURL: audioURL, job: job, instruction: quickActionInstruction)
+          await self.performPrompting(
+            audioURL: audioURL, job: job, instruction: quickActionInstruction,
+            selection: promptSelection)
         }
       case .voiceFeedback:
         let selection = intent?.voiceFeedbackSelection
