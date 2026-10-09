@@ -883,11 +883,13 @@ class SpeechService {
 
   /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
   /// selected the turn starts a new text, and the previous turns may be about something else
-  /// entirely (in a practice: the previous patient). Edit turns keep their history as before.
+  /// entirely (in a practice: the previous patient). None at all in Offline Mode: it exists for
+  /// practices, where an edit turn a few minutes after the last one may be the next patient, and
+  /// a follow-up edit still has its text in the selection.
   static func promptHistoryContents(
-    mode: PromptMode, isComposeTurn: Bool
+    mode: PromptMode, isComposeTurn: Bool, offlineMode: Bool = OfflineMode.isEnabled
   ) -> [GeminiChatRequest.GeminiChatContent] {
-    guard !isComposeTurn else { return [] }
+    guard !isComposeTurn, !offlineMode else { return [] }
     return PromptConversationHistory.shared.getContentsForAPI(mode: mode)
   }
 
