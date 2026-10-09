@@ -68,14 +68,22 @@ struct DictatePromptSelectionTests {
     #expect(!SpeechService.isComposeTurn(usesScreenshotSelection: true, selectedText: nil))
   }
 
-  @Test("A compose turn sends no earlier turns as history")
-  func composeTurnHasNoHistory() {
+  // One test, not two: both would write the shared history, and Swift Testing runs tests in
+  // parallel, so one test's `clear` could empty the other's history mid-check.
+  @Test("A compose turn, and any turn in Offline Mode, sends no earlier turns as history")
+  func composeTurnAndOfflineModeHaveNoHistory() {
     PromptConversationHistory.shared.append(
       mode: .togglePrompting, selectedText: "Previous patient's note",
       userInstruction: "shorten", modelResponse: "Short note")
     defer { PromptConversationHistory.shared.clear(mode: .togglePrompting) }
-    #expect(SpeechService.promptHistoryContents(mode: .togglePrompting, isComposeTurn: true).isEmpty)
-    #expect(!SpeechService.promptHistoryContents(mode: .togglePrompting, isComposeTurn: false).isEmpty)
+    #expect(SpeechService.promptHistoryContents(
+      mode: .togglePrompting, isComposeTurn: true, offlineMode: false).isEmpty)
+    #expect(!SpeechService.promptHistoryContents(
+      mode: .togglePrompting, isComposeTurn: false, offlineMode: false).isEmpty)
+    #expect(SpeechService.promptHistoryContents(
+      mode: .togglePrompting, isComposeTurn: false, offlineMode: true).isEmpty)
+    #expect(SpeechService.promptHistoryContents(
+      mode: .togglePrompting, isComposeTurn: true, offlineMode: true).isEmpty)
   }
 
   @Test("The output rule tells the model what a compose turn means")
