@@ -73,3 +73,25 @@ struct SpokenPunctuationTests {
     #expect(SpokenPunctuation.apply(to: text) == text)
   }
 }
+
+/// Cases carried over from the parallel implementation in PR #109.
+@Suite("Spoken punctuation — additional cases")
+struct SpokenPunctuationExtraTests {
+
+  @Test("Hyphenated words and a trailing full stop survive the colon")
+  func hyphenatedWords() {
+    #expect(
+      SpokenPunctuation.apply(to: "Anamnese Doppelpunkt LWS-Schmerzen seit drei Wochen.")
+        == "Anamnese: LWS-Schmerzen seit drei Wochen.")
+    #expect(SpokenPunctuation.apply(to: "Anamnese, Doppelpunkt. Patient berichtet") == "Anamnese: Patient berichtet")
+  }
+
+  @Test("Colon, paragraph and line commands in sequence")
+  func sequence() {
+    #expect(
+      SpokenPunctuation.apply(to: "Anamnese Doppelpunkt Schmerzen. Neuer Absatz. Befund Doppelpunkt Tonus erhöht")
+        == "Anamnese: Schmerzen.\n\nBefund: Tonus erhöht")
+    #expect(SpokenPunctuation.apply(to: "Erstens neue Zeile zweitens") == "Erstens\nzweitens")
+    #expect(SpokenPunctuation.apply(to: "Doppelpunkte zählen") == "Doppelpunkte zählen")
+  }
+}

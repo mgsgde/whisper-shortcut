@@ -63,7 +63,7 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   /// Opens the user turn of a Dictate Prompt compose turn — nothing was selected for this recording,
   /// so there is no SELECTED TEXT block. `promptModeOutputRule` tells the model what to do with it.
   static let dictatePromptComposeMarker =
-    "NO SELECTED TEXT (nothing was selected — write the text the voice instruction dictates or asks for; it will be inserted at the cursor)."
+    "NO SELECTED TEXT (nothing was selected — write the text the voice instruction dictates or asks for, applying the system prompt's format and rules; it will be inserted at the cursor). Use only what was said: never add facts, findings, names, or numbers that were not spoken, and never copy content from examples in the system prompt."
 
   /// Labels the copied selection in every Dictate Prompt request. It is written into the live
   /// request by each provider path *and* replayed by `PromptConversationHistory` when prior turns
