@@ -48,6 +48,17 @@ final class GrokChatProvider: LLMChatProvider {
     )
   }
 
+  // MARK: - Reasoning effort
+
+  /// `/think` level → xAI effort. `.default` sends `low` instead of leaving it to xAI: left to
+  /// itself grok-4.7 thought 20–55 s before the first word on everyday questions (2026-10-09
+  /// SPEED logs, 0–2 search rounds). The grok-4.20 models keep omitting it — the non-reasoning
+  /// variant rejects the parameter with HTTP 400 ("does not support parameter reasoningEffort").
+  static func reasoningEffort(_ level: ThinkingLevel, model: String) -> String? {
+    if let explicit = level.grokReasoningEffort { return explicit }
+    return model.hasPrefix("grok-4.20") ? nil : "low"
+  }
+
   // MARK: - Responses API (with web_search + X search)
 
   /// Uses xAI's Responses API which supports built-in web and X.com search.
@@ -86,12 +97,13 @@ final class GrokChatProvider: LLMChatProvider {
         + tools.map(\.responsesDeclaration)
 
       // Per-session `/think` override → Responses API nested `reasoning.effort`.
-      if let effort = options.thinkingLevel.grokReasoningEffort {
+      let effort = Self.reasoningEffort(options.thinkingLevel, model: model)
+      if let effort {
         body["reasoning"] = ["effort": effort]
       }
 
       let handleTag = options.xHandles.isEmpty ? "" : "(\(options.xHandles.count) handles)"
-      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search\(handleTag)+\(tools.count)func effort=\(options.thinkingLevel.grokReasoningEffort ?? "default")")
+      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search\(handleTag)+\(tools.count)func effort=\(effort ?? "default")")
       return OpenAICompatibleStream.responses(
         try Self.streamConfig(endpoint: endpoint, logTag: "GROK-RESPONSES", cacheKey: options.cacheKey),
         body: body,
@@ -147,11 +159,12 @@ final class GrokChatProvider: LLMChatProvider {
       }
 
       // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
-      if let effort = options.thinkingLevel.grokReasoningEffort {
+      let effort = Self.reasoningEffort(options.thinkingLevel, model: model)
+      if let effort {
         body["reasoning_effort"] = effort
       }
 
-      DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(options.thinkingLevel.grokReasoningEffort ?? "default")")
+      DebugLogger.logNetwork("GROK-CHAT-STREAM: POST \(endpoint) model=\(model) effort=\(effort ?? "default")")
       return OpenAICompatibleStream.chatCompletions(
         try Self.streamConfig(endpoint: endpoint, logTag: "GROK-CHAT-STREAM", cacheKey: options.cacheKey),
         body: body)
@@ -207,7 +220,7 @@ final class GrokChatProvider: LLMChatProvider {
       systemInstruction: systemInstruction,
       schema: schema,
       schemaName: schemaName,
-      reasoningEffort: thinkingLevel.grokReasoningEffort,
+      reasoningEffort: Self.reasoningEffort(thinkingLevel, model: model),
       session: session,
       logTag: "GROK")
   }

@@ -35,6 +35,18 @@ final class OpenAIChatProvider: LLMChatProvider {
     return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
   }
 
+  // MARK: - Reasoning effort
+
+  /// `/think` level → OpenAI effort. `.default` sends `low` to OpenAI's own reasoning models
+  /// (gpt-5*, gpt-6*) instead of leaving it to OpenAI, matching Grok: the model default spends
+  /// tens of seconds reasoning before the first word on everyday questions. Custom endpoints and
+  /// non-reasoning models (gpt-4o-audio) keep omitting the field, because they reject it with 400.
+  static func reasoningEffort(_ level: ThinkingLevel, model: String, useCustomEndpoint: Bool) -> String? {
+    if let explicit = level.openAIReasoningEffort { return explicit }
+    guard !useCustomEndpoint, model.hasPrefix("gpt-5") || model.hasPrefix("gpt-6") else { return nil }
+    return "low"
+  }
+
   // MARK: - Request credentials
 
   private static func requireAPIKey(useCustomEndpoint: Bool) throws -> String {
@@ -111,11 +123,12 @@ final class OpenAIChatProvider: LLMChatProvider {
       body["tools"] = [["type": "web_search"] as [String: Any]] + tools.map(\.responsesDeclaration)
 
       // Per-session `/think` override → Responses API nested `reasoning.effort`.
-      if let effort = thinkingLevel.openAIReasoningEffort {
+      let effort = Self.reasoningEffort(thinkingLevel, model: model, useCustomEndpoint: false)
+      if let effort {
         body["reasoning"] = ["effort": effort]
       }
 
-      DebugLogger.logNetwork("OPENAI-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func effort=\(thinkingLevel.openAIReasoningEffort ?? "default")")
+      DebugLogger.logNetwork("OPENAI-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func effort=\(effort ?? "default")")
       return OpenAICompatibleStream.responses(
         try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-RESPONSES", useCustomEndpoint: false),
         body: body,
@@ -185,11 +198,12 @@ final class OpenAIChatProvider: LLMChatProvider {
       }
 
       // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
-      if let effort = thinkingLevel.openAIReasoningEffort {
+      let effort = Self.reasoningEffort(thinkingLevel, model: requestModel, useCustomEndpoint: useCustom)
+      if let effort {
         body["reasoning_effort"] = effort
       }
 
-      DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(requestModel) messages=\(messages.count) tools=\(tools.count) effort=\(thinkingLevel.openAIReasoningEffort ?? "default")")
+      DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(requestModel) messages=\(messages.count) tools=\(tools.count) effort=\(effort ?? "default")")
       return OpenAICompatibleStream.chatCompletions(
         try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-CHAT-STREAM", useCustomEndpoint: useCustom),
         body: body)
@@ -240,7 +254,7 @@ final class OpenAIChatProvider: LLMChatProvider {
       systemInstruction: systemInstruction,
       schema: schema,
       schemaName: schemaName,
-      reasoningEffort: thinkingLevel.openAIReasoningEffort,
+      reasoningEffort: Self.reasoningEffort(thinkingLevel, model: requestModel, useCustomEndpoint: useCustom),
       session: session,
       logTag: "OPENAI")
   }
