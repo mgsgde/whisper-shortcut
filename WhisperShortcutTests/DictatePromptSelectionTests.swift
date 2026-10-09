@@ -82,5 +82,11 @@ struct DictatePromptSelectionTests {
   func outputRuleCoversCompose() {
     #expect(AppConstants.promptModeOutputRule.contains("NO SELECTED TEXT"))
     #expect(AppConstants.dictatePromptComposeMarker.hasPrefix("NO SELECTED TEXT"))
+    // Small local models echo the dictation unless the marker points them at the system prompt's
+    // structure; neither text may make "write what was dictated" the goal.
+    #expect(AppConstants.dictatePromptComposeMarker.contains("exactly as the system prompt specifies"))
+    #expect(!AppConstants.dictatePromptComposeMarker.contains("write the text the voice instruction dictates"))
+    #expect(!AppConstants.promptModeOutputRule.contains("write the text the user dictated"))
+    #expect(AppConstants.promptModeOutputRule.contains("carry out a spoken request instead of echoing it"))
   }
 }
