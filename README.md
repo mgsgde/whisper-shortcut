@@ -163,7 +163,7 @@ Core slash commands:
 - `/folder` — share a folder so the chat can list, read, and search files in it (dropping a folder onto the chat window does the same)
 - `/workspace` — limit this chat to one of the shared folders (e.g. `/workspace notes`); `all` restores every folder, `off` drops file access for this chat
 - `/model` — switch model (e.g. `/model 3.5 flash`)
-- `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`; Grok's default is `low` for fast answers, use `high` for research)
+- `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`; on Grok and GPT the default is `low` for fast answers, use `high` for research)
 - `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
 - `/settings` — open Settings
 - `/pin` / `/unpin` — keep the window open or close on focus loss
