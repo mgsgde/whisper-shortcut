@@ -55,6 +55,31 @@ class ClipboardManager {
     return cleanText(text)
   }
 
+  // MARK: - Selection capture (Dictate Prompt)
+
+  /// `changeCount` just before the synthetic ⌘C of a Dictate Prompt, or nil when no copy was
+  /// posted for the current job (screenshot selection, the App Store build's clipboard-as-is path).
+  private var changeCountBeforeSelectionCopy: Int?
+
+  /// Call immediately before posting the synthetic ⌘C. With nothing selected, ⌘C writes nothing,
+  /// and the pasteboard still holds whatever was copied last — in a practice that can be the
+  /// previous patient's note. Only a changed `changeCount` proves the text is the selection.
+  func markSelectionCopyStart() {
+    changeCountBeforeSelectionCopy = pasteboard.changeCount
+  }
+
+  /// The selection copied by the last synthetic ⌘C, or nil when that copy wrote nothing. Without
+  /// a marked copy it falls back to the pasteboard as-is (callers that read it on purpose).
+  /// Consumes the mark, so a later job can never be judged against an old baseline.
+  func takeCopiedSelectionText() -> String? {
+    defer { changeCountBeforeSelectionCopy = nil }
+    if let before = changeCountBeforeSelectionCopy, pasteboard.changeCount == before {
+      DebugLogger.log("PROMPT-MODE: Synthetic ⌘C copied nothing — ignoring the stale clipboard")
+      return nil
+    }
+    return getCleanedClipboardText()
+  }
+
   // MARK: - Non-destructive paste
 
   /// Copies every item currently on the pasteboard, including non-text flavors, so it can be

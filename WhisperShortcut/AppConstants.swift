@@ -62,6 +62,12 @@ Guardrails: Return only the modified text. No explanations, meta-commentary, or 
   static let clipboardSelectionHeader =
     "SELECTED TEXT FROM CLIPBOARD (apply the voice instruction to this text):"
 
+  /// Stands in for the selection when nothing was selected. Overrides the edit framing of the
+  /// default system prompt for this one turn; a custom prompt that already expects dictation
+  /// (e.g. a practice's note format) just gets confirmed.
+  static let dictatePromptComposeNotice =
+    "NO SELECTED TEXT: nothing is selected, so there is nothing to edit. In this turn the VOICE INSTRUCTION is the content: write the text it asks for, applying the system prompt's format and rules. Use only what was said — never add facts, findings, names, or numbers that were not spoken, and never copy content from examples in the system prompt. Return only the finished text."
+
   // MARK: - App Store: Accessibility-free Dictate Prompt
 
   /// In the App Store build (`#if APP_STORE`), Dictate Prompt does NOT copy the selection via ⌘C

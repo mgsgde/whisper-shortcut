@@ -655,17 +655,15 @@ class SpeechService {
     // solely on the highlighted region in the screenshot instead of the ⌘C-copied selection.
     let clipboardContext = usesScreenshotSelection ? nil : getClipboardContext()
 
-    // With nothing selected there is no material to edit, and the model reliably "edits" the
-    // instruction instead — a user who said "formuliere Antwort, mein Geburtsdatum ist 15.08.91"
-    // got back that same sentence, tidied up. Refusing here is cheaper and far clearer than
-    // pasting the user's own words back at them. Screenshot-selection runs are exempt: there
-    // the selection lives in the screenshot, so a nil clipboard is the normal case.
+    // With nothing selected this turn composes instead of edits: the dictation is the material,
+    // shaped by the system prompt (a practice's "Diktat → Anamnese/Befund/Therapie" prompt is the
+    // case this exists for). `buildPromptEnvelope` frames it as such, so the model does not hunt
+    // for a selection that isn't there. Screenshot-selection runs keep their own source.
     if !usesScreenshotSelection, clipboardContext == nil {
-      DebugLogger.log("PROMPT-MODE: No selected text — refusing to send, nothing to edit")
+      DebugLogger.log("PROMPT-MODE: No selected text — composing from the dictation alone")
       ContextLogger.shared.logSignal(
         .promptNoSelection, mode: "prompt",
         detail: ["reason": clipboardManager == nil ? "clipboardUnavailable" : "emptySelection"])
-      throw TranscriptionError.noSelectedText
     }
 
     // The selected text is user-curated ground-truth spelling (unlike the voice instruction,
@@ -829,15 +827,24 @@ class SpeechService {
     }
 
     let clipboardText: String?
+    let composing: Bool
     if let context = clipboardContext, !context.isEmpty {
       DebugLogger.log("\(logPrefix): Adding clipboard context (length: \(context.count) chars)")
       clipboardText = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
-    } else {
+      composing = false
+    } else if screenshotSelectionMode {
       DebugLogger.log("\(logPrefix): No clipboard context to add")
       clipboardText = nil
+      composing = false
+    } else {
+      DebugLogger.log("\(logPrefix): Nothing selected — compose turn")
+      clipboardText = AppConstants.dictatePromptComposeNotice
+      composing = true
     }
 
-    let historyContents = PromptConversationHistory.shared.getContentsForAPI(mode: mode)
+    // A compose turn starts fresh: earlier turns may belong to another document — in a practice,
+    // to the previous patient — and a small model blends them into this one.
+    let historyContents = composing ? [] : PromptConversationHistory.shared.getContentsForAPI(mode: mode)
     if historyContents.count / 2 > 0 {
       DebugLogger.log("\(logPrefix): Including \(historyContents.count / 2) previous turns from conversation history")
     }
@@ -2783,7 +2790,7 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE: Clipboard manager is nil")
       return nil
     }
-    guard let clipboardText = clipboardManager.getCleanedClipboardText() else {
+    guard let clipboardText = clipboardManager.takeCopiedSelectionText() else {
       DebugLogger.log("PROMPT-MODE: No clipboard text found")
       return nil
     }

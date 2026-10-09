@@ -34,3 +34,45 @@ struct ClipboardManagerTests {
     #expect(manager.getClipboardText() == "user copied this")
   }
 }
+
+@Suite("Dictate Prompt selection capture")
+struct SelectionCaptureTests {
+
+  @Test("A synthetic ⌘C that copied nothing yields no selection, not the stale clipboard")
+  func staleClipboardIgnored() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("previous patient's note", forType: .string)
+
+    manager.markSelectionCopyStart()
+    // ⌘C with nothing selected writes nothing.
+    #expect(manager.takeCopiedSelectionText() == nil)
+  }
+
+  @Test("A synthetic ⌘C that copied text yields that text")
+  func copiedSelectionUsed() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("old", forType: .string)
+
+    manager.markSelectionCopyStart()
+    pasteboard.clearContents()
+    pasteboard.setString("selected text", forType: .string)
+    #expect(manager.takeCopiedSelectionText() == "selected text")
+  }
+
+  @Test("Without a marked copy the clipboard is read as-is, and the mark is consumed")
+  func unmarkedFallsBack() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("copied on purpose", forType: .string)
+    #expect(manager.takeCopiedSelectionText() == "copied on purpose")
+
+    manager.markSelectionCopyStart()
+    #expect(manager.takeCopiedSelectionText() == nil)
+    #expect(manager.takeCopiedSelectionText() == "copied on purpose")
+  }
+}

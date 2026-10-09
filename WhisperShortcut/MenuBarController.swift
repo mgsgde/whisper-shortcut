@@ -2673,6 +2673,7 @@ class MenuBarController: NSObject {
     // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
+    clipboardManager.markSelectionCopyStart()
     simulateCopy()
     return true
   }

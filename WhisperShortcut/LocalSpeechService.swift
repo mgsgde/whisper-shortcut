@@ -439,7 +439,8 @@ actor LocalSpeechService {
       throw TranscriptionError.fileError("Offline model not initialized")
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
+    let normalizedText = TextProcessingUtility.applyingSpokenLayoutCommands(
+      TextProcessingUtility.normalizeTranscriptionText(text))
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "LOCAL-SPEECH")
     
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime

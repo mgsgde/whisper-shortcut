@@ -41,6 +41,37 @@ enum TextProcessingUtility {
     return cleaned
   }
   
+  // MARK: - Spoken layout commands (offline dictation)
+
+  /// German layout commands an on-device model writes out as words ("Anamnese Doppelpunkt …").
+  /// Cloud models already turn these into punctuation; Parakeet and Whisper do not. Only commands
+  /// that are never ordinary prose are listed — "Punkt" and "Komma" are everyday words ("der
+  /// wichtigste Punkt") and stay untouched. The punctuation the model put around a command
+  /// ("Anamnese, Doppelpunkt. Patient") goes with it — except a sentence's own full stop before a
+  /// line break ("Schmerzen. Neuer Absatz."), which belongs to the sentence.
+  private static let spokenLayoutCommands: [(regex: NSRegularExpression, replacement: String)] = [
+    (#"neuer\s+Absatz"#, "[,;]", "\n\n"),
+    (#"neue\s+Zeile"#, "[,;]", "\n"),
+    (#"Doppelpunkt"#, "[,.;:]", ": "),
+  ].map { word, before, replacement in
+    let pattern = #"[ \t]*"# + before + #"?[ \t]*\b"# + word + #"\b[,.;:]?[ \t]*"#
+    return (try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive]), replacement)
+  }
+
+  static func applyingSpokenLayoutCommands(_ text: String) -> String {
+    var result = text
+    for command in spokenLayoutCommands {
+      let range = NSRange(result.startIndex..., in: result)
+      result = command.regex.stringByReplacingMatches(
+        in: result, range: range,
+        withTemplate: NSRegularExpression.escapedTemplate(for: command.replacement))
+    }
+    guard result != text else { return text }
+    // A colon directly before a line break, or at the very end, needs no trailing space.
+    result = result.replacingOccurrences(of: ": +(?=\n|$)", with: ":", options: .regularExpression)
+    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   /// Strips a "here is the transcription…" lead-in the model wrote before the actual words.
   ///
   /// The literal prefix list below only catches exact spellings. Models get chattier the more they
