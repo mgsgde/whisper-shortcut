@@ -58,7 +58,8 @@ enum ChatStreamActivity: Equatable {
 ///   - Gemini 2.5 → `generationConfig.thinkingConfig.thinkingBudget` (coarse: minimal→0, else dynamic)
 ///   - OpenAI / Grok → `reasoning_effort` (Chat Completions) or `reasoning.effort` (Responses API)
 ///
-/// `.default` means "don't override — use the model's built-in per-model config". All field names
+/// `.default` means "don't override — use the model's built-in per-model config" (except Grok, which
+/// defaults to `low`; see `grokReasoningEffort`). All field names
 /// and accepted values below were verified live against each provider's API (see
 /// reference_provider_endpoints_verified memory).
 enum ThinkingLevel: String, Codable, CaseIterable {
@@ -80,13 +81,12 @@ enum ThinkingLevel: String, Codable, CaseIterable {
     }
   }
 
-  /// Grok `reasoning_effort` / Responses `reasoning.effort`, or nil to omit. Grok accepts all four
-  /// levels natively (verified: minimal/low/medium/high/none all 200).
+  /// Grok `reasoning_effort` / Responses `reasoning.effort`. Grok accepts all four levels natively
+  /// (verified: minimal/low/medium/high/none all 200). `.default` maps to `low`, not to xAI's own
+  /// default: left to itself grok-4.7 thought 20–55 s before the first word on everyday questions
+  /// (2026-10-09 SPEED logs, 0–2 search rounds). `/think high` stays available for research.
   var grokReasoningEffort: String? {
-    switch self {
-    case .default: return nil
-    default: return rawValue
-    }
+    self == .default ? "low" : rawValue
   }
 
   /// Gemini 3.x `thinkingLevel` value (minimal/low/medium/high), or nil to use the model default.
