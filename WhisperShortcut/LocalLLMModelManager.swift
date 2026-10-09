@@ -17,6 +17,12 @@ import MLXLMCommon
 
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
+  // EXPERIMENT (branch experiment/gemma4-e4b, not for release): Gemma 4 E4B for the offline
+  // Dictate Prompt. The repo carries audio and vision towers; mlx-swift-lm's `gemma4` text path
+  // skips those weights in `sanitize`, so only the language model is instantiated.
+  case gemma4E4BIt = "gemma-4-e4b-it"
+  // EXPERIMENT: Gemma 4 12B (`gemma4_unified`, vision embedder skipped by `sanitize`).
+  case gemma412BIt = "gemma-4-12b-it"
   // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
   // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
   // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
@@ -26,6 +32,8 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var displayName: String {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
+    case .gemma4E4BIt: return "Gemma 4 E4B"
+    case .gemma412BIt: return "Gemma 4 12B"
     }
   }
 
@@ -33,12 +41,16 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var huggingFaceID: String {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    case .gemma4E4BIt: return "mlx-community/gemma-4-e4b-it-4bit"
+    case .gemma412BIt: return "mlx-community/gemma-4-12B-it-4bit"
     }
   }
 
   var estimatedSizeMB: Int {
     switch self {
     case .qwen34BInstruct2507: return 2300
+    case .gemma4E4BIt: return 5200
+    case .gemma412BIt: return 6700
     }
   }
 
@@ -71,7 +83,9 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   /// Preference order for Offline Mode: larger models last so a downloaded smaller model wins
   /// when both exist, and the recommended default is chosen when none are on disk yet.
   static var byPreference: [LocalLLMModelType] {
-    [.qwen34BInstruct2507].filter(\.isOfferable)
+    // Callers take `.last` that is downloaded, so Qwen (the shipped default) stays ahead of the
+    // experimental Gemma 4 E4B when both are on disk.
+    [.gemma412BIt, .gemma4E4BIt, .qwen34BInstruct2507].filter(\.isOfferable)
   }
 
   static var offerable: [LocalLLMModelType] { allCases.filter(\.isOfferable) }

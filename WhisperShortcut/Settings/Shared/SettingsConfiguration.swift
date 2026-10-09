@@ -176,11 +176,15 @@ enum PromptModel: String, CaseIterable {
   // In-process MLX models (no server). One enum case per catalogue entry; weights download like
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
+  case localMLXGemma4E4B = "local-mlx-gemma-4-e4b-it"
+  case localMLXGemma412B = "local-mlx-gemma-4-12b-it"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
+    case .gemma4E4BIt: return .localMLXGemma4E4B
+    case .gemma412BIt: return .localMLXGemma412B
     }
   }
 
@@ -188,6 +192,8 @@ enum PromptModel: String, CaseIterable {
   var localMLXModelType: LocalLLMModelType? {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
+    case .localMLXGemma4E4B: return .gemma4E4BIt
+    case .localMLXGemma412B: return .gemma412BIt
     default: return nil
     }
   }
@@ -271,6 +277,10 @@ enum PromptModel: String, CaseIterable {
       return "Local Server (Ollama / LM Studio)"
     case .localMLXQwen34BInstruct:
       return "Qwen3 4B Instruct (Offline)"
+    case .localMLXGemma4E4B:
+      return "Gemma 4 E4B (Offline)"
+    case .localMLXGemma412B:
+      return "Gemma 4 12B (Offline)"
     }
   }
 
@@ -318,6 +328,8 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
+    case .localMLXGemma4E4B: return "gemma4e4b"
+    case .localMLXGemma412B: return "gemma412b"
     }
   }
 
@@ -391,6 +403,10 @@ enum PromptModel: String, CaseIterable {
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
       return "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline"
+    case .localMLXGemma4E4B:
+      return "mlx-community/gemma-4-e4b-it-4bit • In-process MLX, no server to install • ~5.2 GB • Offline"
+    case .localMLXGemma412B:
+      return "mlx-community/gemma-4-12B-it-4bit • In-process MLX, no server to install • ~6.7 GB • Offline"
     }
   }
   
@@ -404,7 +420,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
       return "Low"
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return "Free (Offline)"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -439,7 +455,7 @@ enum PromptModel: String, CaseIterable {
       return .customOpenAI
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return .localMLX
     }
   }
@@ -536,7 +552,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct:
+    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return false
     default:
       return true
@@ -554,7 +570,7 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return true
     default:
       return true
@@ -659,7 +675,7 @@ enum PromptModel: String, CaseIterable {
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
+         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return nil
     }
   }
@@ -707,7 +723,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
+    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -722,7 +738,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .localMLXQwen34BInstruct:
+         .localMLXQwen34BInstruct, .localMLXGemma4E4B, .localMLXGemma412B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
