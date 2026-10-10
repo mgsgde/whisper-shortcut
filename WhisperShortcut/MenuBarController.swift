@@ -3275,8 +3275,8 @@ extension MenuBarController: ShortcutDelegate {
     // missing: screencapture launches fine (no thrown error) but produces nothing.
     //
     // A click (mouse down + up, moved < 5 pt) makes `screencapture -i` exit with no file.
-    // That is a full-page capture of the window under the click, not a cancel. Esc still
-    // produces no file and no click, and stays a cancel.
+    // That captures the whole screen under the click, not a cancel. Esc still produces no
+    // file and no click, and stays a cancel.
     let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
     let saveToFolder = ScreenshotSaveLocation.isEnabled
@@ -3338,35 +3338,8 @@ extension MenuBarController: ShortcutDelegate {
           if let down = sample.down, let up = sample.up,
             hypot(up.x - down.x, up.y - down.y) < 5
           {
-            DebugLogger.log("SCREENSHOT: click with no selection — capturing full page")
-            Task { @MainActor in
-              PopupNotificationWindow.showProcessing(
-                "Scrolling through the page. Keep the mouse still until it's done.",
-                title: "Capturing Full Page")
-              let result = await FullPageCapture.capture(atCocoaPoint: up)
-              PopupNotificationWindow.dismissProcessing()
-              guard let result else {
-                PopupNotificationWindow.showError(
-                  "Couldn't capture that window. Click inside the page you want, or drag a rectangle to capture part of the screen.",
-                  title: "Full Page Screenshot")
-                return
-              }
-              Self.deliverScreenshot(result.pngData, saveToFolder: saveToFolder)
-              if result.scrolled {
-                PopupNotificationWindow.showInfo(
-                  "The whole page is on the clipboard (\(result.frameCount) \(result.frameCount == 1 ? "screen" : "screens")).",
-                  title: "Full Page Copied")
-              } else {
-                #if APP_STORE
-                let reason = "Scrolling a page needs the Accessibility permission, which the App Store version can't use."
-                #else
-                let reason = "To scroll and capture the whole page, WhisperShortcut needs Accessibility permission (Settings → Privacy & Permissions)."
-                #endif
-                PopupNotificationWindow.showInfo(
-                  "Only the visible part of the window was copied. \(reason)",
-                  title: "Window Copied")
-              }
-            }
+            DebugLogger.log("SCREENSHOT: click with no selection — capturing the whole screen")
+            Self.captureWholeScreen(atCocoaPoint: up, saveToFolder: saveToFolder)
           } else {
             DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
           }
@@ -3374,6 +3347,43 @@ extension MenuBarController: ShortcutDelegate {
         }
 
         Self.deliverScreenshot(data, saveToFolder: saveToFolder)
+        try? FileManager.default.removeItem(at: tempURL)
+      }
+    }
+  }
+
+  /// Captures the whole display that contains `point` (Cocoa coordinates) and delivers it like a
+  /// dragged selection.
+  private static func captureWholeScreen(atCocoaPoint point: NSPoint, saveToFolder: Bool) {
+    guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }),
+      let primary = NSScreen.screens.first
+    else {
+      DebugLogger.logWarning("SCREENSHOT: no screen contains the click at \(point)")
+      return
+    }
+    // screencapture -R takes global points with a top-left origin on the primary display.
+    let frame = screen.frame
+    let rect = "\(Int(frame.minX)),\(Int(primary.frame.maxY - frame.maxY)),\(Int(frame.width)),\(Int(frame.height))"
+    let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
+    DispatchQueue.global(qos: .userInitiated).async {
+      let task = Process()
+      task.launchPath = "/usr/sbin/screencapture"
+      task.arguments = ["-R", rect, tempURL.path]
+      do {
+        try task.run()
+        task.waitUntilExit()
+      } catch {
+        DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
+        return
+      }
+      guard let data = try? Data(contentsOf: tempURL) else {
+        DebugLogger.logWarning("SCREENSHOT: whole-screen capture produced no file (rect \(rect))")
+        return
+      }
+      DispatchQueue.main.async {
+        DebugLogger.log("SCREENSHOT: whole screen captured (rect \(rect), \(data.count) bytes)")
+        deliverScreenshot(data, saveToFolder: saveToFolder)
         try? FileManager.default.removeItem(at: tempURL)
       }
     }
