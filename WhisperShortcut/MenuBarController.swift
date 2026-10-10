@@ -3236,57 +3236,152 @@ extension MenuBarController: ShortcutDelegate {
   // openSettings is already implemented above
   func openChat() { openChatWindowFromShortcut() }
 
+  /// Mouse-down / mouse-up sample taken while `screencapture -i` is running.
+  /// Global monitors can deliver off the main thread; the lock keeps the points
+  /// stable when the main thread reads them after the tool exits.
+  private final class ScreenshotClickTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var downPoint: NSPoint?
+    private var upPoint: NSPoint?
+
+    func noteDown(_ point: NSPoint) {
+      lock.lock()
+      downPoint = point
+      lock.unlock()
+    }
+
+    func noteUp(_ point: NSPoint) {
+      lock.lock()
+      upPoint = point
+      lock.unlock()
+    }
+
+    func points() -> (down: NSPoint?, up: NSPoint?) {
+      lock.lock()
+      defer { lock.unlock() }
+      return (downPoint, upPoint)
+    }
+  }
+
   @objc func takeScreenshot() {
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { [weak self] in self?.takeScreenshot() }
+      return
+    }
     // Always capture to a temp PNG (not screencapture's own `-c`) so we get a definitive
     // success signal: a file means the capture worked, no file means it didn't. We then
     // copy the image to the clipboard ourselves and, when enabled, persist it to the
     // user-selected folder. Without this we can't tell a successful capture apart from a
     // silent failure — which is exactly what happens when Screen Recording permission is
     // missing: screencapture launches fine (no thrown error) but produces nothing.
+    //
+    // A click (mouse down + up, moved < 5 pt) makes `screencapture -i` exit with no file.
+    // That is a full-page capture of the window under the click, not a cancel. Esc still
+    // produces no file and no click, and stays a cancel.
     let tempURL = URL(fileURLWithPath: NSTemporaryDirectory())
       .appendingPathComponent("whispershortcut-\(UUID().uuidString).png")
     let saveToFolder = ScreenshotSaveLocation.isEnabled
     DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (save=\(saveToFolder))")
+
+    let clicks = ScreenshotClickTracker()
+    let monitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseDown, .leftMouseUp]
+    ) { event in
+      let location = NSEvent.mouseLocation
+      switch event.type {
+      case .leftMouseDown:
+        clicks.noteDown(location)
+      case .leftMouseUp:
+        clicks.noteUp(location)
+      default:
+        break
+      }
+    }
+
     DispatchQueue.global(qos: .userInitiated).async {
       let task = Process()
       task.launchPath = "/usr/sbin/screencapture"
       // -i interactive (drag rectangle / space-bar for window), -o no shadow on window grabs.
       task.arguments = ["-i", "-o", tempURL.path]
+      var launchError: Error?
       do {
         try task.run()
         task.waitUntilExit()
       } catch {
+        launchError = error
         DebugLogger.logError("SCREENSHOT: Failed to launch screencapture: \(error)")
-        return
-      }
-
-      guard FileManager.default.fileExists(atPath: tempURL.path),
-        let data = try? Data(contentsOf: tempURL)
-      else {
-        // No file: either the user cancelled the selection, or Screen Recording permission
-        // is missing (screencapture then produces nothing). PermissionStatusChecker lets us
-        // tell the two apart so we only nag when permission is the real problem.
-        DispatchQueue.main.async {
-          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
-            DebugLogger.logWarning("SCREENSHOT: No capture file and no Screen Recording permission")
-            Self.showScreenRecordingPermissionError()
-          } else {
-            DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
-          }
-        }
-        return
       }
 
       DispatchQueue.main.async {
-        if let image = NSImage(data: data) {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.writeObjects([image])
+        if let monitor {
+          NSEvent.removeMonitor(monitor)
         }
-        if saveToFolder {
-          ScreenshotSaveLocation.save(data)
+        if launchError != nil { return }
+
+        guard FileManager.default.fileExists(atPath: tempURL.path),
+          let data = try? Data(contentsOf: tempURL)
+        else {
+          // No file: the user cancelled, Screen Recording permission is missing, or they
+          // clicked without dragging. Permission is checked first so a missing grant is
+          // never treated as a click.
+          if PermissionStatusChecker.status(for: .screenRecording) != .granted {
+            DebugLogger.logWarning("SCREENSHOT: No capture file and no Screen Recording permission")
+            Self.showScreenRecordingPermissionError()
+            return
+          }
+          let sample = clicks.points()
+          if let down = sample.down, let up = sample.up,
+            hypot(up.x - down.x, up.y - down.y) < 5
+          {
+            DebugLogger.log("SCREENSHOT: click with no selection — capturing full page")
+            Task { @MainActor in
+              PopupNotificationWindow.showProcessing(
+                "Scrolling through the page. Keep the mouse still until it's done.",
+                title: "Capturing Full Page")
+              let result = await FullPageCapture.capture(atCocoaPoint: up)
+              PopupNotificationWindow.dismissProcessing()
+              guard let result else {
+                PopupNotificationWindow.showError(
+                  "Couldn't capture that window. Click inside the page you want, or drag a rectangle to capture part of the screen.",
+                  title: "Full Page Screenshot")
+                return
+              }
+              Self.deliverScreenshot(result.pngData, saveToFolder: saveToFolder)
+              if result.scrolled {
+                PopupNotificationWindow.showInfo(
+                  "The whole page is on the clipboard (\(result.frameCount) \(result.frameCount == 1 ? "screen" : "screens")).",
+                  title: "Full Page Copied")
+              } else {
+                #if APP_STORE
+                let reason = "Scrolling a page needs the Accessibility permission, which the App Store version can't use."
+                #else
+                let reason = "To scroll and capture the whole page, WhisperShortcut needs Accessibility permission (Settings → Privacy & Permissions)."
+                #endif
+                PopupNotificationWindow.showInfo(
+                  "Only the visible part of the window was copied. \(reason)",
+                  title: "Window Copied")
+              }
+            }
+          } else {
+            DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
+          }
+          return
         }
+
+        Self.deliverScreenshot(data, saveToFolder: saveToFolder)
         try? FileManager.default.removeItem(at: tempURL)
       }
+    }
+  }
+
+  /// Copies the PNG to the clipboard and, when enabled, writes it to the screenshot folder.
+  private static func deliverScreenshot(_ pngData: Data, saveToFolder: Bool) {
+    if let image = NSImage(data: pngData) {
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.writeObjects([image])
+    }
+    if saveToFolder {
+      ScreenshotSaveLocation.save(pngData)
     }
   }
 
