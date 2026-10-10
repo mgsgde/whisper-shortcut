@@ -30,6 +30,10 @@ enum FullPageCapture {
   /// middle rows — that case must still resolve to shift 60, so the floor is 25.
   /// A shorter overlap appends the whole middle instead of guessing.
   private static let minimumOverlapRows = 25
+  /// Share of overlapping rows that must match. Not near 1: fixed elements that stay on screen
+  /// while the page scrolls (sticky widgets, banners) never match at the true offset. The best
+  /// score wins, so blank rows matching at a wrong offset do not beat the real one.
+  private static let minimumMatchScore = 0.75
   private static let maximumFrames = 40
   private static let maximumStitchedHeight = 30_000
   private static let scrollChunkPixels = 1_200
@@ -110,7 +114,12 @@ enum FullPageCapture {
       pngData: png, frameCount: frames.count, scrolled: true, pixelHeight: stitched.height)
   }
 
-  /// FNV-1a 64 over every second pixel's RGB. Index 0 is the top row.
+  /// FNV-1a 64 over every second pixel's RGB, left 3 % and right 10 % of the width skipped.
+  /// Index 0 is the top row.
+  ///
+  /// The right edge holds the overlay scrollbar, whose thumb moves with every scroll and so
+  /// changes nearly every row; floating widgets (chat bubbles, accessibility buttons) sit there
+  /// too. Hashing the full width made real pages never align (Chrome, verivox.de, 2026-10-10).
   ///
   /// A bitmap `CGContext` keeps memory row 0 at the top when the image is drawn
   /// with the default transform (no flipped CTM). Verified: a `CGImage` whose
@@ -140,8 +149,9 @@ enum FullPageCapture {
     for y in 0..<height {
       var hash: UInt64 = 14_695_981_039_346_656_037
       let row = pixels.advanced(by: y * bytesPerRow)
-      var x = 0
-      while x < width {
+      var x = width * 3 / 100
+      let xEnd = max(x + 1, width * 90 / 100)
+      while x < xEnd {
         let pixel = row.advanced(by: x * 4)
         for offset in 0..<3 {
           hash ^= UInt64(pixel[offset])
@@ -191,7 +201,7 @@ enum FullPageCapture {
           if b[middleStart + i] == a[middleStart + i + d] { matches += 1 }
         }
         let score = Double(matches) / Double(overlapRows)
-        if score >= 0.92 && (bestShift == nil || score > bestScore) {
+        if score >= minimumMatchScore && (bestShift == nil || score > bestScore) {
           bestScore = score
           bestShift = d
         }
