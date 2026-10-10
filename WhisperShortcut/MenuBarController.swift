@@ -3267,6 +3267,9 @@ extension MenuBarController: ShortcutDelegate {
       DispatchQueue.main.async { [weak self] in self?.takeScreenshot() }
       return
     }
+    // Measured from this key press, not from the end of the capture: dragging a rectangle takes
+    // seconds and must not eat into the window.
+    let continuesBurst = ScreenshotBurst.continues(pressedAt: Date())
     // Always capture to a temp PNG (not screencapture's own `-c`) so we get a definitive
     // success signal: a file means the capture worked, no file means it didn't. We then
     // copy the image to the clipboard ourselves and, when enabled, persist it to the
@@ -3339,14 +3342,15 @@ extension MenuBarController: ShortcutDelegate {
             hypot(up.x - down.x, up.y - down.y) < 5
           {
             DebugLogger.log("SCREENSHOT: click with no selection — capturing the whole screen")
-            Self.captureWholeScreen(atCocoaPoint: up, saveToFolder: saveToFolder)
+            Self.captureWholeScreen(
+              atCocoaPoint: up, saveToFolder: saveToFolder, continuesBurst: continuesBurst)
           } else {
             DebugLogger.log("SCREENSHOT: No capture file (selection cancelled)")
           }
           return
         }
 
-        Self.deliverScreenshot(data, saveToFolder: saveToFolder)
+        Self.deliverScreenshot(data, saveToFolder: saveToFolder, continuesBurst: continuesBurst)
         try? FileManager.default.removeItem(at: tempURL)
       }
     }
@@ -3354,7 +3358,9 @@ extension MenuBarController: ShortcutDelegate {
 
   /// Captures the whole display that contains `point` (Cocoa coordinates) and delivers it like a
   /// dragged selection.
-  private static func captureWholeScreen(atCocoaPoint point: NSPoint, saveToFolder: Bool) {
+  private static func captureWholeScreen(
+    atCocoaPoint point: NSPoint, saveToFolder: Bool, continuesBurst: Bool
+  ) {
     guard let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }),
       let primary = NSScreen.screens.first
     else {
@@ -3383,18 +3389,78 @@ extension MenuBarController: ShortcutDelegate {
       }
       DispatchQueue.main.async {
         DebugLogger.log("SCREENSHOT: whole screen captured (rect \(rect), \(data.count) bytes)")
-        deliverScreenshot(data, saveToFolder: saveToFolder)
+        deliverScreenshot(data, saveToFolder: saveToFolder, continuesBurst: continuesBurst)
         try? FileManager.default.removeItem(at: tempURL)
       }
     }
   }
 
-  /// Copies the PNG to the clipboard and, when enabled, writes it to the screenshot folder.
-  private static func deliverScreenshot(_ pngData: Data, saveToFolder: Bool) {
-    if let image = NSImage(data: pngData) {
-      NSPasteboard.general.clearContents()
-      NSPasteboard.general.writeObjects([image])
+  /// State of the current clipboard burst (main thread only). Screenshots taken back to back
+  /// share the clipboard so one paste inserts all of them.
+  private enum ScreenshotBurst {
+    /// Back-to-back captures belong together; a pause of ~15 s must not join.
+    static let burstWindow: TimeInterval = 8
+    static let maxImages = 10
+    static var files: [URL] = []
+    static var lastDeliveredAt: Date?
+    static var lastChangeCount: Int?
+
+    static let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("WhisperShortcut-Screenshots", isDirectory: true)
+
+    /// True when the shortcut press at `pressedAt` follows the last delivery closely enough and
+    /// nothing else was copied in between.
+    static func continues(pressedAt: Date) -> Bool {
+      guard let last = lastDeliveredAt, let count = lastChangeCount else { return false }
+      return pressedAt.timeIntervalSince(last) <= burstWindow
+        && NSPasteboard.general.changeCount == count
     }
+  }
+
+  /// Copies the PNG to the clipboard and, when enabled, writes it to the screenshot folder.
+  /// With `continuesBurst`, earlier captures of the burst stay on the clipboard as extra items.
+  private static func deliverScreenshot(
+    _ pngData: Data, saveToFolder: Bool, continuesBurst: Bool
+  ) {
+    let fm = FileManager.default
+    if !continuesBurst {
+      for url in ScreenshotBurst.files { try? fm.removeItem(at: url) }
+      ScreenshotBurst.files = []
+    }
+    try? fm.createDirectory(at: ScreenshotBurst.directory, withIntermediateDirectories: true)
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+    let name =
+      "Screenshot \(formatter.string(from: Date()))-\(ScreenshotBurst.files.count + 1).png"
+    let fileURL = ScreenshotBurst.directory.appendingPathComponent(name)
+    if (try? pngData.write(to: fileURL)) != nil {
+      ScreenshotBurst.files.append(fileURL)
+      while ScreenshotBurst.files.count > ScreenshotBurst.maxImages {
+        try? fm.removeItem(at: ScreenshotBurst.files.removeFirst())
+      }
+    }
+
+    let pasteboard = NSPasteboard.general
+    if ScreenshotBurst.files.count >= 2 {
+      let items: [NSPasteboardItem] = ScreenshotBurst.files.compactMap { url in
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(url.absoluteString, forType: .fileURL)
+        item.setData(data, forType: .png)
+        return item
+      }
+      pasteboard.clearContents()
+      pasteboard.writeObjects(items)
+    } else if let image = NSImage(data: pngData) {
+      pasteboard.clearContents()
+      pasteboard.writeObjects([image])
+    }
+    ScreenshotBurst.lastDeliveredAt = Date()
+    ScreenshotBurst.lastChangeCount = pasteboard.changeCount
+    DebugLogger.log(
+      "SCREENSHOT: clipboard burst n=\(ScreenshotBurst.files.count) (continued=\(continuesBurst))")
+
     if saveToFolder {
       ScreenshotSaveLocation.save(pngData)
     }
