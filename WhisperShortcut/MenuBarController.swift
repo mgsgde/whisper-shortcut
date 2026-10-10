@@ -3237,8 +3237,7 @@ extension MenuBarController: ShortcutDelegate {
   func openChat() { openChatWindowFromShortcut() }
 
   /// Mouse-down / mouse-up sample taken while `screencapture -i` is running.
-  /// Global monitors can deliver off the main thread; the lock keeps the points
-  /// stable when the main thread reads them after the tool exits.
+  /// Written by the polling timer, read on main after the tool exits; the lock keeps it simple.
   private final class ScreenshotClickTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var downPoint: NSPoint?
@@ -3283,20 +3282,23 @@ extension MenuBarController: ShortcutDelegate {
     let saveToFolder = ScreenshotSaveLocation.isEnabled
     DebugLogger.logUI("📷 SCREENSHOT: Launching interactive capture (save=\(saveToFolder))")
 
+    // Poll the button state instead of using a global event monitor: while screencapture's
+    // overlay is up, macOS delivers the clicks to screencapture only, so a monitor never sees
+    // them (verified 2026-10-10). `pressedMouseButtons` reads the hardware state and needs no
+    // permission.
     let clicks = ScreenshotClickTracker()
-    let monitor = NSEvent.addGlobalMonitorForEvents(
-      matching: [.leftMouseDown, .leftMouseUp]
-    ) { event in
-      let location = NSEvent.mouseLocation
-      switch event.type {
-      case .leftMouseDown:
-        clicks.noteDown(location)
-      case .leftMouseUp:
-        clicks.noteUp(location)
-      default:
-        break
+    var sawDown = false
+    let pollTimer = Timer(timeInterval: 0.01, repeats: true) { _ in
+      let pressed = NSEvent.pressedMouseButtons & 1 != 0
+      if pressed && !sawDown {
+        sawDown = true
+        clicks.noteDown(NSEvent.mouseLocation)
+      } else if !pressed && sawDown {
+        sawDown = false
+        clicks.noteUp(NSEvent.mouseLocation)
       }
     }
+    RunLoop.main.add(pollTimer, forMode: .common)
 
     DispatchQueue.global(qos: .userInitiated).async {
       let task = Process()
@@ -3313,8 +3315,10 @@ extension MenuBarController: ShortcutDelegate {
       }
 
       DispatchQueue.main.async {
-        if let monitor {
-          NSEvent.removeMonitor(monitor)
+        pollTimer.invalidate()
+        // screencapture exits on the release, which can beat the next timer tick.
+        if sawDown && NSEvent.pressedMouseButtons & 1 == 0 {
+          clicks.noteUp(NSEvent.mouseLocation)
         }
         if launchError != nil { return }
 
@@ -3330,6 +3334,7 @@ extension MenuBarController: ShortcutDelegate {
             return
           }
           let sample = clicks.points()
+          DebugLogger.log("SCREENSHOT: no file; click sample down=\(String(describing: sample.down)) up=\(String(describing: sample.up))")
           if let down = sample.down, let up = sample.up,
             hypot(up.x - down.x, up.y - down.y) < 5
           {
