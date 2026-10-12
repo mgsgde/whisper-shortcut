@@ -126,7 +126,8 @@ class TextChunker {
                 break
             }
 
-            // Find the best split point within this chunk's cap
+            // Find the best split point. May overshoot this chunk's cap to finish a
+            // sentence, but never past `chunkSize`.
             let chunkEnd = findBestSplitPoint(
                 in: remainingText,
                 maxLength: maxLength,
@@ -158,116 +159,204 @@ class TextChunker {
         return chunks
     }
 
-    /// Find the best split point within the maximum length.
-    /// Tries sentence boundaries first, then word boundaries, then character limit.
-    /// Only searches in the last portion of the chunk to prevent splitting too early.
-    /// - Parameters:
-    ///   - text: The text to search in
-    ///   - maxLength: Maximum length for the chunk
-    ///   - minLength: Minimum length for the chunk (prevents splitting too early)
-    ///   - startOffset: The starting offset in the original text
-    /// - Returns: The best split point (character index)
+    /// Where a reader would pause. Positions are indexes into `Array(text)` (the remaining
+    /// text), after the punctuation and the whitespace that follows it.
+    ///
+    /// `cap` is this chunk's ramp cap, `hardMax` is `chunkSize` (never exceeded). The first
+    /// matching rule wins:
+    /// 1. Last sentence end in `[minLength, cap]`.
+    /// 2. First sentence end in `(cap, min(hardMax, cap * 1.5)]` — finish the sentence.
+    /// 3. Last sentence end in `[floor, minLength)` where `floor` is 25% of `cap`.
+    /// 4. Last clause break in `[floor, cap]` (`;` / `:` plus whitespace, or a spaced dash).
+    /// 5. Last comma plus whitespace in `[floor, cap]`.
+    /// 6. Last whitespace in `[floor, cap]`.
+    /// 7. Hard cut at `cap`.
     private func findBestSplitPoint(in text: String, maxLength: Int, minLength: Int, startOffset: Int) -> Int {
-        // Ensure we don't exceed the text length
-        let searchLength = min(maxLength, text.count)
-        
-        guard searchLength > 0 else {
+        let chars = Array(text)
+        let cap = maxLength
+        let hardMax = chunkSize
+        let floor = Int(Double(cap) * 0.25)
+
+        guard cap > 0, !chars.isEmpty else {
             return startOffset
         }
 
-        let minChunkSize = minLength
-        
-        // Only search in the last portion of the chunk (last 30% or minimum 200 chars)
-        // This ensures we don't split too early when natural boundaries are found near the start
-        let searchStartOffset = max(0, searchLength - max(200, Int(Double(searchLength) * 0.3)))
-        let searchRange = text.index(text.startIndex, offsetBy: searchStartOffset)..<text.index(text.startIndex, offsetBy: searchLength)
-        let searchText = String(text[searchRange])
-        
-        // Ensure we don't split before minimum chunk size
-        let minSplitPoint = max(minChunkSize, searchStartOffset)
+        let overshootLimit = min(hardMax, Int(Double(cap) * 1.5))
+        let sentenceEnds = sentenceSplitPositions(in: chars, maxPosition: overshootLimit)
 
-        // Try to find sentence boundary (., !, ? followed by space or newline)
-        if let sentenceEnd = findSentenceBoundary(in: searchText) {
-            let absolutePosition = startOffset + searchStartOffset + sentenceEnd
-            if absolutePosition >= startOffset + minSplitPoint {
-                DebugLogger.logDebug("TTS-CHUNKER: Found sentence boundary at position \(absolutePosition)")
-                return absolutePosition
-            }
+        if let position = sentenceEnds.last(where: { $0 >= minLength && $0 <= cap }) {
+            return loggedSplit("sentence", startOffset + position)
+        }
+        if let position = sentenceEnds.first(where: { $0 > cap && $0 <= overshootLimit }) {
+            return loggedSplit("overshoot", startOffset + position)
+        }
+        if let position = sentenceEnds.last(where: { $0 >= floor && $0 < minLength }) {
+            return loggedSplit("sentence-early", startOffset + position)
+        }
+        if let position = lastClauseSplit(in: chars, floor: floor, cap: cap) {
+            return loggedSplit("clause", startOffset + position)
+        }
+        if let position = lastCommaSplit(in: chars, floor: floor, cap: cap) {
+            return loggedSplit("comma", startOffset + position)
+        }
+        if let position = lastWhitespaceSplit(in: chars, floor: floor, cap: cap) {
+            return loggedSplit("whitespace", startOffset + position)
         }
 
-        // Fallback: find word boundary (space or newline)
-        if let wordEnd = findWordBoundary(in: searchText) {
-            let absolutePosition = startOffset + searchStartOffset + wordEnd
-            if absolutePosition >= startOffset + minSplitPoint {
-                DebugLogger.logDebug("TTS-CHUNKER: Found word boundary at position \(absolutePosition)")
-                return absolutePosition
-            }
-        }
-
-        // Last resort: split at character limit (but respect minimum)
-        let splitPoint = max(startOffset + minSplitPoint, startOffset + searchLength)
-        DebugLogger.logDebug("TTS-CHUNKER: No boundary found, splitting at position \(splitPoint)")
-        return splitPoint
+        let hard = min(cap, chars.count)
+        return loggedSplit("hard", startOffset + max(hard, 1))
     }
 
-    /// Find sentence boundary in text.
-    /// - Parameter text: The text to search
-    /// - Returns: Character index of sentence boundary, or nil if not found
-    private func findSentenceBoundary(in text: String) -> Int? {
-        // Look for sentence endings: . ! ? followed by space or newline
-        let sentenceEndings: Set<Character> = [".", "!", "?"]
-        var searchIndex = text.endIndex
+    private func loggedSplit(_ rule: String, _ position: Int) -> Int {
+        DebugLogger.logDebug("TTS-CHUNKER: split rule=\(rule) at \(position)")
+        return position
+    }
 
-        // Search backwards from the end of the search range
-        while searchIndex > text.startIndex {
-            searchIndex = text.index(before: searchIndex)
-            let char = text[searchIndex]
+    /// Split positions after `.` `!` `?` `…`, optional closing quotes or brackets, and the
+    /// whitespace that follows. A `.` after an abbreviation or an ordinal number is not an end.
+    private func sentenceSplitPositions(in chars: [Character], maxPosition: Int) -> [Int] {
+        let endings: Set<Character> = [".", "!", "?", "\u{2026}"]
+        var positions: [Int] = []
+        var index = 0
+        while index < chars.count && index < maxPosition {
+            let char = chars[index]
+            let isAbbreviation = char == "." && isAbbreviationDot(chars, dotIndex: index)
+            if endings.contains(char) && !isAbbreviation {
+                var cursor = index + 1
+                while cursor < chars.count && Self.sentenceClosers.contains(chars[cursor]) {
+                    cursor += 1
+                }
+                if cursor >= chars.count || chars[cursor].isWhitespace {
+                    while cursor < chars.count && chars[cursor].isWhitespace {
+                        cursor += 1
+                    }
+                    if cursor <= maxPosition {
+                        positions.append(cursor)
+                        index = cursor
+                        continue
+                    }
+                    break
+                }
+            }
+            index += 1
+        }
+        return positions
+    }
 
-            if sentenceEndings.contains(char) {
-                // Check if followed by space or newline
-                let nextIndex = text.index(after: searchIndex)
-                if nextIndex < text.endIndex {
-                    let nextChar = text[nextIndex]
-                    if nextChar.isWhitespace || nextChar.isNewline {
-                        // Found sentence boundary - return position after the punctuation and whitespace
-                        var endIndex = nextIndex
-                        // Skip any additional whitespace
-                        while endIndex < text.endIndex && (text[endIndex].isWhitespace || text[endIndex].isNewline) {
-                            endIndex = text.index(after: endIndex)
-                        }
-                        return text.distance(from: text.startIndex, to: endIndex)
+    /// `.` does not end a sentence when the token before it is one letter (`z. B.`, `d. h.`),
+    /// a pure number (`am 3. Oktober`), or a known abbreviation.
+    private func isAbbreviationDot(_ chars: [Character], dotIndex: Int) -> Bool {
+        guard dotIndex > 0 else { return false }
+
+        var immediate = ""
+        var index = dotIndex - 1
+        while index >= 0 && (chars[index].isLetter || chars[index].isNumber) {
+            immediate.insert(chars[index], at: immediate.startIndex)
+            index -= 1
+        }
+        if immediate.count == 1 && immediate.first?.isLetter == true {
+            return true
+        }
+        if !immediate.isEmpty && immediate.allSatisfy(\.isNumber) {
+            return true
+        }
+
+        var extended = ""
+        index = dotIndex - 1
+        while index >= 0 && (chars[index].isLetter || chars[index].isNumber || chars[index] == ".") {
+            extended.insert(chars[index], at: extended.startIndex)
+            index -= 1
+        }
+        let loweredImmediate = immediate.lowercased()
+        let loweredExtended = extended.lowercased()
+        return Self.abbreviations.contains(loweredImmediate) || Self.abbreviations.contains(loweredExtended)
+    }
+
+    /// Last `;` or `:` followed by whitespace, or the index of a spaced en/em dash, inside
+    /// `[floor, cap]`. A dash split leaves the dash at the start of the next chunk.
+    private func lastClauseSplit(in chars: [Character], floor: Int, cap: Int) -> Int? {
+        var best: Int?
+        var index = 0
+        while index < chars.count && index <= cap {
+            let char = chars[index]
+            if char == ";" || char == ":" {
+                var cursor = index + 1
+                if cursor < chars.count && chars[cursor].isWhitespace {
+                    while cursor < chars.count && chars[cursor].isWhitespace {
+                        cursor += 1
+                    }
+                    if cursor >= floor && cursor <= cap {
+                        best = cursor
+                    }
+                }
+            } else if Self.spacedDashes.contains(char)
+                        && index > 0
+                        && index + 1 < chars.count
+                        && chars[index - 1].isWhitespace
+                        && chars[index + 1].isWhitespace
+                        && index >= floor
+                        && index <= cap {
+                best = index
+            }
+            index += 1
+        }
+        return best
+    }
+
+    /// Last comma followed by whitespace whose split position falls in `[floor, cap]`.
+    private func lastCommaSplit(in chars: [Character], floor: Int, cap: Int) -> Int? {
+        var best: Int?
+        var index = 0
+        while index < chars.count && index < cap {
+            if chars[index] == "," {
+                var cursor = index + 1
+                if cursor < chars.count && chars[cursor].isWhitespace {
+                    while cursor < chars.count && chars[cursor].isWhitespace {
+                        cursor += 1
+                    }
+                    if cursor >= floor && cursor <= cap {
+                        best = cursor
                     }
                 }
             }
+            index += 1
         }
-
-        return nil
+        return best
     }
 
-    /// Find word boundary in text.
-    /// - Parameter text: The text to search
-    /// - Returns: Character index of word boundary, or nil if not found
-    private func findWordBoundary(in text: String) -> Int? {
-        // Look for space or newline
-        var searchIndex = text.endIndex
-
-        // Search backwards from the end
-        while searchIndex > text.startIndex {
-            searchIndex = text.index(before: searchIndex)
-            let char = text[searchIndex]
-
-            if char.isWhitespace || char.isNewline {
-                // Found word boundary - return position after the whitespace
-                var endIndex = text.index(after: searchIndex)
-                // Skip any additional whitespace
-                while endIndex < text.endIndex && (text[endIndex].isWhitespace || text[endIndex].isNewline) {
-                    endIndex = text.index(after: endIndex)
+    /// Last whitespace run whose end falls in `[floor, cap]`.
+    private func lastWhitespaceSplit(in chars: [Character], floor: Int, cap: Int) -> Int? {
+        var best: Int?
+        var index = 0
+        while index < chars.count && index < cap {
+            if chars[index].isWhitespace {
+                var cursor = index + 1
+                while cursor < chars.count && chars[cursor].isWhitespace {
+                    cursor += 1
                 }
-                return text.distance(from: text.startIndex, to: endIndex)
+                if cursor >= floor && cursor <= cap {
+                    best = cursor
+                }
+                if cursor > cap {
+                    break
+                }
+                index = cursor
+                continue
             }
+            index += 1
         }
-
-        return nil
+        return best
     }
+
+    private static let abbreviations: Set<String> = [
+        "dr", "mr", "mrs", "ms", "prof", "bzw", "ca", "etc", "usw", "vgl",
+        "nr", "evtl", "inkl", "ggf", "e.g", "i.e", "vs", "st"
+    ]
+
+    private static let sentenceClosers: Set<Character> = [
+        "\"", "\u{201D}", "\u{201C}", "\u{00BB}", "\u{00AB}", "'", "\u{2019}", ")", "]"
+    ]
+
+    private static let spacedDashes: Set<Character> = ["\u{2013}", "\u{2014}"]
 }
 

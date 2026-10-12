@@ -81,4 +81,62 @@ struct TextChunkerFirstChunkTests {
     #expect(chunks[1].text.count > AppConstants.ttsFirstChunkSizeChars)
     #expect(chunks[1].text.count <= AppConstants.ttsChunkSizeChars)
   }
+
+  @Test("German read-aloud sample pauses at the sentence and the clause, not after drehen")
+  func germanSamplePausesOnAClause() throws {
+    let text = "Umgang mit gesundheitlichen Problemen: Viele Menschen – auch sehr erfolgreiche – haben gesundheitliche Einschränkungen. Eine starke Haltung zeichnet sich nicht durch die Abwesenheit von Problemen aus, sondern durch den Umgang damit: Statt in Selbstmitleid zu verfallen und sich nur um sich selbst zu drehen, den Fokus nach außen auf das Leben und aktives Handeln richten und das Beste daraus machen. Die Entscheidung liegt bei mir."
+    let chunker = TextChunker(chunkSize: 260, firstChunkSize: 120, growthFactor: 1.5)
+    let chunks = try chunker.splitText(text)
+    #expect(chunks.count >= 2)
+    #expect(chunks[0].text.hasSuffix("Einschränkungen."))
+    #expect(chunks[1].text.hasSuffix("damit:"))
+    #expect(chunks.allSatisfy { !$0.text.hasSuffix("drehen,") })
+    #expect(chunks.allSatisfy { $0.text.count <= 260 })
+    #expect(chunks.map(\.text).joined(separator: " ") == text)
+  }
+
+  @Test("A sentence that ends just past the cap is finished via overshoot")
+  func overshootFinishesTheOpenSentence() throws {
+    let opener = String(repeating: "a", count: 149) + "."
+    #expect(opener.count == 150)
+    // The next sentence also ends inside the overshoot window (120, 180], so the
+    // opener is kept only when the first sentence end in that window wins.
+    let text = opener + " Kurz und klar. " + prose(sentences: 3)
+    let chunks = try TextChunker(chunkSize: 500, firstChunkSize: 120).splitText(text)
+    #expect(chunks[0].text == opener)
+    #expect(chunks.map(\.text).joined(separator: " ") == text)
+  }
+
+  @Test("Abbreviations and ordinal numbers are not chunk ends")
+  func abbreviationsAreNotChunkEnds() throws {
+    let text = (String(repeating: "alpha ", count: 12)
+      + "am 3. Oktober "
+      + String(repeating: "beta ", count: 12)
+      + "z. B. "
+      + String(repeating: "gamma ", count: 30))
+      .trimmingCharacters(in: .whitespaces)
+    let chunks = try TextChunker(chunkSize: 200, firstChunkSize: 200).splitText(text)
+    #expect(text.count > 200)
+    #expect(chunks[0].text.contains("am 3. Oktober"))
+    #expect(chunks[0].text.contains("z. B."))
+    for chunk in chunks {
+      #expect(!chunk.text.hasSuffix("z."))
+      #expect(!chunk.text.hasSuffix("B."))
+      #expect(!chunk.text.hasSuffix("3."))
+      #expect(!chunk.text.hasSuffix("z. B."))
+    }
+    #expect(chunks.map(\.text).joined(separator: " ") == text)
+  }
+
+  @Test("A long sentence with only commas splits on the last comma inside the cap")
+  func commaFallbackWhenNoOtherPause() throws {
+    let unit = "wort wort wort wort, " // 21 characters, ends on comma + space
+    let text = String(repeating: unit, count: 14) + "aaaaaa" // 300 characters
+    #expect(text.count == 300)
+    #expect(!text.contains("."))
+    let chunks = try TextChunker(chunkSize: 200, firstChunkSize: 200).splitText(text)
+    #expect(chunks[0].text.hasSuffix(","))
+    #expect(chunks[0].text.count <= 200)
+    #expect(chunks.map(\.text).joined(separator: " ") == text)
+  }
 }
