@@ -209,6 +209,13 @@ enum PromptModel: String, CaseIterable {
     LocalLLMModelType.offerable.map(\.promptModel)
   }
 
+  /// Whether running this model sends nothing to the internet. Mirrors
+  /// `TranscriptionModel.runsOnThisMac`: the in-process MLX model and an Ollama/LM Studio server
+  /// both qualify, every cloud provider does not.
+  var runsOnThisMac: Bool {
+    provider == .local || provider == .localMLX
+  }
+
   var displayName: String {
     switch self {
     case .gemini31Pro:

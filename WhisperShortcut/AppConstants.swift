@@ -259,6 +259,11 @@ Output rules (CRITICAL):
   /// and `PROMPT-MODE-LOCAL` warns when a reply actually hits it rather than truncating in silence.
   static let localPromptMaxOutputTokens: Int = 4096
 
+  /// Output ceiling for a local structured-output request (Smart Improvement running on an
+  /// on-device model). Higher than `localPromptMaxOutputTokens`: a Smart Improvement suggestion
+  /// is a whole rewritten system prompt, not a single-document rewrite.
+  static let localStructuredMaxOutputTokens: Int = 8192
+
   // MARK: - Prompt Conversation History
   /// Maximum number of previous turns to include in prompt requests.
   /// Higher values provide more context but increase API costs and latency.
@@ -535,6 +540,9 @@ Transcript:
   // (bounded by the char budget below) makes recurrence statistically visible to the model.
   static let contextDefaultMaxEntriesPerMode: Int = 80
   static let contextDefaultMaxTotalChars: Int = 60_000
+  /// Cap on the primary sample when Smart Improvement runs on an on-device model (MLX, Ollama/LM
+  /// Studio): ~5k tokens instead of ~15k keeps prefill and KV-cache memory reasonable on a laptop.
+  static let contextOnDeviceMaxTotalChars: Int = 20_000
 
   /// Maximum number of recurring terms included in the deterministic term-frequency evidence
   /// section (computed across ALL primary interactions, not just the sampled ones) for the

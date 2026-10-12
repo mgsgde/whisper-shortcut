@@ -429,8 +429,14 @@ class ContextDerivation {
   ) throws -> FocusedLoadResult {
     let maxPerMode = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxEntriesPerMode) as? Int
       ?? AppConstants.contextDefaultMaxEntriesPerMode
-    let maxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxTotalChars) as? Int
+    let configuredMaxChars = UserDefaults.standard.object(forKey: UserDefaultsKeys.contextMaxTotalChars) as? Int
       ?? AppConstants.contextDefaultMaxTotalChars
+    // An on-device model pays for every input token in prefill time and KV-cache RAM on the
+    // user's own Mac, next to the speech model. The recurring-term counts still see the whole
+    // corpus, so a smaller sample costs the glossary focus little.
+    let maxChars = selectedImprovementModel.runsOnThisMac
+      ? min(configuredMaxChars, AppConstants.contextOnDeviceMaxTotalChars)
+      : configuredMaxChars
 
     guard corpus.hadFiles else {
       return FocusedLoadResult(primaryText: "", secondaryText: "", primaryEntryCount: 0, primaryCharCount: 0, secondaryCharCount: 0, termEvidenceText: "")

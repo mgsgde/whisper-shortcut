@@ -25,6 +25,14 @@ enum OfflineMode {
     UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.offlineModeEnabled)
   }
 
+  /// Whether the user has explicitly chosen to keep the usage log on disk while Offline Mode is
+  /// on. Off unless set — `bool(forKey:)` answers `false` for an unset key, so no seeding is
+  /// needed. This is what lets Smart Improvement learn from usage on this Mac even in a practice
+  /// that otherwise keeps the mode on by default.
+  static var keepsUsageDataUnderOfflineMode: Bool {
+    UserDefaults.standard.bool(forKey: UserDefaultsKeys.offlineModeKeepsUsageData)
+  }
+
   /// Message shown when a request was stopped because Offline Mode is on.
   static func blockedMessage(for url: URL?) -> String {
     let host = url?.host ?? "a remote server"
@@ -154,19 +162,23 @@ final class OfflineModeURLProtocol: URLProtocol {
 ///
 /// The stored flag was read as the same three-line ternary in five places; Offline Mode adds a
 /// second condition to it, and five copies of a two-part rule is four too many. Offline Mode
-/// wins over the stored flag: in a practice the transcript *is* the regulated content, and a
-/// log of it at rest is the thing the mode exists to prevent.
+/// still wins over the stored flag by default: in a practice the transcript *is* the regulated
+/// content, and a log of it at rest is the thing the mode exists to prevent. But Smart
+/// Improvement now has an on-device path (MLX, Ollama/LM Studio), so a user who wants it to keep
+/// learning can explicitly opt in to keeping the log on this Mac even while the mode is on.
 enum ContextLoggingPreference {
 
   static var isEnabled: Bool {
-    isEnabled(offlineMode: OfflineMode.isEnabled, storedFlag: storedFlag)
+    isEnabled(
+      offlineMode: OfflineMode.isEnabled, storedFlag: storedFlag,
+      keepsUnderOfflineMode: OfflineMode.keepsUsageDataUnderOfflineMode)
   }
 
-  /// The rule with both inputs passed in. Tests use this instead of switching the real mode on:
+  /// The rule with every input passed in. Tests use this instead of switching the real mode on:
   /// the test process also makes live provider calls, and a global flip blocks those mid-run.
-  static func isEnabled(offlineMode: Bool, storedFlag: Bool) -> Bool {
-    guard !offlineMode else { return false }
-    return storedFlag
+  static func isEnabled(offlineMode: Bool, storedFlag: Bool, keepsUnderOfflineMode: Bool) -> Bool {
+    guard offlineMode else { return storedFlag }
+    return storedFlag && keepsUnderOfflineMode
   }
 
   /// The user's own preference, ignoring Offline Mode — for settings UI that has to show what
@@ -176,5 +188,13 @@ enum ContextLoggingPreference {
     UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
       ? true
       : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
+  }
+
+  /// Whether a dictation's audio sample may be retained at rest for Smart Improvement
+  /// verification. Narrower than `isEnabled`: retained audio only feeds the Gemini audio
+  /// re-listen path, which cannot run offline, so while Offline Mode is on a regulated recording
+  /// is never kept at rest for nothing — even if the user opted to keep the text usage log.
+  static var audioCaptureEnabled: Bool {
+    isEnabled && !OfflineMode.isEnabled
   }
 }
