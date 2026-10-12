@@ -103,4 +103,91 @@ struct QuickActionStoreTests {
   private func repeated(_ texts: String...) -> [String] {
     texts.flatMap { [$0, $0] }
   }
+
+  // MARK: - QuickActionKind.classify
+
+  @Test(
+    "Classification matches intent, with order resolving overlaps",
+    arguments: [
+      ("kürz", QuickActionKind.shorten),
+      ("kurz", .shorten),
+      ("short", .shorten),
+      ("concise", .shorten),
+      ("condense", .shorten),
+      ("raccourc", .shorten),
+      ("acorta", .shorten),
+      ("formuliere neu kürzer", .shorten),
+      ("übersetz", .translate),
+      ("translat", .translate),
+      ("tradui", .translate),
+      ("tradu", .translate),
+      ("format", .format),
+      ("to-do", .format),
+      ("todo", .format),
+      ("bullet", .format),
+      ("aufzähl", .format),
+      ("markdown", .format),
+      ("tabelle", .format),
+      ("table", .format),
+      ("formatiere neu", .format),
+      ("korrig", .correct),
+      ("corrig", .correct),
+      ("correct", .correct),
+      ("fix", .correct),
+      ("grammat", .correct),
+      ("grammar", .correct),
+      ("rechtschreib", .correct),
+      ("spelling", .correct),
+      ("tippfehler", .correct),
+      ("typo", .correct),
+      ("proofread", .correct),
+      ("fix grammar and spelling", .correct),
+      ("formulier", .rewrite),
+      ("rewrite", .rewrite),
+      ("rephrase", .rewrite),
+      ("reword", .rewrite),
+      ("umschreib", .rewrite),
+      ("reformul", .rewrite),
+      ("klarer", .rewrite),
+      ("clearer", .rewrite),
+      ("formuliere neu", .rewrite),
+      ("rewrite more clearly", .rewrite),
+      ("format as a to-do", .format),
+      ("translate to english", .translate),
+      ("make it shorter", .shorten),
+      ("mach eine mail draus", .other),
+    ])
+  func classify(_ pair: (key: String, expected: QuickActionKind)) {
+    #expect(QuickActionKind.classify(pair.key) == pair.expected)
+  }
+
+  @Test("Same-language-pair intent merges, keeping the more frequent spelling")
+  func crossLanguageDuplicatesMerge() {
+    let actions = QuickActionStore.ranked(
+      from: repeated("Korrigiere", "Korrigiere", "Korrigiere", "Korrigiere")
+        + repeated("Corriger", "Corriger"),
+      forceFallback: false)
+    let correctEntries = actions.filter { $0.kind == .correct }
+    #expect(correctEntries.count == 1)
+    #expect(correctEntries.first?.text == "Korrigiere")
+    #expect(actions.contains { $0.text == "Corriger" } == false)
+  }
+
+  @Test("Multi-word entries of the same kind both survive de-duplication")
+  func multiWordEntriesOfSameKindBothKept() {
+    let actions = QuickActionStore.ranked(
+      from: repeated("Formuliere neu", "Formuliere neu kürzer"),
+      forceFallback: false)
+    #expect(actions.contains { $0.text == "Formuliere neu" })
+    #expect(actions.contains { $0.text == "Formuliere neu kürzer" })
+  }
+
+  @Test("Padding skips a fallback whose kind a learned entry already covers")
+  func paddingSkipsFallbackOfSameKind() {
+    let actions = QuickActionStore.ranked(
+      from: repeated("Korrigiere", "Korrigiere"),
+      forceFallback: false)
+    #expect(actions.contains { $0.text == "Fix grammar and spelling" } == false)
+    #expect(actions.contains { $0.text == "Korrigiere" })
+  }
 }

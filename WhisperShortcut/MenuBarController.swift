@@ -753,8 +753,22 @@ class MenuBarController: NSObject {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
       return
     }
-    RecordingIndicatorManager.shared.showQuickActions(actions)
+    // No capture means screenshot-selection mode: the model reads the selection off the screen.
+    guard let capture = recording?.promptSelection else {
+      RecordingIndicatorManager.shared.showQuickActions(actions, context: .screenshot)
+      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
+      return
+    }
+    RecordingIndicatorManager.shared.showQuickActions(actions, context: .reading)
     DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    let fromClipboard = AppConstants.dictatePromptUsesScreenshotSelection
+    Task { @MainActor [weak self] in
+      let text = await capture.value()
+      // A later recording has its own capture; this answer belongs to the one that asked.
+      guard let self, self.recording?.promptSelection === capture else { return }
+      RecordingIndicatorManager.shared.updateQuickActionContext(
+        text.map { .selection(text: $0, fromClipboard: fromClipboard) } ?? .nothingSelected)
+    }
   }
 
   private func dismissQuickActions() {
