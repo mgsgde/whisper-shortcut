@@ -54,6 +54,7 @@ enum ModelSelectionReconciler {
     UserDefaultsKeys.selectedPromptModel,
     UserDefaultsKeys.selectedChatModel,
     UserDefaultsKeys.selectedReadAloudModel,
+    UserDefaultsKeys.selectedImprovementModel,
   ]
 
   // MARK: - Entry point
@@ -128,8 +129,9 @@ enum ModelSelectionReconciler {
   // MARK: - Offline Mode
 
   /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
-  /// transcription, Dictate Prompt, Chat, and Read Aloud. Meeting summary and Smart Improvement
-  /// still have no on-device path and stay selected, failing at the network guard.
+  /// transcription, Dictate Prompt, Chat, Read Aloud, and now Smart Improvement (MLX or an
+  /// Ollama/LM Studio server). Meeting summary still has no on-device path and stays selected,
+  /// failing at the network guard.
   private static func reconcileForOfflineMode() {
     for key in [
       UserDefaultsKeys.selectedTranscriptionModel,
@@ -148,6 +150,8 @@ enum ModelSelectionReconciler {
 
     reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedPromptModel)
     reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedChatModel)
+    reconcilePromptSlotForOfflineMode(
+      key: UserDefaultsKeys.selectedImprovementModel, fallback: SettingsDefaults.selectedImprovementModel)
 
     let ttsKey = UserDefaultsKeys.selectedReadAloudModel
     let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
@@ -160,10 +164,12 @@ enum ModelSelectionReconciler {
     }
   }
 
-  private static func reconcilePromptSlotForOfflineMode(key: String) {
-    let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.selectedPromptModel.rawValue
+  private static func reconcilePromptSlotForOfflineMode(
+    key: String, fallback: PromptModel = SettingsDefaults.selectedPromptModel
+  ) {
+    let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw))
-      ?? SettingsDefaults.selectedPromptModel
+      ?? fallback
     // A custom OpenAI-compatible endpoint may already point at the user's own server; the network
     // guard is what decides, so leave that choice alone. In-process MLX (when this Mac can run it)
     // and the HTTP local server already run on this Mac — leave those alone too.

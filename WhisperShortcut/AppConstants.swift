@@ -259,6 +259,11 @@ Output rules (CRITICAL):
   /// and `PROMPT-MODE-LOCAL` warns when a reply actually hits it rather than truncating in silence.
   static let localPromptMaxOutputTokens: Int = 4096
 
+  /// Output ceiling for a local structured-output request (Smart Improvement running on an
+  /// on-device model). Higher than `localPromptMaxOutputTokens`: a Smart Improvement suggestion
+  /// is a whole rewritten system prompt, not a single-document rewrite.
+  static let localStructuredMaxOutputTokens: Int = 8192
+
   // MARK: - Prompt Conversation History
   /// Maximum number of previous turns to include in prompt requests.
   /// Higher values provide more context but increase API costs and latency.

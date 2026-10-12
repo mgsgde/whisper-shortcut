@@ -89,14 +89,30 @@ struct OfflineModeTests {
     #expect(TranscriptionModel.selectableForDictation(offlineMode: false).contains(.gemini31FlashLite))
   }
 
-  @Test("Usage data is never written to disk while the mode is on")
+  @Test("Usage data stays off Offline Mode by default, unless the user opts to keep it")
   func contextLoggingIsSuppressed() {
-    #expect(ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: true))
-    #expect(!ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: true))
-    // Offline Mode overrides the preference; it must not silently rewrite it, or turning the mode
-    // off again would leave logging off with no explanation.
-    #expect(!ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: false))
-    #expect(!ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: false))
+    // Offline + kept + flag on → logging stays on: the user explicitly chose to keep learning
+    // on-device while the mode is on.
+    #expect(
+      ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: true, keepsUnderOfflineMode: true))
+    // Offline + kept + flag off → the user's own preference is still off; opting to keep usage
+    // data under Offline Mode does not turn logging back on by itself.
+    #expect(
+      !ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: false, keepsUnderOfflineMode: true))
+    // Offline + not kept → off regardless of the stored flag: this is the default, and it must
+    // not silently rewrite the preference, or turning the mode off again would leave logging off
+    // with no explanation.
+    #expect(
+      !ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: true, keepsUnderOfflineMode: false))
+    #expect(
+      !ContextLoggingPreference.isEnabled(offlineMode: true, storedFlag: false, keepsUnderOfflineMode: false))
+    // Not offline: the keep-under-offline flag is irrelevant either way.
+    #expect(
+      ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: true, keepsUnderOfflineMode: false))
+    #expect(
+      ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: true, keepsUnderOfflineMode: true))
+    #expect(
+      !ContextLoggingPreference.isEnabled(offlineMode: false, storedFlag: false, keepsUnderOfflineMode: true))
   }
 
   // MARK: - The turbo model

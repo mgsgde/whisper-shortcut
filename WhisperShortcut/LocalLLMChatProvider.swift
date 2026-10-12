@@ -99,6 +99,11 @@ final class LocalLLMChatProvider: LLMChatProvider {
     return body
   }
 
+  /// Smart Improvement running on an Ollama/LM Studio server. Same `OpenAICompatibleStructured`
+  /// path the cloud providers use, with three local differences: a long timeout (a usage log is
+  /// a lot to chew through), the thinking-off knobs both server families understand (mirrors
+  /// `requestBody` above), and a refused connection mapped to an actionable message instead of
+  /// the opaque default.
   func generateStructured(
     model: String,
     contents: [[String: Any]],
@@ -107,10 +112,28 @@ final class LocalLLMChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    // Not used by the local Dictate Prompt path. Smart Improvement / structured features stay on
-    // cloud models for now; implement via OpenAICompatibleStructured if local structured output is
-    // needed later.
-    throw TranscriptionError.networkError("Structured output is not supported for local models yet.")
+    let endpoint = LocalLLMPreferences.chatCompletionsURL
+    do {
+      return try await OpenAICompatibleStructured.generate(
+        endpoint: endpoint,
+        authHeaders: [:],
+        model: model,
+        contents: contents,
+        systemInstruction: systemInstruction,
+        schema: schema,
+        schemaName: schemaName,
+        reasoningEffort: nil,
+        session: LLMHTTPSession.shared,
+        logTag: "LOCAL",
+        extraBody: [
+          "reasoning_effort": "none",
+          "chat_template_kwargs": ["enable_thinking": false],
+          "max_tokens": AppConstants.localStructuredMaxOutputTokens,
+        ],
+        timeout: 600)
+    } catch let urlError as URLError {
+      throw Self.mapConnectionError(urlError, endpoint: endpoint)
+    }
   }
 
   /// Removes `<think>…</think>` reasoning blocks that hybrid models emit inline in `content`.
