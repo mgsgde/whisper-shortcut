@@ -387,7 +387,7 @@ final class AnthropicChatProvider: LLMChatProvider {
 
     // Structured outputs (`output_config.format`), not a forced tool call: Opus 5.5 and later
     // reject `tool_choice` `tool`/`any` with a 400. Supported on every current Claude model incl.
-    // Haiku 4.5; objects need `additionalProperties: false`, which `strictified` adds.
+    // Haiku 5.5; objects need `additionalProperties: false`, which `strictified` adds.
     // https://platform.claude.com/docs/en/build-with-claude/structured-outputs
     var outputConfig: [String: Any] = [
       "format": [
@@ -468,9 +468,11 @@ final class AnthropicChatProvider: LLMChatProvider {
         "Anthropic API key is invalid. Check the key in Settings → General."))
   }
 
-  /// Effort / adaptive thinking is supported on Sonnet, Opus and Fable models, not Haiku 4.5.
+  /// Effort / adaptive thinking is supported on Sonnet, Opus, Fable, and Haiku 5.5 (default
+  /// effort medium) — Haiku 4.5 (no longer in the enum) was the one holdout.
   private static func supportsEffort(model: String) -> Bool {
     model.contains("sonnet") || model.contains("opus") || model.contains("fable")
+      || model.contains("haiku-5")
   }
 
   /// Claude Messages accepts images; reject non-image binary attachments up front.

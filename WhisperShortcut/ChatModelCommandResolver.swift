@@ -98,11 +98,11 @@ enum ChatModelCommandResolver {
       if normalized.contains("opus") || normalized.contains("fable") {
         candidates = [.claudeOpus55]
       } else if normalized.contains("haiku") {
-        candidates = [.claudeHaiku45]
+        candidates = [.claudeHaiku55]
       } else if normalized.contains("sonnet") {
         candidates = [.claudeSonnet55]
       } else {
-        candidates = [.claudeSonnet55, .claudeOpus55, .claudeHaiku45]
+        candidates = [.claudeSonnet55, .claudeOpus55, .claudeHaiku55]
       }
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver
@@ -233,7 +233,7 @@ enum ChatModelCommandResolver {
   private static func isFast(_ m: PromptModel) -> Bool {
     switch m {
     case .grok47: return true  // xAI: current flagship; same "fastest" claim as former 4.5/4.6.
-    case .claudeHaiku45: return true
+    case .claudeHaiku55: return true
     default: return false
     }
   }

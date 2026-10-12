@@ -92,7 +92,11 @@ enum PromptModel: String, CaseIterable {
   // image out, via a dedicated non-streaming `:generateContent` call with `responseModalities`
   // IMAGE (see `GeminiAPIClient.generateImageContent` / `GeminiChatProvider`). Not a text-chat,
   // tools, grounding, or thinking model — selecting it turns the chat into an image generator.
-  case geminiImage = "gemini-3.1-flash-image"
+  // 2026-10-12: gemini-nano-banana-2.1 replaced gemini-3.1-flash-image — GA ("New Stable"),
+  // better quality/typography, cheaper per image (~$0.034 vs ~$0.067 at 1K, $0.050 vs $0.101 at
+  // 2K; image output $30 vs $60 per 1M). Input price is higher ($1.50 vs $0.50 per 1M) but
+  // negligible for prompt-sized inputs. https://ai.google.dev/gemini-api/docs/pricing
+  case geminiImage = "gemini-nano-banana-2.1"
   // Premium tier of the same capability: studio quality, up to 4K, better text rendering.
   // No free tier (roughly $0.13–0.24 per image) — the user picks it deliberately for quality.
   case geminiImagePro = "gemini-3-pro-image"
@@ -132,6 +136,10 @@ enum PromptModel: String, CaseIterable {
   // `chatReplacement`. gpt-6-astra ($10/$50, "the hardest end-to-end work") is deliberately NOT
   // offered: chat here is used for research and questions, not coding, and Astra's price buys
   // nothing for that — pick models by research price-performance, not by top capability.
+  // gpt-6.1-sol (same $2/$10) is NOT a replacement: it rejects `reasoning_effort: "none"`, which
+  // `/think minimal` sends, and is slower (median ~3.1 s vs ~1.9 s, re-probed 2026-10-12; see
+  // plans/model-audits/2026-10-03-audit.md). Revisit when OpenAI deprecates gpt-6-sol — the
+  // migration must then map minimal → low.
   case openaiGPT6Sol = "gpt-6-sol"
   case openaiGPT6Luna = "gpt-6-luna"
   /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
@@ -157,7 +165,11 @@ enum PromptModel: String, CaseIterable {
   /// Superseded by `claudeOpus5`; Anthropic lists it under "Legacy models". Kept as a case so
   /// persisted selections still resolve and forward.
   case claudeOpus48 = "claude-opus-4-8"
-  case claudeHaiku45 = "claude-haiku-4-5-20251001"
+  /// Replaced Haiku 4.5 (`claude-haiku-4-5-20251001`) on 2026-10-12: $0.10/$0.50 per 1M
+  /// (≤100k-token prompts; $0.50/$2.50 above), 1M context, 128k output, adaptive thinking
+  /// (default effort medium), Jun 2026 cutoff — strictly dominates Haiku 4.5's $1/$5 at a
+  /// smaller context. Verified 2026-10-12: https://platform.claude.com/docs/en/about-claude/models/overview
+  case claudeHaiku55 = "claude-haiku-5-5"
   /// Hidden via `chatReplacement` (→ Opus 5.5): $10/$50 per 1M buys long-horizon agentic depth,
   /// not better research answers. Fable 5.1 is deliberately not added (owner, 2026-09-29).
   case claudeFable5 = "claude-fable-5"
@@ -214,7 +226,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini38Flash:
       return "Gemini 3.8 Flash"
     case .geminiImage:
-      return "Gemini Image (Nano Banana 2)"
+      return "Gemini Image (Nano Banana 2.1)"
     case .geminiImagePro:
       return "Gemini Image Pro (Nano Banana Pro)"
     case .grok4:
@@ -253,8 +265,8 @@ enum PromptModel: String, CaseIterable {
       return "Claude Opus 5"
     case .claudeOpus48:
       return "Claude Opus 4.8"
-    case .claudeHaiku45:
-      return "Claude Haiku 4.5"
+    case .claudeHaiku55:
+      return "Claude Haiku 5.5"
     case .claudeFable5:
       return "Claude Fable 5"
     case .claudeSonnet55:
@@ -311,7 +323,7 @@ enum PromptModel: String, CaseIterable {
     case .claudeSonnet5:     return "claudesonnet5"
     case .claudeOpus5:       return "claudeopus5"
     case .claudeOpus48:      return "claudeopus48"
-    case .claudeHaiku45:     return "claudehaiku45"
+    case .claudeHaiku55:     return "claudehaiku55"
     case .claudeFable5:      return "claudefable5"
     case .claudeSonnet55:    return "claudesonnet55"
     case .claudeOpus55:      return "claudeopus55"
@@ -338,7 +350,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini38Flash:
       return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal"
     case .geminiImage:
-      return "Google's Gemini Image (Nano Banana 2) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
+      return "Google's Gemini Image (Nano Banana 2.1) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
       return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
     case .grok4:
@@ -383,8 +395,8 @@ enum PromptModel: String, CaseIterable {
       return "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key"
     case .claudeOpus55:
       return "Anthropic's Claude Opus 5.5 • Deeper reasoning for hard questions • Text + images • 1M context • Needs an Anthropic API key"
-    case .claudeHaiku45:
-      return "Anthropic's Claude Haiku 4.5 • Fastest, most cost-efficient Claude • Text + images • Requires Anthropic API key"
+    case .claudeHaiku55:
+      return "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key"
     case .customOpenAIEndpoint:
       return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
     case .localModel:
@@ -402,7 +414,7 @@ enum PromptModel: String, CaseIterable {
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
-         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku45:
+         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku55:
       return "Low"
     case .localMLXQwen34BInstruct:
       return "Free (Offline)"
@@ -433,7 +445,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return .openai
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
@@ -658,7 +670,7 @@ enum PromptModel: String, CaseIterable {
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47,
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
-         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55,
+         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55,
          .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
       return nil
     }
@@ -705,7 +717,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku45, .claudeFable5, .claudeSonnet55, .claudeOpus55:
+    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
@@ -831,6 +843,12 @@ enum PromptModel: String, CaseIterable {
       // Offline Qwen3 8B removed 2026-09-30 (see `LocalLLMModelType`): the 4B Instruct default
       // beat it on rule compliance and latency. Stays offline — never forward to a cloud model.
       return Self.localMLXQwen34BInstruct.rawValue
+    case "claude-haiku-4-5-20251001":
+      // Superseded 2026-10-12 by claude-haiku-5-5: cheaper, larger context, strictly dominates.
+      return Self.claudeHaiku55.rawValue
+    case "gemini-3.1-flash-image":
+      // Superseded 2026-10-12 by gemini-nano-banana-2.1: GA, cheaper per image, better quality.
+      return Self.geminiImage.rawValue
     default:
       return raw
     }

@@ -111,8 +111,10 @@ fetch_xai() {
   curl -sf --max-time 30 https://api.x.ai/v1/models -H "Authorization: Bearer $XAI_API_KEY" |
     python3 -c '
 import json, sys
+# The app has no image/video generation for xAI, so skip ids like grok-imagine-video-1.5-lite.
 for m in json.load(sys.stdin)["data"]:
-    print(m["id"])'
+    if "imagine" not in m["id"]:
+        print(m["id"])'
 }
 
 fetch_openai() {
