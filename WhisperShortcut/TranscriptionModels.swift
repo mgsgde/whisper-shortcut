@@ -1084,9 +1084,13 @@ enum TranscriptionError: Error, Equatable {
   case voiceRequiresAPIKey
   /// Backend returned 402: signed-in user has no active subscription.
   case subscriptionRequired
-  /// Dictate Prompt ran with nothing selected. No longer thrown — since 2026-10 that runs as a
-  /// compose turn (`SpeechService.performPrompt`). Kept, not removed: these cases are logged by
-  /// their integer index (`TranscriptionError error 21`), so removing it renumbers history.
+  /// Dictate Prompt with nothing selected to edit.
+  ///
+  /// An empty selection itself is a compose turn and does not throw (`SpeechService.performPrompt`).
+  /// Thrown again when that compose turn's instruction is only a bare edit command ("Korrigiere",
+  /// "Rephrase this"): the model would invent text to edit, and that text must not be pasted.
+  /// Kept, not removed: these cases are logged by their integer index (`TranscriptionError error 21`),
+  /// so removing it renumbers history.
   case noSelectedText
   /// An on-device Whisper model load or decode hit its wall-clock deadline (`WallClockDeadline`).
   /// Separate from `requestTimeout` so the user-facing copy does not blame the network.

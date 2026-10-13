@@ -86,6 +86,57 @@ struct DictatePromptSelectionTests {
       mode: .togglePrompting, isComposeTurn: true, offlineMode: true).isEmpty)
   }
 
+  @Test("A bare edit command is only the command itself")
+  func bareEditCommandIsOnlyTheCommand() {
+    let commands = [
+      "Korrigiere",
+      "korrigiere.",
+      "Ähm, korrigiere",
+      "Formuliere neu",
+      "Rephrase this",
+      "shorten",
+    ]
+    for command in commands {
+      #expect(DictatePromptSelectionDecision.isBareEditCommand(command), "expected bare command: \(command)")
+    }
+    let notCommands = [
+      "Korrigiere, mein Geburtsdatum ist 15.08.91",
+      "Schreib eine Notiz für Frau Meier",
+      "formuliere eine Antwort an Max",
+      "",
+      SpeechService.voiceInstructionPlaceholder,
+    ]
+    for command in notCommands {
+      #expect(!DictatePromptSelectionDecision.isBareEditCommand(command), "expected not a bare command: \(command)")
+    }
+  }
+
+  @Test("Prompt latency fields round-trip on an interaction log entry")
+  func promptLatencyFieldsRoundTrip() throws {
+    let entry = InteractionLogEntry(
+      ts: "2026-10-13T18:00:00Z",
+      mode: "prompt",
+      model: "local-mlx-qwen3-4b-instruct-2507",
+      result: nil,
+      selectedText: nil,
+      userInstruction: "Korrigiere",
+      modelResponse: "invented",
+      text: nil,
+      voice: nil,
+      audioRef: nil,
+      transcriptionModel: nil,
+      hadScreenshot: false,
+      latencyMs: 842,
+      provider: "mlx",
+      loadMs: 1200
+    )
+    let data = try JSONEncoder().encode(entry)
+    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: data)
+    #expect(decoded.latencyMs == 842)
+    #expect(decoded.provider == "mlx")
+    #expect(decoded.loadMs == 1200)
+  }
+
   @Test("The output rule tells the model what a compose turn means")
   func outputRuleCoversCompose() {
     #expect(AppConstants.promptModeOutputRule.contains("NO SELECTED TEXT"))

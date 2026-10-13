@@ -2746,12 +2746,13 @@ class MenuBarController: NSObject {
     captureClipboardRestorePointIfEnabled()
     let selection = DictatePromptSelectionCapture()
     let before = NSPasteboard.general.changeCount
+    let copyStarted = Date()
     simulateCopy()
     // Same polling as Voice Feedback: "nothing was copied" and "the app was slow to copy" are
     // otherwise indistinguishable. The capture is held strongly by this task, so it always
     // resolves within the deadline and a waiting job can never hang on it.
     Task { @MainActor in
-      let deadline = Date().addingTimeInterval(DictatePromptSelectionCapture.pollDeadline)
+      let deadline = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.pollDeadline)
       while Date() < deadline {
         try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
         let after = NSPasteboard.general.changeCount
@@ -2765,6 +2766,20 @@ class MenuBarController: NSObject {
       }
       selection.resolve(nil)
       DebugLogger.log("\(logPrefix): Nothing selected (⌘C copied nothing) — compose turn")
+      // The decision stands. Keep watching only so a slow ⌘C shows up in the logs instead of
+      // looking identical to "nothing was selected".
+      let watchUntil = copyStarted.addingTimeInterval(DictatePromptSelectionCapture.lateCopyWatch)
+      while Date() < watchUntil {
+        try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
+        let after = NSPasteboard.general.changeCount
+        guard DictatePromptSelectionDecision.copyProducedSelection(
+          changeCountBefore: before, changeCountAfter: after)
+        else { continue }
+        let elapsedMs = Int(Date().timeIntervalSince(copyStarted) * 1000)
+        DebugLogger.logWarning(
+          "\(logPrefix): ⌘C copy arrived late after \(elapsedMs) ms (deadline 500 ms) — treated as compose")
+        return
+      }
     }
     return (true, selection)
   }

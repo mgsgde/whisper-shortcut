@@ -19,6 +19,14 @@ struct InteractionLogEntry: Codable {
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
   /// screenshot-grounded output from fabrication when `selectedText` is empty. Nil for other modes.
   let hadScreenshot: Bool?
+  /// End-to-end Dictate Prompt time, from `performPrompt` entry until the turn is logged.
+  /// Nil for other modes.
+  let latencyMs: Int?
+  /// Dictate Prompt provider: "gemini", "openai", "local", or "mlx". Nil for other modes.
+  let provider: String?
+  /// Milliseconds spent loading the in-process MLX model for this prompt. 0 when it was already
+  /// in memory. Nil for other providers and other modes.
+  let loadMs: Int?
 }
 
 // MARK: - Outcome Signal Entry
@@ -76,6 +84,8 @@ enum OutcomeSignal: String {
   case promptRetry
   /// Dictate Prompt ran as a compose turn: nothing was selected for this recording, so the model
   /// wrote new text instead of editing a selection (`detail.reason` = `composeTurn`, `detail.model`).
+  /// `detail.reason` = `bareEditCommandBlocked` is the exception: the instruction was only an edit
+  /// command, so the turn was refused instead of pasting invented text.
   /// Until 2026-10 this meant the request was refused (`reason` `emptySelection` /
   /// `clipboardUnavailable`); the raw value is kept so the telemetry schema and older logs still
   /// line up.
@@ -278,12 +288,19 @@ class ContextLogger {
       voice: nil,
       audioRef: audioRef,
       transcriptionModel: transcriptionModel,
-      hadScreenshot: nil
+      hadScreenshot: nil,
+      latencyMs: nil,
+      provider: nil,
+      loadMs: nil
     )
     writeEntry(entry)
   }
 
-  func logPrompt(mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String, model: String? = nil, hadScreenshot: Bool? = nil) {
+  func logPrompt(
+    mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String,
+    model: String? = nil, hadScreenshot: Bool? = nil, latencyMs: Int? = nil, provider: String? = nil,
+    loadMs: Int? = nil
+  ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
@@ -300,7 +317,10 @@ class ContextLogger {
       voice: nil,
       audioRef: nil,
       transcriptionModel: nil,
-      hadScreenshot: hadScreenshot
+      hadScreenshot: hadScreenshot,
+      latencyMs: latencyMs,
+      provider: provider,
+      loadMs: loadMs
     )
     writeEntry(entry)
   }
@@ -354,7 +374,10 @@ class ContextLogger {
       voice: nil,
       audioRef: nil,
       transcriptionModel: nil,
-      hadScreenshot: nil
+      hadScreenshot: nil,
+      latencyMs: nil,
+      provider: nil,
+      loadMs: nil
     )
     writeEntry(entry)
   }

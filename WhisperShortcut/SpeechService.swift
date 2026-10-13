@@ -652,11 +652,31 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Interaction-log `provider`. MLX is logged as "mlx"; the other Dictate Prompt providers
+  /// match `ChatModelProvider.rawValue`.
+  private static func promptLogProvider(_ provider: ChatModelProvider) -> String {
+    switch provider {
+    case .gemini: return "gemini"
+    case .openai: return "openai"
+    case .local: return "local"
+    case .localMLX: return "mlx"
+    case .grok: return "grok"
+    case .anthropic: return "anthropic"
+    case .customOpenAI: return "customOpenAI"
+    }
+  }
+
+  private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+    let ms = start.duration(to: ContinuousClock.now) / .milliseconds(1)
+    return Int(ms.rounded())
+  }
+
   /// `selectedText` is the selection captured for THIS recording (`DictatePromptSelectionCapture`),
   /// never a fresh clipboard read — the clipboard can hold something copied long ago.
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, selectedText: String?
   ) async throws -> String {
+    let promptStarted = ContinuousClock.now
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -706,21 +726,25 @@ class SpeechService {
       try validateAudioFileFormat(at: audioURL)
     }
 
+    let providerLabel = Self.promptLogProvider(selectedPromptModel.provider)
     switch selectedPromptModel.provider {
     case .gemini:
       return try await executePromptWithGemini(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     case .openai:
       return try await executePromptWithOpenAI(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
     // the only difference, and that is decided inside.
     case .local, .localMLX:
       return try await executePromptWithLocal(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -1022,6 +1046,11 @@ class SpeechService {
   /// success. Keeping it in one place means the history record and the interaction log can't
   /// drift apart per provider — they did before, and only the Gemini path's version was ever
   /// checked when either changed.
+  ///
+  /// Throws `TranscriptionError.noSelectedText` when a compose turn's instruction is only a bare
+  /// edit command. The model has already answered by then; the throw is what stops the invented
+  /// text from being pasted. A timed-out history transcription (`voiceInstructionPlaceholder`)
+  /// is not an instruction we can judge, so it never trips the guard.
   private func recordPromptTurn(
     normalizedText: String,
     instruction: PromptInstructionSource,
@@ -1029,8 +1058,11 @@ class SpeechService {
     clipboardContext: String?,
     model: String,
     hadScreenshot: Bool,
-    logPrefix: String
-  ) async {
+    logPrefix: String,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String,
+    loadMs: Int?
+  ) async throws {
     let userInstruction: String
     switch instruction {
     case .known(let text):
@@ -1044,6 +1076,22 @@ class SpeechService {
       userInstruction = result ?? Self.voiceInstructionPlaceholder
     }
 
+    // Nothing selected and the user only said "Korrigiere" / "Rephrase this": the model fills
+    // in a document that was never there. A prompt rule did not stop that, so refuse here.
+    // A screenshot is the selection in screenshot mode, and the timeout placeholder is not
+    // evidence the user asked for an edit.
+    if clipboardContext == nil && !hadScreenshot
+      && userInstruction != Self.voiceInstructionPlaceholder
+      && DictatePromptSelectionDecision.isBareEditCommand(userInstruction)
+    {
+      DebugLogger.logWarning(
+        "\(logPrefix): Bare edit command with nothing selected — not pasting invented text")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
+      throw TranscriptionError.noSelectedText
+    }
+
+    let latencyMs = Self.milliseconds(since: promptStarted)
     PromptConversationHistory.shared.append(
       mode: mode,
       selectedText: clipboardContext,
@@ -1056,7 +1104,10 @@ class SpeechService {
       userInstruction: userInstruction,
       modelResponse: normalizedText,
       model: model,
-      hadScreenshot: hadScreenshot
+      hadScreenshot: hadScreenshot,
+      latencyMs: latencyMs,
+      provider: providerLabel,
+      loadMs: loadMs
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
     // The append is queued; refresh runs behind it on the same queue so the new row is on disk.
@@ -1092,7 +1143,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -1195,14 +1248,17 @@ class SpeechService {
     } else {
       instructionSource = .known(Self.voiceInstructionPlaceholder)
     }
-    await recordPromptTurn(
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
       hadScreenshot: envelope.hadScreenshot,
-      logPrefix: "PROMPT-MODE-GEMINI")
+      logPrefix: "PROMPT-MODE-GEMINI",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: nil)
     return normalizedText
   }
 
@@ -1217,7 +1273,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     let apiKey = try ProviderCredentials.require(.openAI)
 
@@ -1349,14 +1407,17 @@ class SpeechService {
     } else {
       instructionSource = .known(Self.voiceInstructionPlaceholder)
     }
-    await recordPromptTurn(
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: requestModel.rawValue,
       hadScreenshot: envelope.hadScreenshot,
-      logPrefix: "PROMPT-MODE-OPENAI")
+      logPrefix: "PROMPT-MODE-OPENAI",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: nil)
     return normalizedText
   }
 
@@ -1459,7 +1520,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
     // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
@@ -1560,14 +1623,20 @@ class SpeechService {
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
       let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
       try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
-      await recordPromptTurn(
+      // Instruction text is already in hand (quick-action text or the transcription above),
+      // passed as `.known` — the bare-edit guard in `recordPromptTurn` sees it. MLX does not
+      // take this agent branch; `loadMs` stays nil for the local server.
+      try await recordPromptTurn(
         normalizedText: agentText,
         instruction: .known(instruction),
         mode: mode,
         clipboardContext: clipboardContext,
         model: "\(providerTag):\(modelLabel)",
         hadScreenshot: false,
-        logPrefix: "PROMPT-MODE-LOCAL")
+        logPrefix: "PROMPT-MODE-LOCAL",
+        promptStarted: promptStarted,
+        providerLabel: providerLabel,
+        loadMs: nil)
       return agentText
     }
 
@@ -1621,14 +1690,20 @@ class SpeechService {
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
 
-    await recordPromptTurn(
+    // MLX load time is recorded inside `MLXChatProvider.sendChatStream` before the first token,
+    // so it is available once this stream finishes. The local HTTP server has nothing to load.
+    let loadMs: Int? = useMLX ? MLXChatProvider.shared.lastLoadMs : nil
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
       model: speedTag,
       hadScreenshot: false,
-      logPrefix: "PROMPT-MODE-LOCAL")
+      logPrefix: "PROMPT-MODE-LOCAL",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: loadMs)
     return normalizedText
   }
 

@@ -10,6 +10,16 @@ final class MLXChatProvider: LLMChatProvider {
   private let noticeLock = NSLock()
   private var sessionsToldNoTools = Set<String>()
 
+  /// Milliseconds the most recent request spent loading or preparing the model container.
+  /// 0 when it was already in memory. Dictate Prompt reads this after `sendChatStream` returns.
+  private let loadMsLock = NSLock()
+  private var recordedLoadMs = 0
+  var lastLoadMs: Int {
+    loadMsLock.lock()
+    defer { loadMsLock.unlock() }
+    return recordedLoadMs
+  }
+
   /// Shown once per chat session, in the reply, so the user is not left guessing why
   /// `/folder` or Gmail tools do nothing.
   static let noToolsNotice =
@@ -57,8 +67,16 @@ final class MLXChatProvider: LLMChatProvider {
           // Readiness lives here, not in the callers: every path that reaches this provider needs
           // the weights on disk and in RAM, and the title stays neutral because both Chat and
           // Dictate Prompt come through. A 2.3 GB first download must not look like a hang.
+          // `lastLoadMs` is this request's prepare time (download + weight load). A container
+          // that is already resident reports 0 — the follow-up `container(for:)` would otherwise
+          // look like a fresh load of a few milliseconds.
+          let resident = await LocalLLMModelManager.shared.isContainerLoaded(mlxType)
+          let loadStarted = ContinuousClock.now
           try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
+          let loadMs = resident ? 0 : Self.milliseconds(since: loadStarted)
+          recordLoadMs(loadMs)
+          await LocalLLMModelManager.shared.setLastLoadMs(loadMs)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
           // Through the in-memory prefix cache: the Dictate Prompt system prompt runs past a
@@ -91,6 +109,17 @@ final class MLXChatProvider: LLMChatProvider {
       }
       continuation.onTermination = { _ in task.cancel() }
     }
+  }
+
+  private func recordLoadMs(_ ms: Int) {
+    loadMsLock.lock()
+    recordedLoadMs = ms
+    loadMsLock.unlock()
+  }
+
+  private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+    let ms = start.duration(to: ContinuousClock.now) / .milliseconds(1)
+    return Int(ms.rounded())
   }
 
   private func shouldAnnounceNoTools(sessionKey: String?) -> Bool {
