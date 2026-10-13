@@ -429,7 +429,9 @@ fi
 
 log "step 2: starting the next build if one is due"
 RUN_OUT="$(mktemp -t wstickrun)"
-if bash "${SCRIPT_DIR}/run-implementer.sh" 2>&1 | tee "$RUN_OUT"; then
+# caffeinate holds an idle-sleep assertion for exactly the run (2026-10-13: the tick was paused
+# on 2026-09-21 partly because the Mac slept mid-run). It cannot stop a shut lid on battery.
+if /usr/bin/caffeinate -i -s -m bash "${SCRIPT_DIR}/run-implementer.sh" 2>&1 | tee "$RUN_OUT"; then
     # Any clean exit ends the streak — including "nothing to do", which is the runner telling us
     # it got far enough to read the queue.
     rm -f "$FAIL_STAMP" "$FAIL_COUNT_FILE" "$FAIL_REPORTED_FILE"
