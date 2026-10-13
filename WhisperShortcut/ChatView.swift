@@ -1091,7 +1091,7 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let partialChars = runner?.partialText.count ?? 0
         let droppedByUser = self.userCancelledSessions.removeValue(forKey: sessionId)
-        DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars))")
+        DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars) toolCalls=\(runner?.records.count ?? 0))")
         ContextLogger.shared.logSignal(
           .chatStopped,
           mode: "geminiChat",
