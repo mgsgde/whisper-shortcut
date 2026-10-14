@@ -18,6 +18,16 @@
 #
 # Installed via ~/Library/LaunchAgents/com.whispershortcut.model-audit.plist.
 # Costs a few cents in API calls per run (~400 short transcription requests).
+#
+# SECURITY (2026-10-14): this job no longer runs with --dangerously-skip-permissions. The judging
+# pass fetches provider web pages (untrusted content) and used to hold a full shell, so a
+# prompt-injected page could have read ~/.ssh or the Keychain and exfiltrated it. It now runs with
+# --permission-mode dontAsk: any tool call not matched by AUDIT_ALLOWED_TOOLS below is denied
+# without prompting. No MCP servers (--strict-mcp-config), no Bash at all (the measurements are
+# taken by this script BEFORE the pass, so the agent only reads them). If a run fails because a
+# tool was denied, add that ONE rule to the array below (exact subcommand or exact script path,
+# never a generic python3/curl/bash/sh/cat/security rule) and never go back to
+# --dangerously-skip-permissions.
 
 # Usage: model-audit-job.sh [--measure-only] [--quick]
 #   --measure-only  run the scripts and benchmark, skip the Claude judging pass
@@ -74,6 +84,34 @@ REPORT_DIR="$REPO/plans/model-audits"
 RAW="$REPORT_DIR/$STAMP-measurements.txt"
 REPORT="$REPORT_DIR/$STAMP-audit.md"
 mkdir -p "$REPORT_DIR"
+
+# ---- Tool allowlist for the judging pass (see SECURITY note in the header) --------------------
+# Reads inside $REPO (measurements, Swift sources, skill, earlier reports) need no rule under
+# dontAsk; everything else is denied. The proposal file path is appended right before the call.
+AUDIT_ALLOWED_TOOLS=(
+  # the only files this run may write (Edit rules cover Write too): the report
+  "Edit(/$REPORT)"
+  # web research: search plus the provider docs / pricing / deprecation / status pages
+  "WebSearch"
+  "WebFetch(domain:ai.google.dev)"
+  "WebFetch(domain:discuss.ai.google.dev)"
+  "WebFetch(domain:cloud.google.com)"
+  "WebFetch(domain:status.cloud.google.com)"
+  "WebFetch(domain:developers.openai.com)"
+  "WebFetch(domain:platform.openai.com)"
+  "WebFetch(domain:openai.com)"
+  "WebFetch(domain:community.openai.com)"
+  "WebFetch(domain:status.openai.com)"
+  "WebFetch(domain:docs.x.ai)"
+  "WebFetch(domain:x.ai)"
+  "WebFetch(domain:status.x.ai)"
+  "WebFetch(domain:platform.claude.com)"
+  "WebFetch(domain:docs.anthropic.com)"
+  "WebFetch(domain:status.claude.com)"
+  "WebFetch(domain:openrouter.ai)"
+)
+# Secrets next to the code stay unreadable even though the repo is the working dir.
+AUDIT_DENIED_TOOLS=("Read(/$REPO/.env)" "Read(/$REPO/.env.*)")
 
 echo "=== Model audit started: $(date '+%Y-%m-%d %H:%M:%S') ==="
 
@@ -165,8 +203,9 @@ The two questions the report must answer unambiguously:
 Hard constraints:
 - Do NOT change any code, defaults, or enum cases. Report only. The user applies migrations
   interactively.
-- Do NOT recommend a model you have not seen serve a real request, either in $RAW or via a curl
-  probe you run yourself.
+- Do NOT recommend a model you have not seen serve a real request in $RAW. You have no shell in
+  this run (no curl probes, no test scripts): if the workflow asks for a live probe, list that
+  model under "investigate further" instead of recommending it.
 - If a recommendation contradicts a measurement (e.g. a cheaper model that the benchmark shows
   leaks hallucinated transcripts), the measurement wins — say so.
 EOF
@@ -221,7 +260,10 @@ report_out() {
 }
 
 echo "Judging pass: model=$AUDIT_MODEL effort=$AUDIT_EFFORT budget=\$$AUDIT_BUDGET_USD"
-claude -p --dangerously-skip-permissions \
+AUDIT_ALLOWED_TOOLS+=("Edit(/$IMPLEMENTER_PROPOSAL_FILE)")
+
+claude -p --permission-mode dontAsk --strict-mcp-config \
+  --allowedTools "${AUDIT_ALLOWED_TOOLS[@]}" --disallowedTools "${AUDIT_DENIED_TOOLS[@]}" \
   --model "$AUDIT_MODEL" --effort "$AUDIT_EFFORT" --max-budget-usd "$AUDIT_BUDGET_USD" \
   "$(cat "$PROMPT_FILE")" 2>&1
 STATUS=$?
