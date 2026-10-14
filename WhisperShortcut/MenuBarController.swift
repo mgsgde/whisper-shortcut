@@ -738,6 +738,7 @@ class MenuBarController: NSObject {
   /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
   private func handleIndicatorConfirm() {
     guard appState.isRecording else { return }
+    DebugLogger.log("AUDIO: Stop via indicator ✓ / ↩")
     stopPromptOrRunTyped()
   }
 
