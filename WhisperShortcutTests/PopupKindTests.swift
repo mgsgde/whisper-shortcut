@@ -46,6 +46,10 @@ struct PopupKindTests {
     #expect(PopupKind.error.iconText == "")
     #expect(PopupKind.error.hasActionButtons == true)
     #expect(interval(.error) == errorDefault)
+
+    #expect(PopupKind.warning.iconText == "⚠️")
+    #expect(PopupKind.warning.hasActionButtons == false)
+    #expect(interval(.warning) == errorDefault)
   }
 
   @Test("A positive custom duration overrides the saved one, except where no timer runs")

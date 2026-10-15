@@ -1950,6 +1950,9 @@ class MenuBarController: NSObject {
     let presentResult: (_ text: String, _ modelInfo: String, _ title: String?) -> Void
     /// Success-pill wording, selected by whether auto-paste ran.
     let successMessage: (_ didAutoPaste: Bool) -> String
+    /// True when the result carries a warning the popup has to show even though the pill already
+    /// confirmed the paste (Dictate Prompt's word check). Read after `produce` returns.
+    var resultNeedsPopup: () -> Bool = { false }
     /// Transcription dismisses the processing popup before presenting its result; prompting never did.
     var dismissesProcessingBeforeResult = false
     /// On cancellation transcription routes through `transitionToIdleAndCleanup` (which also
@@ -2040,7 +2043,7 @@ class MenuBarController: NSObject {
           // phase (see `updateRecordingIndicator`), so by now it is gone — without this a dictation
           // inside a meeting would raise a result popup over the meeting view, while the identical
           // dictation outside one shows nothing but the pasted text.
-          if !RecordingIndicatorManager.shared.isVisible && !duringMeeting {
+          if (spec.resultNeedsPopup() || !RecordingIndicatorManager.shared.isVisible) && !duringMeeting {
             spec.presentResult(result, modelInfo, nil)
           }
         } else {
@@ -2252,20 +2255,26 @@ class MenuBarController: NSObject {
     instruction: String? = nil,
     selection: DictatePromptSelectionCapture?
   ) async {
-    let spec = AudioJobSpec(
+    // Words of the on-device reply the dictation does not contain (Offline Mode only). They
+    // replace the result popup with a warning; the pasted text is never touched.
+    var undictatedWords: [String] = []
+    var spec = AudioJobSpec(
       mode: .prompt,
       logLabel: "Prompt",
       errorTitle: "Prompt Error",
       modelInfo: { self.speechService.getPromptModelInfo() },
       copyResult: { self.clipboardManager.copyToClipboard(text: $0) },
       presentResult: { text, info, title in
-        if let title {
+        if !undictatedWords.isEmpty {
+          PopupNotificationWindow.showUndictatedWords(undictatedWords, pasteHint: title)
+        } else if let title {
           PopupNotificationWindow.showPromptResponse(text, modelInfo: info, title: title)
         } else {
           PopupNotificationWindow.showPromptResponse(text, modelInfo: info)
         }
       },
       successMessage: { $0 ? "AI response copied to clipboard" : "Copied — press ⌘V to paste" })
+    spec.resultNeedsPopup = { !undictatedWords.isEmpty }
 
     await runAudioJob(
       spec,
@@ -2275,9 +2284,11 @@ class MenuBarController: NSObject {
         // Bounded by the copy poll (≤ 0.5 s after the shortcut press), so in practice already
         // resolved by the time a recording has been spoken and stopped.
         let selectedText = await selection?.value()
-        return try await self.speechService.executePrompt(
+        let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           selectedText: selectedText)
+        undictatedWords = self.speechService.lastPromptUnsupportedWords
+        return result
       })
   }
 

@@ -191,6 +191,12 @@ struct ChatRequestOptions {
   /// nearly every message; caching it would prime a prefix per message and never reuse one.
   var reusablePromptPrefix: Bool = false
 
+  /// Sampling temperature, or nil for the provider's default. Only the on-device providers read
+  /// it (MLX, the local OpenAI-compatible server): Dictate Prompt in Offline Mode sends 0, so the
+  /// same dictation is ordered the same way every time instead of sampled — a structured clinical
+  /// note must not pick up wording the dictation did not contain by chance.
+  var temperature: Double? = nil
+
   /// A one-shot text transform: no grounding, no built-in tools, no cache key, model-default
   /// thinking, and a system prompt that repeats. Used by Read Aloud's rewrite pass and the
   /// Dictate Prompt paths.

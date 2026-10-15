@@ -41,6 +41,8 @@ enum PopupKind: Equatable {
   case error
   case cancelled
   case processing
+  /// Something to check in a result that was delivered anyway (Dictate Prompt's word check).
+  case warning
 
   /// Glyph shown in the leading icon label. Error has none (Contact Support is the affordance).
   var iconText: String {
@@ -50,6 +52,7 @@ enum PopupKind: Equatable {
     case .processing: return "⏳"
     case .error: return ""
     case .success: return "✅"
+    case .warning: return "⚠️"
     }
   }
 
@@ -72,7 +75,8 @@ enum PopupKind: Equatable {
     if self == .error && suppressesAutoHide { return nil }
     if let custom = customDisplayDuration, custom > 0 { return custom }
     switch self {
-    case .error:
+    // A warning stays as long as an error: it asks the user to go and check something.
+    case .error, .warning:
       return Self.resolvedDuration(saved: savedErrorDuration, fallback: SettingsDefaults.errorNotificationDuration)
     case .success, .info, .cancelled:
       return Self.resolvedDuration(saved: savedNotificationDuration, fallback: SettingsDefaults.notificationDuration)
@@ -357,7 +361,7 @@ class PopupNotificationWindow: NSWindow {
     )
 
     // Model info is omitted for error and info popups (same as the old `!isError, !isInfo` check).
-    if let modelInfo = modelInfo, kind != .error, kind != .info {
+    if let modelInfo = modelInfo, kind != .error, kind != .info, kind != .warning {
       modelInfoLabel = makeLabel(
         "🤖 \(modelInfo)",
         fontSize: 11,
@@ -1000,6 +1004,28 @@ extension PopupNotificationWindow {
     _ response: String, modelInfo: String? = nil, title: String = "Text Copied to Clipboard"
   ) {
     showSuccessNotification(title: title, text: response, modelInfo: modelInfo)
+  }
+
+  /// Dictate Prompt's word check: the reply was delivered unchanged, but these words of it are not
+  /// in what was dictated. Shown even with popups switched off — like an error, it is something
+  /// the user must not miss — and in place of the result popup, which would sit on top of it.
+  /// `pasteHint` is non-nil when the text is on the clipboard but was not pasted.
+  static func showUndictatedWords(_ words: [String], pasteHint: String?) {
+    present(ignoresPreference: true) {
+      PopupNotificationWindow(
+        title: "Not in your dictation",
+        text: undictatedWordsMessage(words, pasteHint: pasteHint),
+        kind: .warning
+      )
+    }
+  }
+
+  /// At most `limit` words, so the advice after them survives the preview cut-off.
+  static func undictatedWordsMessage(_ words: [String], pasteHint: String?, limit: Int = 8) -> String {
+    var list = words.prefix(limit).joined(separator: ", ")
+    if words.count > limit { list += " +\(words.count - limit) more" }
+    let delivery = pasteHint == nil ? "Pasted unchanged." : "Copied unchanged — press ⌘V to paste."
+    return "\(list)\n\(delivery) Check these words before you save the note."
   }
 
   static func showTranscriptionResponse(

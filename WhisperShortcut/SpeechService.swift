@@ -40,6 +40,12 @@ class SpeechService {
   private let transcriptionTaskLock = NSLock()
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
+
+  /// Content words of the last on-device Dictate Prompt reply that neither the dictation nor the
+  /// selection contains (`DictationFidelityCheck`). Only filled in Offline Mode; empty otherwise.
+  /// `MenuBarController` reads it once `executePrompt` returns and shows it beside the pasted
+  /// text — the words are never written into the text itself, which ends up in a patient record.
+  private(set) var lastPromptUnsupportedWords: [String] = []
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -652,6 +658,16 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Request knobs for the on-device Dictate Prompt path. In Offline Mode — where a practice
+  /// dictates clinical notes — decoding is greedy (temperature 0), so a note is reordered, not
+  /// sampled; outside it the model keeps its default temperature, which reads better for free
+  /// writing.
+  static func localPromptOptions(offlineMode: Bool) -> ChatRequestOptions {
+    var options = ChatRequestOptions.textTransform
+    if offlineMode { options.temperature = 0 }
+    return options
+  }
+
   /// Interaction-log `provider`. MLX is logged as "mlx"; the other Dictate Prompt providers
   /// match `ChatModelProvider.rawValue`.
   private static func promptLogProvider(_ provider: ChatModelProvider) -> String {
@@ -677,6 +693,7 @@ class SpeechService {
     audioURL: URL, mode: PromptMode, instruction: String? = nil, selectedText: String?
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
+    lastPromptUnsupportedWords = []
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -1595,6 +1612,8 @@ class SpeechService {
     // A local server with tool calling runs on the agent core when there is something to look up
     // (in Offline Mode: the shared folders only). MLX has no tool-calling path — see
     // `DictatePromptAgent.supportsAgent`.
+    let offlineMode = OfflineMode.isEnabled
+    let requestOptions = Self.localPromptOptions(offlineMode: offlineMode)
     let agentTools = await DictatePromptAgent.localAgentTools(for: model, requestModel: requestModel)
     var agentRaw: String?
     let agentStart = CFAbsoluteTimeGetCurrent()
@@ -1606,7 +1625,7 @@ class SpeechService {
           contents: contents,
           systemPrompt: envelope.systemPrompt,
           tools: agentTools,
-          baseOptions: .textTransform,
+          baseOptions: requestOptions,
           logPrefix: "PROMPT-MODE-LOCAL")
       } catch where DictatePromptAgent.isToolsUnsupported(error) {
         // Many local models have no tool template. Remember it and answer with the single request
@@ -1623,6 +1642,9 @@ class SpeechService {
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
       let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
       try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
+      if offlineMode {
+        flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
+      }
       // Instruction text is already in hand (quick-action text or the transcription above),
       // passed as `.known` — the bare-edit guard in `recordPromptTurn` sees it. MLX does not
       // take this agent branch; `loadMs` stays nil for the local server.
@@ -1646,7 +1668,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      options: .textTransform)
+      options: requestOptions)
     var combined = ""
     var firstTokenTime: CFAbsoluteTime?
     var finishReason: String?
@@ -1689,6 +1711,9 @@ class SpeechService {
 
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
+    if offlineMode {
+      flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)
+    }
 
     // MLX load time is recorded inside `MLXChatProvider.sendChatStream` before the first token,
     // so it is available once this stream finishes. The local HTTP server has nothing to load.
@@ -1705,6 +1730,19 @@ class SpeechService {
       providerLabel: providerLabel,
       loadMs: loadMs)
     return normalizedText
+  }
+
+  /// Runs the deterministic word check on an on-device reply and keeps the result for the UI.
+  /// The reply itself is returned untouched: the check informs, it never edits or blocks.
+  private func flagUnsupportedWords(in reply: String, instruction: String, selection: String?) {
+    let words = DictationFidelityCheck.unsupportedWords(
+      in: reply, sources: [instruction] + (selection.map { [$0] } ?? []))
+    lastPromptUnsupportedWords = words
+    if !words.isEmpty {
+      // Count only: the words are patient data and stay out of the log.
+      DebugLogger.logWarning(
+        "PROMPT-MODE-LOCAL: \(words.count) word(s) in the reply are not in the dictation — warning shown")
+    }
   }
 
   /// Transcribes audio to text for use in conversation history.

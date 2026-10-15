@@ -34,7 +34,7 @@ final class MLXChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    // Of these only `reusablePromptPrefix` applies: an in-process model has no web search, no
+    // Of these only `reusablePromptPrefix` and `temperature` apply: an in-process model has no web search, no
     // server-side prompt cache, and no reasoning knob of its own — thinking is switched off
     // through the chat template below.
     let mayReusePrefix = options.reusablePromptPrefix
@@ -79,6 +79,10 @@ final class MLXChatProvider: LLMChatProvider {
           await LocalLLMModelManager.shared.setLastLoadMs(loadMs)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
+          // MLX samples at 0.6 by default; 0 selects the argmax sampler (no RNG at all).
+          if let temperature = options.temperature {
+            parameters.temperature = Float(temperature)
+          }
           // Through the in-memory prefix cache: the Dictate Prompt system prompt runs past a
           // thousand tokens, and re-prefilling it per request was the entire measured gap to the
           // local HTTP server. `MLXPromptCache` prefills it once and hands each request fresh
