@@ -246,7 +246,7 @@ class SettingsViewModel: ObservableObject {
       field: .toggleDictation, label: "Toggle Dictation",
       read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 }),
     ConfigurableShortcutSlot(
-      field: .togglePrompting, label: "Toggle Prompting",
+      field: .togglePrompting, label: "Toggle Dictate Prompt",
       read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 }),
     ConfigurableShortcutSlot(
       field: .toggleSettings, label: "Toggle Settings",

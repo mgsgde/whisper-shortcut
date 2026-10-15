@@ -242,23 +242,23 @@ enum PromptModel: String, CaseIterable {
     case .grok47:
       return "Grok 4.7"
     case .openaiGPT5:
-      return "OpenAI GPT-5.4"
+      return "GPT-5.4"
     case .openaiGPT5Mini:
-      return "OpenAI GPT-5.4 Mini"
+      return "GPT-5.4 Mini"
     case .openaiGPT55:
-      return "OpenAI GPT-5.5"
+      return "GPT-5.5"
     case .openaiGPT56Sol:
-      return "OpenAI GPT-5.6 Sol"
+      return "GPT-5.6 Sol"
     case .openaiGPT56Terra:
-      return "OpenAI GPT-5.6 Terra"
+      return "GPT-5.6 Terra"
     case .openaiGPT56Luna:
-      return "OpenAI GPT-5.6 Luna"
+      return "GPT-5.6 Luna"
     case .openaiGPT6Sol:
-      return "OpenAI GPT-6 Sol"
+      return "GPT-6 Sol"
     case .openaiGPT6Luna:
-      return "OpenAI GPT-6 Luna"
+      return "GPT-6 Luna"
     case .openaiGPT4oAudio:
-      return "OpenAI GPT Audio"
+      return "GPT Audio"
     case .claudeSonnet5:
       return "Claude Sonnet 5"
     case .claudeOpus5:

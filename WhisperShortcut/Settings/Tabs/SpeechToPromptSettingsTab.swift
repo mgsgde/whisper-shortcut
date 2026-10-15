@@ -56,11 +56,11 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Keyboard Shortcut",
         systemImage: "keyboard",
-        subtitle: "Configure shortcut for toggle prompting mode"
+        subtitle: "Start/Stop Dictate Prompt with one shortcut"
       )
 
       ShortcutRecorderRow(
-        label: "Toggle Prompting:",
+        label: "Toggle Dictate Prompt:",
         shortcut: $viewModel.data.togglePrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
