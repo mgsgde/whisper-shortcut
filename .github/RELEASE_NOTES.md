@@ -1,11 +1,19 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
+## Update notices
+- **The GitHub build now tells you when a new version is out.** Once a day it checks for an update and shows a notice with the release notes and an **Install Update** button. Nothing is downloaded or installed until you click it. Updates are signed and verified before they install. Settings → About → Updates has **Check for Updates…** and a switch to turn the daily check off.
+- The check also works in Offline Mode. It is the only request that leaves the Mac and sends only the app's name and version.
+- Versions before 8.40 cannot do this, so install 8.40 once by hand. Later versions arrive as a notice.
+
 ## Dictate Prompt
-- **No more invented text when nothing is selected.** Saying only "correct this" or "rephrase" with no text selected used to make the model write something of its own, which was then pasted. Now the app pastes nothing and tells you that nothing was selected. Real requests like "write a note for Mrs. Meier" still write new text as before.
-- **One card while recording.** The pill grows into a card that shows what the run will edit (your selection, or a note that nothing is selected), your most frequent instructions (Control-1 to Control-5), and a field to type your own instruction. Return on an empty field now stops and uses what you said.
-- Each run now records how long it took (and, for offline MLX models, how long loading the model took) in the local usage log.
+- **Offline Mode: "Not in your dictation" warning.** On-device models now answer deterministically (no random sampling), and the app compares the result with what you said. Words that appear in the result but not in your dictation or selection trigger a ⚠️ warning, even with popups turned off. The pasted text itself is never changed.
+- **↑/↓ and Return work on quick actions again.** The arrow keys move the highlight, and Return runs the highlighted action.
+
+## Settings
+- Section headers no longer slide under the toolbar while scrolling.
+- Small text fix in Chat settings ("Custom endpoint").
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.38...v8.39
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.39...v8.40
