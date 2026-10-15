@@ -662,6 +662,8 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onControlDigit: ((Int) -> Bool)?
   /// ↑ (-1) / ↓ (+1) while the card has key focus. Returns true when it moved the highlight.
   var onArrow: ((Int) -> Bool)?
+  /// ↩ while the card has key focus. Returns true when it ran the highlighted entry.
+  var onReturn: (() -> Bool)?
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
 
@@ -681,6 +683,16 @@ private final class RecordingIndicatorPanel: NSPanel {
       event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
       let delta = [126: -1, 125: 1][event.keyCode],
       onArrow?(delta) == true
+    {
+      return
+    }
+    // ↩ on a highlighted entry is decided here from the model, not by the field's onSubmit:
+    // that closure kept a stale "nothing highlighted" and stopped with the (empty) speech.
+    if event.type == .keyDown,
+      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+      event.keyCode == 36 || event.keyCode == 76,
+      (firstResponder as? NSTextView)?.hasMarkedText() != true,
+      onReturn?() == true
     {
       return
     }
@@ -837,11 +849,10 @@ final class RecordingIndicatorManager {
   func moveQuickActionSelection(by delta: Int) {
     guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
     let count = model.quickActions.count
-    guard let index = model.quickActionIndex else {
-      model.quickActionIndex = delta > 0 ? 0 : count - 1
-      return
-    }
-    model.quickActionIndex = ((index + delta) % count + count) % count
+    let next = model.quickActionIndex.map { (($0 + delta) % count + count) % count }
+      ?? (delta > 0 ? 0 : count - 1)
+    model.quickActionIndex = next
+    DebugLogger.log("QUICK-ACTIONS: Highlight → entry \(next + 1)")
   }
 
   var quickActions: [QuickAction] { model.quickActions }
@@ -951,6 +962,14 @@ final class RecordingIndicatorManager {
     panel.onArrow = { [weak self] delta in
       guard let self, self.model.quickActionsVisible, self.model.typedPrompt.isEmpty else { return false }
       self.moveQuickActionSelection(by: delta)
+      return true
+    }
+    panel.onReturn = { [weak self] in
+      guard let self, self.model.quickActionsVisible, self.model.typedPrompt.isEmpty,
+        let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
+      else { return false }
+      DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
+      self.onQuickAction?(index)
       return true
     }
     return panel
