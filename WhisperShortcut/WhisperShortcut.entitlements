@@ -20,5 +20,12 @@
 		<!-- User selected file access: read for Attach, write for saving screenshots to a chosen folder -->
 		<key>com.apple.security.files.user-selected.read-write</key>
 		<true />
+
+		<!-- Sparkle 2 installer launcher XPC (sandboxed auto-update) -->
+		<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+		<array>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
+		</array>
 	</dict>
 </plist>
