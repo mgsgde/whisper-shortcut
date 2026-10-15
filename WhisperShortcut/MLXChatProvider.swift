@@ -76,7 +76,6 @@ final class MLXChatProvider: LLMChatProvider {
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           let loadMs = resident ? 0 : Self.milliseconds(since: loadStarted)
           recordLoadMs(loadMs)
-          await LocalLLMModelManager.shared.setLastLoadMs(loadMs)
           var parameters = GenerateParameters()
           parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
           // MLX samples at 0.6 by default; 0 selects the argmax sampler (no RNG at all).

@@ -279,7 +279,8 @@ private struct QuickActionCardView: View {
 
   @FocusState private var fieldFocused: Bool
 
-  private var isTyping: Bool { !typedText.isEmpty }
+  // Trimmed like `submitTyped`: a lone space is not an instruction, so it must not disable ↑/↓/↩.
+  private var isTyping: Bool { !typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -682,6 +683,7 @@ private final class RecordingIndicatorPanel: NSPanel {
     if event.type == .keyDown,
       event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
       let delta = [126: -1, 125: 1][event.keyCode],
+      (firstResponder as? NSTextView)?.hasMarkedText() != true,
       onArrow?(delta) == true
     {
       return
@@ -960,12 +962,15 @@ final class RecordingIndicatorManager {
       return true
     }
     panel.onArrow = { [weak self] delta in
-      guard let self, self.model.quickActionsVisible, self.model.typedPrompt.isEmpty else { return false }
+      guard let self, self.model.quickActionsVisible,
+        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else { return false }
       self.moveQuickActionSelection(by: delta)
       return true
     }
     panel.onReturn = { [weak self] in
-      guard let self, self.model.quickActionsVisible, self.model.typedPrompt.isEmpty,
+      guard let self, self.model.quickActionsVisible,
+        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
         let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
       else { return false }
       DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")

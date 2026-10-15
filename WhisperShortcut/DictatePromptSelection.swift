@@ -41,6 +41,17 @@ enum DictatePromptSelectionDecision {
     return trimmed
   }
 
+  /// Whether a Dictate Prompt turn must be refused because it edits a selection that isn't there:
+  /// nothing selected, no screenshot standing in for the selection, and the instruction is an edit
+  /// quick action or only a bare edit command. The timeout placeholder is not judged.
+  static func refusesEditWithoutSelection(
+    hasSelection: Bool, hadScreenshot: Bool, instruction: String, isEditQuickAction: Bool
+  ) -> Bool {
+    !hasSelection && !hadScreenshot
+      && instruction != SpeechService.voiceInstructionPlaceholder
+      && (isEditQuickAction || isBareEditCommand(instruction))
+  }
+
   /// True when the instruction is only an edit command ("Korrigiere", "Rephrase this") and
   /// nothing else. A compose turn with one of these used to let the model invent the text it
   /// was "editing". Extra words ("Korrigiere, mein Geburtsdatum ist 15.08.91", "schreib eine

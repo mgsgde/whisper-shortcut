@@ -118,8 +118,11 @@ class MenuBarController: NSObject {
     /// A repeating Return must not launch the quick action twice before the recording stops.
     var quickActionRan = false
     /// Quick-action instruction, held until the recording's file URL exists, then keyed by that
-    /// URL (`quickActionInstructionByURL`) so a retry sends the same text.
+    /// URL (`finishedPromptInputs`) so a retry sends the same text.
     var quickActionInstruction: String?
+    /// The quick action is an edit (fix, rewrite, shorten, format, translate), so with nothing
+    /// selected there is nothing for it to act on.
+    var isEditQuickAction = false
     /// Text the user had selected when Voice Feedback started, if any. Optional context: a spoken
     /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
     /// the selection is where a correct spelling can actually come from.
@@ -171,12 +174,15 @@ class MenuBarController: NSObject {
     return currentJob !== job
   }
   private var processedAudioURLs: Set<URL> = []
-  /// A finished recording's quick-action instruction, keyed by its audio URL so a retry sends the
-  /// same text and the silence precheck can let it through. Outlives the `RecordingIntent`.
-  private var quickActionInstructionByURL: [URL: String] = [:]
-  /// A finished Dictate Prompt recording's selection, keyed like `quickActionInstructionByURL` so
-  /// a retry edits the same selection instead of re-reading a pasteboard that has moved on.
-  private var promptSelectionByURL: [URL: DictatePromptSelectionCapture] = [:]
+  /// What a finished Dictate Prompt recording ran with, keyed by its audio URL. Outlives the
+  /// `RecordingIntent`: a retry sends the same quick-action text (and the silence precheck lets it
+  /// through) and edits the same selection instead of re-reading a pasteboard that has moved on.
+  private struct FinishedPromptInputs {
+    var quickActionInstruction: String?
+    var isEditQuickAction = false
+    var selection: DictatePromptSelectionCapture?
+  }
+  private var finishedPromptInputs: [URL: FinishedPromptInputs] = [:]
   /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
   /// last Dictate Prompt took its clipboard decision on. Starts at launch, so whatever was on the
   /// pasteboard before the app started never counts as a selection.
@@ -796,18 +802,22 @@ class MenuBarController: NSObject {
     }
     let actions = RecordingIndicatorManager.shared.quickActions
     guard actions.indices.contains(index) else { return }
-    runPromptInstruction(actions[index].text, source: "entry \(index + 1)")
+    runPromptInstruction(
+      actions[index].text, source: "entry \(index + 1)",
+      isEdit: actions[index].kind != .other)
   }
 
   /// Shared by list entries and the "Type a prompt…" field: the text replaces the audio
   /// as the Dictate Prompt instruction.
-  private func runPromptInstruction(_ text: String, source: String) {
+  /// `isEdit`: a quick action that edits a selection. Free typed text never is — it may compose.
+  private func runPromptInstruction(_ text: String, source: String, isEdit: Bool = false) {
     guard recording?.quickActionRan == false else { return }
     guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
     guard recordingPrompt else { return }
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
+    recording?.isEditQuickAction = isEdit
     DebugLogger.log("QUICK-ACTIONS: Running \(source) (\(text.count) chars)")
     stopRecordingAfterTailDelay()
   }
@@ -1890,13 +1900,14 @@ class MenuBarController: NSObject {
             }
           case .prompt:
             self.appState = .processing(.prompting)
-            let instruction = self.quickActionInstructionByURL[audioURL]
             // Same selection as the first attempt; none on record means compose, never a fresh
             // pasteboard read.
-            let selection = self.promptSelectionByURL[audioURL]
+            let inputs = self.finishedPromptInputs[audioURL]
             self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
               await self.performPrompting(
-                audioURL: audioURL, job: job, instruction: instruction, selection: selection)
+                audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
+                isEditQuickAction: inputs?.isEditQuickAction ?? false,
+                selection: inputs?.selection)
             }
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
@@ -2042,8 +2053,9 @@ class MenuBarController: NSObject {
           // `duringMeeting` is listed explicitly because a segment's pill leaves with its recording
           // phase (see `updateRecordingIndicator`), so by now it is gone — without this a dictation
           // inside a meeting would raise a result popup over the meeting view, while the identical
-          // dictation outside one shows nothing but the pasted text.
-          if (spec.resultNeedsPopup() || !RecordingIndicatorManager.shared.isVisible) && !duringMeeting {
+          // dictation outside one shows nothing but the pasted text. A popup the result needs
+          // (the Offline "Not in your dictation" warning) still shows during a meeting.
+          if spec.resultNeedsPopup() || (!RecordingIndicatorManager.shared.isVisible && !duringMeeting) {
             spec.presentResult(result, modelInfo, nil)
           }
         } else {
@@ -2253,6 +2265,7 @@ class MenuBarController: NSObject {
     audioURL: URL,
     job: VoiceJob?,
     instruction: String? = nil,
+    isEditQuickAction: Bool = false,
     selection: DictatePromptSelectionCapture?
   ) async {
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
@@ -2286,7 +2299,7 @@ class MenuBarController: NSObject {
         let selectedText = await selection?.value()
         let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
-          selectedText: selectedText)
+          isEditQuickAction: isEditQuickAction, selectedText: selectedText)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         return result
       })
@@ -2530,8 +2543,7 @@ class MenuBarController: NSObject {
   private func cleanupAudioFile(at url: URL?) {
     if let url {
       let forget = {
-        _ = self.quickActionInstructionByURL.removeValue(forKey: url)
-        _ = self.promptSelectionByURL.removeValue(forKey: url)
+        _ = self.finishedPromptInputs.removeValue(forKey: url)
       }
       if Thread.isMainThread {
         forget()
@@ -3098,14 +3110,19 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
+      var promptInputs = self.finishedPromptInputs[audioURL] ?? FinishedPromptInputs()
       if self.activeMeetingSegment == nil, let instruction = intent?.quickActionInstruction {
-        self.quickActionInstructionByURL[audioURL] = instruction
+        promptInputs.quickActionInstruction = instruction
+        promptInputs.isEditQuickAction = intent?.isEditQuickAction ?? false
       }
-      let quickActionInstruction = self.quickActionInstructionByURL[audioURL]
       if let selection = intent?.promptSelection {
-        self.promptSelectionByURL[audioURL] = selection
+        promptInputs.selection = selection
       }
-      let promptSelection = self.promptSelectionByURL[audioURL]
+      if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil {
+        self.finishedPromptInputs[audioURL] = promptInputs
+      }
+      let quickActionInstruction = promptInputs.quickActionInstruction
+      let promptSelection = promptInputs.selection
 
       // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager).
       // A quick action never sends the audio, so the cost warning does not apply.
@@ -3220,7 +3237,7 @@ extension MenuBarController: AudioRecorderDelegate {
         self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
           await self.performPrompting(
             audioURL: audioURL, job: job, instruction: quickActionInstruction,
-            selection: promptSelection)
+            isEditQuickAction: promptInputs.isEditQuickAction, selection: promptSelection)
         }
       case .voiceFeedback:
         let selection = intent?.voiceFeedbackSelection
