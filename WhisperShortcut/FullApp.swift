@@ -97,6 +97,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // sharing on, sends what is due. Does nothing on the network otherwise.
     TelemetryService.shared.start()
 
+    #if !APP_STORE && canImport(Sparkle)
+    // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
+    UpdaterService.shared.start()
+    #endif
+
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
 
