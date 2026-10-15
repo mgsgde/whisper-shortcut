@@ -45,6 +45,12 @@ Ruled out without a benchmark:
 It also does not list Granite 4.2, because its MLX builds come from `ibm-granite` and not
 `mlx-community`.
 
+**Fixed the same day.** The script now also scans `lmstudio-community` and each lab's own org.
+It reads the parameter count from the base model, because a 4-bit repo reports packed tensors.
+It no longer filters on `text-generation`, which had hidden Gemma 4: those builds are tagged
+`image-text-to-text`. Repos with no `base_model` get it guessed by name. The local seen list is
+re-seeded with today's 24 entries, so the next mail reports only real newcomers.
+
 ## Benchmark result (same day)
 
 `scripts/benchmark-offline-prompt.py`, M1 Pro 16 GB, app system prompt, temperature 0.6, thinking
