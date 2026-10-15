@@ -162,10 +162,6 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
   static let shared = LocalLLMModelManager()
 
   private let loader = MLXModelLoader()
-  /// Milliseconds the latest container load took, or the request-scoped figure written after
-  /// `MLXChatProvider` finishes preparing the model. 0 when the container was already in memory.
-  private var storedLoadMs = 0
-
   private init() {
     super.init(logPrefix: "LOCAL-LLM-MANAGER")
   }
@@ -318,15 +314,6 @@ actor MLXModelLoader {
 }
 
 extension LocalLLMModelManager {
-  /// Milliseconds the latest `container(for:)` spent instantiating weights, or the request-scoped
-  /// figure `MLXChatProvider` writes after a Dictate Prompt / chat load. 0 when the container was
-  /// already in memory.
-  var lastLoadMs: Int { storedLoadMs }
-
-  func setLastLoadMs(_ ms: Int) {
-    storedLoadMs = ms
-  }
-
   /// True when this model's container is already in memory, so a caller can report `loadMs` 0
   /// instead of the few milliseconds a cache hit takes.
   func isContainerLoaded(_ type: LocalLLMModelType) async -> Bool {
@@ -334,13 +321,8 @@ extension LocalLLMModelManager {
   }
 
   /// The one in-process container. Chat and Dictate Prompt both go through here
-  /// so Qwen 4B is never instantiated twice. Records how long this call spent loading.
+  /// so Qwen 4B is never instantiated twice.
   func container(for type: LocalLLMModelType) async throws -> ModelContainer {
-    let resident = await loader.isLoaded(type)
-    let started = ContinuousClock.now
-    let value = try await loader.container(for: type)
-    let ms = resident ? 0 : Int((started.duration(to: ContinuousClock.now) / .milliseconds(1)).rounded())
-    setLastLoadMs(ms)
-    return value
+    try await loader.container(for: type)
   }
 }

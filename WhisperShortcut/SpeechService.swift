@@ -46,6 +46,9 @@ class SpeechService {
   /// `MenuBarController` reads it once `executePrompt` returns and shows it beside the pasted
   /// text — the words are never written into the text itself, which ends up in a patient record.
   private(set) var lastPromptUnsupportedWords: [String] = []
+  /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
+  /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
+  private var promptIsEditQuickAction = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -609,12 +612,14 @@ class SpeechService {
     audioURL: URL,
     mode: PromptMode = .togglePrompting,
     instruction: String? = nil,
+    isEditQuickAction: Bool = false,
     selectedText: String? = nil
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
       try await self.performPrompt(
-        audioURL: audioURL, mode: mode, instruction: instruction, selectedText: selectedText)
+        audioURL: audioURL, mode: mode, instruction: instruction,
+        isEditQuickAction: isEditQuickAction, selectedText: selectedText)
     }
 
     currentPromptTask = task
@@ -690,10 +695,12 @@ class SpeechService {
   /// `selectedText` is the selection captured for THIS recording (`DictatePromptSelectionCapture`),
   /// never a fresh clipboard read — the clipboard can hold something copied long ago.
   private func performPrompt(
-    audioURL: URL, mode: PromptMode, instruction: String? = nil, selectedText: String?
+    audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
+    selectedText: String?
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
+    promptIsEditQuickAction = isEditQuickAction
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -1097,12 +1104,12 @@ class SpeechService {
     // in a document that was never there. A prompt rule did not stop that, so refuse here.
     // A screenshot is the selection in screenshot mode, and the timeout placeholder is not
     // evidence the user asked for an edit.
-    if clipboardContext == nil && !hadScreenshot
-      && userInstruction != Self.voiceInstructionPlaceholder
-      && DictatePromptSelectionDecision.isBareEditCommand(userInstruction)
+    if DictatePromptSelectionDecision.refusesEditWithoutSelection(
+      hasSelection: clipboardContext != nil, hadScreenshot: hadScreenshot,
+      instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction)
     {
       DebugLogger.logWarning(
-        "\(logPrefix): Bare edit command with nothing selected — not pasting invented text")
+        "\(logPrefix): Edit command with nothing selected — not pasting invented text")
       ContextLogger.shared.logSignal(
         .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
       throw TranscriptionError.noSelectedText

@@ -67,19 +67,6 @@ class TextChunker {
         min(chunkSize, Int(Double(firstChunkSize) * pow(growthFactor, Double(k))))
     }
 
-    /// Determine if text needs chunking.
-    /// - Parameter text: The text to check
-    /// - Returns: True if the text should be chunked
-    func needsChunking(_ text: String) -> Bool {
-        let needsChunking = text.count > AppConstants.ttsChunkSizeChars
-        if needsChunking {
-            DebugLogger.log("TTS-CHUNKER: Text needs chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkSizeChars))")
-        } else {
-            DebugLogger.logDebug("TTS-CHUNKER: Text does not need chunking (length: \(text.count) chars, threshold: \(AppConstants.ttsChunkSizeChars))")
-        }
-        return needsChunking
-    }
-
     /// Split text into chunks at sentence boundaries.
     /// - Parameter text: The text to split
     /// - Returns: Array of TextChunk objects, sorted by index
@@ -106,9 +93,10 @@ class TextChunker {
 
         var chunks: [TextChunk] = []
         var currentIndex = 0
-        var chunkIndex = 0
-
         while currentIndex < trimmedText.count {
+            // Indices follow appended chunks only: a skipped whitespace-only span must not leave a
+            // gap, or `PlaybackOrderGate` waits forever for the missing index.
+            let chunkIndex = chunks.count
             let remainingText = String(trimmedText[trimmedText.index(trimmedText.startIndex, offsetBy: currentIndex)...])
             let remainingLength = remainingText.count
             let isFirstChunk = chunkIndex == 0
@@ -149,7 +137,6 @@ class TextChunker {
             }
 
             currentIndex = chunkEnd
-            chunkIndex += 1
         }
 
         DebugLogger.log("TTS-CHUNKER: Split text into \(chunks.count) chunks (total: \(trimmedText.count) chars)")

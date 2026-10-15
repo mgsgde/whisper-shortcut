@@ -111,6 +111,29 @@ struct DictatePromptSelectionTests {
     }
   }
 
+  @Test("Nothing selected refuses edit quick actions and bare edit commands, never compose or a screenshot")
+  func editWithoutSelectionIsRefused() {
+    func refuses(
+      hasSelection: Bool = false, hadScreenshot: Bool = false, _ instruction: String,
+      editQuickAction: Bool = false
+    ) -> Bool {
+      DictatePromptSelectionDecision.refusesEditWithoutSelection(
+        hasSelection: hasSelection, hadScreenshot: hadScreenshot, instruction: instruction,
+        isEditQuickAction: editQuickAction)
+    }
+    // The built-in quick actions are edits and don't match the bare-command rule.
+    for text in QuickActionStore.fallbackTexts {
+      #expect(QuickActionKind.classify(QuickActionStore.normalizeKey(text)) != .other, "\(text)")
+      #expect(refuses(text, editQuickAction: true), "\(text)")
+    }
+    #expect(!refuses("Fix grammar and spelling"))
+    #expect(refuses("Korrigiere"))
+    #expect(!refuses("Schreib eine Notiz für Frau Meier"))
+    #expect(!refuses(hasSelection: true, "Fix grammar", editQuickAction: true))
+    #expect(!refuses(hadScreenshot: true, "Fix grammar", editQuickAction: true))
+    #expect(!refuses(SpeechService.voiceInstructionPlaceholder, editQuickAction: true))
+  }
+
   @Test("Prompt latency fields round-trip on an interaction log entry")
   func promptLatencyFieldsRoundTrip() throws {
     let entry = InteractionLogEntry(

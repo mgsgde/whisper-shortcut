@@ -68,7 +68,7 @@ struct PromptModelSelectionView: View {
       }
       return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Smart Improvement uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)."
     }
-    return subtitle ?? "Choose between GPT-Audio and Gemini multimodal models for direct audio input processing"
+    return subtitle ?? "Choose the model that hears your spoken instruction and applies it to the selected text"
   }
 
   private var subscriptionModeFixedModelLine: String {
