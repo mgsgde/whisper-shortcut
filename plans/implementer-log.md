@@ -20,4 +20,4 @@ is yours to make, never the runner's.
 | 2026-08-18 | 1 | `implementer/q1-20260818` | APPROVE (Opus, 1st pass) | build+tests green | **MERGED** (clean — no rework) · [PR #45](https://github.com/mgsgde/whisper-shortcut/pull/45) |
 | 2026-09-20 | 6 | `implementer/q6-20260920` (×2) | — | not reached | **FAILED unattended** twice: build agent started before Wi-Fi was back after clamshell sleep (empty cursor model catalogue), then the plan timed out across a night of sleep. Tick paused 2026-09-21; row built interactively → [PR #75](https://github.com/mgsgde/whisper-shortcut/pull/75) |
 | 2026-09-21 | 6 | `feat/row-6-local-model-completeness` | APPROVE (Fable, after one fix: settle before cancel in WallClockDeadline) | build+tests green (420/57) | [PR #75](https://github.com/mgsgde/whisper-shortcut/pull/75) — built interactively from the 2026-09-20 Opus plan (Grok typed) |
-| 2026-10-14 | 16 | `implementer/q16-20261014` | approved | build+tests green | OPEN |
+| 2026-10-14 | 16 | `implementer/q16-20261014` | approved | build+tests green | MERGED |
