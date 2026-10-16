@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 
 /// Loads the agent-context files a user keeps inside a shared workspace folder — `AGENTS.md`,
 /// `CLAUDE.md`, `.cursor/rules/*`, `.claude/rules/*` — and renders them into the chat's system
@@ -58,12 +59,13 @@ enum WorkspaceContextFiles {
     let modified: Date
   }
 
-  private struct Snapshot {
+  private struct Snapshot: Sendable {
     let signature: String
     let block: String
   }
 
-  private static var cached: Snapshot?
+  // Lock-guarded: tests call `contextBlock` concurrently. Held only around the snapshot, never file I/O.
+  private static let cache = OSAllocatedUnfairLock<Snapshot?>(initialState: nil)
 
   // MARK: - Public
 
@@ -72,7 +74,7 @@ enum WorkspaceContextFiles {
   /// instruction.
   static func contextBlock(roots: [WorkspaceFolders.Root]) -> String {
     guard !roots.isEmpty else {
-      cached = nil
+      cache.withLock { $0 = nil }
       return ""
     }
 
@@ -82,7 +84,7 @@ enum WorkspaceContextFiles {
       if candidates.count >= maxFiles { break }
     }
     guard !candidates.isEmpty else {
-      cached = nil
+      cache.withLock { $0 = nil }
       return ""
     }
 
@@ -90,10 +92,10 @@ enum WorkspaceContextFiles {
     let signature = candidates
       .map { "\($0.url.path)|\($0.size)|\($0.modified.timeIntervalSince1970)" }
       .joined(separator: "\n")
-    if let cached, cached.signature == signature { return cached.block }
+    if let hit = cache.withLock({ $0 }), hit.signature == signature { return hit.block }
 
     let block = render(candidates)
-    cached = Snapshot(signature: signature, block: block)
+    cache.withLock { $0 = Snapshot(signature: signature, block: block) }
     return block
   }
 
