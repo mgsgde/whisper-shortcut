@@ -76,6 +76,9 @@ struct OfflineChatAppContextTests {
     #expect(!OfflineChatAppContext.isAboutTheApp([
       "Was ist der Unterschied zwischen einer GmbH und einer UG?"]))
     #expect(!OfflineChatAppContext.isAboutTheApp(["Schreib mir ein Rezept für Pfannkuchen."]))
+    // Common words that once switched every chat onto the slow path.
+    #expect(!OfflineChatAppContext.isAboutTheApp([
+      "Write a prompt for an image model that runs offline in the app settings."]))
     let line = OfflineChatAppContext.identity(currentModel: .qwen359B, appVersion: "9.99")
     #expect(line.contains("Qwen3.5 9B"))
     #expect(line.contains("WhisperShortcut 9.99"))

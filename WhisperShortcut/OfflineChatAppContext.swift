@@ -48,15 +48,16 @@ enum OfflineChatAppContext {
   }
 
   /// Words that put a chat on the app itself. Matched as substrings of the lowercased,
-  /// diacritic-folded user messages, so "Quen" (a common mishearing of Qwen), "Modelle" and
-  /// "Tastenkürzel" all count. A false positive costs a few seconds of prefill; a false negative
-  /// is the bug this type exists for, so the list leans wide.
+  /// diacritic-folded user messages, so "Quen" (a common mishearing of Qwen) and "Tastenkürzel"
+  /// count. Only words an ordinary question rarely contains: "model", "prompt", "offline" or
+  /// "setting" would put most offline chats on the slow path. "Which model are you?" needs no
+  /// entry, the always-on identity line answers it.
   static let appTopicWords: [String] = [
-    "whisper", "shortcut", "diese app", "der app", "die app", "this app", "the app",
-    "qwen", "quen", "mlx", "4b", "9b", "modell", "model", "offline",
-    "feature", "einstellung", "setting", "kurzel", "hotkey", "tastenkombi",
-    "diktier", "dictat", "dictate", "prompt", "vorles", "read aloud", "meeting", "glossar",
-    "screenshot", "voice feedback", "smart improvement", "parakeet", "api key", "api-key",
+    "whisper", "shortcut", "diese app", "this app",
+    "qwen", "quen", "mlx", "offline-modell", "offline modell", "offline model",
+    "kurzel", "hotkey", "tastenkombi",
+    "diktier", "dictat", "vorles", "read aloud", "glossar", "glossary",
+    "voice feedback", "smart improvement", "parakeet", "offline mode", "offline-modus",
   ]
 
   static func isAboutTheApp(_ userMessages: [String]) -> Bool {
