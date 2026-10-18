@@ -17,6 +17,7 @@ import MLXLMCommon
 
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
+  case qwen359B = "qwen3.5-9b"
   // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
   // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
   // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
@@ -26,6 +27,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var displayName: String {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
+    case .qwen359B: return "Qwen3.5 9B"
     }
   }
 
@@ -33,12 +35,14 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var huggingFaceID: String {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    case .qwen359B: return "mlx-community/Qwen3.5-9B-MLX-4bit"
     }
   }
 
   var estimatedSizeMB: Int {
     switch self {
     case .qwen34BInstruct2507: return 2300
+    case .qwen359B: return 5600
     }
   }
 
@@ -62,15 +66,36 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     #endif
   }
 
-  /// Whether Settings / pickers may offer this catalogue entry on this Mac. A per-model RAM floor
-  /// belongs here when a catalogue entry needs one (Qwen3 8B had 16 GB).
+  /// Chat-only entries are excluded from Dictate Prompt: on the 2026-09-30 offline Dictate Prompt
+  /// benchmark Qwen3.5 9B scored 28/36, formalised casual text and translated EN→DE
+  /// (plans/model-audits/2026-09-30-offline-prompt.md); for Chat Q&A it beat the 4B
+  /// (plans/model-audits/2026-10-18-offline-chat-larger-model.md).
+  var supportsDictatePrompt: Bool {
+    switch self {
+    case .qwen34BInstruct2507: return true
+    case .qwen359B: return false
+    }
+  }
+
+  /// Physical RAM (GiB) a Mac needs before this entry is offered.
+  var minimumPhysicalMemoryGB: Int {
+    switch self {
+    case .qwen34BInstruct2507: return 0
+    case .qwen359B: return 16
+    }
+  }
+
+  /// Whether Settings / pickers may offer this catalogue entry on this Mac: Apple Silicon plus the
+  /// per-model RAM floor. A 16 GB Mac reports exactly 16 << 30 bytes, hence `>=`.
   var isOfferable: Bool {
     Self.isSupportedOnThisMac
+      && ProcessInfo.processInfo.physicalMemory >= UInt64(minimumPhysicalMemoryGB) << 30
   }
 
   /// Preference order for Offline Mode: larger models last so a downloaded smaller model wins
   /// when both exist, and the recommended default is chosen when none are on disk yet.
   static var byPreference: [LocalLLMModelType] {
+    // Chat-only entries (see `supportsDictatePrompt`) are deliberately absent: this is the Dictate Prompt fallback.
     [.qwen34BInstruct2507].filter(\.isOfferable)
   }
 

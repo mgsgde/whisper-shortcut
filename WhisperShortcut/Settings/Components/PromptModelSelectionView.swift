@@ -144,7 +144,7 @@ struct PromptModelSelectionView: View {
       }
 
       if models.contains(where: { $0.localMLXModelType != nil }) {
-        LocalLLMModelsSection()
+        LocalLLMModelsSection(models: models.compactMap(\.localMLXModelType))
       }
 
       // Model Details (use displayModel so subscription shows the fixed model's description and cost)
