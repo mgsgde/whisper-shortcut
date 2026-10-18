@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 
 /// Owns one live-meeting recording session end to end: the transcript file, the chunk pipeline, and
 /// the rolling-summary policy.
@@ -37,19 +38,24 @@ final class LiveMeetingSession: NSObject {
   private let onStopping: () -> Void
   /// The session has fully finished (saved or discarded); the owner returns `appState` to idle.
   private let onFinished: () -> Void
+  /// The set of kept, untranscribed meeting audio changed (a chunk was kept, or a retry ran); the
+  /// owner refreshes the status menu's retry row.
+  private let onBacklogChanged: () -> Void
 
   init(
     transcribeChunk: @escaping (URL) async throws -> String,
     cleanUpAudioFile: @escaping (URL) -> Void,
     appStateIsRecordingMeeting: @escaping () -> Bool,
     onStopping: @escaping () -> Void,
-    onFinished: @escaping () -> Void
+    onFinished: @escaping () -> Void,
+    onBacklogChanged: @escaping () -> Void
   ) {
     self.transcribeChunk = transcribeChunk
     self.cleanUpAudioFile = cleanUpAudioFile
     self.appStateIsRecordingMeeting = appStateIsRecordingMeeting
     self.onStopping = onStopping
     self.onFinished = onFinished
+    self.onBacklogChanged = onBacklogChanged
     super.init()
   }
 
@@ -72,6 +78,11 @@ final class LiveMeetingSession: NSObject {
   private var preferredName: String?
   /// Set to true after showing the rate-limit popup once this session so we don't spam.
   private var didShowRateLimitAlert: Bool = false
+  /// Set after the first "this part couldn't be transcribed" popup of a session. One is enough to
+  /// tell the user; every further failed chunk is kept the same way.
+  private var didShowTranscriptionFailureAlert: Bool = false
+  /// True while `retryBacklog` runs, so a second click can't transcribe the same files twice.
+  private(set) var isRetryingBacklog: Bool = false
   /// Consecutive live-note failures (e.g. sustained Gemini 503). Reset to 0 on any success.
   private var consecutiveNoteFailures: Int = 0
   /// True once the live-note circuit-breaker has tripped: we stop generating further notes for this
@@ -161,6 +172,7 @@ final class LiveMeetingSession: NSObject {
     awaitingFinalChunk = false
     pendingChunks = 0
     didShowRateLimitAlert = false
+    didShowTranscriptionFailureAlert = false
     consecutiveNoteFailures = 0
     noteCircuitOpen = false
     didShowNoteFailureAlert = false
@@ -191,6 +203,8 @@ final class LiveMeetingSession: NSObject {
         "LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes"
       )
     }
+
+    warnIfTranscriptionUnreachable()
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
     return true
@@ -277,7 +291,8 @@ final class LiveMeetingSession: NSObject {
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
         try? FileManager.default.removeItem(at: MeetingListService.notesURL(transcriptFileURL: url))
-        DebugLogger.log("LIVE-MEETING: Discarded transcript, notes and summary files")
+        MeetingAudioBacklog.remove(stem: url.deletingPathExtension().lastPathComponent)
+        DebugLogger.log("LIVE-MEETING: Discarded transcript, notes, summary and kept audio")
       }
       transcriptURL = nil
       LiveMeetingTranscriptStore.shared.clearForNewMeeting()
@@ -310,7 +325,18 @@ final class LiveMeetingSession: NSObject {
     onFinished()
 
     if let transcriptURL = transcriptURLForPostProcessing {
-      runPostProcessing(transcriptURL: transcriptURL)
+      let stem = transcriptURL.deletingPathExtension().lastPathComponent
+      if MeetingAudioBacklog.items(stem: stem).isEmpty {
+        runPostProcessing(
+          transcriptURL: transcriptURL,
+          chunks: LiveMeetingTranscriptStore.shared.chunks,
+          markers: LiveMeetingTranscriptStore.shared.markerTexts)
+      } else {
+        // Some audio failed during the meeting (typically: no connection). The network may well be
+        // back by now, so try once more right away; the summary waits until the transcript is whole,
+        // otherwise it would summarise the fragment and then fail a second time offline.
+        Task { @MainActor in await self.retryBacklog(stems: [stem], announce: false) }
+      }
     }
 
     DebugLogger.logSuccess("LIVE-MEETING: Session cleanup complete")
@@ -319,9 +345,9 @@ final class LiveMeetingSession: NSObject {
   /// End-of-meeting pass: consolidate speaker labels across the full transcript, then generate the
   /// final summary from it. Runs detached from the session's own state — everything it needs was
   /// captured before `finish()` cleared the fields.
-  private func runPostProcessing(transcriptURL: URL) {
-    let chunksSnapshot = LiveMeetingTranscriptStore.shared.chunks
-    let markers = LiveMeetingTranscriptStore.shared.markerTexts
+  private func runPostProcessing(
+    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], markers: [String]
+  ) {
     Task {
       let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(
         separator: "\n\n")
@@ -398,6 +424,166 @@ final class LiveMeetingSession: NSObject {
     }
   }
 
+  // MARK: - Untranscribed audio
+
+  static func chunkFailureMessage(error: Error, kept: Bool) -> String {
+    let reason = SpeechErrorFormatter.formatForUser(error)
+    guard kept else {
+      return "Part of this meeting couldn't be transcribed: \(reason)"
+    }
+    return "Part of this meeting couldn't be transcribed: \(reason)\n\n"
+      + "Recording continues and the audio is kept on this Mac. It is transcribed again when the "
+      + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu."
+  }
+
+  /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
+  /// An on-device transcription model needs no network, so it is never warned about.
+  private func warnIfTranscriptionUnreachable() {
+    guard !TranscriptionModel.loadSelectedForMeeting().isOffline else { return }
+    let monitor = NWPathMonitor()
+    let generation = sessionGeneration
+    var answered = false
+    monitor.pathUpdateHandler = { [weak self] path in
+      monitor.cancel()
+      let isOnline = path.status == .satisfied
+      DispatchQueue.main.async {
+        guard !answered else { return }
+        answered = true
+        guard let self, !isOnline, generation == self.sessionGeneration,
+          self.appStateIsRecordingMeeting(), !self.didShowTranscriptionFailureAlert
+        else { return }
+        self.didShowTranscriptionFailureAlert = true
+        DebugLogger.logWarning("LIVE-MEETING: Started without a network connection")
+        PopupNotificationWindow.showError(
+          "There is no internet connection, so this meeting can't be transcribed right now.\n\n"
+            + "Recording continues and the audio is kept on this Mac. It is transcribed when the "
+            + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online.",
+          title: "Live Meeting – Offline"
+        )
+      }
+    }
+    monitor.start(queue: .global(qos: .utility))
+  }
+
+  /// Transcribes kept meeting audio again and splices the text into each meeting's transcript at
+  /// its original timestamp. A meeting that is recording right now is skipped — its own `finish()`
+  /// retries it. Stops at the first real failure: when the network is down every further call
+  /// fails the same way, and the files stay for the next attempt.
+  ///
+  /// `announce` is true for a retry the user asked for, which then also reports success; the
+  /// automatic retry at meeting end only speaks up when something is still missing.
+  @MainActor
+  func retryBacklog(stems: [String]? = nil, announce: Bool) async {
+    guard !isRetryingBacklog else { return }
+    isRetryingBacklog = true
+    onBacklogChanged()
+    let activeStem = recorder != nil ? transcriptURL?.deletingPathExtension().lastPathComponent : nil
+    let targets = (stems ?? MeetingAudioBacklog.stemsWithBacklog()).filter { $0 != activeStem }
+    DebugLogger.log("MEETING-BACKLOG: Retrying \(targets.count) meeting(s)")
+
+    var recovered = 0
+    var failure: Error?
+    for stem in targets {
+      let result = await retryBacklog(stem: stem)
+      recovered += result.recovered
+      if let error = result.error {
+        failure = error
+        break
+      }
+    }
+    let remaining = targets.reduce(0) { $0 + MeetingAudioBacklog.items(stem: $1).count }
+    isRetryingBacklog = false
+    onBacklogChanged()
+    DebugLogger.log("MEETING-BACKLOG: Retry done (recovered \(recovered), remaining \(remaining))")
+
+    if remaining > 0 {
+      let reason = failure.map { SpeechErrorFormatter.formatForUser($0) } ?? "The transcription failed."
+      let parts = remaining == 1 ? "1 part" : "\(remaining) parts"
+      PopupNotificationWindow.showError(
+        "\(parts) of the meeting couldn't be transcribed yet: \(reason)\n\n"
+          + "The audio is kept on this Mac. Retry once you're back online — here, or with Retry "
+          + "Meeting Transcription in the menu bar menu.",
+        title: "Live Meeting – Transcription Incomplete",
+        retryAction: { [weak self] in
+          Task { @MainActor in await self?.retryBacklog(stems: targets, announce: true) }
+        },
+        retryActionTitle: "Retry Now"
+      )
+    } else if announce {
+      PopupNotificationWindow.showInfo(
+        recovered == 0
+          ? "The kept meeting audio contained no speech."
+          : "The meeting transcript is complete again. The summary is being regenerated.",
+        title: "Meeting Transcription Recovered")
+    }
+  }
+
+  /// One meeting's share of `retryBacklog`. The transcript is rewritten before any audio is
+  /// deleted, so a failed write never costs audio.
+  @MainActor
+  private func retryBacklog(stem: String) async -> (recovered: Int, error: Error?) {
+    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+      .appendingPathComponent("\(stem).txt")
+    var recoveredChunks: [LiveMeetingChunk] = []
+    var consumed: [URL] = []
+    var failure: Error?
+    for item in MeetingAudioBacklog.items(stem: stem) {
+      do {
+        let text = try await transcribeChunk(item.url)
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+          recoveredChunks.append(LiveMeetingChunk(startTime: item.startTime, text: text))
+        }
+        consumed.append(item.url)
+      } catch TranscriptionError.noSpeechDetected {
+        consumed.append(item.url)
+      } catch {
+        DebugLogger.logError("MEETING-BACKLOG: Retry failed for \(item.url.lastPathComponent): \(error)")
+        failure = error
+        break
+      }
+    }
+
+    let store = LiveMeetingTranscriptStore.shared
+    let isShownMeeting = store.currentMeetingFilenameStem == stem
+    var merged: [LiveMeetingChunk] = []
+    if !recoveredChunks.isEmpty {
+      let existingText = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
+      merged = MeetingAudioBacklog.merge(
+        recoveredChunks, into: LiveMeetingTranscriptStore.parseTranscript(existingText))
+      do {
+        try FileManager.default.createDirectory(
+          at: transcriptURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try MeetingAudioBacklog.transcriptText(merged).write(
+          to: transcriptURL, atomically: true, encoding: .utf8)
+      } catch {
+        DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(stem): \(error)")
+        return (0, error)
+      }
+      if isShownMeeting { store.replaceChunks(merged) }
+      MeetingListService.shared.invalidateCache(for: nil)
+      MeetingListService.shared.refresh()
+      DebugLogger.log("MEETING-BACKLOG: Spliced \(recoveredChunks.count) chunk(s) into \(stem)")
+    }
+    consumed.forEach { try? FileManager.default.removeItem(at: $0) }
+    MeetingAudioBacklog.removeIfEmpty(stem: stem)
+
+    // The summary is only worth writing once the transcript is whole (see `finish()`).
+    if failure == nil {
+      if merged.isEmpty {
+        let text = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
+        merged = LiveMeetingTranscriptStore.parseTranscript(text)
+      }
+      if !merged.isEmpty {
+        runPostProcessing(
+          transcriptURL: transcriptURL, chunks: merged,
+          markers: isShownMeeting ? store.markerTexts : [])
+      }
+    }
+    return (recoveredChunks.count, failure)
+  }
+
   // MARK: - Transcript file
 
   /// Renames the transcript file to include the user's preferred name. Keeps timestamp prefix for parsing.
@@ -426,6 +612,7 @@ final class LiveMeetingSession: NSObject {
         try? FileManager.default.removeItem(at: newNotes)
         try? FileManager.default.moveItem(at: oldNotes, to: newNotes)
       }
+      MeetingAudioBacklog.rename(stem: currentStem, to: newStem)
       transcriptURL = newURL
       MeetingListService.shared.invalidateCache(for: nil)
       DispatchQueue.main.async {
@@ -756,6 +943,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     }
 
     pendingChunks += 1
+    // Captured now: the backlog folder must match the stem this chunk belongs to, even if the
+    // session finishes (and clears `transcriptURL`) while the call is still out.
+    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
 
     Task {
       do {
@@ -788,18 +978,32 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           }
           return false
         }()
-        if isRateLimitOrQuota {
-          await MainActor.run {
+        // Keep the audio: losing a meeting because the Wi-Fi dropped is not acceptable, and the
+        // chunk can be transcribed later at its original timestamp.
+        let kept = stem.map {
+          MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
+        } ?? false
+        if !kept { cleanUpAudioFile(audioURL) }
+        await MainActor.run {
+          if kept { self.onBacklogChanged() }
+          if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
               self.didShowRateLimitAlert = true
+              self.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
-                SpeechErrorFormatter.formatForUser(error),
+                SpeechErrorFormatter.formatForUser(error)
+                  + (kept ? "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : ""),
                 title: "Live Meeting – Quota Reached"
               )
             }
+          } else if !self.didShowTranscriptionFailureAlert {
+            self.didShowTranscriptionFailureAlert = true
+            PopupNotificationWindow.showError(
+              Self.chunkFailureMessage(error: error, kept: kept),
+              title: "Live Meeting – Transcription Failed"
+            )
           }
         }
-        cleanUpAudioFile(audioURL)
       }
 
       await MainActor.run {
