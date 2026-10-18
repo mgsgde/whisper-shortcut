@@ -166,6 +166,11 @@ enum MLXModelPaths {
     }
   }
 
+  /// True when config, tokenizer and the weights are on disk. For sharded models the index
+  /// (`model.safetensors.index.json`) lists every shard and all of them must exist: an aborted
+  /// download can leave only shard 2 on disk (shard 1 stays an `.incomplete` file under `.cache/`),
+  /// and treating that as ready made MLX `loadWeights` hit a `try!` and crash with SIGTRAP on
+  /// every model load (2026-10-18).
   private static func hasRequiredFiles(at directory: URL) -> Bool {
     let fileManager = FileManager.default
     guard requiredFileNames.allSatisfy({
@@ -175,7 +180,17 @@ enum MLXModelPaths {
     guard let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
       return false
     }
-    return contents.contains { $0.hasSuffix(".safetensors") }
+    guard contents.contains(where: { $0.hasSuffix(".safetensors") }) else { return false }
+
+    let indexURL = directory.appendingPathComponent("model.safetensors.index.json")
+    guard fileManager.fileExists(atPath: indexURL.path) else { return true }
+    guard let data = try? Data(contentsOf: indexURL),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let weightMap = json["weight_map"] as? [String: String]
+    else { return false }
+    return Set(weightMap.values).allSatisfy {
+      fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
+    }
   }
 }
 
