@@ -6,10 +6,6 @@ import MLXLMCommon
 final class MLXChatProvider: LLMChatProvider {
   static let shared = MLXChatProvider()
 
-  /// Sessions (by `ChatRequestOptions.cacheKey`) already shown the no-tools notice.
-  private let noticeLock = NSLock()
-  private var sessionsToldNoTools = Set<String>()
-
   /// Milliseconds the most recent request spent loading or preparing the model container.
   /// 0 when it was already in memory. Dictate Prompt reads this after `sendChatStream` returns.
   private let loadMsLock = NSLock()
@@ -19,11 +15,6 @@ final class MLXChatProvider: LLMChatProvider {
     defer { loadMsLock.unlock() }
     return recordedLoadMs
   }
-
-  /// Shown once per chat session, in the reply, so the user is not left guessing why
-  /// `/folder` or Gmail tools do nothing.
-  static let noToolsNotice =
-    "On-device MLX chat cannot use tools in this session (Gmail, Calendar, Trello, workspace files, and similar). Ask in plain language instead.\n\n"
 
   private init() {}
 
@@ -61,9 +52,6 @@ final class MLXChatProvider: LLMChatProvider {
     return AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          if shouldAnnounceNoTools(sessionKey: options.cacheKey) {
-            continuation.yield(.textDelta(Self.noToolsNotice))
-          }
           // Readiness lives here, not in the callers: every path that reaches this provider needs
           // the weights on disk and in RAM, and the title stays neutral because both Chat and
           // Dictate Prompt come through. A 2.3 GB first download must not look like a hang.
@@ -123,13 +111,6 @@ final class MLXChatProvider: LLMChatProvider {
   private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
     let ms = start.duration(to: ContinuousClock.now) / .milliseconds(1)
     return Int(ms.rounded())
-  }
-
-  private func shouldAnnounceNoTools(sessionKey: String?) -> Bool {
-    guard let sessionKey, !sessionKey.isEmpty else { return false }
-    noticeLock.lock()
-    defer { noticeLock.unlock() }
-    return sessionsToldNoTools.insert(sessionKey).inserted
   }
 
   func generateStructured(

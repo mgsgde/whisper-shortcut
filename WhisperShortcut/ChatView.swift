@@ -998,7 +998,10 @@ class ChatViewModel: ObservableObject {
           tools: tools,
           maxToolRounds: 16,
           steps: toolSteps,
-          systemInstruction: { self.buildSystemInstruction(for: sendingSession) },
+          systemInstruction: {
+            self.buildSystemInstruction(
+              for: sendingSession, offline: selectedModel.provider == .localMLX)
+          },
           options: { isFinalRound in
             ChatRequestOptions(
               useGrounding: useGrounding,
@@ -1537,15 +1540,10 @@ class ChatViewModel: ObservableObject {
     return title == meetingFirstMessageFallbackTitle(for: session)
   }
 
-  /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
-  /// Pass the sending session when a background tab is the target — workspace/meeting gates follow that chat.
-  private func buildSystemInstruction(for target: ChatSession? = nil) -> [String: Any] {
-    let s = target ?? session
-    var text = SystemPromptsStore.shared.loadChatSystemPrompt()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "EEEE, MMMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US")
-    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+  /// The blocks only a tool-calling model can act on: slash commands, Google, image generation,
+  /// memory and app-config tools, shared folders and what we learned about them.
+  private func toolAndWorkspaceInstructions(for s: ChatSession) -> String {
+    var text = ""
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
     // prefix caching): stable blocks first, blocks that change within a session last. Anything
     // that changes invalidates the cache for everything after it.
@@ -1599,6 +1597,26 @@ class ChatViewModel: ObservableObject {
       if !map.isEmpty {
         text += "\n\n---\n\nFILES — what you have learned about where things live in the shared folders:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
       }
+    }
+    return text
+  }
+
+  /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
+  /// Pass the sending session when a background tab is the target — workspace/meeting gates follow that chat.
+  /// `offline` (the in-process MLX model) swaps in a short prompt without the tool, web-search and
+  /// workspace blocks: the model can call none of them, and a 4B model told it has web search and
+  /// Gmail invents both. Memory and meeting context still apply — they need no tool.
+  private func buildSystemInstruction(for target: ChatSession? = nil, offline: Bool = false) -> [String: Any] {
+    let s = target ?? session
+    var text = offline
+      ? AppConstants.defaultOfflineChatSystemPrompt
+      : SystemPromptsStore.shared.loadChatSystemPrompt()
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEEE, MMMM d, yyyy"
+    formatter.locale = Locale(identifier: "en_US")
+    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    if !offline {
+      text += toolAndWorkspaceInstructions(for: s)
     }
     // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
     // Injected into every chat request; empty when the user has no memory (then nothing is added).
@@ -4210,6 +4228,15 @@ struct ChatInputAreaView: View {
     }
   }
 
+  /// The offline model has no web search and no tools; saying so where the user types replaces a
+  /// notice that used to be streamed into the first reply (and then fed back to the model as
+  /// something it had said).
+  private var composerPlaceholder: String {
+    let model = resolvedOpenGeminiModel
+    guard model.provider == .localMLX else { return "Message \(model.displayName)…" }
+    return "Message \(model.displayName) · no web search or tools…"
+  }
+
   private var inputBar: some View {
     VStack(spacing: 0) {
       meetingComposerStrip
@@ -4217,7 +4244,7 @@ struct ChatInputAreaView: View {
       // Composer: NSTextView with inline screenshot/paste/file attachments.
       ChatComposerTextView(
         controller: composer,
-        placeholder: "Message \(resolvedOpenGeminiModel.displayName)…",
+        placeholder: composerPlaceholder,
         onSubmit: { submitComposer() },
         onCancel: {
           if viewModel.isSending { viewModel.cancelSend() }
