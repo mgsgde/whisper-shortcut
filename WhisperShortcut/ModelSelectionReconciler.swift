@@ -353,7 +353,12 @@ enum ModelSelectionReconciler {
 
   private static func reconcileTranscription(key: String, fallback: TranscriptionModel) {
     let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
-    let current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) ?? fallback
+    var current = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) ?? fallback
+    if let forward = dictationForward(for: current) {
+      UserDefaults.standard.set(forward.rawValue, forKey: key)
+      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(forward.rawValue) (dominated for dictation)")
+      current = forward
+    }
     // Offline Whisper and self-hosted endpoints need no provider key — leave those selections
     // alone, unconditionally.
     //
@@ -367,6 +372,18 @@ enum ModelSelectionReconciler {
     let currentProvider: ChatModelProvider = current.isGemini ? .gemini : (current.isOpenAI ? .openai : .grok)
     if hasKey(currentProvider) { return }
     replaceTranscriptionSelection(key: key, current: current)
+  }
+
+  /// Dictation tiers the 2026-10-03 audit found dominated (plans/model-audits/2026-10-03-audit.md,
+  /// "Pareto check"): hidden from the pickers via `isSelectableForDictation`, and a stored pick is
+  /// forwarded here. Transcription keys only — chat, Dictate Prompt and Smart Improvement keep these
+  /// models through `PromptModel`.
+  static func dictationForward(for model: TranscriptionModel) -> TranscriptionModel? {
+    switch model {
+    case .gemini36Flash, .gemini37Flash: return .gemini38Flash
+    case .gemini35Flash: return .gemini31FlashLite
+    default: return nil
+    }
   }
 
   /// Which transcription model stands in for a given chat provider, or `nil` when that provider

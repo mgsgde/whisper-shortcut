@@ -45,7 +45,9 @@ enum TranscriptionTuning {
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
 // gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
-// dictation**, see `isSelectableForDictation`.
+// dictation**, see `isSelectableForDictation`. gemini-3.5-flash, gemini-3.6-flash and gemini-3.7-flash
+// are dominated for dictation per the 2026-10-03 audit; stored picks are forwarded by
+// `ModelSelectionReconciler.dictationForward(for:)`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
 // measurement note in `plans/model-audits/2026-09-03-audit.md`. Revisit by early 2027.
@@ -182,16 +184,20 @@ enum TranscriptionModel: String, CaseIterable {
   /// Mirrors `PromptModel.isSelectableInChat`: the case stays in the enum so persisted values and
   /// internal lookups keep resolving, but pickers never show it.
   ///
-  /// `gemini31Pro` is the only exclusion. Measured 2026-08-03 against the 1.3 s fixture, it returns
+  /// `gemini31Pro` is excluded. Measured 2026-08-03 against the 1.3 s fixture, it returns
   /// no response at all when sent any real transcription prompt — 4/4, including a 300 s attempt
   /// that received zero bytes, while a trivial-prompt control answered in ~6 s between the
   /// failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the same
   /// way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
   /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
   /// Detail: plans/model-audits/2026-08-03-audit.md.
+  ///
+  /// `gemini35Flash`, `gemini36Flash` and `gemini37Flash` are dominated for dictation per the
+  /// 2026-10-03 audit; stored picks are forwarded by `ModelSelectionReconciler.dictationForward(for:)`.
   var isSelectableForDictation: Bool {
     switch self {
     case .gemini31Pro: return false
+    case .gemini35Flash, .gemini36Flash, .gemini37Flash: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
     // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
