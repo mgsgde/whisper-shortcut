@@ -1162,11 +1162,13 @@ enum ChatToolRegistry {
   static func allDeclarations(
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
     meetingContext: Bool, workspaceAvailable: Bool, workspaceWritable: Bool,
-    mailAvailable: Bool, mailAccountsConnected: Bool
+    mailAvailable: Bool, mailAccountsConnected: Bool,
+    provider: ChatModelProvider = selectedChatProvider
   ) -> [[String: Any]] {
     // In-process MLX has no tool-calling path. Do not declare tools so the model cannot
     // hallucinate a `/folder` or Gmail call that then silently vanishes.
-    if Self.selectedChatProvider == .localMLX { return [] }
+    // `provider` is injectable so tests do not depend on the developer's selected chat model.
+    if provider == .localMLX { return [] }
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
       + instructionsFunctionDeclarations
@@ -1199,7 +1201,7 @@ enum ChatToolRegistry {
 
   /// The chat window's selected provider. Read without the chat-slot loader so a send cannot
   /// persist a migration as a side effect of building tool declarations.
-  private static var selectedChatProvider: ChatModelProvider {
+  static var selectedChatProvider: ChatModelProvider {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
       ?? SettingsDefaults.selectedChatModel.rawValue
     let migrated = PromptModel.migrateLegacyPromptRawValue(raw)

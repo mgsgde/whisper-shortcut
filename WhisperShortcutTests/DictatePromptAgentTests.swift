@@ -14,7 +14,7 @@ struct DictatePromptAgentTests {
     let registered = Set(ChatToolRegistry.allDeclarations(
       calendarConnected: true, trelloConnected: true, imageGenerationAvailable: false,
       meetingContext: false, workspaceAvailable: true, workspaceWritable: false,
-      mailAvailable: false, mailAccountsConnected: false
+      mailAvailable: false, mailAccountsConnected: false, provider: .gemini
     ).compactMap { $0["name"] as? String })
     for name in DictatePromptAgent.readOnlyToolNames {
       #expect(!ChatToolRegistry.requiresUserApproval(name), "\(name) must not need approval")
@@ -99,7 +99,7 @@ struct DictatePromptAgentLiveTests {
     let tools = ChatToolRegistry.allDeclarations(
       calendarConnected: false, trelloConnected: false, imageGenerationAvailable: false,
       meetingContext: false, workspaceAvailable: true, workspaceWritable: false,
-      mailAvailable: false, mailAccountsConnected: false
+      mailAvailable: false, mailAccountsConnected: false, provider: .gemini
     ).compactMap { decl -> LLMToolDeclaration? in
       guard let name = decl["name"] as? String, name == "list_workspace_folders",
             let desc = decl["description"] as? String,
