@@ -52,7 +52,7 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 - Optional Trello Power-Up API key and token for board, list, and card tools
 - Optional IMAP mailbox password (stored in the Keychain) for read-only mail search
 
-Offline dictation (Parakeet Ultra or Whisper) works without an API key after downloading a local model in Settings. Without any cloud key, Dictate Prompt and Chat use the offline MLX model (Qwen3 4B Instruct, ~2.3 GB) on Apple Silicon — the onboarding's offline path downloads it in the background. Adding a key before you have used the offline model moves them back to your provider's model; once you have used it (or turned Offline Mode on), they stay offline until you pick another model.
+Offline dictation (Parakeet Ultra or Whisper) works without an API key after downloading a local model in Settings. Without any cloud key, Dictate Prompt and Chat use the offline MLX model (Qwen3 4B Instruct, ~2.3 GB) on Apple Silicon — the onboarding's offline path downloads it in the background. On Macs with 16 GB of RAM or more, Chat can also use Qwen3.5 9B (~5.6 GB, slower but more knowledgeable; Chat only, `/mlx9b`). Adding a key before you have used the offline model moves them back to your provider's model; once you have used it (or turned Offline Mode on), they stay offline until you pick another model.
 
 ## Installation
 
