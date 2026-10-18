@@ -166,11 +166,26 @@ enum MLXModelPaths {
     }
   }
 
-  private static func hasRequiredFiles(at directory: URL) -> Bool {
+  static func hasRequiredFiles(at directory: URL) -> Bool {
     let fileManager = FileManager.default
     guard requiredFileNames.allSatisfy({
       fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
     }) else { return false }
+
+    // A sharded repo must have every shard its index names. A download cancelled mid-way leaves
+    // one shard finished and the other as `.incomplete`; "any .safetensors" accepted that folder,
+    // and MLX then trapped in `Module.update(modules:)` on the missing weights instead of
+    // throwing (2026-10-18, Qwen3.5 9B: shard 2 of 2 on disk, shard 1 at 3.7 of ~5 GB).
+    let index = directory.appendingPathComponent("model.safetensors.index.json")
+    if let data = try? Data(contentsOf: index) {
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let weightMap = json["weight_map"] as? [String: String],
+        !weightMap.isEmpty
+      else { return false }
+      return Set(weightMap.values).allSatisfy {
+        fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
+      }
+    }
 
     guard let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
       return false
