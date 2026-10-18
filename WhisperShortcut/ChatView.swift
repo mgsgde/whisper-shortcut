@@ -1010,7 +1010,8 @@ class ChatViewModel: ObservableObject {
               // Stable per-session key → provider prompt-cache hits across turns
               // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
               cacheKey: sessionId.uuidString,
-              xHandles: xHandles)
+              xHandles: xHandles,
+              showsModelReadinessPopup: false)
           },
           toolContext: { self.makeToolContext(sessionId: sessionId) },
           approve: { name, summary, stepId in
@@ -3401,7 +3402,10 @@ struct ChatView: View {
             .id(credential.id)
           }
           if viewModel.isSending {
-            LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
+            // An offline model that is still downloading or loading says so instead of the dots.
+            ChatPendingReplyIndicator(
+              model: ChatViewModel.openChatModel.localMLXModelType,
+              typing: AnyView(LiveTypingIndicatorView(steps: viewModel.currentToolSteps)))
               .allowsHitTesting(false)
           }
         }
@@ -4337,6 +4341,8 @@ struct ChatInputAreaView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Select model")
+
+        ComposerModelReadinessBadge(model: resolvedOpenGeminiModel.localMLXModelType)
 
         // Queue count indicator (current session's queue only)
         let queuedHere = viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }.count

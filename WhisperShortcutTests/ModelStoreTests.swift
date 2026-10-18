@@ -118,6 +118,30 @@ struct ModelStoreTests {
     #expect(statuses.last == "Loading small into memory…")
   }
 
+  @Test("A caller that joins an in-flight ensureReady still sees its progress")
+  func joinerSeesProgress() async throws {
+    // The 2026-10-18 bug: picking Qwen3.5 9B started a silent background prepare, and the Chat
+    // message sent next joined that task and lost its `onProgress` — typing dots for minutes.
+    let store = makeStore()
+    store.fetchBehaviour = { [weak store] model in
+      try await Task.sleep(for: .milliseconds(150))
+      store?.writeMarker(model)
+    }
+    // FakeStore's fetch never reports a fraction itself; drive one through the real path.
+    let starter = Task { try await store.ensureReady(.small) }   // silent, like the picker
+    try await Task.sleep(for: .milliseconds(30))
+    #expect(store.readyPhase[.small] == .downloading(fraction: 0, isRetry: false))
+
+    var statuses: [String] = []
+    try await store.ensureReady(.small) { statuses.append($0) }
+    try await starter.value
+
+    #expect(statuses.first == "Downloading small — 0% of ~1 MB", "the joiner sees the phase it joined")
+    #expect(statuses.last == "Loading small into memory…")
+    #expect(store.fetchCalls == 1, "joining must not start a second download")
+    #expect(store.readyPhase[.small] == nil, "the phase is cleared once the model is ready")
+  }
+
   @Test("ensureReady skips the download when the files are already there")
   func ensureReadySkipsDownload() async throws {
     let store = makeStore()

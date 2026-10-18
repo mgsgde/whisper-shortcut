@@ -60,7 +60,11 @@ final class MLXChatProvider: LLMChatProvider {
           // look like a fresh load of a few milliseconds.
           let resident = await LocalLLMModelManager.shared.isContainerLoaded(mlxType)
           let loadStarted = ContinuousClock.now
-          try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
+          if options.showsModelReadinessPopup {
+            try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
+          } else {
+            try await LocalLLMModelManager.shared.ensureReady(mlxType)
+          }
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           let loadMs = resident ? 0 : Self.milliseconds(since: loadStarted)
           recordLoadMs(loadMs)
