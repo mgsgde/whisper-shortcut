@@ -214,6 +214,8 @@ While the meeting runs there is only the chat — the notes are already in it. O
 
 Dictate and Dictate Prompt keep working during a meeting, and the menu bar shows which of the two recordings is running: 📝 for the meeting, 🔴 / 🤖 while you dictate on top of it. Stopping a meeting is not instant — the last chunk still has to be transcribed — so the meeting bar says **Finishing…** and the menu bar shows ⏳ until the transcript and summary are saved.
 
+**No connection, no lost meeting.** If a part of the meeting can't be transcribed (offline, quota, the service is down), you get a popup right away, recording continues, and that part's audio is kept on your Mac. When the meeting ends it is tried again automatically; anything still missing stays available under **Retry Meeting Transcription** in the menu bar menu (hold ⌥ to show the kept audio in Finder). Recovered parts land at their original place in the transcript, and the summary is written once the transcript is complete.
+
 ### Smart Improvement
 
 In Settings → General, enable **Save usage data** if you want the app to learn from your interactions. Then use **Improve from usage** or **Generate with AI** to review suggested updates to system prompts, user context, or the Whisper glossary before accepting them.

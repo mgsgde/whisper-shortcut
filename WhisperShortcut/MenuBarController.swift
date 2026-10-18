@@ -37,6 +37,8 @@ class MenuBarController: NSObject {
     case addToGlossary = 121
     case finishSetup = 122
     case finishSetupSeparator = 126
+    case retryMeetingTranscription = 127
+    case showMeetingAudio = 128
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -264,6 +266,10 @@ class MenuBarController: NSObject {
       guard let self else { return }
       self.meetingIsFinishing = false
       self.appState = self.appState.finish()
+    },
+    onBacklogChanged: { [weak self] in
+      guard let self, let menu = self.statusItem?.menu else { return }
+      self.updateMeetingBacklogItems(menu)
     })
 
   /// True when live meeting is active (recording or stopping with pending chunks).
@@ -481,6 +487,18 @@ class MenuBarController: NSObject {
       createMenuItem(
         "Transcribe Cancelled Recording", action: #selector(transcribeCancelledRecording),
         tag: .transcribeCancelledRecording))
+    // Only present while a meeting has audio that failed to transcribe (e.g. recorded offline).
+    // Holding ⌥ swaps it for the folder the audio is kept in.
+    menu.addItem(
+      createMenuItem(
+        "Retry Meeting Transcription", action: #selector(retryMeetingTranscription),
+        tag: .retryMeetingTranscription))
+    let showMeetingAudioItem = createMenuItem(
+      "Show Untranscribed Meeting Audio", action: #selector(showMeetingAudioInFinder),
+      tag: .showMeetingAudio)
+    showMeetingAudioItem.isAlternate = true
+    showMeetingAudioItem.keyEquivalentModifierMask = .option
+    menu.addItem(showMeetingAudioItem)
 
     menu.addItem(NSMenuItem.separator())
 
@@ -1160,6 +1178,36 @@ class MenuBarController: NSObject {
       submenu.addItem(item)
     }
     recentItem.submenu = submenu
+  }
+
+  /// Shows the retry row while meeting audio waits to be transcribed. Scans the backlog folder, so it
+  /// runs on menu open and on backlog changes rather than on every `updateUI`.
+  private func updateMeetingBacklogItems(_ menu: NSMenu) {
+    let count = MeetingAudioBacklog.totalCount()
+    let retrying = liveMeeting.isRetryingBacklog
+    let retryItem = menu.item(withTag: MenuTag.retryMeetingTranscription.rawValue)
+    let showItem = menu.item(withTag: MenuTag.showMeetingAudio.rawValue)
+    retryItem?.isHidden = count == 0 && !retrying
+    showItem?.isHidden = count == 0
+    retryItem?.isEnabled = !retrying
+    retryItem?.title =
+      retrying
+      ? "Retrying Meeting Transcription…"
+      : "Retry Meeting Transcription (\(count == 1 ? "1 part" : "\(count) parts"))"
+    retryItem?.toolTip =
+      "Audio from a meeting that couldn't be transcribed (for example while offline) is kept on this Mac until it is."
+  }
+
+  @objc private func retryMeetingTranscription() {
+    DebugLogger.log("MEETING-BACKLOG: Retry requested from the status menu")
+    Task { @MainActor in await liveMeeting.retryBacklog(announce: true) }
+  }
+
+  @objc private func showMeetingAudioInFinder() {
+    let stems = MeetingAudioBacklog.stemsWithBacklog()
+    let folders = stems.map { MeetingAudioBacklog.directory(stem: $0) }
+    guard !folders.isEmpty else { return }
+    NSWorkspace.shared.activateFileViewerSelecting(folders)
   }
 
   private static let historyTooltipFormatter: DateFormatter = {
@@ -3806,6 +3854,7 @@ extension MenuBarController: NSMenuDelegate {
     // The history rows are otherwise only refreshed on an `appState` change, which leaves them
     // stale right after launch (a persisted history exists but nothing has happened yet).
     updateTranscriptionHistoryItems(menu)
+    updateMeetingBacklogItems(menu)
     let needsOnboarding = WelcomeWindowController.needsCompletion
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
