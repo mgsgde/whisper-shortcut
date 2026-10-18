@@ -116,6 +116,46 @@ struct LocalLLMBenchmarkTests {
     Self.report("mlx warm \(type.huggingFaceID)", warm)
   }
 
+  /// One offline Chat turn through the real Swift loader, for any catalogue entry:
+  /// `WHISPERSHORTCUT_BENCH_MLX_MODEL=local-mlx-qwen3.5-9b`. Python mlx-lm loading a checkpoint
+  /// (`scripts/benchmark-offline-chat.py`) does not prove mlx-swift-lm can, nor that the chat
+  /// template switches thinking off — this does.
+  @Test(
+    "In-process MLX: offline Chat answer",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_LOCAL_LLM=1 to run (downloads gigabytes)")
+  )
+  func mlxChatAnswer() async throws {
+    let raw = ProcessInfo.processInfo.environment["WHISPERSHORTCUT_BENCH_MLX_MODEL"]
+      ?? PromptModel.localMLXQwen34BInstruct.rawValue
+    let model = try #require(PromptModel(rawValue: raw))
+    let type = try #require(model.localMLXModelType)
+    try await LocalLLMModelManager.shared.ensureReady(type)
+
+    let contents: [[String: Any]] = [["role": "user", "parts": [["text":
+      "Was ist der Unterschied zwischen einer GmbH und einer UG?"]]]]
+    let systemInstruction: [String: Any] = [
+      "parts": [["text": AppConstants.defaultOfflineChatSystemPrompt]]]
+    for turn in ["cold", "warm"] {
+      let start = CFAbsoluteTimeGetCurrent()
+      var firstToken: CFAbsoluteTime?
+      var combined = ""
+      for try await event in MLXChatProvider.shared.sendChatStream(
+        model: model.rawValue, contents: contents, systemInstruction: systemInstruction,
+        tools: [], options: ChatRequestOptions())
+      {
+        if case .textDelta(let delta) = event {
+          if firstToken == nil { firstToken = CFAbsoluteTimeGetCurrent() }
+          combined += delta
+        }
+      }
+      let end = CFAbsoluteTimeGetCurrent()
+      #expect(!combined.contains("<think>"), "\(raw) leaked a reasoning block")
+      #expect(!combined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      print(String(format: "BENCH-CHAT [%@ %@] first token %.2fs, total %.2fs\n%@",
+                   type.huggingFaceID, turn, (firstToken ?? end) - start, end - start, combined))
+    }
+  }
+
   @Test(
     "Local HTTP server: prefill, generation",
     .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_LOCAL_LLM=1 to run (needs a local server)")
