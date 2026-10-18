@@ -1615,7 +1615,12 @@ class ChatViewModel: ObservableObject {
     formatter.dateFormat = "EEEE, MMMM d, yyyy"
     formatter.locale = Locale(identifier: "en_US")
     text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
-    if !offline {
+    if offline {
+      // No doc tools offline, so the app's own facts travel in the prompt.
+      text += "\n\n---\n\n" + OfflineChatAppContext.current(
+        chatModel: Self.openChatModel,
+        userMessages: s.messages.filter { $0.role == .user }.map(\.content))
+    } else {
       text += toolAndWorkspaceInstructions(for: s)
     }
     // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.

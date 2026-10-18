@@ -120,6 +120,53 @@ struct LocalLLMBenchmarkTests {
   /// `WHISPERSHORTCUT_BENCH_MLX_MODEL=local-mlx-qwen3.5-9b`. Python mlx-lm loading a checkpoint
   /// (`scripts/benchmark-offline-chat.py`) does not prove mlx-swift-lm can, nor that the chat
   /// template switches thinking off — this does.
+  /// The offline model has no doc tools, so questions about the app itself are answered only from
+  /// `OfflineChatAppContext`. Same model switch as above; read the printed answer.
+  @Test(
+    "In-process MLX: offline Chat answers about the app itself",
+    .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_LOCAL_LLM=1 to run (downloads gigabytes)")
+  )
+  func mlxChatSelfKnowledge() async throws {
+    let raw = ProcessInfo.processInfo.environment["WHISPERSHORTCUT_BENCH_MLX_MODEL"]
+      ?? PromptModel.localMLXQwen34BInstruct.rawValue
+    let model = try #require(PromptModel(rawValue: raw))
+    let type = try #require(model.localMLXModelType)
+    try await LocalLLMModelManager.shared.ensureReady(type)
+
+    let readmeURL = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("README.md")
+    let context = OfflineChatAppContext.block(
+      readme: try String(contentsOf: readmeURL, encoding: .utf8), currentModel: type,
+      shortcuts: [("Dictate", "⌘ + 1"), ("Chat", "⌘ + 3")], appVersion: AppConstants.appVersion)
+    let systemInstruction: [String: Any] = [
+      "parts": [["text": AppConstants.defaultOfflineChatSystemPrompt + "\n\n---\n\n" + context]]]
+    let questions = [
+      "Ich will mal überprüfen, ob dieses Quen 3.5 9B, ob das funktioniert. Und ich will auch wissen, was ist der Unterschied zwischen diesem Quen 3.5 9B und dem anderen Ding, was ich habe.",
+      "Was kann Whisper Shortcut eigentlich alles, und wie starte ich das Diktieren?",
+    ]
+    for question in questions {
+      let contents: [[String: Any]] = [["role": "user", "parts": [["text": question]]]]
+      let start = CFAbsoluteTimeGetCurrent()
+      var firstToken: CFAbsoluteTime?
+      var combined = ""
+      for try await event in MLXChatProvider.shared.sendChatStream(
+        model: model.rawValue, contents: contents, systemInstruction: systemInstruction,
+        tools: [], options: ChatRequestOptions())
+      {
+        if case .textDelta(let delta) = event {
+          if firstToken == nil { firstToken = CFAbsoluteTimeGetCurrent() }
+          combined += delta
+        }
+      }
+      let end = CFAbsoluteTimeGetCurrent()
+      #expect(!combined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      print(String(format: "BENCH-SELF [%@] first token %.2fs, total %.2fs, context %d chars\nQ: %@\nA: %@",
+                   type.huggingFaceID, (firstToken ?? end) - start, end - start, context.count,
+                   question, combined))
+    }
+  }
+
   @Test(
     "In-process MLX: offline Chat answer",
     .enabled(if: isEnabled, "Set WHISPERSHORTCUT_BENCH_LOCAL_LLM=1 to run (downloads gigabytes)")
