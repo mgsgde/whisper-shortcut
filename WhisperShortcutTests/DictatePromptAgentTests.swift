@@ -191,7 +191,10 @@ struct DictatePromptAgentLiveTests {
         ["type": "text", "text": "VOICE INSTRUCTION:\nFix the spelling."],
       ],
       apiKey: apiKey)
-    #expect(text.lowercased().contains("hello world"), "got: \(text)")
+    // Punctuation is the model's call ("hello, world." is a correct fix); only the spelling is tested.
+    let words = text.lowercased().components(separatedBy: CharacterSet.letters.inverted)
+      .filter { !$0.isEmpty }.joined(separator: " ")
+    #expect(words.contains("hello world"), "got: \(text)")
   }
 
   @Test(
