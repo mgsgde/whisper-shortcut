@@ -1,6 +1,9 @@
 # User-defined chat commands (lean version)
 
-Status: PLAN — branch `feat/user-commands`, not started.
+Status: BUILT — branch `feat/user-commands`, PR open, awaiting merge. Change from the plan: the four
+built-in meeting quick actions (Catch me up, Action items, Open questions, Decisions) were removed
+on Magnus's word (2026-10-19: „Können wir nicht die ersten Buttons weglassen? Die werden doch so
+oder so nicht genutzt."), so the meeting bar holds only user commands and is empty by default.
 
 ## Why
 
@@ -77,8 +80,8 @@ Pure, testable core: `UserCommandParser.parse(fileName:contents:reservedNames:) 
 
 1. **Autocomplete:** user commands listed after the action commands, before model aliases, with
    their description; shown from the bare `/` like action commands (they are actions).
-2. **Meeting bar:** after the four built-in capsules, a thin divider, then user commands with
-   meeting/both scope, in a visually distinct (accent-tinted) capsule so "ours" vs "built-in" reads at a glance.
+2. **Meeting bar:** user commands with meeting/both scope as accent-tinted capsules (the built-in
+   quick actions are gone, see Status); no bar at all when there are none.
    Tooltip = description. Disabled while sending, like the built-ins.
 3. **Settings → Chat → "Commands"** (below the chat system prompt):
    - One row per command: `/name` monospace, label, scope badge (Meeting / Chat / Both), description.

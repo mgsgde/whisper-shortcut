@@ -34,6 +34,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      UserCommandsSection()
+
+      SpacedSectionDivider()
+
       ChatMemoryEditor()
 
       SpacedSectionDivider()
