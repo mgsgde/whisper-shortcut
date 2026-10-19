@@ -1101,6 +1101,10 @@ enum TranscriptionError: Error, Equatable {
   /// user spoke, so the recording is kept and the run is retryable. Appended last for the same
   /// index-logging reason as `noSelectedText`.
   case emptyModelReply
+  /// An on-device model (Parakeet, WhisperKit, MLX) failed to load or run. Keeps the recording and
+  /// offers a manual Retry, but is not auto-retryable. Appended last for the index-logging reason
+  /// above.
+  case localModelFailed(String)
 
   var title: String {
     switch self {
@@ -1133,6 +1137,7 @@ enum TranscriptionError: Error, Equatable {
     case .noSelectedText: return "Nothing Selected"
     case .localProcessingTimeout: return "Local Processing Timeout"
     case .emptyModelReply: return "No Reply"
+    case .localModelFailed: return "Offline Model Error"
     }
   }
 
@@ -1164,7 +1169,7 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .localModelFailed, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
       return false
     }
   }
@@ -1176,11 +1181,7 @@ enum TranscriptionError: Error, Equatable {
   /// schedulers key their automatic retry/backoff off that flag, and these errors must never loop.
   var keepsAudioForManualRetry: Bool {
     switch self {
-    case .modelNotAvailable: return true
-    case .fileError(let message):
-      // Local-model load failures only ("Failed to load model: …", "Offline model not
-      // initialized"); "Audio file not found" and friends cannot be fixed by retrying.
-      return message.localizedCaseInsensitiveContains("model")
+    case .modelNotAvailable, .localModelFailed: return true
     default: return false
     }
   }

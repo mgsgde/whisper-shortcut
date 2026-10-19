@@ -21,15 +21,33 @@ struct KeepAudioOnModelErrorsTests {
     #expect(!error.isRetryable)
   }
 
-  @Test("Model-load fileError keeps the audio but is not auto-retryable")
-  func modelLoadFileError() {
-    let load = TranscriptionError.fileError("Failed to load model: boom. Please try downloading it again in Settings.")
-    let uninitialized = TranscriptionError.fileError("Offline model not initialized")
-    for error in [load, uninitialized] {
+  @Test("localModelFailed (Parakeet, WhisperKit, MLX) keeps the audio but is not auto-retryable")
+  func localModelFailed() {
+    let cases: [TranscriptionError] = [
+      .localModelFailed("Failed to load model: boom"),
+      .localModelFailed("Offline model not initialized"),
+      .localModelFailed("Offline transcription failed: decode error"),
+    ]
+    for error in cases {
       #expect(error.keepsAudioForManualRetry)
       #expect(error.offersManualRetry)
       #expect(!error.isRetryable)
     }
+  }
+
+  @Test("Offline-model message wording no longer decides anything: plain fileError never keeps audio")
+  func fileErrorNeverKeepsAudio() {
+    for message in ["Failed to load model: x", "Offline model not initialized", "Audio file not found"] {
+      let error = TranscriptionError.fileError(message)
+      #expect(!error.keepsAudioForManualRetry)
+      #expect(!error.offersManualRetry)
+    }
+  }
+
+  @Test("Cloud-only OpenAI too-long message does not offer a futile Retry")
+  func cloudOnlyMessage() {
+    let error = TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (30.0 MB > 25.0 MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
+    #expect(!error.offersManualRetry)
   }
 
   @Test("Unrelated fileError does not keep the audio")
