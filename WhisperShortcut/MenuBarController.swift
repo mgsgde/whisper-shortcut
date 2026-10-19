@@ -2403,10 +2403,21 @@ class MenuBarController: NSObject {
       // the state machine is still ours.
       finishIfCurrent()
 
+      // The model often returns a glossary term in lowercase. Lines the user already has stay
+      // as written; a new line takes the capitalisation their transcripts already use.
+      // The transcript scan is file IO over two weeks of logs — keep it off the main thread.
+      var suggestedText = proposal.suggestion
+      if section == .whisperGlossary {
+        let transcripts = await Task.detached(priority: .userInitiated) {
+          GlossaryFastLearner.shared.recentTranscriptionResults()
+        }.value
+        suggestedText = GlossaryLearning.applyingMajorityCasing(
+          to: proposal.suggestion, keepingLinesOf: current, transcripts: transcripts)
+      }
       let edited = await SmartImprovementReviewPanel.present(
         focusDisplayName: Self.voiceFeedbackFocusName(for: section),
         originalText: current,
-        suggestedText: proposal.suggestion,
+        suggestedText: suggestedText,
         rationale: proposal.rationale.isEmpty ? nil : proposal.rationale)
 
       guard let edited = edited,

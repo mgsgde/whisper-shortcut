@@ -235,22 +235,35 @@ class SpeechService {
       corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
-    let terms = lines
-      .flatMap { line -> [String] in
-        // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
-        // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-        Self.strippingAnnotations(from: line)
-          .components(separatedBy: ",")
-          .map { $0.trimmingCharacters(in: .whitespaces) }
+    // The annotated spelling is the one the user asserted. A bare `bachata` left over from
+    // before that correction must not win the fold dedupe just because it appears first.
+    var correctionSpellingByFold: [String: String] = [:]
+    for correction in corrections {
+      let folded = Self.foldGlossaryTerm(correction.correct)
+      if correctionSpellingByFold[folded] == nil {
+        correctionSpellingByFold[folded] = correction.correct
       }
-      .filter { term in
+    }
+
+    var seenFolds = Set<String>()
+    var terms: [String] = []
+    for line in lines {
+      // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
+      // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
+      let pieces = Self.strippingAnnotations(from: line)
+        .components(separatedBy: ",")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+      for term in pieces {
         // The built-in list is written as `Terms: A, B, C`, so the first element carries the
         // label — compare without it, or a rejected form in first position slips through.
         let bare = term.replacingOccurrences(
           of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        return !bare.isEmpty && bare.split(separator: " ").count <= 3
-          && !rejected.contains(Self.foldGlossaryTerm(bare))
+        guard !bare.isEmpty, bare.split(separator: " ").count <= 3 else { continue }
+        let folded = Self.foldGlossaryTerm(bare)
+        guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
+        terms.append(correctionSpellingByFold[folded] ?? term)
       }
+    }
 
     return ParsedGlossary(terms: terms, corrections: corrections)
   }
@@ -287,7 +300,8 @@ class SpeechService {
     let parsed = parsedGlossary()
     var seen = Set<String>()
     var keywords: [String] = []
-    for term in glossaryTermsForEchoCheck() + parsed.corrections.map(\.correct) {
+    // Corrections first so the annotated spelling wins the fold dedupe over a bare line.
+    for term in parsed.corrections.map(\.correct) + glossaryTermsForEchoCheck() {
       let folded = Self.foldGlossaryTerm(term)
       guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
       keywords.append(term)
