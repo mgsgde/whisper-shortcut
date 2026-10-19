@@ -148,18 +148,6 @@ struct PromptModelSelectionView: View {
             .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
         }
 
-        if displayModel == recommendedModel {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
-        }
-
         HStack(alignment: .firstTextBaseline, spacing: 4) {
           Text("Tip: Compare models (speed, intelligence, pricing):")
             .font(.caption)

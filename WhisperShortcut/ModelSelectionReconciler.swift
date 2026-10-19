@@ -49,7 +49,7 @@ enum ModelSelectionReconciler {
   /// last because it is the one account that can stand in for all of them, so someone who connected
   /// only OpenRouter during onboarding gets a working Chat instead of a Gemini slot with no key.
   /// OpenRouter has no transcription stand-in here (`transcriptionReplacement` returns nil).
-  static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
+  nonisolated static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
   private static let snapshotKeys: [String] = [

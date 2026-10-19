@@ -7,27 +7,18 @@ struct ModelSelectionView: View {
   let systemImage: String?
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
-  /// When true, user is on subscription (proxy); only Gemini models are fixed; offline Whisper models remain selectable.
-  let subscriptionMode: Bool
 
   init(
     title: String = "Transcription Model",
     systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.selectableForDictation,
-    // Ignored since tiles without a key stay selectable and say "Needs key" (UX review #14);
-    // the tabs still pass them. Drop with the call sites once the Settings restructure lands.
-    geminiDisabled: Bool = false,
-    openAIDisabled: Bool = false,
-    xaiDisabled: Bool = false,
-    subscriptionMode: Bool = false,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self.systemImage = systemImage
     self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
-    self.subscriptionMode = subscriptionMode
     self.onModelChanged = onModelChanged
   }
 
@@ -36,18 +27,8 @@ struct ModelSelectionView: View {
       SectionHeader(
         title: title,
         systemImage: systemImage,
-        subtitle: subscriptionMode
-          ? "With a subscription, cloud transcription uses Gemini 2.5 Flash. You can also choose an offline Whisper model for local transcription."
-          : "Choose the transcription model for speech recognition"
+        subtitle: "Choose the transcription model for speech recognition"
       )
-
-      if subscriptionMode {
-        Text("Cloud: Gemini 2.5 Flash (fixed). Offline: select any Whisper model above.")
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-          .padding(.vertical, 8)
-      }
 
       CuratedModelPicker(
         curation: ModelPickerCuration(
@@ -76,24 +57,12 @@ struct ModelSelectionView: View {
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedTranscriptionModel.costLevel))
         }
 
-        if selectedTranscriptionModel.isRecommended {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
-        }
-
         if selectedTranscriptionModel.isDeprecated {
           HStack {
             Image(systemName: "exclamationmark.triangle.fill")
               .foregroundColor(.orange)
               .font(.caption)
-            Text("Deprecated – no longer available to new users. Consider switching to Gemini 2.5 Flash.")
+            Text("Deprecated – no longer available to new users. Consider switching to \(SettingsDefaults.selectedTranscriptionModel.displayName).")
               .font(.callout)
               .foregroundColor(.secondary)
           }

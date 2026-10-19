@@ -157,10 +157,6 @@ struct SpeechToTextSettingsTab: View {
         title: "Transcription Model",
         systemImage: "waveform",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
-        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
-        openAIDisabled: !KeychainManager.shared.hasNonEmpty(.openAI),
-        xaiDisabled: !KeychainManager.shared.hasNonEmpty(.xai),
-        subscriptionMode: false,
         onModelChanged: {
           UserDefaults.standard.set(
             viewModel.data.selectedTranscriptionModel.rawValue,

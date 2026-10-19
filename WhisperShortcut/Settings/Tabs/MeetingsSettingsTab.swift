@@ -109,7 +109,6 @@ struct MeetingsSettingsTab: View {
       ModelSelectionView(
         title: "Meeting Transcription Model",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModelForMeetings,
-        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
         onModelChanged: {
           Task { await viewModel.saveSettings() }
         }
