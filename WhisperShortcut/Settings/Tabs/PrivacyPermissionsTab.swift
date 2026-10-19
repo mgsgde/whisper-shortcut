@@ -67,7 +67,7 @@ struct OfflineModeSection: View {
         }
 
       Text(
-        "Everything runs on this Mac. Dictation uses an on-device speech model, no request may leave the machine, and no transcript, prompt or audio sample is written to the usage log. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured."
+        "Everything runs on this Mac. Dictation uses an on-device speech model, no request may leave the machine, and nothing is written to the usage log unless you choose to keep it on this Mac. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured."
       )
       .font(.callout)
       .foregroundColor(.secondary)
@@ -77,7 +77,7 @@ struct OfflineModeSection: View {
       if offlineMode {
         VStack(alignment: .leading, spacing: 6) {
           offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
-          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
+          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement runs on an offline model if you keep usage data on this Mac (Settings → Smart Improvement); dictation audio is never kept. The Google and Trello integrations do not work.")
           offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
           #if !APP_STORE && canImport(Sparkle)
           offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates.")

@@ -16,14 +16,21 @@ class AutoPromptImprovementScheduler {
   /// If a run is already in progress, enqueues this job and notifies the user.
   /// - Parameter fromAutoRun: When true (e.g. launch/daily timer), suppresses popups for "no eligible data"; when false (user tapped "Improve from usage"), shows them.
   func runImprovementNow(fromAutoRun: Bool = false) async {
+    // Loaded before the Offline Mode guard below: the guard's decision depends on it — an
+    // on-device model (MLX, or an Ollama/LM Studio server) may run under Offline Mode, only a
+    // cloud model may not.
+    let improvementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
     // Smart Improvement reads the interaction log — transcripts, prompts, replies — and sends it
-    // to Gemini. That is precisely what Offline Mode forbids, and the network guard would only
-    // fail it halfway through, so it never starts.
-    guard !OfflineMode.isEnabled else {
-      DebugLogger.log("SMART-IMPROVEMENT: Offline Mode is on, skipping run")
+    // to the selected model. That is precisely what Offline Mode forbids for a cloud model, and
+    // the network guard would only fail it halfway through, so it never starts. An on-device
+    // model sends nothing off this Mac, so it is let through.
+    guard !OfflineMode.isEnabled || improvementModel.runsOnThisMac else {
+      DebugLogger.log("SMART-IMPROVEMENT: Offline Mode is on and the selected model needs the network, skipping run")
       if !fromAutoRun {
         PopupNotificationWindow.showInfo(
-          "Smart Improvement analyses your usage log with a cloud model, so it is off while Offline Mode is on.",
+          "Offline Mode is on, so Smart Improvement needs an on-device model. Pick the offline model under Settings → Smart Improvement → Model for Smart Improvement.",
           title: "Smart Improvement"
         )
       }
@@ -32,9 +39,6 @@ class AutoPromptImprovementScheduler {
     // The run needs a credential for the *selected* improvement model — any provider works
     // (ContextDerivation routes non-Gemini models through the text path). Checking only for a
     // Gemini key silently did nothing for users who picked GPT or Claude.
-    let improvementModel = PromptModel.loadPromptModel(
-      forKey: UserDefaultsKeys.selectedImprovementModel,
-      default: SettingsDefaults.selectedImprovementModel)
     guard improvementModel.provider.hasCredential else {
       DebugLogger.log("SMART-IMPROVEMENT: No credential for \(improvementModel.displayName), skipping run")
       if !fromAutoRun {
@@ -162,7 +166,23 @@ class AutoPromptImprovementScheduler {
     DebugLogger.log("AUDIO-VERIFY: run(start) samplesOnDisk=\(initialSamples)")
 
     let derivation = ContextDerivation()
-    let allFocuses: [GenerationKind] = [.dictation, .whisperGlossary, .promptMode, .chat]
+    // The selected model's provider, read again here rather than threaded through from
+    // `runImprovementNow`: this also runs for a job picked up off the queue by
+    // `processNextInQueue`, which has no model of its own to pass down.
+    let improvementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+    // The 4B on-device MLX model collects recurring terms reliably — term counts are computed in
+    // code, not by the model — but rewriting whole system prompts from a long usage log is beyond
+    // it, and a bad rewrite is worse than none. An Ollama/LM Studio server (`.local`) may run a
+    // large model the user chose, so it keeps every focus.
+    let allFocuses: [GenerationKind] =
+      improvementModel.provider == .localMLX
+      ? [.whisperGlossary]
+      : [.dictation, .whisperGlossary, .promptMode, .chat]
+    if improvementModel.provider == .localMLX {
+      DebugLogger.log("AUTO-IMPROVEMENT: on-device MLX model — glossary focus only")
+    }
 
     // Per-focus eligibility: skip focuses without enough primary-mode data in the lookback window.
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)

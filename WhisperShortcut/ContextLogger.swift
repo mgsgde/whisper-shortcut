@@ -591,8 +591,11 @@ class ContextLogger {
   /// Backend label is recorded only in the `AUDIO-VERIFY:` log line, not on disk.
   /// Synchronous: callers can immediately reference the returned filename.
   func captureDictationAudio(from sourceURL: URL, backend: String, transcriptionModel: String) -> String? {
-    guard isLoggingEnabled else {
-      DebugLogger.logAudio("AUDIO-VERIFY: capture(skip) reason=logging-disabled")
+    // Narrower than `isLoggingEnabled`: a retained audio sample only feeds the Gemini re-listen
+    // path, which cannot run offline, so Offline Mode always blocks capture even when the user
+    // opted to keep the text usage log on this Mac. See `ContextLoggingPreference.audioCaptureEnabled`.
+    guard ContextLoggingPreference.audioCaptureEnabled else {
+      DebugLogger.logAudio("AUDIO-VERIFY: capture(skip) reason=logging-disabled-or-offline")
       return nil
     }
     let fm = FileManager.default

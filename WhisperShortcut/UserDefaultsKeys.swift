@@ -140,6 +140,9 @@ enum UserDefaultsKeys {
   /// Device-local-only operation: on-device models only, no cloud request, no usage log on
   /// disk. See `OfflineMode`.
   static let offlineModeEnabled = "offlineModeEnabled"
+  /// Off unless the user turns it on: keeps the usage log on disk while Offline Mode is on, so
+  /// Smart Improvement can learn from it on-device. See `OfflineMode.keepsUsageDataUnderOfflineMode`.
+  static let offlineModeKeepsUsageData = "offlineModeKeepsUsageData"
 
   // MARK: - Opt-in usage statistics (TelemetryService)
   /// The user's "Share anonymous usage statistics" choice. Off unless set.

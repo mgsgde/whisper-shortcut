@@ -309,12 +309,56 @@ enum StructuredOutputSchema {
   }
 }
 
-// MARK: - OpenAI-Compatible Structured Output (shared by OpenAI + Grok)
+// MARK: - Lenient JSON Extraction
+
+/// Pulls one JSON object out of a model's raw text reply, tolerating the wrapping cloud models
+/// never add but local servers and small models routinely do: a `<think>` block left in by a
+/// reasoning model, a ```` ```json ```` code fence, or a sentence of prose before/after the
+/// object. Strict `JSONSerialization` on the whole string is tried first — the common case for
+/// cloud providers — and the substring between the first `{` and the last `}` only as a fallback.
+enum StructuredJSONExtractor {
+  static func object(from text: String) -> [String: Any]? {
+    let stripped = LocalLLMChatProvider.strippingReasoningBlocks(text)
+    let fenced = strippingCodeFence(stripped)
+    if let parsed = parseObject(fenced) {
+      return parsed
+    }
+    guard let firstBrace = fenced.firstIndex(of: "{"),
+          let lastBrace = fenced.lastIndex(of: "}"),
+          firstBrace < lastBrace else {
+      return nil
+    }
+    return parseObject(String(fenced[firstBrace...lastBrace]))
+  }
+
+  /// Strips a single surrounding ``` or ```json code fence, if present. A fence around prose
+  /// (no JSON inside) is harmless here — the caller's brace search still finds nothing.
+  private static func strippingCodeFence(_ text: String) -> String {
+    var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.hasPrefix("```") else { return trimmed }
+    trimmed.removeFirst(3)
+    if trimmed.lowercased().hasPrefix("json") {
+      trimmed.removeFirst(4)
+    }
+    if let closingRange = trimmed.range(of: "```", options: .backwards) {
+      trimmed = String(trimmed[trimmed.startIndex..<closingRange.lowerBound])
+    }
+    return trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func parseObject(_ text: String) -> [String: Any]? {
+    guard let data = text.data(using: .utf8) else { return nil }
+    return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+  }
+}
+
+// MARK: - OpenAI-Compatible Structured Output (shared by OpenAI + Grok + Local)
 
 /// Non-streaming Chat Completions call constrained to a JSON Schema via strict `json_schema`
-/// `response_format`. Shared by `OpenAIChatProvider` and `GrokChatProvider` — both post to
-/// OpenAI-Chat-Completions-compatible endpoints, so the request/response shape is identical; only
-/// the endpoint, key, and reasoning-effort knob differ.
+/// `response_format`. Shared by `OpenAIChatProvider`, `GrokChatProvider`, and
+/// `LocalLLMChatProvider` — all three post to OpenAI-Chat-Completions-compatible endpoints, so the
+/// request/response shape is identical; only the endpoint, key, reasoning-effort knob, and (for a
+/// local server) extra body fields / timeout differ.
 enum OpenAICompatibleStructured {
   static func generate(
     endpoint: String,
@@ -328,7 +372,12 @@ enum OpenAICompatibleStructured {
     schemaName: String,
     reasoningEffort: String?,
     session: URLSession,
-    logTag: String
+    logTag: String,
+    /// Extra body fields merged in after the standard keys (local-server knobs like
+    /// `chat_template_kwargs` / `max_tokens`). Empty for the cloud providers, which need none.
+    extraBody: [String: Any] = [:],
+    /// A local model over a long usage log is slow; cloud providers keep the 120s default.
+    timeout: TimeInterval = 120
   ) async throws -> [String: Any] {
     guard let url = URL(string: endpoint) else {
       throw TranscriptionError.networkError("Invalid \(logTag) endpoint URL")
@@ -339,7 +388,7 @@ enum OpenAICompatibleStructured {
     for (name, value) in authHeaders {
       request.setValue(value, forHTTPHeaderField: name)
     }
-    request.timeoutInterval = 120
+    request.timeoutInterval = timeout
 
     let messages = OpenAIChatCompletionsConverter.messages(
       from: contents, systemInstruction: systemInstruction)
@@ -360,6 +409,9 @@ enum OpenAICompatibleStructured {
     if let reasoningEffort = reasoningEffort {
       body["reasoning_effort"] = reasoningEffort
     }
+    for (key, value) in extraBody {
+      body[key] = value
+    }
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
     DebugLogger.logNetwork("\(logTag)-STRUCTURED: POST \(endpoint) model=\(model) schema=\(schemaName)")
@@ -379,12 +431,14 @@ enum OpenAICompatibleStructured {
       throw TranscriptionError.networkError("\(logTag) API error HTTP \(http.statusCode): \(text.prefix(500))")
     }
 
+    // Lenient extraction instead of raw `JSONSerialization` on `content`: harmless for cloud
+    // providers, which already return a bare JSON object, but required for local servers that
+    // wrap it in a ```` ```json ```` fence or leave a `<think>` block in front of it.
     guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let choices = obj["choices"] as? [[String: Any]],
           let message = choices.first?["message"] as? [String: Any],
           let content = message["content"] as? String,
-          let contentData = content.data(using: .utf8),
-          let parsed = try? JSONSerialization.jsonObject(with: contentData) as? [String: Any] else {
+          let parsed = StructuredJSONExtractor.object(from: content) else {
       throw TranscriptionError.networkError("\(logTag) structured response was not valid JSON")
     }
     return parsed

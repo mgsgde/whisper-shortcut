@@ -148,6 +148,11 @@ final class MLXChatProvider: LLMChatProvider {
     offlineMode && !isDownloaded
   }
 
+  /// Smart Improvement running on the in-process MLX model. MLX has no constrained-decoding /
+  /// `response_format` support, so the schema is appended to the system prompt as plain
+  /// instructions instead of enforced by the server. A small model occasionally answers with
+  /// prose or a code fence anyway, so a bad first reply gets one retry with an extra turn asking
+  /// for JSON only before this gives up.
   func generateStructured(
     model: String,
     contents: [[String: Any]],

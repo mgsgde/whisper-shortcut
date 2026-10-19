@@ -7,6 +7,8 @@ struct ImprovementSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  @AppStorage(UserDefaultsKeys.offlineModeKeepsUsageData) private var keepsUsageDataOffline = false
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
@@ -135,6 +137,10 @@ struct ImprovementSettingsTab: View {
             .toggleStyle(.switch)
             .help("When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
 
+          if offlineMode {
+            offlineUsageDataCard
+          }
+
           Button(action: {
               guard !isImprovementRunning else { return }
               isImprovementRunning = true
@@ -148,7 +154,7 @@ struct ImprovementSettingsTab: View {
                 .font(.callout)
             }
             .buttonStyle(.bordered)
-            .disabled(isImprovementRunning || !saveUsageData)
+            .disabled(isImprovementRunning || !canRunImprovement)
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
 
@@ -183,12 +189,12 @@ struct ImprovementSettingsTab: View {
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .disabled(!saveUsageData)
+        .disabled(!isCollectingUsageData)
 
         let improvementSubscriptionMode = false
         PromptModelSelectionView(
           title: "Smart Improvement Model",
-          subtitle: "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for.",
+          subtitle: "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for, or an offline model that runs on this Mac.",
           showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },
@@ -213,7 +219,63 @@ struct ImprovementSettingsTab: View {
             }
           }
         )
+
+        if selectedImprovementModel.provider == .localMLX {
+          Text("The offline MLX model only updates your glossary (recurring names and terms). Rewriting your prompts needs a larger model: a cloud model, or Ollama / LM Studio running a bigger one.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
+  }
+
+  // MARK: - Offline Mode
+
+  private var selectedImprovementModel: PromptModel { viewModel.data.selectedImprovementModel }
+
+  /// Whether interactions are actually written right now — the same rule as
+  /// `ContextLoggingPreference.isEnabled`, read from the `@AppStorage` values so the view updates
+  /// when either switch flips.
+  private var isCollectingUsageData: Bool {
+    saveUsageData && (!offlineMode || keepsUsageDataOffline)
+  }
+
+  /// Offline Mode blocks every cloud model, so a run there needs an on-device one.
+  private var canRunImprovement: Bool {
+    isCollectingUsageData && (!offlineMode || selectedImprovementModel.runsOnThisMac)
+  }
+
+  /// Under Offline Mode the usage log is off unless the user keeps it here on purpose: in a
+  /// practice the transcript is the regulated content, so the default stays "nothing at rest".
+  @ViewBuilder
+  private var offlineUsageDataCard: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Toggle("Keep usage data in Offline Mode", isOn: $keepsUsageDataOffline)
+        .toggleStyle(.switch)
+        .disabled(!saveUsageData)
+
+      Text("Offline Mode is on. Usage data is off unless you keep it here. It stays in this Mac's app data folder and is never sent anywhere; dictation audio is never kept. Lets Smart Improvement learn your terms with an offline model.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+      if keepsUsageDataOffline && !selectedImprovementModel.runsOnThisMac {
+        Label("\(selectedImprovementModel.displayName) is a cloud model and cannot run in Offline Mode. Pick an offline model below.", systemImage: "exclamationmark.triangle.fill")
+          .font(.caption)
+          .foregroundStyle(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
+        .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
+    )
   }
 }

@@ -215,10 +215,12 @@ enum ModelSelectionReconciler {
     }
   }
 
-  private static func reconcilePromptSlotForOfflineMode(key: String) {
-    let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.selectedPromptModel.rawValue
+  private static func reconcilePromptSlotForOfflineMode(
+    key: String, fallback: PromptModel = SettingsDefaults.selectedPromptModel
+  ) {
+    let raw = UserDefaults.standard.string(forKey: key) ?? fallback.rawValue
     let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw))
-      ?? SettingsDefaults.selectedPromptModel
+      ?? fallback
     // A custom OpenAI-compatible endpoint may already point at the user's own server; the network
     // guard is what decides, so leave that choice alone. In-process MLX (when this Mac can run it)
     // and the HTTP local server already run on this Mac — leave those alone too.

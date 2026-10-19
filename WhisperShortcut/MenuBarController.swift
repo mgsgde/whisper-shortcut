@@ -2972,7 +2972,7 @@ class MenuBarController: NSObject {
   /// The deliberate non-feature here is intelligence: no model, no fuzzy matching against past
   /// transcripts, no diff window. The user has already decided what the correct spelling is by
   /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
-  /// that still works in Offline Mode, where every model-driven learning route is switched off.
+  /// that works in Offline Mode without an offline model or a kept usage log.
   @objc internal func addSelectionToGlossary() {
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
     captureClipboardRestorePointIfEnabled()

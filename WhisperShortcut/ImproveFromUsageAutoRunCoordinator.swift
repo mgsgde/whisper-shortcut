@@ -49,8 +49,15 @@ final class ImproveFromUsageAutoRunCoordinator {
 
     guard due else { return }
 
-    guard GeminiCredentialProvider.shared.hasCredential() else {
-      DebugLogger.log("AUTO-RUN: No credential (no API key, not signed in), skipping Improve from usage")
+    // The selected improvement model's own provider — not hardcoded to Gemini. A user with only
+    // an OpenAI, xAI, or local setup used to never get an auto-run: this checked only for a
+    // Gemini key while every other guard in this feature already follows the selected model.
+    let improvementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+    guard improvementModel.provider.hasCredential else {
+      DebugLogger.log(
+        "AUTO-RUN: No credential for \(improvementModel.displayName), skipping Improve from usage")
       return
     }
 
