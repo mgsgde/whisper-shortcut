@@ -54,7 +54,6 @@ final class MLXChatProvider: LLMChatProvider {
     // Of these only `reusablePromptPrefix` and `temperature` apply: an in-process model has no web search, no
     // server-side prompt cache, and no reasoning knob of its own — thinking is switched off
     // through the chat template below.
-    let mayReusePrefix = options.reusablePromptPrefix
     // Tools are not declared for `.localMLX` (`ChatToolRegistry`); if any slip through, drop
     // them rather than pretending a function call will run.
     if !tools.isEmpty {
