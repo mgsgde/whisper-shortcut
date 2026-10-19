@@ -1737,20 +1737,11 @@ enum ChatToolRegistry {
       // Live shortcut bindings from the user's actual config, so keyboard-shortcut answers can
       // never go stale against a hardcoded doc table. Feature prose still lives in README.
       let config = ShortcutConfigManager.shared.loadConfiguration()
-      let shortcutRows: [(String, ShortcutDefinition)] = [
-        ("Dictate", config.startRecording),
-        ("Dictate Prompt", config.startPrompting),
-        ("Screenshot", config.screenshotCapture),
-        ("Read Aloud", config.readAloud),
-        ("Voice Feedback", config.voiceFeedback),
-        ("Chat", config.openChat),
-        ("Settings", config.openSettings),
-      ]
-      let shortcuts: [[String: Any]] = shortcutRows.map { name, def in
+      let shortcuts: [[String: Any]] = config.assistantFacingRows.map { row in
         [
-          "action": name,
-          "shortcut": def.isEnabled ? def.displayStringWithSeparator : "Disabled",
-          "enabled": def.isEnabled,
+          "action": row.action,
+          "shortcut": row.definition.displayStringWithSeparator,
+          "enabled": row.definition.isEnabled,
         ]
       }
       DebugLogger.logSuccess(

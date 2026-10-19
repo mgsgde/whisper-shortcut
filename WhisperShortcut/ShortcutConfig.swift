@@ -154,6 +154,23 @@ struct ShortcutConfig: Codable {
   )
 }
 
+extension ShortcutConfig {
+  /// The shortcuts both the online and the offline Chat tell the model about, kept in one place so
+  /// the two lists cannot drift. A disabled definition renders as "Disabled" via
+  /// `displayStringWithSeparator`.
+  var assistantFacingRows: [(action: String, definition: ShortcutDefinition)] {
+    [
+      ("Dictate", startRecording),
+      ("Dictate Prompt", startPrompting),
+      ("Screenshot", screenshotCapture),
+      ("Read Aloud", readAloud),
+      ("Voice Feedback", voiceFeedback),
+      ("Chat", openChat),
+      ("Settings", openSettings),
+    ]
+  }
+}
+
 struct ShortcutDefinition: Codable, Equatable, Hashable {
   let key: Key
   let modifiers: NSEvent.ModifierFlags

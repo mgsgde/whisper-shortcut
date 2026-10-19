@@ -31,19 +31,10 @@ enum OfflineChatAppContext {
     }
     let readme = bundledReadme() ?? ""
     let config = ShortcutConfigManager.shared.loadConfiguration()
-    let shortcuts: [(String, ShortcutDefinition)] = [
-      ("Dictate", config.startRecording),
-      ("Dictate Prompt", config.startPrompting),
-      ("Screenshot", config.screenshotCapture),
-      ("Read Aloud", config.readAloud),
-      ("Voice Feedback", config.voiceFeedback),
-      ("Chat", config.openChat),
-      ("Settings", config.openSettings),
-    ]
     return block(
       readme: readme,
       currentModel: chatModel.localMLXModelType,
-      shortcuts: shortcuts.map { ($0.0, $0.1.displayStringWithSeparator) },
+      shortcuts: config.assistantFacingRows.map { ($0.action, $0.definition.displayStringWithSeparator) },
       appVersion: AppConstants.appVersion)
   }
 
