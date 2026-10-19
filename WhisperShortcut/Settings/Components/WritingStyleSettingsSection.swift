@@ -1,91 +1,180 @@
 import AppKit
 import SwiftUI
 
-/// Settings → Smart Improvement → Writing Style: toggle, Gmail import, pasted examples, profile.
+/// Settings → Smart Improvement → Writing Style. Learning runs on its own while the toggle is on
+/// (`WritingStyleAutoUpdater`); the manual paths sit in a collapsed group for users without Gmail.
 /// See plans/active/writing-style.md.
 struct WritingStyleSettingsSection: View {
   @AppStorage(UserDefaultsKeys.writingStyleEnabled) private var isEnabled = false
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
   @ObservedObject private var google = GoogleAccountOAuthService.shared
+  @ObservedObject private var updater = WritingStyleAutoUpdater.shared
 
   @State private var counts: [WritingContext: Int] = [:]
-  @State private var isWorking = false
-  @State private var statusMessage: String?
+  @State private var profileUpdatedAt: Date?
+  @State private var showManual = false
   @State private var showAddExamples = false
   @State private var showDeleteConfirmation = false
+
+  private var emailCount: Int { counts[.email] ?? 0 }
+  private var messageCount: Int { counts.filter { $0.key != .email }.values.reduce(0, +) }
+  private var hasData: Bool { emailCount + messageCount > 0 || profileUpdatedAt != nil }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Writing Style",
         systemImage: "signature",
-        subtitle: "Dictate Prompt drafts messages the way you write them, learned from messages you sent."
+        subtitle: "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack."
       )
 
       VStack(alignment: .leading, spacing: 12) {
         Toggle("Use my writing style in Dictate Prompt", isOn: $isEnabled)
           .toggleStyle(.switch)
-          .help("Sends your style profile and a few of your own messages with each Dictate Prompt request, chosen by the app you are writing in (Mail, WhatsApp, Slack, …). Not used with local models.")
+          .help("Learns from your sent emails and your dictations, and sends your style profile plus a few of your messages with each Dictate Prompt request, chosen by the app you are writing in. Not used with local models.")
 
-        Text("Examples: " + WritingContext.allCases.map { "\($0.displayName) \(counts[$0] ?? 0)" }
-          .joined(separator: " · "))
-          .font(.callout)
-          .foregroundColor(.secondary)
+        if isEnabled || hasData {
+          statusLine
+        }
 
-        HStack(spacing: 12) {
-          Button(action: importFromGmail) {
-            Label("Import sent emails from Gmail", systemImage: "envelope")
-              .font(.callout)
+        if isEnabled || hasData {
+          HStack(spacing: 12) {
+            Button("Edit profile…", action: openProfile)
+              .pointerCursorOnHover()
+            Button("Delete writing style data", role: .destructive) { showDeleteConfirmation = true }
+              .tint(.red)
+              .disabled(updater.isWorking || !hasData)
+              .pointerCursorOnHover()
           }
-          .disabled(isWorking || offlineMode || !google.isConnected)
+          .buttonStyle(.bordered)
+        }
+
+        if isEnabled {
+          manualGroup
+        }
+
+        caption(privacyText)
+      }
+    }
+    .onAppear(perform: refresh)
+    .onChange(of: updater.isWorking) { _, working in
+      if !working { refresh() }
+    }
+    .onChange(of: isEnabled) { _, enabled in
+      guard enabled else { return }
+      Task { await updater.handleEnabled() }
+    }
+    .sheet(isPresented: $showAddExamples, onDismiss: refresh) {
+      AddWritingExamplesSheet(isPresented: $showAddExamples)
+    }
+    .confirmationDialog("Delete writing style data?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+      Button("Delete", role: .destructive) {
+        WritingStyleStore.shared.clearAll()
+        refresh()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("The profile and all example messages will be deleted. Your emails are not affected.")
+    }
+  }
+
+  // MARK: - Status
+
+  /// One line that answers "is it doing anything?": what was learned, and when the profile last changed.
+  @ViewBuilder
+  private var statusLine: some View {
+    HStack(spacing: 8) {
+      if updater.isWorking {
+        ProgressView().controlSize(.small)
+      } else {
+        Image(systemName: emailCount + messageCount > 0 ? "checkmark.circle.fill" : "clock")
+          .foregroundColor(emailCount + messageCount > 0 ? .green : .secondary)
+      }
+      Text(updater.isWorking ? "Learning your writing style…" : statusText)
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    if !updater.isWorking, let message = updater.lastMessage {
+      caption(message)
+    }
+  }
+
+  private var statusText: String {
+    let total = emailCount + messageCount
+    guard total > 0 else {
+      if !isEnabled { return "Nothing learned yet." }
+      return offlineMode || !google.isConnected
+        ? "Learning starts with your next dictation in Mail, Messages, WhatsApp or Slack."
+        : "Learning starts with your sent emails and your next dictations."
+    }
+    var parts: [String] = []
+    if emailCount > 0 { parts.append(Self.plural(emailCount, "email", "emails")) }
+    if messageCount > 0 { parts.append(Self.plural(messageCount, "message", "messages")) }
+    let learned = "Learned from " + parts.joined(separator: " and ")
+    guard let profileUpdatedAt else {
+      let missing = max(WritingStyleAutoUpdater.profileThreshold - total, 0)
+      return missing > 0
+        ? learned + " · profile follows after \(Self.plural(missing, "more message", "more messages"))"
+        : learned + " · profile follows with the next update"
+    }
+    return learned + " · profile updated " + Self.relative(profileUpdatedAt)
+  }
+
+  private static func plural(_ n: Int, _ one: String, _ many: String) -> String {
+    "\(n) \(n == 1 ? one : many)"
+  }
+
+  private static func relative(_ date: Date) -> String {
+    if Calendar.current.isDateInToday(date) { return "today" }
+    if Calendar.current.isDateInYesterday(date) { return "yesterday" }
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .full
+    return formatter.localizedString(for: date, relativeTo: Date())
+  }
+
+  // MARK: - Manual
+
+  /// For users without Gmail, or who want the profile now instead of after the next 20 messages.
+  private var manualGroup: some View {
+    DisclosureGroup(isExpanded: $showManual) {
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 12) {
+          Button {
+            Task { await updater.importNow() }
+          } label: {
+            Label("Import sent emails from Gmail", systemImage: "envelope")
+          }
+          .disabled(updater.isWorking || offlineMode || !google.isConnected)
           .pointerCursorOnHover()
 
           Button("Add examples…") { showAddExamples = true }
-            .disabled(isWorking)
+            .disabled(updater.isWorking)
             .pointerCursorOnHover()
 
-          if isWorking { ProgressView().controlSize(.small) }
+          Button("Update profile now") {
+            Task { await updater.updateProfileNow() }
+          }
+          .disabled(updater.isWorking || offlineMode || emailCount + messageCount == 0)
+          .pointerCursorOnHover()
         }
         .buttonStyle(.bordered)
 
         if offlineMode {
           caption("Gmail import and profile updates are off in Offline Mode. A saved profile and examples keep working.")
         } else if !google.isConnected {
-          caption("Connect your Google account (Settings → Chat) to import sent emails, or paste examples yourself.")
+          caption("Connect your Google account (Settings → Chat) and sent emails are imported automatically, or paste messages you wrote with Add examples.")
         }
-
-        HStack(spacing: 12) {
-          Button("Update profile", action: updateProfile)
-            .disabled(isWorking || offlineMode || counts.values.reduce(0, +) == 0)
-            .pointerCursorOnHover()
-          Button("Edit profile…", action: openProfile)
-            .pointerCursorOnHover()
-          Button("Delete writing style data", role: .destructive) { showDeleteConfirmation = true }
-            .tint(.red)
-            .disabled(isWorking)
-            .pointerCursorOnHover()
-        }
-        .buttonStyle(.bordered)
-
-        if let statusMessage { caption(statusMessage) }
-
-        caption("Stored on this Mac in the app's data folder. When on, your profile and a few of your messages are sent with each Dictate Prompt request to your Dictate Prompt model (cloud models only; local models do not get them). \"Update profile\" sends a sample of your messages to the Smart Improvement model and shows the result for review before saving.")
       }
+      .padding(.top, 8)
+    } label: {
+      Text("Add more manually")
+        .font(.callout)
     }
-    .onAppear(perform: refreshCounts)
-    .sheet(isPresented: $showAddExamples, onDismiss: refreshCounts) {
-      AddWritingExamplesSheet(isPresented: $showAddExamples)
-    }
-    .confirmationDialog("Delete writing style data?", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
-      Button("Delete", role: .destructive) {
-        WritingStyleStore.shared.clearAll()
-        refreshCounts()
-        statusMessage = "Writing style data deleted."
-      }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("The profile and all example messages will be deleted. Your emails are not affected.")
-    }
+  }
+
+  private var privacyText: String {
+    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Smart Improvement model drafts an updated profile from a sample of them and shows it for your review before saving."
   }
 
   private func caption(_ text: String) -> some View {
@@ -95,45 +184,9 @@ struct WritingStyleSettingsSection: View {
       .fixedSize(horizontal: false, vertical: true)
   }
 
-  private func refreshCounts() {
+  private func refresh() {
     counts = WritingStyleStore.shared.sampleCounts()
-  }
-
-  private func importFromGmail() {
-    run {
-      let result = try await WritingStyleImporter.importFromGmail()
-      await MainActor.run {
-        refreshCounts()
-        statusMessage = result.summary + " Creating your profile…"
-      }
-      let saved = try await WritingStyleImporter.deriveProfile()
-      return result.summary + (saved == nil ? " Profile unchanged." : " Profile saved.")
-    }
-  }
-
-  private func updateProfile() {
-    run {
-      let saved = try await WritingStyleImporter.deriveProfile()
-      return saved == nil ? "Profile unchanged." : "Profile saved."
-    }
-  }
-
-  private func run(_ work: @escaping () async throws -> String) {
-    isWorking = true
-    statusMessage = nil
-    Task {
-      let message: String
-      do {
-        message = try await work()
-      } catch {
-        message = error.localizedDescription
-      }
-      await MainActor.run {
-        isWorking = false
-        statusMessage = message
-        refreshCounts()
-      }
-    }
+    profileUpdatedAt = WritingStyleStore.shared.profileUpdatedAt
   }
 
   private func openProfile() {
