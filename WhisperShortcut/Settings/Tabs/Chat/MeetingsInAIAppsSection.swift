@@ -19,7 +19,7 @@ struct MeetingsInAIAppsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Meetings in Claude & other AI apps",
+        title: "Meetings in Claude & Other AI Apps",
         systemImage: "point.3.connected.trianglepath.dotted",
         subtitle: "Let Claude and other MCP apps on this Mac read your meeting transcripts, including the meeting that is recording right now. Instead of pasting the transcript, ask \"what was just said about the budget?\" and the app fetches what's new."
       )

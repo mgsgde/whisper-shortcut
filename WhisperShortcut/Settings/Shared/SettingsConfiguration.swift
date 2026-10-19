@@ -903,7 +903,7 @@ enum PromptModel: String, CaseIterable {
     )
   }
 
-  /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
+  /// Loads the model selected for meeting summary (rolling and final). Settings → Chat → Meeting Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
     loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
