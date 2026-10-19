@@ -56,7 +56,14 @@ class KeychainManager: KeychainManaging {
   private var knownPresentAccounts: Set<String> = []
   private var knownAbsentAccounts: Set<String> = []
 
-  private init() {}
+  private let store: KeychainItemStore
+  /// nil = probe the real keychain (`dataProtectionAvailable`). Tests pin it.
+  private let dataProtectionOverride: Bool?
+
+  init(store: KeychainItemStore = SystemKeychainItemStore(), dataProtection: Bool? = nil) {
+    self.store = store
+    self.dataProtectionOverride = dataProtection
+  }
 
   // MARK: - Storage backend
   //
@@ -69,36 +76,46 @@ class KeychainManager: KeychainManaging {
   // and App Store builds of the same team share, so no per-binary prompts.
   //
   // Existing items are migrated lazily and once per item: the first `readSecret` that misses in the
-  // data protection store reads the legacy item, copies it over and deletes the legacy copy. That
-  // last legacy read may show the ACL prompt one final time per item.
+  // data protection store reads the legacy item and copies it over. That legacy read may show the
+  // ACL prompt one final time per item.
   //
   // `migrateLegacyItemsIfNeeded` runs that migration eagerly for every legacy item once at launch,
   // so the user sees one burst of prompts at the first launch after the update and never again,
   // instead of scattered prompts as each credential is first used.
   //
-  // Builds without the entitlement (ad-hoc signed builds, the test host) get errSecMissingEntitlement
-  // (-34018) from the data protection keychain. `usesDataProtection` probes for that once and falls
-  // back to the legacy keychain for the whole process, so those builds behave as before.
+  // The legacy copy is deliberately KEPT, and nothing but an explicit user delete (`deleteItem`)
+  // ever deletes from the legacy store. Two reasons:
+  // - On macOS a `SecItemDelete` without `kSecUseDataProtectionKeychain` also deletes the matching
+  //   data protection item. Measured on 2026-10-19 in keychain-2.db: every migrated or freshly saved
+  //   item was added and then removed in the very next commit by the "legacy cleanup" delete, so
+  //   the migration wiped the API keys from both stores.
+  // - Builds without the entitlement (older versions after a downgrade, ad-hoc builds, the test
+  //   host) read only the legacy store. Keeping it lets them still find the keys.
+  // A stale legacy copy is harmless: reads check the data protection store first and migrate only
+  // when it has no item, so a legacy value never overwrites a newer one.
+  //
+  // Builds without the entitlement (ad-hoc signed builds, the test host, an App Store build without
+  // it) get errSecMissingEntitlement (-34018) from data protection writes. `dataProtectionAvailable`
+  // checks for the entitlement once and falls back to the legacy keychain for the whole process, so
+  // those builds behave as before.
+  //
+  // The check reads the entitlement itself. A read-only probe is not enough: the App Store test host
+  // (no keychain-access-groups) got errSecItemNotFound from a data protection READ, took the data
+  // protection path, and then every WRITE failed with -34018 (measured 2026-10-19), so a key saved
+  // in such a build would not survive a restart.
   private static let dataProtectionAvailable: Bool = {
     // static let: initialised exactly once, thread-safely, on first use.
-    let probe: [String: Any] = [
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: Constants.serviceName,
-      kSecAttrAccount as String: "__dp_probe__",
-      kSecUseDataProtectionKeychain as String: true,
-      kSecMatchLimit as String: kSecMatchLimitOne,
-      kSecReturnAttributes as String: true,
-    ]
-    let status = SecItemCopyMatching(probe as CFDictionary, nil)
-    if status == errSecMissingEntitlement {
-      DebugLogger.log(
-        "KEYCHAIN: build lacks keychain-access-groups entitlement (status=\(status)); using the legacy login keychain")
+    let groups = SecTaskCreateFromSelf(nil).flatMap {
+      SecTaskCopyValueForEntitlement($0, "keychain-access-groups" as CFString, nil) as? [String]
+    }
+    guard let groups, !groups.isEmpty else {
+      DebugLogger.log("KEYCHAIN: build lacks keychain-access-groups entitlement; using the legacy login keychain")
       return false
     }
     return true
   }()
 
-  private var usesDataProtection: Bool { Self.dataProtectionAvailable }
+  private var usesDataProtection: Bool { dataProtectionOverride ?? Self.dataProtectionAvailable }
 
   // MARK: - Test/dev credential injection
   //
@@ -208,18 +225,16 @@ class KeychainManager: KeychainManaging {
       kSecValueData as String: data,
       kSecAttrAccessible as String: accessibility,
     ]
-    var status = SecItemUpdate(match as CFDictionary, attributes as CFDictionary)
+    var status = store.update(match, attributes)
     if status == errSecItemNotFound {
       var add = match
       add[kSecValueData as String] = data
       add[kSecAttrAccessible as String] = accessibility
-      status = SecItemAdd(add as CFDictionary, nil)
+      status = store.add(add)
     }
 
-    if usesDataProtection && status == errSecSuccess {
-      // Drop any legacy copy so a stale key can never be migrated over this newer one.
-      SecItemDelete(itemQuery(account: accountName, legacy: true) as CFDictionary)
-    }
+    // No legacy cleanup here: an unflagged delete would take this new data protection item with
+    // it (see "Storage backend"). A stale legacy copy is never migrated over an existing item.
 
     lock.lock()
     // Cache the value even when persisting failed: the key then still works for this
@@ -270,7 +285,7 @@ class KeychainManager: KeychainManaging {
     query[kSecMatchLimit as String] = kSecMatchLimitOne
 
     var result: AnyObject?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    let status = store.copyMatching(query, &result)
 
     if status == errSecSuccess, let data = result as? Data,
       let apiKey = String(data: data, encoding: .utf8)
@@ -314,7 +329,7 @@ class KeychainManager: KeychainManaging {
       kSecReturnAttributes as String: true,
     ]
     var result: AnyObject?
-    let status = SecItemCopyMatching(list as CFDictionary, &result)
+    let status = store.copyMatching(list, &result)
     if status != errSecSuccess {
       if status != errSecItemNotFound {
         DebugLogger.logError("KEYCHAIN: legacy listing failed: status=\(status)")
@@ -330,9 +345,10 @@ class KeychainManager: KeychainManaging {
       var exists = itemQuery(account: account)
       exists[kSecReturnAttributes as String] = true
       exists[kSecMatchLimit as String] = kSecMatchLimitOne
-      if SecItemCopyMatching(exists as CFDictionary, nil) == errSecSuccess {
-        // Already in the new store: the legacy copy is stale, never migrate it over the newer one.
-        SecItemDelete(itemQuery(account: account, legacy: true) as CFDictionary)
+      var existing: AnyObject?
+      if store.copyMatching(exists, &existing) == errSecSuccess {
+        // Already in the new store: never migrate the (possibly stale) legacy copy over it, and
+        // never delete it either (an unflagged delete also removes the new item).
         alreadyPresent += 1
         continue
       }
@@ -350,14 +366,14 @@ class KeychainManager: KeychainManaging {
 
   /// One-time move of an item from the legacy login keychain into the data protection keychain.
   /// Returns the legacy value (also when the copy failed, so the key still works this session),
-  /// or nil when the legacy store has no such item. The legacy copy is deleted only after the new
-  /// store accepted the value, so a failed write never loses the key.
+  /// or nil when the legacy store has no such item. The legacy copy stays: deleting it would also
+  /// delete the item just written (see "Storage backend"), and older builds still read it.
   private func migrateLegacyItem(account accountName: String) -> String? {
     var query = itemQuery(account: accountName, legacy: true)
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
     var result: AnyObject?
-    let readStatus = SecItemCopyMatching(query as CFDictionary, &result)
+    let readStatus = store.copyMatching(query, &result)
     guard readStatus == errSecSuccess, let data = result as? Data,
       let value = String(data: data, encoding: .utf8)
     else {
@@ -372,14 +388,12 @@ class KeychainManager: KeychainManaging {
     var add = match
     add[kSecValueData as String] = data
     add[kSecAttrAccessible as String] = accessibility
-    var writeStatus = SecItemAdd(add as CFDictionary, nil)
+    var writeStatus = store.add(add)
     if writeStatus == errSecDuplicateItem {
-      writeStatus = SecItemUpdate(
-        match as CFDictionary,
-        [kSecValueData as String: data, kSecAttrAccessible as String: accessibility] as CFDictionary)
+      writeStatus = store.update(
+        match, [kSecValueData as String: data, kSecAttrAccessible as String: accessibility])
     }
     if writeStatus == errSecSuccess {
-      SecItemDelete(itemQuery(account: accountName, legacy: true) as CFDictionary)
       DebugLogger.log("KEYCHAIN: migrated account \(accountName) to the data protection keychain")
     } else {
       DebugLogger.logError(
@@ -399,12 +413,13 @@ class KeychainManager: KeychainManaging {
   }
 
   private func deleteItem(account accountName: String) -> Bool {
-    let query = itemQuery(account: accountName)
-    let status = SecItemDelete(query as CFDictionary)
+    // The one place that deletes from the legacy store: the user removed the key, so it must go
+    // from both stores, or the next read would migrate the legacy copy back. (The unflagged legacy
+    // delete may already remove the data protection item too; the flagged delete covers the rest.)
     if usesDataProtection {
-      // Also remove an unmigrated legacy copy, or the next read would migrate it back.
-      SecItemDelete(itemQuery(account: accountName, legacy: true) as CFDictionary)
+      store.delete(itemQuery(account: accountName, legacy: true))
     }
+    let status = store.delete(itemQuery(account: accountName))
     lock.lock()
     valueCache.removeValue(forKey: accountName)
     knownPresentAccounts.remove(accountName)
@@ -428,14 +443,14 @@ class KeychainManager: KeychainManaging {
     query[kSecMatchLimit as String] = kSecMatchLimitOne
 
     var result: AnyObject?
-    var status = SecItemCopyMatching(query as CFDictionary, &result)
+    var status = store.copyMatching(query, &result)
     if status == errSecItemNotFound && usesDataProtection {
       // Not migrated yet? An attributes-only legacy query never touches the secret data, so it
       // does not trigger the ACL prompt. The actual migration happens on the next read.
       var legacy = itemQuery(account: accountName, legacy: true)
       legacy[kSecReturnAttributes as String] = true
       legacy[kSecMatchLimit as String] = kSecMatchLimitOne
-      status = SecItemCopyMatching(legacy as CFDictionary, &result)
+      status = store.copyMatching(legacy, &result)
     }
     lock.lock()
     if status == errSecSuccess {
@@ -447,7 +462,8 @@ class KeychainManager: KeychainManaging {
     return status == errSecSuccess
   }
 
-  /// `legacy: true` targets the old file-based login keychain (migration and cleanup only). No
+  /// `legacy: true` targets the old file-based login keychain (migration and `deleteItem` only).
+  /// Beware: on macOS such an unflagged query is not confined to the legacy store for deletes. No
   /// `kSecAttrAccessGroup`: the default is the first group of the entitlement.
   private func itemQuery(account accountName: String, legacy: Bool = false) -> [String: Any] {
     var query: [String: Any] = [
@@ -490,5 +506,31 @@ class KeychainManager: KeychainManaging {
   func hasNonEmpty(_ credential: KeychainCredential) -> Bool {
     guard let value = get(credential) else { return false }
     return !value.isEmpty
+  }
+}
+
+// MARK: - SecItem seam
+
+/// The four `SecItem*` calls `KeychainManager` makes, so tests can substitute a store that models
+/// how macOS routes queries between the legacy and the data protection keychain.
+protocol KeychainItemStore {
+  func copyMatching(_ query: [String: Any], _ result: inout AnyObject?) -> OSStatus
+  func add(_ attributes: [String: Any]) -> OSStatus
+  func update(_ query: [String: Any], _ attributes: [String: Any]) -> OSStatus
+  @discardableResult func delete(_ query: [String: Any]) -> OSStatus
+}
+
+struct SystemKeychainItemStore: KeychainItemStore {
+  func copyMatching(_ query: [String: Any], _ result: inout AnyObject?) -> OSStatus {
+    SecItemCopyMatching(query as CFDictionary, &result)
+  }
+  func add(_ attributes: [String: Any]) -> OSStatus {
+    SecItemAdd(attributes as CFDictionary, nil)
+  }
+  func update(_ query: [String: Any], _ attributes: [String: Any]) -> OSStatus {
+    SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+  }
+  @discardableResult func delete(_ query: [String: Any]) -> OSStatus {
+    SecItemDelete(query as CFDictionary)
   }
 }
