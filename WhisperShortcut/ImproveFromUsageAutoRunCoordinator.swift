@@ -15,6 +15,8 @@ final class ImproveFromUsageAutoRunCoordinator {
   /// Call on app launch and when the user changes the interval in Settings.
   /// If the chosen interval has elapsed since the last run (or there was no run yet), starts improvement.
   func checkAndRunIfDue() async {
+    // Writing Style does not depend on "Save usage data", so it runs first.
+    await WritingStyleAutoUpdater.shared.runIfDue()
     guard ContextLoggingPreference.isEnabled else {
       DebugLogger.log(
         "AUTO-RUN: Save usage data is off (or Offline Mode is on), skipping Improve from usage")

@@ -178,18 +178,15 @@ enum ConnectionPrewarmer {
         // The exact prompt the real request will send: a prefix cache is only reused when the
         // prefix matches, so priming a different one would prime nothing.
         let container = try await LocalLLMModelManager.shared.container(for: mlxType)
-        var parameters = GenerateParameters()
-        parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
-        _ = await MLXPromptCache.shared.session(
+        _ = await MLXChatProvider.promptSession(
           container: container,
-          modelID: mlxType.huggingFaceID,
+          type: mlxType,
           systemPrompt: SpeechService.buildDictatePromptSystemPrompt(
             logPrefix: "PREWARM", usesScreenshotSelection: false),
           // The real Dictate Prompt request sends `.textTransform`, so it will look for exactly
           // this prefix; priming under a different flag would prime a cache nobody reads.
           reusePrefix: ChatRequestOptions.textTransform.reusablePromptPrefix,
-          parameters: parameters,
-          additionalContext: ["enable_thinking": false])
+          temperature: nil)
       } onSuccess: { elapsedMs in
         DebugLogger.log(
           "PREWARM: MLX model \(mlxType.huggingFaceID) ready in \(String(format: "%.0f", elapsedMs))ms (weights + prompt cache)")

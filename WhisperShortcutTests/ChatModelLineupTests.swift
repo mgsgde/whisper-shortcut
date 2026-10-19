@@ -23,18 +23,28 @@ struct ChatModelLineupTests {
     #expect(AppConstants.contextDerivationEndpoint.contains("gemini-3.8-flash"))
   }
 
-  @Test("3.5 and 3.6 Flash are pruned from chat; 3.7 is not forwarded to 3.8")
+  @Test("3.5 Flash is pruned from chat; 3.7 is not forwarded to 3.8")
   func pruneAndOnlyTheAskedPrune() {
     #expect(PromptModel.gemini35Flash.chatReplacement == .gemini37Flash)
-    #expect(PromptModel.gemini36Flash.chatReplacement == .gemini37Flash)
     // Guard against the interleaved-latency decision being pre-empted: 3.8 was ~12% slower
     // in the 2026-09-03 probe, so 3.7 must stay selectable until that run.
     #expect(PromptModel.gemini37Flash.chatReplacement == nil)
     #expect(PromptModel.gemini38Flash.chatReplacement == nil)
+    // `chatModels` is filtered by Offline Mode, which reads the real app's defaults on a dev Mac.
+    let previousOffline = OfflineMode.isEnabled
+    defer { OfflineMode.setEnabled(previousOffline) }
+    OfflineMode.setEnabled(false)
     #expect(PromptModel.chatModels.contains(.gemini37Flash))
     #expect(PromptModel.chatModels.contains(.gemini38Flash))
     #expect(!PromptModel.chatModels.contains(.gemini35Flash))
-    #expect(!PromptModel.chatModels.contains(.gemini36Flash))
+  }
+
+  @Test("Removed 3.6 Flash selections forward to 3.7 Flash")
+  func gemini36ForwardsTo37() {
+    #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue("gemini-3.6-flash")) == .gemini37Flash)
+    #expect(
+      TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue("gemini-3.6-flash"))
+        == .gemini37Flash)
   }
 
   @Test("Legacy 2.5-flash and 3-flash-preview land on a still-visible model")

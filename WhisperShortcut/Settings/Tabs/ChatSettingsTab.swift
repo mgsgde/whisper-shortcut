@@ -25,12 +25,16 @@ struct ChatSettingsTab: View {
 
       // Chat system prompt editor
       SystemPromptSectionEditor(
-        title: "System prompt",
+        title: "System Prompt",
         systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
         section: .chat,
         defaultContent: AppConstants.defaultChatSystemPrompt
       )
+
+      SpacedSectionDivider()
+
+      UserCommandsSection()
 
       SpacedSectionDivider()
 
@@ -55,6 +59,10 @@ struct ChatSettingsTab: View {
       SpacedSectionDivider()
 
       meetingMarkerSection
+
+      SpacedSectionDivider()
+
+      MeetingsInAIAppsSection()
 
       SpacedSectionDivider()
 
@@ -105,8 +113,8 @@ struct ChatSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Chat model",
-      subtitle: "Choose which model powers the chat. Pick **Custom endpoint** for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
+      title: "Chat Model",
+      subtitle: "Choose which model powers the chat. Pick “Custom endpoint” for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       recommendedModel: SettingsDefaults.selectedChatModel,

@@ -108,6 +108,7 @@ struct SettingsView: View {
         .padding(.top, SettingsConstants.topPadding)
         .padding(.bottom, SettingsConstants.bottomPadding)
       }
+      .settingsSoftTopScrollEdge()
 
       versionFooter
     }
@@ -196,6 +197,19 @@ struct SettingsView: View {
   private func setupFloatingWindow() {
     if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
       window.level = .floating
+    }
+  }
+}
+
+private extension View {
+  /// macOS 26 draws a hard, semi-opaque band under the unified toolbar when content scrolls
+  /// beneath it, which covers section headers. A soft edge fades the content out instead.
+  @ViewBuilder
+  func settingsSoftTopScrollEdge() -> some View {
+    if #available(macOS 26.0, *) {
+      scrollEdgeEffectStyle(.soft, for: .top)
+    } else {
+      self
     }
   }
 }

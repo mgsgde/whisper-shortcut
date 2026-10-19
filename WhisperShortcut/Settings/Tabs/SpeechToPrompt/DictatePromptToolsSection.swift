@@ -8,7 +8,7 @@ struct DictatePromptToolsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Look things up",
+        title: "Look Things Up",
         systemImage: "magnifyingglass",
         subtitle: "Dictate Prompt can read your calendar, tasks, email, Trello and shared folders when an instruction needs a fact."
       )

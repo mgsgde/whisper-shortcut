@@ -2,7 +2,11 @@ import AppKit
 import SwiftUI
 
 /// Per-mode system prompt editor backed by a single section of system-prompts.md.
-/// Provides Save, Revert, and Open File buttons.
+///
+/// Edits save themselves: shortly after typing pauses, and immediately when the view goes away,
+/// a window closes or the app quits. An explicit Save button used to be the only path to disk, so
+/// closing Settings after editing silently threw the prompt away and the runtime used the default.
+/// Revert restores the text as it was when this page was opened.
 struct SystemPromptSectionEditor: View {
   let title: String
   let systemImage: String?
@@ -24,12 +28,25 @@ struct SystemPromptSectionEditor: View {
     self.defaultContent = defaultContent
   }
 
+  /// Long enough not to rewrite the file on every keystroke, short enough that closing Settings
+  /// right after typing is already covered before the window-close flush runs.
+  private static let autosaveDelay: Duration = .milliseconds(700)
+
   @State private var text: String = ""
   @State private var lastSavedText: String = ""
+  /// The text when the page was opened — what Revert goes back to.
+  @State private var openedText: String = ""
+  @State private var autosaveTask: Task<Void, Never>?
+  @State private var saveFailed = false
+  @State private var unreadableReason: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(title: title, systemImage: systemImage, subtitle: subtitle)
+
+      if let unreadableReason {
+        unreadableBanner(reason: unreadableReason)
+      }
 
       TextEditor(text: $text)
         .font(.system(.body, design: .monospaced))
@@ -37,24 +54,18 @@ struct SystemPromptSectionEditor: View {
         .padding(8)
         .background(Color(nsColor: .textBackgroundColor))
         .cornerRadius(SettingsConstants.cornerRadius)
+        // Edits could not be saved while the file is unreadable, so typing would only look like it worked.
+        .disabled(unreadableReason != nil)
+        .onChange(of: text) { _, _ in scheduleAutosave() }
 
       HStack(alignment: .center, spacing: 12) {
-        Button(action: save) {
-          Label("Save", systemImage: "square.and.arrow.down")
-            .font(.callout)
-        }
-        .buttonStyle(.bordered)
-        .disabled(!hasChanges)
-        .help("Save changes to the system prompts file")
-        .pointerCursorOnHover()
-
         Button(action: revert) {
           Label("Revert", systemImage: "arrow.uturn.backward")
             .font(.callout)
         }
         .buttonStyle(.bordered)
-        .disabled(!hasChanges)
-        .help("Discard unsaved changes and restore the last saved text")
+        .disabled(text == openedText || unreadableReason != nil)
+        .help("Undo your edits since you opened this page")
         .pointerCursorOnHover()
 
         Button(action: openFile) {
@@ -70,9 +81,13 @@ struct SystemPromptSectionEditor: View {
         }
         .buttonStyle(.bordered)
         .font(.callout)
-        .disabled(text == defaultContent)
-        .help("Replace with the app default prompt")
+        .disabled(text == defaultContent || unreadableReason != nil)
+        .help("Replace with the app default prompt. The previous version is kept in system-prompts.md.bak.")
         .pointerCursorOnHover()
+
+        Spacer(minLength: 0)
+
+        saveStatus
       }
       .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -95,13 +110,68 @@ struct SystemPromptSectionEditor: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
-    .onAppear { load() }
+    .onAppear { load(resetBaseline: true) }
+    .onDisappear { flush() }
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in flush() }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in flush() }
     .onReceive(NotificationCenter.default.publisher(for: .contextFileDidUpdate)) { _ in
-      load()
+      load(resetBaseline: false)
     }
   }
 
-  private var hasChanges: Bool { text != lastSavedText }
+  @ViewBuilder
+  private var saveStatus: some View {
+    if unreadableReason != nil {
+      EmptyView()
+    } else if saveFailed {
+      Label("Not saved", systemImage: "exclamationmark.triangle.fill")
+        .font(.footnote)
+        .foregroundStyle(.red)
+        .help("Writing system-prompts.md failed. Your text is still here; it will be retried on the next edit. Details are in the log.")
+    } else if text != lastSavedText {
+      Text("Saving…")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    } else {
+      Label("Saved", systemImage: "checkmark")
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .help("Changes are saved automatically")
+    }
+  }
+
+  private func unreadableBanner(reason: String) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Label("Your saved prompts can’t be read", systemImage: "exclamationmark.triangle.fill")
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(.orange)
+      Text(
+        "macOS blocked WhisperShortcut from reading system-prompts.md (\(reason)). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app."
+      )
+      .font(.footnote)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .textSelection(.enabled)
+      HStack(spacing: 12) {
+        Button("Open Privacy & Security") {
+          if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+          }
+        }
+        .buttonStyle(.bordered)
+        .font(.callout)
+        .pointerCursorOnHover()
+        Button("Try again") { load(resetBaseline: true) }
+          .buttonStyle(.bordered)
+          .font(.callout)
+          .pointerCursorOnHover()
+      }
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.orange.opacity(0.1))
+    .cornerRadius(SettingsConstants.cornerRadius)
+  }
 
   /// Shown only for the sections the chat can actually write — Dictate Prompt via
   /// `update_app_instructions` and the glossary via `remember_dictation_term`. The remaining
@@ -118,25 +188,60 @@ struct SystemPromptSectionEditor: View {
     }
   }
 
-  private func load() {
+  /// `resetBaseline` is true when the page opens: the loaded text becomes what Revert returns to.
+  /// File-change notifications (including the ones our own saves post) reload with it false, and
+  /// never while edits are still waiting to be saved, so they cannot wipe out text being typed.
+  private func load(resetBaseline: Bool) {
     // Treat a missing OR empty section as "not customized" and fall back to the
     // default, matching the runtime loaders in SystemPromptsStore. A header can
     // exist with an empty body when the file predates this section and was
     // rewritten by formatContent while saving another section.
     let saved = SystemPromptsStore.shared.loadSection(section)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    unreadableReason = SystemPromptsStore.shared.unreadableReason
     let content = (saved?.isEmpty ?? true) ? defaultContent : saved!
-    text = content
+    if !resetBaseline && (text != lastSavedText || content == lastSavedText) { return }
+    autosaveTask?.cancel()
     lastSavedText = content
+    text = content
+    if resetBaseline { openedText = content }
+  }
+
+  private func scheduleAutosave() {
+    guard text != lastSavedText, unreadableReason == nil else { return }
+    autosaveTask?.cancel()
+    autosaveTask = Task { @MainActor in
+      try? await Task.sleep(for: Self.autosaveDelay)
+      guard !Task.isCancelled else { return }
+      save()
+    }
+  }
+
+  /// Saves pending edits now (view going away, window closing, app quitting).
+  private func flush() {
+    autosaveTask?.cancel()
+    autosaveTask = nil
+    save()
   }
 
   private func save() {
-    SystemPromptsStore.shared.updateSection(section, content: text)
-    lastSavedText = text
+    guard text != lastSavedText, unreadableReason == nil else { return }
+    let toSave = text
+    let previous = lastSavedText
+    // Set before writing: the store posts `.contextFileDidUpdate` synchronously, and `load` must
+    // see this text as already saved rather than reload over it.
+    lastSavedText = toSave
+    if SystemPromptsStore.shared.updateSection(section, content: toSave) {
+      saveFailed = false
+    } else {
+      lastSavedText = previous
+      saveFailed = true
+      unreadableReason = SystemPromptsStore.shared.unreadableReason
+    }
   }
 
   private func revert() {
-    text = lastSavedText
+    text = openedText
   }
 
   private func openFile() {

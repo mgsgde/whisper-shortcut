@@ -145,7 +145,29 @@ def verdict_for_proposals(path):
     if count == 0:
         return verdict_fyi("This run proposed no code change, so nothing was queued and nothing is "
                            "waiting on you. The digest is below.")
+    if not implementer_tick_armed():
+        # 2026-10-13: three weekly mails said "handled automatically" while no tick was loaded, and
+        # six proposals sat unread in incoming/ for three weeks. Only an armed tick may be named.
+        plural = "" if count == 1 else "s"
+        return verdict_needs_decision(
+            count,
+            f"{count} proposal{plural} were written to the implementer hand-off, but "
+            f"{IMPLEMENTER_TICK_LABEL} is not loaded, so nothing will groom or build them. Build them "
+            "in a session, or reinstall the tick: bash scripts/implementer/install-tick.sh")
     return verdict_handled_by("the implementer queue", queue_sentence(count))
+
+
+IMPLEMENTER_TICK_LABEL = "com.whispershortcut.implementer-tick"
+
+
+def implementer_tick_armed():
+    """Is the hourly tick that consumes the hand-off actually loaded in launchd right now?"""
+    import subprocess
+    try:
+        out = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return any(line.split("\t")[-1] == IMPLEMENTER_TICK_LABEL for line in out.splitlines())
 
 
 # ------------------------------------------------------------------------------- rendering

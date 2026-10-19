@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keeps the Mac out of idle sleep from 22:00 to 07:00 so the hourly implementer tick can run
+  overnight (Magnus 2026-10-14: "sorg dafür, dass der Mac nachts wach bleibt").
+  caffeinate -i (idle) -s (system, only on AC power) -m (disk) for 9 h. No system setting is
+  changed; unloading this agent ends it. It cannot keep a closed lid on battery awake.
+  Install:  bash scripts/implementer/install-night-awake.sh
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.night-awake</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/caffeinate</string>
+      <string>-i</string>
+      <string>-s</string>
+      <string>-m</string>
+      <string>-t</string>
+      <string>32400</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+      <key>Hour</key>
+      <integer>22</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+  </dict>
+</plist>

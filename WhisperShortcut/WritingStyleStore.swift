@@ -16,7 +16,7 @@ import Foundation
 struct WritingSample: Codable, Equatable {
   let id: String
   let context: WritingContext
-  /// "gmail" or "manual".
+  /// "gmail", "manual" or "dictated".
   let source: String
   let recipient: String?
   let sentAt: Date
@@ -41,11 +41,38 @@ final class WritingStyleStore {
 
   let directory: URL
   private let isEnabled: () -> Bool
+  private let defaults: UserDefaults
   private let lock = NSLock()
 
-  init(directory: URL, isEnabled: @escaping () -> Bool) {
+  init(directory: URL, isEnabled: @escaping () -> Bool, defaults: UserDefaults = .standard) {
     self.directory = directory
     self.isEnabled = isEnabled
+    self.defaults = defaults
+  }
+
+  // MARK: - Bookkeeping
+
+  /// Samples added since the profile was last derived (or its review dismissed).
+  var samplesSinceProfile: Int {
+    defaults.integer(forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
+  }
+
+  func resetSamplesSinceProfile() {
+    defaults.set(0, forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
+  }
+
+  var profileUpdatedAt: Date? {
+    defaults.object(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt) as? Date
+  }
+
+  /// A sample for a dictation pasted into a known app, or nil when the text is too short or long
+  /// to be a useful example.
+  static func dictatedSample(text: String, context: WritingContext, now: Date = Date()) -> WritingSample? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.count >= 15, trimmed.count <= 4_000 else { return nil }
+    return WritingSample(
+      id: UUID().uuidString, context: context, source: "dictated", recipient: nil,
+      sentAt: now, incomingChars: nil, text: trimmed)
   }
 
   var profileURL: URL { directory.appendingPathComponent("profile.md") }
@@ -132,6 +159,11 @@ final class WritingStyleStore {
       capped.append(contentsOf: inContext.prefix(Self.maxSamplesPerContext))
     }
     writeSamplesUnlocked(capped)
+    if added > 0 {
+      defaults.set(
+        defaults.integer(forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile) + added,
+        forKey: UserDefaultsKeys.writingStyleSamplesSinceProfile)
+    }
     return added
   }
 
@@ -143,6 +175,9 @@ final class WritingStyleStore {
     lock.lock()
     defer { lock.unlock() }
     try? FileManager.default.removeItem(at: directory)
+    resetSamplesSinceProfile()
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleLastGmailImportAt)
   }
 
   private func readSamplesUnlocked() -> [WritingSample] {

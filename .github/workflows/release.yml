@@ -236,6 +236,41 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION (tag $TAG)"
 
+      - name: Sign update and build appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]; then
+            echo "::warning::SPARKLE_ED_PRIVATE_KEY is not set - appcast skipped, installed apps will not see this release as an update"
+            exit 0
+          fi
+
+          TAG="${{ steps.get_version.outputs.tag }}"
+          VERSION="${{ steps.get_version.outputs.version }}"
+
+          SPARKLE_DIR="$RUNNER_TEMP/sparkle-tools"
+          mkdir -p "$SPARKLE_DIR"
+          curl -fsSL "https://github.com/sparkle-project/Sparkle/releases/download/2.9.6/Sparkle-2.9.6.tar.xz" \
+            -o "$RUNNER_TEMP/Sparkle-2.9.6.tar.xz"
+          tar -xf "$RUNNER_TEMP/Sparkle-2.9.6.tar.xz" -C "$SPARKLE_DIR"
+
+          SIGNATURE=$(echo "$SPARKLE_ED_PRIVATE_KEY" | "$SPARKLE_DIR/bin/sign_update" --ed-key-file - -p "$DMG_PATH")
+          LENGTH=$(stat -f%z "$DMG_PATH")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" WhisperShortcut/Info.plist)
+
+          python3 scripts/make-appcast.py \
+            --version "$VERSION" \
+            --build "$BUILD" \
+            --url "https://github.com/${{ github.repository }}/releases/download/$TAG/WhisperShortcut.dmg" \
+            --length "$LENGTH" \
+            --signature "$SIGNATURE" \
+            --notes .github/RELEASE_NOTES.md \
+            --min-system 15.5 \
+            --out "$RUNNER_TEMP/appcast.xml"
+
+          echo "APPCAST_PATH=$RUNNER_TEMP/appcast.xml" >> $GITHUB_ENV
+
       - name: Prepare Release Notes
         id: release_notes
         run: |
@@ -266,7 +301,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ env.DMG_PATH }}
+          files: |
+            ${{ env.DMG_PATH }}
+            ${{ env.APPCAST_PATH }}
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
           body: ${{ steps.release_notes.outputs.body }}

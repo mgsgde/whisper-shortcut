@@ -17,6 +17,14 @@ enum DictatePromptSelectionDecision {
     changeCountAfter != changeCountBefore
   }
 
+  /// Whether a poll tick of the synthetic ⌘C may take the pasteboard as the selection: the change
+  /// count moved AND the pasteboard already exposes a string. A changed count with no string yet
+  /// (the source app is still writing its flavors) keeps the poll running until the deadline.
+  static func acceptsCopy(changeCountBefore: Int, changeCountAfter: Int, string: String?) -> Bool {
+    copyProducedSelection(changeCountBefore: changeCountBefore, changeCountAfter: changeCountAfter)
+      && string != nil
+  }
+
   /// App Store build with a local model: there is no synthetic ⌘C (it would need Accessibility), so
   /// the user copies first and the clipboard is read as-is. It counts as a selection only when the
   /// pasteboard changed since the last Dictate Prompt run consumed it (or since launch) **and** that
@@ -40,6 +48,58 @@ enum DictatePromptSelectionDecision {
     else { return nil }
     return trimmed
   }
+
+  /// Whether a Dictate Prompt turn must be refused because it edits a selection that isn't there:
+  /// nothing selected, no screenshot standing in for the selection, and the instruction is an edit
+  /// quick action or only a bare edit command. The timeout placeholder is not judged.
+  static func refusesEditWithoutSelection(
+    hasSelection: Bool, hadScreenshot: Bool, instruction: String, isEditQuickAction: Bool
+  ) -> Bool {
+    !hasSelection && !hadScreenshot
+      && instruction != SpeechService.voiceInstructionPlaceholder
+      && (isEditQuickAction || isBareEditCommand(instruction))
+  }
+
+  /// True when the instruction is only an edit command ("Korrigiere", "Rephrase this") and
+  /// nothing else. A compose turn with one of these used to let the model invent the text it
+  /// was "editing". Extra words ("Korrigiere, mein Geburtsdatum ist 15.08.91", "schreib eine
+  /// Notiz") are a real compose request and return false.
+  static func isBareEditCommand(_ instruction: String) -> Bool {
+    var text = instruction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    while let last = text.last, last == "." || last == "!" || last == "?" {
+      text.removeLast()
+    }
+    text = strippingLeadingFiller(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    guard !text.isEmpty else { return false }
+    let range = NSRange(text.startIndex..<text.endIndex, in: text)
+    return bareEditCommandRegex.firstMatch(in: text, range: range) != nil
+  }
+
+  /// "Ähm, korrigiere" is the same command as "korrigiere". One leading filler only, and only
+  /// when it is its own word — "ähmlich" must stay intact.
+  private static func strippingLeadingFiller(_ text: String) -> String {
+    let fillers = ["ähm", "äh", "hm"]
+    for filler in fillers {
+      guard text.hasPrefix(filler) else { continue }
+      var rest = text.dropFirst(filler.count)
+      if rest.first == "," {
+        rest = rest.dropFirst()
+      } else if let first = rest.first, !first.isWhitespace {
+        continue
+      }
+      return rest.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return text
+  }
+
+  /// The whole instruction, after normalization, must be one of these and nothing more.
+  /// Optional words sit inside the group so "kürze" matches and "kürze das" does too, without
+  /// a trailing space being required.
+  private static let bareEditCommandRegex: NSRegularExpression = {
+    let pattern =
+      "^(?:korrigiere|korrigier das|korrigieren|formuliere(?: das)? (?:neu|um)|schreib(?: das)? um|umschreiben|kürzer|kürze(?: das)?|mach (?:es|das) kürzer|verbessere(?: das)?|correct(?: this| that)?|fix (?:this|that|it)|rephrase(?: this| that)?|shorten(?: this| that)?|make (?:it|this) shorter|proofread(?: this)?)$"
+    return try! NSRegularExpression(pattern: pattern)
+  }()
 }
 
 /// The selection captured for one Dictate Prompt recording.
@@ -54,6 +114,9 @@ enum DictatePromptSelectionDecision {
 final class DictatePromptSelectionCapture: @unchecked Sendable {
   /// Same budget as the Voice Feedback and Glossary copies.
   static let pollDeadline: TimeInterval = 0.5
+  /// How long to keep watching the pasteboard after ⌘C once the poll has already given up.
+  /// Logging only: a copy that arrives in this window is still a compose turn.
+  static let lateCopyWatch: TimeInterval = 2.0
   static let pollInterval: Duration = .milliseconds(15)
 
   private let lock = NSLock()

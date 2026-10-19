@@ -36,6 +36,20 @@ struct DictatePromptSelectionTests {
       currentChangeCount: 11, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: 11))
   }
 
+  @Test("A copy tick needs a changed count AND a readable string")
+  func copyTickNeedsStringToo() {
+    #expect(DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 2, string: "x"))
+    #expect(!DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 2, string: nil))
+    #expect(!DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 1, string: "x"))
+  }
+
+  @Test("Selections reach the model as captured: digit runs, dashes and URL queries survive")
+  func selectionSurvivesUnchanged() {
+    for text in ["Vitamin D 20000 IE", "----", "https://x.de/a?b=1#c"] {
+      #expect(DictatePromptSelectionDecision.selectionText(from: "  \(text)\n") == text)
+    }
+  }
+
   @Test("Copied text is trimmed; whitespace-only counts as nothing")
   func selectionTextNormalised() {
     #expect(DictatePromptSelectionDecision.selectionText(from: "  Befund \n") == "Befund")
@@ -84,6 +98,80 @@ struct DictatePromptSelectionTests {
       mode: .togglePrompting, isComposeTurn: false, offlineMode: true).isEmpty)
     #expect(SpeechService.promptHistoryContents(
       mode: .togglePrompting, isComposeTurn: true, offlineMode: true).isEmpty)
+  }
+
+  @Test("A bare edit command is only the command itself")
+  func bareEditCommandIsOnlyTheCommand() {
+    let commands = [
+      "Korrigiere",
+      "korrigiere.",
+      "Ähm, korrigiere",
+      "Formuliere neu",
+      "Rephrase this",
+      "shorten",
+    ]
+    for command in commands {
+      #expect(DictatePromptSelectionDecision.isBareEditCommand(command), "expected bare command: \(command)")
+    }
+    let notCommands = [
+      "Korrigiere, mein Geburtsdatum ist 15.08.91",
+      "Schreib eine Notiz für Frau Meier",
+      "formuliere eine Antwort an Max",
+      "",
+      SpeechService.voiceInstructionPlaceholder,
+    ]
+    for command in notCommands {
+      #expect(!DictatePromptSelectionDecision.isBareEditCommand(command), "expected not a bare command: \(command)")
+    }
+  }
+
+  @Test("Nothing selected refuses edit quick actions and bare edit commands, never compose or a screenshot")
+  func editWithoutSelectionIsRefused() {
+    func refuses(
+      hasSelection: Bool = false, hadScreenshot: Bool = false, _ instruction: String,
+      editQuickAction: Bool = false
+    ) -> Bool {
+      DictatePromptSelectionDecision.refusesEditWithoutSelection(
+        hasSelection: hasSelection, hadScreenshot: hadScreenshot, instruction: instruction,
+        isEditQuickAction: editQuickAction)
+    }
+    // The built-in quick actions are edits and don't match the bare-command rule.
+    for text in QuickActionStore.fallbackTexts {
+      #expect(QuickActionKind.classify(QuickActionStore.normalizeKey(text)) != .other, "\(text)")
+      #expect(refuses(text, editQuickAction: true), "\(text)")
+    }
+    #expect(!refuses("Fix grammar and spelling"))
+    #expect(refuses("Korrigiere"))
+    #expect(!refuses("Schreib eine Notiz für Frau Meier"))
+    #expect(!refuses(hasSelection: true, "Fix grammar", editQuickAction: true))
+    #expect(!refuses(hadScreenshot: true, "Fix grammar", editQuickAction: true))
+    #expect(!refuses(SpeechService.voiceInstructionPlaceholder, editQuickAction: true))
+  }
+
+  @Test("Prompt latency fields round-trip on an interaction log entry")
+  func promptLatencyFieldsRoundTrip() throws {
+    let entry = InteractionLogEntry(
+      ts: "2026-10-13T18:00:00Z",
+      mode: "prompt",
+      model: "local-mlx-qwen3-4b-instruct-2507",
+      result: nil,
+      selectedText: nil,
+      userInstruction: "Korrigiere",
+      modelResponse: "invented",
+      text: nil,
+      voice: nil,
+      audioRef: nil,
+      transcriptionModel: nil,
+      hadScreenshot: false,
+      latencyMs: 842,
+      provider: "mlx",
+      loadMs: 1200
+    )
+    let data = try JSONEncoder().encode(entry)
+    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: data)
+    #expect(decoded.latencyMs == 842)
+    #expect(decoded.provider == "mlx")
+    #expect(decoded.loadMs == 1200)
   }
 
   @Test("The output rule tells the model what a compose turn means")

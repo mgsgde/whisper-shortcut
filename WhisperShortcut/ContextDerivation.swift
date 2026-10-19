@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - Context Derivation
@@ -175,6 +176,46 @@ class ContextDerivation {
       DebugLogger.log("USER-CONTEXT-DERIVATION: No primary interactions; using secondary only (\(loaded.secondaryCharCount) chars)")
     }
 
+    let glossaryText = prompts.whisperGlossary ?? ""
+    let transcripts = corpus.entries.filter { $0.mode == "transcription" }.compactMap(\.result)
+    // Strict near-misses are appended to the Whisper Glossary suggestion. Dictation does not
+    // write glossary lines, so its list stays empty. Audio selection uses a looser distance
+    // on both focuses so a suspected mishearing can still pick a clip.
+    let nearMisses: [GlossaryLearning.NearMiss]
+    let suspects: [(term: String, heard: String)]
+    if focus == .whisperGlossary || focus == .dictation {
+      let strictMisses: [GlossaryLearning.NearMiss]
+      let looseMisses: [GlossaryLearning.NearMiss]
+      // Mining scans the whole transcript vocabulary, so it runs here (off the main thread);
+      // only the few surviving pairs hop to main for the spell-checker guard.
+      strictMisses = focus == .whisperGlossary
+        ? GlossaryLearning.nearMisses(
+          glossary: glossaryText, transcripts: transcripts, isKnownWord: Self.isKnownWord)
+        : []
+      if focus == .whisperGlossary {
+        DebugLogger.log("GLOSSARY-NEARMISS: \(strictMisses.count) term(s) with misheard variants")
+      }
+      looseMisses = GlossaryLearning.nearMisses(
+        glossary: glossaryText, transcripts: transcripts, maxDistance: 2,
+        isKnownWord: Self.isKnownWord)
+      var built: [(term: String, heard: String)] = []
+      for miss in looseMisses {
+        for heard in miss.variants {
+          built.append((term: miss.term, heard: heard))
+        }
+      }
+      for entry in GlossaryLearning.entries(in: glossaryText) {
+        for heard in entry.rejected {
+          built.append((term: entry.term, heard: heard))
+        }
+      }
+      nearMisses = strictMisses
+      suspects = built
+    } else {
+      nearMisses = []
+      suspects = []
+    }
+
     // Provider dispatch. Gemini keeps the audio-verification path (it can re-listen to dictation
     // audio originally transcribed by a weaker/different model). OpenAI and xAI run a text-only
     // analysis — their Smart Improvement models aren't audio-capable here, and prompt improvement
@@ -185,7 +226,8 @@ class ContextDerivation {
       guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
         throw TranscriptionError.noGoogleAPIKey
       }
-      let audioAttachments = collectAudioAttachmentsIfApplicable(focus: focus, entries: corpus.entries)
+      let audioAttachments = collectAudioAttachmentsIfApplicable(
+        focus: focus, entries: corpus.entries, suspects: suspects)
       analysisResult = try await callGeminiForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
@@ -206,7 +248,11 @@ class ContextDerivation {
       )
     }
 
-    writeOutput(AnalysisResult(from: analysisResult), focus: focus)
+    writeOutput(
+      AnalysisResult(from: analysisResult),
+      focus: focus,
+      nearMisses: nearMisses,
+      currentGlossary: glossaryText)
 
     DebugLogger.logSuccess("USER-CONTEXT-DERIVATION: Context update completed focus=\(focus)")
   }
@@ -214,8 +260,8 @@ class ContextDerivation {
   // MARK: - Audio Verification Attachments
 
   /// One audio clip prepared for verification, with the base64-encoded WAV bytes ready to attach.
-  /// `candidateTerm` is the recurring vocabulary term whose transcript this clip was selected to
-  /// verify (nil when the clip was added purely as a recency top-up).
+  /// `candidateTerm` is why the clip was selected: a recurring vocabulary term, or a
+  /// `Term" — transcript shows "heard` note for a suspected mishearing (nil for a recency top-up).
   private struct AudioAttachment {
     let ref: String
     let transcriptionModel: String
@@ -223,12 +269,28 @@ class ContextDerivation {
     let base64WAV: String
   }
 
+  /// True when the system spell checker accepts the word. Same check GlossaryFastLearner uses to
+  /// reject two ordinary dictionary words. NSSpellChecker is not thread-safe, so a call from the
+  /// derivation's background context hops to main for just this lookup.
+  private static func isKnownWord(_ w: String) -> Bool {
+    let check = {
+      let checker = NSSpellChecker.shared
+      checker.automaticallyIdentifiesLanguages = true
+      return checker.checkSpelling(of: w, startingAt: 0).location == NSNotFound
+    }
+    return Thread.isMainThread ? check() : DispatchQueue.main.sync(execute: check)
+  }
+
   /// For dictation and whisperGlossary focuses, snapshots up to `audioSamplesPerRun` recent dictation
   /// WAVs whose original transcription model is strictly weaker than (or in a different family from)
   /// the Smart Improvement model. Returns base64-encoded audio bytes plus metadata for prompt context.
   /// Returns an empty array for non-audio focuses, when no usable clips exist, or when the asymmetry
   /// rule eliminates every candidate.
-  private func collectAudioAttachmentsIfApplicable(focus: GenerationKind, entries: [InteractionLogEntry]) -> [AudioAttachment] {
+  private func collectAudioAttachmentsIfApplicable(
+    focus: GenerationKind,
+    entries: [InteractionLogEntry],
+    suspects: [(term: String, heard: String)] = []
+  ) -> [AudioAttachment] {
     guard focus == .dictation || focus == .whisperGlossary else { return [] }
 
     let allSamples = ContextLogger.shared.audioSampleURLs()
@@ -267,12 +329,11 @@ class ContextDerivation {
       }
     }
 
-    // Content-aware selection: one representative clip per recurring candidate term (newest clip that
-    // contains it), then top up with the newest clips so recent dictations are always covered. This is
-    // what lets a term mis-heard across the whole history (a distinctive word transcribed as a more
-    // common one) get its audio in front of the verifier, instead of only whatever the newest clips were.
+    // Selection order: suspected mishearings first (a clip whose transcript contains the heard
+    // form), then one clip per recurring candidate term, then a recency top-up. Suspects are
+    // capped at half the clip budget so a long mishearing list cannot crowd out everything else.
     let candidates = candidateTermsForVerification(refToText: refToText)
-    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count)")
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) candidateTerms=\(candidates.count) suspects=\(suspects.count)")
 
     let cap = AppConstants.audioSamplesPerRun
     let byteBudget = AppConstants.audioAttachmentMaxTotalBytes
@@ -296,6 +357,23 @@ class ContextDerivation {
       DebugLogger.log("AUDIO-VERIFY: focus=\(focus) asymmetry ref=\(ref) transcriptionModel=\(modelRaw) smartModel=\(smartModel.rawValue) informative=true term=\(term ?? "—") clipBytes=\(data.count)")
     }
 
+    let suspectClipCap = cap / 2
+    var suspectClips = 0
+    for suspect in suspects {
+      if picked.count >= cap || suspectClips >= suspectClipCap { break }
+      if let (url, ref) = newestFirst.first(where: { _, ref in
+        eligibleRefs.contains(ref) && !usedRefs.contains(ref)
+          && (refToText[ref]?.range(of: suspect.heard, options: [.caseInsensitive, .diacriticInsensitive]) != nil)
+      }) {
+        let before = picked.count
+        // The inventory wrapper adds the opening quote and the final closing quote, so this
+        // reads: selected to verify candidate term: "Bachata" — transcript shows "Batchata".
+        attach(
+          url: url, ref: ref,
+          term: "\(suspect.term)\" — transcript shows \"\(suspect.heard)")
+        if picked.count > before { suspectClips += 1 }
+      }
+    }
     for term in candidates {
       if picked.count >= cap { break }
       if let (url, ref) = newestFirst.first(where: { _, ref in
@@ -310,7 +388,7 @@ class ContextDerivation {
       attach(url: url, ref: ref, term: nil)
     }
 
-    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) attachedBytes=\(attachedBytes) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap) candidateTerms=\(candidates.count)")
+    DebugLogger.log("AUDIO-VERIFY: focus=\(focus) attach selectedClips=\(picked.count) attachedBytes=\(attachedBytes) skippedAsymmetry=\(skippedAsymmetry) skippedUnknownModel=\(skippedUnknownModel) capPerRun=\(cap) candidateTerms=\(candidates.count) suspects=\(suspects.count)")
     return picked
   }
 
@@ -468,7 +546,29 @@ class ContextDerivation {
     sampledPrimary.append(contentsOf: evenSample(tier2, max: budget2))
     sampledPrimary.append(contentsOf: evenSample(tier3, max: budget3))
     sampledPrimary.sort { $0.ts < $1.ts }
-    let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
+    var (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
+
+    // Follow-up chains are built from the full log, not the sample: sampling would separate a
+    // correction from the output it corrects.
+    if focus == .promptMode {
+      let chainCutoff = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+      // Counted over the chains that fit the budget, so "Total:" matches the rows shown.
+      let chains = PromptFollowUp.fitting(
+        PromptFollowUp.chains(in: sortedPrimary, since: chainCutoff, parseDate: parseDate),
+        maxFieldChars: maxFieldChars, maxChars: AppConstants.contextFollowUpChainsMaxChars)
+      let rendered = PromptFollowUp.render(
+        chains, maxFieldChars: maxFieldChars, maxChars: AppConstants.contextFollowUpChainsMaxChars)
+      if !rendered.isEmpty {
+        let styleCount = chains.filter { $0.kind == .style }.count
+        let transformCount = chains.filter { $0.kind == .transform }.count
+        let otherCount = chains.count - styleCount - transformCount
+        primaryText +=
+          "\n\n=== FOLLOW-UP CORRECTION CHAINS (all from the last 30 days, unsampled) ===\n"
+          + "Total: \(chains.count) chains (\(styleCount) style, \(transformCount) transform, \(otherCount) other).\n\n"
+          + rendered
+        primaryCharCount = primaryText.count
+      }
+    }
 
     var secondaryParts: [String] = []
     if let p = prompts.current(for: focus), !p.isEmpty {
@@ -582,6 +682,8 @@ class ContextDerivation {
     AUDIO EVIDENCE (VERIFIER ONLY): One or more dictation audio clips have been attached to this request as separate `inline_data` parts after the text body. They originate from past dictations whose original transcription model is strictly weaker than (or in a different model family from) you. Treat audio strictly as a verifier on top of text-stage candidates: confirm a glossary term or correction only when at least one attached clip clearly contains the relevant signal; reject a candidate when the audio clearly does not contain it. Do NOT introduce new candidates, terms, or rules that exist only in the audio and not in the primary text interactions. Do NOT transcribe the audio. Do NOT mention the audio in your output — only in the `rationale` field if it changed a decision.
 
     MIS-TRANSCRIPTION CHECK: A text-stage candidate may itself be a recognition error — the transcript shows one word but the audio clearly and repeatedly says a different known term or name (for example a product, tool, or brand name). When the attached audio unambiguously contains the intended word across the recurring occurrences, propose the corrected term: for the Whisper Glossary, add the correctly-spelled term; for the dictation prompt, add a "heard → intended" correction. Treat this as correcting a candidate already present in the usage data — not as inventing a new one — and still require the recurring pattern (at least 2 distinct interactions) before suggesting it.
+
+    Clips whose inventory note says "transcript shows" were selected because the transcript contains a suspected misheard form of a known term. If the audio clearly says the known term there (also for phonetically distant mishearings like "Butcher" for "Bachata"), for the Whisper Glossary propose `Term (not "heard form")`; still require the same mishearing in at least 2 distinct interactions. This is the exception to "do not introduce candidates that exist only in the audio": the heard form is in the text, the term is already known.
     """
   }
 
@@ -656,18 +758,24 @@ class ContextDerivation {
 
       CRITICAL – Transcription "result" fields often contain recognition errors. Infer intended words (proper nouns, domain terms) from context.
 
-      Your task: produce ONLY a comma-separated list of stable vocabulary terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in primary data — i.e. across at least 2 distinct transcription interactions. \
+      Existing glossary entries are kept automatically and are never removed by this analysis. \
+      Output ONLY new terms to add (do not repeat existing ones).
+
+      Your task: propose stable vocabulary terms and proper nouns (names, companies, technical terms) that appear RECURRINGLY in primary data — i.e. across at least 2 distinct transcription interactions. \
       Do NOT include terms that appear only once or only in the current glossary / secondary context, even if they look interesting; one-off proper nouns are not patterns. \
-      No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms; if a current glossary is in secondary context, use it only for merge/refinement wording (keep terms only when still supported by qualifying primary evidence, remove duplicates, remove stale or unsupported terms). \
+      No sentences, no instructions, no explanations. Use primary data (transcription results) to extract terms. \
       Maximum about 50 terms. Prefer the most frequent or impactful (names, project names, technical terms that are often misheard) — frequency across entries is the primary selection criterion.
 
-      Put the comma-separated vocabulary list in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" if no qualifying recurring terms exist).
+      Allowed formats in `suggestion`:
+      - one line `Terms: A, B, C` for new terms, and/or
+      - one line per correction `Term (not "misheard form")` when a recurring term is repeatedly transcribed with a specific wrong spelling (≥2 distinct interactions).
+
+      Put that text in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" when there is nothing new).
 
       Example of good `suggestion` content:
 
-      Terms: ExampleApp, Cloud API, SwiftUI, UserDefaults, Commit, Branch
-
-      Format: one line starting with "Terms: " followed by comma-separated terms. Nothing else in the field.
+      Terms: ExampleApp, Cloud API, SwiftUI
+      Bachata (not "Batchata")
       """
 
     case .promptMode:
@@ -694,6 +802,15 @@ class ContextDerivation {
       return decision "no_change".
 
       Put the suggested system prompt in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" if the data does not justify a change).
+
+      FOLLOW-UP CORRECTION CHAINS – The primary data may end with a block of chains: \
+      previousOutput (what this mode produced) → userInstruction (the user immediately selected \
+      that output and asked for a change) → newOutput. These are the user's own edits of the \
+      model's output and the strongest evidence of how they want to sound. When the same kind of \
+      style correction (e.g. shorter, no long dashes, greet by name, less formal) appears in 2 or \
+      more distinct chains, turn it into a concrete behavioral rule candidate in the prompt. A \
+      correction seen once is not a rule. Transform chains (translate, bullets) are requests, not \
+      style complaints — ignore them for style rules.
 
       Write a system prompt following this structure (Persona → Task → Behavioral rules):
 
@@ -860,7 +977,7 @@ class ContextDerivation {
         let termNote = att.candidateTerm.map { " — selected to verify candidate term: \"\($0)\"" } ?? " — recent dictation (general check)"
         return "  \(index + 1). ref=\(att.ref) originalTranscriptionModel=\(att.transcriptionModel)\(termNote)"
       }.joined(separator: "\n")
-      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. Each clip was chosen because its transcript contains a recurring candidate term from the primary text (noted per clip). Listen to confirm the term — or, if the audio clearly says a different known word/name than the transcript, flag the mis-transcription. Use audio only to verify or correct text-stage candidates; do not add new candidates that appear only in audio.\n\n\(inventory)")
+      userMessageParts.append("## Audio evidence (verifier only)\n\nThe following dictation audio clips are attached as `inline_data` parts after this text. They were originally transcribed by a strictly weaker or different-family model. A clip may have been chosen because its transcript contains a suspected mishearing of a known term (the inventory note says \"transcript shows\"), because its transcript contains a recurring candidate term, or as a recent dictation for a general check. Listen to confirm the term — or, if the audio clearly says a different known word/name than the transcript, flag the mis-transcription. Use audio only to verify or correct text-stage candidates; do not add new candidates that appear only in audio.\n\n\(inventory)")
     }
 
     return userMessageParts.joined(separator: "\n\n---\n\n")
@@ -914,21 +1031,52 @@ class ContextDerivation {
   /// Writes the structured analysis result to disk: the suggestion file (when the model chose to
   /// change the prompt) plus an optional rationale sidecar. `no_change` writes nothing, so a stale
   /// suggestion is never overwritten with an empty one.
-  private func writeOutput(_ result: AnalysisResult, focus: GenerationKind) {
-    if result.isNoChange {
-      DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
-      return
+  ///
+  /// The Whisper Glossary is the exception: the file on disk is a merge, not the model's text.
+  /// Existing lines stay, and deterministic near-misses are appended even when the model returned
+  /// `no_change`, because those mishearings are evidence the model was not asked to delete.
+  private func writeOutput(
+    _ result: AnalysisResult,
+    focus: GenerationKind,
+    nearMisses: [GlossaryLearning.NearMiss] = [],
+    currentGlossary: String = ""
+  ) {
+    let suggestionText: String
+    let rationaleText: String
+    if focus == .whisperGlossary {
+      let modelSuggestion = result.isNoChange ? "" : result.suggestion
+      let merged = GlossaryLearning.mergeAdditively(
+        current: currentGlossary,
+        suggestion: modelSuggestion + "\n" + GlossaryLearning.nearMissLines(nearMisses))
+      let unchanged = GlossaryLearning.mergeAdditively(current: currentGlossary, suggestion: "")
+      if merged == unchanged {
+        DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
+        return
+      }
+      suggestionText = merged
+      if result.isNoChange {
+        rationaleText = "Misheard spellings found in your transcripts: \(GlossaryLearning.nearMissLines(nearMisses))"
+      } else {
+        rationaleText = result.rationale
+      }
+    } else {
+      if result.isNoChange {
+        DebugLogger.log("USER-CONTEXT-DERIVATION: NO_CHANGE for \(focus) — no suggestion written")
+        return
+      }
+      suggestionText = result.suggestion
+      rationaleText = result.rationale
     }
 
-    if !result.rationale.isEmpty {
+    if !rationaleText.isEmpty {
       let rationaleURL = ContextLogger.shared.directoryURL.appendingPathComponent(focus.suggestionBaseName + "-rationale.txt")
-      try? result.rationale.write(to: rationaleURL, atomically: true, encoding: .utf8)
+      try? rationaleText.write(to: rationaleURL, atomically: true, encoding: .utf8)
     }
 
     let fileURL = ContextLogger.shared.directoryURL.appendingPathComponent(focus.suggestionBaseName + ".txt")
     do {
-      try result.suggestion.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(result.suggestion.count) chars)")
+      try suggestionText.write(to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(suggestionText.count) chars)")
     } catch {
       DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.localizedDescription)")
     }

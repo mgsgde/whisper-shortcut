@@ -191,6 +191,18 @@ struct ChatRequestOptions {
   /// nearly every message; caching it would prime a prefix per message and never reuse one.
   var reusablePromptPrefix: Bool = false
 
+  /// Whether an on-device provider shows the floating "Downloading … / Loading …" popup while the
+  /// model gets ready. Chat turns it off: it shows the same status inline in place of the typing
+  /// dots (`OfflineModelStatusView`), and a popup on top of the window saying the same thing is
+  /// noise. Dictate Prompt and Read Aloud have no window of their own, so they keep it.
+  var showsModelReadinessPopup: Bool = true
+
+  /// Sampling temperature, or nil for the provider's default. Only the on-device providers read
+  /// it (MLX, the local OpenAI-compatible server): Dictate Prompt in Offline Mode sends 0, so the
+  /// same dictation is ordered the same way every time instead of sampled — a structured clinical
+  /// note must not pick up wording the dictation did not contain by chance.
+  var temperature: Double? = nil
+
   /// A one-shot text transform: no grounding, no built-in tools, no cache key, model-default
   /// thinking, and a system prompt that repeats. Used by Read Aloud's rewrite pass and the
   /// Dictate Prompt paths.

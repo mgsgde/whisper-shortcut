@@ -20,8 +20,8 @@ final class LocalLLMChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    // None apply: local servers have no web search, no standard reasoning knob, no built-in
-    // tools, and no server-side prompt-cache hint.
+    // Only `temperature` applies: local servers have no web search, no standard reasoning knob,
+    // no built-in tools, and no server-side prompt-cache hint.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     if let attachmentError = ChatAttachmentGuard.rejectUnsupported(
@@ -37,7 +37,8 @@ final class LocalLLMChatProvider: LLMChatProvider {
 
     let body = Self.requestBody(
       model: model, messages: messages, stream: true,
-      maxTokens: AppConstants.localPromptMaxOutputTokens, tools: tools)
+      maxTokens: AppConstants.localPromptMaxOutputTokens, tools: tools,
+      temperature: options.temperature)
 
     DebugLogger.logNetwork("LOCAL-CHAT-STREAM: POST \(endpoint) model=\(model) tools=\(tools.count)")
     // No auth header: local servers don't require one. A refused connection and a 404 both get
@@ -70,7 +71,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
   /// Dictate Prompt that looks things up.
   static func requestBody(
     model: String, messages: [[String: Any]], stream: Bool, maxTokens: Int,
-    tools: [LLMToolDeclaration] = []
+    tools: [LLMToolDeclaration] = [], temperature: Double? = nil
   ) -> [String: Any] {
     var body: [String: Any] = [
       "model": model,
@@ -95,6 +96,11 @@ final class LocalLLMChatProvider: LLMChatProvider {
     ]
     if !tools.isEmpty {
       body["tools"] = tools.map(\.chatCompletionsDeclaration)
+    }
+    // Sampling does not touch the rendered prompt, so the warm-up may omit it and still prime the
+    // same prefix.
+    if let temperature {
+      body["temperature"] = temperature
     }
     return body
   }

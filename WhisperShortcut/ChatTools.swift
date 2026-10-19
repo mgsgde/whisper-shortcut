@@ -1162,11 +1162,13 @@ enum ChatToolRegistry {
   static func allDeclarations(
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
     meetingContext: Bool, workspaceAvailable: Bool, workspaceWritable: Bool,
-    mailAvailable: Bool, mailAccountsConnected: Bool
+    mailAvailable: Bool, mailAccountsConnected: Bool,
+    chatProvider: ChatModelProvider = selectedChatProvider
   ) -> [[String: Any]] {
     // In-process MLX has no tool-calling path. Do not declare tools so the model cannot
     // hallucinate a `/folder` or Gmail call that then silently vanishes.
-    if Self.selectedChatProvider == .localMLX { return [] }
+    // The provider defaults to the chat window's selection; tests pass it explicitly.
+    if chatProvider == .localMLX { return [] }
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
       + instructionsFunctionDeclarations
@@ -1199,7 +1201,7 @@ enum ChatToolRegistry {
 
   /// The chat window's selected provider. Read without the chat-slot loader so a send cannot
   /// persist a migration as a side effect of building tool declarations.
-  private static var selectedChatProvider: ChatModelProvider {
+  static var selectedChatProvider: ChatModelProvider {
     let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedChatModel)
       ?? SettingsDefaults.selectedChatModel.rawValue
     let migrated = PromptModel.migrateLegacyPromptRawValue(raw)
@@ -1735,20 +1737,11 @@ enum ChatToolRegistry {
       // Live shortcut bindings from the user's actual config, so keyboard-shortcut answers can
       // never go stale against a hardcoded doc table. Feature prose still lives in README.
       let config = ShortcutConfigManager.shared.loadConfiguration()
-      let shortcutRows: [(String, ShortcutDefinition)] = [
-        ("Dictate", config.startRecording),
-        ("Dictate Prompt", config.startPrompting),
-        ("Screenshot", config.screenshotCapture),
-        ("Read Aloud", config.readAloud),
-        ("Voice Feedback", config.voiceFeedback),
-        ("Chat", config.openChat),
-        ("Settings", config.openSettings),
-      ]
-      let shortcuts: [[String: Any]] = shortcutRows.map { name, def in
+      let shortcuts: [[String: Any]] = config.assistantFacingRows.map { row in
         [
-          "action": name,
-          "shortcut": def.isEnabled ? def.displayStringWithSeparator : "Disabled",
-          "enabled": def.isEnabled,
+          "action": row.action,
+          "shortcut": row.definition.displayStringWithSeparator,
+          "enabled": row.definition.isEnabled,
         ]
       }
       DebugLogger.logSuccess(
