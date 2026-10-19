@@ -167,8 +167,10 @@ final class MLXChatProvider: LLMChatProvider {
       offlineMode: OfflineMode.isEnabled,
       isDownloaded: LocalLLMModelManager.shared.isModelAvailable(mlxType))
     {
-      throw TranscriptionError.networkError(
-        "Offline Mode is on and the on-device model \(mlxType.huggingFaceID) is not downloaded.")
+      // Non-retryable: retrying cannot download anything while Offline Mode is on.
+      DebugLogger.logError(
+        "MLX: Offline Mode is on and \(mlxType.huggingFaceID) is not downloaded; refusing structured call")
+      throw TranscriptionError.invalidRequest
     }
     // A background call (meeting notes, summary): no popup over whatever the user is doing.
     var options = ChatRequestOptions()

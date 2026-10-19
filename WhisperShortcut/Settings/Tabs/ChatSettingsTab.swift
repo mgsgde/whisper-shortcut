@@ -34,6 +34,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      UserCommandsSection()
+
+      SpacedSectionDivider()
+
       ChatMemoryEditor()
 
       SpacedSectionDivider()
@@ -55,6 +59,10 @@ struct ChatSettingsTab: View {
       SpacedSectionDivider()
 
       meetingMarkerSection
+
+      SpacedSectionDivider()
+
+      MeetingsInAIAppsSection()
 
       SpacedSectionDivider()
 

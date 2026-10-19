@@ -1,14 +1,13 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Fixes
-- **Intel Macs: Settings no longer quits the app.** Opening Smart Improvement, Dictate Prompt or Chat settings on a Mac with an Intel processor closed the app. Offline models still need Apple silicon; on an Intel Mac they now show a clear message instead.
+## Offline Mode
+- **Live Meeting works with an on-device summary model.** Live notes and the final summary are now written by the offline MLX model instead of failing. Meetings recorded in Offline Mode stay untitled, because titles need a cloud model.
+- **Settings follow the Offline Mode switch.** Turning Offline Mode on picks the best on-device model everywhere, and turning it off brings back the models you had before. An open Settings window now shows the change instead of writing the old cloud models back.
 
-## Smart Improvement
-- **Your glossary is safe.** Smart Improvement only ever adds glossary entries now. It no longer removes or rewrites lines you added, including corrections like `Bachata (not "Batchata")`.
-- **It finds misheard words.** When your transcripts keep spelling a glossary term slightly wrong, Smart Improvement suggests the correction for you to accept, for example `Bachata (not "Batchata", "Bachatta")`.
-- Terms learned from voice feedback keep the spelling your transcripts already use.
+## New, off by default
+- **Meetings in Claude & other AI apps.** Turn it on in Settings → Chat to let Claude Code, Claude Desktop and other MCP apps on this Mac read your meeting transcripts, notes and summaries, including the meeting that is recording right now. Read-only, local to this Mac, protected by an access key.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.43...v8.44
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.45...v8.46
