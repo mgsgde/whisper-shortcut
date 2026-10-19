@@ -167,7 +167,7 @@ Core slash commands:
 - `/attach` — open the file picker for PDFs, images, or text
 - `/folder` — share a folder so the chat can list, read, and search files in it (dropping a folder onto the chat window does the same)
 - `/workspace` — limit this chat to one of the shared folders (e.g. `/workspace notes`); `all` restores every folder, `off` drops file access for this chat
-- `/model` — switch model (e.g. `/model 3.5 flash`)
+- `/model` — switch model: type `/model ` and pick from the list, which filters as you type (e.g. `/model opus`)
 - `/think` — set reasoning depth for this chat (`minimal`, `low`, `medium`, `high`, or `default`; on Grok and GPT the default is `low` for fast answers, use `high` for research)
 - `/x` — Grok only: limit X search to specific accounts for this chat (e.g. `/x @karpathy @simonw`); `/x off` searches all of X again. Set a default under Settings → Chat
 - `/settings` — open Settings
@@ -181,7 +181,7 @@ Put a Markdown file into the app's `commands` folder (Settings → Chat → Comm
 
 `/feedback` opens a message to the developer with the end of the current chat quoted, so a problem you were just discussing does not have to be described twice.
 
-Model shortcuts include `/gemini`, `/grok`, `/gpt`, `/openai`, `/claude`, `/anthropic`, and per-model aliases such as `/gemini35flash`. Gemini models use your Google API key, Grok models use your xAI API key, OpenAI models use your OpenAI API key, and Claude models use your Anthropic API key.
+Typing `/` lists commands only; models live behind `/model`. For speed, the model shortcuts still work when typed in full: `/gemini`, `/grok`, `/gpt`, `/openai`, `/claude`, `/anthropic`, `/mlx`, and per-model aliases such as `/gemini31flashlite`. Gemini models use your Google API key, Grok models use your xAI API key, OpenAI models use your OpenAI API key, and Claude models use your Anthropic API key.
 
 Connect Google or Trello in Settings → Chat to unlock the corresponding chat tools. Creating or deleting a calendar event, changing a Trello card, or opening a URL asks for confirmation first.
 
