@@ -2418,7 +2418,8 @@ class MenuBarController: NSObject {
         focusDisplayName: Self.voiceFeedbackFocusName(for: section),
         originalText: current,
         suggestedText: suggestedText,
-        rationale: proposal.rationale.isEmpty ? nil : proposal.rationale)
+        rationale: proposal.rationale.isEmpty ? nil : proposal.rationale,
+        section: section)
 
       guard let edited = edited,
         !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
