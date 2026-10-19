@@ -86,11 +86,11 @@ Press **Stop** in the menu bar (or use the active mode's shortcut again) to canc
 
 To change a shortcut, open Settings → General, click **Record** next to it and press the combination once. Any key works with at least one of ⌘/⌥/⌃, and **F1–F20 can be bound on their own, without a modifier** — that is the binding to use for a programmable (QMK/VIA) keyboard with a dedicated dictation key.
 
-**Fn (Globe) key** (direct-download build only): In Settings → Dictate, turn on **Use 🌐 Fn to dictate**. Press Fn once to start recording, press it again to stop. It needs the Accessibility permission — the same one auto-paste uses. In System Settings → Keyboard, set “Press 🌐 key to” to “Do Nothing” so macOS does not also react to the key.
+**Fn (Globe) key** (direct-download build only): In Settings → General, under Keyboard Shortcuts, turn on **Also dictate with 🌐 Fn**. Press Fn once to start recording, press it again to stop. It needs the Accessibility permission — the same one auto-paste uses. In System Settings → Keyboard, set “Press 🌐 key to” to “Do Nothing” so macOS does not also react to the key.
 
 ### Dictation
 
-1. Configure a Dictate shortcut in Settings → Dictate.
+1. Configure a Dictate shortcut in Settings → General.
 2. Choose a Gemini, OpenAI, OpenRouter, self-hosted, or Whisper transcription model.
 3. Press the shortcut (or the Fn key, if you turned that on), speak, then stop recording.
 4. The transcription inserts at the cursor when auto-paste is on (Settings → Clipboard Behavior; off by default; direct-download only). It is always copied to the clipboard as a backup.
@@ -213,7 +213,7 @@ While a meeting runs:
 - **The chat sees the entire transcript**, not just the last few minutes, so you can ask about anything said since the meeting started. A line above the composer says exactly what the chat can currently see. When you send a question, the audio still sitting in the recorder is cut and transcribed first, so the answer covers what was said seconds ago too.
 - **Your own one-click commands** above the composer: every command file meant for meetings becomes a button there (see *Your own commands* under Chat). The app ships none, so the bar stays empty until you add some.
 - **Ask about a moment**: hover any note and press *Ask* to quote it into the composer instead of retyping it.
-- **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → Meetings). Markers show up in the note stream and the final summary is written around what you flagged.
+- **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → General). Markers show up in the note stream and the final summary is written around what you flagged.
 - **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder. **Copy transcript + chat** next to it copies the transcript, the live notes (markers flagged with ⚑), and every question and answer from the meeting chat, as one Markdown document.
 
 While the meeting runs there is only the chat — the notes are already in it. Once a meeting has ended, its view has two tabs: **Chat** and **Notes**, where Notes holds the final summary. Chunks rotate faster while the chat window is on screen so the live view keeps up, and fall back to the configured interval when it is not.
