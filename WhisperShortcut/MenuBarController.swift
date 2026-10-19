@@ -2128,6 +2128,9 @@ class MenuBarController: NSObject {
       // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
       await MainActor.run { self.captureClipboardRestorePointIfEnabled() }
       spec.copyResult(result)
+      if spec.mode == .transcription, !duringMeeting {
+        await self.recordDictatedWritingSample(result)
+      }
       let didAutoPaste = await self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
       await afterCopy(result)
 
@@ -3072,6 +3075,19 @@ class MenuBarController: NSObject {
   /// The app that was frontmost when the current Dictate / Dictate Prompt recording started. Auto-paste
   /// goes there, not to whatever the user has switched to since.
   private var pasteTargetAtRecordStart: PasteTarget?
+
+  /// Stores a dictation as a Writing Style sample when it was meant for a known app (mail,
+  /// messenger, work chat). Never logs the text.
+  @MainActor
+  private func recordDictatedWritingSample(_ text: String) {
+    guard UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled) else { return }
+    let context = WritingContextResolver.context(forBundleID: pasteTargetAtRecordStart?.bundleId)
+    guard context != .defaultContext,
+      let sample = WritingStyleStore.dictatedSample(text: text, context: context)
+    else { return }
+    let added = WritingStyleStore.shared.addSamples([sample])
+    DebugLogger.log("WRITING-STYLE: dictated sample context=\(context.rawValue) added=\(added)")
+  }
 
   private static func pasteTarget(of app: NSRunningApplication?) -> PasteTarget? {
     app.map { PasteTarget(pid: $0.processIdentifier, bundleId: $0.bundleIdentifier) }

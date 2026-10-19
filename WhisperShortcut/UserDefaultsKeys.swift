@@ -171,6 +171,12 @@ enum UserDefaultsKeys {
   /// Append the learned writing style (profile + example messages) to Dictate Prompt. Off by
   /// default. See `WritingStyleStore`.
   static let writingStyleEnabled = "writingStyleEnabled"
+  /// Writing samples added since the profile was last derived or the review was dismissed.
+  static let writingStyleSamplesSinceProfile = "writingStyleSamplesSinceProfile"
+  /// When the Writing Style profile was last derived and accepted.
+  static let writingStyleProfileUpdatedAt = "writingStyleProfileUpdatedAt"
+  /// When the Writing Style Gmail import last finished without error.
+  static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
