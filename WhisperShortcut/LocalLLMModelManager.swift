@@ -235,6 +235,12 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
 
 // MARK: - In-process loader
 
+struct MLXUnsupportedMacError: LocalizedError {
+  var errorDescription: String? {
+    "Offline models need a Mac with Apple silicon. On this Mac, use a cloud model or a Local Server (Ollama / LM Studio)."
+  }
+}
+
 /// Owns the loaded MLX model container. Join-in-flight per model type.
 actor MLXModelLoader {
   private var loadedType: LocalLLMModelType?
@@ -250,7 +256,15 @@ actor MLXModelLoader {
   /// Matches typical Ollama `keep_alive` so a menu-bar app does not hold ~2 GB forever.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
 
-  init() {
+  private var gpuConfigured = false
+
+  /// No MLX call in `init`: `LocalLLMModelManager.shared` builds this loader as soon as any
+  /// Settings model picker appears, and on an Intel Mac `GPU.set(cacheLimit:)` brings up the
+  /// Metal device MLX cannot run on and aborts the app (customer report 2026-10-17, v8.40:
+  /// Settings → Smart Improvement quit the app on an Intel MacBook Pro).
+  private func configureGPUIfNeeded() {
+    guard !gpuConfigured else { return }
+    gpuConfigured = true
     MLX.GPU.set(cacheLimit: Self.gpuCacheLimitBytes)
     DebugLogger.log("MLX: GPU cacheLimit=\(Self.gpuCacheLimitBytes) bytes")
   }
@@ -260,6 +274,8 @@ actor MLXModelLoader {
   }
 
   func container(for type: LocalLLMModelType) async throws -> ModelContainer {
+    guard LocalLLMModelType.isSupportedOnThisMac else { throw MLXUnsupportedMacError() }
+    configureGPUIfNeeded()
     startLifetimeGuardsIfNeeded()
     if loadedType == type, let loaded {
       scheduleIdleUnload()
