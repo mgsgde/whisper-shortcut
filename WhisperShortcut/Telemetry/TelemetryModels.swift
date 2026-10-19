@@ -127,11 +127,15 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
   /// is the cohort denominator for retention.
   case telemetryEnabled = "telemetry.enabled"
   case onboardingIntro = "onboarding.step.intro"
+  /// Retired with the five-step tour (no longer sent). Kept so queues persisted by older builds
+  /// still decode and the case list still matches `server/telemetry/schema.json`.
   case onboardingPrivacy = "onboarding.step.privacy"
   case onboardingAPIKeys = "onboarding.step.apiKeys"
   case onboardingPermissions = "onboarding.step.permissions"
   case onboardingTryIt = "onboarding.step.tryIt"
+  /// Retired with the five-step tour, like `onboardingPrivacy`.
   case onboardingAutoPaste = "onboarding.step.autoPaste"
+  /// Retired with the five-step tour, like `onboardingPrivacy`.
   case onboardingSmartImprovement = "onboarding.step.smartImprovement"
   case onboardingDone = "onboarding.step.done"
   case onboardingCompleted = "onboarding.completed"
@@ -144,12 +148,10 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
   init(step: WelcomeStep) {
     switch step {
     case .intro: self = .onboardingIntro
-    case .privacy: self = .onboardingPrivacy
-    case .apiKeys: self = .onboardingAPIKeys
+    // Same milestone as the old API-key step, so the setup funnel stays comparable across versions.
+    case .dictationSetup: self = .onboardingAPIKeys
     case .permissions: self = .onboardingPermissions
     case .tryIt: self = .onboardingTryIt
-    case .autoPaste: self = .onboardingAutoPaste
-    case .smartImprovement: self = .onboardingSmartImprovement
     case .done: self = .onboardingDone
     }
   }
