@@ -115,7 +115,7 @@ enum TelemetryErrorClass: String, CaseIterable, Codable {
     case .fileError, .fileTooLarge, .emptyFile: self = .file
     case .noSpeechDetected, .textTooShort: self = .noSpeech
     case .noSelectedText: self = .noSelection
-    case .modelNotAvailable: self = .offlineModelMissing
+    case .modelNotAvailable, .localModelFailed: self = .offlineModelMissing
     }
   }
 }

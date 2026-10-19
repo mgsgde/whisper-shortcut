@@ -1101,6 +1101,10 @@ enum TranscriptionError: Error, Equatable {
   /// user spoke, so the recording is kept and the run is retryable. Appended last for the same
   /// index-logging reason as `noSelectedText`.
   case emptyModelReply
+  /// An on-device model (Parakeet, WhisperKit, MLX) failed to load or run. Keeps the recording and
+  /// offers a manual Retry, but is not auto-retryable. Appended last for the index-logging reason
+  /// above.
+  case localModelFailed(String)
 
   var title: String {
     switch self {
@@ -1133,6 +1137,7 @@ enum TranscriptionError: Error, Equatable {
     case .noSelectedText: return "Nothing Selected"
     case .localProcessingTimeout: return "Local Processing Timeout"
     case .emptyModelReply: return "No Reply"
+    case .localModelFailed: return "Offline Model Error"
     }
   }
 
@@ -1164,8 +1169,20 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .localModelFailed, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
       return false
+    }
+  }
+
+  /// True when a failed run must keep the recording on disk and offer the user a manual Retry,
+  /// even though the error is not auto-retryable. Model-preparation failures (on-device model
+  /// missing, incomplete or failing to load) are fixed in Settings, and the dictation itself must
+  /// survive until then. Deliberately separate from `isRetryable`: the chunk pipelines and
+  /// schedulers key their automatic retry/backoff off that flag, and these errors must never loop.
+  var keepsAudioForManualRetry: Bool {
+    switch self {
+    case .modelNotAvailable, .localModelFailed: return true
+    default: return false
     }
   }
 
@@ -1178,3 +1195,14 @@ enum TranscriptionError: Error, Equatable {
   }
 }
 
+
+extension Error {
+  /// Keep the recording and show Retry: transient errors (auto-retryable) plus model-preparation
+  /// failures (`ModelStoreError` of any kind, see `TranscriptionError.keepsAudioForManualRetry`).
+  /// Only the audio is kept; automatic retry still follows `TranscriptionError.isRetryable`.
+  var offersManualRetry: Bool {
+    if self is ModelStoreError { return true }
+    guard let transcriptionError = self as? TranscriptionError else { return false }
+    return transcriptionError.isRetryable || transcriptionError.keepsAudioForManualRetry
+  }
+}

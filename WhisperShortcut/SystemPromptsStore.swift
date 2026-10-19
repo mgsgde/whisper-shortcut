@@ -390,13 +390,24 @@ final class SystemPromptsStore {
     return "\(name) (\(String(cString: strerror(code))))"
   }
 
+  /// The editor autosaves every typing pause. Overwriting `.bak` on each of those saves would replace
+  /// the original prompt with half-typed text seconds after the user started over-typing it, so a
+  /// backup younger than this window is kept: it already holds the file from before the burst.
+  static let backupBurstWindow: TimeInterval = 15 * 60
+
+  private func backupIsFromCurrentEditBurst() -> Bool {
+    guard let modified = (try? FileManager.default.attributesOfItem(atPath: backupFileURL.path))?[.modificationDate] as? Date
+    else { return false }
+    return Date().timeIntervalSince(modified) < Self.backupBurstWindow
+  }
+
   /// Writes the whole file. If the write changes a section the user customized, the current file is
   /// first copied to `system-prompts.md.bak`; when that copy fails the write is abandoned.
   @discardableResult
   private func write(_ content: String, reason: String) -> Bool {
     if case .contents(let existing) = readFile() {
       if existing == content { return true }
-      if changesCustomizedSection(from: existing, to: content) {
+      if changesCustomizedSection(from: existing, to: content), !backupIsFromCurrentEditBurst() {
         do {
           try existing.write(to: backupFileURL, atomically: true, encoding: .utf8)
         } catch {

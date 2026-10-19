@@ -1390,12 +1390,14 @@ class MenuBarController: NSObject {
       return
     }
 
-    // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it
-    if isTranscriptionProcessing {
+    // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it.
+    // A long Dictate Prompt also runs through the chunk phases; ⌘1 must not cancel it (and delete its
+    // recording) — it falls through to the Busy notice below. ⌘2 or ✕ cancels a prompt.
+    if isTranscriptionProcessing, currentJob?.mode != .prompt {
       cancelInFlightTranscription()
       return
     }
-    
+
     switch appState.recordingMode {
     case .transcription:
       stopRecordingAfterTailDelay()
@@ -1959,7 +1961,9 @@ class MenuBarController: NSObject {
       }
 
       // Determine if error is retryable
-      let isRetryable = transcriptionError?.isRetryable ?? false
+      // Includes model-preparation failures: the audio is kept and Retry offered, but nothing
+      // retries them automatically (that stays `TranscriptionError.isRetryable`).
+      let isRetryable = error.offersManualRetry
       
       // Define retry action
       let isServerError = transcriptionError?.isServerOrUnavailable ?? false
@@ -2888,6 +2892,9 @@ class MenuBarController: NSObject {
         try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
         let after = NSPasteboard.general.changeCount
         let text = NSPasteboard.general.string(forType: .string)
+        // A delayed clipboard restore from the previous paste also bumps the change count; that is
+        // the old clipboard (maybe the previous patient's note), not what ⌘C just copied.
+        if after == clipboardManager.lastOwnWriteChangeCount { continue }
         guard DictatePromptSelectionDecision.acceptsCopy(
           changeCountBefore: before, changeCountAfter: after, string: text)
         else { continue }

@@ -299,6 +299,16 @@ struct SpeechErrorFormatter {
         The recording contains no audio data.
         Please try again.
         """
+    case .localModelFailed(let details):
+      return """
+        ⚠️ Offline Model Error
+
+        The offline model could not be loaded or run.
+
+        \(details)
+
+        Your recording was kept – try Retry. If it keeps failing, re-download the model in Settings > Offline Models.
+        """
     case .emptyModelReply:
       return """
         ⚠️ No Reply
@@ -419,6 +429,8 @@ struct SpeechErrorFormatter {
       return "❌ Empty File"
     case .emptyModelReply:
       return "⚠️ No Reply"
+    case .localModelFailed:
+      return "⚠️ Offline Model Error"
     case .noSpeechDetected:
       return "🎤 No Speech"
     case .textTooShort:

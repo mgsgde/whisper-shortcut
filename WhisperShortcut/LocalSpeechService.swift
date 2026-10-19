@@ -223,7 +223,7 @@ actor LocalSpeechService {
       }
       
       // For other errors, wrap in fileError with more context
-      throw TranscriptionError.fileError("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+      throw TranscriptionError.localModelFailed("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
     }
   }
   
@@ -269,7 +269,7 @@ actor LocalSpeechService {
     } catch {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Parakeet initialization failed: \(errorMessage)")
-      throw TranscriptionError.fileError("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+      throw TranscriptionError.localModelFailed("Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
     }
   }
 
@@ -369,7 +369,7 @@ actor LocalSpeechService {
     }
 
     guard hasLoadedModel, currentModelType != nil else {
-      throw TranscriptionError.fileError("Offline model not initialized")
+      throw TranscriptionError.localModelFailed("Offline model not initialized")
     }
     
     DebugLogger.log("LOCAL-SPEECH: Starting transcription")
@@ -421,14 +421,19 @@ actor LocalSpeechService {
         // Defensive: the backend object is never torn down under a decode any more, but if
         // FluidAudio still reports "not initialized", one clean reload is cheap (0.2 s) and
         // beats losing the dictation.
-        guard let reloadType = currentModelType ?? lastLoadedModelType else { throw TranscriptionError.fileError("Offline model not initialized") }
+        guard let reloadType = currentModelType ?? lastLoadedModelType else { throw TranscriptionError.localModelFailed("Offline model not initialized") }
         DebugLogger.logWarning("LOCAL-SPEECH: Parakeet reported not initialized — reloading once and retrying")
         unloadModel(reason: "not initialized")
         try await initializeModel(reloadType)
-        guard let reloaded = self.parakeet else { throw TranscriptionError.fileError("Offline model not initialized") }
-        text = try await performParakeetTranscription(
-          reloaded, audioURL: audioURL, language: language, vocabulary: vocabulary,
-          deadline: deadline, audioSeconds: audioDuration)
+        guard let reloaded = self.parakeet else { throw TranscriptionError.localModelFailed("Offline model not initialized") }
+        do {
+          text = try await performParakeetTranscription(
+            reloaded, audioURL: audioURL, language: language, vocabulary: vocabulary,
+            deadline: deadline, audioSeconds: audioDuration)
+        } catch ParakeetBackendError.notLoaded {
+          // Second failure after a clean reload: typed, so the recording is kept and Retry offered.
+          throw TranscriptionError.localModelFailed("Offline model not initialized")
+        }
       }
       decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
     } else if let whisperKit {
@@ -436,7 +441,7 @@ actor LocalSpeechService {
         whisperKit, audioURL: audioURL, language: language, prompt: prompt,
         chunkingStrategy: chunkingStrategy, deadline: deadline)
     } else {
-      throw TranscriptionError.fileError("Offline model not initialized")
+      throw TranscriptionError.localModelFailed("Offline model not initialized")
     }
 
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
@@ -501,7 +506,7 @@ actor LocalSpeechService {
 
     // Combine all segments into a single text
     guard !transcriptionResults.isEmpty else {
-      throw TranscriptionError.fileError("No transcription result")
+      throw TranscriptionError.localModelFailed("No transcription result")
     }
     
     // Extract text from all segments
@@ -539,7 +544,7 @@ actor LocalSpeechService {
       // load, and sending someone to re-download 700 MB for a decode error helps nobody.
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Parakeet transcription failed: \(errorMessage)")
-      throw TranscriptionError.fileError("Offline transcription failed: \(errorMessage)")
+      throw TranscriptionError.localModelFailed("Offline transcription failed: \(errorMessage)")
     }
   }
   
@@ -728,11 +733,11 @@ actor LocalSpeechService {
         if let modelType = currentModelType {
           throw TranscriptionError.modelNotAvailable(modelType)
         } else {
-          throw TranscriptionError.fileError("Model is missing or incomplete. Please download it in Settings.")
+          throw TranscriptionError.localModelFailed("Model is missing or incomplete. Please download it in Settings.")
         }
       }
       
-      throw TranscriptionError.fileError("Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+      throw TranscriptionError.localModelFailed("Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
     }
   }
   

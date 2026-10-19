@@ -89,6 +89,15 @@ struct MCPMeetingToolsTests {
     #expect(!r.text.contains("id: \(old)"))
   }
 
+  @Test("Hostile numbers from a model cannot crash the app")
+  func hostileNumbers() throws {
+    let t = try fixture()
+    _ = t.call(name: "list_meetings", arguments: ["limit": 1e20])
+    _ = t.call(name: "list_meetings", arguments: ["limit": Double.nan])
+    #expect(MCPMeetingTools.parseTimestamp("9999999999999999:00:00") == nil)
+    #expect(MCPMeetingTools.parseTimestamp("1:02:03") == 3723)
+  }
+
   @Test("get_meeting parts")
   func getParts() throws {
     let t = try fixture()

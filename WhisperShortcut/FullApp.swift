@@ -72,6 +72,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     installTerminationSignalHandlers()
 
+    // Move leftover legacy-keychain items to the data protection keychain in one go (off-main: may block on prompts).
+    DispatchQueue.global(qos: .utility).async { KeychainManager.shared.migrateLegacyItemsIfNeeded() }
+
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
     ProcessInfo.processInfo.disableAutomaticTermination("WhisperShortcut is a persistent menu bar utility")

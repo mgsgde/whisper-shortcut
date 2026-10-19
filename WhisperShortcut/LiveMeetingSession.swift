@@ -417,9 +417,12 @@ final class LiveMeetingSession: NSObject {
         DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
         // Don't lose the summary silently: the transcript is saved, so tell the user it can be
         // regenerated from the meeting library (the recovery path handles a transient outage).
+        let offline = OfflineMode.isEnabled
         await MainActor.run {
           PopupNotificationWindow.showError(
-            "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
+            offline
+              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Chat → Meeting Summary Model; you can then regenerate the summary from the meeting library."
+              : "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
             title: "Live Meeting – Summary Failed"
           )
         }

@@ -143,6 +143,11 @@ final class MLXChatProvider: LLMChatProvider {
     return Int(ms.rounded())
   }
 
+  /// The structured (background) path may not download in Offline Mode.
+  static func blocksUnattendedDownload(offlineMode: Bool, isDownloaded: Bool) -> Bool {
+    offlineMode && !isDownloaded
+  }
+
   func generateStructured(
     model: String,
     contents: [[String: Any]],
@@ -154,6 +159,18 @@ final class MLXChatProvider: LLMChatProvider {
     guard let mlxType = PromptModel(rawValue: model)?.localMLXModelType else {
       throw TranscriptionError.networkError(
         "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings.")
+    }
+    // Offline Mode must never start a multi-GB download unattended (the Hub session is not
+    // covered by the offline URL guard): a model that is not on disk fails here, and the meeting
+    // path shows its "no on-device summary model" message.
+    if Self.blocksUnattendedDownload(
+      offlineMode: OfflineMode.isEnabled,
+      isDownloaded: LocalLLMModelManager.shared.isModelAvailable(mlxType))
+    {
+      // Non-retryable: retrying cannot download anything while Offline Mode is on.
+      DebugLogger.logError(
+        "MLX: Offline Mode is on and \(mlxType.huggingFaceID) is not downloaded; refusing structured call")
+      throw TranscriptionError.invalidRequest
     }
     // A background call (meeting notes, summary): no popup over whatever the user is doing.
     var options = ChatRequestOptions()

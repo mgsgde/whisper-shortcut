@@ -27,5 +27,15 @@
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
 		</array>
+		<!-- Data protection keychain (KeychainManager). Pins the app's keychain access group to
+		     TeamID.bundleID so API keys are readable by every build signed by this team, with no
+		     per-binary "allow" password prompt. Restricted entitlement: requires a provisioning
+		     profile (Xcode-managed team profile for Debug, WhisperShortcut_DeveloperID_CI for
+		     Release). Ad-hoc builds strip it (scripts/rebuild-and-restart.sh) and KeychainManager
+		     falls back to the legacy file keychain. -->
+		<key>keychain-access-groups</key>
+		<array>
+			<string>$(AppIdentifierPrefix)com.magnusgoedde.whispershortcut</string>
+		</array>
 	</dict>
 </plist>
