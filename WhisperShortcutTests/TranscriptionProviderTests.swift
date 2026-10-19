@@ -18,14 +18,14 @@ struct TranscriptionProviderTests {
     #expect(!TranscriptionModel.gemini31Pro.isSelectableForDictation)
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
 
-    // Everything else stays offerable, except the two Whisper sizes turbo supersedes and the three
-    // dominated Flash tiers (gemini-3.5-flash, gemini-3.6-flash, gemini-3.7-flash; 2026-10-03
+    // Everything else stays offerable, except the two Whisper sizes turbo supersedes and the two
+    // dominated Flash tiers (gemini-3.5-flash, gemini-3.7-flash; 2026-10-03
     // audit). The Whisper sizes are hidden unless the user already has them on disk, so the count
     // is expressed as the exclusion set rather than a bare number.
     let hidden = Set(
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
     #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [
-      .gemini31Pro, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+      .gemini31Pro, .gemini35Flash, .gemini37Flash,
     ])
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini37Flash))
     #expect(TranscriptionModel.selectableForDictation.contains(.gemini38Flash))
@@ -58,13 +58,13 @@ struct TranscriptionProviderTests {
 
   @Test("Direct models map to their own vendor")
   func directModelsMapToVendors() {
-    #expect(TranscriptionModel.gemini36Flash.provider == .google)
+    #expect(TranscriptionModel.gemini37Flash.provider == .google)
     #expect(TranscriptionModel.gemini31Pro.provider == .google)
     #expect(TranscriptionModel.openAIGPTTranscribe.provider == .openAI)
     #expect(TranscriptionModel.openAIGPT4oMiniTranscribe.provider == .openAI)
     #expect(TranscriptionModel.xaiTranscribe.provider == .xai)
 
-    for model in [TranscriptionModel.gemini36Flash, .openAIGPTTranscribe, .xaiTranscribe] {
+    for model in [TranscriptionModel.gemini37Flash, .openAIGPTTranscribe, .xaiTranscribe] {
       #expect(model.provider.group == .direct, "\(model.rawValue)")
     }
   }

@@ -104,7 +104,20 @@ struct LocalLLMTests {
     // not compile. The claim under test is which provider handles the model anyway, not which
     // instance of it.
     #expect(LLMProviderFactory.provider(for: .localMLXQwen34BInstruct) is MLXChatProvider)
+    #expect(LLMProviderFactory.provider(for: .localMLXQwen359B) is MLXChatProvider)
     #expect(LLMProviderFactory.provider(for: .localModel) is LocalLLMChatProvider)
+  }
+
+  @Test("Qwen3.5 9B is a Chat-only catalogue entry")
+  func qwen359BIsChatOnly() {
+    #expect(PromptModel.forLocalLLMModel(.qwen359B) == .localMLXQwen359B)
+    #expect(PromptModel.localMLXQwen359B.localMLXModelType == .qwen359B)
+    #expect(PromptModel.localMLXQwen359B.supportsDictatePrompt == false)
+    #expect(PromptModel.localMLXQwen34BInstruct.supportsDictatePrompt == true)
+    #expect(!PromptModel.dictatePromptCapableModels.contains(.localMLXQwen359B))
+    #expect(!LocalLLMModelType.byPreference.contains(.qwen359B))
+    #expect(LocalLLMModelType.qwen359B.minimumPhysicalMemoryGB == 16)
+    #expect(!LocalLLMModelType.qwen359B.isRecommended)
   }
 
   @Test("A local HTTP server model never takes its selection from a screenshot")
@@ -185,5 +198,27 @@ struct LocalLLMTests {
     // The two that are allowed to differ, so a future field lands in the block above by default.
     #expect(real["stream"] as? Bool == true)
     #expect(warm["stream"] as? Bool == false)
+  }
+
+  // MARK: - On-disk completeness
+
+  /// A cancelled download left shard 2 of 2 on disk and shard 1 as `.incomplete`. Accepting that
+  /// folder as "downloaded" made MLX trap while loading it, so Chat crashed the whole app.
+  @Test("A sharded model with a missing shard is not on disk")
+  func missingShardIsIncomplete() throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mlx-shards-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    for name in ["config.json", "tokenizer.json", "model-00002-of-00002.safetensors"] {
+      try Data("{}".utf8).write(to: dir.appendingPathComponent(name))
+    }
+    let index = #"{"weight_map":{"a":"model-00001-of-00002.safetensors","b":"model-00002-of-00002.safetensors"}}"#
+    try Data(index.utf8).write(to: dir.appendingPathComponent("model.safetensors.index.json"))
+
+    #expect(!MLXModelPaths.hasRequiredFiles(at: dir))
+
+    try Data("{}".utf8).write(to: dir.appendingPathComponent("model-00001-of-00002.safetensors"))
+    #expect(MLXModelPaths.hasRequiredFiles(at: dir))
   }
 }

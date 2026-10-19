@@ -154,6 +154,23 @@ struct ShortcutConfig: Codable {
   )
 }
 
+extension ShortcutConfig {
+  /// The shortcuts both the online and the offline Chat tell the model about, kept in one place so
+  /// the two lists cannot drift. A disabled definition renders as "Disabled" via
+  /// `displayStringWithSeparator`.
+  var assistantFacingRows: [(action: String, definition: ShortcutDefinition)] {
+    [
+      ("Dictate", startRecording),
+      ("Dictate Prompt", startPrompting),
+      ("Screenshot", screenshotCapture),
+      ("Read Aloud", readAloud),
+      ("Voice Feedback", voiceFeedback),
+      ("Chat", openChat),
+      ("Settings", openSettings),
+    ]
+  }
+}
+
 struct ShortcutDefinition: Codable, Equatable, Hashable {
   let key: Key
   let modifiers: NSEvent.ModifierFlags
@@ -553,6 +570,9 @@ extension Notification.Name {
   static let modelChanged = Notification.Name("modelChanged")
   /// Posted when the Dictate Prompt / Chat prompt model selection changes.
   static let promptModelChanged = Notification.Name("promptModelChanged")
+  /// Posted when `ModelSelectionReconciler` rewrote persisted model selections (Offline Mode
+  /// switched, an API key added), so views holding a copy reload it.
+  static let modelSelectionsReconciled = Notification.Name("modelSelectionsReconciled")
   /// Posted when API is rate limited and waiting. userInfo contains "waitTime" (TimeInterval)
   static let rateLimitWaiting = Notification.Name("rateLimitWaiting")
   /// Posted when rate limit wait is complete

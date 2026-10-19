@@ -1,19 +1,22 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Update notices
-- **The GitHub build now tells you when a new version is out.** Once a day it checks for an update and shows a notice with the release notes and an **Install Update** button. Nothing is downloaded or installed until you click it. Updates are signed and verified before they install. Settings → About → Updates has **Check for Updates…** and a switch to turn the daily check off.
-- The check also works in Offline Mode. It is the only request that leaves the Mac and sends only the app's name and version.
-- Versions before 8.40 cannot do this, so install 8.40 once by hand. Later versions arrive as a notice.
+## Dictation is safer
+- **Your recording is never lost when an on-device model fails.** If the offline model can't be loaded or prepared, the audio is kept and you get a Retry button instead of an empty result.
+- **⌘1 no longer cancels a long Dictate Prompt.** Pressing the dictation shortcut while a long Dictate Prompt is still processing used to cancel it and throw the recording away. Now it shows "Busy" and the prompt finishes.
+- **Dictate Prompt never takes an old clipboard as your selection.** With "Restore clipboard" on, pressing ⌘2 right after a paste could pick up the clipboard from before, not what you selected.
+- **No "check your internet connection" in Offline Mode** when a spoken instruction turns out empty.
 
-## Dictate Prompt
-- **Offline Mode: "Not in your dictation" warning.** On-device models now answer deterministically (no random sampling), and the app compares the result with what you said. Words that appear in the result but not in your dictation or selection trigger a ⚠️ warning, even with popups turned off. The pasted text itself is never changed.
-- **↑/↓ and Return work on quick actions again.** The arrow keys move the highlight, and Return runs the highlighted action.
+## Offline Mode
+- **Whisper models are never deleted or re-downloaded while offline.** A model that fails to load is reported instead of removed.
+- **Meeting summaries and Voice Feedback use the on-device Dictate Prompt model**, and never start a model download on their own.
+- **Meetings in AI apps is switched off while Offline Mode is on**, so no transcript can reach a cloud provider through it.
 
-## Settings
-- Section headers no longer slide under the toolbar while scrolling.
-- Small text fix in Chat settings ("Custom endpoint").
+## Other improvements
+- **Your own chat commands.** A Markdown file in the commands folder (Settings → Chat → Commands) becomes a slash command: `report.md` is `/report`. Meeting commands also get a one-click button above the meeting chat.
+- **Fewer Keychain prompts.** API keys move to the modern macOS keychain, so the "WhisperShortcut wants to use your confidential information" prompt stops coming back after updates. You may see it one last time per key.
+- **Your custom system prompt backup is kept while you edit.** Over-typing a prompt no longer replaces its backup with half-typed text.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.39...v8.40
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.46...v8.47

@@ -72,6 +72,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     installTerminationSignalHandlers()
 
+    // Move leftover legacy-keychain items to the data protection keychain in one go (off-main: may block on prompts).
+    DispatchQueue.global(qos: .utility).async { KeychainManager.shared.migrateLegacyItemsIfNeeded() }
+
     // Prevent macOS from automatically terminating this menu bar app when
     // the system is under memory/storage pressure or cleaning container caches.
     ProcessInfo.processInfo.disableAutomaticTermination("WhisperShortcut is a persistent menu bar utility")
@@ -93,9 +96,21 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     migrateNotificationPositionDefault()
 
+    // One line per system-prompt section (custom/default + length, never content), so a report of
+    // "my prompt is gone" can be answered from the log. Also detects an unreadable file.
+    SystemPromptsStore.shared.logStartupSummary()
+    if let reason = SystemPromptsStore.shared.unreadableReason {
+      DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+        Self.showSystemPromptsUnreadableAlert(reason: reason)
+      }
+    }
+
     // Opt-in usage statistics: records the (local-only) first-launch date and, if the user turned
     // sharing on, sends what is due. Does nothing on the network otherwise.
     TelemetryService.shared.start()
+
+    // Local read-only MCP server for meeting transcripts; does nothing unless the user enabled it.
+    MCPServer.shared.startIfEnabled()
 
     #if !APP_STORE && canImport(Sparkle)
     // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
@@ -141,6 +156,29 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
     }
 
+  }
+
+  /// The prompts file exists but macOS would not let us read it (typically App Data protection, EPERM).
+  /// Dictation would otherwise run on the default prompts with nothing on screen to say why.
+  private static func showSystemPromptsUnreadableAlert(reason: String) {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = "WhisperShortcut can’t read your saved prompts"
+    alert.informativeText = """
+      macOS blocked access to system-prompts.md (\(reason)). Until that is fixed, dictation uses the \
+      default prompts instead of yours. Your file has not been changed.
+
+      To fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit \
+      and reopen the app.
+      """
+    alert.addButton(withTitle: "Open Privacy & Security")
+    alert.addButton(withTitle: "Later")
+    NSApp.activate(ignoringOtherApps: true)
+    if alert.runModal() == .alertFirstButtonReturn,
+      let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+    {
+      NSWorkspace.shared.open(url)
+    }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -196,6 +234,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     DebugLogger.log("APP-LIFECYCLE: applicationWillTerminate pid=\(getpid())")
     // Flush debounced session data before terminating
     ChatSessionStore.shared.flushToDisk()
+    MCPServer.shared.stop()
     menuBarController?.cleanup()
   }
 
@@ -237,10 +276,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
        TranscriptionModel.gemini35FlashLite.rawValue),
       (UserDefaultsKeys.selectedTranscriptionModelForMeetings, "gemini-3.1-flash-lite",
        TranscriptionModel.gemini35FlashLite.rawValue),
-      (UserDefaultsKeys.selectedPromptModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
-      (UserDefaultsKeys.selectedChatModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
+      (UserDefaultsKeys.selectedPromptModel, "gemini-3.5-flash", "gemini-3.6-flash"),
+      (UserDefaultsKeys.selectedChatModel, "gemini-3.5-flash", "gemini-3.6-flash"),
       (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.5-flash",
-       PromptModel.gemini36Flash.rawValue),
+       "gemini-3.6-flash"),
     ]
 
     for m in migrations {
@@ -273,7 +312,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.6-flash",
        PromptModel.gemini35FlashLite.rawValue),
       (UserDefaultsKeys.selectedImprovementModel, "gemini-3.1-pro-preview",
-       PromptModel.gemini36Flash.rawValue),
+       "gemini-3.6-flash"),
     ]
 
     for m in migrations {
@@ -333,7 +372,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     defaults.set(true, forKey: UserDefaultsKeys.didMigrateImprovementTo37Flash)
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedImprovementModel),
-          stored == PromptModel.gemini36Flash.rawValue else { return }
+          stored == "gemini-3.6-flash" else { return }
     defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
     DebugLogger.log(
       "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")

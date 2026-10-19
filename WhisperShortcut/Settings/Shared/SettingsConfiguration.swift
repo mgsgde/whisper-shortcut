@@ -66,7 +66,7 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash, gemini-3.6-flash,
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
 // gemini-3.7-flash (shipped 2026-08-13), gemini-3.8-flash (shipped 2026-09-02;
 // https://ai.google.dev/gemini-api/docs/models).
 // Preview: gemini-3.1-pro-preview.
@@ -74,7 +74,8 @@ enum ChatModelProvider: String, CaseIterable {
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
 // -pro, shutdown 2026-10-16) → gemini-3.7-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
 // gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash; offline local-mlx-qwen3-8b
-// (removed 2026-09-30) → local-mlx-qwen3-4b-instruct-2507.
+// (removed 2026-09-30) → local-mlx-qwen3-4b-instruct-2507; gemini-3.6-flash (removed 2026-10-19,
+// dominated by 3.7 on price, tier and speed) → gemini-3.7-flash.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
@@ -84,7 +85,6 @@ enum PromptModel: String, CaseIterable {
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
-  case gemini36Flash = "gemini-3.6-flash"
   case gemini37Flash = "gemini-3.7-flash"
   case gemini38Flash = "gemini-3.8-flash"
 
@@ -188,11 +188,13 @@ enum PromptModel: String, CaseIterable {
   // In-process MLX models (no server). One enum case per catalogue entry; weights download like
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
+  case localMLXQwen359B = "local-mlx-qwen3.5-9b"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
+    case .qwen359B: return .localMLXQwen359B
     }
   }
 
@@ -200,11 +202,12 @@ enum PromptModel: String, CaseIterable {
   var localMLXModelType: LocalLLMModelType? {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
+    case .localMLXQwen359B: return .qwen359B
     default: return nil
     }
   }
 
-  /// Every in-process MLX model offered in Dictate Prompt / Chat pickers.
+  /// Every in-process MLX model offered on this Mac (Chat; Dictate Prompt narrows it via `supportsDictatePrompt`).
   static var localMLXModels: [PromptModel] {
     LocalLLMModelType.offerable.map(\.promptModel)
   }
@@ -219,8 +222,6 @@ enum PromptModel: String, CaseIterable {
       return "Gemini 3.5 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
-    case .gemini36Flash:
-      return "Gemini 3.6 Flash"
     case .gemini37Flash:
       return "Gemini 3.7 Flash"
     case .gemini38Flash:
@@ -283,6 +284,8 @@ enum PromptModel: String, CaseIterable {
       return "Local Server (Ollama / LM Studio)"
     case .localMLXQwen34BInstruct:
       return "Qwen3 4B Instruct (Offline)"
+    case .localMLXQwen359B:
+      return "Qwen3.5 9B (Offline)"
     }
   }
 
@@ -300,7 +303,6 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite: return "gemini31flashlite"
     case .gemini35FlashLite: return "gemini35flashlite"
     case .gemini35Flash:     return "gemini35flash"
-    case .gemini36Flash:     return "gemini36flash"
     case .gemini37Flash:     return "gemini37flash"
     case .gemini38Flash:     return "gemini38flash"
     case .geminiImage:       return "geminiimage"
@@ -330,6 +332,7 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAIEndpoint: return "custom"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
+    case .localMLXQwen359B: return "mlx9b"
     }
   }
 
@@ -343,8 +346,6 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
     case .gemini35Flash:
       return "Google's Gemini 3.5 Flash • Legacy Flash • Strong on agentic + coding tasks • Multimodal"
-    case .gemini36Flash:
-      return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence • Multimodal"
     case .gemini37Flash:
       return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents • Multimodal"
     case .gemini38Flash:
@@ -403,6 +404,8 @@ enum PromptModel: String, CaseIterable {
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
       return "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline"
+    case .localMLXQwen359B:
+      return "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM"
     }
   }
   
@@ -413,10 +416,10 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku55:
       return "Low"
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return "Free (Offline)"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
@@ -437,7 +440,7 @@ enum PromptModel: String, CaseIterable {
     // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
     // compiler force the decision instead.
     switch self {
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
          .gemini37Flash, .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
@@ -451,7 +454,7 @@ enum PromptModel: String, CaseIterable {
       return .customOpenAI
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return .localMLX
     }
   }
@@ -462,7 +465,8 @@ enum PromptModel: String, CaseIterable {
   ///     local text rewrite). Drives `dictatePromptCapableModels` and the runtime guard in
   ///     `SpeechService.performPrompt`.
   var supportsDictatePrompt: Bool {
-    supportsDirectAudioInput || provider == .local || provider == .localMLX
+    if provider == .localMLX { return localMLXModelType?.supportsDictatePrompt == true }
+    return supportsDirectAudioInput || provider == .local
   }
 
   /// Whether this model's Dictate Prompt selection is read from a screenshot rather than the
@@ -548,7 +552,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct:
+    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return false
     default:
       return true
@@ -566,7 +570,7 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return true
     default:
       return true
@@ -621,10 +625,11 @@ enum PromptModel: String, CaseIterable {
     // owner decision — chat is for research, where Fable's agentic depth isn't worth 2.5× Opus.
     case .claudeOpus48, .claudeOpus5, .claudeFable5: return .claudeOpus55
     case .claudeSonnet5: return .claudeSonnet55
-    // Gemini Flash: 3.5 and 3.6 are dominated by 3.7 on price, tier, and (for 3.6) speed.
+    // Gemini Flash: 3.5 is dominated by 3.7 on price and tier. (3.6 was removed 2026-10-19 and
+    // forwards to 3.7 via `migrateLegacyPromptRawValue`.)
     // Point at 3.7, not 3.8 — the 2026-09-03 audit's probe had 3.8 ~12% slower than 3.7,
     // so 3.7 stays selectable until an interleaved latency run decides otherwise.
-    case .gemini35Flash, .gemini36Flash: return .gemini37Flash
+    case .gemini35Flash: return .gemini37Flash
     default: return nil
     }
   }
@@ -661,7 +666,7 @@ enum PromptModel: String, CaseIterable {
       // ("Thinking level MINIMAL is not supported for this model"), `low` returns 200. Matches
       // the documented LOW/MEDIUM/HIGH set.
       return ["thinkingLevel": "low"]
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash:
       return ["thinkingLevel": "minimal"]
     // Image-generation models — no thinking knob.
     case .geminiImage, .geminiImagePro:
@@ -671,7 +676,7 @@ enum PromptModel: String, CaseIterable {
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
+         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil
     }
   }
@@ -704,8 +709,6 @@ enum PromptModel: String, CaseIterable {
       return .gemini35FlashLite
     case .gemini35Flash:
       return .gemini35Flash
-    case .gemini36Flash:
-      return .gemini36Flash
     case .gemini37Flash:
       return .gemini37Flash
     case .gemini38Flash:
@@ -719,7 +722,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct:
+    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -734,7 +737,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
-         .localMLXQwen34BInstruct:
+         .localMLXQwen34BInstruct, .localMLXQwen359B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
@@ -835,6 +838,9 @@ enum PromptModel: String, CaseIterable {
     case "gemini-2.5-pro":
       // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
       return Self.gemini31Pro.rawValue
+    case "gemini-3.6-flash":
+      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
+      return Self.gemini37Flash.rawValue
     case "gemini-3-flash-preview":
       // Deprecated-pending; Google says use gemini-3.5-flash. Same reason as 2.5-flash:
       // 3.5 is no longer chat-selectable, so land on 3.7 instead.
@@ -897,7 +903,7 @@ enum PromptModel: String, CaseIterable {
     )
   }
 
-  /// Loads the model selected for meeting summary (rolling and final). Settings → Live Meeting → Summary Model.
+  /// Loads the model selected for meeting summary (rolling and final). Settings → Chat → Meeting Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
     loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,

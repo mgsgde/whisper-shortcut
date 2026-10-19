@@ -44,8 +44,8 @@ enum TranscriptionTuning {
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
 // GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
-// dictation**, see `isSelectableForDictation`. gemini-3.5-flash, gemini-3.6-flash and gemini-3.7-flash
+// gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
+// dictation**, see `isSelectableForDictation`. gemini-3.5-flash and gemini-3.7-flash
 // are dominated for dictation per the 2026-10-03 audit; stored picks are forwarded by
 // `ModelSelectionReconciler.dictationForward(for:)`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
@@ -56,7 +56,7 @@ enum TranscriptionTuning {
 // 2026-08-03 because it never answers a short dictation) → gemini-3.1-flash-lite; the Gemini 2.5
 // family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.5-flash /
 // gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending, Google says use
-// gemini-3.5-flash) → gemini-3.5-flash.
+// gemini-3.5-flash) → gemini-3.5-flash; gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.7-flash.
 // Do not offer a Pro tier for dictation without benchmarking the 1.3 s case first.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
@@ -68,7 +68,6 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
   case gemini35Flash = "gemini-3.5-flash"
-  case gemini36Flash = "gemini-3.6-flash"
   case gemini37Flash = "gemini-3.7-flash"
   case gemini38Flash = "gemini-3.8-flash"
 
@@ -122,8 +121,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "Gemini 3.5 Flash-Lite"
     case .gemini35Flash:
       return "Gemini 3.5 Flash"
-    case .gemini36Flash:
-      return "Gemini 3.6 Flash"
     case .gemini37Flash:
       return "Gemini 3.7 Flash"
     case .gemini38Flash:
@@ -192,12 +189,12 @@ enum TranscriptionModel: String, CaseIterable {
   /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
   /// Detail: plans/model-audits/2026-08-03-audit.md.
   ///
-  /// `gemini35Flash`, `gemini36Flash` and `gemini37Flash` are dominated for dictation per the
+  /// `gemini35Flash` and `gemini37Flash` are dominated for dictation per the
   /// 2026-10-03 audit; stored picks are forwarded by `ModelSelectionReconciler.dictationForward(for:)`.
   var isSelectableForDictation: Bool {
     switch self {
     case .gemini31Pro: return false
-    case .gemini35Flash, .gemini36Flash, .gemini37Flash: return false
+    case .gemini35Flash, .gemini37Flash: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
     // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
@@ -250,7 +247,7 @@ enum TranscriptionModel: String, CaseIterable {
     // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
     case .parakeetUltra, .whisperLargeTurbo:
       return offlineModelType?.isRecommended ?? false
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
          .gemini37Flash, .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
          .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
@@ -263,7 +260,7 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash, .gemini37Flash,
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash,
          .gemini38Flash:
       return "Low"
     case .gemini31Pro:
@@ -296,8 +293,6 @@ enum TranscriptionModel: String, CaseIterable {
       return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
     case .gemini35Flash:
       return "Google's Gemini 3.5 Flash • Legacy Flash • Strong on agentic/coding tasks"
-    case .gemini36Flash:
-      return "Google's Gemini 3.6 Flash • Previous-generation Flash • Balances speed with intelligence"
     case .gemini37Flash:
       return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents"
     case .gemini38Flash:
@@ -348,7 +343,7 @@ enum TranscriptionModel: String, CaseIterable {
     temperature: Double, effort: TranscriptionThinkingEffort
   ) -> GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash:
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash:
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
@@ -527,6 +522,9 @@ enum TranscriptionModel: String, CaseIterable {
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return TranscriptionModel.gemini31FlashLite.rawValue
+    case "gemini-3.6-flash":
+      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
+      return TranscriptionModel.gemini37Flash.rawValue
     case "gemini-3-flash-preview":
       // Deprecated-pending; Google says use gemini-3.5-flash.
       return TranscriptionModel.gemini35Flash.rawValue
@@ -579,7 +577,7 @@ enum TranscriptionModel: String, CaseIterable {
       return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini35Flash, .gemini36Flash, .gemini37Flash, .gemini38Flash:
+    case .gemini35Flash, .gemini37Flash, .gemini38Flash:
       return .geminiFlash
     case .gemini31Pro:
       return .geminiPro
@@ -1102,6 +1100,15 @@ enum TranscriptionError: Error, Equatable {
   /// Separate from `requestTimeout` so the user-facing copy does not blame the network.
   /// Appended last for the same index-logging reason as `noSelectedText`.
   case localProcessingTimeout(stage: LocalProcessingStage, seconds: Int)
+  /// Dictate Prompt: the model answered with no text at all (a local model cut off inside its
+  /// `<think>` block, a Gemini safety block with no text parts). Not "no speech detected": the
+  /// user spoke, so the recording is kept and the run is retryable. Appended last for the same
+  /// index-logging reason as `noSelectedText`.
+  case emptyModelReply
+  /// An on-device model (Parakeet, WhisperKit, MLX) failed to load or run. Keeps the recording and
+  /// offers a manual Retry, but is not auto-retryable. Appended last for the index-logging reason
+  /// above.
+  case localModelFailed(String)
 
   var title: String {
     switch self {
@@ -1133,6 +1140,8 @@ enum TranscriptionError: Error, Equatable {
     case .subscriptionRequired: return "Subscription Required"
     case .noSelectedText: return "Nothing Selected"
     case .localProcessingTimeout: return "Local Processing Timeout"
+    case .emptyModelReply: return "No Reply"
+    case .localModelFailed: return "Offline Model Error"
     }
   }
 
@@ -1156,7 +1165,7 @@ enum TranscriptionError: Error, Equatable {
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
+    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
     case .rateLimited(let retryAfter, _):
@@ -1164,8 +1173,20 @@ enum TranscriptionError: Error, Equatable {
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil
     // Non-retryable errors (configuration/permanent issues)
-    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
+    case .noGoogleAPIKey, .invalidAPIKey, .incorrectAPIKey, .countryNotSupported, .permissionDenied, .notFound, .modelDeprecated, .billingRequired, .fileError, .fileTooLarge, .emptyFile, .noSpeechDetected, .textTooShort, .promptLeakDetected, .modelNotAvailable, .localModelFailed, .invalidRequest, .voiceRequiresAPIKey, .subscriptionRequired, .noSelectedText:
       return false
+    }
+  }
+
+  /// True when a failed run must keep the recording on disk and offer the user a manual Retry,
+  /// even though the error is not auto-retryable. Model-preparation failures (on-device model
+  /// missing, incomplete or failing to load) are fixed in Settings, and the dictation itself must
+  /// survive until then. Deliberately separate from `isRetryable`: the chunk pipelines and
+  /// schedulers key their automatic retry/backoff off that flag, and these errors must never loop.
+  var keepsAudioForManualRetry: Bool {
+    switch self {
+    case .modelNotAvailable, .localModelFailed: return true
+    default: return false
     }
   }
 
@@ -1178,3 +1199,14 @@ enum TranscriptionError: Error, Equatable {
   }
 }
 
+
+extension Error {
+  /// Keep the recording and show Retry: transient errors (auto-retryable) plus model-preparation
+  /// failures (`ModelStoreError` of any kind, see `TranscriptionError.keepsAudioForManualRetry`).
+  /// Only the audio is kept; automatic retry still follows `TranscriptionError.isRetryable`.
+  var offersManualRetry: Bool {
+    if self is ModelStoreError { return true }
+    guard let transcriptionError = self as? TranscriptionError else { return false }
+    return transcriptionError.isRetryable || transcriptionError.keepsAudioForManualRetry
+  }
+}

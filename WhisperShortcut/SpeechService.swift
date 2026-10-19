@@ -46,6 +46,9 @@ class SpeechService {
   /// `MenuBarController` reads it once `executePrompt` returns and shows it beside the pasted
   /// text — the words are never written into the text itself, which ends up in a patient record.
   private(set) var lastPromptUnsupportedWords: [String] = []
+  /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
+  /// may be missing. The reply is still delivered; the UI adds a notice.
+  private(set) var lastPromptReplyTruncated = false
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
@@ -235,22 +238,35 @@ class SpeechService {
       corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
-    let terms = lines
-      .flatMap { line -> [String] in
-        // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
-        // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-        Self.strippingAnnotations(from: line)
-          .components(separatedBy: ",")
-          .map { $0.trimmingCharacters(in: .whitespaces) }
+    // The annotated spelling is the one the user asserted. A bare `bachata` left over from
+    // before that correction must not win the fold dedupe just because it appears first.
+    var correctionSpellingByFold: [String: String] = [:]
+    for correction in corrections {
+      let folded = Self.foldGlossaryTerm(correction.correct)
+      if correctionSpellingByFold[folded] == nil {
+        correctionSpellingByFold[folded] = correction.correct
       }
-      .filter { term in
+    }
+
+    var seenFolds = Set<String>()
+    var terms: [String] = []
+    for line in lines {
+      // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
+      // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
+      let pieces = Self.strippingAnnotations(from: line)
+        .components(separatedBy: ",")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+      for term in pieces {
         // The built-in list is written as `Terms: A, B, C`, so the first element carries the
         // label — compare without it, or a rejected form in first position slips through.
         let bare = term.replacingOccurrences(
           of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        return !bare.isEmpty && bare.split(separator: " ").count <= 3
-          && !rejected.contains(Self.foldGlossaryTerm(bare))
+        guard !bare.isEmpty, bare.split(separator: " ").count <= 3 else { continue }
+        let folded = Self.foldGlossaryTerm(bare)
+        guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
+        terms.append(correctionSpellingByFold[folded] ?? term)
       }
+    }
 
     return ParsedGlossary(terms: terms, corrections: corrections)
   }
@@ -287,7 +303,8 @@ class SpeechService {
     let parsed = parsedGlossary()
     var seen = Set<String>()
     var keywords: [String] = []
-    for term in glossaryTermsForEchoCheck() + parsed.corrections.map(\.correct) {
+    // Corrections first so the annotated spelling wins the fold dedupe over a bare line.
+    for term in parsed.corrections.map(\.correct) + glossaryTermsForEchoCheck() {
       let folded = Self.foldGlossaryTerm(term)
       guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
       keywords.append(term)
@@ -700,6 +717,7 @@ class SpeechService {
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
+    lastPromptReplyTruncated = false
     promptIsEditQuickAction = isEditQuickAction
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
@@ -708,12 +726,12 @@ class SpeechService {
     let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
-    // highlighted region in the screenshot. Cleaned like any copied text (URL query strings,
-    // runaway repeats).
+    // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
+    // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
+    // corrupts the text the user asked to edit.
     let clipboardContext: String? = usesScreenshotSelection
       ? nil
-      : DictatePromptSelectionDecision.selectionText(
-        from: selectedText.map { clipboardManager?.cleanText($0) ?? $0 })
+      : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
     // Nothing selected used to be refused (`TranscriptionError.noSelectedText`): the model, told to
     // edit a selection that wasn't there, "edited" the instruction instead — a user who said
@@ -926,7 +944,7 @@ class SpeechService {
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
-        styleBlock: writingStyleBlock(incoming: clipboardContext)))
+        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()))
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
@@ -955,6 +973,32 @@ class SpeechService {
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
     return "\n\n" + block.text
+  }
+
+  /// The user's style rules from memory.md. Empty for local models (same rule as
+  /// `writingStyleBlock`: small local models over-apply) and in Offline Mode.
+  private func memoryStyleFacts() -> [String] {
+    let provider = getPromptModel().provider
+    guard provider != .local, provider != .localMLX, !OfflineMode.isEnabled else { return [] }
+    return MemoryStyleRules.styleFacts(from: ChatMemoryStore.shared.facts())
+  }
+
+  private func memoryStyleBlock() -> String {
+    let facts = memoryStyleFacts()
+    if !facts.isEmpty { DebugLogger.log("PROMPT-MODE: memory style rules=\(facts.count)") }
+    return MemoryStyleRules.promptBlock(styleFacts: facts)
+  }
+
+  /// Deterministic backstop for "plain hyphens only": models keep emitting em dashes anyway.
+  private func applyingDashBackstop(_ text: String, selection: String?) -> String {
+    guard MemoryStyleRules.prefersShortDashes(styleFacts: memoryStyleFacts()) else { return text }
+    let result = DashBackstop.apply(to: text, selection: selection)
+    if result != text {
+      let before = text.filter { $0 == "—" || $0 == "–" }.count
+      let after = result.filter { $0 == "—" || $0 == "–" }.count
+      DebugLogger.log("PROMPT-MODE: dash backstop replaced \(before - after)")
+    }
+    return result
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
@@ -1116,12 +1160,16 @@ class SpeechService {
     }
 
     let latencyMs = Self.milliseconds(since: promptStarted)
-    PromptConversationHistory.shared.append(
-      mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: userInstruction,
-      modelResponse: normalizedText
-    )
+    // Offline Mode never replays earlier turns (see the history guard above), so recording them
+    // would only keep a patient's selection and reply in memory for no purpose.
+    if !OfflineMode.isEnabled {
+      PromptConversationHistory.shared.append(
+        mode: mode,
+        selectedText: clipboardContext,
+        userInstruction: userInstruction,
+        modelResponse: normalizedText
+      )
+    }
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
@@ -1233,7 +1281,7 @@ class SpeechService {
     // With a connected integration, run on the chat's agent core so the instruction can look
     // things up (read-only). Otherwise the single request below, unchanged.
     let agentTools = await DictatePromptAgent.availableTools()
-    let normalizedText: String
+    var normalizedText: String
     if !agentTools.isEmpty {
       // Encoded here, off the main actor: the inline audio can be megabytes of base64.
       let contents = try DictatePromptAgent.makeContents(
@@ -1251,7 +1299,8 @@ class SpeechService {
           tools: agentTools,
           logPrefix: "PROMPT-MODE-GEMINI")
       }
-      normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
+      normalizedText = applyingDashBackstop(
+        TextProcessingUtility.normalizeTranscriptionText(raw), selection: clipboardContext)
       try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
@@ -1262,6 +1311,7 @@ class SpeechService {
         credential: credential,
         logPrefix: "PROMPT-MODE-GEMINI"
       )
+      normalizedText = applyingDashBackstop(normalizedText, selection: clipboardContext)
     }
 
     let instructionSource: PromptInstructionSource
@@ -1420,7 +1470,8 @@ class SpeechService {
     // pastes. No-op for the plain-text replies that are the norm.
     let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
       rawText, selectedText: clipboardContext)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
+    let normalizedText = applyingDashBackstop(
+      TextProcessingUtility.normalizeTranscriptionText(unwrappedText), selection: clipboardContext)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     let instructionSource: PromptInstructionSource
@@ -1577,7 +1628,9 @@ class SpeechService {
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      let transcript = try await performTranscription(audioURL: audioURL)
+      // The same rejected-spelling correction the normal dictation path applies (`transcribe`),
+      // so a term the user struck from the Glossary cannot come back through Dictate Prompt.
+      let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
       instruction = (TranscriptionModel.loadSelected().isOffline
@@ -1585,7 +1638,9 @@ class SpeechService {
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       guard !instruction.isEmpty else {
-        throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
+        // Nothing left after transcription (e.g. only "Punkt" spoken): a miss, not a network error —
+        // the offline practice must not be told to check its internet connection.
+        throw TranscriptionError.noSpeechDetected
       }
       DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
     }
@@ -1707,6 +1762,7 @@ class SpeechService {
     if finishReason == "length" {
       DebugLogger.logWarning(
         "PROMPT-MODE-LOCAL: Reply hit the \(AppConstants.localPromptMaxOutputTokens)-token output cap and may be truncated")
+      lastPromptReplyTruncated = true
     }
 
     // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and

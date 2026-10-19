@@ -17,6 +17,7 @@ import MLXLMCommon
 
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
+  case qwen359B = "qwen3.5-9b"
   // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
   // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
   // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
@@ -26,6 +27,7 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var displayName: String {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
+    case .qwen359B: return "Qwen3.5 9B"
     }
   }
 
@@ -33,12 +35,14 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var huggingFaceID: String {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    case .qwen359B: return "mlx-community/Qwen3.5-9B-MLX-4bit"
     }
   }
 
   var estimatedSizeMB: Int {
     switch self {
     case .qwen34BInstruct2507: return 2300
+    case .qwen359B: return 5600
     }
   }
 
@@ -62,15 +66,36 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
     #endif
   }
 
-  /// Whether Settings / pickers may offer this catalogue entry on this Mac. A per-model RAM floor
-  /// belongs here when a catalogue entry needs one (Qwen3 8B had 16 GB).
+  /// Chat-only entries are excluded from Dictate Prompt: on the 2026-09-30 offline Dictate Prompt
+  /// benchmark Qwen3.5 9B scored 28/36, formalised casual text and translated EN→DE
+  /// (plans/model-audits/2026-09-30-offline-prompt.md); for Chat Q&A it beat the 4B
+  /// (plans/model-audits/2026-10-18-offline-chat-larger-model.md).
+  var supportsDictatePrompt: Bool {
+    switch self {
+    case .qwen34BInstruct2507: return true
+    case .qwen359B: return false
+    }
+  }
+
+  /// Physical RAM (GiB) a Mac needs before this entry is offered.
+  var minimumPhysicalMemoryGB: Int {
+    switch self {
+    case .qwen34BInstruct2507: return 0
+    case .qwen359B: return 16
+    }
+  }
+
+  /// Whether Settings / pickers may offer this catalogue entry on this Mac: Apple Silicon plus the
+  /// per-model RAM floor. A 16 GB Mac reports exactly 16 << 30 bytes, hence `>=`.
   var isOfferable: Bool {
     Self.isSupportedOnThisMac
+      && ProcessInfo.processInfo.physicalMemory >= UInt64(minimumPhysicalMemoryGB) << 30
   }
 
   /// Preference order for Offline Mode: larger models last so a downloaded smaller model wins
   /// when both exist, and the recommended default is chosen when none are on disk yet.
   static var byPreference: [LocalLLMModelType] {
+    // Chat-only entries (see `supportsDictatePrompt`) are deliberately absent: this is the Dictate Prompt fallback.
     [.qwen34BInstruct2507].filter(\.isOfferable)
   }
 
@@ -141,11 +166,26 @@ enum MLXModelPaths {
     }
   }
 
-  private static func hasRequiredFiles(at directory: URL) -> Bool {
+  static func hasRequiredFiles(at directory: URL) -> Bool {
     let fileManager = FileManager.default
     guard requiredFileNames.allSatisfy({
       fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
     }) else { return false }
+
+    // A sharded repo must have every shard its index names. A download cancelled mid-way leaves
+    // one shard finished and the other as `.incomplete`; "any .safetensors" accepted that folder,
+    // and MLX then trapped in `Module.update(modules:)` on the missing weights instead of
+    // throwing (2026-10-18, Qwen3.5 9B: shard 2 of 2 on disk, shard 1 at 3.7 of ~5 GB).
+    let index = directory.appendingPathComponent("model.safetensors.index.json")
+    if let data = try? Data(contentsOf: index) {
+      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let weightMap = json["weight_map"] as? [String: String],
+        !weightMap.isEmpty
+      else { return false }
+      return Set(weightMap.values).allSatisfy {
+        fileManager.fileExists(atPath: directory.appendingPathComponent($0).path)
+      }
+    }
 
     guard let contents = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
       return false
@@ -210,6 +250,12 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
 
 // MARK: - In-process loader
 
+struct MLXUnsupportedMacError: LocalizedError {
+  var errorDescription: String? {
+    "Offline models need a Mac with Apple silicon. On this Mac, use a cloud model or a Local Server (Ollama / LM Studio)."
+  }
+}
+
 /// Owns the loaded MLX model container. Join-in-flight per model type.
 actor MLXModelLoader {
   private var loadedType: LocalLLMModelType?
@@ -225,7 +271,15 @@ actor MLXModelLoader {
   /// Matches typical Ollama `keep_alive` so a menu-bar app does not hold ~2 GB forever.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
 
-  init() {
+  private var gpuConfigured = false
+
+  /// No MLX call in `init`: `LocalLLMModelManager.shared` builds this loader as soon as any
+  /// Settings model picker appears, and on an Intel Mac `GPU.set(cacheLimit:)` brings up the
+  /// Metal device MLX cannot run on and aborts the app (customer report 2026-10-17, v8.40:
+  /// Settings → Smart Improvement quit the app on an Intel MacBook Pro).
+  private func configureGPUIfNeeded() {
+    guard !gpuConfigured else { return }
+    gpuConfigured = true
     MLX.GPU.set(cacheLimit: Self.gpuCacheLimitBytes)
     DebugLogger.log("MLX: GPU cacheLimit=\(Self.gpuCacheLimitBytes) bytes")
   }
@@ -235,6 +289,8 @@ actor MLXModelLoader {
   }
 
   func container(for type: LocalLLMModelType) async throws -> ModelContainer {
+    guard LocalLLMModelType.isSupportedOnThisMac else { throw MLXUnsupportedMacError() }
+    configureGPUIfNeeded()
     startLifetimeGuardsIfNeeded()
     if loadedType == type, let loaded {
       scheduleIdleUnload()
@@ -246,27 +302,24 @@ actor MLXModelLoader {
     }
 
     let task = Task {
+      // `ModelStore.fetch` is the only downloader (disk check, progress, cancel).
+      guard let directory = MLXModelPaths.localDirectory(for: type) else {
+        DebugLogger.logWarning("MLX: \(type.huggingFaceID) is not on disk, refusing to download in the loader")
+        throw ModelStoreError.fileError("\(type.displayName) is not downloaded")
+      }
+      // Load the folder. The Hub downloader asks huggingface.co for the repo's
+      // file list on every load, even with the model complete and Offline Mode on — seen as a
+      // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
+      DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
       let context: ModelContext
-      if let directory = MLXModelPaths.localDirectory(for: type) {
-        // Already on disk: load the folder. The Hub downloader asks huggingface.co for the repo's
-        // file list on every load, even with the model complete and Offline Mode on — seen as a
-        // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
-        DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
+      do {
         context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
-      } else {
-        DebugLogger.log("MLX: loading \(type.huggingFaceID) (not on disk, downloading)")
-        let downloader = TransformersHubDownloader(
-          api: HubApi(downloadBase: MLXModelPaths.hubDirectory))
-        context = try await loadModel(
-          from: downloader,
-          using: TransformersTokenizerLoader(),
-          id: type.huggingFaceID
-        ) { progress in
-          let pct = Int(progress.fractionCompleted * 100)
-          if pct % 10 == 0 {
-            DebugLogger.log("MLX: download/load \(pct)%")
-          }
-        }
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        // Corrupt weights, memory pressure: typed so the recording is kept and Retry offered.
+        DebugLogger.logError("MLX: load of \(type.huggingFaceID) failed: \(error.localizedDescription)")
+        throw TranscriptionError.localModelFailed("Failed to load \(type.displayName): \(error.localizedDescription). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
       }
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")
       return ModelContainer(context: context)
