@@ -79,17 +79,15 @@ enum ChatModelCommandResolver {
       // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
       candidates = [.geminiImage, .geminiImagePro]
     } else if hasGrok {
-      // 4.20 variants are Pareto-dominated by 4.3; 4.5 and 4.6 are dominated by 4.7. Offer 4.3
-      // (cheap/1M) and 4.7 (flagship).
+      // 4.20 variants (-> 4.3) and 4.5/4.6 (-> 4.7) were removed and forward via
+      // migrateLegacyPromptRawValue. Offer 4.3 (cheap/1M) and 4.7 (flagship).
       if normalized.contains("4.3") {
         candidates = [.grok43]
       } else if normalized.contains("4.7") {
         candidates = [.grok47]
-      } else if normalized.contains("4.6") {
-        // Persisted/legacy phrasing — migrateIfDeprecated forwards via chatReplacement.
-        candidates = [.grok46]
-      } else if normalized.contains("4.5") {
-        candidates = [.grok45]
+      } else if normalized.contains("4.6") || normalized.contains("4.5") {
+        // Removed 2026-10-19; resolve to the model that replaced them.
+        candidates = [.grok47]
       } else {
         candidates = [.grok43, .grok47]
       }
@@ -140,16 +138,12 @@ enum ChatModelCommandResolver {
     let hasFlash = normalized.contains("flash")
     let hasLite = normalized.contains("lite")
     let hasFast = normalized.contains("fast")
-    let hasReasoning = normalized.contains("reason")
     let hasPro = padded.contains(" pro") || normalized.hasPrefix("pro")
     let hasMini = normalized.contains("mini")
 
     if hasFast {
       let fasts = candidates.filter { isFast($0) }
       if !fasts.isEmpty { candidates = fasts }
-    } else if hasReasoning {
-      let reasonings = candidates.filter { isReasoning($0) }
-      if !reasonings.isEmpty { candidates = reasonings }
     } else if hasLite {
       // "lite" (with or without "flash") narrows to the FlashLite variant; must precede the
       // plain `hasFlash` branch so "flash lite" doesn't get coerced to non-lite Flash.
@@ -234,13 +228,6 @@ enum ChatModelCommandResolver {
     switch m {
     case .grok47: return true  // xAI: current flagship; same "fastest" claim as former 4.5/4.6.
     case .claudeHaiku55: return true
-    default: return false
-    }
-  }
-
-  private static func isReasoning(_ m: PromptModel) -> Bool {
-    switch m {
-    case .grok4Reasoning: return true
     default: return false
     }
   }
