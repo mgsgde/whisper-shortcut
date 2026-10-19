@@ -19,7 +19,7 @@ protocol FnDictationToggleDelegate: AnyObject {
   func fnDictationCancelProcessing()
 }
 
-/// Fn (Globe) key dictation, opt-in via Settings → Dictate. The key is a pure toggle:
+/// Fn (Globe) key dictation, opt-in via Settings → General → Keyboard Shortcuts. The key is a pure toggle:
 /// - First press: starts a Dictate recording, which keeps running after the key is released.
 /// - Second press: stops the recording and transcribes it.
 /// - Press while transcribing: cancels the in-flight transcription, like the dictation

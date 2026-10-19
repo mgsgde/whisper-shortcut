@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Chat Settings Tab — shortcut, model, prompt, commands, memory and folders. Meetings and the
+/// Chat Settings Tab — model, prompt, commands, memory and folders. Meetings and the
 /// connected services (Google, Trello, mail) have their own tabs.
 struct ChatSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
@@ -8,10 +8,6 @@ struct ChatSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      keyboardShortcutSection
-
-      SpacedSectionDivider()
-
       modelSection
 
       // Provider-specific setup appears under the picker only for the provider in use, the way
@@ -66,32 +62,6 @@ struct ChatSettingsTab: View {
         XSearchHandlesSection()
         windowBehaviorSection
       }
-    }
-  }
-
-  // MARK: - Keyboard Shortcut Section
-  @ViewBuilder
-  private var keyboardShortcutSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Keyboard Shortcut",
-        systemImage: "keyboard",
-        subtitle: "Open the chat window"
-      )
-
-      ShortcutRecorderRow(
-        label: "Chat:",
-        shortcut: $viewModel.data.openChat,
-        focusedField: .toggleChat,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
     }
   }
 
@@ -154,6 +124,8 @@ struct ChatSettingsTab: View {
         systemImage: "questionmark.circle",
         subtitle: nil
       )
+
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.openChat)
 
       VStack(alignment: .leading, spacing: 8) {
         Text("Use the shortcut or the menu bar item \"Chat\" to open the chat window.")

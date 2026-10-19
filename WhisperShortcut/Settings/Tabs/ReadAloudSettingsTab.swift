@@ -1,16 +1,12 @@
 import SwiftUI
 
-/// Read Aloud Settings Tab — keyboard shortcut, smart-rewrite toggle, and rewrite prompt editor.
+/// Read Aloud Settings Tab — model, voice, smart rewriting. The shortcut is set in General.
 struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      keyboardShortcutSection
-
-      SpacedSectionDivider()
-
       modelSection
 
       SpacedSectionDivider()
@@ -39,35 +35,6 @@ struct ReadAloudSettingsTab: View {
 
       usageSection
     }
-  }
-
-  // MARK: - Keyboard Shortcut Section
-  @ViewBuilder
-  private var keyboardShortcutSection: some View {
-    // Selection-based Read Aloud copies via ⌘C (Accessibility); its shortcut is hidden in the App Store build.
-    #if !APP_STORE
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Keyboard Shortcut",
-        systemImage: "keyboard",
-        subtitle: "Select text, then press the shortcut to have it read aloud"
-      )
-
-      ShortcutRecorderRow(
-        label: "Read Aloud:",
-        shortcut: $viewModel.data.readAloud,
-        focusedField: .readAloudShortcut,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
-    }
-    #endif
   }
 
   // MARK: - Voice Model Section
@@ -208,6 +175,11 @@ struct ReadAloudSettingsTab: View {
         systemImage: "questionmark.circle",
         subtitle: "Read selected text aloud anywhere on your Mac"
       )
+
+      // Selection-based Read Aloud copies via ⌘C (Accessibility); no shortcut in the App Store build.
+      #if !APP_STORE
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.readAloud)
+      #endif
 
       VStack(alignment: .leading, spacing: 8) {
         Text("Highlight any text with the mouse or keyboard, then press the Read Aloud shortcut.")

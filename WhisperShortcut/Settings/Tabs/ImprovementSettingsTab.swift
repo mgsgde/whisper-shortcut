@@ -55,19 +55,7 @@ struct ImprovementSettingsTab: View {
         subtitle: "Press the shortcut and speak an instruction (e.g. \"my name is spelled G-ö-d-d-e\"). The model turns it into a proposed change to your context, which you review before it's applied."
       )
 
-      ShortcutRecorderRow(
-        label: "Voice Feedback:",
-        shortcut: $viewModel.data.voiceFeedback,
-        focusedField: .voiceFeedbackShortcut,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.voiceFeedback)
 
       Text("Uses the same model as Smart Improvement. Changes are proposed in a review window and go to the system-prompts history, so you can revert them.")
         .font(.caption)

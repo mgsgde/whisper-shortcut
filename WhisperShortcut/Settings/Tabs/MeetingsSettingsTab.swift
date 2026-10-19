@@ -68,19 +68,7 @@ struct MeetingsSettingsTab: View {
         subtitle: "Press this while a meeting is recording to flag the current moment. The marker appears in the live notes and the final summary is written around what you flagged."
       )
 
-      ShortcutRecorderRow(
-        label: "Flag moment:",
-        shortcut: $viewModel.data.meetingMarker,
-        focusedField: .meetingMarkerShortcut,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.meetingMarker)
 
       Text("Does nothing when no meeting is recording.")
         .font(.caption)
