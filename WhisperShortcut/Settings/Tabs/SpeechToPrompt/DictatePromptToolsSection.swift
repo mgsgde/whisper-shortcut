@@ -17,7 +17,7 @@ struct DictatePromptToolsSection: View {
         VStack(alignment: .leading, spacing: 2) {
           Text("Let Dictate Prompt use read-only tools")
             .font(.callout)
-          Text("Only for Gemini models, and only for what you have connected in Settings → Chat. Nothing is changed, created or sent. A lookup adds a few seconds to that one request.")
+          Text("Only for Gemini models, and only for what you have connected in Settings → Accounts. Nothing is changed, created or sent. A lookup adds a few seconds to that one request.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

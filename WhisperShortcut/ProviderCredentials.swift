@@ -57,7 +57,7 @@ enum ProviderCredentials {
   }
 
   /// The key for `kind`, trimmed and guaranteed non-empty, or a `.networkError` naming the exact
-  /// Settings location. All three key fields live under Settings → General.
+  /// Settings location. All three key fields live under Settings → Accounts.
   static func require(_ kind: Kind) throws -> String {
     guard let key = kind.storedKey?.trimmingCharacters(in: .whitespacesAndNewlines),
           !key.isEmpty else {
@@ -68,12 +68,12 @@ enum ProviderCredentials {
 
   /// Message shown when no key is stored.
   static func missingKeyMessage(_ kind: Kind) -> String {
-    "No \(kind.displayName) API key configured. Add your \(kind.displayName) API key in Settings → General to use \(kind.capability)."
+    "No \(kind.displayName) API key configured. Add your \(kind.displayName) API key in Settings → Accounts to use \(kind.capability)."
   }
 
   /// Message shown when the provider rejects the key we sent (HTTP 401/403).
   static func invalidKeyMessage(_ kind: Kind) -> String {
-    "\(kind.displayName) API key is invalid. Check the key in Settings → General."
+    "\(kind.displayName) API key is invalid. Check the key in Settings → Accounts."
   }
 
   /// Pre-flight check for callers that only need to fail early and don't hold the key themselves
@@ -144,7 +144,7 @@ extension ChatModelProvider {
     case .key(let kind):
       return ProviderCredentials.missingKeyMessage(kind)
     case .gemini:
-      return "No Google API key configured. Add your Gemini API key in Settings → General to use Gemini models."
+      return "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models."
     case .endpoint:
       return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
     case .none:

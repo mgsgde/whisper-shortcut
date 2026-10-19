@@ -4,7 +4,7 @@ import SwiftUI
 /// chat model.
 ///
 /// Deliberately has **no credential field**. OpenRouter is one account, connected once in
-/// Settings → General and shared by Dictate and Chat; this section only reports whether that
+/// Settings → Accounts and shared by Dictate and Chat; this section only reports whether that
 /// connection exists and links to it. It replaces the old route of pointing the custom endpoint at
 /// openrouter.ai, which gave OpenRouter a second key field and made the user type a URL and a slug.
 struct OpenRouterChatModelSection: View {

@@ -88,6 +88,26 @@ The GitHub Actions workflow automatically creates a release when a tag is pushed
 3. On tag push, the workflow reads this file and uses it as the release body
 4. If the file does not exist, default text is used
 
+## Draft first: test the DMG before it goes out
+
+A published release reaches every direct-download user through Sparkle (the feed is
+`releases/latest/download/appcast.xml`). To test a build first, keep it a draft:
+
+1. Build as draft, either
+   - set the repo variable once: `gh variable set RELEASE_AS_DRAFT --body true`, then push the tag as usual
+     (`bash scripts/create-release.sh ...`), or
+   - re-drive an existing tag: `gh workflow run release.yml -f tag=vX -f draft=true`
+2. Download the DMG from the draft and install it: `gh release download vX -p WhisperShortcut.dmg`
+3. Test it.
+4. Publish: `gh release edit vX --draft=false --latest`
+5. If you set the variable, clear it: `gh variable delete RELEASE_AS_DRAFT`
+
+**Holding a release back:** `gh release edit vX --draft=true`. The workflow checks right before
+publishing and never publishes a release that already exists as a draft, so this sticks even while
+a run for that tag is still going. Do not use `gh api -f draft=true` — `-f` sends the string
+`"true"` and the change silently does not happen; use `gh release edit` (or `gh api -F`).
+Setting `draft` on a re-drive of an already published release does not unpublish it.
+
 ## Scope: GitHub release only — App Store submit is separate
 
 This command + the `release.yml` workflow build and ship only the **notarized Developer-ID DMG** (GitHub Release). They do **not** upload to the Mac App Store. App Store submission is a separate step, automated by **`/submit-appstore`** (run it *after* `/release` cuts the matching tag). That command owns the packaging and signing rules — the `.pkg`/`.ipa` trap and the App Store certs are documented there, not here.

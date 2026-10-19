@@ -237,14 +237,14 @@ struct SpeechToTextSettingsTab: View {
         }
       )
       if viewModel.data.selectedTranscriptionModel.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
-        Text("Sign in with Google or add your API key in Settings → General for Gemini models. You can also select an offline Whisper model to dictate without a key.")
+        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
       }
 
       if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasNonEmpty(.openAI) {
-        Text("Add your OpenAI API key in Settings → General to use the OpenAI transcription models.")
+        Text("Add your OpenAI API key in Settings → Accounts to use the OpenAI transcription models.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)

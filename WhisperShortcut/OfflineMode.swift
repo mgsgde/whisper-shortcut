@@ -172,9 +172,8 @@ enum ContextLoggingPreference {
   /// The user's own preference, ignoring Offline Mode — for settings UI that has to show what
   /// the toggle is set to, not what the app is currently doing.
   static var storedFlag: Bool {
-    // Absent key means "on": the setting predates this type and defaulted to on.
-    UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil
-      ? true
-      : UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
+    // Absent key means "off": usage logging is opt-in. `FullApp` writes the key at launch, so this
+    // only matters before that has run.
+    UserDefaults.standard.bool(forKey: UserDefaultsKeys.contextLoggingEnabled)
   }
 }

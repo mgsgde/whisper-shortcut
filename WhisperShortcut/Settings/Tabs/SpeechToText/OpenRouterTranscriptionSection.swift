@@ -20,7 +20,7 @@ struct OpenRouterTranscriptionSection: View {
         subtitle: "Dictate through any audio-capable model OpenRouter routes to, with one account."
       )
 
-      // The account is connected once, in Settings → General; this tab only shows whether it is.
+      // The account is connected once, in Settings → Accounts; this tab only shows whether it is.
       OpenRouterAccountStatusRow()
 
       HStack(alignment: .center, spacing: 16) {

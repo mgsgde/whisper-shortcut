@@ -377,11 +377,11 @@ struct SpeechErrorFormatter {
 
         Voice output (Read Aloud) is not available when using Sign in with Google.
 
-        To use voice output, add a Google API key in Settings → General → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
+        To use voice output, add a Google API key in Settings → Accounts → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
         """
 
     case .subscriptionRequired:
-      return "Authentication required. Add your API key in Settings → General."
+      return "Authentication required. Add your API key in Settings → Accounts."
 
     case .noSelectedText:
       return """

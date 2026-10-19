@@ -105,13 +105,13 @@ enum TranscriptionProvider: String, CaseIterable {
   var credentialRequiredMessage: String {
     switch self {
     case .google:
-      return "Add your Gemini API key in Settings → General to use dictation. For offline use, download an offline model in Settings → Dictate."
+      return "Add your Gemini API key in Settings → Accounts to use dictation. For offline use, download an offline model in Settings → Dictate."
     case .openAI:
-      return "Add your OpenAI API key in Settings → General to use dictation, or pick a different transcription model in Settings → Dictate."
+      return "Add your OpenAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate."
     case .xai:
-      return "Add your xAI API key in Settings → General to use dictation, or pick a different transcription model in Settings → Dictate."
+      return "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate."
     case .openRouter:
-      return "Connect your OpenRouter account in Settings → General to transcribe through OpenRouter, or pick a different model."
+      return "Connect your OpenRouter account in Settings → Accounts to transcribe through OpenRouter, or pick a different model."
     case .selfHosted:
       return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
     case .offline:

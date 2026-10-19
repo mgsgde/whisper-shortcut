@@ -6,7 +6,7 @@ import SwiftUI
 struct ImprovementSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false

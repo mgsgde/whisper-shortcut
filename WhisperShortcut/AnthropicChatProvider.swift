@@ -465,7 +465,7 @@ final class AnthropicChatProvider: LLMChatProvider {
       status: status,
       body: body,
       invalidKey: TranscriptionError.networkError(
-        "Anthropic API key is invalid. Check the key in Settings → General."))
+        "Anthropic API key is invalid. Check the key in Settings → Accounts."))
   }
 
   /// Effort / adaptive thinking is supported on Sonnet, Opus, Fable, and Haiku 5.5 (default

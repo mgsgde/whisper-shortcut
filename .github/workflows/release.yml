@@ -13,6 +13,11 @@ on:
         description: "Existing v* tag to (re-)release, e.g. v8.11"
         required: true
         type: string
+      draft:
+        description: "Keep the release a draft (build, install the DMG, test, then publish by hand)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -298,6 +303,40 @@ jobs:
             } >> $GITHUB_OUTPUT
           fi
 
+      # Decided right before publishing, not at the start: on 2026-10-19 v8.47 was set
+      # back to draft by hand while this run was still building, and `draft: false`
+      # published it again at the end. A release a human holds back stays held back.
+      - name: Decide draft state
+        id: draft_state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.get_version.outputs.tag }}
+          INPUT_DRAFT: ${{ inputs.draft }}
+          RELEASE_AS_DRAFT: ${{ vars.RELEASE_AS_DRAFT }}
+        run: |
+          set -uo pipefail
+          DRAFT=false
+          if [ "$INPUT_DRAFT" = "true" ]; then
+            DRAFT=true; echo "Draft requested via workflow_dispatch input"
+          elif [ "$RELEASE_AS_DRAFT" = "true" ]; then
+            DRAFT=true; echo "Draft requested via repo variable RELEASE_AS_DRAFT"
+          else
+            # The releases/tags endpoint hides drafts, so scan the list instead.
+            if EXISTING=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" \
+                  --jq ".[] | select(.tag_name == \"$TAG\") | .draft"); then
+              if echo "$EXISTING" | grep -qx true; then
+                DRAFT=true; echo "Release $TAG already exists as a draft - leaving it a draft"
+              fi
+            else
+              # Fail closed: an unpublished release is recoverable, a wrongly published one is not.
+              DRAFT=true; echo "::warning::Could not list releases - keeping $TAG a draft"
+            fi
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            echo "::notice::$TAG stays a draft. Publish with: gh release edit $TAG --draft=false --latest"
+          fi
+          echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
@@ -307,7 +346,10 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.version }}
           body: ${{ steps.release_notes.outputs.body }}
-          draft: false
+          # true: a new release is created as a draft, an existing draft is only
+          # updated (assets replaced) and never finalized. An already published
+          # release keeps its state either way.
+          draft: ${{ steps.draft_state.outputs.draft == 'true' }}
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

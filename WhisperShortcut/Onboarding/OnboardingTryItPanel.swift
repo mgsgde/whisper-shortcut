@@ -215,7 +215,7 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
     }
     if combined.contains("api key") || combined.contains("credential") || combined.contains("keychain")
     {
-      return .general
+      return .accounts
     }
     return .speechToText
   }

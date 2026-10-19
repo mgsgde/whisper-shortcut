@@ -421,7 +421,7 @@ final class LiveMeetingSession: NSObject {
         await MainActor.run {
           PopupNotificationWindow.showError(
             offline
-              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Chat → Meeting Summary Model; you can then regenerate the summary from the meeting library."
+              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library."
               : "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
             title: "Live Meeting – Summary Failed"
           )

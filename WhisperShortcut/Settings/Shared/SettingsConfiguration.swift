@@ -11,7 +11,7 @@ enum ChatModelProvider: String, CaseIterable {
   /// User-configured OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted).
   /// Endpoint, model id, and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
   case customOpenAI
-  /// OpenRouter on the user's OpenRouter account (the key from Settings → General). The model
+  /// OpenRouter on the user's OpenRouter account (the key from Settings → Accounts). The model
   /// slug is read from `OpenRouterChatPreferences`.
   case openRouter
   /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
@@ -327,7 +327,7 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAIEndpoint:
       return "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search"
     case .openRouterChat:
-      return "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → General • No web search"
+      return "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search"
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
@@ -464,8 +464,8 @@ enum PromptModel: String, CaseIterable {
   /// Actionable message when this model can't run Dictate Prompt for lack of a credential.
   var apiKeyRequiredMessageForDictatePrompt: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings → General to use Dictate Prompt."
-    case .openai: return "Add your OpenAI API key in Settings → General to use Dictate Prompt."
+    case .gemini: return "Add your Gemini API key in Settings → Accounts to use Dictate Prompt."
+    case .openai: return "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .openRouter: return "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
@@ -823,7 +823,7 @@ enum PromptModel: String, CaseIterable {
     )
   }
 
-  /// Loads the model selected for meeting summary (rolling and final). Settings → Chat → Meeting Summary Model.
+  /// Loads the model selected for meeting summary (rolling and final). Settings → Meetings → Meeting Summary Model.
   static func loadSelectedMeetingSummary() -> PromptModel {
     loadChatSlotModel(
       forKey: UserDefaultsKeys.selectedMeetingSummaryModel,
@@ -1124,9 +1124,9 @@ enum TTSModel: String, CaseIterable {
   /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.
   var apiKeyRequiredMessage: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings → General or sign in with Google to use Read Aloud."
-    case .openai: return "Add your OpenAI API key in Settings → General to use Read Aloud, or pick a different voice model."
-    case .xai: return "Add your xAI API key in Settings → General to use Read Aloud, or pick a different voice model."
+    case .gemini: return "Add your Gemini API key in Settings → Accounts or sign in with Google to use Read Aloud."
+    case .openai: return "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model."
+    case .xai: return "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model."
     case .system: return "On-device macOS voices need no API key."
     }
   }
@@ -1439,11 +1439,13 @@ enum WhisperLanguage: String, CaseIterable {
 // Order mirrors the menu-bar dropdown (Dictate ⌘1 → Dictate Prompt ⌘2 → Read Aloud ⌘4 → Chat ⌥Space).
 enum SettingsTab: String, CaseIterable {
   case general = "General"
+  case accounts = "Accounts"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
   case screenshot = "Screenshot"
   case readAloud = "Read Aloud"
   case chat = "Chat"
+  case meetings = "Meetings"
   case improvement = "Smart Improvement"
   // The raw value is both the sidebar label and the persisted selection; a stored "Permissions"
   // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
@@ -1525,7 +1527,7 @@ enum ReadAloudPreferences {
 
 // MARK: - OpenRouter Chat Preferences (UserDefaults + Keychain Accessors)
 /// Settings for the **OpenRouter** chat model (`PromptModel.openRouterChat`). The credential is
-/// only the OpenRouter account key (Settings → General); the custom endpoint knows nothing about it.
+/// only the OpenRouter account key (Settings → Accounts); the custom endpoint knows nothing about it.
 enum OpenRouterChatPreferences {
   static let sentinelModelRawValue = PromptModel.openRouterChat.rawValue
 
@@ -1666,7 +1668,7 @@ enum OpenAIChatPreferences {
     var description: String {
       switch self {
       case .proxyKey: return "the key entered above for this server"
-      case .openAIKey: return "your OpenAI API key from Settings → General"
+      case .openAIKey: return "your OpenAI API key from Settings → Accounts"
       }
     }
   }
@@ -1675,7 +1677,7 @@ enum OpenAIChatPreferences {
   ///
   /// `customOpenAIChatAPIKey` is **one** slot shared by every custom endpoint, and the base URL it
   /// belongs to can change underneath it: the key field belongs to whatever server the URL names
-  /// right now. It wins when present; the OpenAI key from Settings → General is the fallback, for
+  /// right now. It wins when present; the OpenAI key from Settings → Accounts is the fallback, for
   /// proxies that forward to api.openai.com on the caller's key. Pure so the ordering is pinned by
   /// tests rather than by clicking through.
   ///
@@ -1950,7 +1952,8 @@ struct SettingsDefaults {
   static let showPopupNotifications = true
   /// Bottom-center so popups share one feedback spot with the recording indicator pill.
   static let notificationPosition = NotificationPosition.centerBottom
-  static let notificationDuration = NotificationDuration.oneSecond
+  /// 3 s: long enough to read a short transcript; 1 s vanished before it could be read.
+  static let notificationDuration = NotificationDuration.threeSeconds
   static let errorNotificationDuration = NotificationDuration.thirtySeconds
 
   // MARK: - Recording Safeguards
