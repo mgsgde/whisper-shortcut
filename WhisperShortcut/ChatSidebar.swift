@@ -614,7 +614,6 @@ struct ChatSidebar: View {
         Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
         Button("Archive \(kind)") { viewModel.archiveSession(id: session.id) }
-          .keyboardShortcut(.delete, modifiers: .command)
           .disabled(viewModel.isRecordingMeeting(session.id))
         if session.isMeeting {
           Button("Archive older meetings") {

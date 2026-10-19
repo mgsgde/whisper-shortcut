@@ -3036,15 +3036,6 @@ struct ChatView: View {
     .overlay {
       if isFolderDropTargeted { folderDropOverlay }
     }
-    .background(
-      Button(viewModel.isCurrentSessionMeeting ? "Archive current meeting" : "Archive current chat") {
-        viewModel.archiveSession(id: viewModel.currentSessionId)
-      }
-      .keyboardShortcut(.delete, modifiers: .command)
-      .opacity(0)
-      .allowsHitTesting(false)
-      .frame(width: 0, height: 0)
-    )
     .sheet(isPresented: Binding(
       get: { previewImageData != nil },
       set: { if !$0 { previewImageData = nil } }
