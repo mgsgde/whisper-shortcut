@@ -256,8 +256,76 @@ final class ModelManager: ModelStore<OfflineModelType> {
         "MODEL-MANAGER: \(type.displayName) folder exists but \(missing) is missing or empty — download incomplete")
       return false
     }
+    if !Self.hasTokenizer(for: type, modelFolder: modelPath) {
+      DebugLogger.logDebug(
+        "MODEL-MANAGER: \(type.displayName) has no cached tokenizer — an offline load would fail, treating as not downloaded")
+      return false
+    }
     DebugLogger.logDebug("MODEL-MANAGER: Found \(type.displayName) at: \(modelPath.path)")
     return true
+  }
+
+  // MARK: - Tokenizer (offline completeness)
+
+  /// WhisperKit's tokenizer is not part of the model folder: on first load it is fetched from
+  /// HuggingFace (`openai/whisper-*`). A model downloaded but never loaded online therefore
+  /// failed its first offline load. We fetch it during the download into
+  /// `<modelFolder>/models/openai/whisper-*`, one of the paths WhisperKit searches before it
+  /// touches the network, and it is deleted together with the model.
+  nonisolated static func tokenizerVariant(for type: OfflineModelType) -> ModelVariant? {
+    switch type {
+    case .whisperTiny: return .tiny
+    case .whisperBase: return .base
+    case .whisperSmall: return .small
+    case .whisperMedium: return .medium
+    // Turbo is a large-v3 decoder; WhisperKit's variant detection picks `.largev3` for it too.
+    case .whisperLarge, .whisperLargeTurbo: return .largev3
+    case .parakeetUltra: return nil
+    }
+  }
+
+  /// Folder name under `models/openai/` for the variant's tokenizer repo.
+  nonisolated static func tokenizerRepoName(for variant: ModelVariant) -> String {
+    "whisper-\(variant.description)"
+  }
+
+  /// Where the tokenizer for `type` lives inside the model folder.
+  nonisolated static func bundledTokenizerFolder(for type: OfflineModelType, modelFolder: URL) -> URL? {
+    guard let variant = tokenizerVariant(for: type) else { return nil }
+    return modelFolder.appendingPathComponent("models/openai/\(tokenizerRepoName(for: variant))")
+  }
+
+  /// True when a tokenizer WhisperKit can find without the network exists: bundled in the model
+  /// folder, or in the default HuggingFace cache a pre-fix online first load left behind.
+  nonisolated static func hasTokenizer(
+    for type: OfflineModelType, modelFolder: URL, documentsDirectory: URL? = nil
+  ) -> Bool {
+    guard let variant = tokenizerVariant(for: type) else { return true }
+    let fm = FileManager.default
+    var candidates: [URL] = []
+    if let bundled = bundledTokenizerFolder(for: type, modelFolder: modelFolder) { candidates.append(bundled) }
+    if let docs = documentsDirectory ?? fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+      candidates.append(
+        docs.appendingPathComponent("huggingface/models/openai/\(tokenizerRepoName(for: variant))"))
+    }
+    return candidates.contains {
+      fm.fileExists(atPath: $0.appendingPathComponent("tokenizer.json").path)
+    }
+  }
+
+  nonisolated static func prefetchTokenizer(for type: OfflineModelType, modelFolder: URL) async throws {
+    guard let variant = tokenizerVariant(for: type),
+      !hasTokenizer(for: type, modelFolder: modelFolder)
+    else { return }
+    DebugLogger.log("MODEL-MANAGER: Fetching tokenizer for \(type.displayName) so it loads offline")
+    do {
+      // `tokenizerFolder: modelFolder` makes the Hub download base the model folder, i.e. it
+      // writes to the same `models/openai/whisper-*` path WhisperKit searches at load time.
+      _ = try await ModelUtilities.loadTokenizer(for: variant, tokenizerFolder: modelFolder)
+    } catch {
+      if Self.isCancellation(error) { throw CancellationError() }
+      throw ModelStoreError.downloadFailed("Could not download the tokenizer for \(type.displayName): \(error.localizedDescription)")
+    }
   }
 
   /// The compiled CoreML components WhisperKit loads. Checking only `AudioEncoder.mlmodelc` (what
@@ -352,6 +420,12 @@ final class ModelManager: ModelStore<OfflineModelType> {
     model.engine == .whisperKit
   }
 
+  /// Offline Mode forbids the network, so the heal's re-download cannot succeed: deleting the
+  /// model there turns one failed load into a model that is gone until the Mac is online.
+  override var canRedownloadNow: Bool { Self.canRedownload(offlineMode: OfflineMode.isEnabled) }
+
+  nonisolated static func canRedownload(offlineMode: Bool) -> Bool { !offlineMode }
+
   override func load(_ type: OfflineModelType) async throws {
     try await LocalSpeechService.shared.initializeModel(type)
   }
@@ -378,6 +452,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
         progressCallback: { progress in onProgress(progress.fractionCompleted) }
       )
       DebugLogger.log("MODEL-MANAGER: Download completed to: \(downloadedModelPath.path)")
+      try await Self.prefetchTokenizer(for: type, modelFolder: downloadedModelPath)
 
       if !isModelAvailable(type) {
         logDirectoryContents(rootDirectory)

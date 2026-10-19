@@ -123,6 +123,12 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// disagree on whether a load failure means a corrupt download.
   func healsCorruptDownload(for model: Model) -> Bool { healsCorruptDownloadOnLoadFailure }
 
+  /// Whether a re-download could succeed right now. The heal deletes the files first, so when
+  /// the fetch cannot work (Offline Mode: nothing may leave this Mac) one failed load would
+  /// destroy a 0.5–1.6 GB model for nothing. When false the load error is surfaced and the
+  /// files stay. WhisperKit ties this to Offline Mode.
+  var canRedownloadNow: Bool { true }
+
   /// What `deleteModel` removes. MLX overrides this to delete the whole Hub repo, not just the
   /// snapshot `resolveModelPath` lands on.
   nonisolated func deletionTarget(for modelPath: URL) -> URL { modelPath }
@@ -192,7 +198,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     readyPhase[model] = .loading
     do {
       try await load(model)
-    } catch where healsCorruptDownload(for: model) && !Self.isCancellation(error) && !Self.isDeadline(error) {
+    } catch where healsCorruptDownload(for: model) && canRedownloadNow && !Self.isCancellation(error) && !Self.isDeadline(error) {
       // A network drop mid-download must NOT wipe the tree: Hub skips files that already
       // landed, so a retry resumes instead of looping from zero. Only a load failure on a
       // complete-looking folder gets here. A load that ran out of time or was cancelled is
