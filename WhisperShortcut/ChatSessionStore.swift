@@ -77,11 +77,13 @@ struct ChatMessage: Identifiable, Codable, Equatable {
   /// Tool calls the model made while writing this (assistant) message, replayed as context on
   /// later turns so IDs and results are not lost. See `ChatToolHistory`.
   var toolCalls: [ChatToolCallRecord]
+  /// Name of the user command (without slash) that produced this user message, if any.
+  var commandName: String?
 
   enum CodingKeys: String, CodingKey {
     case id, role, content, timestamp, sources, groundingSupports
     case attachedImageParts, toolCalls
-    case isLocalNotice
+    case isLocalNotice, commandName
     case attachedImageData, attachedFileMimeType, attachedFilename // legacy, decode only
   }
 
@@ -94,7 +96,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     groundingSupports: [GroundingSupport] = [],
     attachedImageParts: [AttachedImagePart] = [],
     isLocalNotice: Bool = false,
-    toolCalls: [ChatToolCallRecord] = []
+    toolCalls: [ChatToolCallRecord] = [],
+    commandName: String? = nil
   ) {
     self.id = id
     self.role = role
@@ -105,6 +108,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.attachedImageParts = attachedImageParts
     self.isLocalNotice = isLocalNotice
     self.toolCalls = toolCalls
+    self.commandName = commandName
   }
 
   init(from decoder: Decoder) throws {
@@ -126,6 +130,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     }
     isLocalNotice = try c.decodeIfPresent(Bool.self, forKey: .isLocalNotice) ?? false
     toolCalls = try c.decodeIfPresent([ChatToolCallRecord].self, forKey: .toolCalls) ?? []
+    commandName = try c.decodeIfPresent(String.self, forKey: .commandName)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -139,6 +144,7 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     try c.encode(attachedImageParts, forKey: .attachedImageParts)
     if isLocalNotice { try c.encode(true, forKey: .isLocalNotice) }
     if !toolCalls.isEmpty { try c.encode(toolCalls, forKey: .toolCalls) }
+    try c.encodeIfPresent(commandName, forKey: .commandName)
   }
 }
 
