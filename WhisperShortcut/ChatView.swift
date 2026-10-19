@@ -1860,6 +1860,11 @@ class ChatViewModel: ObservableObject {
   /// manual rename (or a competing generator) is never clobbered. Shared by the chat and
   /// meeting title paths so the model id, length cap, and UI sync stay in one place.
   private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+    // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
+    if OfflineMode.isEnabled {
+      DebugLogger.log("TITLE-\(logLabel.uppercased()): Skipping title generation (Offline Mode)")
+      return
+    }
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     do {
       // Structured output: the model must return {"title": "..."} — no free-text parsing or
