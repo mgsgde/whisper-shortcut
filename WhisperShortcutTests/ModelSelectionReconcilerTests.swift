@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import WhisperShortcut_AppStore
 
@@ -123,5 +124,86 @@ struct ModelSelectionReconcilerTests {
     #expect(
       ModelSelectionReconciler.offlineTranscriptionReplacement(downloaded: .whisperLargeTurbo)
         == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+  }
+
+  @Test("Offline Mode moves the meeting summary and Voice Feedback slots onto the Dictate Prompt model and back")
+  func meetingSummaryOfflineRoundTrip() {
+    let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
+    let improvementKey = UserDefaultsKeys.selectedImprovementModel
+    let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
+    defaults.set(onDevice.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+
+    // Offline Mode on: snapshot, then follow Dictate Prompt.
+    ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: summaryKey, defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: improvementKey, defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
+    #expect(defaults.string(forKey: improvementKey) == onDevice.rawValue)
+
+    // A second pass while the mode stays on must not overwrite the snapshot.
+    ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+
+    // Offline Mode off: the cloud choices come back.
+    ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
+  }
+
+  @Test("A snapshot from an older build gets the newer keys merged in and restored")
+  func oldSnapshotGainsNewKeys() {
+    let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
+    let improvementKey = UserDefaultsKeys.selectedImprovementModel
+    let promptKey = UserDefaultsKeys.selectedPromptModel
+    let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    // Old build: snapshot only knows the prompt slot, which is already on-device.
+    defaults.set([promptKey: PromptModel.gemini37Flash.rawValue],
+                 forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+    defaults.set(onDevice.rawValue, forKey: promptKey)
+    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
+
+    ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: summaryKey, defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: improvementKey, defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
+
+    ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
+    #expect(defaults.string(forKey: promptKey) == PromptModel.gemini37Flash.rawValue)
+  }
+
+  @Test("A key that was unset is removed on restore; toggling twice is stable")
+  func unsetKeyRemovedOnRestoreAndToggleTwice() {
+    let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
+    let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    defaults.set(onDevice.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+
+    for _ in 0..<2 {
+      ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+      ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: summaryKey, defaults: defaults)
+      #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
+      ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
+      #expect(defaults.object(forKey: summaryKey) == nil)
+      #expect(defaults.object(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) == nil)
+    }
+  }
+
+  @Test("Structured MLX calls refuse to download in Offline Mode")
+  func structuredPathBlocksDownloadOffline() {
+    #expect(MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: false))
+    #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: true))
+    #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: false, isDownloaded: false))
   }
 }
