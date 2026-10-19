@@ -135,7 +135,10 @@ struct MCPMeetingTools {
   static func parseTimestamp(_ raw: String) -> TimeInterval? {
     let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "[] \n\t"))
     let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false).map { Int($0) }
-    guard !parts.isEmpty, parts.count <= 3, !parts.contains(where: { $0 == nil || $0! < 0 }) else { return nil }
+    // Each part is capped so `h * 3600` cannot overflow (a trap, i.e. an app crash) on hostile input.
+    guard !parts.isEmpty, parts.count <= 3,
+      !parts.contains(where: { $0 == nil || $0! < 0 || $0! > 1_000_000 })
+    else { return nil }
     let nums = parts.map { $0! }
     switch nums.count {
     case 2: return TimeInterval(nums[0] * 60 + nums[1])
@@ -158,7 +161,10 @@ struct MCPMeetingTools {
 
   private func intArg(_ arguments: [String: Any], _ key: String, default d: Int, max m: Int) -> Int {
     let v: Int?
-    if let i = arguments[key] as? Int { v = i } else if let dbl = arguments[key] as? Double { v = Int(dbl) } else { v = nil }
+    // `Int(Double)` traps on NaN, infinity and anything past Int.max ("limit": 1e20 from a model).
+    if let i = arguments[key] as? Int { v = i } else if let dbl = arguments[key] as? Double, dbl.isFinite {
+      v = Int(min(max(dbl, -1e9), 1e9))
+    } else { v = nil }
     return min(max(v ?? d, 1), m)
   }
 
