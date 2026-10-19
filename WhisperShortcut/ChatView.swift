@@ -316,15 +316,15 @@ class ChatViewModel: ObservableObject {
     return dict
   }()
 
-  /// Non-model commands shown before / after the model-switch block. Kept separate so the model
-  /// block can be re-sorted by recency for display without disturbing these fixed slots.
+  /// Non-model commands; `commandSuggestions` puts the model-switch aliases between them for the
+  /// system prompt, while the on-screen menu lists only these (see `slashMenuCommands`).
   static let commandsBeforeModels: [(command: String, description: String)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/attach", "Open the file picker to attach files (PDF, images, text)"),
     ("/folder", "Share a folder so the chat can list, read, and search files in it"),
     ("/workspace", "Limit this chat to one shared folder, e.g. /workspace notes (`all` = every folder, `off` = none)"),
-    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
+    ("/model", "Switch model…"),
   ]
   static let commandsAfterModels: [(command: String, description: String)] = [
     ("/think", "Set reasoning depth for this chat: minimal | low | medium | high | default"),
@@ -337,45 +337,121 @@ class ChatViewModel: ObservableObject {
     ("/feedback", "Message the developer, with the end of this chat attached"),
   ]
 
-  /// All slash commands in canonical (provider-grouped) order. Used where order is irrelevant —
-  /// `knownSlashCommands` (a set) and the system-prompt command list. The on-screen autocomplete
-  /// uses `commandSuggestionsForDisplay`, which re-sorts the model block by recency.
+  /// All slash commands in canonical (provider-grouped) order, model aliases included. Used by
+  /// `knownSlashCommands` (a set) and the system-prompt command list. The on-screen menu uses
+  /// `slashSuggestions`, which lists models only behind `/model `.
   static let commandSuggestions: [(command: String, description: String)] =
     commandsBeforeModels + modelCommands.map { ($0.command, $0.description) } + commandsAfterModels
 
-  /// Model-switch commands for display, ordered most-recently-used first (see `recordModelUse`).
-  /// The currently active model is pulled out of the recency sort and appended last, labelled
-  /// "Current model" — so the top row is the most-recently-used *other* model (one Enter away
-  /// from toggling back), while the list still shows the complete lineup: a model missing from
-  /// the suggestions reads as "the app dropped it", which it never is. Never-used models keep
-  /// the canonical provider-grouped order at the bottom.
-  func recentlyOrderedModelCommands() -> [(command: String, description: String)] {
-    let recency = Self.loadModelRecency()
-    let current = PromptModel.loadSelectedChatModel()
-    let rank: (PromptModel) -> Int = { recency.firstIndex(of: $0.rawValue) ?? Int.max }
-    let others = Self.modelCommands
-      .filter { $0.model != current }
-      .enumerated()
-      .sorted { a, b in
-        let ra = rank(a.element.model), rb = rank(b.element.model)
-        return ra != rb ? ra < rb : a.offset < b.offset
-      }
-      .map { ($0.element.command, $0.element.description) }
-    guard let currentEntry = Self.modelCommands.first(where: { $0.model == current }) else {
-      return others
-    }
-    return others + [(currentEntry.command, "Current model — \(current.displayName)")]
+  /// One row of the slash-command menu: a command (`/new`) or, after `/model `, a model.
+  struct SlashSuggestion: Equatable {
+    /// Row identity. For a command it is also what gets dispatched; for a model it is the
+    /// model's alias, used only as a stable id (selection switches via `model`).
+    let command: String
+    let title: String
+    let detail: String
+    var model: PromptModel? = nil
+    var isCurrent = false
   }
 
-  /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
-  /// /new in single-chat mode).
-  var commandSuggestionsForDisplay: [(command: String, description: String)] {
-    var list = userCommandSuggestions + Self.commandsBeforeModels + recentlyOrderedModelCommands()
-      + Self.commandsAfterModels
-    if singleChatOnly {
-      list = list.filter { $0.command != "/new" }
+  /// Rows for the slash menu, given everything typed in the composer.
+  ///
+  /// - Bare `/` and command prefixes list commands only; models are reached through one
+  ///   `/model` row instead of ~15 aliases like `/gemini31flashlite` (recall, not recognition).
+  /// - `/model <query>` lists the chat models by display name, filtered as you type: every
+  ///   query word must appear in the name, alias, or provider.
+  /// - A slash word that matches no command but does match models (`/gem`, `/claude`) lists
+  ///   those models, so the old aliases still lead somewhere when typed. Aliases typed in full
+  ///   keep dispatching directly (`modelCommandLookup`); they are just never listed.
+  ///
+  /// Pure so the filtering is unit-testable: `models` are the chat models offered on this Mac
+  /// (`PromptModel.chatModels` — MLX only where it runs, cloud hidden in Offline Mode).
+  static func slashSuggestions(
+    composerText: String,
+    commands: [(command: String, description: String)],
+    models: [PromptModel],
+    current: PromptModel,
+    needsSetup: (ChatModelProvider) -> Bool = { _ in false }
+  ) -> [SlashSuggestion] {
+    func modelRows(_ query: String) -> [SlashSuggestion] {
+      let words = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+      // Grouped by provider in the same order as the composer's model picker.
+      let ordered = ChatModelProvider.allCases.flatMap { p in models.filter { $0.provider == p } }
+      return ordered
+        .filter { model in
+          let haystack = [
+            model.displayName, model.displayName.replacingOccurrences(of: "-", with: " "),
+            model.shortAlias, model.provider.commandAlias, model.provider.rawValue,
+            model.provider.pickerSectionTitle, model.rawValue,
+          ].joined(separator: " ").lowercased()
+          return words.allSatisfy { haystack.contains($0) }
+        }
+        .map { model in
+          SlashSuggestion(
+            command: "/\(model.shortAlias)",
+            title: model.displayName,
+            detail: model.provider.pickerSectionTitle + (needsSetup(model.provider) ? " · needs setup" : ""),
+            model: model,
+            isCurrent: model == current)
+        }
     }
-    return list
+
+    let line = String(composerText.drop(while: { $0.isWhitespace }))
+    if line.lowercased().hasPrefix(modelCommand + " "), !line.contains(where: \.isNewline) {
+      return modelRows(String(line.dropFirst(modelCommand.count + 1)))
+    }
+
+    let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastWord = trimmed.split(whereSeparator: { $0.isWhitespace }).last.map(String.init) ?? ""
+    guard lastWord.hasPrefix("/") else { return [] }
+    let prefix = lastWord.lowercased()
+    let commandRows = commands
+      .filter { $0.command.lowercased().hasPrefix(prefix) }
+      .map { SlashSuggestion(command: $0.command, title: $0.command, detail: $0.description) }
+    // One letter after the slash is too little to guess a model from; let the commands speak.
+    guard commandRows.isEmpty, prefix.count >= 3 else { return commandRows }
+    // An alias typed in full whose model is not offered here (`/local`, `/mlx` on Intel) lists
+    // nothing, so Return reaches the alias and its explanation — not a look-alike row
+    // (`local` also matches the offline models' provider, `localMLX`).
+    if let target = modelCommandLookup[prefix], !models.contains(target) { return [] }
+    return modelRows(String(prefix.dropFirst()))
+  }
+
+  /// Row to highlight when the menu (re)appears: the command typed in full, the model an alias
+  /// typed in full points at (`/gemini` → the Gemini default, not the first Gemini row), the
+  /// current model in the `/model ` list (so ↑/↓ start from where you are), else the top row.
+  static func initialSlashHighlight(
+    in rows: [SlashSuggestion], composerText: String
+  ) -> Int {
+    let typed = (composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+      .split(whereSeparator: { $0.isWhitespace }).last.map(String.init) ?? "").lowercased()
+    if let i = rows.firstIndex(where: { $0.model == nil && $0.command.lowercased() == typed }) { return i }
+    if let target = modelCommandLookup[typed], let i = rows.firstIndex(where: { $0.model == target }) { return i }
+    if let i = rows.firstIndex(where: \.isCurrent) { return i }
+    return 0
+  }
+
+  /// Commands listed in the slash menu: the user's own commands first, then the built-ins
+  /// (no `/new` in single-chat mode). Model aliases are deliberately absent — see `slashSuggestions`.
+  var slashMenuCommands: [(command: String, description: String)] {
+    let list = userCommandSuggestions + Self.commandsBeforeModels + Self.commandsAfterModels
+    return singleChatOnly ? list.filter { $0.command != "/new" } : list
+  }
+
+  /// Slash-menu rows for the current composer text (live app state: offered models, current
+  /// model, credentials).
+  func slashSuggestions(for composerText: String) -> [SlashSuggestion] {
+    Self.slashSuggestions(
+      composerText: composerText,
+      commands: slashMenuCommands,
+      models: PromptModel.chatModels,
+      current: Self.openChatModel,
+      needsSetup: { !$0.hasCredential })
+  }
+
+  /// Switches the chat model from the slash menu's `/model` list.
+  func selectChatModel(_ model: PromptModel) {
+    switchToModel(model)
   }
 
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
@@ -1629,8 +1705,8 @@ class ChatViewModel: ObservableObject {
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
     // prefix caching): stable blocks first, blocks that change within a session last. Anything
     // that changes invalidates the cache for everything after it.
-    // Canonical order, not `commandSuggestionsForDisplay`: that one re-sorts by recency, so every
-    // `/model` switch would change the prompt prefix and miss the cache.
+    // Canonical, fixed order: anything that changed with the selected model would change the
+    // prompt prefix and miss the cache.
     let commandsList = Self.commandSuggestions
       .filter { !singleChatOnly || $0.command != "/new" }
       .map { "- `\($0.command)` — \($0.description)" }
@@ -2058,7 +2134,7 @@ class ChatViewModel: ObservableObject {
     switch outcome {
     case .usage(let cur):
       appendModelMessage(
-        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 3.8 flash`."
+        "Current model: **\(cur.displayName)**. Type `/model ` to pick another from the list."
       )
     case .applied(let model):
       switchToModel(model)
@@ -2075,6 +2151,13 @@ class ChatViewModel: ObservableObject {
   /// expected to be already migrated (callers come from `ChatModelCommandResolver` or
   /// `ChatModelProvider.X.defaultChatModel`, both of which yield current cases).
   private func switchToModel(_ model: PromptModel) {
+    // Aliases like `/local` and `/mlx` dispatch even where their model cannot run. Saying "Model
+    // set to …" there while the picker kept the old model (it only shows chat models) was a lie.
+    if let reason = Self.chatUnavailableReason(for: model) {
+      appendModelMessage(reason)
+      DebugLogger.log("GEMINI-CHAT: switchToModel refused \(model.rawValue) (not offered in chat)")
+      return
+    }
     UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     Self.recordModelUse(model)
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
@@ -2082,6 +2165,28 @@ class ChatViewModel: ObservableObject {
     let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
     appendModelMessage("Model set to **\(model.displayName)**.\(setupHint)")
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
+  }
+
+  /// Why `model` cannot be the chat model right now, or nil when it can (it is in
+  /// `PromptModel.chatModels`, the same list the composer's picker shows).
+  static func chatUnavailableReason(for model: PromptModel) -> String? {
+    guard !PromptModel.chatModels.contains(model) else { return nil }
+    let offlineHint = PromptModel.chatModels.contains { $0.provider == .localMLX }
+      ? " For a chat that stays on this Mac, pick an offline model: `/model offline`."
+      : ""
+    if model.provider == .local {
+      return "**\(model.displayName)** only powers Dictate Prompt for now, not Chat.\(offlineHint)"
+    }
+    if let mlx = model.localMLXModelType, !mlx.isOfferable {
+      let need = LocalLLMModelType.isSupportedOnThisMac
+        ? "at least \(mlx.minimumPhysicalMemoryGB) GB of memory"
+        : "a Mac with Apple silicon"
+      return "**\(model.displayName)** can't run on this Mac: it needs \(need)."
+    }
+    if !model.isSelectableUnderOfflineMode {
+      return "Offline Mode is on, so Chat only uses models on this Mac. Turn it off in Settings to use **\(model.displayName)**."
+    }
+    return "**\(model.displayName)** isn't available in Chat."
   }
 
   /// Handles the /think command. Sets this session's reasoning depth (persisted across restarts)
@@ -4062,15 +4167,12 @@ struct ChatInputAreaView: View {
       commandSuggestionsOverlay
       inputBar
     }
-    // Re-home the highlight whenever the typed slash word changes, so filtering the
-    // suggestion list never leaves the selection pointing at a now-hidden row. Prefer an
-    // exact command match so typing a full command (e.g. "/gpt5", "/gpt") + Enter dispatches
-    // *that* command, not the recency-top prefix sibling. No exact match (e.g. bare "/") →
-    // top row, preserving the one-Enter recency toggle. ↑/↓ override this afterward.
-    .onChange(of: lastWord) {
-      let list = filteredCommandSuggestions
-      let typed = lastWord.lowercased()
-      selectedSuggestionIndex = list.firstIndex { $0.command.lowercased() == typed } ?? 0
+    // Re-home the highlight whenever the typed text changes (the `/model ` query includes
+    // spaces, so the last word alone is not enough), so filtering never leaves the selection on
+    // a now-hidden row. See `initialSlashHighlight`; ↑/↓ override this afterward.
+    .onChange(of: composer.plainText) {
+      selectedSuggestionIndex = ChatViewModel.initialSlashHighlight(
+        in: filteredCommandSuggestions, composerText: composer.plainText)
     }
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
@@ -4121,30 +4223,19 @@ struct ChatInputAreaView: View {
     Set(ChatViewModel.commandSuggestions.map(\.command).filter { !ChatViewModel.argumentCommands.contains($0) })
       .union(ChatViewModel.modelCommandLookup.keys) // adds the silent /openai alias (not in commandSuggestions)
 
-  /// Slash-command suggestions matching the word the caret sits on (empty unless that
-  /// word starts with "/"). Single source for the overlay's rows and for ↑/↓ navigation,
-  /// Tab, and Enter selection, so the highlighted row and the dispatched command always agree.
-  private var filteredCommandSuggestions: [(command: String, description: String)] {
-    guard lastWord.hasPrefix("/") else { return [] }
-    let prefix = lastWord.lowercased()
-    let matches = viewModel.commandSuggestionsForDisplay.filter { $0.command.lowercased().hasPrefix(prefix) }
-    // Bare "/" used to dump every model slug. Keep actions + provider aliases
-    // (`/gemini`, `/gpt`, `/claude`…); require 3+ characters before listing per-model IDs.
-    guard prefix.count < 3 else { return matches }
-    let providerAliases = Set(ChatModelProvider.allCases.map { "/\($0.commandAlias)" })
-    let actionCommands = Set(
-      (ChatViewModel.commandsBeforeModels + ChatViewModel.commandsAfterModels).map(\.command)
-        + viewModel.userCommandsForCurrentChat.map(\.slash)
-    )
-    return matches.filter { actionCommands.contains($0.command) || providerAliases.contains($0.command) }
+  /// Slash-menu rows for what is typed (empty unless the last word starts with "/" or the line
+  /// is `/model …`). Single source for the overlay's rows and for ↑/↓ navigation, Tab, and
+  /// Enter selection, so the highlighted row and the dispatched command always agree.
+  private var filteredCommandSuggestions: [ChatViewModel.SlashSuggestion] {
+    viewModel.slashSuggestions(for: composer.plainText)
   }
 
-  /// The command for the currently highlighted suggestion row, or nil when the overlay isn't
-  /// showing. `selectedSuggestionIndex` is clamped here so a stale index can never crash.
-  private func highlightedSuggestionCommand() -> String? {
+  /// The currently highlighted suggestion row, or nil when the overlay isn't showing.
+  /// `selectedSuggestionIndex` is clamped here so a stale index can never crash.
+  private func highlightedSuggestion() -> ChatViewModel.SlashSuggestion? {
     let list = filteredCommandSuggestions
     guard !list.isEmpty else { return nil }
-    return list[max(0, min(selectedSuggestionIndex, list.count - 1))].command
+    return list[max(0, min(selectedSuggestionIndex, list.count - 1))]
   }
 
   /// Moves the suggestion highlight by `delta` (wrapping top↔bottom). Returns true only when the
@@ -4157,8 +4248,25 @@ struct ChatInputAreaView: View {
     return true
   }
 
-  /// Applies a chosen suggestion: argument-taking commands complete inline (so the user can type
-  /// the argument); every other command strips the slash token and dispatches. Shared by Tab and Enter.
+  /// Applies a chosen row. A model switches the chat model and removes what was typed to find it
+  /// (the whole `/model …` line, or the `/gem` word); argument-taking commands complete inline
+  /// (so the user can type the argument); every other command strips the slash token and
+  /// dispatches. Shared by Tab, Enter and click.
+  private func selectSuggestion(_ suggestion: ChatViewModel.SlashSuggestion) {
+    guard let model = suggestion.model else {
+      selectCommand(suggestion.command)
+      return
+    }
+    let typed = composer.serialize().typedText
+    if typed.lowercased().hasPrefix("/model ") {
+      composer.removeTrailingPlainText(suffix: typed)
+    } else {
+      composer.removeTrailingWord()
+    }
+    viewModel.selectChatModel(model)
+    selectedSuggestionIndex = 0
+  }
+
   private func selectCommand(_ command: String) {
     composer.removeTrailingWord()
     if ChatViewModel.argumentCommands.contains(command) {
@@ -4174,15 +4282,17 @@ struct ChatInputAreaView: View {
   /// token (preserving any other attachments / text) and dispatch through the legacy `sendMessage`;
   /// everything else is sent in document order.
   private func submitComposer() {
-    if let command = highlightedSuggestionCommand() {
+    if let suggestion = highlightedSuggestion() {
       // A command typed out in full dispatches on Enter even while the overlay still shows it.
       // Completing "/workspace" to "/workspace " appends a space and nothing else, which reads as
       // "the command is broken" — and every argument command's bare form is a real status query.
-      // Prefix matches still complete inline, so "/mo" ⏎ becomes "/model " as before.
-      let typedInFull =
-        ChatViewModel.argumentCommands.contains(command) && lastWord.lowercased() == command
+      // `/model` is the exception: its space opens the model list, which is visible progress.
+      // Prefix matches still complete inline, so "/mo" ⏎ becomes "/model ".
+      let command = suggestion.command
+      let typedInFull = suggestion.model == nil && command != "/model"
+        && ChatViewModel.argumentCommands.contains(command) && lastWord.lowercased() == command
       if !typedInFull {
-        selectCommand(command)
+        selectSuggestion(suggestion)
         return
       }
     }
@@ -4220,8 +4330,8 @@ struct ChatInputAreaView: View {
   /// Tab key in composer: complete/dispatch the highlighted suggestion without clearing the
   /// rest of the composer.
   private func handleTabComplete() -> Bool {
-    guard let command = highlightedSuggestionCommand() else { return false }
-    selectCommand(command)
+    guard let suggestion = highlightedSuggestion() else { return false }
+    selectSuggestion(suggestion)
     return true
   }
 
@@ -4229,64 +4339,90 @@ struct ChatInputAreaView: View {
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if lastWord.hasPrefix("/") {
-        let suggestions = filteredCommandSuggestions
-        if !suggestions.isEmpty {
-          let highlight = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
-          ScrollViewReader { proxy in
-            ScrollView {
-              VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(suggestions.enumerated()), id: \.element.command) { index, item in
-                  HStack(alignment: .top, spacing: 8) {
-                    Text(item.command)
-                      .font(.system(.body, design: .monospaced))
-                      .fontWeight(.medium)
-                      .foregroundColor(ChatTheme.primaryText)
-                    Text(item.description)
-                      .font(.caption)
-                      .foregroundColor(ChatTheme.secondaryText)
-                      .lineLimit(2)
-                  }
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                  .padding(.horizontal, 12)
-                  .padding(.vertical, 8)
-                  .background(
-                    RoundedRectangle(cornerRadius: 6)
-                      .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
-                  )
-                  .padding(.horizontal, 4)
-                  .contentShape(Rectangle())
-                  .onTapGesture { selectCommand(item.command) }
-                  .id(item.command)
-                }
+      let suggestions = filteredCommandSuggestions
+      if !suggestions.isEmpty {
+        let highlight = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+              ForEach(Array(suggestions.enumerated()), id: \.element.command) { index, item in
+                suggestionRow(item)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                  RoundedRectangle(cornerRadius: 6)
+                    .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
+                )
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+                .onTapGesture { selectSuggestion(item) }
+                .id(item.command)
               }
-              .padding(.vertical, 6)
             }
-            .frame(maxHeight: 260)
-            // Keep the highlighted row visible as ↑/↓ moves through a long list.
-            .onChange(of: selectedSuggestionIndex) { _ in
-              let i = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
-              withAnimation(.easeOut(duration: 0.1)) {
-                proxy.scrollTo(suggestions[i].command, anchor: .center)
-              }
+            .padding(.vertical, 6)
+          }
+          // A ScrollView takes all the height it is offered; size it to the rows so a short
+          // list (three Claude models) does not float in an empty 260 pt box.
+          // Rows whose description wraps to a second line (`/workspace`) are taller.
+          .frame(height: min(260, suggestions.reduce(12) { $0 + ($1.detail.count > 80 ? 50 : 34) }))
+          // Keep the highlighted row visible as ↑/↓ moves through a long list.
+          .onChange(of: selectedSuggestionIndex) { _ in
+            let i = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+            withAnimation(.easeOut(duration: 0.1)) {
+              proxy.scrollTo(suggestions[i].command, anchor: .center)
             }
           }
-          // Was `.allowsHitTesting(false)` — that also swallowed scroll gestures, so a list
-          // longer than 260pt couldn't be scrolled with trackpad/wheel (only ↑/↓ auto-scroll
-          // worked). The overlay sits ABOVE the composer in a VStack (no overlap), and rows are
-          // now tap-to-select, so enabling hit testing is safe and makes the popup scrollable.
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(ChatTheme.controlBackground)
-          .overlay(
-            RoundedRectangle(cornerRadius: 8)
-              .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
-          )
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-          .frame(maxWidth: 720)
-          .frame(maxWidth: .infinity, alignment: .center)
-          .padding(.horizontal, 24)
-          .padding(.bottom, 4)
         }
+        // Was `.allowsHitTesting(false)` — that also swallowed scroll gestures, so a list
+        // longer than 260pt couldn't be scrolled with trackpad/wheel (only ↑/↓ auto-scroll
+        // worked). The overlay sits ABOVE the composer in a VStack (no overlap), and rows are
+        // now tap-to-select, so enabling hit testing is safe and makes the popup scrollable.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ChatTheme.controlBackground)
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 4)
+      }
+    }
+  }
+
+  /// A command row reads as code (`/new` + what it does); a model row reads as a menu item
+  /// (display name, provider, and a checkmark on the current model, like the composer's picker).
+  @ViewBuilder
+  private func suggestionRow(_ item: ChatViewModel.SlashSuggestion) -> some View {
+    if item.model != nil {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(item.title)
+          .font(.body)
+          .foregroundColor(ChatTheme.primaryText)
+        Text(item.detail)
+          .font(.caption)
+          .foregroundColor(ChatTheme.secondaryText)
+        Spacer(minLength: 8)
+        if item.isCurrent {
+          Image(systemName: "checkmark")
+            .font(.caption.weight(.semibold))
+            .foregroundColor(ChatTheme.secondaryText)
+            .accessibilityLabel("Current model")
+        }
+      }
+    } else {
+      HStack(alignment: .top, spacing: 8) {
+        Text(item.title)
+          .font(.system(.body, design: .monospaced))
+          .fontWeight(.medium)
+          .foregroundColor(ChatTheme.primaryText)
+        Text(item.detail)
+          .font(.caption)
+          .foregroundColor(ChatTheme.secondaryText)
+          .lineLimit(2)
       }
     }
   }
