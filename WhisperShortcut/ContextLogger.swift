@@ -183,6 +183,8 @@ struct UnifiedSystemPromptHistoryEntry: Codable {
   let newLength: Int
   let content: String
   let model: String?
+  /// Snapshot of the scorecard when this change was applied, so review can show "since the last change: X → Y".
+  let scorecard: ScorecardMetrics?
 }
 
 // MARK: - Context Logger
@@ -736,6 +738,9 @@ class ContextLogger {
   func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = "auto") {
     queue.async { [weak self] in
       guard let self else { return }
+      let scorecard = SmartImprovementScorecard.snapshot(
+        directory: self.contextDirectoryURL,
+        currentGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
       let entry = UnifiedSystemPromptHistoryEntry(
         ts: self.iso8601Now(),
         section: section.rawValue,
@@ -743,7 +748,8 @@ class ContextLogger {
         previousLength: previousLength,
         newLength: newLength,
         content: content,
-        model: model
+        model: model,
+        scorecard: scorecard
       )
       let fileURL = self.contextDirectoryURL.appendingPathComponent("system-prompts-history.jsonl")
       do {
