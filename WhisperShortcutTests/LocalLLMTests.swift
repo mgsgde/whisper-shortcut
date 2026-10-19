@@ -199,4 +199,26 @@ struct LocalLLMTests {
     #expect(real["stream"] as? Bool == true)
     #expect(warm["stream"] as? Bool == false)
   }
+
+  // MARK: - On-disk completeness
+
+  /// A cancelled download left shard 2 of 2 on disk and shard 1 as `.incomplete`. Accepting that
+  /// folder as "downloaded" made MLX trap while loading it, so Chat crashed the whole app.
+  @Test("A sharded model with a missing shard is not on disk")
+  func missingShardIsIncomplete() throws {
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("mlx-shards-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    for name in ["config.json", "tokenizer.json", "model-00002-of-00002.safetensors"] {
+      try Data("{}".utf8).write(to: dir.appendingPathComponent(name))
+    }
+    let index = #"{"weight_map":{"a":"model-00001-of-00002.safetensors","b":"model-00002-of-00002.safetensors"}}"#
+    try Data(index.utf8).write(to: dir.appendingPathComponent("model.safetensors.index.json"))
+
+    #expect(!MLXModelPaths.hasRequiredFiles(at: dir))
+
+    try Data("{}".utf8).write(to: dir.appendingPathComponent("model-00001-of-00002.safetensors"))
+    #expect(MLXModelPaths.hasRequiredFiles(at: dir))
+  }
 }
