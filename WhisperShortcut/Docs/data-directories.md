@@ -21,6 +21,30 @@ This path is used for:
 
 App Store builds are sandboxed by macOS and naturally resolve Application Support inside the app container. Non-sandboxed development builds explicitly use the same container-style path so switching between build variants does not split user data across two locations.
 
+## macOS App Data Protection (Sonoma and later)
+
+Since macOS 14, `~/Library/Containers/<bundle id>/Data` carries a `com.apple.macl` attribute that names the code allowed into it. That is the bundle that owns the container, plus apps signed with the same Team ID. Any other process is either shown the "would like to access data from other apps" prompt or, once that prompt has been denied, gets `EPERM` ("Operation not permitted") on `stat`/`open`. FileManager's `fileExists` then just returns `false`. Checked on macOS 26.6: the container's `Data` folder has `com.apple.macl`, and `.com.apple.containermanagerd.metadata.plist` cannot be read from a Terminal shell.
+
+What that means for the two builds:
+
+- **App Store build** (sandboxed, Team ID `Z59J7V26UT`): owns the container and is always allowed in.
+- **Direct/GitHub build** (Developer ID, same Team ID, not sandboxed): allowed in by the same-team rule, so it normally reads the container the App Store build created without a prompt. If the direct build is the only one ever installed, it creates the folder itself with `mkdir`. That folder is not a containermanagerd container and carries no MACL.
+- **Signature change between installs:** a *sandboxed* build creates a real container with a MACL bound to that build's signature. An App Store build, or a local `--app-store` scheme build, both count. If that build was ad-hoc or otherwise not Team `Z59J7V26UT`, a later Developer ID build is "another app" to macOS. It then gets the prompt once, or a silent `EPERM` if the prompt was denied or never seen, even though `system-prompts.md` is still on disk. Installing a newer `.dmg` over an older one with the same signing changes nothing.
+- **Can block:** any build signed differently, such as ad-hoc ("Sign to Run Locally"), another team, or a re-signed copy. So can a Mac where the App Data prompt was answered "Don't Allow" once. That denial is stored in TCC (`kTCCServiceSystemPolicyAppData`), and every later read fails with `EPERM` and no prompt. Full Disk Access overrides the denial. `tccutil reset SystemPolicyAppData com.magnusgoedde.whispershortcut` brings the prompt back.
+
+Before 2026-10-19 the app treated that `EPERM` as "file missing". It tried to write defaults, `loadSection` returned nil, and dictation ran on the default prompts with nothing on screen to say why. Now `SystemPromptsStore` uses `stat` and tells `ENOENT` (create defaults) apart from every other errno (unreadable). For an unreadable file it:
+
+- logs `SYSTEM-PROMPTS: … exists but cannot be read: EPERM (Operation not permitted)`;
+- refuses every write, so the file is never replaced;
+- shows an alert at launch and a banner in the prompt editors that point to Full Disk Access.
+
+Creating the file uses `O_EXCL` (`.withoutOverwriting`), so even a misdetected "missing" cannot replace an existing file.
+
+### Prompt backups and launch log
+
+- `UserContext/system-prompts.md.bak`: before any write that changes a section you customized (one that is not a default the app ever shipped), the previous file is copied here. There is one rolling copy. Reverting a mistake: quit the app, copy `.bak` over `system-prompts.md`, and reopen.
+- Every launch logs one line per section, `SYSTEM-PROMPTS: section promptMode = custom (1234 chars)`, plus a line for the file itself. The log never contains prompt text. Read it with `bash scripts/logs.sh -t 10m | grep SYSTEM-PROMPTS`.
+
 ## Cleaning Or Resetting Data
 
 Prefer the reset and delete actions in Settings when available. For manual cleanup:

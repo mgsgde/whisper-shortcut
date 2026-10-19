@@ -54,12 +54,22 @@ enum SystemPromptSection: String, CaseIterable {
 }
 
 /// Reads and writes the single system-prompts.md file in UserContext.
+///
+/// The file holds prompts users write by hand (a practice's whole documentation format can live in
+/// the Dictate Prompt section), so the store treats it as user data, not cache:
+/// - it never writes defaults over a file that exists but cannot be read (macOS App Data
+///   protection answers EPERM when a build is not recognised as the container's owner — see
+///   `Docs/data-directories.md`); it records `unreadableReason` and the runtime falls back to the
+///   defaults for that launch only, without touching the file;
+/// - before a write changes a section the user customized, the previous file is kept as
+///   `system-prompts.md.bak` next to it (one rolling copy).
 final class SystemPromptsStore {
   static let shared = SystemPromptsStore()
   static let fileName = "system-prompts.md"
+  static let backupFileName = "system-prompts.md.bak"
 
-  private let queue = DispatchQueue(label: "com.whisper-shortcut.systempromptsstore", qos: .userInitiated)
-  private var contextDirectoryURL: URL { AppSupportPaths.userContextURL() }
+  private let contextDirectoryOverride: URL?
+  private var contextDirectoryURL: URL { contextDirectoryOverride ?? AppSupportPaths.userContextURL() }
 
   private var fileURL: URL {
     contextDirectoryURL.appendingPathComponent(Self.fileName)
@@ -68,7 +78,22 @@ final class SystemPromptsStore {
   /// URL of the system-prompts file (e.g. for opening in Finder or external editor).
   var systemPromptsFileURL: URL { fileURL }
 
-  private init() {}
+  var backupFileURL: URL { contextDirectoryURL.appendingPathComponent(Self.backupFileName) }
+
+  private let stateLock = NSLock()
+  private var _unreadableReason: String?
+
+  /// Set while the file exists but cannot be read (e.g. "EPERM (Operation not permitted)"). The
+  /// prompts in use are then the app defaults, and every write is refused so the file survives.
+  var unreadableReason: String? {
+    stateLock.lock(); defer { stateLock.unlock() }
+    return _unreadableReason
+  }
+
+  private init() { contextDirectoryOverride = nil }
+
+  /// Tests only: a store rooted in a scratch directory instead of the real UserContext.
+  init(contextDirectoryURL: URL) { contextDirectoryOverride = contextDirectoryURL }
 
   // MARK: - Public read
 
@@ -176,73 +201,109 @@ final class SystemPromptsStore {
       ?? AppConstants.defaultReadAloudRewritePrompt
   }
 
-  /// Load full file content for the editor. Returns default formatted content if file missing (after migration attempt).
+  /// Load full file content for the editor. Returns default formatted content if the file is missing
+  /// (after migration attempt) or unreadable.
   func loadFullContent() -> String {
-    ensureDirectoryExists()
-    if !FileManager.default.fileExists(atPath: fileURL.path) {
-      performMigration()
-    }
-    guard let data = try? Data(contentsOf: fileURL),
-          let content = String(data: data, encoding: .utf8) else {
-      return defaultFormattedContent()
-    }
+    guard case .contents(let content) = currentFile() else { return defaultFormattedContent() }
     return content
   }
 
   /// Recreate the system-prompts file with app defaults. Used after "Delete context data".
   func resetSystemPromptsToDefaults() {
     ensureDirectoryExists()
-    let content = defaultFormattedContent()
-    do {
-      try content.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("SYSTEM-PROMPTS: Reset \(Self.fileName) to defaults")
+    if write(defaultFormattedContent(), reason: "reset to defaults") {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-    } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Failed to reset to defaults: \(error.localizedDescription)")
     }
   }
 
   /// Save full file content from the editor. Parses sections and rewrites so format is canonical.
-  func saveFullContent(_ rawContent: String) {
-    ensureDirectoryExists()
-    let parsed = parseSections(from: rawContent)
-    let toWrite = formatContent(parsed)
-    do {
-      try toWrite.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("SYSTEM-PROMPTS: Saved \(Self.fileName)")
-    } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Failed to save: \(error.localizedDescription)")
-    }
+  @discardableResult
+  func saveFullContent(_ rawContent: String) -> Bool {
+    if case .unreadable = currentFile() { return refuseWrite("save") }
+    return write(formatContent(parseSections(from: rawContent)), reason: "save")
   }
 
   /// Update a single section (e.g. when Smart Improvement applies a suggestion). Writes the full file.
-  func updateSection(_ section: SystemPromptSection, content: String) {
-    ensureDirectoryExists()
-    if !FileManager.default.fileExists(atPath: fileURL.path) {
-      performMigration()
+  /// Returns false — and leaves the file alone — when the file exists but cannot be read, because the
+  /// only thing to merge the section into would then be the defaults.
+  @discardableResult
+  func updateSection(_ section: SystemPromptSection, content: String) -> Bool {
+    var parsed: [SystemPromptSection: String]
+    switch currentFile() {
+    case .contents(let existing): parsed = parseSections(from: existing)
+    case .missing: parsed = parseSections(from: defaultFormattedContent())
+    case .unreadable: return refuseWrite("update section \(section.rawValue)")
     }
-    var parsed = parseSections(from: (try? String(contentsOf: fileURL, encoding: .utf8)) ?? defaultFormattedContent())
     parsed[section] = content
-    let toWrite = formatContent(parsed)
-    do {
-      try toWrite.write(to: fileURL, atomically: true, encoding: .utf8)
-      NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-      DebugLogger.log("SYSTEM-PROMPTS: Updated section \(section.rawValue)")
-    } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Failed to update section: \(error.localizedDescription)")
-    }
+    guard write(formatContent(parsed), reason: "update section \(section.rawValue)") else { return false }
+    NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
+    return true
   }
 
   /// Current content for a section (raw, for display or comparison). Used by Smart Improvement.
+  /// Nil when the section is absent or the file cannot be read (see `unreadableReason`).
   func loadSection(_ section: SystemPromptSection) -> String? {
-    ensureDirectoryExists()
-    if !FileManager.default.fileExists(atPath: fileURL.path) {
-      performMigration()
+    guard case .contents = currentFile() else { return nil }
+    liftUnchangedDefaultsOnce()
+    guard case .contents(let content) = readFile() else { return nil }
+    return parseSections(from: content)[section]
+  }
+
+  /// One line per section — custom, default or empty, plus a character count — and one for the file
+  /// itself. Called once at launch so the next "my prompt is gone" report can be answered from the
+  /// log. Never logs prompt content.
+  func logStartupSummary() {
+    let state = currentFile()
+    // The account's real home, not the sandbox's (which is the container itself), so the log shows
+    // which physical file was read.
+    let home = getpwuid(getuid()).flatMap { String(validatingCString: $0.pointee.pw_dir) }
+      ?? FileManager.default.homeDirectoryForCurrentUser.path
+    let path = fileURL.path.replacingOccurrences(of: home, with: "~")
+    switch state {
+    case .missing:
+      DebugLogger.logError("SYSTEM-PROMPTS: \(path) missing and could not be created — using defaults")
+      return
+    case .unreadable(let reason):
+      DebugLogger.logError("SYSTEM-PROMPTS: \(path) exists but is unreadable (\(reason)) — using defaults, file left untouched")
+      return
+    case .contents:
+      break
     }
     liftUnchangedDefaultsOnce()
-    guard let data = try? Data(contentsOf: fileURL),
-          let content = String(data: data, encoding: .utf8) else { return nil }
-    return parseSections(from: content)[section]
+    guard case .contents(let content) = readFile() else { return }
+    let hasBackup = FileManager.default.fileExists(atPath: backupFileURL.path)
+    DebugLogger.log("SYSTEM-PROMPTS: \(path) readable (\(content.count) chars, backup \(hasBackup ? "present" : "none"))")
+    let parsed = parseSections(from: content)
+    for section in SystemPromptSection.allCases {
+      DebugLogger.log("SYSTEM-PROMPTS: section \(section.rawValue) = \(Self.describe(parsed[section], for: section))")
+    }
+  }
+
+  /// "custom (1234 chars)", "default (812 chars)", "empty" or "missing" — no content.
+  static func describe(_ body: String?, for section: SystemPromptSection) -> String {
+    guard let body else { return "missing" }
+    let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return "empty" }
+    let kind = isCustomized(trimmed, for: section) ? "custom" : "default"
+    return "\(kind) (\(trimmed.count) chars)"
+  }
+
+  /// True when the section holds text the user wrote: non-empty and not any default the app shipped.
+  static func isCustomized(_ body: String, for section: SystemPromptSection) -> Bool {
+    let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    return !trimmed.isEmpty && !SystemPromptDefaultsHistory.isShippedDefault(trimmed, for: section)
+  }
+
+  /// True when going from `old` to `new` changes at least one section the user had customized —
+  /// the writes worth a backup.
+  func changesCustomizedSection(from old: String, to new: String) -> Bool {
+    let before = parseSections(from: old)
+    let after = parseSections(from: new)
+    return SystemPromptSection.allCases.contains { section in
+      guard let previous = before[section], Self.isCustomized(previous, for: section) else { return false }
+      return SystemPromptDefaultsHistory.normalized(previous)
+        != SystemPromptDefaultsHistory.normalized(after[section] ?? "")
+    }
   }
 
   private var didLiftUnchangedDefaults = false
@@ -253,20 +314,110 @@ final class SystemPromptsStore {
   /// `SystemPromptDefaultsHistory`). Edited sections are never touched.
   private func liftUnchangedDefaultsOnce() {
     guard !didLiftUnchangedDefaults else { return }
+    guard case .contents(let content) = readFile() else { return }
     didLiftUnchangedDefaults = true
-    guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return }
     var parsed = parseSections(from: content)
     let upgrades = SystemPromptDefaultsHistory.upgrades(for: parsed)
     guard !upgrades.isEmpty else { return }
     for (section, current) in upgrades { parsed[section] = current }
-    do {
-      try formatContent(parsed).write(to: fileURL, atomically: true, encoding: .utf8)
-      let names = upgrades.keys.map(\.rawValue).sorted().joined(separator: ", ")
-      DebugLogger.log("SYSTEM-PROMPTS: Lifted unedited default(s) to the current wording: \(names)")
+    let names = upgrades.keys.map(\.rawValue).sorted().joined(separator: ", ")
+    if write(formatContent(parsed), reason: "lift unedited default(s): \(names)") {
       NotificationCenter.default.post(name: .contextFileDidUpdate, object: nil)
-    } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Failed to lift defaults: \(error.localizedDescription)")
     }
+  }
+
+  // MARK: - File access
+
+  enum FileState: Equatable {
+    case missing
+    case contents(String)
+    /// The file exists (or its directory cannot be entered) but reading failed; carries the errno.
+    case unreadable(String)
+  }
+
+  /// Reads the file, migrating defaults in only when it is genuinely absent (ENOENT). Records or
+  /// clears `unreadableReason` and logs the transition into the unreadable state once.
+  private func currentFile() -> FileState {
+    ensureDirectoryExists()
+    var state = readFile()
+    if state == .missing {
+      performMigration()
+      state = readFile()
+    }
+    let reason: String? = { if case .unreadable(let r) = state { return r } else { return nil } }()
+    stateLock.lock()
+    let changed = reason != _unreadableReason
+    _unreadableReason = reason
+    stateLock.unlock()
+    if changed, let reason {
+      DebugLogger.logError("SYSTEM-PROMPTS: \(Self.fileName) exists but cannot be read: \(reason). Using defaults; the file will not be overwritten.")
+    } else if changed {
+      DebugLogger.log("SYSTEM-PROMPTS: \(Self.fileName) readable again")
+    }
+    return state
+  }
+
+  /// `stat` first, so "no such file" (migrate) is told apart from "not allowed to look" (EPERM /
+  /// EACCES from App Data protection or permissions — never migrate, never overwrite).
+  func readFile() -> FileState {
+    var info = stat()
+    if stat(fileURL.path, &info) != 0 {
+      let code = errno
+      return code == ENOENT ? .missing : .unreadable(Self.describeErrno(code))
+    }
+    do {
+      let data = try Data(contentsOf: fileURL)
+      guard let text = String(data: data, encoding: .utf8) else { return .unreadable("not valid UTF-8") }
+      return .contents(text)
+    } catch {
+      let underlying = (error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError
+      if let underlying, underlying.domain == NSPOSIXErrorDomain {
+        return .unreadable(Self.describeErrno(Int32(underlying.code)))
+      }
+      return .unreadable("read failed: \(error.localizedDescription)")
+    }
+  }
+
+  private static func describeErrno(_ code: Int32) -> String {
+    let name: String
+    switch code {
+    case EPERM: name = "EPERM"
+    case EACCES: name = "EACCES"
+    case ENOTDIR: name = "ENOTDIR"
+    case EIO: name = "EIO"
+    default: name = "errno \(code)"
+    }
+    return "\(name) (\(String(cString: strerror(code))))"
+  }
+
+  /// Writes the whole file. If the write changes a section the user customized, the current file is
+  /// first copied to `system-prompts.md.bak`; when that copy fails the write is abandoned.
+  @discardableResult
+  private func write(_ content: String, reason: String) -> Bool {
+    if case .contents(let existing) = readFile() {
+      if existing == content { return true }
+      if changesCustomizedSection(from: existing, to: content) {
+        do {
+          try existing.write(to: backupFileURL, atomically: true, encoding: .utf8)
+        } catch {
+          DebugLogger.logError("SYSTEM-PROMPTS: Backup before \(reason) failed, not writing: \(error.localizedDescription)")
+          return false
+        }
+      }
+    }
+    do {
+      try content.write(to: fileURL, atomically: true, encoding: .utf8)
+      DebugLogger.log("SYSTEM-PROMPTS: Wrote \(Self.fileName) (\(reason))")
+      return true
+    } catch {
+      DebugLogger.logError("SYSTEM-PROMPTS: Failed to write (\(reason)): \(error.localizedDescription)")
+      return false
+    }
+  }
+
+  private func refuseWrite(_ action: String) -> Bool {
+    DebugLogger.logError("SYSTEM-PROMPTS: Refused to \(action): \(Self.fileName) exists but cannot be read (\(unreadableReason ?? "unknown"))")
+    return false
   }
 
   // MARK: - Private
@@ -321,6 +472,9 @@ final class SystemPromptsStore {
     return result
   }
 
+  /// First launch only: writes the defaults (or the pre-file UserDefaults prompts). Uses
+  /// `.withoutOverwriting` (O_EXCL), so even a racing or mis-detected "missing" cannot replace an
+  /// existing file.
   private func performMigration() {
     let dictation = UserDefaults.standard.string(forKey: UserDefaultsKeys.customPromptText)
       ?? AppConstants.defaultTranscriptionSystemPrompt
@@ -334,10 +488,10 @@ final class SystemPromptsStore {
       .readAloudRewrite: AppConstants.defaultReadAloudRewritePrompt,
     ])
     do {
-      try content.write(to: fileURL, atomically: true, encoding: .utf8)
-      DebugLogger.log("SYSTEM-PROMPTS: Migrated to \(Self.fileName) from UserDefaults")
+      try Data(content.utf8).write(to: fileURL, options: .withoutOverwriting)
+      DebugLogger.log("SYSTEM-PROMPTS: Created \(Self.fileName) (migrated from UserDefaults / defaults)")
     } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Migration failed: \(error.localizedDescription)")
+      DebugLogger.logError("SYSTEM-PROMPTS: Creating \(Self.fileName) failed: \(error.localizedDescription)")
     }
   }
 }
