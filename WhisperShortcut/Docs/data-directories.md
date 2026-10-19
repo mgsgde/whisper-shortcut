@@ -19,7 +19,21 @@ This path is used for:
 
 ## Why The Path Looks Sandboxed
 
-App Store builds are sandboxed by macOS and naturally resolve Application Support inside the app container. Non-sandboxed development builds explicitly use the same container-style path so switching between build variants does not split user data across two locations.
+Both shipped builds are sandboxed, so both get this path from macOS:
+
+- **App Store build**: target `WhisperShortcut-AppStore`, `WhisperShortcut-AppStore.entitlements`.
+- **Direct/GitHub build** (the `.dmg` and Sparkle updates): scheme `WhisperShortcut`, built by `.github/workflows/release.yml` and signed with Developer ID. Its `WhisperShortcut.entitlements` also has `com.apple.security.app-sandbox`, and `ENABLE_APP_SANDBOX = YES` is set for every configuration. Sparkle runs in its sandboxed mode (the `-spks`/`-spki` mach-lookup exceptions, `SUEnableInstallerLauncherService`).
+
+Both builds have the bundle ID `com.magnusgoedde.whispershortcut`, so they use the same container. `rebuild-and-restart.sh` builds are sandboxed as well. The non-sandboxed branch in `AppSupportPaths` only runs if the binary is started without its sandbox entitlement. It hard-codes the same container path so that case doesn't split the data.
+
+### Moving the direct build out of the container (evaluated 2026-10-19, not done)
+
+Proposal: point the direct build at `~/Library/Application Support/WhisperShortcut/` so it no longer depends on App Data protection. Rejected as specified, because changing the non-sandboxed branch of `AppSupportPaths` would not affect any shipped build. A sandboxed app cannot keep its data outside its container. Actually moving the data would mean two things:
+
+1. **Taking the sandbox off the direct build.** That needs its own entitlements file, Sparkle's non-sandboxed setup and a hardened-runtime review. The direct build would also lose the sandbox as a safety boundary.
+2. **Splitting data.** A Mac with both builds would keep two copies of meetings, prompts, chats and models (about 10 GB with MLX + WhisperKit models), and they would drift apart. UserDefaults would most likely split too: macOS stores preferences inside the container only while the app is sandboxed.
+
+That change needs a product decision (Magnus) before any code is written. Until then, a launch-time check covers the actual failure, an existing but unreadable container (`EPERM`). PR #146 does this for `system-prompts.md`, and the same check can be extended to the container root.
 
 ## macOS App Data Protection (Sonoma and later)
 
