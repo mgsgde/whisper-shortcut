@@ -701,6 +701,7 @@ class SpeechService {
     case .grok: return "grok"
     case .anthropic: return "anthropic"
     case .customOpenAI: return "customOpenAI"
+    case .openRouter: return "openRouter"
     }
   }
 
@@ -795,6 +796,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .customOpenAI:
       throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .openRouter:
+      throw TranscriptionError.networkError("OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }
   }
 
@@ -2467,7 +2470,7 @@ class SpeechService {
   private func transcribeWithOpenRouter(audioURL: URL, promptOverride: String?) async throws -> String {
     let apiKey = (keychainManager.get(.openRouter) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("OpenRouter API key is not configured. Add it in Settings → Dictate.")
+      throw TranscriptionError.networkError("OpenRouter is not connected. Connect your account in Settings → General.")
     }
     guard let url = URL(string: AppConstants.openRouterChatCompletionsEndpoint) else {
       throw TranscriptionError.invalidRequest

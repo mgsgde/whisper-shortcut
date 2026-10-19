@@ -8,9 +8,12 @@ enum ChatModelProvider: String, CaseIterable {
   /// Anthropic Claude via the Messages API. Chat-only for the first slice (no Dictate Prompt /
   /// TTS path — Claude has no native audio STT/TTS in this app).
   case anthropic
-  /// User-configured OpenAI-compatible chat proxy (OpenRouter, LiteLLM, …). Endpoint, model id,
-  /// and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
+  /// User-configured OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted).
+  /// Endpoint, model id, and optional API key are read from `OpenAIChatPreferences`. Selected explicitly in Chat.
   case customOpenAI
+  /// OpenRouter on the user's OpenRouter account (the key from Settings → General). The model
+  /// slug is read from `OpenRouterChatPreferences`.
+  case openRouter
   /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
   /// read from UserDefaults via `LocalLLMPreferences`. Runs fully on the user's machine.
   case local
@@ -30,6 +33,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .openai: return .openaiGPT6Sol
     case .anthropic: return .claudeSonnet55
     case .customOpenAI: return .customOpenAIEndpoint
+    case .openRouter: return .openRouterChat
     case .local:  return .localModel
     case .localMLX: return .localMLXQwen34BInstruct
     }
@@ -43,6 +47,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .openai: return "GPT"
     case .anthropic: return "Claude"
     case .customOpenAI: return "Custom endpoint"
+    case .openRouter: return "OpenRouter"
     case .local: return "Local server"
     case .localMLX: return "On this Mac"
     }
@@ -58,6 +63,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .openai: return "gpt"
     case .anthropic: return "claude"
     case .customOpenAI: return "custom"
+    case .openRouter: return "openrouter"
     case .local:  return "local"
     case .localMLX: return "mlx"
     }
@@ -152,9 +158,11 @@ enum PromptModel: String, CaseIterable {
   /// Reference: https://developers.openai.com/api/docs/deprecations
   case openaiGPT4oAudio = "gpt-audio-1.5"
 
-  // OpenAI-compatible chat proxy (OpenRouter, LiteLLM, self-hosted, …). The rawValue is a stable
+  // OpenAI-compatible server (OpenInference, Azure, Vertex, LiteLLM, self-hosted). The rawValue is a stable
   // sentinel — the actual model tag sent to the server is read from `OpenAIChatPreferences.modelID`.
   case customOpenAIEndpoint = "custom-openai-endpoint"
+  // Stable sentinel — the slug sent to OpenRouter is read from `OpenRouterChatPreferences.modelID`.
+  case openRouterChat = "openrouter-chat"
 
   // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
   // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
@@ -275,11 +283,11 @@ enum PromptModel: String, CaseIterable {
     case .claudeOpus55:
       return "Claude Opus 5.5"
     case .customOpenAIEndpoint:
-      // Names the endpoint that is actually configured. "Custom endpoint (OpenRouter / proxy)" was
-      // 36 characters in a chip that sits next to the composer's slash-command row — it squeezed
-      // those buttons until they hyphenated mid-word ("/at-tach", "/scree-nshot"). Naming the real
-      // target is both shorter and more useful than naming the mechanism.
-      return OpenAIChatPreferences.isOpenRouterEndpoint ? "OpenRouter" : "Custom endpoint"
+      // Short on purpose: this is a chip next to the composer's slash-command row, and a long
+      // name squeezed those buttons until they hyphenated mid-word ("/at-tach").
+      return "Custom endpoint"
+    case .openRouterChat:
+      return OpenRouterChatPreferences.shortModelName
     case .localModel:
       return "Local Server (Ollama / LM Studio)"
     case .localMLXQwen34BInstruct:
@@ -330,6 +338,7 @@ enum PromptModel: String, CaseIterable {
     case .claudeSonnet55:    return "claudesonnet55"
     case .claudeOpus55:      return "claudeopus55"
     case .customOpenAIEndpoint: return "custom"
+    case .openRouterChat:    return "openrouter"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
     case .localMLXQwen359B: return "mlx9b"
@@ -399,7 +408,9 @@ enum PromptModel: String, CaseIterable {
     case .claudeHaiku55:
       return "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key"
     case .customOpenAIEndpoint:
-      return "Your own OpenAI-compatible chat server (OpenRouter, LiteLLM, …) • Configure URL + model in Settings → Chat • Uses /chat/completions only (no web search)"
+      return "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search"
+    case .openRouterChat:
+      return "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → General • No web search"
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
@@ -417,7 +428,7 @@ enum PromptModel: String, CaseIterable {
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash,
-         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .localModel, .claudeHaiku55:
+         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .localModel, .claudeHaiku55:
       return "Low"
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return "Free (Offline)"
@@ -452,6 +463,8 @@ enum PromptModel: String, CaseIterable {
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
+    case .openRouterChat:
+      return .openRouter
     case .localModel:
       return .local
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
@@ -516,6 +529,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
+    case .openRouter: return OpenRouterChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server and in-process MLX need no API key — reachability is checked at request time.
@@ -538,6 +552,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini: return "Add your Gemini API key in Settings (General tab) to use Dictate Prompt."
     case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
+    case .openRouter: return "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
     case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
@@ -552,7 +567,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return false
     default:
       return true
@@ -676,7 +691,7 @@ enum PromptModel: String, CaseIterable {
          .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
          .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil
     }
   }
@@ -722,7 +737,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -736,7 +751,7 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .localModel,
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .localModel,
          .localMLXQwen34BInstruct, .localMLXQwen359B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
@@ -789,7 +804,7 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAI:
       guard let base = OpenAIChatPreferences.customEndpointBaseURL else { return false }
       return OfflineMode.allows(URL(string: base))
-    case .gemini, .openai, .grok, .anthropic:
+    case .gemini, .openai, .grok, .anthropic, .openRouter:
       return false
     }
   }
@@ -1603,8 +1618,122 @@ enum ReadAloudPreferences {
   }
 }
 
+// MARK: - OpenRouter Chat Preferences (UserDefaults + Keychain Accessors)
+/// Settings for the **OpenRouter** chat model (`PromptModel.openRouterChat`). The credential is
+/// only the OpenRouter account key (Settings → General); the custom endpoint knows nothing about it.
+enum OpenRouterChatPreferences {
+  static let sentinelModelRawValue = PromptModel.openRouterChat.rawValue
+
+  static func isOpenRouterModel(_ model: String) -> Bool {
+    model == sentinelModelRawValue
+  }
+
+  /// Slug sent to OpenRouter (e.g. `openai/gpt-4o`).
+  static var modelID: String {
+    let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.openRouterChatModelID) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return v.isEmpty ? SettingsDefaults.openRouterChatModelID : v
+  }
+
+  static func setModelID(_ slug: String) {
+    UserDefaults.standard.set(slug, forKey: UserDefaultsKeys.openRouterChatModelID)
+  }
+
+  /// The part of `modelID` after the last "/" (the whole slug when there is none) — short enough
+  /// for the composer's model chip.
+  static var shortModelName: String {
+    let id = modelID
+    guard let slash = id.lastIndex(of: "/") else { return id }
+    return String(id[id.index(after: slash)...])
+  }
+
+  /// The OpenRouter account key, trimmed; nil when none is stored.
+  static var apiKey: String? {
+    let trimmed = KeychainManager.shared.get(.openRouter)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return (trimmed?.isEmpty == false) ? trimmed : nil
+  }
+
+  static var isConfigured: Bool { apiKey != nil }
+
+  static let chatCompletionsURL = AppConstants.openRouterChatCompletionsEndpoint
+
+  // MARK: Migration from the custom endpoint
+
+  /// What to carry over when the custom endpoint used to point at openrouter.ai.
+  struct CustomEndpointMigration: Equatable {
+    let modelID: String?
+    let keyToAdopt: String?
+  }
+
+  /// Pure planning half of the migration. nil unless the custom endpoint's host is `openrouter.ai`
+  /// or a subdomain of it. A key typed for an openrouter.ai URL is adopted only when no account
+  /// key exists yet, so it keeps working.
+  static func customEndpointMigration(
+    customEndpointURL: String?, customModelID: String?, proxyKey: String?, openRouterKey: String?
+  ) -> CustomEndpointMigration? {
+    let urlText = (customEndpointURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let host = URL(string: urlText)?.host?.lowercased(),
+      host == "openrouter.ai" || host.hasSuffix(".openrouter.ai")
+    else { return nil }
+    func trimmed(_ value: String?) -> String {
+      (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    let model = trimmed(customModelID)
+    let proxy = trimmed(proxyKey)
+    let hasAccountKey = !trimmed(openRouterKey).isEmpty
+    return CustomEndpointMigration(
+      modelID: model.isEmpty ? nil : model,
+      keyToAdopt: (!hasAccountKey && !proxy.isEmpty) ? proxy : nil)
+  }
+
+  /// One-time move of an OpenRouter-pointed custom endpoint onto the OpenRouter provider. Idempotent:
+  /// once the custom URL is cleared the plan is nil.
+  @MainActor
+  static func migrateCustomEndpointIfNeeded() {
+    let defaults = UserDefaults.standard
+    guard
+      let plan = customEndpointMigration(
+        customEndpointURL: defaults.string(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL),
+        customModelID: defaults.string(forKey: UserDefaultsKeys.customOpenAIChatModelID),
+        proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
+        openRouterKey: KeychainManager.shared.get(.openRouter))
+    else { return }
+
+    if let modelID = plan.modelID { setModelID(modelID) }
+    if let key = plan.keyToAdopt { _ = KeychainManager.shared.save(key, for: .openRouter) }
+    defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatModelID)
+    KeychainManager.shared.delete(.customOpenAIChatAPIKey)
+
+    let old = PromptModel.customOpenAIEndpoint.rawValue
+    let new = PromptModel.openRouterChat.rawValue
+    let selectionKeys = [
+      UserDefaultsKeys.selectedChatModel,
+      UserDefaultsKeys.selectedPromptModel,
+      UserDefaultsKeys.selectedImprovementModel,
+      UserDefaultsKeys.selectedMeetingSummaryModel,
+      UserDefaultsKeys.selectedReadAloudModel,
+    ]
+    for key in selectionKeys where defaults.string(forKey: key) == old {
+      defaults.set(new, forKey: key)
+    }
+    // The pre-Offline-Mode snapshot restores these same slots later; rewrite it too.
+    if var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) {
+      var changed = false
+      for (key, value) in snapshot where (value as? String) == old {
+        snapshot[key] = new
+        changed = true
+      }
+      if changed { defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections) }
+    }
+    DebugLogger.log(
+      "OPENROUTER-CHAT: migrated custom endpoint → OpenRouter provider (model=\(plan.modelID ?? modelID))")
+  }
+}
+
 // MARK: - Custom OpenAI-compatible Chat Preferences (UserDefaults + Keychain Accessors)
-/// Settings for the explicit **Custom endpoint** chat model (`PromptModel.customOpenAIEndpoint`).
+/// Settings for the explicit **Custom endpoint** chat model (`PromptModel.customOpenAIEndpoint`):
+/// a server the user runs or rents (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted).
 /// Regular OpenAI models (GPT-5, …) always use api.openai.com regardless of these values.
 enum OpenAIChatPreferences {
   static let sentinelModelRawValue = PromptModel.customOpenAIEndpoint.rawValue
@@ -1616,36 +1745,22 @@ enum OpenAIChatPreferences {
     return trimmed.isEmpty ? nil : trimmed
   }
 
-  /// Model tag sent to the proxy (e.g. `openai/gpt-4o` on OpenRouter).
+  /// Model tag sent to the server (e.g. `zai-org/GLM-5.2`).
   static var modelID: String {
     let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
     return v.isEmpty ? SettingsDefaults.customOpenAIChatModelID : v
   }
 
-  /// True when the configured base URL points at OpenRouter rather than a generic proxy.
-  ///
-  /// Load-bearing for credential sharing: OpenRouter is one account, so connecting it in Dictate
-  /// must also authorize chat. Keying that off the URL keeps LiteLLM/OpenInference/self-hosted
-  /// setups on their own key — they are different accounts and must not silently inherit one.
-  static var isOpenRouterEndpoint: Bool {
-    guard let host = customEndpointBaseURL.flatMap({ URL(string: $0) })?.host?.lowercased() else {
-      return false
-    }
-    return host == "openrouter.ai" || host.hasSuffix(".openrouter.ai")
-  }
-
   /// Which stored credential the custom endpoint ends up using. Surfaced in Settings → Chat so the
   /// answer to "which key is this actually sending?" is visible instead of inferred.
   enum ResolvedCredential {
-    case openRouterAccount
     case proxyKey
     case openAIKey
 
     var description: String {
       switch self {
-      case .openRouterAccount: return "your connected OpenRouter account"
-      case .proxyKey: return "the endpoint-specific key below"
+      case .proxyKey: return "the key entered above for this server"
       case .openAIKey: return "your OpenAI API key from Settings → General"
       }
     }
@@ -1653,39 +1768,24 @@ enum OpenAIChatPreferences {
 
   /// Decides which credential a custom endpoint should use.
   ///
-  /// The ordering is not obvious and got this wrong once, with a symptom that read like a bug in
-  /// the sign-in: `customOpenAIChatAPIKey` is **one** slot shared by every custom endpoint
-  /// (OpenInference, LiteLLM, a self-hosted proxy, OpenRouter), but the base URL it belongs to can
-  /// change underneath it. Someone who had configured OpenInference and then switched the URL to
-  /// OpenRouter kept sending their `sk-oi-…` key to openrouter.ai and got "API key is invalid".
+  /// `customOpenAIChatAPIKey` is **one** slot shared by every custom endpoint, and the base URL it
+  /// belongs to can change underneath it: the key field belongs to whatever server the URL names
+  /// right now. It wins when present; the OpenAI key from Settings → General is the fallback, for
+  /// proxies that forward to api.openai.com on the caller's key. Pure so the ordering is pinned by
+  /// tests rather than by clicking through.
   ///
-  /// So when the endpoint *is* OpenRouter, the OpenRouter credential wins: it is the specific one,
-  /// and the shared slot is by definition holding a key for some *other* endpoint. The shared slot
-  /// still applies as a fallback, for anyone who pasted an OpenRouter key there before this flow
-  /// existed. Pure so the ordering is pinned by tests rather than by clicking through.
   /// `allowsOpenAIKeyFallback` is false for a customer's own tenant (Azure, Vertex). The OpenAI
-  /// fallback below exists for proxies that forward to api.openai.com on the caller's key; at a
-  /// tenant endpoint that key cannot work, and sending it there would hand the user's OpenAI
-  /// credential to an unrelated third party in exchange for a 401. Same reasoning as the
-  /// OpenRouter branch above, applied to the other endpoints that are definitely not OpenAI.
+  /// fallback exists for proxies that forward to api.openai.com; at a tenant endpoint that key
+  /// cannot work, and sending it there would hand the user's OpenAI credential to an unrelated
+  /// third party in exchange for a 401.
   static func resolveCredential(
-    isOpenRouterEndpoint: Bool,
     proxyKey: String?,
-    openRouterKey: String?,
     openAIKey: String?,
     allowsOpenAIKeyFallback: Bool = true
   ) -> (key: String, source: ResolvedCredential)? {
     func usable(_ value: String?) -> String? {
       let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
       return (trimmed?.isEmpty == false) ? trimmed : nil
-    }
-
-    if isOpenRouterEndpoint {
-      if let key = usable(openRouterKey) { return (key, .openRouterAccount) }
-      if let key = usable(proxyKey) { return (key, .proxyKey) }
-      // Deliberately no OpenAI fallback here: an OpenAI key is never valid at openrouter.ai, and
-      // returning one only turns a clear "not configured" into a confusing 401.
-      return nil
     }
 
     if let key = usable(proxyKey) { return (key, .proxyKey) }
@@ -1696,9 +1796,7 @@ enum OpenAIChatPreferences {
   /// The credential and where it came from, resolved against the Keychain.
   static var resolvedCredential: (key: String, source: ResolvedCredential)? {
     resolveCredential(
-      isOpenRouterEndpoint: isOpenRouterEndpoint,
       proxyKey: KeychainManager.shared.get(.customOpenAIChatAPIKey),
-      openRouterKey: KeychainManager.shared.get(.openRouter),
       openAIKey: KeychainManager.shared.get(.openAI),
       allowsOpenAIKeyFallback: CustomEndpointAuth.acceptsOpenAIAPIKey(
         baseURL: customEndpointBaseURL ?? ""))
@@ -1723,13 +1821,6 @@ enum OpenAIChatPreferences {
   static func applyOpenInferencePreset() {
     UserDefaults.standard.set(SettingsDefaults.openInferenceEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
     UserDefaults.standard.set(SettingsDefaults.openInferenceModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
-  }
-
-  /// Points chat at OpenRouter. Pairs with the Connect button in Settings → Dictate: once both are
-  /// done there is no key to type anywhere.
-  static func applyOpenRouterPreset() {
-    UserDefaults.standard.set(SettingsDefaults.openRouterChatEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
-    UserDefaults.standard.set(SettingsDefaults.openRouterChatModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
   }
 
   static var chatCompletionsURL: String {
@@ -2007,13 +2098,12 @@ struct SettingsDefaults {
   /// like `qwen3` spends its first seconds thinking before the first token appears — the one thing
   /// the user is waiting on. Small enough to stay resident on an 8 GB Mac.
   static let localModelID = "llama3.2"
-  /// Default model tag for the Custom endpoint chat model (OpenRouter-style slug).
+  /// Default model tag for the Custom endpoint chat model.
   static let customOpenAIChatModelID = "openai/gpt-4o"
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
   static let openInferenceEndpointURL = "https://openinference.de/api/v1"
   static let openInferenceModelID = "zai-org/GLM-5.2"
-  /// OpenRouter preset — the same account the Dictate tab connects, reused for chat.
-  static let openRouterChatEndpointURL = "https://openrouter.ai/api/v1"
+  /// Default slug for the OpenRouter chat model.
   static let openRouterChatModelID = "openai/gpt-4o"
 
   // MARK: - Bring-your-own-tenant presets (Azure / Vertex)
