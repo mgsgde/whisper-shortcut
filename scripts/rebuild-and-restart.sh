@@ -55,12 +55,32 @@ fi
 
 cd "$PROJECT_DIR"
 
-# Stable signature → keychain "Always Allow" and mic/TCC grants survive rebuilds.
-# No Apple Development identity (e.g. cloners without an account) → fall back to ad-hoc.
+# Keychain items live in the data protection keychain, which needs the keychain-access-groups
+# entitlement and therefore a provisioning profile. With an Apple Development identity we use the
+# project's own Automatic signing (team Z59J7V26UT): it embeds the team profile and keeps the
+# designated requirement, so mic/TCC grants survive rebuilds. -allowProvisioningUpdates lets Xcode
+# renew that profile. (Manual signing cannot be used: Xcode rejects its managed profile there.)
+# No identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped from a
+# copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back to the
+# legacy keychain.
 SIGN_ARGS=()
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
-[[ -n "$IDENTITY" ]] && SIGN_ARGS=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY" CODE_SIGNING_ALLOWED=YES)
-echo "🔏 Signing: ${IDENTITY:-ad-hoc (keychain re-prompts on rebuilds)}"
+if [[ -n "$IDENTITY" ]]; then
+  SIGN_ARGS=(-allowProvisioningUpdates)
+  echo "🔏 Signing: $IDENTITY (automatic, team profile)"
+else
+  if [[ "$APP_STORE" == true ]]; then
+    ENTITLEMENTS_SRC="$PROJECT_DIR/WhisperShortcut/WhisperShortcut-AppStore.entitlements"
+  else
+    ENTITLEMENTS_SRC="$PROJECT_DIR/WhisperShortcut/WhisperShortcut.entitlements"
+  fi
+  STRIPPED="$DERIVED_DATA/adhoc.entitlements"
+  mkdir -p "$DERIVED_DATA"
+  cp "$ENTITLEMENTS_SRC" "$STRIPPED"
+  /usr/libexec/PlistBuddy -c 'Delete :keychain-access-groups' "$STRIPPED" >/dev/null 2>&1 || true
+  SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
+  echo "🔏 Signing: ad-hoc (no Apple Development identity; legacy keychain, prompts on rebuilds)"
+fi
 
 # Sync the root README into the app bundle so Xcode's file-system-synchronized
 # group bundles it and the chat's list_whisper_shortcut_docs /
