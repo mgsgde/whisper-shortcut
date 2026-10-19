@@ -109,7 +109,7 @@ enum TelemetryErrorClass: String, CaseIterable, Codable {
     case .rateLimited, .slowDown: self = .rateLimited
     case .quotaExceeded: self = .quotaExceeded
     case .billingRequired, .subscriptionRequired: self = .billingRequired
-    case .serverError, .serviceUnavailable: self = .serverError
+    case .serverError, .serviceUnavailable, .emptyModelReply: self = .serverError
     case .networkError: self = .network
     case .requestTimeout, .resourceTimeout, .localProcessingTimeout: self = .timeout
     case .fileError, .fileTooLarge, .emptyFile: self = .file

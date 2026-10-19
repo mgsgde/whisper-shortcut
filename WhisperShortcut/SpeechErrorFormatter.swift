@@ -299,6 +299,12 @@ struct SpeechErrorFormatter {
         The recording contains no audio data.
         Please try again.
         """
+    case .emptyModelReply:
+      return """
+        ⚠️ No Reply
+
+        The model returned no text. Your recording was kept – try Retry or another model.
+        """
     case .noSpeechDetected:
       return """
         🎤 No Speech Detected
@@ -411,6 +417,8 @@ struct SpeechErrorFormatter {
       return "❌ File Too Large"
     case .emptyFile:
       return "❌ Empty File"
+    case .emptyModelReply:
+      return "⚠️ No Reply"
     case .noSpeechDetected:
       return "🎤 No Speech"
     case .textTooShort:

@@ -1096,6 +1096,11 @@ enum TranscriptionError: Error, Equatable {
   /// Separate from `requestTimeout` so the user-facing copy does not blame the network.
   /// Appended last for the same index-logging reason as `noSelectedText`.
   case localProcessingTimeout(stage: LocalProcessingStage, seconds: Int)
+  /// Dictate Prompt: the model answered with no text at all (a local model cut off inside its
+  /// `<think>` block, a Gemini safety block with no text parts). Not "no speech detected": the
+  /// user spoke, so the recording is kept and the run is retryable. Appended last for the same
+  /// index-logging reason as `noSelectedText`.
+  case emptyModelReply
 
   var title: String {
     switch self {
@@ -1127,6 +1132,7 @@ enum TranscriptionError: Error, Equatable {
     case .subscriptionRequired: return "Subscription Required"
     case .noSelectedText: return "Nothing Selected"
     case .localProcessingTimeout: return "Local Processing Timeout"
+    case .emptyModelReply: return "No Reply"
     }
   }
 
@@ -1150,7 +1156,7 @@ enum TranscriptionError: Error, Equatable {
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
+    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
     case .rateLimited(let retryAfter, _):

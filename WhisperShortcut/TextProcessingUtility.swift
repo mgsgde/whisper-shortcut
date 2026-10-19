@@ -402,6 +402,12 @@ enum TextProcessingUtility {
     // An empty result means the model heard nothing intelligible (silence, accidental
     // trigger). Surface that as "no speech detected" rather than the misleading "text too
     // short" — with minimumTextLength == 1, empty is in practice the only trigger anyway.
+    // On the Dictate Prompt path the audio was fine — the model returned nothing. That is a
+    // retryable model failure, and must not delete the recording or blame the microphone.
+    if trimmedText.isEmpty, mode.hasPrefix("PROMPT-MODE") {
+      DebugLogger.logWarning("VALIDATION: \(mode) returned an empty reply — keeping the recording")
+      throw TranscriptionError.emptyModelReply
+    }
     if trimmedText.isEmpty {
       ContextLogger.shared.logNoSpeechDetected(
         source: "apiEmptyResult", peakDb: "n/a", durationMs: "n/a", logPrefix: mode)
