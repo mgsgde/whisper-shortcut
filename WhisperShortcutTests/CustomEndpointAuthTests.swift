@@ -163,18 +163,14 @@ struct CustomEndpointAuthTests {
   @Test("With the fallback denied, an OpenAI key alone is not a usable credential")
   func openAIKeyAloneResolvesToNothingOnATenant() {
     let resolved = OpenAIChatPreferences.resolveCredential(
-      isOpenRouterEndpoint: false,
       proxyKey: nil,
-      openRouterKey: nil,
       openAIKey: "sk-openai-personal",
       allowsOpenAIKeyFallback: false)
     #expect(resolved == nil)
 
     // The endpoint-specific key is still what runs the request when one is set.
     let withProxyKey = OpenAIChatPreferences.resolveCredential(
-      isOpenRouterEndpoint: false,
       proxyKey: "azure-resource-key",
-      openRouterKey: nil,
       openAIKey: "sk-openai-personal",
       allowsOpenAIKeyFallback: false)
     #expect(withProxyKey?.key == "azure-resource-key")

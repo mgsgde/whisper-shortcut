@@ -37,8 +37,8 @@ enum AppState: Equatable {
 
     var statusText: String {
       switch self {
-      case .transcription: return "🔴 Recording for transcription..."
-      case .prompt: return "🔴 Recording for AI prompt..."
+      case .transcription: return "🔴 Dictating..."
+      case .prompt: return "🔴 Recording Dictate Prompt..."
       case .liveMeeting: return "📝 Live transcription..."
       case .voiceFeedback: return "🎓 Recording feedback..."
       }
@@ -46,8 +46,8 @@ enum AppState: Equatable {
 
     var tooltip: String {
       switch self {
-      case .transcription: return "Recording for transcription... Click to stop"
-      case .prompt: return "Recording for AI prompt... Click to stop"
+      case .transcription: return "Dictating... Click to stop"
+      case .prompt: return "Recording Dictate Prompt... Click to stop"
       case .liveMeeting: return "Live meeting transcription... Click menu to stop"
       case .voiceFeedback: return "Recording your feedback... Click to stop"
       }

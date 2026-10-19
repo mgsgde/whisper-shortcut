@@ -23,9 +23,8 @@ struct ChatModelLineupTests {
     #expect(AppConstants.contextDerivationEndpoint.contains("gemini-3.8-flash"))
   }
 
-  @Test("3.5 Flash is pruned from chat; 3.7 is not forwarded to 3.8")
+  @Test("3.7 is not forwarded to 3.8")
   func pruneAndOnlyTheAskedPrune() {
-    #expect(PromptModel.gemini35Flash.chatReplacement == .gemini37Flash)
     // Guard against the interleaved-latency decision being pre-empted: 3.8 was ~12% slower
     // in the 2026-09-03 probe, so 3.7 must stay selectable until that run.
     #expect(PromptModel.gemini37Flash.chatReplacement == nil)
@@ -36,15 +35,21 @@ struct ChatModelLineupTests {
     OfflineMode.setEnabled(false)
     #expect(PromptModel.chatModels.contains(.gemini37Flash))
     #expect(PromptModel.chatModels.contains(.gemini38Flash))
-    #expect(!PromptModel.chatModels.contains(.gemini35Flash))
   }
 
-  @Test("Removed 3.6 Flash selections forward to 3.7 Flash")
-  func gemini36ForwardsTo37() {
-    #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue("gemini-3.6-flash")) == .gemini37Flash)
-    #expect(
-      TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue("gemini-3.6-flash"))
-        == .gemini37Flash)
+  @Test("Removed 3.5 and 3.6 Flash selections forward to 3.7 Flash")
+  func removedFlashForwardsTo37() {
+    for slug in ["gemini-3.5-flash", "gemini-3.6-flash"] {
+      #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(slug)) == .gemini37Flash, "\(slug)")
+      #expect(
+        TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(slug))
+          == .gemini37Flash, "\(slug)")
+    }
+    for slug in ["gemini-2.5-flash", "gemini-3-flash-preview"] {
+      #expect(
+        TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(slug))
+          == .gemini37Flash, "\(slug)")
+    }
   }
 
   @Test("Legacy 2.5-flash and 3-flash-preview land on a still-visible model")
@@ -99,6 +104,26 @@ struct ChatModelLineupTests {
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "claude-sonnet-5") == .claudeSonnet55)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "claude-fable-5") == .claudeOpus55)
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
+  }
+
+  @Test("Removed superseded chat models forward to their replacements")
+  func removedModelsForward() {
+    let expected: [String: PromptModel] = [
+      "grok-4.20-0309-non-reasoning": .grok43, "grok-4.20-0309-reasoning": .grok43,
+      "grok-4.5": .grok47, "grok-4.6": .grok47,
+      "gpt-5": .openaiGPT6Sol, "gpt-5.4": .openaiGPT6Sol, "gpt-5.5": .openaiGPT6Sol,
+      "gpt-5.6-sol": .openaiGPT6Sol, "gpt-5.6-terra": .openaiGPT6Sol, "gpt-5.6-luna": .openaiGPT6Luna,
+      "claude-opus-4-8": .claudeOpus55, "claude-opus-5": .claudeOpus55, "claude-fable-5": .claudeOpus55,
+      "claude-sonnet-5": .claudeSonnet55,
+    ]
+    for (raw, model) in expected {
+      #expect(PromptModel(rawValue: raw) == nil, "\(raw) should no longer be an enum case")
+      #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) == model, "\(raw)")
+      #expect(PromptModel.resolvedChatSlotModel(forRawValue: raw) == model, "\(raw)")
+    }
+    // Nothing is currently superseded: dominated models are removed outright.
+    #expect(PromptModel.allCases.filter { $0.chatReplacement != nil }.isEmpty)
+    #expect(PromptModel(rawValue: "gpt-5.4-mini") == .openaiGPT5Mini)
   }
 
   @Test("Transcription side of 3.8 Flash is Google, selectable, and clamps MINIMAL")

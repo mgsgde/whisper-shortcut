@@ -267,7 +267,7 @@ struct SpeechErrorFormatter {
 
           To download the model:
           1. Open Settings (click the menu bar icon and select "Settings")
-          2. Go to the "Offline Models" tab
+          2. Go to the "Dictate" tab, section "Offline Models"
           3. Click "Download" next to your selected model
           4. Wait for the download to complete
           5. Try transcribing again
@@ -363,7 +363,7 @@ struct SpeechErrorFormatter {
 
         To download the model:
         1. Open Settings (click the menu bar icon and select "Settings")
-        2. Go to the "Offline Models" tab
+        2. Go to the "Dictate" tab, section "Offline Models"
         3. Click "Download" next to \(modelType.displayName)
         4. Wait for the download to complete (this may take several minutes)
         5. Try transcribing again
@@ -381,7 +381,7 @@ struct SpeechErrorFormatter {
         """
 
     case .subscriptionRequired:
-      return "Authentication required. Add your API key in Settings (General tab)."
+      return "Authentication required. Add your API key in Settings → General."
 
     case .noSelectedText:
       return """

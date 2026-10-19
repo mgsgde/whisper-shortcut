@@ -1782,6 +1782,9 @@ class MenuBarController: NSObject {
     // Check if busy with other operations
     guard !appState.isBusy else {
       DebugLogger.logWarning("LIVE-MEETING: Cannot start - app is busy")
+      PopupNotificationWindow.showInfo(
+        "Finish the current recording or Read Aloud first, then start the meeting again.",
+        title: "Meeting Not Started", customDisplayDuration: 5)
       return
     }
 
@@ -2372,7 +2375,7 @@ class MenuBarController: NSObject {
     var spec = AudioJobSpec(
       mode: .prompt,
       logLabel: "Prompt",
-      errorTitle: "Prompt Error",
+      errorTitle: "Dictate Prompt Error",
       modelInfo: { self.speechService.getPromptModelInfo() },
       copyResult: { self.clipboardManager.copyToClipboard(text: $0) },
       presentResult: { text, info, title in
@@ -3510,7 +3513,7 @@ extension MenuBarController: AudioRecorderDelegate {
         message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
         dismissProcessingFirst: false,
         retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-        retryActionTitle: "Open Settings"
+        retryActionTitle: "Open System Settings"
       )
       return
     }

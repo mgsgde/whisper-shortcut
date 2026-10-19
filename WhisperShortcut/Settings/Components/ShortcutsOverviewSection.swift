@@ -18,6 +18,12 @@ struct ShortcutsOverviewSection: View {
     // Voice Feedback last so the digits read 1-2-3-4-5, matching the status menu.
     items.append(contentsOf: [
       ("Voice Feedback", viewModel.data.voiceFeedback),
+    ])
+    // Selection-based like Read Aloud, so also absent from the App Store build.
+    #if !APP_STORE
+    items.append(("Add Selection to Glossary", viewModel.data.addToGlossary))
+    #endif
+    items.append(contentsOf: [
       ("Flag Meeting Moment", viewModel.data.meetingMarker),
       ("Chat", viewModel.data.openChat),
       ("Settings", viewModel.data.openSettings),
