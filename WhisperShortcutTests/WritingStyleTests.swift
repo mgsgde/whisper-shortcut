@@ -225,4 +225,39 @@ struct WritingStyleTests {
     #expect(WritingStyleStore.targetWords(samples: samples, incoming: huge) == 40)
     #expect(WritingStyleStore.targetWords(samples: samples, incoming: nil) == 20)
   }
+
+  // MARK: - Auto-update bookkeeping
+
+  @Test("Counter counts only samples actually added; reset and clearAll zero it")
+  func sampleCounter() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let defaults = UserDefaults(suiteName: UUID().uuidString)!
+    let store = WritingStyleStore(directory: dir, isEnabled: { true }, defaults: defaults)
+    func sample(_ id: String, _ text: String) -> WritingSample {
+      WritingSample(id: id, context: .email, source: "manual", recipient: nil,
+                    sentAt: Date(), incomingChars: nil, text: text)
+    }
+    #expect(store.addSamples([sample("a", "First message text"), sample("b", "Second message text")]) == 2)
+    #expect(store.samplesSinceProfile == 2)
+    #expect(store.addSamples([sample("a", "First message text"), sample("c", "Third message text")]) == 1)
+    #expect(store.samplesSinceProfile == 3)
+    store.resetSamplesSinceProfile()
+    #expect(store.samplesSinceProfile == 0)
+    store.addSamples([sample("d", "Fourth message text")])
+    defaults.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    #expect(store.profileUpdatedAt != nil)
+    store.clearAll()
+    #expect(store.samplesSinceProfile == 0)
+    #expect(store.profileUpdatedAt == nil)
+  }
+
+  @Test("Dictated sample: too short is nil, normal is trimmed with source dictated")
+  func dictatedSample() {
+    #expect(WritingStyleStore.dictatedSample(text: " ok danke ", context: .messenger) == nil)
+    let sample = WritingStyleStore.dictatedSample(
+      text: "  Passt, Donnerstag um 10 Uhr geht bei mir.  \n", context: .messenger)
+    #expect(sample?.source == "dictated")
+    #expect(sample?.context == .messenger)
+    #expect(sample?.text == "Passt, Donnerstag um 10 Uhr geht bei mir.")
+  }
 }

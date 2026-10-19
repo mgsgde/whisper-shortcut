@@ -28,9 +28,9 @@ struct ReadAloudSettingsTab: View {
       SpacedSectionDivider()
 
       SystemPromptSectionEditor(
-        title: "Rewrite prompt",
+        title: "Rewrite Prompt",
         systemImage: "text.badge.star",
-        subtitle: "Instructions sent to Gemini when Smart Rewriting is enabled. The model receives the selected text and returns a speech-friendly version.",
+        subtitle: "Instructions sent to your chat model when Smart Rewriting is enabled. It receives the selected text and returns a speech-friendly version.",
         section: .readAloudRewrite,
         defaultContent: AppConstants.defaultReadAloudRewritePrompt
       )
@@ -179,7 +179,7 @@ struct ReadAloudSettingsTab: View {
       SectionHeader(
         title: "Smart Rewriting",
         systemImage: "wand.and.stars",
-        subtitle: "Let Gemini rewrite code, logs, Markdown or messy notes for natural speech. Plain prose is read as is, without the extra round trip"
+        subtitle: "Let your chat model (Settings → Chat) rewrite code, logs, Markdown or messy notes for natural speech. Plain prose is read as is, without the extra round trip."
       )
 
       Toggle(isOn: $viewModel.data.readAloudSmartRewriteEnabled) {

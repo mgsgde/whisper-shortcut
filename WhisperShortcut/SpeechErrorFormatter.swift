@@ -211,7 +211,7 @@ struct SpeechErrorFormatter {
 
         Solutions:
         • Wait a moment and try again
-        • Try a smaller model in Settings → Speech to Text
+        • Try a smaller model in Settings → Dictate
         • Try with a shorter recording
         """
 
@@ -307,7 +307,7 @@ struct SpeechErrorFormatter {
 
         \(details)
 
-        Your recording was kept – try Retry. If it keeps failing, re-download the model in Settings > Offline Models.
+        Your recording was kept – try Retry. If it keeps failing, re-download the model in Settings → Dictate.
         """
     case .emptyModelReply:
       return """
@@ -377,7 +377,7 @@ struct SpeechErrorFormatter {
 
         Voice output (Read Aloud) is not available when using Sign in with Google.
 
-        To use voice output, add a Google API key in Settings → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
+        To use voice output, add a Google API key in Settings → General → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
         """
 
     case .subscriptionRequired:

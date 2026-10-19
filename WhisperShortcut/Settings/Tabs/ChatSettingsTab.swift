@@ -25,7 +25,7 @@ struct ChatSettingsTab: View {
 
       // Chat system prompt editor
       SystemPromptSectionEditor(
-        title: "System prompt",
+        title: "System Prompt",
         systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
         section: .chat,
@@ -113,7 +113,7 @@ struct ChatSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Chat model",
+      title: "Chat Model",
       subtitle: "Choose which model powers the chat. Pick “Custom endpoint” for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
