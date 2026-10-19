@@ -27,6 +27,7 @@ struct ModelStoreTests {
     var fetchBehaviour: (FakeModel) async throws -> Void = { _ in }
     var loadBehaviour: (FakeModel) async throws -> Void = { _ in }
     var heals = false
+    var canRedownload = true
 
     init(root: URL) {
       self.root = root
@@ -39,6 +40,7 @@ struct ModelStoreTests {
       return fileManager.fileExists(atPath: path.path) ? path : nil
     }
     override var healsCorruptDownloadOnLoadFailure: Bool { heals }
+    override var canRedownloadNow: Bool { canRedownload }
     override func fetch(_ model: FakeModel, onProgress: @escaping (Double) -> Void) async throws {
       fetchCalls += 1
       try await fetchBehaviour(model)
@@ -173,6 +175,54 @@ struct ModelStoreTests {
     plain.loadBehaviour = { _ in throw ModelStoreError.fileError("corrupt") }
     await #expect(throws: ModelStoreError.self) { try await plain.ensureReady(.small) }
     #expect(plain.fetchCalls == 0)
+  }
+
+  @Test("Self-heal never deletes the files when a re-download cannot succeed (Offline Mode)")
+  func noHealWhenRedownloadImpossible() async {
+    let store = makeStore()
+    store.heals = true
+    store.canRedownload = false
+    store.writeMarker(.small)
+    store.loadBehaviour = { _ in throw ModelStoreError.fileError("corrupt") }
+    await #expect(throws: ModelStoreError.self) { try await store.ensureReady(.small) }
+    #expect(store.fetchCalls == 0, "no re-download attempt")
+    #expect(store.unloadCalls.isEmpty)
+    #expect(store.isModelAvailable(.small), "the model files must survive the failed load")
+  }
+
+  @Test("ModelManager ties the heal to Offline Mode")
+  func managerHealFollowsOfflineMode() {
+    #expect(ModelManager.canRedownload(offlineMode: false))
+    #expect(!ModelManager.canRedownload(offlineMode: true))
+  }
+
+  @Test("Whisper readiness requires a tokenizer WhisperKit can find offline")
+  func whisperTokenizerCompleteness() throws {
+    let fm = FileManager.default
+    let root = fm.temporaryDirectory.appendingPathComponent("TokenizerTests-\(UUID().uuidString)")
+    defer { try? fm.removeItem(at: root) }
+    let model = root.appendingPathComponent("model")
+    let docs = root.appendingPathComponent("docs")
+    try fm.createDirectory(at: model, withIntermediateDirectories: true)
+    try fm.createDirectory(at: docs, withIntermediateDirectories: true)
+
+    #expect(!ModelManager.hasTokenizer(for: .whisperLargeTurbo, modelFolder: model, documentsDirectory: docs))
+    #expect(ModelManager.hasTokenizer(for: .parakeetUltra, modelFolder: model, documentsDirectory: docs),
+            "Parakeet has no WhisperKit tokenizer")
+
+    // Bundled in the model folder (what the download step writes).
+    let bundled = try #require(ModelManager.bundledTokenizerFolder(for: .whisperLargeTurbo, modelFolder: model))
+    #expect(bundled.path.hasSuffix("models/openai/whisper-large-v3"))
+    try fm.createDirectory(at: bundled, withIntermediateDirectories: true)
+    fm.createFile(atPath: bundled.appendingPathComponent("tokenizer.json").path, contents: Data("{}".utf8))
+    #expect(ModelManager.hasTokenizer(for: .whisperLargeTurbo, modelFolder: model, documentsDirectory: docs))
+    #expect(!ModelManager.hasTokenizer(for: .whisperSmall, modelFolder: model, documentsDirectory: docs))
+
+    // Legacy: a pre-fix online first load cached it in Documents/huggingface.
+    let legacy = docs.appendingPathComponent("huggingface/models/openai/whisper-small")
+    try fm.createDirectory(at: legacy, withIntermediateDirectories: true)
+    fm.createFile(atPath: legacy.appendingPathComponent("tokenizer.json").path, contents: Data("{}".utf8))
+    #expect(ModelManager.hasTokenizer(for: .whisperSmall, modelFolder: model, documentsDirectory: docs))
   }
 
   @Test("A load that timed out or was cancelled is not treated as corrupt")
