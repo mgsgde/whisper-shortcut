@@ -86,7 +86,7 @@ struct SpeechToTextSettingsTab: View {
   @ViewBuilder
   private var systemPromptEditor: some View {
     SystemPromptSectionEditor(
-      title: "System prompt",
+      title: "System Prompt",
       systemImage: "text.alignleft",
       subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
       section: .dictation,

@@ -34,7 +34,7 @@ struct ChatSettingsTab: View {
 
       // Chat system prompt editor
       SystemPromptSectionEditor(
-        title: "System prompt",
+        title: "System Prompt",
         systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
         section: .chat,
@@ -122,7 +122,7 @@ struct ChatSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Chat model",
+      title: "Chat Model",
       subtitle: "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → General. “Custom endpoint” is for your own OpenAI-compatible server and is set up below once you pick it.",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,

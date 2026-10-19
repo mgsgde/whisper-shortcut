@@ -79,6 +79,7 @@ enum WritingStyleImporter {
 
     samples = stripRepeatedSignatures(samples)
     let added = WritingStyleStore.shared.addSamples(samples)
+    UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleLastGmailImportAt)
     DebugLogger.log(
       "WRITING-STYLE-IMPORT: sent=\(refs.count) threads=\(threadIDs.count) failed=\(failed) kept=\(samples.count) added=\(added)")
     return ImportResult(added: added, failedThreads: failed)
@@ -341,10 +342,13 @@ enum WritingStyleImporter {
       suggestedText: suggested,
       rationale: "Derived from \(used) of your messages.")
     else {
+      store.resetSamplesSinceProfile()
       DebugLogger.log("WRITING-STYLE-PROFILE: review cancelled")
       return nil
     }
     store.saveProfile(accepted)
+    UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    store.resetSamplesSinceProfile()
     DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
     return accepted
   }
