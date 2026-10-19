@@ -1959,7 +1959,9 @@ class MenuBarController: NSObject {
       }
 
       // Determine if error is retryable
-      let isRetryable = transcriptionError?.isRetryable ?? false
+      // Includes model-preparation failures: the audio is kept and Retry offered, but nothing
+      // retries them automatically (that stays `TranscriptionError.isRetryable`).
+      let isRetryable = error.offersManualRetry
       
       // Define retry action
       let isServerError = transcriptionError?.isServerOrUnavailable ?? false

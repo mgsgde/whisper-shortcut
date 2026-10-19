@@ -311,7 +311,16 @@ actor MLXModelLoader {
       // file list on every load, even with the model complete and Offline Mode on — seen as a
       // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
       DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
-      let context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
+      let context: ModelContext
+      do {
+        context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        // Corrupt weights, memory pressure: typed so the recording is kept and Retry offered.
+        DebugLogger.logError("MLX: load of \(type.huggingFaceID) failed: \(error.localizedDescription)")
+        throw TranscriptionError.localModelFailed("Failed to load \(type.displayName): \(error.localizedDescription). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+      }
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")
       return ModelContainer(context: context)
     }

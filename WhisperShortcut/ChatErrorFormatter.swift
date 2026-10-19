@@ -30,7 +30,7 @@ enum ChatErrorFormatter {
           return "\(name) request failed. Please try again."
         }
         return msg
-      case .fileError(let msg):
+      case .fileError(let msg), .localModelFailed(let msg):
         return msg
       default:
         return "Request failed. Please try again."
