@@ -173,6 +173,10 @@ Core slash commands:
 - `/meeting` — start or stop live meeting recording
 - `/copy` — copy the chat history as Markdown
 
+#### Your own commands
+
+Put a Markdown file into the app's `commands` folder (Settings → Chat → Commands → **Open Commands Folder**, or **New Command…** for a commented template) and it becomes a slash command: `report.md` is `/report`. Its text is sent to the selected chat model as your message, offline models included; text you type after the name (`/report focus on next steps`) is added as extra instructions. In a meeting chat the model also sees the full transcript, so a command like "write the minutes in our format" works with one click. Optional header lines set the button `label`, a `description`, and the `scope` (`meeting`, `chat`, or `both`); meeting commands also get a button above the meeting chat's message field. The chat shows the command as a compact chip, with the full instruction one click away. Settings lists every command it loaded and says which files it could not read and why.
+
 `/feedback` opens a message to the developer with the end of the current chat quoted, so a problem you were just discussing does not have to be described twice.
 
 Model shortcuts include `/gemini`, `/grok`, `/gpt`, `/openai`, `/claude`, `/anthropic`, and per-model aliases such as `/gemini35flash`. Gemini models use your Google API key, Grok models use your xAI API key, OpenAI models use your OpenAI API key, and Claude models use your Anthropic API key.
@@ -205,7 +209,7 @@ While a meeting runs:
 
 - **Live notes appear in the chat itself.** Every minute or two the app appends one or two bullets covering what was just discussed, woven into the chat stream at the moment it was said — so you can see what is going on in the same column where you type. Earlier notes are never rewritten.
 - **The chat sees the entire transcript**, not just the last few minutes, so you can ask about anything said since the meeting started. A line above the composer says exactly what the chat can currently see. When you send a question, the audio still sitting in the recorder is cut and transcribed first, so the answer covers what was said seconds ago too.
-- **One-tap questions** above the composer: Catch me up, Action items, Open questions, Decisions.
+- **Your own one-click commands** above the composer: every command file meant for meetings becomes a button there (see *Your own commands* under Chat). The app ships none, so the bar stays empty until you add some.
 - **Ask about a moment**: hover any note and press *Ask* to quote it into the composer instead of retyping it.
 - **Flag a moment** with the meeting-marker shortcut (⌘6 by default, configurable in Settings → Chat). Markers show up in the note stream and the final summary is written around what you flagged.
 - **Copy transcript** in the meeting bar puts the raw transcript on the clipboard; right-click it to reveal the file in Finder. **Copy transcript + chat** next to it copies the transcript, the live notes (markers flagged with ⚑), and every question and answer from the meeting chat, as one Markdown document.
