@@ -1052,7 +1052,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
           title: "Microphone Access Needed",
           retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-          retryActionTitle: "Open Settings"
+          retryActionTitle: "Open System Settings"
         )
         return
       }

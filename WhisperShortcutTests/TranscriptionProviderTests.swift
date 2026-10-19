@@ -125,7 +125,7 @@ struct TranscriptionProviderTests {
 
     // The instructable ones must keep honouring it — this is a two-model-family exception, not a
     // general disclaimer.
-    for instructable in [TranscriptionModel.gemini31FlashLite, .gemini35Flash, .gemini37Flash,
+    for instructable in [TranscriptionModel.gemini31FlashLite, .gemini37Flash,
                          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
                          .openRouterTranscription, .selfHostedTranscription] {
       #expect(instructable.honorsSystemPrompt, "\(instructable.rawValue)")

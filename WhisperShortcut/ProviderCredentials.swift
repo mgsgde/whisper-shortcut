@@ -18,12 +18,14 @@ enum ProviderCredentials {
     case openAI
     case xAI
     case anthropic
+    case openRouter
 
     var displayName: String {
       switch self {
       case .openAI: return "OpenAI"
       case .xAI: return "xAI"
       case .anthropic: return "Anthropic"
+      case .openRouter: return "OpenRouter"
       }
     }
 
@@ -33,6 +35,7 @@ enum ProviderCredentials {
       case .openAI: return "OpenAI models"
       case .xAI: return "Grok models"
       case .anthropic: return "Claude models"
+      case .openRouter: return "OpenRouter models"
       }
     }
 
@@ -41,6 +44,7 @@ enum ProviderCredentials {
       case .openAI: return KeychainManager.shared.get(.openAI)
       case .xAI: return KeychainManager.shared.get(.xai)
       case .anthropic: return KeychainManager.shared.get(.anthropic)
+      case .openRouter: return KeychainManager.shared.get(.openRouter)
       }
     }
 
@@ -117,6 +121,7 @@ extension ChatModelProvider {
     case .grok: return .key(.xAI)
     case .anthropic: return .key(.anthropic)
     case .customOpenAI: return .endpoint
+    case .openRouter: return .key(.openRouter)
     case .local, .localMLX: return .none
     }
   }

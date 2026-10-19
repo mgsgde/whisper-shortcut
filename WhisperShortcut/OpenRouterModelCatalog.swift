@@ -5,7 +5,7 @@ import Foundation
 /// Deliberately at file scope rather than nested inside `OpenRouterModelCatalog`: nesting it in a
 /// `@MainActor` class makes the type main-actor isolated too, which puts the pure decode/format
 /// logic behind an actor hop and out of reach of synchronous tests.
-struct OpenRouterAudioModel: Identifiable, Hashable {
+struct OpenRouterModel: Identifiable, Hashable {
   let id: String
   let name: String
   /// USD per prompt token, as OpenRouter reports it. Nil when the model is unpriced.
@@ -33,7 +33,9 @@ struct OpenRouterAudioModel: Identifiable, Hashable {
 final class OpenRouterModelCatalog: ObservableObject {
   static let shared = OpenRouterModelCatalog()
 
-  @Published private(set) var audioModels: [OpenRouterAudioModel] = []
+  @Published private(set) var audioModels: [OpenRouterModel] = []
+  /// Text-in/text-out models, for the OpenRouter chat model picker.
+  @Published private(set) var chatModels: [OpenRouterModel] = []
   @Published private(set) var isLoading = false
   @Published private(set) var loadError: String?
 
@@ -62,8 +64,9 @@ final class OpenRouterModelCatalog: ObservableObject {
       }
 
       audioModels = try OpenRouterModelCatalog.decodeAudioModels(from: data)
+      chatModels = try OpenRouterModelCatalog.decodeChatModels(from: data)
       hasLoaded = true
-      DebugLogger.log("OPENROUTER-CATALOG: Loaded \(audioModels.count) audio-capable models")
+      DebugLogger.log("OPENROUTER-CATALOG: Loaded \(audioModels.count) audio-capable and \(chatModels.count) chat models")
     } catch {
       loadError = error.localizedDescription
       DebugLogger.logError("OPENROUTER-CATALOG: Load failed: \(error.localizedDescription)")
@@ -76,12 +79,27 @@ final class OpenRouterModelCatalog: ObservableObject {
   /// Filters on `architecture.input_modalities` containing `audio` — the dictation path sends the
   /// recording as an `input_audio` content part, so a model without audio input fails at request
   /// time rather than degrading. Better to not offer it.
-  nonisolated static func decodeAudioModels(from data: Data) throws -> [OpenRouterAudioModel] {
+  nonisolated static func decodeAudioModels(from data: Data) throws -> [OpenRouterModel] {
+    try decode(data) { $0.architecture?.inputModalities?.contains("audio") == true }
+  }
+
+  /// Models usable for chat: text in and text out. Entries without `architecture` are excluded —
+  /// without it there is no telling what they accept.
+  nonisolated static func decodeChatModels(from data: Data) throws -> [OpenRouterModel] {
+    try decode(data) {
+      $0.architecture?.inputModalities?.contains("text") == true
+        && $0.architecture?.outputModalities?.contains("text") == true
+    }
+  }
+
+  private nonisolated static func decode(
+    _ data: Data, where include: (Entry) -> Bool
+  ) throws -> [OpenRouterModel] {
     let payload = try JSONDecoder().decode(ModelsResponse.self, from: data)
     return payload.data
-      .filter { $0.architecture?.inputModalities?.contains("audio") == true }
+      .filter(include)
       .map {
-        OpenRouterAudioModel(
+        OpenRouterModel(
           id: $0.id,
           name: $0.name ?? $0.id,
           promptPricePerToken: $0.pricing?.prompt.flatMap(Double.init)
@@ -106,9 +124,11 @@ private struct Entry: Decodable {
 
 private struct Architecture: Decodable {
   let inputModalities: [String]?
+  let outputModalities: [String]?
 
   enum CodingKeys: String, CodingKey {
     case inputModalities = "input_modalities"
+    case outputModalities = "output_modalities"
   }
 }
 

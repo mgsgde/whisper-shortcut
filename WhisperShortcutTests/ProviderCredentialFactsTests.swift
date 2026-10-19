@@ -22,8 +22,6 @@ struct ProviderCredentialFactsTests {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
     .gemini35FlashLite:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-    .gemini35Flash:
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
     .gemini37Flash:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent",
     .gemini38Flash:
@@ -91,7 +89,7 @@ struct ProviderCredentialFactsTests {
     #expect(!ChatModelProvider.local.requiresUserSuppliedCredential)
     #expect(!ChatModelProvider.customOpenAI.requiresUserSuppliedCredential)
     let keyed = ChatModelProvider.allCases.filter { $0.requiresUserSuppliedCredential }
-    #expect(Set(keyed) == Set([.gemini, .openai, .grok, .anthropic]))
+    #expect(Set(keyed) == Set([.gemini, .openai, .grok, .anthropic, .openRouter]))
   }
 
   /// `hasCredential` must agree with the Keychain check the request path itself performs, or the
@@ -99,7 +97,7 @@ struct ProviderCredentialFactsTests {
   @Test("Keyed providers report configured exactly when a non-empty key is stored")
   func keyedProvidersTrackTheKeychain() {
     let pairs: [(ChatModelProvider, KeychainCredential)] = [
-      (.openai, .openAI), (.grok, .xai), (.anthropic, .anthropic),
+      (.openai, .openAI), (.grok, .xai), (.anthropic, .anthropic), (.openRouter, .openRouter),
     ]
     for (provider, credential) in pairs {
       #expect(

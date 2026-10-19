@@ -60,7 +60,9 @@ struct PermissionsOverview: View {
         // old status until relaunch. Point users at the Quit & Reopen button below.
         hint: screenStatus == .granted
           ? nil
-          : "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below."
+          : mode == .settings
+            ? "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below."
+            : "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen."
       )
 
       // Relaunch affordance: Screen Recording / Accessibility grants only take effect after a full

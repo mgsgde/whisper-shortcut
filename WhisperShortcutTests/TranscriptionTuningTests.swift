@@ -15,7 +15,7 @@ struct TranscriptionTuningTests {
 
   @Test("Flash tiers send the configured thinking level and temperature")
   func flashTiersSendConfiguredValues() {
-    for model in [TranscriptionModel.gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash] {
+    for model in [TranscriptionModel.gemini31FlashLite, .gemini35FlashLite, .gemini37Flash] {
       let config = model.geminiTranscriptionGenerationConfig(temperature: 0.2, effort: .medium)
       #expect(config.thinkingConfig?.thinkingLevel == "medium", "\(model.rawValue)")
       #expect(config.thinkingConfig?.thinkingBudget == nil, "\(model.rawValue)")

@@ -213,7 +213,8 @@ struct PromptModelSelectionView: View {
       (.grok, "bolt.fill", "Grok (xAI)", nil),
       (.openai, "brain", "OpenAI", nil),
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
-      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint", nil),
+      (.openRouter, "arrow.triangle.branch", "OpenRouter", "Any model on your OpenRouter account"),
+      (.customOpenAI, "network", "Custom endpoint", "Your own OpenAI-compatible server"),
       (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),
       (.local, "server.rack", "Local Server", "Your own Ollama / LM Studio · any model you have pulled"),
     ]
