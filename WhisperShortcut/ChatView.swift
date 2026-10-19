@@ -168,6 +168,8 @@ class ChatViewModel: ObservableObject {
     let sessionId: UUID
     let content: String
     let attachedParts: [AttachedImagePart]
+    /// User command (without slash) this message came from, if any.
+    var commandName: String? = nil
 
     /// User-visible text, strips internal XML wrapper tags used for API context.
     var displayContent: String {
@@ -391,6 +393,7 @@ class ChatViewModel: ObservableObject {
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
     loadScrollAnchors()
+    UserCommandStore.shared.reload()
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
     isMeetingFinishing = LiveMeetingTranscriptStore.shared.isFinishing
     meetingFinishingCancellable = LiveMeetingTranscriptStore.shared.$isFinishing
@@ -493,7 +496,9 @@ class ChatViewModel: ObservableObject {
   /// composer in document order. Slash commands are filtered out upstream by
   /// `submitComposer`, so this path only sees real chat content; it either dispatches via
   /// `performSend` or appends to the FIFO queue drained by `processNextQueued`.
-  func sendComposed(finalContent: String, attachedParts: [AttachedImagePart]) async {
+  func sendComposed(
+    finalContent: String, attachedParts: [AttachedImagePart], commandName: String? = nil
+  ) async {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
 
@@ -505,11 +510,12 @@ class ChatViewModel: ObservableObject {
     if isSending || messageQueue.contains(where: { $0.sessionId == session.id }) {
       messageQueue.append(
         QueuedChatMessage(
-          sessionId: session.id, content: finalContent, attachedParts: attachedParts))
+          sessionId: session.id, content: finalContent, attachedParts: attachedParts,
+          commandName: commandName))
       DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
       return
     }
-    performSend(content: finalContent, attachedParts: attachedParts)
+    performSend(content: finalContent, attachedParts: attachedParts, commandName: commandName)
   }
 
   /// Re-sends the user message identified by `id`: the message and everything after it
@@ -585,7 +591,9 @@ class ChatViewModel: ObservableObject {
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
       .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
-    performSend(content: content, attachedParts: original.attachedImageParts)
+    performSend(
+      content: content, attachedParts: original.attachedImageParts,
+      commandName: newText == nil ? original.commandName : nil)
   }
 
   func captureScreenshot() async {
@@ -912,7 +920,8 @@ class ChatViewModel: ObservableObject {
   }
 
   private func performSend(
-    content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil
+    content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil,
+    commandName: String? = nil
   ) {
     let sessionId = toSessionId ?? session.id
     // Marked *before* the Task so `isSending` is true the instant this returns. The Task body
@@ -950,7 +959,8 @@ class ChatViewModel: ObservableObject {
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
 
-      let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
+      let userMsg = ChatMessage(
+        role: .user, content: content, attachedImageParts: attachedParts, commandName: commandName)
       appendMessage(userMsg, toSessionId: sessionId)
       let currentContents = ChatRequestBuilder.buildContents(
         sessionId: sessionId,
@@ -1390,7 +1400,9 @@ class ChatViewModel: ObservableObject {
     guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
     messageQueue.removeFirst()
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
-    performSend(content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId)
+    performSend(
+      content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId,
+      commandName: next.commandName)
   }
 
   /// Removes a queued message by ID (called from the pending bubble's delete button).
@@ -1483,6 +1495,45 @@ class ChatViewModel: ObservableObject {
       else { await captureScreenshot() }
       return
     }
+
+    // User-defined commands (UserContext/commands/*.md). Built-ins above always win; their names
+    // are reserved in `reservedUserCommandNames`, so a user file can never shadow one.
+    if raw.hasPrefix("/") {
+      let firstWord = raw.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? raw
+      let name = String(firstWord.dropFirst()).lowercased()
+      if let cmd = UserCommandStore.shared.command(named: name) {
+        inputText = ""
+        let rest = String(raw.dropFirst(firstWord.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        runUserCommand(cmd, arguments: rest, via: "slash")
+        return
+      }
+    }
+  }
+
+  // MARK: - User commands
+
+  /// Lowercased names (no slash) of every built-in command and model alias; user command files
+  /// with these names are rejected.
+  static var reservedUserCommandNames: Set<String> {
+    Set(
+      (commandSuggestions.map(\.command) + Array(modelCommandLookup.keys))
+        .map { String($0.drop(while: { $0 == "/" })).lowercased() })
+  }
+
+  func reloadUserCommands() {
+    UserCommandStore.shared.reload()
+  }
+
+  /// Sends a user command's text as a normal user turn. `meeting`-scoped commands need a meeting chat.
+  func runUserCommand(_ command: UserCommand, arguments: String = "", via: String) {
+    if command.scope == .meeting && !isCurrentSessionMeeting {
+      appendModelMessage("`\(command.slash)` needs a meeting chat: it works on the meeting transcript.")
+      return
+    }
+    DebugLogger.log(
+      "USER-COMMANDS: run \(command.slash) (\(command.scope.rawValue), \(command.body.count) chars, via \(via))")
+    let text = UserCommandParser.appendingArguments(command.body, arguments: arguments)
+    Task { await sendComposed(finalContent: text, attachedParts: [], commandName: command.name) }
   }
 
   func clearMessages() {
