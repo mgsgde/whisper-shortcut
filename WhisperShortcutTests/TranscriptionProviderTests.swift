@@ -18,12 +18,17 @@ struct TranscriptionProviderTests {
     #expect(!TranscriptionModel.gemini31Pro.isSelectableForDictation)
     #expect(!TranscriptionModel.selectableForDictation.contains(.gemini31Pro))
 
-    // Everything else stays offerable, except the two Whisper sizes turbo supersedes — those are
-    // hidden unless the user already has them on disk, so the count is expressed as the exclusion
-    // set rather than a bare number.
+    // Everything else stays offerable, except the two Whisper sizes turbo supersedes and the two
+    // dominated Flash tiers (gemini-3.5-flash, gemini-3.7-flash; 2026-10-03
+    // audit). The Whisper sizes are hidden unless the user already has them on disk, so the count
+    // is expressed as the exclusion set rather than a bare number.
     let hidden = Set(
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
-    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [.gemini31Pro])
+    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [
+      .gemini31Pro, .gemini35Flash, .gemini37Flash,
+    ])
+    #expect(!TranscriptionModel.selectableForDictation.contains(.gemini37Flash))
+    #expect(TranscriptionModel.selectableForDictation.contains(.gemini38Flash))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))
     // Turbo replaces them and is offered whether or not it is downloaded.

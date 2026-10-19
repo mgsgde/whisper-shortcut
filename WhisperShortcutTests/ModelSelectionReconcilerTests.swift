@@ -218,4 +218,22 @@ struct ModelSelectionReconcilerTests {
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: true))
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: false, isDownloaded: false))
   }
+
+  @Test("Dominated dictation tiers forward to the model that dominates them")
+  func dominatedDictationTiersForward() {
+    #expect(ModelSelectionReconciler.dictationForward(for: .gemini37Flash) == .gemini38Flash)
+    #expect(ModelSelectionReconciler.dictationForward(for: .gemini35Flash) == .gemini31FlashLite)
+    #expect(ModelSelectionReconciler.dictationForward(for: .gemini38Flash) == nil)
+    #expect(ModelSelectionReconciler.dictationForward(for: .gemini31FlashLite) == nil)
+    #expect(ModelSelectionReconciler.dictationForward(for: .gemini35FlashLite) == nil)
+    #expect(ModelSelectionReconciler.dictationForward(for: .openAIGPTTranscribe) == nil)
+    #expect(ModelSelectionReconciler.dictationForward(for: .xaiTranscribe) == nil)
+    #expect(ModelSelectionReconciler.dictationForward(for: .parakeetUltra) == nil)
+
+    for model in TranscriptionModel.allCases {
+      guard let forward = ModelSelectionReconciler.dictationForward(for: model) else { continue }
+      #expect(!model.isSelectableForDictation)
+      #expect(forward.isSelectableForDictation)
+    }
+  }
 }
