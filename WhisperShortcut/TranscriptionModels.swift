@@ -1169,6 +1169,22 @@ enum TranscriptionError: Error, Equatable {
     }
   }
 
+  /// True when a failed run must keep the recording on disk and offer the user a manual Retry,
+  /// even though the error is not auto-retryable. Model-preparation failures (on-device model
+  /// missing, incomplete or failing to load) are fixed in Settings, and the dictation itself must
+  /// survive until then. Deliberately separate from `isRetryable`: the chunk pipelines and
+  /// schedulers key their automatic retry/backoff off that flag, and these errors must never loop.
+  var keepsAudioForManualRetry: Bool {
+    switch self {
+    case .modelNotAvailable: return true
+    case .fileError(let message):
+      // Local-model load failures only ("Failed to load model: …", "Offline model not
+      // initialized"); "Audio file not found" and friends cannot be fixed by retrying.
+      return message.localizedCaseInsensitiveContains("model")
+    default: return false
+    }
+  }
+
   /// True for server-side errors (500, 503) where exponential backoff is beneficial.
   var isServerOrUnavailable: Bool {
     switch self {
@@ -1178,3 +1194,14 @@ enum TranscriptionError: Error, Equatable {
   }
 }
 
+
+extension Error {
+  /// Keep the recording and show Retry: transient errors (auto-retryable) plus model-preparation
+  /// failures (`ModelStoreError` of any kind, see `TranscriptionError.keepsAudioForManualRetry`).
+  /// Only the audio is kept; automatic retry still follows `TranscriptionError.isRetryable`.
+  var offersManualRetry: Bool {
+    if self is ModelStoreError { return true }
+    guard let transcriptionError = self as? TranscriptionError else { return false }
+    return transcriptionError.isRetryable || transcriptionError.keepsAudioForManualRetry
+  }
+}
