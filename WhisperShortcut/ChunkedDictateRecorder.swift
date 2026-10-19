@@ -72,8 +72,6 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
 
   /// URLs of all chunks recorded this session, in order (the active one is appended on stop).
   private var chunkURLs: [URL] = []
-  /// The merged file delivered to the delegate (deleted in `cleanup()`).
-  private var mergedURL: URL?
 
   private var meteringTimer: Timer?
   private var meteringTickCount = 0
@@ -157,10 +155,6 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       try? FileManager.default.removeItem(at: url)
     }
     chunkURLs = []
-    if let url = mergedURL {
-      try? FileManager.default.removeItem(at: url)
-    }
-    mergedURL = nil
   }
 
   // MARK: - Session
@@ -182,17 +176,13 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   private func beginSession() {
-    // Remove the previous session's files (chunks aren't individually delivered to the
-    // delegate, so nobody else cleans them up). Any in-flight streaming reads of these
+    // Remove the previous session's leftover chunk files (chunks aren't individually delivered to
+    // the delegate, so nobody else cleans them up). The delivered file is no longer in this list. Any in-flight streaming reads of these
     // files finished long before a new recording can start.
     for url in chunkURLs {
       try? FileManager.default.removeItem(at: url)
     }
-    if let url = mergedURL {
-      try? FileManager.default.removeItem(at: url)
-    }
     chunkURLs = []
-    mergedURL = nil
     peakPowerDuringRecording = -160
     peakPowerDuringChunk = -160
     lastTwoMeterSamples = (-160, -160)
@@ -410,10 +400,13 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
         }
         DispatchQueue.main.async {
           if urls.count > 1 {
-            self.mergedURL = deliveredURL
             DebugLogger.logAudio(
               "AUDIO: Merged \(urls.count) dictate chunks into \(deliveredURL.lastPathComponent) (\(fileSize) bytes)")
           }
+          // The delivered file now belongs to the delegate (its job deletes it, and Retry /
+          // "Transcribe Cancelled Recording" may keep it for a long time). Stop tracking it so the
+          // next `beginSession` / `cleanup` can never delete a recording that is still referenced.
+          self.chunkURLs.removeAll { $0 == deliveredURL }
           self.delegate?.audioRecorderDidFinishRecording(audioURL: deliveredURL)
         }
       } catch {

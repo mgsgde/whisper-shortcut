@@ -46,6 +46,9 @@ class SpeechService {
   /// `MenuBarController` reads it once `executePrompt` returns and shows it beside the pasted
   /// text — the words are never written into the text itself, which ends up in a patient record.
   private(set) var lastPromptUnsupportedWords: [String] = []
+  /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
+  /// may be missing. The reply is still delivered; the UI adds a notice.
+  private(set) var lastPromptReplyTruncated = false
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
@@ -714,6 +717,7 @@ class SpeechService {
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
+    lastPromptReplyTruncated = false
     promptIsEditQuickAction = isEditQuickAction
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
@@ -722,12 +726,12 @@ class SpeechService {
     let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
-    // highlighted region in the screenshot. Cleaned like any copied text (URL query strings,
-    // runaway repeats).
+    // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
+    // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
+    // corrupts the text the user asked to edit.
     let clipboardContext: String? = usesScreenshotSelection
       ? nil
-      : DictatePromptSelectionDecision.selectionText(
-        from: selectedText.map { clipboardManager?.cleanText($0) ?? $0 })
+      : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
     // Nothing selected used to be refused (`TranscriptionError.noSelectedText`): the model, told to
     // edit a selection that wasn't there, "edited" the instruction instead — a user who said
@@ -1156,12 +1160,16 @@ class SpeechService {
     }
 
     let latencyMs = Self.milliseconds(since: promptStarted)
-    PromptConversationHistory.shared.append(
-      mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: userInstruction,
-      modelResponse: normalizedText
-    )
+    // Offline Mode never replays earlier turns (see the history guard above), so recording them
+    // would only keep a patient's selection and reply in memory for no purpose.
+    if !OfflineMode.isEnabled {
+      PromptConversationHistory.shared.append(
+        mode: mode,
+        selectedText: clipboardContext,
+        userInstruction: userInstruction,
+        modelResponse: normalizedText
+      )
+    }
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
@@ -1620,7 +1628,9 @@ class SpeechService {
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      let transcript = try await performTranscription(audioURL: audioURL)
+      // The same rejected-spelling correction the normal dictation path applies (`transcribe`),
+      // so a term the user struck from the Glossary cannot come back through Dictate Prompt.
+      let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
       instruction = (TranscriptionModel.loadSelected().isOffline
@@ -1750,6 +1760,7 @@ class SpeechService {
     if finishReason == "length" {
       DebugLogger.logWarning(
         "PROMPT-MODE-LOCAL: Reply hit the \(AppConstants.localPromptMaxOutputTokens)-token output cap and may be truncated")
+      lastPromptReplyTruncated = true
     }
 
     // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and

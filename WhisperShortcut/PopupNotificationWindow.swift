@@ -1020,6 +1020,18 @@ extension PopupNotificationWindow {
     }
   }
 
+  /// An on-device reply stopped at the output-token cap. The text was delivered as usual; this only
+  /// tells the user to check its end. Shown even with popups switched off, like the word check.
+  static func showReplyTruncated() {
+    present(ignoresPreference: true) {
+      PopupNotificationWindow(
+        title: "Reply may be cut off",
+        text: "The reply hit the length limit and may be cut off – check the end.",
+        kind: .warning
+      )
+    }
+  }
+
   /// At most `limit` words, so the advice after them survives the preview cut-off.
   static func undictatedWordsMessage(_ words: [String], pasteHint: String?, limit: Int = 8) -> String {
     var list = words.prefix(limit).joined(separator: ", ")

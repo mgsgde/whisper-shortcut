@@ -47,4 +47,16 @@ struct ValidateSpeechTextTests {
       try TextProcessingUtility.validateSpeechText("   ", mode: "TRANSCRIPTION-MODE")
     }
   }
+
+  @Test("An empty Dictate Prompt reply is a retryable model failure, not 'no speech'")
+  func emptyPromptReplyIsEmptyModelReply() {
+    for mode in ["PROMPT-MODE-GEMINI", "PROMPT-MODE-OPENAI", "PROMPT-MODE-LOCAL"] {
+      #expect(throws: TranscriptionError.emptyModelReply) {
+        try TextProcessingUtility.validateSpeechText("  \n ", mode: mode)
+      }
+    }
+    #expect(TranscriptionError.emptyModelReply.isRetryable)
+    let popup = SpeechErrorFormatter.titleAndBodyForPopup(.emptyModelReply)
+    #expect(popup.body == "The model returned no text. Your recording was kept – try Retry or another model.")
+  }
 }

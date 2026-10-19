@@ -115,6 +115,11 @@ class MenuBarController: NSObject {
     /// Set when the user hits ✕ on the indicator (or discards an Fn dictation): the finished audio
     /// is thrown away instead of processed.
     var discardOnFinish = false
+    /// Set by the first stop press (before the tail delay). Until the recorder delivers the audio a
+    /// further press must not stop again: the recorder answers "nothing running", which used to
+    /// reset the app to idle while the finished audio was still on its way, and the audio was then
+    /// dropped silently.
+    var stopRequested = false
     /// Set once per prompt recording so Escape, or stopping, does not bring the list back.
     var quickActionsOffered = false
     /// A repeating Return must not launch the quick action twice before the recording stops.
@@ -1295,6 +1300,11 @@ class MenuBarController: NSObject {
       cancelPendingRecordingStart()
       return
     }
+    if recording?.stopRequested == true {
+      DebugLogger.log("AUDIO: Stop ignored — the recording is already being finalized")
+      return
+    }
+    recording?.stopRequested = true
     if audioRecorder.hasRecentlyBeenSilent {
       DebugLogger.logAudio("AUDIO: Skipping tail-capture delay — recent audio was silent")
       handleStopRecordingResult(audioRecorder.stopRecording())
@@ -1302,6 +1312,9 @@ class MenuBarController: NSObject {
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
       guard let self else { return }
+      // ✕ / Fn-discard during the tail already stopped the recorder and marked it for discarding;
+      // a second stop would find nothing running and let the audio escape the discard.
+      if self.recording?.discardOnFinish == true { return }
       self.handleStopRecordingResult(self.audioRecorder.stopRecording())
     }
   }
@@ -1313,6 +1326,9 @@ class MenuBarController: NSObject {
     meetingSegment: MeetingSegment? = nil,
     promptSelection: DictatePromptSelectionCapture? = nil
   ) {
+    if mode == .transcription || mode == .prompt {
+      pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
+    }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
     audioRecorder.startRecording()
@@ -1320,6 +1336,7 @@ class MenuBarController: NSObject {
 
   private func cancelPendingRecordingStart() {
     recording = nil
+    clipboardManager.discardRestorePoint()
     _ = audioRecorder.stopRecording()
   }
 
@@ -1327,6 +1344,7 @@ class MenuBarController: NSObject {
     guard !didStop else { return }
     DebugLogger.log("AUDIO: stopRecording found nothing running")
     recording = nil
+    clipboardManager.discardRestorePoint()
     if case .recording = appState {
       appState = appState.finish()
     }
@@ -1386,6 +1404,13 @@ class MenuBarController: NSObject {
         stopRecordingAfterTailDelay()
         return
       }
+      // A run in progress is not a credential problem: answering a press during it with "API key
+      // required" sent users to Settings for nothing. Ignore the press and say why.
+      if appState.isBusy {
+        DebugLogger.log("DICTATE: Shortcut ignored — a run is still in progress (\(appState))")
+        PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
+        return
+      }
       let selectedModel = TranscriptionModel.loadSelected()
       let hasOfflineModel = selectedModel.isOfflineModelAvailable()
 
@@ -1437,8 +1462,13 @@ class MenuBarController: NSObject {
       return
     }
 
-    // Check if currently processing prompt - if so, cancel it
+    // Check if currently processing prompt - if so, cancel it. A prompt run on long audio can sit
+    // in the chunk phases (`.splitting` …) instead of `.prompting`; ⌘2 cancels those too.
     if case .processing(.prompting) = appState {
+      cancelInFlightPrompt()
+      return
+    }
+    if isTranscriptionProcessing, currentJob?.mode == .prompt {
       cancelInFlightPrompt()
       return
     }
@@ -1449,6 +1479,11 @@ class MenuBarController: NSObject {
     case .none:
       if pendingRecordingMode != nil {
         stopRecordingAfterTailDelay()
+        return
+      }
+      if appState.isBusy {
+        DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
+        PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
         return
       }
       let promptModel = PromptModel.loadPromptModel(
@@ -1936,6 +1971,16 @@ class MenuBarController: NSObject {
             DebugLogger.log("RETRY: Waiting 3s before retrying after server error...")
             try? await Task.sleep(nanoseconds: 3_000_000_000)
           }
+          // The error popup can stay open for a long time. If the user has started a recording
+          // (or another run) since, a retry must not stomp on it: the state machine would be
+          // overwritten mid-recording. The audio stays on disk for a later attempt. The error
+          // state itself (`.feedback`) is not busy, so a plain Retry click still works.
+          guard !self.appState.isBusy else {
+            DebugLogger.logWarning("RETRY: Ignored — another run is in progress (\(self.appState))")
+            PopupNotificationWindow.showInfo(
+              "Finish the current recording first, then try again.", title: "Busy")
+            return
+          }
           // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
           // job, the same way `transcribeCancelledRecording` starts one.
           self.processedAudioURLs.insert(audioURL)
@@ -2079,9 +2124,7 @@ class MenuBarController: NSObject {
       // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
       await MainActor.run { self.captureClipboardRestorePointIfEnabled() }
       spec.copyResult(result)
-      let didAutoPaste = await MainActor.run {
-        self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
-      }
+      let didAutoPaste = await self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
       await afterCopy(result)
 
       await MainActor.run { [weak self] in
@@ -2107,7 +2150,7 @@ class MenuBarController: NSObject {
             spec.presentResult(result, modelInfo, nil)
           }
         } else {
-          spec.presentResult(result, modelInfo, "Copied — press ⌘V to paste")
+          spec.presentResult(result, modelInfo, PasteTargetPolicy.copiedHint)
         }
         if duringMeeting {
           self.clearMeetingSegment()
@@ -2255,7 +2298,7 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.showTranscriptionResponse(text, modelInfo: info)
         }
       },
-      successMessage: { $0 ? "Transcription copied to clipboard" : "Copied — press ⌘V to paste" },
+      successMessage: { $0 ? "Transcription copied to clipboard" : PasteTargetPolicy.copiedHint },
       dismissesProcessingBeforeResult: true,
       cancelsViaTransitionToIdle: true)
 
@@ -2334,7 +2377,7 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.showPromptResponse(text, modelInfo: info)
         }
       },
-      successMessage: { $0 ? "AI response copied to clipboard" : "Copied — press ⌘V to paste" })
+      successMessage: { $0 ? "AI response copied to clipboard" : PasteTargetPolicy.copiedHint })
     spec.resultNeedsPopup = { !undictatedWords.isEmpty }
 
     await runAudioJob(
@@ -2349,6 +2392,10 @@ class MenuBarController: NSObject {
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           isEditQuickAction: isEditQuickAction, selectedText: selectedText)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
+        if self.speechService.lastPromptReplyTruncated {
+          // The text is still pasted; the user just has to know its end may be missing.
+          await MainActor.run { PopupNotificationWindow.showReplyTruncated() }
+        }
         return result
       })
   }
@@ -2840,10 +2887,10 @@ class MenuBarController: NSObject {
       while Date() < deadline {
         try? await Task.sleep(for: DictatePromptSelectionCapture.pollInterval)
         let after = NSPasteboard.general.changeCount
-        guard DictatePromptSelectionDecision.copyProducedSelection(
-          changeCountBefore: before, changeCountAfter: after)
-        else { continue }
         let text = NSPasteboard.general.string(forType: .string)
+        guard DictatePromptSelectionDecision.acceptsCopy(
+          changeCountBefore: before, changeCountAfter: after, string: text)
+        else { continue }
         selection.resolve(text)
         DebugLogger.log("\(logPrefix): Captured selection (\(text?.count ?? 0) chars)")
         return
@@ -2900,8 +2947,11 @@ class MenuBarController: NSObject {
           self?.recording?.voiceFeedbackSelection = text
           DebugLogger.log("VOICE-FEEDBACK: Captured selection (\(text.count) chars)")
         }
+        // Voice Feedback never pastes, so the remembered clipboard has no job left to serve.
+        self?.clipboardManager.discardRestorePoint()
         return
       }
+      self?.clipboardManager.discardRestorePoint()
       DebugLogger.log("VOICE-FEEDBACK: No selection copied — proceeding with the spoken instruction only")
     }
   }
@@ -2930,6 +2980,7 @@ class MenuBarController: NSObject {
         return
       }
       DebugLogger.log("GLOSSARY: Nothing copied — no selection to add")
+      self.clipboardManager.discardRestorePoint()
       PopupNotificationWindow.showInfo(
         "Select the correctly spelled term first, then press the shortcut again.",
         title: "Nothing Selected")
@@ -3011,10 +3062,36 @@ class MenuBarController: NSObject {
   /// desktops) while still feeling instant.
   private static let clipboardRestoreDelay: TimeInterval = 0.4
 
-  /// Performs auto-paste if enabled in settings.
-  /// - Returns: `true` when a paste keystroke was scheduled; `false` when the result stays on
-  ///   the clipboard for the user to paste manually (App Store build, setting off, or missing
-  ///   Accessibility permission).
+  /// The app that was frontmost when the current Dictate / Dictate Prompt recording started. Auto-paste
+  /// goes there, not to whatever the user has switched to since.
+  private var pasteTargetAtRecordStart: PasteTarget?
+
+  private static func pasteTarget(of app: NSRunningApplication?) -> PasteTarget? {
+    app.map { PasteTarget(pid: $0.processIdentifier, bundleId: $0.bundleIdentifier) }
+  }
+
+  private static var ownPasteTarget: PasteTarget {
+    PasteTarget(
+      pid: ProcessInfo.processInfo.processIdentifier, bundleId: Bundle.main.bundleIdentifier)
+  }
+
+  /// How long to wait for the recorded app to come to the front before giving up on pasting.
+  private static let pasteActivationTimeout: TimeInterval = 0.4
+
+  /// Brings `app` to the front and polls (10 ms) until it is frontmost or the timeout passes.
+  @MainActor
+  private func activateAndWaitForFront(_ app: NSRunningApplication) async -> Bool {
+    app.activate()
+    let deadline = Date().addingTimeInterval(Self.pasteActivationTimeout)
+    while Date() < deadline {
+      if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+        return true
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    return NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+  }
+
   /// Whether this build and this user's settings can auto-paste at all.
   ///
   /// Separate from `autoPasteIfEnabled()` because outcome signals need to answer the same question
@@ -3033,8 +3110,13 @@ class MenuBarController: NSObject {
     #endif
   }
 
+  /// Performs auto-paste if enabled in settings.
+  /// - Returns: `true` when ⌘V was posted; `false` when the result stays on the clipboard for the
+  ///   user to paste manually (App Store build, setting off, missing Accessibility permission, or
+  ///   no safe target app: WhisperShortcut itself, or the recorded app would not come forward).
+  @MainActor
   @discardableResult
-  private func autoPasteIfEnabled(logMode: String?) -> Bool {
+  private func autoPasteIfEnabled(logMode: String?) async -> Bool {
     #if APP_STORE
     return false
     #else
@@ -3047,37 +3129,62 @@ class MenuBarController: NSObject {
         return false
       }
       // Small delay to ensure clipboard is ready
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-        self?.simulatePaste()
-        // Log *where* the synthetic ⌘V went. The app can be in the background for minutes
-        // (long dictation while the user works elsewhere), so the receiving app is whatever
-        // happens to be frontmost — and if it has a selection, ⌘V replaces it. Without the
-        // target and payload size on record, a report of "my text was suddenly gone" is
-        // undiagnosable after the fact.
-        let target = NSWorkspace.shared.frontmostApplication
-        let chars = NSPasteboard.general.string(forType: .string)?.count ?? 0
-        DebugLogger.log(
-          "AUTO-PASTE: Pasted \(chars) chars into "
-            + "\(target?.localizedName ?? "unknown") "
-            + "(\(target?.bundleIdentifier ?? "no bundle id"))")
+      try? await Task.sleep(for: .milliseconds(50))
 
-        // The result reached the user's cursor: the strongest available "this worked" signal, and
-        // the one that stops a following dictation from being counted as a retry.
-        ContextLogger.shared.logSignal(
-          .pasted,
-          mode: logMode,
-          detail: [
-            "chars": String(chars),
-            "targetBundleId": target?.bundleIdentifier ?? "unknown",
-          ])
+      // The result can arrive minutes after the recording started, with another app (or this one)
+      // in front. ⌘V there replaces whatever that app has selected, so paste only into the app the
+      // user dictated into, and never into our own windows.
+      let recorded = pasteTargetAtRecordStart
+      let frontApp = NSWorkspace.shared.frontmostApplication
+      var action = PasteTargetPolicy.action(
+        frontmost: Self.pasteTarget(of: frontApp), recorded: recorded, own: Self.ownPasteTarget)
+      if action == .activateRecordedThenPaste {
+        if let recorded,
+          let app = NSRunningApplication(processIdentifier: recorded.pid),
+          !app.isTerminated,
+          await activateAndWaitForFront(app)
+        {
+          action = .pasteNow
+        } else {
+          action = .clipboardOnly
+        }
+      }
+      guard action == .pasteNow else {
+        DebugLogger.logWarning(
+          "AUTO-PASTE: Not pasting — target app is not in front "
+            + "(frontmost: \(frontApp?.bundleIdentifier ?? "none"), "
+            + "recorded: \(recorded?.bundleId ?? "none")); result stays on the clipboard")
+        // The user pastes this themselves, so the old clipboard must not be restored over it.
+        clipboardManager.discardRestorePoint()
+        return false
+      }
 
-        // Non-destructive paste: give the receiving app time to read the pasteboard, then put
-        // the user's previous clipboard back.
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) { [weak self] in
-          guard let self else { return }
-          if self.clipboardManager.restorePendingSnapshot() {
-            DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
-          }
+      simulatePaste()
+      // Log *where* the synthetic ⌘V went. Without the target and payload size on record, a report
+      // of "my text was suddenly gone" is undiagnosable after the fact.
+      let target = NSWorkspace.shared.frontmostApplication
+      let chars = NSPasteboard.general.string(forType: .string)?.count ?? 0
+      DebugLogger.log(
+        "AUTO-PASTE: Pasted \(chars) chars into "
+          + "\(target?.localizedName ?? "unknown") "
+          + "(\(target?.bundleIdentifier ?? "no bundle id"))")
+
+      // The result reached the user's cursor: the strongest available "this worked" signal, and
+      // the one that stops a following dictation from being counted as a retry.
+      ContextLogger.shared.logSignal(
+        .pasted,
+        mode: logMode,
+        detail: [
+          "chars": String(chars),
+          "targetBundleId": target?.bundleIdentifier ?? "unknown",
+        ])
+
+      // Non-destructive paste: give the receiving app time to read the pasteboard, then put
+      // the user's previous clipboard back.
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) { [weak self] in
+        guard let self else { return }
+        if self.clipboardManager.restorePendingSnapshot() {
+          DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
         }
       }
       return true
@@ -3136,6 +3243,7 @@ extension MenuBarController: AudioRecorderDelegate {
       // Cancelled via the recording indicator's ✕ — discard the audio, don't process
       if intent?.discardOnFinish == true {
         DebugLogger.log("AUDIO: Discarding cancelled recording \(audioURL.lastPathComponent)")
+        self.clipboardManager.discardRestorePoint()
         self.discardStreamingSession()
         self.cleanupAudioFile(at: audioURL)
         // Discarding a segment ends the segment, not the meeting: `appState` belongs to the meeting
@@ -3166,7 +3274,26 @@ extension MenuBarController: AudioRecorderDelegate {
       }
 
       guard case .recording(let recordingMode) = self.appState else {
-        DebugLogger.logWarning("AUDIO: audioRecorderDidFinishRecording called but appState is not recording")
+        // The audio is the only copy of what the user said. Never drop it: a dictation is kept as
+        // the recoverable cancelled recording ("Transcribe Cancelled Recording" in the status
+        // menu); an instruction recording (prompt, voice feedback) would be pasted as dictation,
+        // so that one is removed.
+        self.discardStreamingSession()
+        self.clipboardManager.discardRestorePoint()
+        let isDictation: Bool = {
+          guard let intent else { return true }
+          if case .mode(.transcription) = intent.target { return true }
+          return false
+        }()
+        if isDictation {
+          DebugLogger.logWarning(
+            "AUDIO: Recording \(audioURL.lastPathComponent) arrived while appState is \(self.appState) — kept as the cancelled recording")
+          self.retainCancelledRecording(audioURL)
+        } else {
+          DebugLogger.logWarning(
+            "AUDIO: Instruction recording \(audioURL.lastPathComponent) arrived while appState is \(self.appState) — discarded")
+          self.cleanupAudioFile(at: audioURL)
+        }
         return
       }
 
@@ -3188,8 +3315,26 @@ extension MenuBarController: AudioRecorderDelegate {
       // A quick action never sends the audio, so the cost warning does not apply.
       let threshold = ConfirmAboveDuration.loadFromUserDefaults()
 
+      // The cost warning only makes sense when the run costs money: an offline / on-device model
+      // has no API bill, and a modal on a long local dictation is just a hurdle.
+      let runCostsMoney: Bool = {
+        switch recordingMode {
+        case .transcription:
+          return !TranscriptionModel.loadSelected().isOffline
+        case .prompt:
+          let promptProvider = PromptModel.loadPromptModel(
+            forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel
+          ).provider
+          let promptIsLocal = promptProvider == .local || promptProvider == .localMLX
+          return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
+        case .voiceFeedback, .liveMeeting:
+          return true
+        }
+      }()
+
       if quickActionInstruction == nil,
          threshold != .never,
+         runCostsMoney,
          let duration = self.speechService.getAudioDuration(url: audioURL),
          duration > threshold.rawValue
       {
@@ -3208,7 +3353,16 @@ extension MenuBarController: AudioRecorderDelegate {
         if response != .alertFirstButtonReturn {
           DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
           self.discardStreamingSession()
-          self.cleanupAudioFile(at: audioURL)
+          // Nothing will be pasted, so the remembered clipboard must not outlive this run.
+          self.clipboardManager.discardRestorePoint()
+          // Cancel is one click and a long recording is the only copy of what was said: keep it
+          // recoverable ("Transcribe Cancelled Recording") instead of deleting it. Instruction
+          // recordings would be pasted as dictation there, so those are still removed.
+          if recordingMode == .transcription {
+            self.retainCancelledRecording(audioURL)
+          } else {
+            self.cleanupAudioFile(at: audioURL)
+          }
           self.appState = self.appState.finish()
           return
         }
@@ -3232,6 +3386,7 @@ extension MenuBarController: AudioRecorderDelegate {
         ContextLogger.shared.logNoInputSignal(
           peakDb: peakDb, durationMs: String(digitalSilenceDurationMs), logPrefix: "DICTATION")
         self.discardStreamingSession()
+        self.clipboardManager.discardRestorePoint()
         self.processedAudioURLs.remove(audioURL)
         self.cleanupAudioFile(at: audioURL)
         self.appState = self.appState.stopRecording()
@@ -3262,6 +3417,7 @@ extension MenuBarController: AudioRecorderDelegate {
             logPrefix: "DICTATION",
             origin: .dictation)
           self.discardStreamingSession()
+          self.clipboardManager.discardRestorePoint()
           // Mirror the explicit-remove pattern used by every other early-return path; without
           // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
           self.processedAudioURLs.remove(audioURL)
@@ -3313,6 +3469,7 @@ extension MenuBarController: AudioRecorderDelegate {
 
   func audioRecorderDidFailWithError(_ error: Error) {
     recording = nil
+    clipboardManager.discardRestorePoint()
     dismissQuickActions()
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain

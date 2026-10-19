@@ -36,6 +36,20 @@ struct DictatePromptSelectionTests {
       currentChangeCount: 11, lastConsumedChangeCount: 10, lastOwnWriteChangeCount: 11))
   }
 
+  @Test("A copy tick needs a changed count AND a readable string")
+  func copyTickNeedsStringToo() {
+    #expect(DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 2, string: "x"))
+    #expect(!DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 2, string: nil))
+    #expect(!DictatePromptSelectionDecision.acceptsCopy(changeCountBefore: 1, changeCountAfter: 1, string: "x"))
+  }
+
+  @Test("Selections reach the model as captured: digit runs, dashes and URL queries survive")
+  func selectionSurvivesUnchanged() {
+    for text in ["Vitamin D 20000 IE", "----", "https://x.de/a?b=1#c"] {
+      #expect(DictatePromptSelectionDecision.selectionText(from: "  \(text)\n") == text)
+    }
+  }
+
   @Test("Copied text is trimmed; whitespace-only counts as nothing")
   func selectionTextNormalised() {
     #expect(DictatePromptSelectionDecision.selectionText(from: "  Befund \n") == "Befund")
