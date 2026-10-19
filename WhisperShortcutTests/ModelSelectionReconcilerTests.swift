@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import WhisperShortcut_AppStore
 
@@ -123,5 +124,33 @@ struct ModelSelectionReconcilerTests {
     #expect(
       ModelSelectionReconciler.offlineTranscriptionReplacement(downloaded: .whisperLargeTurbo)
         == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+  }
+
+  @Test("Offline Mode moves the meeting summary and Voice Feedback slots onto the Dictate Prompt model and back")
+  func meetingSummaryOfflineRoundTrip() {
+    let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
+    let improvementKey = UserDefaultsKeys.selectedImprovementModel
+    let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
+    defaults.set(onDevice.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
+
+    // Offline Mode on: snapshot, then follow Dictate Prompt.
+    ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: summaryKey, defaults: defaults)
+    ModelSelectionReconciler.reconcileSlotToDictatePromptModelForOfflineMode(key: improvementKey, defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
+    #expect(defaults.string(forKey: improvementKey) == onDevice.rawValue)
+
+    // A second pass while the mode stays on must not overwrite the snapshot.
+    ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
+
+    // Offline Mode off: the cloud choices come back.
+    ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
   }
 }

@@ -54,6 +54,8 @@ enum ModelSelectionReconciler {
     UserDefaultsKeys.selectedPromptModel,
     UserDefaultsKeys.selectedChatModel,
     UserDefaultsKeys.selectedReadAloudModel,
+    UserDefaultsKeys.selectedMeetingSummaryModel,
+    UserDefaultsKeys.selectedImprovementModel,
   ]
 
   // MARK: - Entry point
@@ -99,8 +101,7 @@ enum ModelSelectionReconciler {
   /// Captures the current selections the first time Offline Mode is on, so turning it off can
   /// put the user back on the cloud models they had. Later reconciles while the mode stays on
   /// must not overwrite that snapshot with the already-rewritten offline values.
-  private static func snapshotPreOfflineSelectionsIfNeeded() {
-    let defaults = UserDefaults.standard
+  static func snapshotPreOfflineSelectionsIfNeeded(defaults: UserDefaults = .standard) {
     guard defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) == nil else {
       return
     }
@@ -114,8 +115,7 @@ enum ModelSelectionReconciler {
     DebugLogger.log("MODEL-RECONCILE: snapshotted \(snapshot.count) pre-offline selection(s)")
   }
 
-  private static func restorePreOfflineSelectionsIfNeeded() {
-    let defaults = UserDefaults.standard
+  static func restorePreOfflineSelectionsIfNeeded(defaults: UserDefaults = .standard) {
     guard let snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
             as? [String: String] else { return }
     for (key, value) in snapshot {
@@ -128,8 +128,9 @@ enum ModelSelectionReconciler {
   // MARK: - Offline Mode
 
   /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
-  /// transcription, Dictate Prompt, Chat, and Read Aloud. Meeting summary and Smart Improvement
-  /// still have no on-device path and stay selected, failing at the network guard.
+  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement
+  /// (which also drives Voice Feedback). The last two follow the Dictate Prompt model so a single
+  /// on-device model serves every text slot and only one MLX model needs to be in memory.
   private static func reconcileForOfflineMode() {
     for key in [
       UserDefaultsKeys.selectedTranscriptionModel,
@@ -148,6 +149,9 @@ enum ModelSelectionReconciler {
 
     reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedPromptModel)
     reconcilePromptSlotForOfflineMode(key: UserDefaultsKeys.selectedChatModel)
+    for key in [UserDefaultsKeys.selectedMeetingSummaryModel, UserDefaultsKeys.selectedImprovementModel] {
+      reconcileSlotToDictatePromptModelForOfflineMode(key: key)
+    }
 
     let ttsKey = UserDefaultsKeys.selectedReadAloudModel
     let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
@@ -174,6 +178,28 @@ enum ModelSelectionReconciler {
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log(
       "MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (Offline Mode)")
+  }
+
+  /// Moves a slot that has no model of its own offline onto whatever Dictate Prompt now uses
+  /// (already reconciled by the caller), unless it already runs on this Mac or on the user's own
+  /// endpoint.
+  static func reconcileSlotToDictatePromptModelForOfflineMode(
+    key: String, defaults: UserDefaults = .standard
+  ) {
+    let fallback = key == UserDefaultsKeys.selectedMeetingSummaryModel
+      ? SettingsDefaults.selectedMeetingSummaryModel : SettingsDefaults.selectedImprovementModel
+    let raw = defaults.string(forKey: key) ?? fallback.rawValue
+    let current = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) ?? fallback
+    if current.provider == .customOpenAI || current.provider == .local { return }
+    if current.provider == .localMLX, current.isOfferableOnThisMac { return }
+    let promptRaw = defaults.string(forKey: UserDefaultsKeys.selectedPromptModel)
+      ?? SettingsDefaults.selectedPromptModel.rawValue
+    let target = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(promptRaw))
+      ?? offlinePromptReplacement()
+    guard target != current else { return }
+    defaults.set(target.rawValue, forKey: key)
+    DebugLogger.log(
+      "MODEL-RECONCILE: \(key): \(current.rawValue) → \(target.rawValue) (Offline Mode)")
   }
 
   /// Prefer a downloaded MLX model this Mac can run; otherwise the recommended catalogue
