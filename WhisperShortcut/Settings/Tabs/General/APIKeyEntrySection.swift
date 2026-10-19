@@ -57,6 +57,10 @@ struct APIKeyEntrySection: View {
           }
         }
         .onChange(of: key) { _, newValue in
+          // `onAppear` loading the stored key also fires this. Treat that as a load, not a save:
+          // otherwise merely opening Settings → Accounts rewrites every key and pops the
+          // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
+          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
           // Off the main thread: `SecItemUpdate` is a synchronous IPC round-trip to securityd
           // that has been observed to stall for seconds (see the cache note in KeychainManager).
           Task {
