@@ -241,5 +241,12 @@ enum UserDefaultsKeys {
   /// Dictionary of UserDefaults key → ["fallback": raw, "previous": raw]; until the offline model is
   /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
   static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
-}
 
+  // MARK: - MCP Server
+
+  /// Whether the local read-only MCP server (meeting transcripts for Claude & other AI apps) runs.
+  /// Default false. See MCPServer.
+  static let mcpServerEnabled = "mcpServerEnabled"
+  /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
+  static let mcpServerPort = "mcpServerPort"
+}
