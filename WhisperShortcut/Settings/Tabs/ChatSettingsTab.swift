@@ -58,6 +58,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      MeetingsInAIAppsSection()
+
+      SpacedSectionDivider()
+
       usageSection
 
       SpacedSectionDivider()
