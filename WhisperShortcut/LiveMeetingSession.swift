@@ -364,7 +364,10 @@ final class LiveMeetingSession: NSObject {
       // route to the provider's cheapest model: relabeling is mechanical and doesn't need the
       // summary model's quality.
       var finalTranscript = transcriptText
-      if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
+      if MeetingListService.skipsSpeakerConsolidation(provider: model.provider) {
+        DebugLogger.log(
+          "LIVE-MEETING: Skipping speaker consolidation (on-device summary model \(model.rawValue))")
+      } else if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
         do {
           let consolidated = try await MeetingListService.consolidateSpeakerLabels(
             transcript: transcriptText, model: model.speakerConsolidationModel)

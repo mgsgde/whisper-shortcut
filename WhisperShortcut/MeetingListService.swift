@@ -283,6 +283,13 @@ final class MeetingListService: ObservableObject {
     }
   }
 
+  /// Speaker consolidation echoes the whole transcript back. A small on-device model cuts that
+  /// off at its output cap, and the truncated reply would replace the transcript with a
+  /// fragment; offline transcripts carry no reliable speaker labels to reconcile anyway.
+  static func skipsSpeakerConsolidation(provider: ChatModelProvider) -> Bool {
+    provider == .local || provider == .localMLX
+  }
+
   // MARK: - Private
 
   private static func parseMeetingFilename(_ url: URL) -> MeetingFileInfo? {

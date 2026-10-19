@@ -84,23 +84,8 @@ final class MLXChatProvider: LLMChatProvider {
           // `lastLoadMs` is this request's prepare time (download + weight load). A container
           // that is already resident reports 0 — the follow-up `container(for:)` would otherwise
           // look like a fresh load of a few milliseconds.
-          let resident = await LocalLLMModelManager.shared.isContainerLoaded(mlxType)
-          let loadStarted = ContinuousClock.now
-          if options.showsModelReadinessPopup {
-            try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
-          } else {
-            try await LocalLLMModelManager.shared.ensureReady(mlxType)
-          }
-          let container = try await LocalLLMModelManager.shared.container(for: mlxType)
-          let loadMs = resident ? 0 : Self.milliseconds(since: loadStarted)
-          recordLoadMs(loadMs)
-          // Through the in-memory prefix cache: the Dictate Prompt system prompt runs past a
-          // thousand tokens, and re-prefilling it per request was the entire measured gap to the
-          // local HTTP server. `MLXPromptCache` prefills it once and hands each request fresh
-          // cache objects around the same arrays. Falls back to a plain session on any failure.
-          let session = await Self.promptSession(
-            container: container, type: mlxType, systemPrompt: systemText,
-            reusePrefix: mayReusePrefix, temperature: options.temperature)
+          let (_, session) = try await prepareSession(
+            mlxType: mlxType, systemText: systemText, options: options)
           DebugLogger.logNetwork(
             "MLX-CHAT-STREAM: model=\(mlxType.huggingFaceID) turns=\(messages.count)")
           for try await chunk in session.streamResponse(to: messages) {
@@ -122,6 +107,32 @@ final class MLXChatProvider: LLMChatProvider {
     }
   }
 
+  /// Readiness + container + prompt session, shared by the streaming chat path and
+  /// `generateStructured`. Readiness lives here, not in the callers: every path that reaches this
+  /// provider needs the weights on disk and in RAM, and the title stays neutral because Chat,
+  /// Dictate Prompt and the meeting notes all come through. `lastLoadMs` is this request's
+  /// prepare time (download + weight load); an already-resident container reports 0.
+  private func prepareSession(
+    mlxType: LocalLLMModelType, systemText: String?, options: ChatRequestOptions
+  ) async throws -> (LocalLLMModelType, MLXLMCommon.ChatSession) {
+    let resident = await LocalLLMModelManager.shared.isContainerLoaded(mlxType)
+    let loadStarted = ContinuousClock.now
+    if options.showsModelReadinessPopup {
+      try await LocalLLMModelManager.shared.ensureReadyWithUI(mlxType, title: "Offline Model")
+    } else {
+      try await LocalLLMModelManager.shared.ensureReady(mlxType)
+    }
+    let container = try await LocalLLMModelManager.shared.container(for: mlxType)
+    recordLoadMs(resident ? 0 : Self.milliseconds(since: loadStarted))
+    // Through the in-memory prefix cache: the Dictate Prompt system prompt runs past a thousand
+    // tokens, and re-prefilling it per request was the entire measured gap to the local HTTP
+    // server. Falls back to a plain session on any failure.
+    let session = await Self.promptSession(
+      container: container, type: mlxType, systemPrompt: systemText,
+      reusePrefix: options.reusablePromptPrefix, temperature: options.temperature)
+    return (mlxType, session)
+  }
+
   private func recordLoadMs(_ ms: Int) {
     loadMsLock.lock()
     recordedLoadMs = ms
@@ -141,8 +152,70 @@ final class MLXChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    throw TranscriptionError.networkError(
-      "Structured output is not supported for the in-process MLX model yet.")
+    guard let mlxType = PromptModel(rawValue: model)?.localMLXModelType else {
+      throw TranscriptionError.networkError(
+        "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings.")
+    }
+    // A background call (meeting notes, summary): no popup over whatever the user is doing.
+    var options = ChatRequestOptions()
+    options.showsModelReadinessPopup = false
+    // Greedy decoding: a summary or JSON object must not wander.
+    options.temperature = 0
+
+    let singleKey = Self.singleStringProperty(in: schema)
+    var systemText = Self.plainText(from: systemInstruction)
+    if singleKey == nil {
+      let schemaJSON =
+        (try? JSONSerialization.data(withJSONObject: schema, options: [.sortedKeys]))
+        .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+      let instruction =
+        "Reply with exactly one JSON object that matches this JSON schema, and nothing else "
+        + "(no prose, no code fences):\n\(schemaJSON)"
+      systemText = [systemText, instruction].compactMap { $0 }.joined(separator: "\n\n")
+    }
+
+    let messages = Self.chatMessages(from: contents)
+    let (_, session) = try await prepareSession(
+      mlxType: mlxType, systemText: systemText, options: options)
+    DebugLogger.logNetwork(
+      "MLX-STRUCTURED: model=\(mlxType.huggingFaceID) schema=\(schemaName) turns=\(messages.count)")
+    var full = ""
+    for try await chunk in session.streamResponse(to: messages) {
+      try Task.checkCancellation()
+      full += chunk
+    }
+    ModelSelectionReconciler.adoptKeylessOfflineFallbacks()
+
+    if let singleKey {
+      return [singleKey: full.trimmingCharacters(in: .whitespacesAndNewlines)]
+    }
+    do {
+      return try Self.extractJSONObject(from: full)
+    } catch {
+      DebugLogger.logWarning(
+        "MLX-STRUCTURED: reply for \(schemaName) was not a JSON object (\(full.count) chars)")
+      throw error
+    }
+  }
+
+  /// The property name when `schema` describes an object with exactly one property, of type
+  /// string. That is the `generateText` shape: the reply is the plain text, no JSON involved.
+  static func singleStringProperty(in schema: [String: Any]) -> String? {
+    guard let props = schema["properties"] as? [String: Any], props.count == 1,
+      let (key, value) = props.first,
+      let def = value as? [String: Any], def["type"] as? String == "string"
+    else { return nil }
+    return key
+  }
+
+  /// Parses the outermost `{...}` of a model reply, tolerating ```json fences and prose around
+  /// it. Throws a non-retryable error when there is no parseable JSON object.
+  static func extractJSONObject(from text: String) throws -> [String: Any] {
+    guard let open = text.firstIndex(of: "{"), let close = text.lastIndex(of: "}"), open < close,
+      let data = String(text[open...close]).data(using: .utf8),
+      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { throw TranscriptionError.invalidRequest }
+    return obj
   }
 
   /// Gemini-format `parts` → a single string. Image/audio parts are ignored (text-only).
