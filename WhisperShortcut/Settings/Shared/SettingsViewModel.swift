@@ -10,8 +10,25 @@ class SettingsViewModel: ObservableObject {
   @Published var data = SettingsData()
 
   // MARK: - Initialization
+  private var reconcileObserver: NSObjectProtocol?
+
   init() {
     loadCurrentSettings()
+    // The reconciler may rewrite selections while this window is open (Offline Mode toggled, a
+    // key entered). Reload them, or the pickers show the old models and the next save writes them
+    // back. Slots only: `loadCurrentSettings` would run the reconciler again.
+    reconcileObserver = NotificationCenter.default.addObserver(
+      forName: .modelSelectionsReconciled, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        for slot in Self.slots { slot.load(&self.data) }
+      }
+    }
+  }
+
+  deinit {
+    if let reconcileObserver { NotificationCenter.default.removeObserver(reconcileObserver) }
   }
   
 
