@@ -124,7 +124,7 @@ enum ChatModelCommandResolver {
     } else if normalized.contains("3.7") {
       candidates = [.gemini37Flash]
     } else if normalized.contains("3.6") {
-      candidates = [.gemini36Flash]
+      candidates = [.gemini37Flash]  // 3.6 was removed; land on its replacement
     } else if normalized.contains("3.5") {
       candidates = [.gemini35FlashLite, .gemini35Flash]
     } else if normalized.contains("3.1") {
@@ -217,7 +217,7 @@ enum ChatModelCommandResolver {
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini36Flash,
+    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
          .gemini37Flash, .gemini38Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
