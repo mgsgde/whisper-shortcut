@@ -204,6 +204,11 @@ Both switches must be `1` in `~/.config/whispershortcut-implementer/env` before 
 does anything: `IMPLEMENTER_ENABLED` (master) and `IMPLEMENTER_TICK_ENABLED` (schedule only).
 Tick log: `build/logs/implementer/tick-<date>.log`.
 
+**Merge train (separate, not an agent):** `scripts/merge-train/train.sh`, every 20 min under launchd,
+merges PRs labelled `merge-train` (Dependabot adds it; `train.sh --add <pr>` for others) once CI
+is green, one per tick. It never tags, releases or touches the submodule pointer. See
+`scripts/merge-train/README.md`.
+
 **The rules that keep it honest** — all mirrored from Sabaki, all enforced in the script:
 
 - **Opus plans and judges, Grok builds.** Claude Opus 5.5 writes the plan and reviews the
