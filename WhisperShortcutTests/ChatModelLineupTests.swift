@@ -101,6 +101,26 @@ struct ChatModelLineupTests {
     #expect(PromptModel.resolvedChatSlotModel(forRawValue: "not-a-model") == nil)
   }
 
+  @Test("Removed superseded chat models forward to their replacements")
+  func removedModelsForward() {
+    let expected: [String: PromptModel] = [
+      "grok-4.20-0309-non-reasoning": .grok43, "grok-4.20-0309-reasoning": .grok43,
+      "grok-4.5": .grok47, "grok-4.6": .grok47,
+      "gpt-5": .openaiGPT6Sol, "gpt-5.4": .openaiGPT6Sol, "gpt-5.5": .openaiGPT6Sol,
+      "gpt-5.6-sol": .openaiGPT6Sol, "gpt-5.6-terra": .openaiGPT6Sol, "gpt-5.6-luna": .openaiGPT6Luna,
+      "claude-opus-4-8": .claudeOpus55, "claude-opus-5": .claudeOpus55, "claude-fable-5": .claudeOpus55,
+      "claude-sonnet-5": .claudeSonnet55,
+    ]
+    for (raw, model) in expected {
+      #expect(PromptModel(rawValue: raw) == nil, "\(raw) should no longer be an enum case")
+      #expect(PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)) == model, "\(raw)")
+      #expect(PromptModel.resolvedChatSlotModel(forRawValue: raw) == model, "\(raw)")
+    }
+    // Every remaining case except 3.5 Flash is current: nothing else hides behind chatReplacement.
+    #expect(PromptModel.allCases.filter { $0.chatReplacement != nil } == [.gemini35Flash])
+    #expect(PromptModel(rawValue: "gpt-5.4-mini") == .openaiGPT5Mini)
+  }
+
   @Test("Transcription side of 3.8 Flash is Google, selectable, and clamps MINIMAL")
   func transcriptionSide() {
     #expect(TranscriptionModel.gemini38Flash.provider == .google)

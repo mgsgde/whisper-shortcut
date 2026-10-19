@@ -82,6 +82,12 @@ enum ChatModelProvider: String, CaseIterable {
 // gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash; offline local-mlx-qwen3-8b
 // (removed 2026-09-30) → local-mlx-qwen3-4b-instruct-2507; gemini-3.6-flash (removed 2026-10-19,
 // dominated by 3.7 on price, tier and speed) → gemini-3.7-flash.
+// Superseded chat models removed 2026-10-19 (each was Pareto-dominated: a newer same-provider
+// sibling beats it on price/context/tier) and forwarded to their replacement — see the arms in
+// migrateLegacyPromptRawValue for the reasoning and prices: grok-4.20-0309-* → grok-4.3,
+// grok-4.5 / grok-4.6 → grok-4.7, gpt-5.4 / 5.5 / 5.6-sol / 5.6-terra → gpt-6-sol,
+// gpt-5.6-luna → gpt-6-luna, claude-opus-4-8 / claude-opus-5 / claude-fable-5 → claude-opus-5-5,
+// claude-sonnet-5 → claude-sonnet-5-5.
 // Grok model IDs: https://docs.x.ai/docs/models (grok-4-1-fast-non-reasoning was retired 2026-05-15
 // and silently redirects to grok-4.3; the case was removed — see migrateLegacyPromptRawValue).
 // OpenAI model IDs: https://platform.openai.com/docs/models.
@@ -108,38 +114,28 @@ enum PromptModel: String, CaseIterable {
   case geminiImagePro = "gemini-3-pro-image"
 
   // Grok Models (xAI, OpenAI-compatible API, text + search for chat)
-  case grok4 = "grok-4.20-0309-non-reasoning"
-  case grok4Reasoning = "grok-4.20-0309-reasoning"
   case grok43 = "grok-4.3"
-  /// Older flagships; same $2/$6 and 500k context as `grok-4.7`, which xAI now ranks above
-  /// them — hidden from chat pickers via `chatReplacement`.
-  case grok45 = "grok-4.5"
-  case grok46 = "grok-4.6"
-  /// xAI's current flagship: same price/context as 4.5/4.6 ($2.00/$6.00, 500k), newer and
-  /// preferred per https://docs.x.ai/docs/models (verified 2026-09-29). Does NOT supersede
+  /// xAI's current flagship: same price/context as the removed 4.5/4.6 ($2.00/$6.00, 500k),
+  /// newer and preferred per https://docs.x.ai/docs/models (verified 2026-09-29). Does NOT supersede
   /// grok-4.3 — that stays for the cheaper $1.25/$2.50 / 1M-context rung.
   case grok47 = "grok-4.7"
 
   // OpenAI Models (chat + Dictate Prompt via Chat Completions API)
-  // The case identifiers keep their historical names while the rawValue tracks the current
-  // vendor slug: `gpt-5` → `gpt-5.4` and `gpt-5-mini` → `gpt-5.4-mini` (newer GA generation,
-  // 2026-03). Persisted `gpt-5`/`gpt-5-mini` selections forward via migrateLegacyPromptRawValue.
-  case openaiGPT5 = "gpt-5.4"
+  // Persisted `gpt-5-mini` forwards to gpt-5.4-mini; `gpt-5` / `gpt-5.4` and the rest of the
+  // removed 5.x flagships forward to GPT-6 Sol (see migrateLegacyPromptRawValue).
+  //
+  // gpt-5.4-mini is NOT dominated by GPT-6 Luna on tier positioning: gpt-5.6-luna (removed) was
+  // $0.20/$1.20 with a 1.05M context, i.e. cheaper on BOTH axes than gpt-5.4-mini ($0.75/$4.50,
+  // 400k) and larger. The only axis 5.4-mini still wins is quality tier — OpenAI places luna at
+  // the *nano* rung ("roughly corresponds to the nano model tier used in earlier GPT-5
+  // families") while 5.4-mini is the *mini* rung ("our strongest mini model yet"). Different
+  // rungs of one price ladder are all frontier points, so it stays.
+  // Prices re-verified 2026-08-02: https://developers.openai.com/api/docs/pricing
   case openaiGPT5Mini = "gpt-5.4-mini"
-  case openaiGPT55 = "gpt-5.5"
-  // GPT-5.6 family (2026-07). sol matches gpt-5.5 at $5/$30; terra *undercuts* gpt-5.4 at
-  // $2.00/$12 (vs $2.50/$15) — which is what makes those two Pareto-dominated (same price or
-  // cheaper, newer generation). luna is the nano rung at $0.20/$1.20 with 1.05M context — see
-  // `chatReplacement` for why gpt-5.4-mini survives it on tier positioning alone.
-  // Prices verified 2026-08-03.
-  // https://developers.openai.com/api/docs/pricing — verified live via scripts/test-openai-models.sh.
-  case openaiGPT56Sol = "gpt-5.6-sol"
-  case openaiGPT56Terra = "gpt-5.6-terra"
-  case openaiGPT56Luna = "gpt-5.6-luna"
   // GPT-6 family (GA, 1.05M context), prices verified 2026-09-29 at
   // https://developers.openai.com/api/docs/pricing: sol $2/$10, luna $0.10/$0.50 per 1M. Both
-  // undercut their 5.6 counterparts at a newer generation, so the whole 5.6 family is hidden via
-  // `chatReplacement`. gpt-6-astra ($10/$50, "the hardest end-to-end work") is deliberately NOT
+  // undercut their 5.6 counterparts at a newer generation, so the whole 5.x family was removed.
+  // gpt-6-astra ($10/$50, "the hardest end-to-end work") is deliberately NOT
   // offered: chat here is used for research and questions, not coding, and Astra's price buys
   // nothing for that — pick models by research price-performance, not by top capability.
   // gpt-6.1-sol (same $2/$10) is NOT a replacement: it rejects `reasoning_effort: "none"`, which
@@ -166,25 +162,16 @@ enum PromptModel: String, CaseIterable {
 
   // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
   // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
-  case claudeSonnet5 = "claude-sonnet-5"
-  /// Anthropic's current Opus. Same $5/$25 per 1M and same 1M context as 4.8, newer generation,
-  /// knowledge cutoff May 2026 vs Jan 2026 — which is why 4.8 is hidden via `chatReplacement`.
-  case claudeOpus5 = "claude-opus-5"
-  /// Superseded by `claudeOpus5`; Anthropic lists it under "Legacy models". Kept as a case so
-  /// persisted selections still resolve and forward.
-  case claudeOpus48 = "claude-opus-4-8"
   /// Replaced Haiku 4.5 (`claude-haiku-4-5-20251001`) on 2026-10-12: $0.10/$0.50 per 1M
   /// (≤100k-token prompts; $0.50/$2.50 above), 1M context, 128k output, adaptive thinking
   /// (default effort medium), Jun 2026 cutoff — strictly dominates Haiku 4.5's $1/$5 at a
   /// smaller context. Verified 2026-10-12: https://platform.claude.com/docs/en/about-claude/models/overview
   case claudeHaiku55 = "claude-haiku-5-5"
-  /// Hidden via `chatReplacement` (→ Opus 5.5): $10/$50 per 1M buys long-horizon agentic depth,
-  /// not better research answers. Fable 5.1 is deliberately not added (owner, 2026-09-29).
-  case claudeFable5 = "claude-fable-5"
   /// 5.5 generation (prices verified 2026-09-29, https://platform.claude.com/docs/en/about-claude/pricing):
-  /// Sonnet 5.5 $2/$10 = Sonnet 5's price, Opus 5.5 $4/$20 undercuts Opus 5's $5/$25; same 1M
-  /// context and 128k output. Both think on every request and reject forced `tool_choice` —
-  /// see `AnthropicChatProvider` for the thinking round-trip and structured-output path.
+  /// Sonnet 5.5 $2/$10 = the removed Sonnet 5's price, Opus 5.5 $4/$20 undercuts the removed
+  /// Opus 5's $5/$25; same 1M context and 128k output. Both think on every request and reject
+  /// forced `tool_choice` — see `AnthropicChatProvider` for the thinking round-trip and
+  /// structured-output path.
   case claudeSonnet55 = "claude-sonnet-5-5"
   case claudeOpus55 = "claude-opus-5-5"
 
@@ -238,46 +225,20 @@ enum PromptModel: String, CaseIterable {
       return "Gemini Image (Nano Banana 2.1)"
     case .geminiImagePro:
       return "Gemini Image Pro (Nano Banana Pro)"
-    case .grok4:
-      return "Grok 4.20"
-    case .grok4Reasoning:
-      return "Grok 4.20 Reasoning"
     case .grok43:
       return "Grok 4.3"
-    case .grok45:
-      return "Grok 4.5"
-    case .grok46:
-      return "Grok 4.6"
     case .grok47:
       return "Grok 4.7"
-    case .openaiGPT5:
-      return "GPT-5.4"
     case .openaiGPT5Mini:
       return "GPT-5.4 Mini"
-    case .openaiGPT55:
-      return "GPT-5.5"
-    case .openaiGPT56Sol:
-      return "GPT-5.6 Sol"
-    case .openaiGPT56Terra:
-      return "GPT-5.6 Terra"
-    case .openaiGPT56Luna:
-      return "GPT-5.6 Luna"
     case .openaiGPT6Sol:
       return "GPT-6 Sol"
     case .openaiGPT6Luna:
       return "GPT-6 Luna"
     case .openaiGPT4oAudio:
       return "GPT Audio"
-    case .claudeSonnet5:
-      return "Claude Sonnet 5"
-    case .claudeOpus5:
-      return "Claude Opus 5"
-    case .claudeOpus48:
-      return "Claude Opus 4.8"
     case .claudeHaiku55:
       return "Claude Haiku 5.5"
-    case .claudeFable5:
-      return "Claude Fable 5"
     case .claudeSonnet55:
       return "Claude Sonnet 5.5"
     case .claudeOpus55:
@@ -315,26 +276,13 @@ enum PromptModel: String, CaseIterable {
     case .gemini38Flash:     return "gemini38flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
-    case .grok4:             return "grok4"
-    case .grok4Reasoning:    return "grok4reasoning"
     case .grok43:            return "grok43"
-    case .grok45:            return "grok45"
-    case .grok46:            return "grok46"
     case .grok47:            return "grok47"
-    case .openaiGPT5:        return "gpt54"
     case .openaiGPT5Mini:    return "gpt54mini"
-    case .openaiGPT55:       return "gpt55"
-    case .openaiGPT56Sol:    return "gpt56sol"
-    case .openaiGPT56Terra:  return "gpt56terra"
-    case .openaiGPT56Luna:   return "gpt56luna"
     case .openaiGPT6Sol:     return "gpt6sol"
     case .openaiGPT6Luna:    return "gpt6luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
-    case .claudeSonnet5:     return "claudesonnet5"
-    case .claudeOpus5:       return "claudeopus5"
-    case .claudeOpus48:      return "claudeopus48"
     case .claudeHaiku55:     return "claudehaiku55"
-    case .claudeFable5:      return "claudefable5"
     case .claudeSonnet55:    return "claudesonnet55"
     case .claudeOpus55:      return "claudeopus55"
     case .customOpenAIEndpoint: return "custom"
@@ -363,44 +311,18 @@ enum PromptModel: String, CaseIterable {
       return "Google's Gemini Image (Nano Banana 2.1) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
     case .geminiImagePro:
       return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
-    case .grok4:
-      return "xAI's Grok 4.20 • Frontier-class intelligence • Web + X search • Requires xAI API key"
-    case .grok4Reasoning:
-      return "xAI's Grok 4.20 Reasoning • Extended thinking for complex tasks • Web + X search • Requires xAI API key"
-    case .grok45:
-      return "xAI's Grok 4.5 • Previous flagship • 500k context • Needs an xAI API key"
-    case .grok46:
-      return "xAI's Grok 4.6 • Previous flagship • 500k context • Needs an xAI API key"
     case .grok47:
       return "xAI's Grok 4.7 • Flagship • Most intelligent and fastest model • 500k context • Needs an xAI API key"
     case .grok43:
       return "xAI's Grok 4.3 • Cheaper 1M-context option • Leading non-hallucination + agentic tool use • Web + X search • Requires xAI API key"
-    case .openaiGPT5:
-      return "OpenAI's GPT-5.4 • Flagship reasoning + tool use • Text + images • Requires OpenAI API key"
     case .openaiGPT5Mini:
       return "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key"
-    case .openaiGPT55:
-      return "OpenAI's GPT-5.5 • Newest flagship (April 2026) • Text + images • Requires OpenAI API key"
-    case .openaiGPT56Sol:
-      return "OpenAI's GPT-5.6 Sol • Flagship of the newest generation • Same price as GPT-5.5 • Needs an OpenAI API key"
-    case .openaiGPT56Terra:
-      return "OpenAI's GPT-5.6 Terra • Balanced tier of the newest generation • Half the price of Sol • Needs an OpenAI API key"
-    case .openaiGPT56Luna:
-      return "OpenAI's GPT-5.6 Luna • Previous-generation cheap tier • Needs an OpenAI API key"
     case .openaiGPT6Sol:
       return "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key"
     case .openaiGPT6Luna:
       return "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key"
     case .openaiGPT4oAudio:
       return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
-    case .claudeSonnet5:
-      return "Anthropic's Claude Sonnet 5 • Best speed/intelligence balance • Text + images • Requires Anthropic API key"
-    case .claudeOpus5:
-      return "Anthropic's Claude Opus 5 • For complex agentic coding and enterprise work • Text + images • Requires Anthropic API key"
-    case .claudeOpus48:
-      return "Anthropic's Claude Opus 4.8 • Flagship for complex agentic work • Text + images • Requires Anthropic API key"
-    case .claudeFable5:
-      return "Anthropic's Claude Fable 5 • Long-running agents • Needs an Anthropic API key"
     case .claudeSonnet55:
       return "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key"
     case .claudeOpus55:
@@ -434,14 +356,13 @@ enum PromptModel: String, CaseIterable {
       return "Free (Offline)"
     case .gemini31Pro, .geminiImagePro:
       return "Medium"
-    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
+    case .grok43, .grok47:
       return "Medium"
-    case .openaiGPT5, .openaiGPT55, .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT4oAudio,
-         .openaiGPT6Sol, .claudeSonnet5, .claudeSonnet55:
+    case .openaiGPT4oAudio, .openaiGPT6Sol, .claudeSonnet55:
       return "Medium"
-    case .openaiGPT5Mini, .openaiGPT56Luna, .openaiGPT6Luna:
+    case .openaiGPT5Mini, .openaiGPT6Luna:
       return "Low"
-    case .claudeOpus5, .claudeOpus48, .claudeFable5, .claudeOpus55:
+    case .claudeOpus55:
       return "High"
     }
   }
@@ -454,12 +375,11 @@ enum PromptModel: String, CaseIterable {
     case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
          .gemini37Flash, .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
-    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
+    case .grok43, .grok47:
       return .grok
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
+    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna:
       return .openai
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
+    case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return .anthropic
     case .customOpenAIEndpoint:
       return .customOpenAI
@@ -601,45 +521,11 @@ enum PromptModel: String, CaseIterable {
   /// with the same provider so a user with only that provider's key keeps working.
   /// The bar is *Pareto dominance*, not recency: a model is only listed here when a sibling
   /// beats it on every axis at once (quality AND speed AND price). A higher version number is
-  /// not enough — Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite, and
-  /// GPT-5.4 costs half of GPT-5.5, so all of them stay on the frontier and stay selectable.
+  /// not enough — Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite, so
+  /// both stay on the frontier and stay selectable.
   /// Verified against the published price tables (see the audit notes in `SettingsDefaults`).
   var chatReplacement: PromptModel? {
     switch self {
-    // xAI: both 4.20 variants cost exactly what grok-4.3 costs ($1.25/$2.50 per 1M, same 1M
-    // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
-    // https://docs.x.ai/docs/models
-    case .grok4, .grok4Reasoning: return .grok43
-    // Same $2/$6 and 500k context as 4.5/4.6; xAI ranks 4.7 as the current flagship → both
-    // dominated. Prices verified 2026-09-29: https://docs.x.ai/docs/models
-    case .grok45, .grok46: return .grok47
-    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M), and gpt-5.6-terra
-    // ($2.00/$12) now *undercuts* gpt-5.4 ($2.50/$15) — newer generation at the same price or
-    // less, so the 5.5/5.4 pair is dominated.
-    //
-    // gpt-5.4-mini is NOT dominated, but the reason has changed and is worth stating precisely:
-    // gpt-5.6-luna is now $0.20/$1.20 with a 1.05M context, i.e. cheaper on BOTH axes than
-    // gpt-5.4-mini ($0.75/$4.50, 400k) and larger. The only axis 5.4-mini still wins is quality
-    // tier — OpenAI places luna at the *nano* rung ("roughly corresponds to the nano model tier
-    // used in earlier GPT-5 families") while 5.4-mini is the *mini* rung ("our strongest mini
-    // model yet"). Different rungs of one price ladder are all frontier points, so both stay.
-    // Prices re-verified 2026-08-02: https://developers.openai.com/api/docs/pricing
-    // 2026-09-29: the GPT-6 family undercuts all of 5.6 at a newer generation — luna $0.10/$0.50
-    // vs $0.20/$1.20 (same rung), sol $2/$10 vs terra $2/$12. 5.6 Sol ($4/$20) is hidden by
-    // owner decision: no published quality comparison against 6 Sol, but at half the price 6 Sol
-    // is the better research model, and research — not coding — is what chat is used for.
-    case .openaiGPT55, .openaiGPT5, .openaiGPT56Sol, .openaiGPT56Terra: return .openaiGPT6Sol
-    case .openaiGPT56Luna: return .openaiGPT6Luna
-    // Anthropic: claude-opus-5 and claude-opus-4-8 are both $5/$25 per 1M with a 1M context and
-    // 128k max output. Identical on every price and capacity axis, newer generation, later
-    // knowledge cutoff (May 2026 vs Jan 2026) — and Anthropic itself files 4.8 under
-    // "Legacy models". Dominated.
-    // https://platform.claude.com/docs/en/about-claude/models/overview
-    // 2026-09-29: Opus 5.5 ($4/$20) undercuts Opus 5 / 4.8 ($5/$25) at the same 1M/128k, newer
-    // generation; Sonnet 5.5 costs exactly what Sonnet 5 costs. Fable 5 ($10/$50) is dropped by
-    // owner decision — chat is for research, where Fable's agentic depth isn't worth 2.5× Opus.
-    case .claudeOpus48, .claudeOpus5, .claudeFable5: return .claudeOpus55
-    case .claudeSonnet5: return .claudeSonnet55
     // Gemini Flash: 3.5 is dominated by 3.7 on price and tier. (3.6 was removed 2026-10-19 and
     // forwards to 3.7 via `migrateLegacyPromptRawValue`.)
     // Point at 3.7, not 3.8 — the 2026-09-03 audit's probe had 3.8 ~12% slower than 3.7,
@@ -687,10 +573,9 @@ enum PromptModel: String, CaseIterable {
     case .geminiImage, .geminiImagePro:
       return nil
     // Non-Gemini — ignored by other providers
-    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47,
-         .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna,
-         .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55,
+    case .grok43, .grok47,
+         .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
+         .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
          .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil
     }
@@ -730,12 +615,11 @@ enum PromptModel: String, CaseIterable {
       return .gemini38Flash
     case .geminiImage, .geminiImagePro:
       return nil // image-generation models; not transcription models
-    case .grok4, .grok4Reasoning, .grok43, .grok45, .grok46, .grok47:
+    case .grok43, .grok47:
       return nil // Grok models are text-only, no audio transcription
-    case .openaiGPT5, .openaiGPT5Mini, .openaiGPT55, .openaiGPT4oAudio,
-         .openaiGPT56Sol, .openaiGPT56Terra, .openaiGPT56Luna, .openaiGPT6Sol, .openaiGPT6Luna:
+    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
-    case .claudeSonnet5, .claudeOpus5, .claudeOpus48, .claudeHaiku55, .claudeFable5, .claudeSonnet55, .claudeOpus55:
+    case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
     case .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
@@ -834,8 +718,8 @@ enum PromptModel: String, CaseIterable {
       // the case's rawValue is now. Both old slugs forward here.
       return Self.openaiGPT4oAudio.rawValue
     case "gpt-5":
-      // Superseded by the gpt-5.4 generation (2026-03); forward to the current flagship case.
-      return Self.openaiGPT5.rawValue
+      // gpt-5 → gpt-5.4 (2026-03) → removed 2026-10-19; go straight to GPT-6 Sol.
+      return Self.openaiGPT6Sol.rawValue
     case "gpt-5-mini":
       // Superseded by gpt-5.4-mini; forward to the current mini case.
       return Self.openaiGPT5Mini.rawValue
@@ -853,6 +737,39 @@ enum PromptModel: String, CaseIterable {
     case "gemini-2.5-pro":
       // Deprecated, shutdown 2026-10-16; replacement is the current Pro preview.
       return Self.gemini31Pro.rawValue
+    // Removed 2026-10-19 (Pareto-dominated chat models; they used to be hidden via chatReplacement).
+    // xAI: both 4.20 variants cost exactly what grok-4.3 costs ($1.25/$2.50 per 1M, same 1M
+    // context) while xAI's own docs rank 4.3 above them — dominated on every axis.
+    // https://docs.x.ai/docs/models
+    case "grok-4.20-0309-non-reasoning", "grok-4.20-0309-reasoning":
+      return Self.grok43.rawValue
+    // Same $2/$6 and 500k context as 4.7; xAI ranks 4.7 as the current flagship → both
+    // dominated. Prices verified 2026-09-29: https://docs.x.ai/docs/models
+    case "grok-4.5", "grok-4.6":
+      return Self.grok47.rawValue
+    // OpenAI: gpt-5.6-sol costs exactly what gpt-5.5 costs ($5/$30 per 1M), and gpt-5.6-terra
+    // ($2.00/$12) undercut gpt-5.4 ($2.50/$15) — newer generation at the same price or less.
+    // 2026-09-29: the GPT-6 family undercuts all of 5.6 at a newer generation — luna $0.10/$0.50
+    // vs $0.20/$1.20 (same rung), sol $2/$10 vs terra $2/$12. 5.6 Sol ($4/$20) was removed by
+    // owner decision: no published quality comparison against 6 Sol, but at half the price 6 Sol
+    // is the better research model, and research — not coding — is what chat is used for.
+    // Prices: https://developers.openai.com/api/docs/pricing
+    case "gpt-5.4", "gpt-5.5", "gpt-5.6-sol", "gpt-5.6-terra":
+      return Self.openaiGPT6Sol.rawValue
+    case "gpt-5.6-luna":
+      return Self.openaiGPT6Luna.rawValue
+    // Anthropic: claude-opus-5 and claude-opus-4-8 were both $5/$25 per 1M with a 1M context and
+    // 128k max output — identical on every price and capacity axis, with a later knowledge
+    // cutoff for opus-5 (May 2026 vs Jan 2026); Anthropic itself filed 4.8 under "Legacy models".
+    // https://platform.claude.com/docs/en/about-claude/models/overview
+    // 2026-09-29: Opus 5.5 ($4/$20) undercuts Opus 5 / 4.8 ($5/$25) at the same 1M/128k, newer
+    // generation; Sonnet 5.5 costs exactly what Sonnet 5 cost. Fable 5 ($10/$50) was dropped by
+    // owner decision — chat is for research, where Fable's agentic depth isn't worth 2.5× Opus
+    // (Fable 5.1 is deliberately not added).
+    case "claude-opus-4-8", "claude-opus-5", "claude-fable-5":
+      return Self.claudeOpus55.rawValue
+    case "claude-sonnet-5":
+      return Self.claudeSonnet55.rawValue
     case "gemini-3.6-flash":
       // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
       return Self.gemini37Flash.rawValue
