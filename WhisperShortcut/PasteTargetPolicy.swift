@@ -23,7 +23,8 @@ enum PasteTargetPolicy {
   enum Action: Equatable {
     /// The frontmost app is the right one (or nothing was recorded and it is not us): post ⌘V.
     case pasteNow
-    /// Bring the recorded app forward, wait for it to become frontmost, then post ⌘V.
+    /// WhisperShortcut (or nothing) is in front: bring the recorded app forward, wait for it to
+    /// become frontmost, then post ⌘V.
     case activateRecordedThenPaste
     /// Do not post ⌘V: leave the result on the clipboard for the user's own paste.
     case clipboardOnly
@@ -38,7 +39,13 @@ enum PasteTargetPolicy {
     guard let recorded else {
       return frontmostIsOwn || frontmost == nil ? .clipboardOnly : .pasteNow
     }
-    if let frontmost, !frontmostIsOwn, frontmost.isSameApp(as: recorded) { return .pasteNow }
+    if let frontmost, !frontmostIsOwn {
+      // The user moved on to another app on purpose: do not yank focus back, and do not paste
+      // into an app they never dictated into.
+      return frontmost.isSameApp(as: recorded) ? .pasteNow : .clipboardOnly
+    }
+    // Only our own window (or nothing) is in front, e.g. after the user clicked the pill or
+    // Settings: hand focus back to where they dictated.
     return .activateRecordedThenPaste
   }
 }

@@ -14,9 +14,14 @@ struct PasteTargetPolicyTests {
     #expect(PasteTargetPolicy.action(frontmost: notes, recorded: notes, own: own) == .pasteNow)
   }
 
-  @Test("Another app in front: bring the recorded app back first")
-  func differentAppActivates() {
-    #expect(PasteTargetPolicy.action(frontmost: mail, recorded: notes, own: own) == .activateRecordedThenPaste)
+  @Test("User switched to another app: leave it on the clipboard, do not steal focus")
+  func differentAppStaysOnClipboard() {
+    #expect(PasteTargetPolicy.action(frontmost: mail, recorded: notes, own: own) == .clipboardOnly)
+  }
+
+  @Test("Nothing in front but a recorded app exists: activate it")
+  func nothingInFrontActivates() {
+    #expect(PasteTargetPolicy.action(frontmost: nil, recorded: notes, own: own) == .activateRecordedThenPaste)
   }
 
   @Test("WhisperShortcut in front but a recorded app exists: activate it")
