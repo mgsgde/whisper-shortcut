@@ -45,7 +45,7 @@ enum ModelSelectionReconciler {
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no
   /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI.
-  private static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok]
+  static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
   private static let snapshotKeys: [String] = [
@@ -78,6 +78,12 @@ enum ModelSelectionReconciler {
     reconcileAllSelections()
     let after = reconciledKeys.map { UserDefaults.standard.string(forKey: $0) }
     guard before != after else { return }
+    postSelectionsChanged()
+  }
+
+  /// Tells the settings window and the speech service that persisted selections were rewritten
+  /// behind their back. Also used by `CloudModelOffer` after the user accepts a switch.
+  static func postSelectionsChanged() {
     NotificationCenter.default.post(name: .modelSelectionsReconciled, object: nil)
     // Speech service and the offline-model preload follow the dictation slot.
     if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),

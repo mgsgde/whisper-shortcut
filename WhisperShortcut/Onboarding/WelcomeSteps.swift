@@ -609,6 +609,7 @@ struct OnboardingAPIKeyRow: View {
           if save(trimmed) {
             saveError = nil
             isConfigured = true
+            CloudModelOffer.scheduleCheck()
             savedConfirmation = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
               savedConfirmation = false
