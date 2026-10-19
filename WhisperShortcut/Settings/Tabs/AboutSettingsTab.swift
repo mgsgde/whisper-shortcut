@@ -9,6 +9,12 @@ struct AboutSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       WhatsNewSection()
 
+      #if !APP_STORE && canImport(Sparkle)
+      UpdatesSection()
+
+      SpacedSectionDivider()
+      #endif
+
       welcomeTourSection
 
       SpacedSectionDivider()

@@ -1084,14 +1084,23 @@ enum TranscriptionError: Error, Equatable {
   case voiceRequiresAPIKey
   /// Backend returned 402: signed-in user has no active subscription.
   case subscriptionRequired
-  /// Dictate Prompt ran with nothing selected. No longer thrown — since 2026-10 that runs as a
-  /// compose turn (`SpeechService.performPrompt`). Kept, not removed: these cases are logged by
-  /// their integer index (`TranscriptionError error 21`), so removing it renumbers history.
+  /// Dictate Prompt with nothing selected to edit.
+  ///
+  /// An empty selection itself is a compose turn and does not throw (`SpeechService.performPrompt`).
+  /// Thrown again when that compose turn's instruction is only a bare edit command ("Korrigiere",
+  /// "Rephrase this"): the model would invent text to edit, and that text must not be pasted.
+  /// Kept, not removed: these cases are logged by their integer index (`TranscriptionError error 21`),
+  /// so removing it renumbers history.
   case noSelectedText
   /// An on-device Whisper model load or decode hit its wall-clock deadline (`WallClockDeadline`).
   /// Separate from `requestTimeout` so the user-facing copy does not blame the network.
   /// Appended last for the same index-logging reason as `noSelectedText`.
   case localProcessingTimeout(stage: LocalProcessingStage, seconds: Int)
+  /// Dictate Prompt: the model answered with no text at all (a local model cut off inside its
+  /// `<think>` block, a Gemini safety block with no text parts). Not "no speech detected": the
+  /// user spoke, so the recording is kept and the run is retryable. Appended last for the same
+  /// index-logging reason as `noSelectedText`.
+  case emptyModelReply
 
   var title: String {
     switch self {
@@ -1123,6 +1132,7 @@ enum TranscriptionError: Error, Equatable {
     case .subscriptionRequired: return "Subscription Required"
     case .noSelectedText: return "Nothing Selected"
     case .localProcessingTimeout: return "Local Processing Timeout"
+    case .emptyModelReply: return "No Reply"
     }
   }
 
@@ -1146,7 +1156,7 @@ enum TranscriptionError: Error, Equatable {
   var isRetryable: Bool {
     switch self {
     // Retryable errors (temporary issues)
-    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown:
+    case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
     case .rateLimited(let retryAfter, _):

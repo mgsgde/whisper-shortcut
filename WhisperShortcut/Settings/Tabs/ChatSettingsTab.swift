@@ -58,6 +58,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      MeetingsInAIAppsSection()
+
+      SpacedSectionDivider()
+
       usageSection
 
       SpacedSectionDivider()
@@ -106,7 +110,7 @@ struct ChatSettingsTab: View {
   private var modelSection: some View {
     PromptModelSelectionView(
       title: "Chat model",
-      subtitle: "Choose which model powers the chat. Pick **Custom endpoint** for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
+      subtitle: "Choose which model powers the chat. Pick “Custom endpoint” for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       recommendedModel: SettingsDefaults.selectedChatModel,

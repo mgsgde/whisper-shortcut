@@ -30,6 +30,17 @@ end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in
   with 8.33. Until 8.33 is live, zero `build = appstore` pings are `TOO EARLY`, not a finding.
   Verified 2026-10-09 in an App Store-scheme build with a reset pre-telemetry state: notice shown,
   "Share Statistics" turned sharing on.
+  **App Store sending verified end to end, 2026-10-19:** zero `build = appstore` pings means
+  *no App Store user has opted in*, not a bug. An App Store-scheme build (sandboxed,
+  `WhisperShortcut-AppStore.entitlements`, `APP_STORE` set) logged
+  `WhisperShortcut-AppStore[87576] … TELEMETRY: sent milestone ping (142 bytes)` (only logged on
+  HTTP 2xx) and BigQuery holds the row (`build: appstore`, 08:40:54 CEST). The notice → "Share
+  Statistics" path in the same build built a `build: appstore, app: 8.43` `telemetry.enabled` ping
+  (row 08:34:05). That row is Magnus's own Mac, so subtract one App Store install from opt-in counts.
+  The 2026-10-09 check sent nothing because the direct and App Store builds share one bundle id
+  and sandbox container. `telemetrySentMilestones` already held `telemetry.enabled` from the direct
+  build, so the milestone was suppressed as a duplicate. To retest locally, clear that key first,
+  and keep no direct build running: the single-instance guard makes the App Store one exit.
 **Audience:** LLM implementing the feature end-to-end
 **Decision (Magnus, 2026-09-29):** build opt-in telemetry, **off by default**.
 **Closes:** `plans/instrumentation-gaps.md` gap #2 (customer feature-level behavior is unmeasured —

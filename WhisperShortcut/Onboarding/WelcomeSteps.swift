@@ -107,6 +107,7 @@ struct WelcomePrivacyStep: View {
         .fontWeight(.semibold)
         .onChange(of: offlineMode) { isOn in
           ModelSelectionReconciler.reconcileAll()
+          PromptConversationHistory.shared.clearAll()
           DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled") during onboarding")
         }
       Text(

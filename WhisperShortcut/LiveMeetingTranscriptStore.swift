@@ -187,6 +187,13 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     }
   }
 
+  /// Replaces the transcript after kept audio was transcribed late and spliced in at its original
+  /// timestamps. Main thread only.
+  func replaceChunks(_ newChunks: [LiveMeetingChunk]) {
+    assert(Thread.isMainThread, "LiveMeetingTranscriptStore.replaceChunks must be called on main thread")
+    self.chunks = Array(newChunks.suffix(maxChunks))
+  }
+
   /// Call when the user asks to stop: recording has ended but the session is still draining its last
   /// chunk. `isSessionActive` stays true — the meeting is not over yet — so the UI can say
   /// "finishing" instead of either lying about recording or claiming the meeting has ended.

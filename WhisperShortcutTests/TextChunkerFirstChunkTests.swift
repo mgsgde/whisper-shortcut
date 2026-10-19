@@ -17,6 +17,14 @@ struct TextChunkerFirstChunkTests {
     String(repeating: sentence, count: sentences).trimmingCharacters(in: .whitespaces)
   }
 
+  @Test("A whitespace-only span between sentences leaves no gap in chunk indices")
+  func skippedWhitespaceChunkKeepsIndicesContiguous() throws {
+    let text = prose(sentences: 3) + String(repeating: "\n ", count: 200) + prose(sentences: 3)
+    let chunks = try TextChunker(chunkSize: 500, firstChunkSize: 120).splitText(text)
+    #expect(chunks.count > 1)
+    #expect(chunks.map(\.index) == Array(0..<chunks.count))
+  }
+
   @Test("Text under the first-chunk cap stays a single chunk")
   func shortTextIsSingleChunk() throws {
     let chunks = try TextChunker(chunkSize: 500, firstChunkSize: 120).splitText(prose(sentences: 2))

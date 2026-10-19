@@ -998,7 +998,10 @@ class ChatViewModel: ObservableObject {
           tools: tools,
           maxToolRounds: 16,
           steps: toolSteps,
-          systemInstruction: { self.buildSystemInstruction(for: sendingSession) },
+          systemInstruction: {
+            self.buildSystemInstruction(
+              for: sendingSession, offline: selectedModel.provider == .localMLX)
+          },
           options: { isFinalRound in
             ChatRequestOptions(
               useGrounding: useGrounding,
@@ -1007,7 +1010,8 @@ class ChatViewModel: ObservableObject {
               // Stable per-session key → provider prompt-cache hits across turns
               // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
               cacheKey: sessionId.uuidString,
-              xHandles: xHandles)
+              xHandles: xHandles,
+              showsModelReadinessPopup: false)
           },
           toolContext: { self.makeToolContext(sessionId: sessionId) },
           approve: { name, summary, stepId in
@@ -1091,7 +1095,7 @@ class ChatViewModel: ObservableObject {
       } catch is CancellationError {
         let partialChars = runner?.partialText.count ?? 0
         let droppedByUser = self.userCancelledSessions.removeValue(forKey: sessionId)
-        DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars))")
+        DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars) toolCalls=\(runner?.records.count ?? 0))")
         ContextLogger.shared.logSignal(
           .chatStopped,
           mode: "geminiChat",
@@ -1537,15 +1541,10 @@ class ChatViewModel: ObservableObject {
     return title == meetingFirstMessageFallbackTitle(for: session)
   }
 
-  /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
-  /// Pass the sending session when a background tab is the target — workspace/meeting gates follow that chat.
-  private func buildSystemInstruction(for target: ChatSession? = nil) -> [String: Any] {
-    let s = target ?? session
-    var text = SystemPromptsStore.shared.loadChatSystemPrompt()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "EEEE, MMMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US")
-    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+  /// The blocks only a tool-calling model can act on: slash commands, Google, image generation,
+  /// memory and app-config tools, shared folders and what we learned about them.
+  private func toolAndWorkspaceInstructions(for s: ChatSession) -> String {
+    var text = ""
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
     // prefix caching): stable blocks first, blocks that change within a session last. Anything
     // that changes invalidates the cache for everything after it.
@@ -1599,6 +1598,31 @@ class ChatViewModel: ObservableObject {
       if !map.isEmpty {
         text += "\n\n---\n\nFILES — what you have learned about where things live in the shared folders:\n\(map)\nTreat this as a starting point, not gospel — verify with a tool call before relying on it, and call `remember_file_location` to correct an entry that turns out to be wrong."
       }
+    }
+    return text
+  }
+
+  /// Builds the system instruction: current date, base chat prompt, plus optional meeting context (summary + recent transcript).
+  /// Pass the sending session when a background tab is the target — workspace/meeting gates follow that chat.
+  /// `offline` (the in-process MLX model) swaps in a short prompt without the tool, web-search and
+  /// workspace blocks: the model can call none of them, and a 4B model told it has web search and
+  /// Gmail invents both. Memory and meeting context still apply — they need no tool.
+  private func buildSystemInstruction(for target: ChatSession? = nil, offline: Bool = false) -> [String: Any] {
+    let s = target ?? session
+    var text = offline
+      ? AppConstants.defaultOfflineChatSystemPrompt
+      : SystemPromptsStore.shared.loadChatSystemPrompt()
+    let formatter = DateFormatter()
+    formatter.dateFormat = "EEEE, MMMM d, yyyy"
+    formatter.locale = Locale(identifier: "en_US")
+    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    if offline {
+      // No doc tools offline, so the app's own facts travel in the prompt.
+      text += "\n\n---\n\n" + OfflineChatAppContext.current(
+        chatModel: Self.openChatModel,
+        userMessages: s.messages.filter { $0.role == .user }.map(\.content))
+    } else {
+      text += toolAndWorkspaceInstructions(for: s)
     }
     // Persistent user memory (UserContext/memory.md): durable facts the user told us across sessions.
     // Injected into every chat request; empty when the user has no memory (then nothing is added).
@@ -1836,6 +1860,11 @@ class ChatViewModel: ObservableObject {
   /// manual rename (or a competing generator) is never clobbered. Shared by the chat and
   /// meeting title paths so the model id, length cap, and UI sync stay in one place.
   private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+    // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
+    if OfflineMode.isEnabled {
+      DebugLogger.log("TITLE-\(logLabel.uppercased()): Skipping title generation (Offline Mode)")
+      return
+    }
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else { return }
     do {
       // Structured output: the model must return {"title": "..."} — no free-text parsing or
@@ -3383,7 +3412,10 @@ struct ChatView: View {
             .id(credential.id)
           }
           if viewModel.isSending {
-            LiveTypingIndicatorView(steps: viewModel.currentToolSteps)
+            // An offline model that is still downloading or loading says so instead of the dots.
+            ChatPendingReplyIndicator(
+              model: ChatViewModel.openChatModel.localMLXModelType,
+              typing: AnyView(LiveTypingIndicatorView(steps: viewModel.currentToolSteps)))
               .allowsHitTesting(false)
           }
         }
@@ -4210,6 +4242,15 @@ struct ChatInputAreaView: View {
     }
   }
 
+  /// The offline model has no web search and no tools; saying so where the user types replaces a
+  /// notice that used to be streamed into the first reply (and then fed back to the model as
+  /// something it had said).
+  private var composerPlaceholder: String {
+    let model = resolvedOpenGeminiModel
+    guard model.provider == .localMLX else { return "Message \(model.displayName)…" }
+    return "Message \(model.displayName) · no web search or tools…"
+  }
+
   private var inputBar: some View {
     VStack(spacing: 0) {
       meetingComposerStrip
@@ -4217,7 +4258,7 @@ struct ChatInputAreaView: View {
       // Composer: NSTextView with inline screenshot/paste/file attachments.
       ChatComposerTextView(
         controller: composer,
-        placeholder: "Message \(resolvedOpenGeminiModel.displayName)…",
+        placeholder: composerPlaceholder,
         onSubmit: { submitComposer() },
         onCancel: {
           if viewModel.isSending { viewModel.cancelSend() }
@@ -4310,6 +4351,8 @@ struct ChatInputAreaView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Select model")
+
+        ComposerModelReadinessBadge(model: resolvedOpenGeminiModel.localMLXModelType)
 
         // Queue count indicator (current session's queue only)
         let queuedHere = viewModel.messageQueue.filter { $0.sessionId == viewModel.currentSessionId }.count

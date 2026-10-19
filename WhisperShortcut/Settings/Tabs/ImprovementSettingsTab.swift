@@ -18,6 +18,10 @@ struct ImprovementSettingsTab: View {
 
       SpacedSectionDivider()
 
+      SmartImprovementScorecardSection()
+
+      SpacedSectionDivider()
+
       voiceFeedbackSection
 
       SpacedSectionDivider()

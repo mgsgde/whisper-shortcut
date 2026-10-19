@@ -43,6 +43,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case chatRetry
   case chatAbandoned
   case promptRetry
+  case promptFollowUp
   case promptNoSelection
   case requestTimedOut
   case noSpeechDetected
@@ -57,6 +58,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .chatRetry: self = .chatRetry
     case .chatAbandoned: self = .chatAbandoned
     case .promptRetry: self = .promptRetry
+    case .promptFollowUp: self = .promptFollowUp
     case .promptNoSelection: self = .promptNoSelection
     case .requestTimedOut: self = .requestTimedOut
     case .noSpeechDetected: self = .noSpeechDetected
@@ -107,7 +109,7 @@ enum TelemetryErrorClass: String, CaseIterable, Codable {
     case .rateLimited, .slowDown: self = .rateLimited
     case .quotaExceeded: self = .quotaExceeded
     case .billingRequired, .subscriptionRequired: self = .billingRequired
-    case .serverError, .serviceUnavailable: self = .serverError
+    case .serverError, .serviceUnavailable, .emptyModelReply: self = .serverError
     case .networkError: self = .network
     case .requestTimeout, .resourceTimeout, .localProcessingTimeout: self = .timeout
     case .fileError, .fileTooLarge, .emptyFile: self = .file

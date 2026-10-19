@@ -212,9 +212,8 @@ final class ChatAgentRunner {
         break toolLoop
       }
       executedToolCalls += pendingCalls.count
-      let (turns, imageMarkers, roundRecords) = try await executeToolCalls(
+      let (turns, imageMarkers) = try await executeToolCalls(
         pendingCalls, narration: ChatViewModel.stripLeakedThoughtTokens(roundText), memo: toolMemo)
-      records.append(contentsOf: roundRecords)
       // Generated images go straight into the reply: the image shows up the moment the tool
       // finishes, and the model's follow-up narration streams below it. The marker becomes part
       // of the persisted message content (rendered inline); buildContents strips it again before
@@ -262,11 +261,20 @@ final class ChatAgentRunner {
       truncated: truncatedFinish)
   }
 
+  /// Records one finished call right away, so a Stop later in the same round keeps it.
+  private func record(
+    _ call: (name: String, args: [String: Any], thoughtSignature: String?),
+    response: [String: Any], stepId: UUID
+  ) {
+    records += ChatToolHistory.records(
+      calls: [(call.name, call.args)], responses: [response], steps: [steps.step(stepId)])
+  }
+
   private func executeToolCalls(
     _ calls: [(name: String, args: [String: Any], thoughtSignature: String?)],
     narration: String,
     memo: ChatToolTurnMemo
-  ) async throws -> (turns: [[String: Any]], imageMarkers: [String], records: [ChatToolCallRecord]) {
+  ) async throws -> (turns: [[String: Any]], imageMarkers: [String]) {
     var callParts: [[String: Any]] = calls.map { call in
       var part: [String: Any] = ["functionCall": ["name": call.name, "args": call.args]]
       if let sig = call.thoughtSignature { part["thoughtSignature"] = sig }
@@ -289,26 +297,25 @@ final class ChatAgentRunner {
     // tool list is the policy (Dictate Prompt offers read-only tools only), and an undeclared call
     // such as `copy_to_clipboard` must not slip past it just because it needs no approval.
     let declaredNames = Set(tools.map(\.name))
-    var stepIds: [UUID] = []
     for call in calls {
       try Task.checkCancellation()
       guard declaredNames.contains(call.name) else {
         let stepId = steps.begin(name: call.name, args: call.args)
-        stepIds.append(stepId)
         steps.finish(stepId, phase: .failed, summary: "Not available here")
         DebugLogger.logWarning("CHAT-TOOL-UNDECLARED: refused \(call.name)")
+        let response = ["error": "The tool \(call.name) is not available in this conversation."]
         responseParts.append([
           "functionResponse": [
             "name": call.name,
-            "response": ["error": "The tool \(call.name) is not available in this conversation."],
+            "response": response,
           ]
         ])
+        record(call, response: response, stepId: stepId)
         continue
       }
       let needsApproval = ChatToolRegistry.requiresUserApproval(call.name, args: call.args)
       let stepId = steps.begin(
         name: call.name, args: call.args, phase: needsApproval ? .awaitingApproval : .running)
-      stepIds.append(stepId)
       if needsApproval {
         let summary = ChatToolRegistry.approvalSummary(name: call.name, args: call.args)
         let allowed = await approve(call.name, summary, stepId)
@@ -316,12 +323,14 @@ final class ChatAgentRunner {
         if !allowed {
           steps.finish(stepId, phase: .denied)
           DebugLogger.log("CHAT-TOOL-DENIED: \(call.name)")
+          let response = ["error": "The user denied this \(call.name) call."]
           responseParts.append([
             "functionResponse": [
               "name": call.name,
-              "response": ["error": "The user denied this \(call.name) call."],
+              "response": response,
             ]
           ])
+          record(call, response: response, stepId: stepId)
           continue
         }
       }
@@ -349,20 +358,14 @@ final class ChatAgentRunner {
       toolResultChars += sent.chars
       largestToolResultChars = max(largestToolResultChars, sent.chars)
       responseParts.append(["functionResponse": ["name": call.name, "response": sent.response]])
+      record(call, response: sent.response, stepId: stepId)
     }
     DebugLogger.log("CHAT: executed \(calls.count) tool call(s), continuing stream")
     let turns: [[String: Any]] = [
       ["role": "model", "parts": callParts],
       ["role": "user", "parts": responseParts],
     ]
-    // One response part per call, in call order (denied calls included), so they zip 1:1.
-    let roundRecords = ChatToolHistory.records(
-      calls: calls.map { ($0.name, $0.args) },
-      responses: responseParts.map {
-        (($0["functionResponse"] as? [String: Any])?["response"] as? [String: Any]) ?? [:]
-      },
-      steps: stepIds.map { steps.step($0) })
-    return (turns, imageMarkers, roundRecords)
+    return (turns, imageMarkers)
   }
 
   /// Keys and size of tool-call args/results for the log, never their values: those carry email

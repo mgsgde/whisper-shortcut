@@ -40,6 +40,18 @@ class SpeechService {
   private let transcriptionTaskLock = NSLock()
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
+
+  /// Content words of the last on-device Dictate Prompt reply that neither the dictation nor the
+  /// selection contains (`DictationFidelityCheck`). Only filled in Offline Mode; empty otherwise.
+  /// `MenuBarController` reads it once `executePrompt` returns and shows it beside the pasted
+  /// text — the words are never written into the text itself, which ends up in a patient record.
+  private(set) var lastPromptUnsupportedWords: [String] = []
+  /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
+  /// may be missing. The reply is still delivered; the UI adds a notice.
+  private(set) var lastPromptReplyTruncated = false
+  /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
+  /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
+  private var promptIsEditQuickAction = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -226,22 +238,35 @@ class SpeechService {
       corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
-    let terms = lines
-      .flatMap { line -> [String] in
-        // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
-        // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-        Self.strippingAnnotations(from: line)
-          .components(separatedBy: ",")
-          .map { $0.trimmingCharacters(in: .whitespaces) }
+    // The annotated spelling is the one the user asserted. A bare `bachata` left over from
+    // before that correction must not win the fold dedupe just because it appears first.
+    var correctionSpellingByFold: [String: String] = [:]
+    for correction in corrections {
+      let folded = Self.foldGlossaryTerm(correction.correct)
+      if correctionSpellingByFold[folded] == nil {
+        correctionSpellingByFold[folded] = correction.correct
       }
-      .filter { term in
+    }
+
+    var seenFolds = Set<String>()
+    var terms: [String] = []
+    for line in lines {
+      // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
+      // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
+      let pieces = Self.strippingAnnotations(from: line)
+        .components(separatedBy: ",")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+      for term in pieces {
         // The built-in list is written as `Terms: A, B, C`, so the first element carries the
         // label — compare without it, or a rejected form in first position slips through.
         let bare = term.replacingOccurrences(
           of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        return !bare.isEmpty && bare.split(separator: " ").count <= 3
-          && !rejected.contains(Self.foldGlossaryTerm(bare))
+        guard !bare.isEmpty, bare.split(separator: " ").count <= 3 else { continue }
+        let folded = Self.foldGlossaryTerm(bare)
+        guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
+        terms.append(correctionSpellingByFold[folded] ?? term)
       }
+    }
 
     return ParsedGlossary(terms: terms, corrections: corrections)
   }
@@ -278,7 +303,8 @@ class SpeechService {
     let parsed = parsedGlossary()
     var seen = Set<String>()
     var keywords: [String] = []
-    for term in glossaryTermsForEchoCheck() + parsed.corrections.map(\.correct) {
+    // Corrections first so the annotated spelling wins the fold dedupe over a bare line.
+    for term in parsed.corrections.map(\.correct) + glossaryTermsForEchoCheck() {
       let folded = Self.foldGlossaryTerm(term)
       guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
       keywords.append(term)
@@ -603,12 +629,14 @@ class SpeechService {
     audioURL: URL,
     mode: PromptMode = .togglePrompting,
     instruction: String? = nil,
+    isEditQuickAction: Bool = false,
     selectedText: String? = nil
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
       try await self.performPrompt(
-        audioURL: audioURL, mode: mode, instruction: instruction, selectedText: selectedText)
+        audioURL: audioURL, mode: mode, instruction: instruction,
+        isEditQuickAction: isEditQuickAction, selectedText: selectedText)
     }
 
     currentPromptTask = task
@@ -652,11 +680,45 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Request knobs for the on-device Dictate Prompt path. In Offline Mode — where a practice
+  /// dictates clinical notes — decoding is greedy (temperature 0), so a note is reordered, not
+  /// sampled; outside it the model keeps its default temperature, which reads better for free
+  /// writing.
+  static func localPromptOptions(offlineMode: Bool) -> ChatRequestOptions {
+    var options = ChatRequestOptions.textTransform
+    if offlineMode { options.temperature = 0 }
+    return options
+  }
+
+  /// Interaction-log `provider`. MLX is logged as "mlx"; the other Dictate Prompt providers
+  /// match `ChatModelProvider.rawValue`.
+  private static func promptLogProvider(_ provider: ChatModelProvider) -> String {
+    switch provider {
+    case .gemini: return "gemini"
+    case .openai: return "openai"
+    case .local: return "local"
+    case .localMLX: return "mlx"
+    case .grok: return "grok"
+    case .anthropic: return "anthropic"
+    case .customOpenAI: return "customOpenAI"
+    }
+  }
+
+  private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+    let ms = start.duration(to: ContinuousClock.now) / .milliseconds(1)
+    return Int(ms.rounded())
+  }
+
   /// `selectedText` is the selection captured for THIS recording (`DictatePromptSelectionCapture`),
   /// never a fresh clipboard read — the clipboard can hold something copied long ago.
   private func performPrompt(
-    audioURL: URL, mode: PromptMode, instruction: String? = nil, selectedText: String?
+    audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
+    selectedText: String?
   ) async throws -> String {
+    let promptStarted = ContinuousClock.now
+    lastPromptUnsupportedWords = []
+    lastPromptReplyTruncated = false
+    promptIsEditQuickAction = isEditQuickAction
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -664,12 +726,12 @@ class SpeechService {
     let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
-    // highlighted region in the screenshot. Cleaned like any copied text (URL query strings,
-    // runaway repeats).
+    // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
+    // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
+    // corrupts the text the user asked to edit.
     let clipboardContext: String? = usesScreenshotSelection
       ? nil
-      : DictatePromptSelectionDecision.selectionText(
-        from: selectedText.map { clipboardManager?.cleanText($0) ?? $0 })
+      : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
     // Nothing selected used to be refused (`TranscriptionError.noSelectedText`): the model, told to
     // edit a selection that wasn't there, "edited" the instruction instead — a user who said
@@ -706,21 +768,25 @@ class SpeechService {
       try validateAudioFileFormat(at: audioURL)
     }
 
+    let providerLabel = Self.promptLogProvider(selectedPromptModel.provider)
     switch selectedPromptModel.provider {
     case .gemini:
       return try await executePromptWithGemini(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     case .openai:
       return try await executePromptWithOpenAI(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
     // the only difference, and that is decided inside.
     case .local, .localMLX:
       return try await executePromptWithLocal(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
-        model: selectedPromptModel, textInstruction: textInstruction)
+        model: selectedPromptModel, textInstruction: textInstruction,
+        promptStarted: promptStarted, providerLabel: providerLabel)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -878,7 +944,7 @@ class SpeechService {
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
-        styleBlock: writingStyleBlock(incoming: clipboardContext)))
+        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()))
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
@@ -907,6 +973,32 @@ class SpeechService {
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
     return "\n\n" + block.text
+  }
+
+  /// The user's style rules from memory.md. Empty for local models (same rule as
+  /// `writingStyleBlock`: small local models over-apply) and in Offline Mode.
+  private func memoryStyleFacts() -> [String] {
+    let provider = getPromptModel().provider
+    guard provider != .local, provider != .localMLX, !OfflineMode.isEnabled else { return [] }
+    return MemoryStyleRules.styleFacts(from: ChatMemoryStore.shared.facts())
+  }
+
+  private func memoryStyleBlock() -> String {
+    let facts = memoryStyleFacts()
+    if !facts.isEmpty { DebugLogger.log("PROMPT-MODE: memory style rules=\(facts.count)") }
+    return MemoryStyleRules.promptBlock(styleFacts: facts)
+  }
+
+  /// Deterministic backstop for "plain hyphens only": models keep emitting em dashes anyway.
+  private func applyingDashBackstop(_ text: String, selection: String?) -> String {
+    guard MemoryStyleRules.prefersShortDashes(styleFacts: memoryStyleFacts()) else { return text }
+    let result = DashBackstop.apply(to: text, selection: selection)
+    if result != text {
+      let before = text.filter { $0 == "—" || $0 == "–" }.count
+      let after = result.filter { $0 == "—" || $0 == "–" }.count
+      DebugLogger.log("PROMPT-MODE: dash backstop replaced \(before - after)")
+    }
+    return result
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
@@ -1022,6 +1114,11 @@ class SpeechService {
   /// success. Keeping it in one place means the history record and the interaction log can't
   /// drift apart per provider — they did before, and only the Gemini path's version was ever
   /// checked when either changed.
+  ///
+  /// Throws `TranscriptionError.noSelectedText` when a compose turn's instruction is only a bare
+  /// edit command. The model has already answered by then; the throw is what stops the invented
+  /// text from being pasted. A timed-out history transcription (`voiceInstructionPlaceholder`)
+  /// is not an instruction we can judge, so it never trips the guard.
   private func recordPromptTurn(
     normalizedText: String,
     instruction: PromptInstructionSource,
@@ -1029,8 +1126,11 @@ class SpeechService {
     clipboardContext: String?,
     model: String,
     hadScreenshot: Bool,
-    logPrefix: String
-  ) async {
+    logPrefix: String,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String,
+    loadMs: Int?
+  ) async throws {
     let userInstruction: String
     switch instruction {
     case .known(let text):
@@ -1044,19 +1144,42 @@ class SpeechService {
       userInstruction = result ?? Self.voiceInstructionPlaceholder
     }
 
-    PromptConversationHistory.shared.append(
-      mode: mode,
-      selectedText: clipboardContext,
-      userInstruction: userInstruction,
-      modelResponse: normalizedText
-    )
+    // Nothing selected and the user only said "Korrigiere" / "Rephrase this": the model fills
+    // in a document that was never there. A prompt rule did not stop that, so refuse here.
+    // A screenshot is the selection in screenshot mode, and the timeout placeholder is not
+    // evidence the user asked for an edit.
+    if DictatePromptSelectionDecision.refusesEditWithoutSelection(
+      hasSelection: clipboardContext != nil, hadScreenshot: hadScreenshot,
+      instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction)
+    {
+      DebugLogger.logWarning(
+        "\(logPrefix): Edit command with nothing selected — not pasting invented text")
+      ContextLogger.shared.logSignal(
+        .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
+      throw TranscriptionError.noSelectedText
+    }
+
+    let latencyMs = Self.milliseconds(since: promptStarted)
+    // Offline Mode never replays earlier turns (see the history guard above), so recording them
+    // would only keep a patient's selection and reply in memory for no purpose.
+    if !OfflineMode.isEnabled {
+      PromptConversationHistory.shared.append(
+        mode: mode,
+        selectedText: clipboardContext,
+        userInstruction: userInstruction,
+        modelResponse: normalizedText
+      )
+    }
     ContextLogger.shared.logPrompt(
       mode: mode,
       selectedText: clipboardContext,
       userInstruction: userInstruction,
       modelResponse: normalizedText,
       model: model,
-      hadScreenshot: hadScreenshot
+      hadScreenshot: hadScreenshot,
+      latencyMs: latencyMs,
+      provider: providerLabel,
+      loadMs: loadMs
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
     // The append is queued; refresh runs behind it on the same queue so the new row is on disk.
@@ -1092,7 +1215,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -1156,7 +1281,7 @@ class SpeechService {
     // With a connected integration, run on the chat's agent core so the instruction can look
     // things up (read-only). Otherwise the single request below, unchanged.
     let agentTools = await DictatePromptAgent.availableTools()
-    let normalizedText: String
+    var normalizedText: String
     if !agentTools.isEmpty {
       // Encoded here, off the main actor: the inline audio can be megabytes of base64.
       let contents = try DictatePromptAgent.makeContents(
@@ -1174,7 +1299,8 @@ class SpeechService {
           tools: agentTools,
           logPrefix: "PROMPT-MODE-GEMINI")
       }
-      normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
+      normalizedText = applyingDashBackstop(
+        TextProcessingUtility.normalizeTranscriptionText(raw), selection: clipboardContext)
       try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
@@ -1185,6 +1311,7 @@ class SpeechService {
         credential: credential,
         logPrefix: "PROMPT-MODE-GEMINI"
       )
+      normalizedText = applyingDashBackstop(normalizedText, selection: clipboardContext)
     }
 
     let instructionSource: PromptInstructionSource
@@ -1195,14 +1322,17 @@ class SpeechService {
     } else {
       instructionSource = .known(Self.voiceInstructionPlaceholder)
     }
-    await recordPromptTurn(
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: model.rawValue,
       hadScreenshot: envelope.hadScreenshot,
-      logPrefix: "PROMPT-MODE-GEMINI")
+      logPrefix: "PROMPT-MODE-GEMINI",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: nil)
     return normalizedText
   }
 
@@ -1217,7 +1347,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     let apiKey = try ProviderCredentials.require(.openAI)
 
@@ -1338,7 +1470,8 @@ class SpeechService {
     // pastes. No-op for the plain-text replies that are the norm.
     let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
       rawText, selectedText: clipboardContext)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
+    let normalizedText = applyingDashBackstop(
+      TextProcessingUtility.normalizeTranscriptionText(unwrappedText), selection: clipboardContext)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     let instructionSource: PromptInstructionSource
@@ -1349,14 +1482,17 @@ class SpeechService {
     } else {
       instructionSource = .known(Self.voiceInstructionPlaceholder)
     }
-    await recordPromptTurn(
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: instructionSource,
       mode: mode,
       clipboardContext: clipboardContext,
       model: requestModel.rawValue,
       hadScreenshot: envelope.hadScreenshot,
-      logPrefix: "PROMPT-MODE-OPENAI")
+      logPrefix: "PROMPT-MODE-OPENAI",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: nil)
     return normalizedText
   }
 
@@ -1459,7 +1595,9 @@ class SpeechService {
     clipboardContext: String?,
     mode: PromptMode,
     model: PromptModel,
-    textInstruction: String? = nil
+    textInstruction: String? = nil,
+    promptStarted: ContinuousClock.Instant,
+    providerLabel: String
   ) async throws -> String {
     // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
     // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
@@ -1490,7 +1628,9 @@ class SpeechService {
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      let transcript = try await performTranscription(audioURL: audioURL)
+      // The same rejected-spelling correction the normal dictation path applies (`transcribe`),
+      // so a term the user struck from the Glossary cannot come back through Dictate Prompt.
+      let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
       instruction = (TranscriptionModel.loadSelected().isOffline
@@ -1532,6 +1672,8 @@ class SpeechService {
     // A local server with tool calling runs on the agent core when there is something to look up
     // (in Offline Mode: the shared folders only). MLX has no tool-calling path — see
     // `DictatePromptAgent.supportsAgent`.
+    let offlineMode = OfflineMode.isEnabled
+    let requestOptions = Self.localPromptOptions(offlineMode: offlineMode)
     let agentTools = await DictatePromptAgent.localAgentTools(for: model, requestModel: requestModel)
     var agentRaw: String?
     let agentStart = CFAbsoluteTimeGetCurrent()
@@ -1543,7 +1685,7 @@ class SpeechService {
           contents: contents,
           systemPrompt: envelope.systemPrompt,
           tools: agentTools,
-          baseOptions: .textTransform,
+          baseOptions: requestOptions,
           logPrefix: "PROMPT-MODE-LOCAL")
       } catch where DictatePromptAgent.isToolsUnsupported(error) {
         // Many local models have no tool template. Remember it and answer with the single request
@@ -1560,14 +1702,23 @@ class SpeechService {
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
       let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
       try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
-      await recordPromptTurn(
+      if offlineMode {
+        flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
+      }
+      // Instruction text is already in hand (quick-action text or the transcription above),
+      // passed as `.known` — the bare-edit guard in `recordPromptTurn` sees it. MLX does not
+      // take this agent branch; `loadMs` stays nil for the local server.
+      try await recordPromptTurn(
         normalizedText: agentText,
         instruction: .known(instruction),
         mode: mode,
         clipboardContext: clipboardContext,
         model: "\(providerTag):\(modelLabel)",
         hadScreenshot: false,
-        logPrefix: "PROMPT-MODE-LOCAL")
+        logPrefix: "PROMPT-MODE-LOCAL",
+        promptStarted: promptStarted,
+        providerLabel: providerLabel,
+        loadMs: nil)
       return agentText
     }
 
@@ -1577,7 +1728,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: [],
-      options: .textTransform)
+      options: requestOptions)
     var combined = ""
     var firstTokenTime: CFAbsoluteTime?
     var finishReason: String?
@@ -1609,6 +1760,7 @@ class SpeechService {
     if finishReason == "length" {
       DebugLogger.logWarning(
         "PROMPT-MODE-LOCAL: Reply hit the \(AppConstants.localPromptMaxOutputTokens)-token output cap and may be truncated")
+      lastPromptReplyTruncated = true
     }
 
     // Hybrid models (qwen3, deepseek-r1, …) can put their reasoning in the reply text itself, and
@@ -1620,16 +1772,38 @@ class SpeechService {
 
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
+    if offlineMode {
+      flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)
+    }
 
-    await recordPromptTurn(
+    // MLX load time is recorded inside `MLXChatProvider.sendChatStream` before the first token,
+    // so it is available once this stream finishes. The local HTTP server has nothing to load.
+    let loadMs: Int? = useMLX ? MLXChatProvider.shared.lastLoadMs : nil
+    try await recordPromptTurn(
       normalizedText: normalizedText,
       instruction: .known(instruction),
       mode: mode,
       clipboardContext: clipboardContext,
       model: speedTag,
       hadScreenshot: false,
-      logPrefix: "PROMPT-MODE-LOCAL")
+      logPrefix: "PROMPT-MODE-LOCAL",
+      promptStarted: promptStarted,
+      providerLabel: providerLabel,
+      loadMs: loadMs)
     return normalizedText
+  }
+
+  /// Runs the deterministic word check on an on-device reply and keeps the result for the UI.
+  /// The reply itself is returned untouched: the check informs, it never edits or blocks.
+  private func flagUnsupportedWords(in reply: String, instruction: String, selection: String?) {
+    let words = DictationFidelityCheck.unsupportedWords(
+      in: reply, sources: [instruction] + (selection.map { [$0] } ?? []))
+    lastPromptUnsupportedWords = words
+    if !words.isEmpty {
+      // Count only: the words are patient data and stay out of the log.
+      DebugLogger.logWarning(
+        "PROMPT-MODE-LOCAL: \(words.count) word(s) in the reply are not in the dictation — warning shown")
+    }
   }
 
   /// Transcribes audio to text for use in conversation history.

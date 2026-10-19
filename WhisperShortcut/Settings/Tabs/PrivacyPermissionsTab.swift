@@ -61,6 +61,8 @@ struct OfflineModeSection: View {
           // Model selections are moved on the spot, so turning the switch on cannot leave a cloud
           // model selected behind a mode that then refuses it.
           ModelSelectionReconciler.reconcileAll()
+          // Earlier Dictate Prompt turns (selections, replies) must not carry across the switch.
+          PromptConversationHistory.shared.clearAll()
           DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled")")
         }
 
@@ -77,6 +79,9 @@ struct OfflineModeSection: View {
           offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
           offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
           offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
+          #if !APP_STORE && canImport(Sparkle)
+          offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates.")
+          #endif
           if !hasOfflineModel {
             OfflineModelDownloadCard {
               hasOfflineModel = true

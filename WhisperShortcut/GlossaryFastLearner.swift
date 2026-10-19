@@ -109,7 +109,12 @@ final class GlossaryFastLearner {
           "The glossary is already very large. Ask the user to prune it in Settings → Speech to Text before adding more terms."
       ]
     }
-    let entry = misheardAs.map { "\(term) (not \"\($0)\")" } ?? term
+    // The chat tool receives the term as the model spelled it, often all lowercase. The
+    // casing already used in the user's transcripts ("Bachata") is the one worth storing,
+    // so the glossary does not grow a second copy that differs only by case.
+    let spelled = GlossaryLearning.applyingMajorityCasing(
+      to: term, keepingLinesOf: "", transcripts: recentTranscriptionResults())
+    let entry = misheardAs.map { "\(spelled) (not \"\($0)\")" } ?? spelled
     let newGlossary = glossary.isEmpty ? entry : glossary + "\n" + entry
     SystemPromptsStore.shared.updateSection(.whisperGlossary, content: newGlossary)
     DebugLogger.log("GLOSSARY-LEARN: chat tool added \(DebugLogger.redacted(entry)) to glossary")
@@ -252,7 +257,9 @@ final class GlossaryFastLearner {
     DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
   }
 
-  private func recentTranscriptionResults() -> [String] {
+  /// Internal so voice feedback and the chat tool can reuse the same transcript window
+  /// when they pick a majority spelling. The scan is file IO; callers are already off the UI path.
+  func recentTranscriptionResults() -> [String] {
     let decoder = JSONDecoder()
     var results: [String] = []
     for fileURL in ContextLogger.shared.interactionLogFiles(lastDays: transcriptWindowDays) {
@@ -300,15 +307,17 @@ final class GlossaryFastLearner {
   /// spell-check guard misses because long German compounds are unknown to NSSpellChecker.
   /// Genuine name misspellings diverge INSIDE the word ("Gödde"→"Göde", "Nebius"→"Nebbius", "Groq"→"Grok")
   /// and are therefore not prefix-related, so they pass.
-  private static func isInflectionalVariant(_ a: String, _ b: String) -> Bool {
+  /// Internal so near-miss mining applies the same inflection tail list instead of a second copy.
+  static func isInflectionalVariant(_ a: String, _ b: String) -> Bool {
     guard a != b else { return false }
     let (shorter, longer) = a.count <= b.count ? (a, b) : (b, a)
     guard longer.hasPrefix(shorter) else { return false }
     return inflectionalEndings.contains(String(longer.dropFirst(shorter.count)))
   }
 
-  /// Edit distance if it is ≤ `limit`, else nil.
-  private static func levenshtein(_ a: String, _ b: String, limit: Int) -> Int? {
+  /// Edit distance if it is ≤ `limit`, else nil. Internal so near-miss mining and the fast
+  /// learner accept the same pairs.
+  static func levenshtein(_ a: String, _ b: String, limit: Int) -> Int? {
     let aChars = Array(a), bChars = Array(b)
     guard abs(aChars.count - bChars.count) <= limit else { return nil }
     guard !aChars.isEmpty, !bChars.isEmpty else {

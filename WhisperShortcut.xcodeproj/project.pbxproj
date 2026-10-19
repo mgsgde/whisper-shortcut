@@ -21,6 +21,7 @@
 		BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = BFBC35F42E3E129600BAC747 /* HotKey */; };
 		BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00021 /* FluidAudio */; };
 		BFA8E0012F08A10100E00024 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00023 /* FluidAudio */; };
+		BFA8E0012F08A10100E00031 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = BFA8E0012F08A10100E00030 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -87,6 +88,7 @@
 				BFA8E0012F08A10100E00014 /* Tokenizers in Frameworks */,
 				BFBC35F52E3E129600BAC747 /* HotKey in Frameworks */,
 				BFA8E0012F08A10100E00022 /* FluidAudio in Frameworks */,
+				BFA8E0012F08A10100E00031 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +172,7 @@
 				BFA8E0012F08A10100E00011 /* Hub */,
 				BFA8E0012F08A10100E00012 /* Tokenizers */,
 				BFA8E0012F08A10100E00021 /* FluidAudio */,
+				BFA8E0012F08A10100E00030 /* Sparkle */,
 			);
 			productName = WhisperShortcut;
 			productReference = BF3C90C62E3E0CC0001D325B /* WhisperShortcut.app */;
@@ -265,6 +268,7 @@
 				BFA8E0012F08A10100E00001 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
 				BFA8E0012F08A10100E00010 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF3C90C72E3E0CC0001D325B /* Products */;
@@ -487,6 +491,7 @@
 				MARKETING_VERSION = 5.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SPARKLE_PUBLIC_ED_KEY = "LQxrkgAoqNgLwg5ifeo/8X8vrWmKsGKcBCpPqehdy5I=";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -520,6 +525,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = WhisperShortcut_DeveloperID_CI;
+				SPARKLE_PUBLIC_ED_KEY = "LQxrkgAoqNgLwg5ifeo/8X8vrWmKsGKcBCpPqehdy5I=";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -718,6 +724,14 @@
 				version = 0.17.5;
 			};
 		};
+		BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.9.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -790,6 +804,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BFA8E0012F08A10100E00020 /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		BFA8E0012F08A10100E00030 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BFA8E0012F08A10100E00032 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -58,7 +58,33 @@ enum ModelSelectionReconciler {
 
   // MARK: - Entry point
 
+  /// Every selection key `reconcileAll` may rewrite — compared before and after so open views can
+  /// be told when it did.
+  private static let reconciledKeys: [String] = snapshotKeys + [
+    UserDefaultsKeys.selectedImprovementModel,
+    UserDefaultsKeys.selectedMeetingSummaryModel,
+  ]
+
+  /// Rewrites the persisted selections, then posts `.modelSelectionsReconciled` if any changed.
+  ///
+  /// The settings window holds the selections in memory (`SettingsViewModel.data`) and writes all
+  /// of them back on its next save. Without the notice, switching Offline Mode on left every
+  /// picker showing the old cloud model — and the next unrelated settings change wrote those cloud
+  /// models back over the on-device ones the mode had just selected.
   static func reconcileAll() {
+    let before = reconciledKeys.map { UserDefaults.standard.string(forKey: $0) }
+    reconcileAllSelections()
+    let after = reconciledKeys.map { UserDefaults.standard.string(forKey: $0) }
+    guard before != after else { return }
+    NotificationCenter.default.post(name: .modelSelectionsReconciled, object: nil)
+    // Speech service and the offline-model preload follow the dictation slot.
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.selectedTranscriptionModel),
+      let model = TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)) {
+      NotificationCenter.default.post(name: .modelChanged, object: model)
+    }
+  }
+
+  private static func reconcileAllSelections() {
     LocalLLMPreferences.migrateHiddenMLXFlagIfNeeded()
     // Offline Mode inverts this type's job: instead of following the keys the user has, the
     // selections that can run locally are pulled back onto this Mac. Without it the reconciler

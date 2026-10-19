@@ -5,7 +5,8 @@
 //  A small floating pill at the bottom-center of the screen (Wispr-Flow style) that
 //  accompanies the Dictate / Dictate Prompt lifecycle:
 //    recording  → live audio-level bars with ✕ (discard) and ✓ (stop & process);
-//                 Dictate Prompt also shows a quick-action list directly above the pill
+//                 Dictate Prompt grows the pill into a card: what the run acts on, quick
+//                 actions, a text field, and the same controls as its footer
 //    processing → spinner with ✕ (cancel)
 //  and Read Aloud playback:
 //    speaking   → ✕ (stop), ⏪ 10 s, ⏸/▶ (pause / resume), ⏩ 10 s, scrubber with elapsed / total,
@@ -53,8 +54,11 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var scrubPosition: TimeInterval?
   /// Dictate Prompt: frequent instructions shown above the pill. Empty when the list is hidden.
   @Published var quickActions: [QuickAction] = []
-  @Published var quickActionIndex = 0
+  /// nil until ↑/↓ moves into the list, so ↩ on an empty field means "use the speech".
+  @Published var quickActionIndex: Int?
   @Published var quickActionsVisible = false
+  /// Dictate Prompt: what the run will act on, shown in the card's header.
+  @Published var quickActionContext: QuickActionContext = .reading
   /// Dictate Prompt: what the user typed into the field under the list. Non-empty text
   /// replaces the spoken instruction.
   @Published var typedPrompt = ""
@@ -218,78 +222,211 @@ private struct ScrubberView: View {
   }
 }
 
-private enum QuickActionListMetrics {
-  static let rowHeight: CGFloat = 28
-  static let verticalPadding: CGFloat = 6
-  static let gap: CGFloat = 4
+/// What a Dictate Prompt run will act on, shown in the card's header so a missed selection is
+/// visible before the run, not after (usage review 2026-10-12: invented text pasted because the
+/// selection never arrived and nothing on screen said so).
+enum QuickActionContext: Equatable {
+  /// The synthetic ⌘C is still being polled (at most `DictatePromptSelectionCapture.pollDeadline`).
+  case reading
+  /// Text the run will edit. `fromClipboard` is the App Store local-model path, where the user
+  /// copies first instead of selecting.
+  case selection(text: String, fromClipboard: Bool)
+  /// Nothing came through: the run writes new text.
+  case nothingSelected
+  /// Screenshot-selection mode: the model reads the selection off the screen.
+  case screenshot
+}
+
+private enum QuickActionCardMetrics {
   /// Wide enough to type a real instruction into the field.
   static let width: CGFloat = 360
+  static let rowHeight: CGFloat = 28
+  static let headerHeight: CGFloat = 28
+  static let footerHeight: CGFloat = 40
+  static let padding: CGFloat = 4
+  static let dividerHeight: CGFloat = 1
+  static let dividerSpacing: CGFloat = 4
+  static let cornerRadius: CGFloat = 16
 
   static let typeFieldPlaceholder = "Type an instruction, or just speak"
 
-  /// `count` quick actions plus the trailing text field.
+  /// Header, `count` quick actions, the text field, and the recording controls as the footer.
   static func height(count: Int) -> CGFloat {
-    CGFloat(count + 1) * rowHeight + verticalPadding * 2
+    let divider = dividerHeight + dividerSpacing * 2
+    return padding * 2 + headerHeight + divider + CGFloat(count + 1) * rowHeight + divider
+      + footerHeight
   }
 }
 
-/// Quick actions plus a text field that has keyboard focus from the start: typing goes
-/// straight in. While the field is empty, ↑/↓, ↩ and 1–5 drive the list as before.
-private struct QuickActionListView: View {
+/// Dictate Prompt while recording: one card instead of a list floating over the pill. Top to
+/// bottom: what the run acts on, the quick actions (⌃1–5), a text field that has keyboard focus
+/// from the start, and the recording controls.
+///
+/// Nothing is highlighted until ↑/↓ moves into the list, so ↩ on an empty field means the same as
+/// ✓ — stop and use what was spoken. Only ⌃digit picks an entry: a bare digit is just text, so a
+/// keystroke meant for the app underneath cannot fire an action.
+private struct QuickActionCardView: View {
   let actions: [QuickAction]
-  let selectedIndex: Int
+  let selectedIndex: Int?
+  let context: QuickActionContext
+  let levels: [CGFloat]
   @Binding var typedText: String
   let onSelect: (Int) -> Void
   let onSubmitTyped: () -> Void
-  let onMove: (Int) -> Void
   let onDismiss: () -> Void
+  let onCancel: () -> Void
+  let onConfirm: () -> Void
 
   @FocusState private var fieldFocused: Bool
 
-  private var isTyping: Bool { !typedText.isEmpty }
+  // Trimmed like `submitTyped`: a lone space is not an instruction, so it must not disable ↑/↓/↩.
+  private var isTyping: Bool { !typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
   var body: some View {
     VStack(spacing: 0) {
+      header
+      divider
       ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-        let highlighted = !isTyping && index == selectedIndex
-        Button {
-          onSelect(index)
-        } label: {
-          HStack(spacing: 8) {
-            Text("\(index + 1)")
-              .font(.system(size: 11, weight: .semibold).monospacedDigit())
-              .foregroundColor(.white.opacity(highlighted ? 1 : 0.55))
-              .frame(width: 14, alignment: .trailing)
-            Text(action.text)
-              .font(.system(size: 12, weight: .medium))
-              .foregroundColor(.white.opacity(isTyping ? 0.55 : 1))
-              .lineLimit(1)
-              .truncationMode(.tail)
-            Spacer(minLength: 0)
-          }
-          .padding(.horizontal, 8)
-          .frame(height: QuickActionListMetrics.rowHeight)
-          .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-              .fill(highlighted ? Color.white.opacity(0.16) : Color.clear)
-          )
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(action.text)
-        .accessibilityLabel("Quick action \(index + 1): \(action.text)")
-        .pointerCursorOnHover()
+        actionRow(index: index, action: action)
       }
       fieldRow
+      divider
+      footer
     }
-    .padding(.vertical, QuickActionListMetrics.verticalPadding)
-    .padding(.horizontal, 4)
+    .padding(QuickActionCardMetrics.padding)
     .background(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
+      RoundedRectangle(cornerRadius: QuickActionCardMetrics.cornerRadius, style: .continuous)
         .fill(Color.black.opacity(0.92))
     )
+    .overlay(
+      RoundedRectangle(cornerRadius: QuickActionCardMetrics.cornerRadius, style: .continuous)
+        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+    )
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("Dictate Prompt quick actions")
+    .accessibilityLabel("Dictate Prompt")
+  }
+
+  private var divider: some View {
+    Rectangle()
+      .fill(Color.white.opacity(0.1))
+      .frame(height: QuickActionCardMetrics.dividerHeight)
+      .padding(.vertical, QuickActionCardMetrics.dividerSpacing)
+      .padding(.horizontal, 8)
+  }
+
+  // MARK: Header
+
+  private var header: some View {
+    HStack(spacing: 8) {
+      headerIcon
+        .frame(width: 16, alignment: .center)
+      headerText
+      Spacer(minLength: 0)
+      if case .selection(let text, _) = context {
+        Text("\(text.count.formatted()) chars")
+          .font(.system(size: 10, weight: .medium).monospacedDigit())
+          .foregroundColor(.white.opacity(0.45))
+          .fixedSize()
+      }
+    }
+    .padding(.horizontal, 8)
+    .frame(height: QuickActionCardMetrics.headerHeight)
+    .accessibilityElement(children: .combine)
+  }
+
+  @ViewBuilder private var headerIcon: some View {
+    switch context {
+    case .reading:
+      SpinnerView(color: .white.opacity(0.6), size: 10)
+    case .selection(_, let fromClipboard):
+      Image(systemName: fromClipboard ? "doc.on.clipboard" : "text.quote")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.6))
+    case .nothingSelected:
+      Image(systemName: "exclamationmark.triangle.fill")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(Self.warning)
+    case .screenshot:
+      Image(systemName: "camera.viewfinder")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.6))
+    }
+  }
+
+  @ViewBuilder private var headerText: some View {
+    switch context {
+    case .reading:
+      Text("Reading selection…")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.white.opacity(0.55))
+    case .selection(let text, let fromClipboard):
+      Text("\(fromClipboard ? "Clipboard" : "Selection"): \u{201C}\(Self.preview(text))\u{201D}")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.white.opacity(0.75))
+        .lineLimit(1)
+        .truncationMode(.tail)
+    case .nothingSelected:
+      Text("Nothing selected \u{2014} writes new text")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(Self.warning)
+    case .screenshot:
+      Text("Reads the selection from a screenshot")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.white.opacity(0.55))
+    }
+  }
+
+  private static let warning = Color(red: 1.0, green: 0.78, blue: 0.35)
+
+  /// First stretch of the selection on one line; the view truncates the rest.
+  private static func preview(_ text: String) -> String {
+    String(text.prefix(200)).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+  }
+
+  // MARK: Rows
+
+  /// Editing actions mean little without text to edit; they stay clickable but step back.
+  private func isMuted(_ action: QuickAction) -> Bool {
+    isTyping || (context == .nothingSelected && action.kind != .other)
+  }
+
+  private func actionRow(index: Int, action: QuickAction) -> some View {
+    let highlighted = !isTyping && index == selectedIndex
+    let muted = isMuted(action) && !highlighted
+    return Button {
+      onSelect(index)
+    } label: {
+      HStack(spacing: 8) {
+        Image(systemName: action.kind.symbolName)
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.white.opacity(muted ? 0.35 : 0.7))
+          .frame(width: 16, alignment: .center)
+        Text(action.text)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(.white.opacity(muted ? 0.45 : 1))
+          .lineLimit(1)
+          .truncationMode(.tail)
+        Spacer(minLength: 0)
+        if index < 9 {
+          Text("\u{2303}\(index + 1)")
+            .font(.system(size: 10, weight: .medium).monospacedDigit())
+            .foregroundColor(.white.opacity(highlighted ? 0.8 : 0.35))
+            .fixedSize()
+        }
+      }
+      .padding(.horizontal, 8)
+      .frame(height: QuickActionCardMetrics.rowHeight)
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(highlighted ? Color.white.opacity(0.16) : Color.clear)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(action.text)
+    .accessibilityLabel("Quick action \(index + 1): \(action.text)")
+    .accessibilityHint("Control-\(index + 1)")
+    .pointerCursorOnHover()
   }
 
   private var fieldRow: some View {
@@ -297,49 +434,73 @@ private struct QuickActionListView: View {
       Image(systemName: "keyboard")
         .font(.system(size: 10, weight: .semibold))
         .foregroundColor(.white.opacity(isTyping ? 1 : 0.55))
-        .frame(width: 14, alignment: .trailing)
-      TextField(QuickActionListMetrics.typeFieldPlaceholder, text: $typedText)
+        .frame(width: 16, alignment: .center)
+      TextField(QuickActionCardMetrics.typeFieldPlaceholder, text: $typedText)
         .textFieldStyle(.plain)
         .font(.system(size: 12, weight: .medium))
         .foregroundColor(.white)
         .focused($fieldFocused)
-        .onSubmit {
-          if isTyping { onSubmitTyped() } else { onSelect(selectedIndex) }
-        }
+        .onSubmit(submit)
         .onExitCommand(perform: onDismiss)
-        .onKeyPress(.upArrow) { moveIfEmpty(-1) }
-        .onKeyPress(.downArrow) { moveIfEmpty(1) }
-        .onChange(of: typedText) { old, new in
-          // A lone digit typed into the empty field picks that entry, as the number keys
-          // always did. Anything longer is the user's own instruction.
-          guard old.isEmpty, new.count == 1, let digit = Int(new),
-                actions.indices.contains(digit - 1) else { return }
-          typedText = ""
-          onSelect(digit - 1)
-        }
         .accessibilityLabel("Type your own instruction")
-      if isTyping {
-        Text("↩")
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundColor(.white.opacity(0.55))
-      }
     }
     .padding(.horizontal, 8)
-    .frame(height: QuickActionListMetrics.rowHeight)
+    .frame(height: QuickActionCardMetrics.rowHeight)
     .background(
-      RoundedRectangle(cornerRadius: 6, style: .continuous)
+      RoundedRectangle(cornerRadius: 7, style: .continuous)
         .fill(isTyping ? Color.white.opacity(0.16) : Color.white.opacity(0.06))
     )
     .onAppear {
-      // The panel takes key status as the list appears; focus on the next turn.
+      // The panel takes key status as the card appears; focus on the next turn.
       DispatchQueue.main.async { fieldFocused = true }
     }
   }
 
-  private func moveIfEmpty(_ delta: Int) -> KeyPress.Result {
-    guard !isTyping else { return .ignored }
-    onMove(delta)
-    return .handled
+  /// ↩ does what the footer says: the typed text, else the highlighted entry, else the speech.
+  private func submit() {
+    if isTyping {
+      onSubmitTyped()
+    } else if let selectedIndex {
+      onSelect(selectedIndex)
+    } else {
+      onConfirm()
+    }
+  }
+
+  // MARK: Footer
+
+  private var footerLabel: String {
+    if isTyping { return "\u{21A9} runs what you typed" }
+    if let selectedIndex, actions.indices.contains(selectedIndex) {
+      return "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}"
+    }
+    return "Speak your instruction"
+  }
+
+  private var footer: some View {
+    HStack(spacing: 8) {
+      PillCircleButton(
+        symbolName: "xmark", foreground: .white, background: Color(white: 0.28),
+        accessibilityLabel: "Discard recording", action: onCancel)
+      LevelBarsView(levels: levels)
+      Text(footerLabel)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white)
+        .lineLimit(1)
+        .truncationMode(.tail)
+      Spacer(minLength: 0)
+      if !isTyping && selectedIndex == nil {
+        Text("\u{21A9}")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundColor(.white.opacity(0.4))
+      }
+      PillCircleButton(
+        symbolName: "checkmark", foreground: .black, background: .white,
+        accessibilityLabel: isTyping ? "Run typed instruction" : "Stop and process",
+        action: onConfirm)
+    }
+    .padding(.horizontal, 4)
+    .frame(height: QuickActionCardMetrics.footerHeight)
   }
 }
 
@@ -353,7 +514,6 @@ struct RecordingIndicatorView: View {
   let onSeek: (TimeInterval) -> Void
   let onQuickAction: (Int) -> Void
   let onSubmitTyped: () -> Void
-  let onMoveQuickAction: (Int) -> Void
   let onDismissQuickActions: () -> Void
 
   /// Seconds the ⏪ / ⏩ buttons jump.
@@ -364,21 +524,18 @@ struct RecordingIndicatorView: View {
     return String(format: "%d:%02d", whole / 60, whole % 60)
   }
 
-  /// Pill plus the quick-action list stacked above it. The list only contributes height
-  /// while recording, so processing and playback stay the pill's own size.
+  /// The Dictate Prompt card while recording with quick actions, else the pill. The card holds
+  /// the recording controls itself, so it replaces the pill instead of stacking on it.
   static func panelSize(
     phase: RecordingIndicatorPhase,
     quickActions: [QuickAction],
     showsQuickActions: Bool
   ) -> CGSize {
-    let pill = pillSize(for: phase)
-    let listVisible = showsQuickActions && phase == .recording && !quickActions.isEmpty
-    guard listVisible else { return pill }
-    let listWidth = max(pill.width, QuickActionListMetrics.width)
-    let listHeight = QuickActionListMetrics.height(count: quickActions.count)
+    let cardVisible = showsQuickActions && phase == .recording && !quickActions.isEmpty
+    guard cardVisible else { return pillSize(for: phase) }
     return CGSize(
-      width: max(pill.width, listWidth),
-      height: pill.height + listHeight + QuickActionListMetrics.gap)
+      width: QuickActionCardMetrics.width,
+      height: QuickActionCardMetrics.height(count: quickActions.count))
   }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
@@ -397,21 +554,24 @@ struct RecordingIndicatorView: View {
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible)
-    let showsList = panel.height > pill.height
-    VStack(spacing: showsList ? QuickActionListMetrics.gap : 0) {
-      if showsList {
-        QuickActionListView(
+    Group {
+      if panel != pill {
+        QuickActionCardView(
           actions: model.quickActions,
           selectedIndex: model.quickActionIndex,
+          context: model.quickActionContext,
+          levels: model.levels,
           typedText: $model.typedPrompt,
           onSelect: onQuickAction,
           onSubmitTyped: onSubmitTyped,
-          onMove: onMoveQuickAction,
-          onDismiss: onDismissQuickActions
+          onDismiss: onDismissQuickActions,
+          onCancel: onCancel,
+          onConfirm: onConfirm
         )
-        .frame(width: panel.width)
+        .frame(width: panel.width, height: panel.height)
+      } else {
+        pillBody(size: pill)
       }
-      pillBody(size: pill)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     .environment(\.colorScheme, .dark)
@@ -499,8 +659,47 @@ struct RecordingIndicatorView: View {
 /// the target app stays frontmost.
 private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
+  /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
+  var onControlDigit: ((Int) -> Bool)?
+  /// ↑ (-1) / ↓ (+1) while the card has key focus. Returns true when it moved the highlight.
+  var onArrow: ((Int) -> Bool)?
+  /// ↩ while the card has key focus. Returns true when it ran the highlighted entry.
+  var onReturn: (() -> Bool)?
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
+
+  /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
+  override func sendEvent(_ event: NSEvent) {
+    if event.type == .keyDown,
+      event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
+      let characters = event.charactersIgnoringModifiers, characters.count == 1,
+      let digit = Int(characters), (1...9).contains(digit),
+      onControlDigit?(digit) == true
+    {
+      return
+    }
+    // Also caught here: the text field's editor consumes ↑/↓ as caret moves before SwiftUI's
+    // onKeyPress sees them, so the highlight never moved and ↩ stopped with the (empty) speech.
+    if event.type == .keyDown,
+      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+      let delta = [126: -1, 125: 1][event.keyCode],
+      (firstResponder as? NSTextView)?.hasMarkedText() != true,
+      onArrow?(delta) == true
+    {
+      return
+    }
+    // ↩ on a highlighted entry is decided here from the model, not by the field's onSubmit:
+    // that closure kept a stale "nothing highlighted" and stopped with the (empty) speech.
+    if event.type == .keyDown,
+      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+      event.keyCode == 36 || event.keyCode == 76,
+      (firstResponder as? NSTextView)?.hasMarkedText() != true,
+      onReturn?() == true
+    {
+      return
+    }
+    super.sendEvent(event)
+  }
 }
 
 /// Lets the pill's buttons react to the first click even though the panel never becomes key.
@@ -618,11 +817,12 @@ final class RecordingIndicatorManager {
     }
   }
 
-  /// Shows the Dictate Prompt quick-action list above the pill. Entry 1 starts highlighted
-  /// and the field under it takes keyboard focus, so the user can type right away.
-  func showQuickActions(_ actions: [QuickAction]) {
+  /// Grows the pill into the Dictate Prompt card. Nothing starts highlighted, and the field
+  /// takes keyboard focus, so the user can type right away.
+  func showQuickActions(_ actions: [QuickAction], context: QuickActionContext) {
     model.quickActions = actions
-    model.quickActionIndex = 0
+    model.quickActionIndex = nil
+    model.quickActionContext = context
     model.typedPrompt = ""
     model.quickActionsVisible = !actions.isEmpty
     if isVisible, let panel {
@@ -637,19 +837,27 @@ final class RecordingIndicatorManager {
     guard model.quickActionsVisible || !model.quickActions.isEmpty else { return }
     model.quickActionsVisible = false
     model.quickActions = []
-    model.quickActionIndex = 0
+    model.quickActionIndex = nil
     if isVisible, let panel { position(panel) }
   }
 
+  /// The selection arrives after the card is up (the ⌘C poll); the header follows it.
+  func updateQuickActionContext(_ context: QuickActionContext) {
+    guard model.quickActionsVisible else { return }
+    model.quickActionContext = context
+  }
+
+  /// ↓ from nothing lands on the first entry, ↑ on the last; after that it wraps.
   func moveQuickActionSelection(by delta: Int) {
     guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
     let count = model.quickActions.count
-    let index = model.quickActionIndex
-    model.quickActionIndex = ((index + delta) % count + count) % count
+    let next = model.quickActionIndex.map { (($0 + delta) % count + count) % count }
+      ?? (delta > 0 ? 0 : count - 1)
+    model.quickActionIndex = next
+    DebugLogger.log("QUICK-ACTIONS: Highlight → entry \(next + 1)")
   }
 
   var quickActions: [QuickAction] { model.quickActions }
-  var quickActionIndex: Int { model.quickActionIndex }
   var typedPrompt: String {
     model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
   }
@@ -740,13 +948,35 @@ final class RecordingIndicatorManager {
       onSeek: { [weak self] seconds in self?.onSeek?(seconds) },
       onQuickAction: { [weak self] index in self?.onQuickAction?(index) },
       onSubmitTyped: { [weak self] in self?.submitTyped() },
-      onMoveQuickAction: { [weak self] delta in self?.moveQuickActionSelection(by: delta) },
       onDismissQuickActions: { [weak self] in self?.dismissQuickActionsByUser() }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)
     hostingView.autoresizingMask = [.width, .height]
     panel.contentView = hostingView
+    panel.onControlDigit = { [weak self] digit in
+      guard let self, self.model.quickActionsVisible,
+        self.model.quickActions.indices.contains(digit - 1)
+      else { return false }
+      self.onQuickAction?(digit - 1)
+      return true
+    }
+    panel.onArrow = { [weak self] delta in
+      guard let self, self.model.quickActionsVisible,
+        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else { return false }
+      self.moveQuickActionSelection(by: delta)
+      return true
+    }
+    panel.onReturn = { [weak self] in
+      guard let self, self.model.quickActionsVisible,
+        self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
+      else { return false }
+      DebugLogger.log("QUICK-ACTIONS: ↩ runs highlighted entry \(index + 1)")
+      self.onQuickAction?(index)
+      return true
+    }
     return panel
   }
 

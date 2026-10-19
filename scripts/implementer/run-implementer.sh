@@ -74,10 +74,19 @@ fi
 PLAN_AGENT="${IMPLEMENTER_PLAN_AGENT:-claude}"
 PLAN_MODEL="${IMPLEMENTER_PLAN_MODEL:-claude-opus-5-5}"
 PLAN_TIMEOUT_SECONDS="${IMPLEMENTER_PLAN_TIMEOUT_SECONDS:-1800}"
-# Opus 5.5 builds while the Cursor quota for Grok is used up (reset 2026-10-02, Magnus 2026-09-28);
-# from 2026-10-02 set IMPLEMENTER_BUILD_AGENT=cursor / IMPLEMENTER_BUILD_MODEL=grok-4.7-high again.
-BUILD_AGENT="${IMPLEMENTER_BUILD_AGENT:-claude}"
-BUILD_MODEL="${IMPLEMENTER_BUILD_MODEL:-claude-opus-5-5}"
+# Grok 4.7 types; over its daily cap the build goes to Sonnet 5.5 at once, never waits
+# (Magnus 2026-10-11: „wann immer Grok aufgebraucht ist, einfach Sonnet verwenden").
+BUILD_AGENT="${IMPLEMENTER_BUILD_AGENT:-cursor}"
+BUILD_MODEL="${IMPLEMENTER_BUILD_MODEL:-grok-4.7-high}"
+# The cap (8 a day) is counted by sabaki's wrapper over every cursor-agent run on this Mac, so
+# implementer runs and interactive Grok briefs share one budget.
+GROK_CAP_SCRIPT="${IMPLEMENTER_GROK_CAP_SCRIPT:-$HOME/sabaki.dance.v3/scripts/grok-build.sh}"
+if [[ "$BUILD_AGENT" == "cursor" && -f "$GROK_CAP_SCRIPT" ]]; then
+    if ! bash "$GROK_CAP_SCRIPT" --check >/dev/null 2>&1; then
+        BUILD_AGENT=claude
+        BUILD_MODEL="${IMPLEMENTER_BUILD_FALLBACK_MODEL:-claude-sonnet-5-5}"
+    fi
+fi
 REVIEW_AGENT="${IMPLEMENTER_REVIEW_AGENT:-claude}"
 REVIEW_MODEL="${IMPLEMENTER_REVIEW_MODEL:-claude-opus-5-5}"
 TIMEOUT_SECONDS="${IMPLEMENTER_TIMEOUT_SECONDS:-7200}"
