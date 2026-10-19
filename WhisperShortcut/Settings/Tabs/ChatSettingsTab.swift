@@ -237,7 +237,7 @@ struct ChatSettingsTab: View {
         }
       )
       if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
-        Text("Sign in with Google or add your API key in the General tab for Gemini models. You can also select an offline Whisper model.")
+        Text("Sign in with Google or add your API key in Settings → General for Gemini models. You can also select an offline Whisper model.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -314,7 +314,7 @@ struct ChatSettingsTab: View {
           .textSelection(.enabled)
         Text("Type /meeting in chat to start/stop live meeting recording.")
           .textSelection(.enabled)
-        Text("While recording, Gemini has access to the meeting transcript for context.")
+        Text("While recording, the chat model can read the meeting transcript, so you can ask about it.")
           .textSelection(.enabled)
       }
       .font(.callout)

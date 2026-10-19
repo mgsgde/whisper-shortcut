@@ -17,7 +17,7 @@ struct ResetSection: View {
       SectionHeader(
         title: "Data & Reset",
         systemImage: "arrow.counterclockwise",
-        subtitle: "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only context data, use the Context tab."
+        subtitle: "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only usage data, use Settings → Smart Improvement."
       )
 
       HStack(alignment: .center, spacing: 12) {

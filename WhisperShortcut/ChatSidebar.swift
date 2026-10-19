@@ -206,7 +206,7 @@ struct ChatSidebar: View {
       title: "Meetings",
       isCollapsed: meetingsSectionCollapsed,
       toggleCollapse: { meetingsSectionCollapsed.toggle() },
-      actionIcon: "square.and.pencil",
+      actionIcon: meetingLive ? "stop.circle" : "record.circle",
       actionHelp: meetingLive
         ? "Stop the current meeting recording"
         : "Start a new live meeting recording",
@@ -526,7 +526,7 @@ struct ChatSidebar: View {
     let hoverAction: (icon: String, help: String, perform: () -> Void) = {
       if isArchived {
         return (
-          "xmark", "Delete permanently", { viewModel.deleteSessionPermanently(id: session.id) }
+          "xmark", "Delete permanently", { viewModel.confirmAndDeleteSessionPermanently(id: session.id) }
         )
       } else {
         return ("archivebox", "Archive \(kind)", { viewModel.archiveSession(id: session.id) })
@@ -606,8 +606,8 @@ struct ChatSidebar: View {
         }
         Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Delete \(kind)", role: .destructive) {
-          viewModel.deleteSessionPermanently(id: session.id)
+        Button("Delete \(kind)\u{2026}", role: .destructive) {
+          viewModel.confirmAndDeleteSessionPermanently(id: session.id)
         }
       } else {
         Button("Rename\u{2026}") { beginRename(session) }
@@ -631,8 +631,8 @@ struct ChatSidebar: View {
           }
         }
         Divider()
-        Button("Delete \(kind)", role: .destructive) {
-          viewModel.deleteSessionPermanently(id: session.id)
+        Button("Delete \(kind)\u{2026}", role: .destructive) {
+          viewModel.confirmAndDeleteSessionPermanently(id: session.id)
         }
       }
     }

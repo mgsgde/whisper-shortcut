@@ -119,7 +119,7 @@ struct SupportFeedbackSection: View {
           .help(
             saveUsageData
               ? "See and share an anonymous summary of how you use the app"
-              : "Turn on \"Save usage data\" in Improvement settings to collect this"
+              : "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this"
           )
           .pointerCursorOnHover()
 
