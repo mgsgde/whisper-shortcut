@@ -209,6 +209,9 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var meetingSessionId: UUID? = nil
   var isCurrentSessionMeeting: Bool { session.isMeeting }
   var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
+  /// The meeting that is recording right now. It can't be archived or closed: archiving it hides
+  /// the live meeting from the sidebar while it keeps recording, and nothing says where it went.
+  func isRecordingMeeting(_ id: UUID) -> Bool { isMeetingActive && meetingSessionId == id }
   /// True when the meeting this tab is showing is the one currently being wrapped up.
   var isCurrentSessionFinishingMeeting: Bool { isMeetingFinishing && isCurrentSessionTheActiveMeeting }
   private var meetingCancellable: AnyCancellable?
@@ -2231,6 +2234,11 @@ class ChatViewModel: ObservableObject {
   }
 
   func closeTab(id: UUID) {
+    if isRecordingMeeting(id) {
+      DebugLogger.log("GEMINI-CHAT: Refused to close tab \(id) — meeting is still recording")
+      NSSound.beep()
+      return
+    }
     if let closing = id == session.id ? session : store.session(by: id) {
       noteLeaving(closing, reason: "closed")
     }
@@ -2722,6 +2730,11 @@ class ChatViewModel: ObservableObject {
   // MARK: - Archive / Restore / Delete
 
   func archiveSession(id: UUID) {
+    if isRecordingMeeting(id) {
+      DebugLogger.log("SIDEBAR: Refused to archive \(id) — meeting is still recording")
+      NSSound.beep()
+      return
+    }
     let wasActive = id == session.id
     DebugLogger.log("SIDEBAR: archiveSession id=\(id) wasActive=\(wasActive) currentSession=\(session.id)")
     store.archiveSession(id: id)

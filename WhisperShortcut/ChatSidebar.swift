@@ -564,7 +564,7 @@ struct ChatSidebar: View {
 
       Spacer(minLength: 4)
 
-      if isHovered && !isRenaming {
+      if isHovered && !isRenaming && !isRecording {
         Button(action: hoverAction.perform) {
           Image(systemName: hoverAction.icon)
             .font(.system(size: 10, weight: .medium))
@@ -615,6 +615,7 @@ struct ChatSidebar: View {
         Divider()
         Button("Archive \(kind)") { viewModel.archiveSession(id: session.id) }
           .keyboardShortcut(.delete, modifiers: .command)
+          .disabled(viewModel.isRecordingMeeting(session.id))
         if session.isMeeting {
           Button("Archive older meetings") {
             viewModel.archiveOlderMeetings(than: archiveOlderCutoff)
