@@ -31,6 +31,10 @@ struct ChatModelLineupTests {
     // in the 2026-09-03 probe, so 3.7 must stay selectable until that run.
     #expect(PromptModel.gemini37Flash.chatReplacement == nil)
     #expect(PromptModel.gemini38Flash.chatReplacement == nil)
+    // `chatModels` is filtered by Offline Mode, which reads the real app's defaults on a dev Mac.
+    let previousOffline = OfflineMode.isEnabled
+    defer { OfflineMode.setEnabled(previousOffline) }
+    OfflineMode.setEnabled(false)
     #expect(PromptModel.chatModels.contains(.gemini37Flash))
     #expect(PromptModel.chatModels.contains(.gemini38Flash))
     #expect(!PromptModel.chatModels.contains(.gemini35Flash))
