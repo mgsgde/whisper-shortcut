@@ -43,6 +43,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case chatRetry
   case chatAbandoned
   case promptRetry
+  case promptFollowUp
   case promptNoSelection
   case requestTimedOut
   case noSpeechDetected
@@ -57,6 +58,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .chatRetry: self = .chatRetry
     case .chatAbandoned: self = .chatAbandoned
     case .promptRetry: self = .promptRetry
+    case .promptFollowUp: self = .promptFollowUp
     case .promptNoSelection: self = .promptNoSelection
     case .requestTimedOut: self = .requestTimedOut
     case .noSpeechDetected: self = .noSpeechDetected
