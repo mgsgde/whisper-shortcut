@@ -1,6 +1,6 @@
 # User-defined chat commands (lean version)
 
-Status: BUILT — branch `feat/user-commands`, PR open, awaiting merge. Change from the plan: the four
+Status: MERGED — PR #154, `a9a0ef1` on main (2026-10-19), not in v8.46; ships with the next release. Change from the plan: the four
 built-in meeting quick actions (Catch me up, Action items, Open questions, Decisions) were removed
 on Magnus's word (2026-10-19: „Können wir nicht die ersten Buttons weglassen? Die werden doch so
 oder so nicht genutzt."), so the meeting bar holds only user commands and is empty by default.
@@ -122,8 +122,13 @@ never overwrites an existing file; `ChatMessage` decodes without `commandName`; 
 
 ## Open risks (outside this code)
 
-- Quality of the offline model on a 20–30 min German conversation (~8–10k tokens of transcript):
-  test with a real, anonymised transcript before the pilot relies on it.
+- Quality of the offline model on a 20–30 min German conversation (~8–10k tokens of transcript).
+  Measured 2026-10-19 on one synthetic case (32 runs, 4 MLX models, hand-graded): Qwen3.5 9B was
+  best (about 90–95 % of facts at 25 min, about 86 % at 40 min, needs a 16 GB Mac); no run was
+  error-free. A fixed "positive/negative" red-flag checklist made Qwen3-4B mark a denied symptom
+  positive in 4 of 4 runs, so small models get no such checklist. Numbers spelled out as words
+  flipped (47 → 77); digits, as real transcripts have them, did not. Every report needs a human
+  proofread. Still to do: one real, anonymised transcript.
 - Offline meeting itself (live notes/summary on MLX) is being fixed on `fix/meeting-offline-mlx`.
 - The pilot's actual instruction stays out of this public repo; the setup partner drops it into
   the folder on site.
