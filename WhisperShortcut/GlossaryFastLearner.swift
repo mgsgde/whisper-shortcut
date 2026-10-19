@@ -106,7 +106,7 @@ final class GlossaryFastLearner {
     guard glossary.count < glossaryAutoGrowthLimitChars else {
       return [
         "error":
-          "The glossary is already very large. Ask the user to prune it in Settings → Speech to Text before adding more terms."
+          "The glossary is already very large. Ask the user to prune it in Settings → Dictate before adding more terms."
       ]
     }
     // The chat tool receives the term as the model spelled it, often all lowercase. The
