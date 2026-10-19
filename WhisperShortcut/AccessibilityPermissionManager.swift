@@ -34,14 +34,14 @@ class AccessibilityPermissionManager {
 
       Dictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.
 
-      To turn on auto-paste, click "Open Settings". In System Settings:
+      To turn on auto-paste, click "Open System Settings". There:
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
 
       Already listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click "Copy Reset Command" and run it in Terminal to clear the stale entry.
       """
     alert.alertStyle = .informational
-    alert.addButton(withTitle: "Open Settings")
+    alert.addButton(withTitle: "Open System Settings")
     alert.addButton(withTitle: "Copy Reset Command")
     alert.addButton(withTitle: "Not Now")
 

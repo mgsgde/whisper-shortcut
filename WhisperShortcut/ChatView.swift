@@ -418,6 +418,11 @@ class ChatViewModel: ObservableObject {
             }
             self.refreshRecentSessions()
           } else {
+            // A chat with history (or another meeting) is never repurposed: the transcript would
+            // land in that conversation. Only an empty "New chat" becomes the meeting.
+            if !self.singleChatOnly && (!self.session.messages.isEmpty || self.session.isMeeting) {
+              self.createNewSession()
+            }
             self.meetingSessionId = self.session.id
             self.markCurrentSessionAsMeeting()
           }
@@ -2821,6 +2826,17 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("SIDEBAR: restoreSession done. recentSessions=\(recentSessions.count)")
   }
 
+  /// Asks first, then deletes: the one path from the UI that removes a chat for good.
+  func confirmAndDeleteSessionPermanently(id: UUID) {
+    let kind = store.session(by: id)?.isMeeting == true ? "meeting" : "chat"
+    guard ChatConfirm.destructive(
+      title: "Delete this \(kind) permanently?",
+      message: "It's removed from the archive and can't be restored.",
+      button: "Delete")
+    else { return }
+    deleteSessionPermanently(id: id)
+  }
+
   func deleteSessionPermanently(id: UUID) {
     // If the deleted session owns the active live meeting, stop the recording first
     // so we don't leave a zombie recorder writing to disk for a session that no
@@ -2859,10 +2875,11 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Renamed tab \(id) → \(target.title ?? "<nil>")")
   }
 
-  /// Close every tab except `keepId`. The kept tab becomes the active one.
+  /// Close every tab except `keepId`. The kept tab becomes the active one. Archives like
+  /// `closeTab` — closing a tab must never be the one place that deletes a chat.
   func closeOtherTabs(keep keepId: UUID) {
     let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
-    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.archiveSession(id: id) }
     let activeWillChange = session.id != keepId
     if activeWillChange {
       store.switchToSession(id: keepId)
@@ -2877,7 +2894,7 @@ class ChatViewModel: ObservableObject {
     let toClose = recentSessions.suffix(from: anchorIdx + 1).map { $0.id }
     if toClose.isEmpty { return }
     let activeWillBeClosed = toClose.contains(session.id)
-    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.archiveSession(id: id) }
     if activeWillBeClosed {
       store.switchToSession(id: anchorId)
     }
@@ -3103,7 +3120,14 @@ struct ChatView: View {
       Task { await viewModel.captureScreenshot() }
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatClearChat)) { _ in
-      viewModel.clearMessages()
+      guard !viewModel.messages.isEmpty else { return }
+      if ChatConfirm.destructive(
+        title: "Clear this chat?",
+        message: "All messages in this chat are deleted. This can't be undone.",
+        button: "Clear Chat")
+      {
+        viewModel.clearMessages()
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatCloseTab)) { _ in
       viewModel.closeTab(id: viewModel.currentSessionId)
@@ -4461,7 +4485,7 @@ struct ChatInputAreaView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasContent && !viewModel.isSending)
-        .help(viewModel.isSending ? "Stop sending (/stop)" : "Send message")
+        .help(viewModel.isSending ? "Stop sending (⌘.)" : "Send message")
         .accessibilityLabel(viewModel.isSending ? "Stop sending" : "Send message")
         .pointerCursorOnHover()
       }
@@ -5182,17 +5206,35 @@ private struct CodeBlockView: View {
   }
 }
 
+// MARK: - Destructive confirmation
+
+/// Modal confirmation for chat actions that cannot be undone (delete, clear).
+enum ChatConfirm {
+  @MainActor
+  static func destructive(title: String, message: String, button: String) -> Bool {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = title
+    alert.informativeText = message
+    let confirm = alert.addButton(withTitle: button)
+    confirm.hasDestructiveAction = true
+    alert.addButton(withTitle: "Cancel")
+    return alert.runModal() == .alertFirstButtonReturn
+  }
+}
+
 // MARK: - Copy Reply Button (under model replies)
 
 private struct CopyReplyButtonView: View {
   /// Resolved on click, not per render — for image-bearing replies the marker strip
   /// rebuilds a multi-MB string, which must not run on every streaming re-render.
   let text: () -> String
+  var help = "Copy this reply to the clipboard"
 
   var body: some View {
     MessageActionButton(
       systemImage: "doc.on.doc",
-      help: "Copy this reply to the clipboard"
+      help: help
     ) {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(text(), forType: .string)
@@ -5729,7 +5771,7 @@ private struct MessageBubbleView: View {
             }
           }
           if !text.isEmpty {
-            CopyReplyButtonView(text: { text })
+            CopyReplyButtonView(text: { text }, help: "Copy this message to the clipboard")
           }
         }
         .padding(.top, 4)

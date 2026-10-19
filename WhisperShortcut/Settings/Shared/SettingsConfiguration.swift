@@ -469,8 +469,8 @@ enum PromptModel: String, CaseIterable {
   /// Actionable message when this model can't run Dictate Prompt for lack of a credential.
   var apiKeyRequiredMessageForDictatePrompt: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings (General tab) to use Dictate Prompt."
-    case .openai: return "Add your OpenAI API key in Settings (General tab) to use Dictate Prompt."
+    case .gemini: return "Add your Gemini API key in Settings → General to use Dictate Prompt."
+    case .openai: return "Add your OpenAI API key in Settings → General to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .openRouter: return "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
@@ -1136,9 +1136,9 @@ enum TTSModel: String, CaseIterable {
   /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.
   var apiKeyRequiredMessage: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings (General) or sign in with Google to use Read Aloud."
-    case .openai: return "Add your OpenAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
-    case .xai: return "Add your xAI API key in Settings (General tab) to use Read Aloud, or pick a different voice model."
+    case .gemini: return "Add your Gemini API key in Settings → General or sign in with Google to use Read Aloud."
+    case .openai: return "Add your OpenAI API key in Settings → General to use Read Aloud, or pick a different voice model."
+    case .xai: return "Add your xAI API key in Settings → General to use Read Aloud, or pick a different voice model."
     case .system: return "On-device macOS voices need no API key."
     }
   }
