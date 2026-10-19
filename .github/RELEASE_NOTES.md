@@ -1,24 +1,13 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Dictate Prompt
-- **Follows your writing style from memory.** Style facts you told Chat to remember, such as "only short hyphens" or "keep it short and natural", now also shape Dictate Prompt replies (cloud models only). If you asked for short hyphens, long dashes are replaced in the output.
-- **Pastes only where you started.** The result goes into the app that was in front when you started recording. If you switched apps in the meantime, it stays on the clipboard and you see "Copied – press ⌘V to paste" (direct-download build).
-- **No more parallel runs.** Starting again while a run is busy shows "Busy – wait for the current run to finish."
-- An empty model reply is now a retryable error, and your recording is kept. Replies that were cut off show a notice.
-- A long dictation can now be cancelled while it is processed in parts.
-- Offline Mode no longer saves Dictate Prompt runs to history.
+## Offline Mode
+- **Live Meeting works with an on-device summary model.** Live notes and the final summary are now written by the offline MLX model instead of failing. Meetings recorded in Offline Mode stay untitled, because titles need a cloud model.
+- **Settings follow the Offline Mode switch.** Turning Offline Mode on picks the best on-device model everywhere, and turning it off brings back the models you had before. An open Settings window now shows the change instead of writing the old cloud models back.
 
-## System prompts are never lost silently
-- Prompt editors save automatically while you type, so the Save button is gone. A status shows "Saved", "Saving…" or "Not saved".
-- If your saved prompts can't be read (for example missing Full Disk Access), the app tells you at launch and never overwrites them. Customized prompts get a backup (`system-prompts.md.bak`) before every change.
-
-## Smart Improvement
-- **Scorecard.** Settings → Smart Improvement shows whether an accepted change helped: rejected spellings, follow-up fixes, dashes added and retries, week by week and since the last change. The review window shows what was measured so far. Everything is counted on your Mac.
-
-## Other
-- Meeting notes and summaries wait as long as the server asks when they hit a rate limit.
+## New, off by default
+- **Meetings in Claude & other AI apps.** Turn it on in Settings → Chat to let Claude Code, Claude Desktop and other MCP apps on this Mac read your meeting transcripts, notes and summaries, including the meeting that is recording right now. Read-only, local to this Mac, protected by an access key.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.44...v8.45
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.45...v8.46

@@ -168,6 +168,8 @@ class ChatViewModel: ObservableObject {
     let sessionId: UUID
     let content: String
     let attachedParts: [AttachedImagePart]
+    /// User command (without slash) this message came from, if any.
+    var commandName: String? = nil
 
     /// User-visible text, strips internal XML wrapper tags used for API context.
     var displayContent: String {
@@ -368,7 +370,8 @@ class ChatViewModel: ObservableObject {
   /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
   /// /new in single-chat mode).
   var commandSuggestionsForDisplay: [(command: String, description: String)] {
-    var list = Self.commandsBeforeModels + recentlyOrderedModelCommands() + Self.commandsAfterModels
+    var list = userCommandSuggestions + Self.commandsBeforeModels + recentlyOrderedModelCommands()
+      + Self.commandsAfterModels
     if singleChatOnly {
       list = list.filter { $0.command != "/new" }
     }
@@ -391,6 +394,7 @@ class ChatViewModel: ObservableObject {
     recentSessions = store.recentSessions(limit: 20)
     allSessionsList = store.allSessions()
     loadScrollAnchors()
+    UserCommandStore.shared.reload()
     isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
     isMeetingFinishing = LiveMeetingTranscriptStore.shared.isFinishing
     meetingFinishingCancellable = LiveMeetingTranscriptStore.shared.$isFinishing
@@ -493,7 +497,9 @@ class ChatViewModel: ObservableObject {
   /// composer in document order. Slash commands are filtered out upstream by
   /// `submitComposer`, so this path only sees real chat content; it either dispatches via
   /// `performSend` or appends to the FIFO queue drained by `processNextQueued`.
-  func sendComposed(finalContent: String, attachedParts: [AttachedImagePart]) async {
+  func sendComposed(
+    finalContent: String, attachedParts: [AttachedImagePart], commandName: String? = nil
+  ) async {
     let hasContent = !finalContent.isEmpty || !attachedParts.isEmpty
     guard hasContent else { return }
 
@@ -505,11 +511,12 @@ class ChatViewModel: ObservableObject {
     if isSending || messageQueue.contains(where: { $0.sessionId == session.id }) {
       messageQueue.append(
         QueuedChatMessage(
-          sessionId: session.id, content: finalContent, attachedParts: attachedParts))
+          sessionId: session.id, content: finalContent, attachedParts: attachedParts,
+          commandName: commandName))
       DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
       return
     }
-    performSend(content: finalContent, attachedParts: attachedParts)
+    performSend(content: finalContent, attachedParts: attachedParts, commandName: commandName)
   }
 
   /// Re-sends the user message identified by `id`: the message and everything after it
@@ -585,7 +592,9 @@ class ChatViewModel: ObservableObject {
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
       .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
-    performSend(content: content, attachedParts: original.attachedImageParts)
+    performSend(
+      content: content, attachedParts: original.attachedImageParts,
+      commandName: newText == nil ? original.commandName : nil)
   }
 
   func captureScreenshot() async {
@@ -912,7 +921,8 @@ class ChatViewModel: ObservableObject {
   }
 
   private func performSend(
-    content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil
+    content: String, attachedParts: [AttachedImagePart], toSessionId: UUID? = nil,
+    commandName: String? = nil
   ) {
     let sessionId = toSessionId ?? session.id
     // Marked *before* the Task so `isSending` is true the instant this returns. The Task body
@@ -950,7 +960,8 @@ class ChatViewModel: ObservableObject {
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
 
-      let userMsg = ChatMessage(role: .user, content: content, attachedImageParts: attachedParts)
+      let userMsg = ChatMessage(
+        role: .user, content: content, attachedImageParts: attachedParts, commandName: commandName)
       appendMessage(userMsg, toSessionId: sessionId)
       let currentContents = ChatRequestBuilder.buildContents(
         sessionId: sessionId,
@@ -1390,7 +1401,9 @@ class ChatViewModel: ObservableObject {
     guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
     messageQueue.removeFirst()
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
-    performSend(content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId)
+    performSend(
+      content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId,
+      commandName: next.commandName)
   }
 
   /// Removes a queued message by ID (called from the pending bubble's delete button).
@@ -1483,6 +1496,69 @@ class ChatViewModel: ObservableObject {
       else { await captureScreenshot() }
       return
     }
+
+    // User-defined commands (UserContext/commands/*.md). Built-ins above always win; their names
+    // are reserved in `reservedUserCommandNames`, so a user file can never shadow one.
+    if raw.hasPrefix("/") {
+      let firstWord = raw.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? raw
+      let name = String(firstWord.dropFirst()).lowercased()
+      if let cmd = UserCommandStore.shared.command(named: name) {
+        inputText = ""
+        let rest = String(raw.dropFirst(firstWord.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        runUserCommand(cmd, arguments: rest, via: "slash")
+        return
+      }
+    }
+  }
+
+  // MARK: - User commands
+
+  /// Lowercased names (no slash) of every built-in command and model alias; user command files
+  /// with these names are rejected.
+  static var reservedUserCommandNames: Set<String> {
+    Set(
+      (commandSuggestions.map(\.command) + Array(modelCommandLookup.keys))
+        .map { String($0.drop(while: { $0 == "/" })).lowercased() })
+  }
+
+  func reloadUserCommands() {
+    UserCommandStore.shared.reload()
+  }
+
+  /// User commands that apply to the current chat: meeting-only ones in meeting chats, chat-only
+  /// ones elsewhere. Listed first in the autocomplete: a setup partner put them there because they
+  /// are this team's most-used actions.
+  var userCommandsForCurrentChat: [UserCommand] {
+    UserCommandStore.shared.commands.filter { isCurrentSessionMeeting ? $0.showsInMeeting : $0.showsInChat }
+  }
+
+  /// Meeting-bar buttons: every command that applies to meetings.
+  var meetingUserCommands: [UserCommand] {
+    UserCommandStore.shared.commands.filter(\.showsInMeeting)
+  }
+
+  private var userCommandSuggestions: [(command: String, description: String)] {
+    userCommandsForCurrentChat.map { ($0.slash, $0.description.isEmpty ? $0.label : $0.description) }
+  }
+
+  /// Splits a command message into the command text and what the user typed after the name, so
+  /// the bubble can show the latter while the (long) instruction stays folded.
+  static func splitUserCommandContent(_ content: String) -> (body: String, arguments: String?) {
+    let marker = "\n\nAdditional instructions: "
+    guard let range = content.range(of: marker, options: .backwards) else { return (content, nil) }
+    return (String(content[..<range.lowerBound]), String(content[range.upperBound...]))
+  }
+
+  /// Sends a user command's text as a normal user turn. `meeting`-scoped commands need a meeting chat.
+  func runUserCommand(_ command: UserCommand, arguments: String = "", via: String) {
+    if command.scope == .meeting && !isCurrentSessionMeeting {
+      appendModelMessage("`\(command.slash)` needs a meeting chat: it works on the meeting transcript.")
+      return
+    }
+    DebugLogger.log(
+      "USER-COMMANDS: run \(command.slash) (\(command.scope.rawValue), \(command.body.count) chars, via \(via))")
+    let text = UserCommandParser.appendingArguments(command.body, arguments: arguments)
+    Task { await sendComposed(finalContent: text, attachedParts: [], commandName: command.name) }
   }
 
   func clearMessages() {
@@ -2452,31 +2528,6 @@ class ChatViewModel: ObservableObject {
     guard !trimmed.isEmpty else { return }
     addPastedBlock(trimmed, kind: .meetingQuote)
     NotificationCenter.default.post(name: .chatFocusInput, object: nil)
-  }
-
-  /// The one-tap questions offered above the composer in a meeting. Each is a full prompt: during a
-  /// meeting there is no time to phrase one, and these four cover nearly every mid-meeting ask.
-  static let meetingQuickActions: [(label: String, prompt: String)] = [
-    (
-      "Catch me up",
-      "Catch me up on this meeting: what has been discussed so far and what do I need to know right now? Five bullets at most."
-    ),
-    (
-      "Action items",
-      "List every action item mentioned so far, with who owns it and any deadline. Only what the transcript actually supports — say so if there are none."
-    ),
-    (
-      "Open questions",
-      "Which questions have been raised in this meeting but not answered yet?"
-    ),
-    (
-      "Decisions",
-      "What has been decided so far in this meeting? Quote the timestamp for each decision."
-    ),
-  ]
-
-  func sendQuickAction(_ prompt: String) {
-    Task { await sendComposed(finalContent: prompt, attachedParts: []) }
   }
 
   /// Copies this meeting's raw transcript. The transcript is a thing to paste elsewhere, not a
@@ -3909,6 +3960,9 @@ struct ChatInputAreaView: View {
   var onTapScreenshotThumbnail: (Data) -> Void
   /// Observed so the "what the chat can see" line keeps counting up while the meeting runs.
   @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
+  /// Observed so a command file added or fixed in Settings shows up in the autocomplete and the
+  /// meeting bar without reopening the window.
+  @ObservedObject private var userCommands = UserCommandStore.shared
 
   @StateObject private var composer = GeminiComposerController()
   /// Highlighted row in the slash-command suggestion overlay (↑/↓ navigation, Enter/Tab to select).
@@ -4004,6 +4058,11 @@ struct ChatInputAreaView: View {
         composer.focus()
       }
     }
+    // Command files are edited outside the app; re-read them whenever a window comes forward
+    // (opening the chat, returning from the editor). A handful of small files, so it is cheap.
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+      viewModel.reloadUserCommands()
+    }
     // Note: composer state intentionally persists across tab switches and
     // new-chat creation — the typed text and attached screenshots/selection
     // belong to the user's in-progress draft, not to any particular session.
@@ -4051,6 +4110,7 @@ struct ChatInputAreaView: View {
     let providerAliases = Set(ChatModelProvider.allCases.map { "/\($0.commandAlias)" })
     let actionCommands = Set(
       (ChatViewModel.commandsBeforeModels + ChatViewModel.commandsAfterModels).map(\.command)
+        + viewModel.userCommandsForCurrentChat.map(\.slash)
     )
     return matches.filter { actionCommands.contains($0.command) || providerAliases.contains($0.command) }
   }
@@ -4105,7 +4165,13 @@ struct ChatInputAreaView: View {
     let output = composer.serialize()
     let typed = output.typedText
     let lower = typed.lowercased()
-    let isArgumentCommand = ChatViewModel.argumentCommands.contains { lower == $0 || lower.hasPrefix($0 + " ") }
+    // A user command takes free text after its name ("/report focus on the back pain"), so like
+    // an argument command the whole line is the command.
+    let firstWord = lower.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? lower
+    let isUserCommand =
+      firstWord.hasPrefix("/") && UserCommandStore.shared.command(named: String(firstWord.dropFirst())) != nil
+    let isArgumentCommand =
+      isUserCommand || ChatViewModel.argumentCommands.contains { lower == $0 || lower.hasPrefix($0 + " ") }
     let isRecognizedSlashCommand =
       Self.knownSlashCommands.contains(lower) || isArgumentCommand
     if isRecognizedSlashCommand {
@@ -4203,30 +4269,36 @@ struct ChatInputAreaView: View {
 
   // MARK: - Input Bar (Claude-style: composer on top, toolbar below)
 
-  /// Meeting-only strip above the composer: one-tap questions, and one line saying exactly what the
-  /// model can see. Both exist because a meeting chat is used under time pressure — there is no
-  /// moment to phrase "summarise what I missed", and no way to guess how far back the chat can look.
+  /// Meeting-only strip above the composer: the team's own commands as one-click buttons, and one
+  /// line saying exactly what the model can see. A meeting chat is used under time pressure — there
+  /// is no moment to phrase a request, and no way to guess how far back the chat can look. The
+  /// buttons come from `UserCommandStore` (commands with meeting scope); the app ships none, so
+  /// without command files only the context line shows.
   @ViewBuilder
   private var meetingComposerStrip: some View {
     if viewModel.isCurrentSessionMeeting {
       VStack(alignment: .leading, spacing: 6) {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 6) {
-            ForEach(ChatViewModel.meetingQuickActions, id: \.label) { action in
-              Button(action: { viewModel.sendQuickAction(action.prompt) }) {
-                Text(action.label)
-                  .font(.system(size: 11))
-                  .foregroundColor(ChatTheme.primaryText)
-                  .padding(.horizontal, 10)
-                  .padding(.vertical, 4)
-                  .background(
-                    Capsule().fill(ChatTheme.controlBackground))
-                  .contentShape(Capsule())
+        let commands = viewModel.meetingUserCommands
+        if !commands.isEmpty {
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(commands) { command in
+                Button(action: { viewModel.runUserCommand(command, via: "button") }) {
+                  Text(command.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(ChatTheme.primaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.22)))
+                    .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(command.description.isEmpty ? command.slash : "\(command.slash) — \(command.description)")
+                .disabled(viewModel.isSending)
+                .opacity(viewModel.isSending ? 0.5 : 1)
+                .pointerCursorOnHover()
               }
-              .buttonStyle(.plain)
-              .disabled(viewModel.isSending)
-              .opacity(viewModel.isSending ? 0.5 : 1)
-              .pointerCursorOnHover()
             }
           }
         }
@@ -5381,6 +5453,8 @@ private struct MessageBubbleView: View {
 
   /// The reply's full source list starts collapsed: each paragraph already shows its own sources.
   @State private var showsAllSources = false
+  /// A command message's instruction starts folded; the `/name` header says what ran.
+  @State private var showsCommandInstruction = false
 
   var isUser: Bool { message.role == .user }
 
@@ -5482,7 +5556,9 @@ private struct MessageBubbleView: View {
 
   @ViewBuilder
   private var bubbleContent: some View {
-    if isUser {
+    if isUser, let commandName = message.commandName {
+      commandBubble(name: commandName)
+    } else if isUser {
       VStack(alignment: .trailing, spacing: 6) {
         let parsed = parseUserMessagePastedXML(message.content)
         ForEach(Array(parsed.sections.enumerated()), id: \.offset) { _, sec in
@@ -5552,6 +5628,68 @@ private struct MessageBubbleView: View {
         }
       }
     }
+  }
+
+  /// A message sent by a user command: shows which command ran and what was typed after it. The
+  /// instruction itself is often a page long and the same every time, so it stays folded.
+  private func commandBubble(name: String) -> some View {
+    let parts = ChatViewModel.splitUserCommandContent(message.content)
+    let label = UserCommandStore.shared.command(named: name)?.label
+    return VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        Image(systemName: "command")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(.accentColor)
+        Text("/" + name)
+          .font(.system(size: 13, weight: .medium, design: .monospaced))
+          .foregroundColor(ChatTheme.primaryText)
+        if let label {
+          Text(label)
+            .font(.system(size: 12))
+            .foregroundColor(ChatTheme.secondaryText)
+        }
+      }
+      if let arguments = parts.arguments, !arguments.isEmpty {
+        SelectableProseText(
+          plain: arguments,
+          font: ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize, weight: ChatTheme.bodyRegularNSWeight),
+          color: NSColor(ChatTheme.primaryText),
+          kern: ChatTheme.bodyTracking,
+          hugsContentWidth: true)
+      }
+      Button {
+        showsCommandInstruction.toggle()
+      } label: {
+        HStack(spacing: 4) {
+          Image(systemName: showsCommandInstruction ? "chevron.down" : "chevron.right")
+            .font(.system(size: 9, weight: .semibold))
+          Text(showsCommandInstruction ? "Hide instruction" : "Show instruction")
+            .font(.system(size: 11))
+        }
+        .foregroundColor(ChatTheme.secondaryText)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .pointerCursorOnHover()
+      if showsCommandInstruction {
+        SelectableProseText(
+          plain: parts.body,
+          font: ChatTheme.bodyNSFont(size: 13, weight: ChatTheme.bodyRegularNSWeight),
+          color: NSColor(ChatTheme.secondaryText),
+          kern: 0,
+          hugsContentWidth: true)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(
+      RoundedRectangle(cornerRadius: 14)
+        .fill(ChatTheme.userBubbleBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14)
+        .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1)
+    )
   }
 
   /// Collapsed tool steps above the reply: live from the turn's buffer while streaming, from the
