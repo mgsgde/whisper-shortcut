@@ -1,6 +1,6 @@
 # WhisperShortcut Data Directories
 
-WhisperShortcut stores user data locally on your Mac. The app intentionally uses one canonical Application Support location so sandboxed and non-sandboxed builds can share the same settings, context files, meeting transcripts, and downloaded models.
+WhisperShortcut stores user data locally on your Mac. The app intentionally uses one canonical Application Support location so the App Store build and the direct build share the same settings, context files, meeting transcripts, and downloaded models.
 
 ## Canonical Path
 
@@ -19,12 +19,7 @@ This path is used for:
 
 ## Why The Path Looks Sandboxed
 
-Both shipped builds are sandboxed, so both get this path from macOS:
-
-- **App Store build**: target `WhisperShortcut-AppStore`, `WhisperShortcut-AppStore.entitlements`.
-- **Direct/GitHub build** (the `.dmg` and Sparkle updates): scheme `WhisperShortcut`, built by `.github/workflows/release.yml` and signed with Developer ID. Its `WhisperShortcut.entitlements` also has `com.apple.security.app-sandbox`, and `ENABLE_APP_SANDBOX = YES` is set for every configuration. Sparkle runs in its sandboxed mode (the `-spks`/`-spki` mach-lookup exceptions, `SUEnableInstallerLauncherService`).
-
-Both builds have the bundle ID `com.magnusgoedde.whispershortcut`, so they use the same container. `rebuild-and-restart.sh` builds are sandboxed as well. The non-sandboxed branch in `AppSupportPaths` only runs if the binary is started without its sandbox entitlement. It hard-codes the same container path so that case doesn't split the data.
+Both shipped builds are sandboxed and share one container (see the next section), so this is simply where macOS puts their Application Support. The direct build's Sparkle updater runs in its sandboxed mode (the `-spks`/`-spki` mach-lookup exceptions, `SUEnableInstallerLauncherService`). If the binary is ever started without its sandbox entitlement, `AppSupportPaths` hard-codes the same container path so the data doesn't split.
 
 ### Moving the direct build out of the container (evaluated 2026-10-19, not done)
 
