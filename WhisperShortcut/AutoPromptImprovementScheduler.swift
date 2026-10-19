@@ -253,7 +253,8 @@ class AutoPromptImprovementScheduler {
           total: total > 1 ? total : nil,
           originalText: original,
           suggestedText: suggested,
-          rationale: rationale
+          rationale: rationale,
+          section: kind.systemPromptSection
         )
         if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           applySuggestion(accepted, for: kind)

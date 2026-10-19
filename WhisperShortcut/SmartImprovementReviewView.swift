@@ -72,6 +72,8 @@ struct SmartImprovementReviewView: View {
   let total: Int?
   let originalText: String
   let rationale: String?
+  /// The prompt section under review, when there is one; it picks which scorecard numbers to show.
+  let section: SystemPromptSection?
   @State private var editedSuggestedText: String
   let onAccept: (String) -> Void
   let onCancel: () -> Void
@@ -83,6 +85,7 @@ struct SmartImprovementReviewView: View {
     originalText: String,
     suggestedText: String,
     rationale: String? = nil,
+    section: SystemPromptSection? = nil,
     onAccept: @escaping (String) -> Void,
     onCancel: @escaping () -> Void
   ) {
@@ -92,6 +95,7 @@ struct SmartImprovementReviewView: View {
     self.originalText = originalText
     self._editedSuggestedText = State(initialValue: suggestedText)
     self.rationale = rationale
+    self.section = section
     self.onAccept = onAccept
     self.onCancel = onCancel
   }
@@ -132,6 +136,10 @@ struct SmartImprovementReviewView: View {
             .background(Color(nsColor: .textBackgroundColor))
             .cornerRadius(6)
         }
+      }
+
+      if let section {
+        SmartImprovementScorecardStrip(section: section)
       }
 
       VStack(alignment: .leading, spacing: 6) {
@@ -240,7 +248,8 @@ enum SmartImprovementReviewPanel {
     total: Int? = nil,
     originalText: String,
     suggestedText: String,
-    rationale: String? = nil
+    rationale: String? = nil,
+    section: SystemPromptSection? = nil
   ) async -> String? {
     await withCheckedContinuation { continuation in
       let resultLock = NSLock()
@@ -272,6 +281,7 @@ enum SmartImprovementReviewPanel {
           originalText: originalText,
           suggestedText: suggestedText,
           rationale: rationale,
+          section: section,
           onAccept: { text in
             resumeOnce(returning: text)
             NSApp.stopModal()
