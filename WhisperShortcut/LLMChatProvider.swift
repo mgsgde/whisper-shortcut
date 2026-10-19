@@ -721,7 +721,7 @@ enum LLMProviderFactory {
       return OpenAIChatProvider.shared
     case .anthropic:
       return AnthropicChatProvider.shared
-    case .customOpenAI:
+    case .customOpenAI, .openRouter:
       return OpenAIChatProvider.shared
     case .local:
       return LocalLLMChatProvider.shared

@@ -26,6 +26,7 @@ enum ModelSelectionReconciler {
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
+    case .openRouter: return OpenRouterChatPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
@@ -44,8 +45,11 @@ enum ModelSelectionReconciler {
   }
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no
-  /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI.
-  static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok]
+  /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI, then OpenRouter —
+  /// last because it is the one account that can stand in for all of them, so someone who connected
+  /// only OpenRouter during onboarding gets a working Chat instead of a Gemini slot with no key.
+  /// OpenRouter has no transcription stand-in here (`transcriptionReplacement` returns nil).
+  static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
   private static let snapshotKeys: [String] = [
@@ -93,6 +97,7 @@ enum ModelSelectionReconciler {
   }
 
   private static func reconcileAllSelections() {
+    OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
     LocalLLMPreferences.migrateHiddenMLXFlagIfNeeded()
     // Offline Mode inverts this type's job: instead of following the keys the user has, the
     // selections that can run locally are pulled back onto this Mac. Without it the reconciler
@@ -455,8 +460,8 @@ enum ModelSelectionReconciler {
     case .gemini: return .gemini31FlashLite
     case .openai: return .openAIGPTTranscribe
     case .grok: return .xaiTranscribe
-    // `providerPreference` never includes these; Anthropic has no transcription models here.
-    case .local, .localMLX, .customOpenAI, .anthropic: return nil
+    // OpenRouter is in `providerPreference` for chat slots only; the rest are never substitutes.
+    case .local, .localMLX, .customOpenAI, .openRouter, .anthropic: return nil
     }
   }
 

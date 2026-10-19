@@ -1,16 +1,19 @@
 import SwiftUI
 
-/// Configuration for the explicit **Custom endpoint** chat model — a shared proxy (OpenRouter,
-/// OpenInference, LiteLLM, …) or a customer's own tenant (Azure OpenAI / Microsoft Foundry,
-/// Vertex AI). Shown in Settings → Chat. Select the custom-endpoint chat model picker (or `/custom`
-/// in chat) to use this URL — regular OpenAI models keep using api.openai.com.
+/// Configuration for the **Custom endpoint** chat model: an OpenAI-compatible server the user runs
+/// or rents — OpenInference, LiteLLM, a self-hosted gateway, or a customer's own tenant (Azure
+/// OpenAI / Microsoft Foundry, Vertex AI). Shown in Settings → Chat while Custom endpoint is the
+/// selected chat model (or after `/custom` in chat). Regular OpenAI models keep using api.openai.com.
+///
+/// OpenRouter is deliberately not configured here any more. It is its own chat provider with its
+/// account in Settings → General; offering it here as well meant two places to enter the same
+/// credential, and a key field whose owner depended on whichever URL happened to be typed above it.
+/// The key on this form belongs to this server and nothing else.
 ///
 /// The tenant case is why the URL and auth header are not simple string work: see
 /// `CustomEndpointAuth`, which picks `api-key` over `Authorization: Bearer` for Azure and shapes
 /// the path without destroying an `?api-version=` query.
 struct CustomOpenAIChatEndpointSection: View {
-  @ObservedObject private var oauthService = OpenRouterOAuthService.shared
-
   @State private var endpointURL: String = ""
   @State private var modelID: String = ""
   @State private var apiKey: String = ""
@@ -19,10 +22,12 @@ struct CustomOpenAIChatEndpointSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Custom OpenAI-compatible Endpoint",
-        systemImage: "arrow.triangle.branch",
-        subtitle: "Configure your proxy here, then pick it as the chat model (or type `/custom` in chat). Regular OpenAI models (GPT-5, …) are unchanged."
+        title: "Custom endpoint",
+        systemImage: "network",
+        subtitle: "Your own OpenAI-compatible server: OpenInference, Azure OpenAI, Vertex AI, LiteLLM or self-hosted. The key entered here is sent only to this server."
       )
+
+      presetRow
 
       HStack(alignment: .center, spacing: 16) {
         Text("Base URL:")
@@ -44,10 +49,19 @@ struct CustomOpenAIChatEndpointSection: View {
               ModelSelectionReconciler.reconcileAll()
             }
 
-          Text("Up to /v1 — the app appends /chat/completions. Example: \(SettingsDefaults.openInferenceEndpointURL)")
+          Text("Up to /v1 — the app appends /chat/completions.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+
+          if pointsAtOpenRouter {
+            Label(
+              "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → General, with no URL or key to enter here.",
+              systemImage: "arrow.triangle.branch")
+              .font(.caption)
+              .foregroundColor(.orange)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
 
         Spacer()
@@ -72,7 +86,7 @@ struct CustomOpenAIChatEndpointSection: View {
               UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customOpenAIChatModelID)
             }
 
-          Text("Model id sent to your server. OpenInference: `\(SettingsDefaults.openInferenceModelID)`. OpenRouter: e.g. `openai/gpt-4o`.")
+          Text("The model id your server expects. On Azure, your deployment name.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -91,12 +105,12 @@ struct CustomOpenAIChatEndpointSection: View {
           HStack(spacing: 8) {
             ZStack {
               if isKeyVisible {
-                TextField("sk-oi-… (OpenInference) or proxy key", text: $apiKey)
+                TextField("This server's API key", text: $apiKey)
                   .textFieldStyle(.roundedBorder)
                   .font(.system(.body, design: .monospaced))
                   .frame(height: SettingsConstants.textFieldHeight)
               } else {
-                SecureField("sk-oi-… (OpenInference) or proxy key", text: $apiKey)
+                SecureField("This server's API key", text: $apiKey)
                   .textFieldStyle(.roundedBorder)
                   .font(.system(.body, design: .monospaced))
                   .frame(height: SettingsConstants.textFieldHeight)
@@ -120,88 +134,88 @@ struct CustomOpenAIChatEndpointSection: View {
             .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
           }
 
-          // Always state which credential is in play, not just the empty case. This field is one
-          // slot shared by every custom endpoint, so a key left over from a *different* proxy is
-          // invisible here — and used to be silently preferred, which surfaced as
-          // "API key is invalid for the custom endpoint" right after a successful sign-in.
-          if let source = OpenAIChatPreferences.resolvedCredential?.source {
-            HStack(spacing: 6) {
-              Image(systemName: source == .openRouterAccount ? "checkmark.circle.fill" : "info.circle")
-                .foregroundColor(source == .openRouterAccount ? .green : .secondary)
-              Text("Using \(source.description).")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-          } else {
-            Text("No usable key yet. Enter an endpoint-specific key here, or — for an OpenRouter base URL — connect your account in Settings → General.")
-              .font(.caption)
-              .foregroundColor(.orange)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-
-          if OpenAIChatPreferences.isOpenRouterEndpoint
-            && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && oauthService.isConnected {
-            Text("This endpoint-specific key is ignored while your OpenRouter account is connected. Clear it if you meant to use it.")
-              .font(.caption)
-              .foregroundColor(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
+          credentialStatus
         }
-
-        Spacer()
-      }
-
-      HStack(spacing: 12) {
-        Button("Use OpenRouter preset") {
-          OpenAIChatPreferences.applyOpenRouterPreset()
-          endpointURL = SettingsDefaults.openRouterChatEndpointURL
-          modelID = SettingsDefaults.openRouterChatModelID
-          ModelSelectionReconciler.reconcileAll()
-        }
-        .help("Point chat at OpenRouter. If you connected your account in Settings → Dictate, no key is needed.")
-
-        Button("Use OpenInference preset") {
-          OpenAIChatPreferences.applyOpenInferencePreset()
-          endpointURL = SettingsDefaults.openInferenceEndpointURL
-          modelID = SettingsDefaults.openInferenceModelID
-          ModelSelectionReconciler.reconcileAll()
-        }
-        .help("Fill URL and model for openinference.de (GLM 5.2). You still need your sk-oi-… API key above.")
-
-        Spacer()
-      }
-
-      HStack(spacing: 12) {
-        Button("Use Azure OpenAI preset") {
-          OpenAIChatPreferences.applyAzureOpenAIPreset()
-          endpointURL = SettingsDefaults.azureOpenAIEndpointURL
-          modelID = SettingsDefaults.azureOpenAIModelID
-          ModelSelectionReconciler.reconcileAll()
-        }
-        .help("Fill the Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set Model to your deployment name.")
-
-        Button("Use Vertex AI preset") {
-          OpenAIChatPreferences.applyVertexAIPreset()
-          endpointURL = SettingsDefaults.vertexAIEndpointURL
-          modelID = SettingsDefaults.vertexAIModelID
-          ModelSelectionReconciler.reconcileAll()
-        }
-        .help("Fill the Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id.")
 
         Spacer()
       }
 
       bringYourOwnTenantNotes
+    }
+  }
 
-      if !OpenAIChatPreferences.isConfigured {
-        Text("Set a base URL and API key, then choose **Custom endpoint** in the chat model picker (or type `/custom` in chat).")
-          .font(.caption)
-          .foregroundColor(.orange)
-          .fixedSize(horizontal: false, vertical: true)
+  // MARK: - Presets
+
+  /// Presets fill the URL shape (and a plausible model) — the part that is easy to get wrong. They
+  /// sit above the fields because that is what they write into.
+  private var presetRow: some View {
+    HStack(spacing: 12) {
+      Text("Fill in:")
+        .font(.body)
+        .fontWeight(.medium)
+        .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+      Button("OpenInference") {
+        OpenAIChatPreferences.applyOpenInferencePreset()
+        reloadFromPreferences()
+      }
+      .help("URL and model for openinference.de (GLM 5.2). Enter your sk-oi-… key below.")
+
+      Button("Azure OpenAI") {
+        OpenAIChatPreferences.applyAzureOpenAIPreset()
+        reloadFromPreferences()
+      }
+      .help("The Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set Model to your deployment name.")
+
+      Button("Vertex AI") {
+        OpenAIChatPreferences.applyVertexAIPreset()
+        reloadFromPreferences()
+      }
+      .help("The Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id.")
+
+      Spacer()
+    }
+  }
+
+  private func reloadFromPreferences() {
+    endpointURL = UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL) ?? ""
+    modelID = UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? ""
+    ModelSelectionReconciler.reconcileAll()
+  }
+
+  // MARK: - Credential status
+
+  /// States which credential is in play, not only the empty case: with the field blank a proxy
+  /// endpoint falls back to the OpenAI key from General, and that should be visible rather than
+  /// discovered through a 401.
+  @ViewBuilder
+  private var credentialStatus: some View {
+    if endpointURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      Text("Enter a base URL above first.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+    } else {
+      switch OpenAIChatPreferences.resolvedCredential?.source {
+      case .proxyKey:
+        Label("Sent only to the server above.", systemImage: "checkmark.circle.fill")
+          .labelStyle(CaptionStatusLabelStyle(tint: .green))
+      case .openAIKey:
+        Label(
+          "No key entered, so your OpenAI key from Settings → General is used. That only works if this server forwards to OpenAI.",
+          systemImage: "info.circle")
+          .labelStyle(CaptionStatusLabelStyle(tint: .secondary))
+      case nil:
+        Label("Enter this server's API key to use it.", systemImage: "exclamationmark.circle.fill")
+          .labelStyle(CaptionStatusLabelStyle(tint: .orange))
       }
     }
+  }
+
+  private var pointsAtOpenRouter: Bool {
+    guard let host = URLComponents(string: endpointURL.trimmingCharacters(in: .whitespacesAndNewlines))?
+      .host?.lowercased()
+    else { return false }
+    return host == "openrouter.ai" || host.hasSuffix(".openrouter.ai")
   }
 
   // MARK: - Bring-your-own-tenant notes
@@ -248,5 +262,20 @@ struct CustomOpenAIChatEndpointSection: View {
       .foregroundColor(.secondary)
       .fixedSize(horizontal: false, vertical: true)
     }
+  }
+}
+
+/// Tinted icon, caption-coloured text — a status line under a field.
+private struct CaptionStatusLabelStyle: LabelStyle {
+  let tint: Color
+
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      configuration.icon.foregroundColor(tint)
+      configuration.title
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .font(.caption)
   }
 }

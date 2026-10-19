@@ -34,6 +34,18 @@ struct ModelSelectionReconcilerTests {
       ) == .gemini37Flash)
   }
 
+  @Test("An OpenRouter-only user is moved onto OpenRouter, but only as the last resort")
+  func preferredPromptFallsBackToOpenRouter() {
+    let withOpenRouter = chatCandidates + [.openRouterChat]
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(among: withOpenRouter, hasKey: { $0 == .openRouter })
+        == .openRouterChat)
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(
+        among: withOpenRouter, hasKey: { $0 == .openRouter || $0 == .grok }
+      ) == .grok43)
+  }
+
   @Test("No key among the preferred providers yields no replacement")
   func preferredPromptIsNilWithoutAKey() {
     #expect(
@@ -108,7 +120,7 @@ struct ModelSelectionReconcilerTests {
       ModelSelectionReconciler.transcriptionReplacement(for: .openai)
         == .openAIGPTTranscribe)
     #expect(ModelSelectionReconciler.transcriptionReplacement(for: .grok) == .xaiTranscribe)
-    for provider: ChatModelProvider in [.local, .localMLX, .customOpenAI, .anthropic] {
+    for provider: ChatModelProvider in [.local, .localMLX, .customOpenAI, .openRouter, .anthropic] {
       #expect(ModelSelectionReconciler.transcriptionReplacement(for: provider) == nil)
     }
   }

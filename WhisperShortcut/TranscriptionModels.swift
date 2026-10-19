@@ -311,7 +311,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .selfHostedTranscription:
       return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
     case .openRouterTranscription:
-      return "Any audio-capable model on OpenRouter • Pick the model slug in Dictate settings • Requires an OpenRouter API key"
+      return "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → General"
     }
   }
   

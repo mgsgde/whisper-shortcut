@@ -35,7 +35,7 @@ struct SpeechToPromptSettingsTab: View {
 
       // Dictate Prompt system prompt editor
       SystemPromptSectionEditor(
-        title: "System prompt",
+        title: "System Prompt",
         systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Dictate Prompt mode. Edit to customize how voice instructions are applied to text.",
         section: .promptMode,
@@ -79,7 +79,7 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Model Selection",
+      title: "Dictate Prompt Model",
       systemImage: "cpu",
       selectedModel: $viewModel.data.selectedPromptModel,
       recommendedModel: SettingsDefaults.selectedPromptModel,
@@ -103,7 +103,7 @@ struct SpeechToPromptSettingsTab: View {
   private var screenshotContextSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Screen context",
+        title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
         subtitle: "Optional screenshot sent with voice Dictate Prompt requests"
       )

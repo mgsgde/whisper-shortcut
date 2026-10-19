@@ -14,6 +14,33 @@ final class OpenAIChatProvider: LLMChatProvider {
 
   private init() {}
 
+  /// Which backend a model string talks to. Computed from the model string so the sentinel
+  /// models route to their own endpoint, key and error wording.
+  private enum Route {
+    case openAI, customEndpoint, openRouter
+
+    init(model: String) {
+      if OpenRouterChatPreferences.isOpenRouterModel(model) {
+        self = .openRouter
+      } else if OpenAIChatPreferences.isCustomEndpointModel(model) {
+        self = .customEndpoint
+      } else {
+        self = .openAI
+      }
+    }
+
+    var providerLabel: String {
+      switch self {
+      case .openAI: return "OpenAI"
+      case .customEndpoint: return "Custom endpoint"
+      case .openRouter: return "OpenRouter"
+      }
+    }
+
+    /// Anything that is not api.openai.com: no Responses API, no implicit reasoning effort.
+    var isThirdParty: Bool { self != .openAI }
+  }
+
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
@@ -21,15 +48,15 @@ final class OpenAIChatProvider: LLMChatProvider {
     tools: [LLMToolDeclaration],
     options: ChatRequestOptions  // `disableBuiltInTools` / `xHandles` don't apply here; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-    let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
+    let route = Route(model: model)
     if let attachmentError = ChatAttachmentGuard.rejectUnsupported(
       in: contents,
-      provider: useCustom ? "This endpoint" : "OpenAI",
+      provider: route == .customEndpoint ? "This endpoint" : route.providerLabel,
       allowedPrefixes: ["image/", "audio/"]
     ) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
     }
-    if options.useGrounding && !useCustom {
+    if options.useGrounding && route == .openAI {
       return sendViaResponsesAPI(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
     }
     return sendViaChatCompletions(model: model, contents: contents, systemInstruction: systemInstruction, tools: tools, thinkingLevel: options.thinkingLevel, cacheKey: options.cacheKey)
@@ -41,6 +68,10 @@ final class OpenAIChatProvider: LLMChatProvider {
   /// (gpt-5*, gpt-6*) instead of leaving it to OpenAI, matching Grok: the model default spends
   /// tens of seconds reasoning before the first word on everyday questions. Custom endpoints and
   /// non-reasoning models (gpt-4o-audio) keep omitting the field, because they reject it with 400.
+  private static func reasoningEffort(_ level: ThinkingLevel, model: String, route: Route) -> String? {
+    reasoningEffort(level, model: model, useCustomEndpoint: route.isThirdParty)
+  }
+
   static func reasoningEffort(_ level: ThinkingLevel, model: String, useCustomEndpoint: Bool) -> String? {
     if let explicit = level.openAIReasoningEffort { return explicit }
     guard !useCustomEndpoint, model.hasPrefix("gpt-5") || model.hasPrefix("gpt-6") else { return nil }
@@ -49,42 +80,64 @@ final class OpenAIChatProvider: LLMChatProvider {
 
   // MARK: - Request credentials
 
-  private static func requireAPIKey(useCustomEndpoint: Bool) throws -> String {
-    if useCustomEndpoint {
+  private static func requireAPIKey(route: Route) throws -> String {
+    switch route {
+    case .customEndpoint:
       guard OpenAIChatPreferences.customEndpointBaseURL != nil else {
         throw TranscriptionError.networkError(
           "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model.")
       }
       guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
         throw TranscriptionError.networkError(
-          "No API key for the custom endpoint. Add a proxy key in Settings → Chat or an OpenAI key in Settings → General.")
+          "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → General if the server forwards to OpenAI.")
       }
       return apiKey
+    case .openRouter:
+      guard let apiKey = OpenRouterChatPreferences.apiKey else {
+        throw TranscriptionError.networkError(
+          "Connect your OpenRouter account in Settings → General to use OpenRouter in Chat.")
+      }
+      return apiKey
+    case .openAI:
+      return try ProviderCredentials.require(.openAI)
     }
-    return try ProviderCredentials.require(.openAI)
   }
 
-  private static func invalidKeyMessage(useCustomEndpoint: Bool) -> String {
-    if useCustomEndpoint {
+  private static func invalidKeyMessage(route: Route) -> String {
+    switch route {
+    case .customEndpoint:
       return "API key is invalid for the custom endpoint. Check Settings → Chat or General."
+    case .openRouter:
+      return "OpenRouter rejected the key. Reconnect your account in Settings → General."
+    case .openAI:
+      return ProviderCredentials.invalidKeyMessage(.openAI)
     }
-    return ProviderCredentials.invalidKeyMessage(.openAI)
   }
 
-  private static func chatCompletionsURL(useCustomEndpoint: Bool) -> String {
-    if useCustomEndpoint {
-      return OpenAIChatPreferences.chatCompletionsURL
+  private static func chatCompletionsURL(route: Route) -> String {
+    switch route {
+    case .customEndpoint: return OpenAIChatPreferences.chatCompletionsURL
+    case .openRouter: return OpenRouterChatPreferences.chatCompletionsURL
+    case .openAI: return "https://api.openai.com/v1/chat/completions"
     }
-    return "https://api.openai.com/v1/chat/completions"
   }
 
   /// api.openai.com is always bearer. A custom endpoint may not be: an Azure tenant authenticates
-  /// its API key with `api-key` and rejects a bearer header. See `CustomEndpointAuth`.
-  private static func authHeaders(apiKey: String, useCustomEndpoint: Bool) -> [String: String] {
-    if useCustomEndpoint {
+  /// its API key with `api-key` and rejects a bearer header. See `CustomEndpointAuth`. OpenRouter
+  /// is bearer plus the optional attribution headers `SpeechService.transcribeWithOpenRouter` sends.
+  private static func authHeaders(apiKey: String, route: Route) -> [String: String] {
+    switch route {
+    case .customEndpoint:
       return OpenAIChatPreferences.authHeaders(apiKey: apiKey)
+    case .openRouter:
+      return [
+        "Authorization": "Bearer \(apiKey)",
+        "HTTP-Referer": "https://github.com/mgsgde/whisper-shortcut",
+        "X-Title": "WhisperShortcut",
+      ]
+    case .openAI:
+      return ["Authorization": "Bearer \(apiKey)"]
     }
-    return ["Authorization": "Bearer \(apiKey)"]
   }
 
   // MARK: - Responses API (with web_search)
@@ -123,14 +176,14 @@ final class OpenAIChatProvider: LLMChatProvider {
       body["tools"] = [["type": "web_search"] as [String: Any]] + tools.map(\.responsesDeclaration)
 
       // Per-session `/think` override → Responses API nested `reasoning.effort`.
-      let effort = Self.reasoningEffort(thinkingLevel, model: model, useCustomEndpoint: false)
+      let effort = Self.reasoningEffort(thinkingLevel, model: model, route: .openAI)
       if let effort {
         body["reasoning"] = ["effort": effort]
       }
 
       DebugLogger.logNetwork("OPENAI-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+\(tools.count)func effort=\(effort ?? "default")")
       return OpenAICompatibleStream.responses(
-        try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-RESPONSES", useCustomEndpoint: false),
+        try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-RESPONSES", route: .openAI),
         body: body,
         // The url_citation annotations fill the collapsed "Sources" list; the per-paragraph chips
         // come from the `([domain](url))` links GPT writes inline (`InlineCitationExtractor`).
@@ -151,9 +204,11 @@ final class OpenAIChatProvider: LLMChatProvider {
     cacheKey: String?
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     do {
-      let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
-      let requestModel = OpenAIChatPreferences.resolvedRequestModelID(for: model)
-      let endpoint = Self.chatCompletionsURL(useCustomEndpoint: useCustom)
+      let route = Route(model: model)
+      let requestModel = route == .openRouter
+        ? OpenRouterChatPreferences.modelID
+        : OpenAIChatPreferences.resolvedRequestModelID(for: model)
+      let endpoint = Self.chatCompletionsURL(route: route)
 
       // gpt-4o-audio-preview is audio-only and rejects image_url parts (HTTP 400),
       // so we drop images for that model.
@@ -164,14 +219,19 @@ final class OpenAIChatProvider: LLMChatProvider {
       // Cost fuse — see AppConstants.llmMaxOutputTokens. The key differs by endpoint and both
       // choices are load-bearing: OpenAI *rejects* `max_tokens` on its reasoning models ("Use
       // 'max_completion_tokens' instead", HTTP 400), while OpenRouter, self-hosted llama.cpp and
-      // the other OpenAI-compatible servers behind `useCustom` only reliably understand the
+      // the other OpenAI-compatible servers behind `.customEndpoint` only reliably understand the
       // original `max_tokens`. Sending the wrong one is a hard 400, so it is picked per endpoint
-      // rather than sent as a pair. Azure is the exception inside `useCustom`: it *is* OpenAI, so
+      // rather than sent as a pair. Azure is the exception inside `.customEndpoint`: it *is* OpenAI, so
       // its reasoning deployments reject `max_tokens` exactly the way api.openai.com does.
-      let maxTokensKey =
-        useCustom
-        ? CustomEndpointAuth.maxTokensKey(forBaseURL: OpenAIChatPreferences.customEndpointBaseURL ?? "")
-        : "max_completion_tokens"
+      let maxTokensKey: String
+      switch route {
+      case .customEndpoint:
+        maxTokensKey = CustomEndpointAuth.maxTokensKey(forBaseURL: OpenAIChatPreferences.customEndpointBaseURL ?? "")
+      case .openRouter:
+        maxTokensKey = "max_tokens"
+      case .openAI:
+        maxTokensKey = "max_completion_tokens"
+      }
       var body: [String: Any] = [
         "model": requestModel,
         "messages": messages,
@@ -198,14 +258,14 @@ final class OpenAIChatProvider: LLMChatProvider {
       }
 
       // Per-session `/think` override → Chat Completions top-level `reasoning_effort`.
-      let effort = Self.reasoningEffort(thinkingLevel, model: requestModel, useCustomEndpoint: useCustom)
+      let effort = Self.reasoningEffort(thinkingLevel, model: requestModel, route: route)
       if let effort {
         body["reasoning_effort"] = effort
       }
 
       DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(requestModel) messages=\(messages.count) tools=\(tools.count) effort=\(effort ?? "default")")
       return OpenAICompatibleStream.chatCompletions(
-        try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-CHAT-STREAM", useCustomEndpoint: useCustom),
+        try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-CHAT-STREAM", route: route),
         body: body)
     } catch {
       return AsyncThrowingStream { $0.finish(throwing: error) }
@@ -214,22 +274,22 @@ final class OpenAIChatProvider: LLMChatProvider {
 
   // MARK: - Shared request configuration
 
-  /// Auth and OpenAI's error mapping — identical for both endpoints. `useCustomEndpoint` only
-  /// changes which key is resolved and how an auth failure is worded.
+  /// Auth and OpenAI's error mapping — identical for every route. `route` only changes which key
+  /// is resolved and how an auth failure is worded.
   private static func streamConfig(
-    endpoint: String, logTag: String, useCustomEndpoint: Bool
+    endpoint: String, logTag: String, route: Route
   ) throws -> OpenAICompatibleStream.Config {
-    let apiKey = try requireAPIKey(useCustomEndpoint: useCustomEndpoint)
+    let apiKey = try requireAPIKey(route: route)
     return OpenAICompatibleStream.Config(
       endpoint: endpoint,
-      headers: Self.authHeaders(apiKey: apiKey, useCustomEndpoint: useCustomEndpoint),
+      headers: Self.authHeaders(apiKey: apiKey, route: route),
       logTag: logTag,
       mapHTTPError: { status, body in
         ChatProviderHTTPError.map(
-          provider: useCustomEndpoint ? "Custom endpoint" : "OpenAI",
+          provider: route.providerLabel,
           status: status,
           body: body,
-          invalidKey: TranscriptionError.networkError(invalidKeyMessage(useCustomEndpoint: useCustomEndpoint)))
+          invalidKey: TranscriptionError.networkError(invalidKeyMessage(route: route)))
       })
   }
 
@@ -243,18 +303,20 @@ final class OpenAIChatProvider: LLMChatProvider {
     schemaName: String,
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
-    let useCustom = OpenAIChatPreferences.isCustomEndpointModel(model)
-    let apiKey = try Self.requireAPIKey(useCustomEndpoint: useCustom)
-    let requestModel = OpenAIChatPreferences.resolvedRequestModelID(for: model)
+    let route = Route(model: model)
+    let apiKey = try Self.requireAPIKey(route: route)
+    let requestModel = route == .openRouter
+      ? OpenRouterChatPreferences.modelID
+      : OpenAIChatPreferences.resolvedRequestModelID(for: model)
     return try await OpenAICompatibleStructured.generate(
-      endpoint: Self.chatCompletionsURL(useCustomEndpoint: useCustom),
-      authHeaders: Self.authHeaders(apiKey: apiKey, useCustomEndpoint: useCustom),
+      endpoint: Self.chatCompletionsURL(route: route),
+      authHeaders: Self.authHeaders(apiKey: apiKey, route: route),
       model: requestModel,
       contents: contents,
       systemInstruction: systemInstruction,
       schema: schema,
       schemaName: schemaName,
-      reasoningEffort: Self.reasoningEffort(thinkingLevel, model: requestModel, useCustomEndpoint: useCustom),
+      reasoningEffort: Self.reasoningEffort(thinkingLevel, model: requestModel, route: route),
       session: session,
       logTag: "OPENAI")
   }
