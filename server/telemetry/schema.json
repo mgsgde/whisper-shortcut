@@ -29,6 +29,7 @@
     "chatRetry",
     "chatAbandoned",
     "promptRetry",
+    "promptFollowUp",
     "promptNoSelection",
     "requestTimedOut",
     "noSpeechDetected",

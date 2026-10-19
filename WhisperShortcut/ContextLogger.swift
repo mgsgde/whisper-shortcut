@@ -82,6 +82,12 @@ enum OutcomeSignal: String {
   /// the next instruction) is deliberately excluded: that is normal iterative editing, not a
   /// verdict. Without this, retry chains are only visible by eyeballing timestamps.
   case promptRetry
+  /// The user selected the previous Dictate Prompt output (word-Jaccard > 0.6, < 5 min) and gave
+  /// a new instruction: iterative refinement, the edit trace Smart Improvement learns style from.
+  /// Kept apart from `promptRetry` on purpose (`promptRetry` stays a verdict on a missed edit).
+  /// `detail.kind` = `style` / `transform` / `other` (keyword class, never the instruction text),
+  /// `detail.secondsSincePrevious`.
+  case promptFollowUp
   /// Dictate Prompt ran as a compose turn: nothing was selected for this recording, so the model
   /// wrote new text instead of editing a selection (`detail.reason` = `composeTurn`, `detail.model`).
   /// `detail.reason` = `bareEditCommandBlocked` is the exception: the instruction was only an edit
@@ -222,6 +228,11 @@ class ContextLogger {
   /// and keeping user content in a long-lived property is needless exposure.
   private var lastPromptSelectionHash: Int?
   private var lastPromptAt: Date?
+  /// Hashed words of the previous Dictate Prompt response, for `promptFollowUp`.
+  /// Hashes, not words — same exposure rule as `lastPromptSelectionHash`: this only ever
+  /// answers "how similar?", and keeping the user's text in a long-lived property is
+  /// needless exposure. Guarded by `lastInteractionLock`.
+  private var lastPromptResponseWordHashes: Set<Int>?
   /// Two runs over the same selection further apart than this are a user returning to a document,
   /// not rephrasing a failed instruction.
   private static let promptRetryWindow: TimeInterval = 120
@@ -304,7 +315,16 @@ class ContextLogger {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
+    // Read before noteSelectionForRetryDetection overwrites it.
+    lastInteractionLock.lock()
+    let previousPromptAt = lastPromptAt
+    lastInteractionLock.unlock()
     noteSelectionForRetryDetection(selectedText)
+    noteFollowUp(selectedText: selectedText, userInstruction: userInstruction, previousPromptAt: previousPromptAt)
+    let responseHashes = Set(PromptFollowUp.words(modelResponse).map(\.hashValue))
+    lastInteractionLock.lock()
+    lastPromptResponseWordHashes = responseHashes
+    lastInteractionLock.unlock()
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
       mode: modeString,
@@ -351,6 +371,28 @@ class ContextLogger {
     // Logged before the interaction entry it refers to, so `refTs` still points at the attempt
     // being retried rather than at this one.
     logSignal(.promptRetry, mode: "prompt", detail: ["secondsSincePrevious": "\(gap ?? 0)"])
+  }
+
+  /// Emits `promptFollowUp` when this selection is the previous Dictate Prompt output.
+  /// `previousPromptAt` is passed in because `noteSelectionForRetryDetection` has already moved
+  /// `lastPromptAt`. An empty selection emits nothing and clears nothing — the response hashes
+  /// are replaced by the caller either way.
+  private func noteFollowUp(selectedText: String?, userInstruction: String, previousPromptAt: Date?) {
+    let trimmed = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let trimmed, !trimmed.isEmpty, let previousPromptAt else { return }
+    let selectionHashes = Set(PromptFollowUp.words(trimmed).map(\.hashValue))
+    lastInteractionLock.lock()
+    let previousHashes = lastPromptResponseWordHashes
+    lastInteractionLock.unlock()
+    guard let previousHashes else { return }
+    let gap = Date().timeIntervalSince(previousPromptAt)
+    guard PromptFollowUp.isFollowUp(
+      selectionWords: selectionHashes, previousResponseWords: previousHashes, gap: gap
+    ) else { return }
+    logSignal(.promptFollowUp, mode: "prompt", detail: [
+      "kind": PromptFollowUp.classify(instruction: userInstruction).rawValue,
+      "secondsSincePrevious": "\(Int(gap))",
+    ])
   }
 
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.

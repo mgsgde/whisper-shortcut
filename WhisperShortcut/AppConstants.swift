@@ -572,6 +572,11 @@ Transcript:
   /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
   static let contextSecondaryOtherModesMaxChars: Int = 2000
 
+  /// Max chars for the Dictate Prompt follow-up correction chains in Smart Improvement. Holds ALL
+  /// chains of the last 30 days, unsampled: `evenSample` would tear the previous-output →
+  /// instruction → new-output pairs apart.
+  static let contextFollowUpChainsMaxChars: Int = 30_000
+
   // MARK: - Smart Improvement: Audio Verification
   /// Hard safety cap on dictation audio WAVs kept on disk. Audio is RETAINED ACROSS RUNS (pruned by
   /// age, see `audioSampleRetentionDays`) so candidate terms that appear only in older dictations can

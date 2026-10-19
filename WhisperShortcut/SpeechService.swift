@@ -940,7 +940,7 @@ class SpeechService {
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
-        styleBlock: writingStyleBlock(incoming: clipboardContext)))
+        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()))
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
@@ -969,6 +969,32 @@ class SpeechService {
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
     return "\n\n" + block.text
+  }
+
+  /// The user's style rules from memory.md. Empty for local models (same rule as
+  /// `writingStyleBlock`: small local models over-apply) and in Offline Mode.
+  private func memoryStyleFacts() -> [String] {
+    let provider = getPromptModel().provider
+    guard provider != .local, provider != .localMLX, !OfflineMode.isEnabled else { return [] }
+    return MemoryStyleRules.styleFacts(from: ChatMemoryStore.shared.facts())
+  }
+
+  private func memoryStyleBlock() -> String {
+    let facts = memoryStyleFacts()
+    if !facts.isEmpty { DebugLogger.log("PROMPT-MODE: memory style rules=\(facts.count)") }
+    return MemoryStyleRules.promptBlock(styleFacts: facts)
+  }
+
+  /// Deterministic backstop for "plain hyphens only": models keep emitting em dashes anyway.
+  private func applyingDashBackstop(_ text: String, selection: String?) -> String {
+    guard MemoryStyleRules.prefersShortDashes(styleFacts: memoryStyleFacts()) else { return text }
+    let result = DashBackstop.apply(to: text, selection: selection)
+    if result != text {
+      let before = text.filter { $0 == "—" || $0 == "–" }.count
+      let after = result.filter { $0 == "—" || $0 == "–" }.count
+      DebugLogger.log("PROMPT-MODE: dash backstop replaced \(before - after)")
+    }
+    return result
   }
 
   /// Renders the envelope's current-turn content as Gemini parts. Audio is appended by the caller.
@@ -1247,7 +1273,7 @@ class SpeechService {
     // With a connected integration, run on the chat's agent core so the instruction can look
     // things up (read-only). Otherwise the single request below, unchanged.
     let agentTools = await DictatePromptAgent.availableTools()
-    let normalizedText: String
+    var normalizedText: String
     if !agentTools.isEmpty {
       // Encoded here, off the main actor: the inline audio can be megabytes of base64.
       let contents = try DictatePromptAgent.makeContents(
@@ -1265,7 +1291,8 @@ class SpeechService {
           tools: agentTools,
           logPrefix: "PROMPT-MODE-GEMINI")
       }
-      normalizedText = TextProcessingUtility.normalizeTranscriptionText(raw)
+      normalizedText = applyingDashBackstop(
+        TextProcessingUtility.normalizeTranscriptionText(raw), selection: clipboardContext)
       try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
@@ -1276,6 +1303,7 @@ class SpeechService {
         credential: credential,
         logPrefix: "PROMPT-MODE-GEMINI"
       )
+      normalizedText = applyingDashBackstop(normalizedText, selection: clipboardContext)
     }
 
     let instructionSource: PromptInstructionSource
@@ -1434,7 +1462,8 @@ class SpeechService {
     // pastes. No-op for the plain-text replies that are the norm.
     let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
       rawText, selectedText: clipboardContext)
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(unwrappedText)
+    let normalizedText = applyingDashBackstop(
+      TextProcessingUtility.normalizeTranscriptionText(unwrappedText), selection: clipboardContext)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     let instructionSource: PromptInstructionSource

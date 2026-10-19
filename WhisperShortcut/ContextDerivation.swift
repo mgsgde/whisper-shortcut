@@ -540,7 +540,29 @@ class ContextDerivation {
     sampledPrimary.append(contentsOf: evenSample(tier2, max: budget2))
     sampledPrimary.append(contentsOf: evenSample(tier3, max: budget3))
     sampledPrimary.sort { $0.ts < $1.ts }
-    let (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
+    var (primaryText, primaryEntryCount, primaryCharCount) = buildAggregatedText(from: sampledPrimary, maxChars: maxChars, labelPrefix: "primary")
+
+    // Follow-up chains are built from the full log, not the sample: sampling would separate a
+    // correction from the output it corrects.
+    if focus == .promptMode {
+      let chainCutoff = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+      // Counted over the chains that fit the budget, so "Total:" matches the rows shown.
+      let chains = PromptFollowUp.fitting(
+        PromptFollowUp.chains(in: sortedPrimary, since: chainCutoff, parseDate: parseDate),
+        maxFieldChars: maxFieldChars, maxChars: AppConstants.contextFollowUpChainsMaxChars)
+      let rendered = PromptFollowUp.render(
+        chains, maxFieldChars: maxFieldChars, maxChars: AppConstants.contextFollowUpChainsMaxChars)
+      if !rendered.isEmpty {
+        let styleCount = chains.filter { $0.kind == .style }.count
+        let transformCount = chains.filter { $0.kind == .transform }.count
+        let otherCount = chains.count - styleCount - transformCount
+        primaryText +=
+          "\n\n=== FOLLOW-UP CORRECTION CHAINS (all from the last 30 days, unsampled) ===\n"
+          + "Total: \(chains.count) chains (\(styleCount) style, \(transformCount) transform, \(otherCount) other).\n\n"
+          + rendered
+        primaryCharCount = primaryText.count
+      }
+    }
 
     var secondaryParts: [String] = []
     if let p = prompts.current(for: focus), !p.isEmpty {
@@ -774,6 +796,15 @@ class ContextDerivation {
       return decision "no_change".
 
       Put the suggested system prompt in the `suggestion` field of your JSON response (set `decision` to "suggest"; use "no_change" if the data does not justify a change).
+
+      FOLLOW-UP CORRECTION CHAINS – The primary data may end with a block of chains: \
+      previousOutput (what this mode produced) → userInstruction (the user immediately selected \
+      that output and asked for a change) → newOutput. These are the user's own edits of the \
+      model's output and the strongest evidence of how they want to sound. When the same kind of \
+      style correction (e.g. shorter, no long dashes, greet by name, less formal) appears in 2 or \
+      more distinct chains, turn it into a concrete behavioral rule candidate in the prompt. A \
+      correction seen once is not a rule. Transform chains (translate, bullets) are requests, not \
+      style complaints — ignore them for style rules.
 
       Write a system prompt following this structure (Persona → Task → Behavioral rules):
 
