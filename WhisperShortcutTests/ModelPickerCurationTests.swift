@@ -17,6 +17,7 @@ private enum FakeModel: String, CaseIterable, PickerCuratedModel {
   var pickerOfflineRank: Int? { self == .local ? 0 : nil }
   var pickerSupersededBy: FakeModel? { self == .oldFlash ? .newFlash : nil }
   var pickerSetupBadge: String? { nil }
+  var pickerStandInRank: Int? { self == .extra1 ? 0 : nil }
 }
 
 @Suite("Curated model pickers")
@@ -68,12 +69,125 @@ struct ModelPickerCurationTests {
     #expect(curation.featured.map(\.model) == [.flagship, .local, .extra1])
   }
 
-  @Test("A recommendation the picker does not offer is not featured")
+  @Test("A recommendation the picker does not offer gives way to the stand-in")
   func recommendationNotOffered() {
     let curation = Curation(models: [.quick, .local, .extra1, .extra2, .newFlash], recommended: .flagship, selected: .quick)
-    let hasRecommended = curation.featured.contains { $0.badges.contains(.recommended) }
-    #expect(!hasRecommended)
-    #expect(curation.featured.map(\.model) == [.quick, .local])
+    #expect(curation.featured.map(\.model) == [.extra1, .quick, .local])
+    #expect(curation.featured.map(\.badges) == [[.recommended], [.fastest], [.offline]])
+  }
+
+  @Test("An unusable recommendation gives way to the stand-in, Fastest to the fastest usable")
+  func unusableRecommendation() {
+    let curation = Curation(
+      models: FakeModel.allCases, recommended: .flagship, selected: .extra1,
+      isUsable: { $0 != .flagship && $0 != .quicker })
+    #expect(curation.featured.map(\.model) == [.extra1, .quick, .local])
+    #expect(curation.featured.map(\.badges) == [[.recommended], [.fastest], [.offline]])
+  }
+
+  @Test("Without a stand-in the on-device model is recommended")
+  func offlineRecommendation() {
+    let curation = Curation(
+      models: FakeModel.allCases, recommended: .flagship, selected: .local,
+      isUsable: { $0 == .local })
+    #expect(curation.featured.map(\.model) == [.local])
+    #expect(curation.featured.first?.badges == [.recommended, .offline])
+  }
+
+  @Test("With nothing usable the slots keep the global choice")
+  func nothingUsable() {
+    let curation = Curation(
+      models: FakeModel.allCases, recommended: .flagship, selected: .flagship, isUsable: { _ in false })
+    #expect(curation.featured.map(\.model) == [.flagship, .quicker, .local])
+    #expect(curation.featured.map(\.badges) == [[.recommended], [.fastest], [.offline]])
+  }
+
+  // MARK: - Credentials on the real pickers
+  //
+  // Each case passes the providers a user has keys for; on-device models are always usable.
+
+  private static func dictate(_ providers: Set<TranscriptionProvider>, selected: TranscriptionModel)
+    -> ModelPickerCuration<TranscriptionModel> {
+    ModelPickerCuration(
+      models: TranscriptionModel.selectableForDictation(offlineMode: false),
+      recommended: SettingsDefaults.selectedTranscriptionModel, selected: selected,
+      isUsable: { $0.provider == .offline || providers.contains($0.provider) })
+  }
+
+  private static func chat(_ providers: Set<ChatModelProvider>, selected: PromptModel)
+    -> ModelPickerCuration<PromptModel> {
+    ModelPickerCuration(
+      models: PromptModel.chatModels, recommended: SettingsDefaults.selectedChatModel,
+      selected: selected,
+      isUsable: { $0.provider == .localMLX || $0.provider == .local || providers.contains($0.provider) })
+  }
+
+  private static func readAloud(_ providers: Set<TTSProvider>, selected: TTSModel)
+    -> ModelPickerCuration<TTSModel> {
+    ModelPickerCuration(
+      models: TTSModel.readAloudModels, recommended: SettingsDefaults.readAloudModel,
+      selected: selected, isUsable: { $0.provider == .system || providers.contains($0.provider) })
+  }
+
+  private static func model<M>(_ curation: ModelPickerCuration<M>, badge: ModelPickerBadge) -> M? {
+    curation.featured.first { $0.badges.contains(badge) }?.model
+  }
+
+  @Test("Gemini only: Dictate recommends Gemini, nothing featured needs a key")
+  func geminiOnly() {
+    let dictate = Self.dictate([.google], selected: .gemini31FlashLite)
+    #expect(dictate.featured.first == .init(model: .gemini31FlashLite, badges: [.recommended, .fastest]))
+    let allUsable = dictate.featured.allSatisfy { $0.model.provider == .google || $0.model.isOffline }
+    #expect(allUsable)
+
+    let chat = Self.chat([.gemini], selected: .gemini38Flash)
+    #expect(Self.model(chat, badge: .recommended) == .gemini38Flash)
+    #expect(Self.model(chat, badge: .fastest) == .gemini31FlashLite)
+
+    let read = Self.readAloud([.gemini], selected: .gemini38FlashLiteTTS)
+    #expect(read.featured.first == .init(model: .gemini38FlashLiteTTS, badges: [.recommended, .fastest]))
+  }
+
+  @Test("OpenAI only: the defaults that are OpenAI stay, the rest move to OpenAI or on-device")
+  func openAIOnly() {
+    let dictate = Self.dictate([.openAI], selected: .openAIGPTTranscribe)
+    #expect(Self.model(dictate, badge: .recommended) == .openAIGPTTranscribe)
+    #expect(Self.model(dictate, badge: .fastest) == .openAIGPT4oTranscribe)
+
+    let chat = Self.chat([.openai], selected: .openaiGPT6Sol)
+    #expect(Self.model(chat, badge: .recommended) == .openaiGPT6Sol)
+    // Only Gemini tiers carry a speed rank, so no OpenAI model is called fastest on a guess.
+    #expect(Self.model(chat, badge: .fastest) == nil)
+
+    // Same as the reconciler: Read Aloud without a Gemini key falls to the macOS voice.
+    let read = Self.readAloud([.openai], selected: .systemMacOS)
+    #expect(read.featured.first == .init(model: .systemMacOS, badges: [.recommended, .offline]))
+  }
+
+  @Test("OpenRouter only: both Dictate and Chat recommend the OpenRouter entry")
+  func openRouterOnly() {
+    let dictate = Self.dictate([.openRouter], selected: .openRouterTranscription)
+    #expect(Self.model(dictate, badge: .recommended) == .openRouterTranscription)
+    #expect(Self.model(dictate, badge: .fastest) == nil)
+
+    let chat = Self.chat([.openRouter], selected: .openRouterChat)
+    #expect(Self.model(chat, badge: .recommended) == .openRouterChat)
+  }
+
+  @Test("No key: every picker recommends what runs on this Mac")
+  func noKey() {
+    let dictate = Self.dictate([], selected: SettingsDefaults.selectedTranscriptionModel)
+    let dictateRecommended = Self.model(dictate, badge: .recommended)
+    #expect(dictateRecommended?.isOffline == true)
+    #expect(dictate.featured.first?.badges == [.recommended, .offline])
+    #expect(Self.model(dictate, badge: .fastest) == nil)
+
+    let chat = Self.chat([], selected: SettingsDefaults.selectedChatModel)
+    #expect(chat.featured.first?.badges == [.recommended, .offline])
+    #expect(chat.featured.first?.model.pickerOfflineRank == 0)
+
+    let read = Self.readAloud([], selected: SettingsDefaults.readAloudModel)
+    #expect(Self.model(read, badge: .recommended) == .systemMacOS)
   }
 
   // MARK: - Data on the real enums
@@ -83,7 +197,7 @@ struct ModelPickerCurationTests {
     let dictation = ModelPickerCuration(
       models: TranscriptionModel.selectableForDictation(offlineMode: false),
       recommended: SettingsDefaults.selectedTranscriptionModel,
-      selected: SettingsDefaults.selectedTranscriptionModel)
+      selected: SettingsDefaults.selectedTranscriptionModel, isUsable: { _ in true })
     #expect(dictation.featured.count <= 3)
     #expect(dictation.featured.first?.model == .openAIGPTTranscribe)
     let fastestIsGrok = dictation.featured.contains { $0.model == .xaiTranscribe && $0.badges == [.fastest] }
@@ -93,7 +207,7 @@ struct ModelPickerCurationTests {
 
     let readAloud = ModelPickerCuration(
       models: TTSModel.allCases, recommended: SettingsDefaults.readAloudModel,
-      selected: SettingsDefaults.readAloudModel)
+      selected: SettingsDefaults.readAloudModel, isUsable: { _ in true })
     #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS])
     #expect(readAloud.featured.first?.badges == [.recommended, .fastest])
   }

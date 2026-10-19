@@ -55,18 +55,6 @@ struct TTSModelSelectionView: View {
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedModel.costLevel))
         }
 
-        if selectedModel.isRecommended {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
-        }
-
         if !selectedModel.hasRequiredCredential {
           HStack(alignment: .firstTextBaseline, spacing: 4) {
             Image(systemName: "exclamationmark.triangle.fill")

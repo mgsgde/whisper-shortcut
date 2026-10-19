@@ -12,6 +12,11 @@ import Foundation
 // `pickerSupersededBy` hides a dominated sibling, and the recommendation stays where it always was
 // (`SettingsDefaults`, passed in by each picker because Chat and Meeting Summary recommend
 // different models from the same enum).
+//
+// Recommended and Fastest only go to models that can run with the credentials the user has
+// (`pickerSetupBadge == nil`). Before, a Gemini-only user opened Dictate to "Recommended: GPT
+// Transcribe — Needs key" and "Fastest: Grok STT — Needs key", with their own model fourth, while
+// onboarding had told them one account is enough.
 
 /// Why a model sits in a picker's top row. A model can carry several (Read Aloud's default is
 /// also its fastest).
@@ -55,6 +60,11 @@ protocol PickerCuratedModel: Hashable {
   /// "Needs setup"); `nil` when it is ready. Tiles stay selectable either way — one rule for
   /// every picker (UX review #14) instead of some dimming and some failing later.
   var pickerSetupBadge: String? { get }
+  /// Lower is the better replacement for the picker's recommendation when that one cannot run.
+  /// Mirrors `ModelSelectionReconciler`, so the Recommended tile names the model the reconciler
+  /// would select for this user. `nil` = not a stand-in: on-device models, which have their own
+  /// step in the fallback order, and models the reconciler never substitutes.
+  var pickerStandInRank: Int? { get }
 }
 
 /// The curated split of one picker's models: the top row and the "More models" remainder.
@@ -74,8 +84,17 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
   /// Below this many visible models the disclosure is not worth a click: everything is featured.
   static var disclosureThreshold: Int { 5 }
 
-  init(models: [Model], recommended: Model?, selected: Model) {
+  /// `isUsable` says whether a model can run with the credentials the user has now. The default
+  /// reads the keychain through `pickerSetupBadge`; tests pass a closure so they stay pure.
+  init(
+    models: [Model], recommended: Model?, selected: Model,
+    isUsable: (Model) -> Bool = { $0.pickerSetupBadge == nil }
+  ) {
     let visible = Self.visibleModels(models, selected: selected)
+    let usable = visible.filter(isUsable)
+    // With nothing usable (no key at all and no on-device model in this picker) the slots keep the
+    // global choice: an honest "Needs key" tile beats an empty top row.
+    let candidates = usable.isEmpty ? visible : usable
 
     var featured: [Featured] = []
     func feature(_ model: Model?, as badge: ModelPickerBadge) {
@@ -87,8 +106,9 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
       }
     }
 
-    feature(recommended, as: .recommended)
-    feature(Self.best(visible, by: \.pickerSpeedRank), as: .fastest)
+    feature(Self.recommendation(recommended, among: candidates), as: .recommended)
+    feature(Self.best(candidates, by: \.pickerSpeedRank), as: .fastest)
+    // On-device models never need a key, so the Offline slot does not depend on credentials.
     feature(Self.best(visible, by: \.pickerOfflineRank), as: .offline)
 
     if visible.count < Self.disclosureThreshold {
@@ -110,6 +130,20 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
       guard model != selected, let replacement = model.pickerSupersededBy else { return true }
       return !models.contains(replacement)
     }
+  }
+
+  /// The picker's default if it is among `candidates`, else the best candidate in this order:
+  /// 1. the lowest `pickerStandInRank` — each provider's own pick, providers in the reconciler's
+  ///    order (Gemini, OpenAI, xAI, OpenRouter), so the tile matches what the user is moved to;
+  /// 2. the lowest `pickerOfflineRank` — with no cloud key, the on-device model is the one that
+  ///    works (the reconciler makes the same move for Dictate Prompt and Chat);
+  /// 3. the first candidate in list order.
+  /// `nil` only when the picker offers nothing at all.
+  static func recommendation(_ recommended: Model?, among candidates: [Model]) -> Model? {
+    if let recommended, candidates.contains(recommended) { return recommended }
+    return best(candidates, by: \.pickerStandInRank)
+      ?? best(candidates, by: \.pickerOfflineRank)
+      ?? candidates.first
   }
 
   /// The model with the lowest rank; ties go to the earlier entry so list order breaks them.
@@ -181,6 +215,19 @@ extension TranscriptionModel: PickerCuratedModel {
     case .google, .openAI, .xai, .openRouter: return hasRequiredCredential ? nil : "Needs key"
     }
   }
+
+  /// `ModelSelectionReconciler.transcriptionReplacement` in `providerPreference` order, plus
+  /// OpenRouter last: the reconciler has no transcription stand-in for it, but a user who
+  /// connected only OpenRouter can dictate through it, and that tile is the one to recommend.
+  var pickerStandInRank: Int? {
+    switch self {
+    case .gemini31FlashLite: return 0
+    case .openAIGPTTranscribe: return 1
+    case .xaiTranscribe: return 2
+    case .openRouterTranscription: return 3
+    default: return nil
+    }
+  }
 }
 
 // MARK: - Prompt models (Dictate Prompt, Chat, Meeting Summary, Smart Improvement)
@@ -215,6 +262,16 @@ extension PromptModel: PickerCuratedModel {
     if case .endpoint = provider.credentialRequirement { return "Needs setup" }
     return "Needs key"
   }
+
+  /// `ModelSelectionReconciler.preferredPromptModel`: providers in `providerPreference` order,
+  /// each provider's `defaultChatModel` ahead of its other models (list order breaks the rest).
+  /// Anthropic comes last: the reconciler never substitutes it, but a Claude key is still a
+  /// better recommendation than an on-device model.
+  var pickerStandInRank: Int? {
+    let order = ModelSelectionReconciler.providerPreference + [.anthropic]
+    guard let index = order.firstIndex(of: provider) else { return nil }
+    return index * 2 + (self == provider.defaultChatModel ? 0 : 1)
+  }
 }
 
 // MARK: - Read Aloud
@@ -235,4 +292,8 @@ extension TTSModel: PickerCuratedModel {
   var pickerSupersededBy: TTSModel? { nil }
 
   var pickerSetupBadge: String? { hasRequiredCredential ? nil : "Needs key" }
+
+  /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
+  /// leaving every rank `nil` lets the curation reach the same model through its Offline step.
+  var pickerStandInRank: Int? { nil }
 }
