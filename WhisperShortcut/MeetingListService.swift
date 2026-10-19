@@ -273,10 +273,12 @@ final class MeetingListService: ObservableObject {
       } catch {
         let retryable = (error as? TranscriptionError)?.isRetryable ?? false
         guard retryable, attempt < maxAttempts else { throw error }
-        let seconds = pow(2.0, Double(attempt))  // 2, 4, 8
+        let seconds = RetryBackoff.delay(
+          attempt: attempt, retryAfter: (error as? TranscriptionError)?.retryAfter,
+          base: 2, exponential: true)  // 2, 4, 8 without a retryAfter
         DebugLogger.logWarning(
-          "\(label): attempt \(attempt)/\(maxAttempts) failed (\(error.localizedDescription)); retrying in \(Int(seconds))s")
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+          "\(label): attempt \(attempt)/\(maxAttempts) failed (\(error.localizedDescription)); retrying in \(Int(seconds.rounded()))s")
+        await RetryBackoff.sleep(seconds)
       }
     }
   }

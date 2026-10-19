@@ -3,12 +3,13 @@ import Foundation
 /// The two retry decisions that must be made identically everywhere: *may* this error be retried,
 /// and *how long* do we wait first.
 ///
-/// The app has four retry loops and they legitimately differ in control flow — `GeminiAPIClient`'s
+/// The app has five retry loops and they legitimately differ in control flow — `GeminiAPIClient`'s
 /// request loop escalates its own attempt budget and posts rate-limit UI notifications, its stream
 /// loop may only retry before the first event is yielded, `ChunkRetryPolicy` pauses sibling chunks
 /// through a coordinator, and `SpeechService.performWithRetryOn429` returns a raw HTTP response for
-/// the caller to interpret. Streaming and non-streaming TTS share that last loop (one 429 branch);
-/// the other three loops still differ in control flow from it and from each other. What they must
+/// the caller to interpret; `MeetingListService.withRetry` wraps the meeting notes/summary LLM
+/// calls in a plain loop. Streaming and non-streaming TTS share the 429 loop (one 429 branch); the
+/// other loops still differ in control flow from it and from each other. What they must
 /// NOT differ on is the policy, and they did: the
 /// "permanent rate limit" rule below existed in three different spellings and was missing entirely
 /// from the fourth, so a spend-capped key burned a doomed retry on every Dictate Prompt.

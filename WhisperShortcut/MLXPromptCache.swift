@@ -82,10 +82,16 @@ actor MLXPromptCache {
     }
   }
 
-  private func key(model: String, systemPrompt: String) -> String {
+  private func key(
+    model: String, systemPrompt: String, additionalContext: [String: any Sendable]?
+  ) -> String {
     var hasher = SHA256()
     hasher.update(data: Data(model.utf8))
     hasher.update(data: Data(systemPrompt.utf8))
+    // The template context changes the rendered prefix, so it is part of the identity.
+    for (k, v) in (additionalContext ?? [:]).sorted(by: { $0.key < $1.key }) {
+      hasher.update(data: Data("\(k)=\(String(describing: v))".utf8))
+    }
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
@@ -112,7 +118,7 @@ actor MLXPromptCache {
     guard reusePrefix else { return plainSession() }
     guard let systemPrompt, !systemPrompt.isEmpty else { return plainSession() }
     installPressureSourceIfNeeded()
-    let id = key(model: modelID, systemPrompt: systemPrompt)
+    let id = key(model: modelID, systemPrompt: systemPrompt, additionalContext: additionalContext)
 
     guard let snapshot = await snapshot(
       id: id, container: container, modelID: modelID, systemPrompt: systemPrompt,

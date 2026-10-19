@@ -302,28 +302,16 @@ actor MLXModelLoader {
     }
 
     let task = Task {
-      let context: ModelContext
-      if let directory = MLXModelPaths.localDirectory(for: type) {
-        // Already on disk: load the folder. The Hub downloader asks huggingface.co for the repo's
-        // file list on every load, even with the model complete and Offline Mode on — seen as a
-        // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
-        DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
-        context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
-      } else {
-        DebugLogger.log("MLX: loading \(type.huggingFaceID) (not on disk, downloading)")
-        let downloader = TransformersHubDownloader(
-          api: HubApi(downloadBase: MLXModelPaths.hubDirectory))
-        context = try await loadModel(
-          from: downloader,
-          using: TransformersTokenizerLoader(),
-          id: type.huggingFaceID
-        ) { progress in
-          let pct = Int(progress.fractionCompleted * 100)
-          if pct % 10 == 0 {
-            DebugLogger.log("MLX: download/load \(pct)%")
-          }
-        }
+      // `ModelStore.fetch` is the only downloader (disk check, progress, cancel).
+      guard let directory = MLXModelPaths.localDirectory(for: type) else {
+        DebugLogger.logWarning("MLX: \(type.huggingFaceID) is not on disk, refusing to download in the loader")
+        throw ModelStoreError.fileError("\(type.displayName) is not downloaded")
       }
+      // Load the folder. The Hub downloader asks huggingface.co for the repo's
+      // file list on every load, even with the model complete and Offline Mode on — seen as a
+      // 2.9 MB exchange at each launch in the 2026-09-29 offline capture.
+      DebugLogger.log("MLX: loading \(type.huggingFaceID) from disk")
+      let context = try await loadModel(from: directory, using: TransformersTokenizerLoader())
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")
       return ModelContainer(context: context)
     }

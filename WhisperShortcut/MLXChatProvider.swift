@@ -18,6 +18,32 @@ final class MLXChatProvider: LLMChatProvider {
 
   private init() {}
 
+  /// Chat-template variables for every MLX request. Part of the prompt-cache key, so a change
+  /// here cannot reuse a prefix rendered under the old context.
+  static let templateContext: [String: any Sendable] = ["enable_thinking": false]
+
+  /// The one recipe for an MLX request. The prewarmer primes the prompt cache with it and the real
+  /// request reuses that cache, so the two must build the same template context — a primed prefix
+  /// rendered under a different context would be silently wrong output.
+  static func promptSession(
+    container: ModelContainer, type: LocalLLMModelType, systemPrompt: String?,
+    reusePrefix: Bool, temperature: Double?
+  ) async -> MLXLMCommon.ChatSession {
+    var parameters = GenerateParameters()
+    parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
+    // MLX samples at 0.6 by default; 0 selects the argmax sampler (no RNG at all).
+    if let temperature {
+      parameters.temperature = Float(temperature)
+    }
+    return await MLXPromptCache.shared.session(
+      container: container,
+      modelID: type.huggingFaceID,
+      systemPrompt: systemPrompt,
+      reusePrefix: reusePrefix,
+      parameters: parameters,
+      additionalContext: templateContext)
+  }
+
   func sendChatStream(
     model: String,
     contents: [[String: Any]],
@@ -68,23 +94,13 @@ final class MLXChatProvider: LLMChatProvider {
           let container = try await LocalLLMModelManager.shared.container(for: mlxType)
           let loadMs = resident ? 0 : Self.milliseconds(since: loadStarted)
           recordLoadMs(loadMs)
-          var parameters = GenerateParameters()
-          parameters.maxTokens = AppConstants.localPromptMaxOutputTokens
-          // MLX samples at 0.6 by default; 0 selects the argmax sampler (no RNG at all).
-          if let temperature = options.temperature {
-            parameters.temperature = Float(temperature)
-          }
           // Through the in-memory prefix cache: the Dictate Prompt system prompt runs past a
           // thousand tokens, and re-prefilling it per request was the entire measured gap to the
           // local HTTP server. `MLXPromptCache` prefills it once and hands each request fresh
           // cache objects around the same arrays. Falls back to a plain session on any failure.
-          let session = await MLXPromptCache.shared.session(
-            container: container,
-            modelID: mlxType.huggingFaceID,
-            systemPrompt: systemText,
-            reusePrefix: mayReusePrefix,
-            parameters: parameters,
-            additionalContext: ["enable_thinking": false])
+          let session = await Self.promptSession(
+            container: container, type: mlxType, systemPrompt: systemText,
+            reusePrefix: mayReusePrefix, temperature: options.temperature)
           DebugLogger.logNetwork(
             "MLX-CHAT-STREAM: model=\(mlxType.huggingFaceID) turns=\(messages.count)")
           for try await chunk in session.streamResponse(to: messages) {

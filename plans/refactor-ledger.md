@@ -78,6 +78,19 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | R59 | Dictate Prompt post-reply tail ×5; unsupported words leave via mutable `lastPromptUnsupportedWords` | hot path | deferred | 10 | `finishPromptTurn` → `DictatePromptResult { text, unsupportedWords }`; bare-edit gate as its own named step, not hidden in `recordPromptTurn` |
 | R60 | Quick-action ↩ decided 3× (`submit`, `footerLabel`, `panel.onReturn`); 3 fix commits in 4 days | self-contained | deferred | 10 | One pure `returnAction` on `RecordingIndicatorModel`; unit-testable |
 | R61 | `quickActionInstructionByURL` + `promptSelectionByURL`: one key, one lifetime | hot path | applied | 10 | Branch `fix/review-2026-10-15` — one `[URL: FinishedPromptInputs]`, which also carries the new edit-quick-action flag for the nothing-selected guard. R52 slice 3 |
+| R62 | Mode availability decided 2–3× (menu `updateMenuItems` vs each toggle handler vs `actionAlreadyStops`) — 4 user-visible drifts | hot path | deferred | 11 | `MenuBarController:1064–1134` vs `:1347/1412/1473/3539`. Drift: menu uses `hasRequiredCredential`, handler the stricter `…ForDictatePrompt` (enabled item → "API Key Required"); Read Aloud ignores meeting/offline blocks; Voice Feedback row never retitled. Target: `availability(_ ModeAction) -> .start/.stop/.cancelProcessing/.blocked/.ignored`, menu and handlers both switch on it |
+| R63 | Menu retitling wipes the shortcut column; rows declared ×8 + titles written twice | hot path | deferred | 11 | `createMenuItemWithShortcut:579` puts the shortcut in the title for keys with no `keyEquivalent`, `updateMenuItem:1253` overwrites it on first `updateUI`. Target: static `ModeRow` table + one `renderTitle` + one `refreshMenu` (also from `menuWillOpen`). After R62 |
+| R64 | Clipboard restore point is a long-lived flag cleared at 4 exits | hot path | deferred | 11 | set `:2079`/`:2816`, cleared `:2131/2571/3034/3074`. Target: `PasteTransaction` held by `VoiceJob`, `deliver`/drop; one `PastePolicy` for the two `#if APP_STORE` getters. After R58 |
+| R65 | `MLXModelLoader.container` still downloads on its own when files are missing | self-contained | applied | 11 | `LocalLLMModelManager:296–309`: no disk check, no progress, not cancellable — fires after a Delete race. Throw instead; `ModelStore.fetch` sole downloader |
+| R66 | MLX request recipe ×2 (provider + prewarmer); `MLXPromptCache.key` omits template context | cross-file | applied | 11 | `MLXChatProvider:64–87`, `ConnectionPrewarmer:170–192`, `MLXPromptCache:85`. One `MLXChatProvider.session(for:systemPrompt:options:)`; hash `additionalContext` into the key |
+| R67 | `LocalSpeechService`: load/timeout tails ×2, decode-deadline tail ×2, engine state in 3 optionals | hot path | deferred | 11 | `:186–213` vs `:243–266`, `:520–530` vs `:706–721`. `enum Loaded { whisper, parakeet }` + `loadEngine` + `withDecodeDeadline` |
+| R68 | Offline engine dispatch: ~11 branch sites across 6 files, two different tests (`whisperKitModelName == nil` vs `engine == .parakeet`) | hot path | deferred | 11 | `OfflineEngineBackend` protocol owning path/fetch/load/capabilities. After R67 |
+| R69 | `OfflineModelStatusView` re-spells `ModelStore.statusLine`/`preparingMessage` wording | cross-file | deferred | 11 | `OfflineModelStatusView:78–90` vs `ModelStore:113,169`. `ModelStore.status(_:for:)` read by both surfaces |
+| R70 | Assistant-facing shortcut list copied verbatim | cross-file | applied | 11 | Bug half was wrong: `displayStringWithSeparator` already renders "Disabled". → `ShortcutConfig.assistantFacingRows`. `OfflineChatAppContext:34–42` = `ChatTools:1740–1748`. `ShortcutConfig.assistantFacingRows` |
+| R71 | `LiveMeetingSession` lifecycle = 7 loose fields + 8 per-meeting fields reset by hand in 3 places | hot path | deferred | 11 | `LMS:64–110`, resets `:170/313/243`. `enum Phase { idle, recording(MeetingRun), draining(...) }`; `run === currentRun` replaces `sessionGeneration` |
+| R72 | "Finishing"/"active" stored 3×/2× — `meetingIsFinishing` crept back onto `MenuBarController` (R1 regression) | cross-file | deferred | 11 | `MBC:262/267/283/341`, `LMTS:80`, `LMS:65`. One published `MeetingPhase` from the session, mirrored into the store. After R71 |
+| R73 | Meeting file set + transcript format spread over 5 types | cross-file | deferred | 11 | `Meetings/<stem>.txt` built ×5; file set listed by hand in discard + rename; `[ts] text` written ×2 parsed ×1; timestamp formatter ×3. `struct MeetingFiles` + `MeetingTranscriptFormat` |
+| R74 | `MeetingListService.withRetry` — a 5th retry loop that ignores `retryAfter` | cross-file | applied | 11 | `MLS:263–282` sleeps fixed 2/4/8 s on rate-limit errors. Keep loop, use `RetryBackoff.delay/sleep`; add to RetryBackoff's loop list. Extends R6/R28 |
 
 ## Swept areas
 
@@ -110,15 +123,12 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 | `ContextDerivation.swift` (941 lines, read in full) | run 8 | `7091b8c` | R48 (a–c, e) applied; (d) blocked by `thinkingConfig` — see the finding row. `rawSystemPromptForFocus` (166 lines of per-focus prompt text) is genuinely per-case, left alone |
 | `PopupNotificationWindow.swift` (1,240 lines, read in full) | run 8 | `7091b8c` | R49 applied → `PopupKind`, one button factory, one ordered `actionButtons`. Net −49 lines. `Constants.displayDuration` was already `SettingsDefaults.notificationDuration.rawValue`, so the fallback change is a no-op |
 | Local model layer lifetime guards + `ConnectionPrewarmer` | run 8 | `7091b8c` | R50 applied → `ModelLifetimeGuards` (3 adopters), `timedWarmUp`, one missing-model predicate, one timeout signal. `warmOfflineWhisper` still bypasses `ensureReady` on purpose |
+| `MenuBarController` menu construction + clipboard/paste | run 11 | `2a437cd` | R62–R64. Result delivery via `AudioJobSpec`/`runAudioJob` is already central — healthy |
+| Offline/local layer, remainder (`LocalSpeechService`, MLX loader/cache, `OfflineMode`, `SystemTTSService`, `OfflineChatAppContext`, `OfflineModelStatusView`) | run 11 | `2a437cd` | R65–R70. `ModelStore` seam, `MLXModelPaths`, `MLXPromptCache` LRU/in-flight join, `OfflineMode`, `SystemTTSService` locking — healthy |
+| Live meeting (`LiveMeetingSession`, `MeetingAudioBacklog`, `LiveMeetingTranscriptStore`, `MeetingListService`) | run 11 | `2a437cd` | R71–R74. Chunk transcription reuses `SpeechService.transcribe`; errors go through `SpeechErrorFormatter`; backlog merge pure + tested — healthy |
 
 ## Not yet swept
 
-- The rest of the new offline/local layer: `LocalSpeechService` (637, +410 since run 6),
-  `MLXModelLoader` (in `LocalLLMModelManager.swift`), `MLXPromptCache` (236), `OfflineMode` (180),
-  `SystemTTSService` (192), `ConnectionPrewarmer` (+175). `warmOfflineWhisper` / `warmMLXModel` in
-  the prewarmer look like the R37 shape but the Whisper one deliberately bypasses `ensureReady`
-  (its comment explains the self-heal is too destructive for a speculative warm-up) — read before
-  flagging.
 - `ChatView.swift`'s **input area** (`ChatInputAreaView`, ~470 lines) — the one rendering region run 5
   did not open. Everything else in the rendering half is now read.
 - `ChatViewModel` (R3) — run 8 took slices 2–4 (R40–R42). What is left: the send/queue half
@@ -305,3 +315,10 @@ Status values: `applied` · `deferred` · `rejected` · `superseded`.
 - Swept at `18c6748`: `ChatTools.swift` + `ChatToolRegistry`/`ChatToolSteps`/`ChatToolTurnMemo`/`DictatePromptAgent` (R53, R54; declarations are long but flat prose, not a hotspot); `ChatInputAreaView` (`ChatView.swift:3875–4376`, R55–R57; `composerToolbarButton` and the suggestion overlay are fine); Dictate Prompt since 2026-10-01 (R58–R61; `DictatePromptSelectionCapture` / `DictationFidelityCheck` are clean, tested seams — copy them). Remove these from "Not yet swept"; add `QuickActionStore` (skimmed), `Mail/` (IMAPClient, MIMEDecoder), `UpdaterService`.
 - Sub-threshold, not numbered: the `performPrompt` guard text ("Pick a Gemini model or OpenAI's GPT-4o Audio") omits local models and names a superseded model; `promptLogProvider` equals `rawValue` except for mlx; `DictatePromptAgent` does not offer the IMAP tools — implicit, never decided (R53 forces the decision).
 - `executePrompt` returns `String` but has a second output; check the return type before adding side-channel state.
+
+## Working notes added in run 11 (2026-10-19)
+
+- Swept at `2a437cd` (main checkout was on `fix/mlx-incomplete-shard-crash`; line refs are from there). Three unswept areas: MenuBarController menu + clipboard, offline layer remainder, live meeting.
+- R62, R65, R70, R74 are latent user-visible bugs, not only structure — cheapest wins first. R65, R66, R70, R74 applied in run 11 on branch `refactor/r65-r66-r70-r74`. Next: R62+R63 → R71→R72 → R73 → R67→R68 → R64 (after R58) → R69.
+- Sub-threshold, not numbered: `simulateCopy`/`simulatePaste` near-clones; `catch is CancellationError { throw CancellationError() }` no-ops in `LocalSpeechService`; MLX loads have no wall-clock deadline; MLX idle unload drops the selected model (undocumented); meeting "audio is kept on this Mac" copy ×4; `activeMeetingSegment` + `meetingSegmentIsProcessing` is one state in two vars.
+- Still unswept after run 11: `ChatViewModel` send/queue + Private half, `Settings/` re-sweep, `Onboarding/WelcomeSteps`, `RecordingIndicatorWindow` (1,029), `ContextLogger` (1,032), `Mail/IMAPClient` (869).
