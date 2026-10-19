@@ -246,6 +246,11 @@ enum UserDefaultsKeys {
   /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
   static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
 
+  /// Cloud providers (`ChatModelProvider` raw values) whose "use them instead of the on-device
+  /// models?" offer the user declined. A key for a provider not in this list asks again.
+  /// See `CloudModelOffer`.
+  static let cloudModelOfferDeclinedProviders = "cloudModelOfferDeclinedProviders"
+
   // MARK: - MCP Server
 
   /// Whether the local read-only MCP server (meeting transcripts for Claude & other AI apps) runs.

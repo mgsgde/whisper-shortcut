@@ -276,10 +276,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
        TranscriptionModel.gemini35FlashLite.rawValue),
       (UserDefaultsKeys.selectedTranscriptionModelForMeetings, "gemini-3.1-flash-lite",
        TranscriptionModel.gemini35FlashLite.rawValue),
-      (UserDefaultsKeys.selectedPromptModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
-      (UserDefaultsKeys.selectedChatModel, "gemini-3.5-flash", PromptModel.gemini36Flash.rawValue),
+      (UserDefaultsKeys.selectedPromptModel, "gemini-3.5-flash", "gemini-3.6-flash"),
+      (UserDefaultsKeys.selectedChatModel, "gemini-3.5-flash", "gemini-3.6-flash"),
       (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.5-flash",
-       PromptModel.gemini36Flash.rawValue),
+       "gemini-3.6-flash"),
     ]
 
     for m in migrations {
@@ -312,7 +312,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       (UserDefaultsKeys.selectedMeetingSummaryModel, "gemini-3.6-flash",
        PromptModel.gemini35FlashLite.rawValue),
       (UserDefaultsKeys.selectedImprovementModel, "gemini-3.1-pro-preview",
-       PromptModel.gemini36Flash.rawValue),
+       "gemini-3.6-flash"),
     ]
 
     for m in migrations {
@@ -372,7 +372,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     defaults.set(true, forKey: UserDefaultsKeys.didMigrateImprovementTo37Flash)
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedImprovementModel),
-          stored == PromptModel.gemini36Flash.rawValue else { return }
+          stored == "gemini-3.6-flash" else { return }
     defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
     DebugLogger.log(
       "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")

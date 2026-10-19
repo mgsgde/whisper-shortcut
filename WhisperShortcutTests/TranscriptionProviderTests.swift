@@ -53,13 +53,13 @@ struct TranscriptionProviderTests {
 
   @Test("Direct models map to their own vendor")
   func directModelsMapToVendors() {
-    #expect(TranscriptionModel.gemini36Flash.provider == .google)
+    #expect(TranscriptionModel.gemini37Flash.provider == .google)
     #expect(TranscriptionModel.gemini31Pro.provider == .google)
     #expect(TranscriptionModel.openAIGPTTranscribe.provider == .openAI)
     #expect(TranscriptionModel.openAIGPT4oMiniTranscribe.provider == .openAI)
     #expect(TranscriptionModel.xaiTranscribe.provider == .xai)
 
-    for model in [TranscriptionModel.gemini36Flash, .openAIGPTTranscribe, .xaiTranscribe] {
+    for model in [TranscriptionModel.gemini37Flash, .openAIGPTTranscribe, .xaiTranscribe] {
       #expect(model.provider.group == .direct, "\(model.rawValue)")
     }
   }
