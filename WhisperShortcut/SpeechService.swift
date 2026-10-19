@@ -2470,7 +2470,7 @@ class SpeechService {
   private func transcribeWithOpenRouter(audioURL: URL, promptOverride: String?) async throws -> String {
     let apiKey = (keychainManager.get(.openRouter) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("OpenRouter is not connected. Connect your account in Settings → General.")
+      throw TranscriptionError.networkError("OpenRouter is not connected. Connect your account in Settings → Accounts.")
     }
     guard let url = URL(string: AppConstants.openRouterChatCompletionsEndpoint) else {
       throw TranscriptionError.invalidRequest

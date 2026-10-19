@@ -64,7 +64,7 @@ struct WelcomeView: View {
   /// Gates the permissions step's Continue button. Updated by `PermissionsOverview`'s
   /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   /// Auto-paste is opt-in (default off). Surfaced here so new users learn the feature exists and
   /// that it needs Accessibility — the permission is requested only when they enable the toggle.
   @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =

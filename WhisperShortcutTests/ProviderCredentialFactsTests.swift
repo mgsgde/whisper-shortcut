@@ -70,7 +70,7 @@ struct ProviderCredentialFactsTests {
       // The whole point of unifying on the ProviderCredentials wording: the old ChatView copies
       // said "in Settings" without naming the tab, which is where the key field actually is.
       #expect(
-        message.contains("Settings → General") || message.contains("Settings → Chat"),
+        message.contains("Settings → Accounts") || message.contains("Settings → Chat"),
         "\(provider.rawValue) message does not name the Settings tab: \(message)")
     }
   }

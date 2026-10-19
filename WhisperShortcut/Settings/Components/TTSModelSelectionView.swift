@@ -100,7 +100,7 @@ struct TTSModelSelectionView: View {
             Image(systemName: "exclamationmark.triangle.fill")
               .foregroundColor(.orange)
               .font(.caption)
-            Text("Add the matching API key in Settings → General to use this model.")
+            Text("Add the matching API key in Settings → Accounts to use this model.")
               .font(.caption)
               .foregroundColor(.secondary)
           }

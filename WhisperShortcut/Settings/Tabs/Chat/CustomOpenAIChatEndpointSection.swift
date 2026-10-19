@@ -6,7 +6,7 @@ import SwiftUI
 /// selected chat model (or after `/custom` in chat). Regular OpenAI models keep using api.openai.com.
 ///
 /// OpenRouter is deliberately not configured here any more. It is its own chat provider with its
-/// account in Settings → General; offering it here as well meant two places to enter the same
+/// account in Settings → Accounts; offering it here as well meant two places to enter the same
 /// credential, and a key field whose owner depended on whichever URL happened to be typed above it.
 /// The key on this form belongs to this server and nothing else.
 ///
@@ -56,7 +56,7 @@ struct CustomOpenAIChatEndpointSection: View {
 
           if pointsAtOpenRouter {
             Label(
-              "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → General, with no URL or key to enter here.",
+              "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here.",
               systemImage: "arrow.triangle.branch")
               .font(.caption)
               .foregroundColor(.orange)
@@ -201,7 +201,7 @@ struct CustomOpenAIChatEndpointSection: View {
           .labelStyle(CaptionStatusLabelStyle(tint: .green))
       case .openAIKey:
         Label(
-          "No key entered, so your OpenAI key from Settings → General is used. That only works if this server forwards to OpenAI.",
+          "No key entered, so your OpenAI key from Settings → Accounts is used. That only works if this server forwards to OpenAI.",
           systemImage: "info.circle")
           .labelStyle(CaptionStatusLabelStyle(tint: .secondary))
       case nil:

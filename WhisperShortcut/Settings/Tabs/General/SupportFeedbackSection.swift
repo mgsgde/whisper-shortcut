@@ -9,7 +9,7 @@ import AppKit
 struct SupportFeedbackSection: View {
   @ObservedObject var viewModel: SettingsViewModel
 
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @State private var usageReport: String?
   @State private var isBuildingReport = false
 

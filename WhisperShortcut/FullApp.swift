@@ -141,9 +141,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    // Initialize interaction logging default if not set (default: enabled; user can disable in Settings)
+    // Usage logging for Smart Improvement is opt-in (owner decision 2026-10-19): new installs start
+    // with it off, matching the privacy promise "when on". Existing installs keep their stored value.
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
     // Launch at Login is OFF by default and only enabled when the user explicitly

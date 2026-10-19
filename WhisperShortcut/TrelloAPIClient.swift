@@ -268,7 +268,7 @@ actor TrelloAPIClient {
       case .invalidRequest(let msg):
         return msg
       case .unauthorized:
-        return "Trello token is invalid or revoked. Reconnect from Settings → Chat."
+        return "Trello token is invalid or revoked. Reconnect in Settings → Accounts."
       case .requestFailed(let code, let body):
         return "Trello API request failed (HTTP \(code))\(body.isEmpty ? "" : ": \(body)")"
       }

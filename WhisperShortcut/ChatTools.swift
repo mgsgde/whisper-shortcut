@@ -1242,11 +1242,11 @@ enum ChatToolRegistry {
   }
 
   private static let googleNotConnectedError: [String: Any] = [
-    "error": "Google is not connected. Open Settings → Chat to connect."
+    "error": "Google is not connected. Open Settings → Accounts to connect."
   ]
 
   private static let trelloNotConnectedError: [String: Any] = [
-    "error": "Trello is not connected. Open Settings → Chat to connect."
+    "error": "Trello is not connected. Open Settings → Accounts to connect."
   ]
 
   /// Wraps a Google Tasks error with an actionable retry hint. When the failure looks like an
