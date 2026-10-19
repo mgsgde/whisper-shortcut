@@ -134,4 +134,17 @@ struct SystemPromptsStoreSafetyTests {
     #expect(SystemPromptsStore.describe("", for: .whisperGlossary) == "empty")
     #expect(SystemPromptsStore.describe(nil, for: .chat) == "missing")
   }
+
+  @Test("An autosave burst keeps the original prompt in .bak, not the half-typed text")
+  func autosaveBurstKeepsOriginalBackup() throws {
+    let dir = try makeDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = SystemPromptsStore(contextDirectoryURL: dir)
+    try fileContent(sections: [.promptMode: customPrompt])
+      .write(to: store.systemPromptsFileURL, atomically: true, encoding: .utf8)
+
+    #expect(store.updateSection(.promptMode, content: "Half-typed replacement"))
+    #expect(store.updateSection(.promptMode, content: "Half-typed replacement, more"))
+    #expect(read(store.backupFileURL)?.contains(customPrompt) == true, "the original must survive the second autosave")
+  }
 }

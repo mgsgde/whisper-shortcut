@@ -82,6 +82,12 @@ final class MCPServer: ObservableObject {
 
   private func start() {
     runOnMain { [self] in
+      if OfflineMode.isEnabled {
+        stopLocked()
+        status = .failed("Off while Offline Mode is on. Turn Offline Mode off, then switch this on again.")
+        DebugLogger.log("MCP-SERVER: Not starting — Offline Mode is on")
+        return
+      }
       observeLiveMeeting()
       if server != nil { stopLocked() }
       let tools = MCPMeetingTools(
@@ -91,6 +97,9 @@ final class MCPServer: ObservableObject {
       do {
         let s = try LoopbackHTTPServer(port: requested) { [weak self] request in
           guard let self else { return .empty(503) }
+          // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
+          // them to its provider. Checked per request so turning the mode on takes effect at once.
+          if OfflineMode.isEnabled { return .empty(503) }
           return Self.handle(request, expectedToken: self.token(), tools: tools)
         }
         server = s

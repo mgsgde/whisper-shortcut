@@ -1638,7 +1638,9 @@ class SpeechService {
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       guard !instruction.isEmpty else {
-        throw TranscriptionError.networkError("Could not transcribe the voice instruction for the local model.")
+        // Nothing left after transcription (e.g. only "Punkt" spoken): a miss, not a network error —
+        // the offline practice must not be told to check its internet connection.
+        throw TranscriptionError.noSpeechDetected
       }
       DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
     }
