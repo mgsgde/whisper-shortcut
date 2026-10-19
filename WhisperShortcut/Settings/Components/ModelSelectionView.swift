@@ -7,12 +7,6 @@ struct ModelSelectionView: View {
   let systemImage: String?
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
-  /// When true, Gemini models are shown as disabled and cannot be selected (e.g. when no API key is set).
-  let geminiDisabled: Bool
-  /// When true, OpenAI cloud transcription models are shown as disabled (e.g. when no OpenAI API key is set).
-  let openAIDisabled: Bool
-  /// When true, xAI (Grok) transcription models are shown as disabled (e.g. when no xAI API key is set).
-  let xaiDisabled: Bool
   /// When true, user is on subscription (proxy); only Gemini models are fixed; offline Whisper models remain selectable.
   let subscriptionMode: Bool
 
@@ -21,6 +15,8 @@ struct ModelSelectionView: View {
     systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.selectableForDictation,
+    // Ignored since tiles without a key stay selectable and say "Needs key" (UX review #14);
+    // the tabs still pass them. Drop with the call sites once the Settings restructure lands.
     geminiDisabled: Bool = false,
     openAIDisabled: Bool = false,
     xaiDisabled: Bool = false,
@@ -31,9 +27,6 @@ struct ModelSelectionView: View {
     self.systemImage = systemImage
     self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
-    self.geminiDisabled = geminiDisabled
-    self.openAIDisabled = openAIDisabled
-    self.xaiDisabled = xaiDisabled
     self.subscriptionMode = subscriptionMode
     self.onModelChanged = onModelChanged
   }
@@ -56,41 +49,13 @@ struct ModelSelectionView: View {
           .padding(.vertical, 8)
       }
 
-      // Grouped by `TranscriptionProvider.Group` rather than the old cloud/offline split.
-      //
-      // The split that mattered was never cloud vs. offline — it was **direct vs. routed**.
-      // "Gemini 3.5 Flash-Lite" is a tile here *and* an entry in OpenRouter's own model list below,
-      // and with one undifferentiated "Cloud" block nothing said that the tile bills your Google key
-      // while the router bills your OpenRouter balance. Naming the groups is what removes that.
-      let visibleGroups = Self.groupOrder.compactMap { group -> (TranscriptionProvider.Group, [TranscriptionModel])? in
-        let matching = models.filter { $0.provider.group == group }
-        return matching.isEmpty ? nil : (group, matching)
-      }
-      let grouped = visibleGroups.count > 1
-
-      VStack(alignment: .leading, spacing: 0) {
-        if grouped {
-          ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
-            if index > 0 {
-              Divider().padding(.vertical, 10)
-            }
-            groupHeader(
-              symbol: Self.symbol(for: entry.0),
-              title: Self.title(for: entry.0),
-              subtitle: Self.subtitle(for: entry.0))
-            modelGrid(entry.1)
-          }
-        } else {
-          modelGrid(models)
-        }
-      }
-      .padding(grouped ? 10 : 0)
-      .background(Color(.controlBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(Color(.separatorColor), lineWidth: 1)
-      )
+      CuratedModelPicker(
+        curation: ModelPickerCuration(
+          models: models,
+          recommended: SettingsDefaults.selectedTranscriptionModel,
+          selected: selectedTranscriptionModel),
+        cell: { model, badges in modelCell(model, badges: badges) },
+        more: { groupedGrids($0) })
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {
@@ -204,19 +169,42 @@ struct ModelSelectionView: View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 
-  private func modelGrid(_ models: [TranscriptionModel]) -> some View {
-    ModelGrid(models: models) { modelCell($0) }
+  // Grouped by `TranscriptionProvider.Group` rather than the old cloud/offline split.
+  //
+  // The split that mattered was never cloud vs. offline — it was **direct vs. routed**.
+  // "Gemini 3.5 Flash-Lite" is a tile here *and* an entry in OpenRouter's own model list below,
+  // and with one undifferentiated "Cloud" block nothing said that the tile bills your Google key
+  // while the router bills your OpenRouter balance. Naming the groups is what removes that.
+  @ViewBuilder
+  private func groupedGrids(_ models: [TranscriptionModel]) -> some View {
+    let visibleGroups = Self.groupOrder.compactMap { group -> (TranscriptionProvider.Group, [TranscriptionModel])? in
+      let matching = models.filter { $0.provider.group == group }
+      return matching.isEmpty ? nil : (group, matching)
+    }
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
+        if index > 0 {
+          Divider().padding(.vertical, 10)
+        }
+        groupHeader(
+          symbol: Self.symbol(for: entry.0),
+          title: Self.title(for: entry.0),
+          subtitle: Self.subtitle(for: entry.0))
+        ModelGrid(models: entry.1) { modelCell($0, badges: []) }
+      }
+    }
   }
 
   @ViewBuilder
-  private func modelCell(_ model: TranscriptionModel) -> some View {
-    let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
+  private func modelCell(_ model: TranscriptionModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
       title: model.displayName,
       subtitle: Self.routedSubtitle(for: model),
       isSelected: selectedTranscriptionModel == model,
-      isDisabled: isDisabled,
-      isRecommended: model.isRecommended,
+      isDisabled: false,
+      badges: badges,
+      setupBadge: model.pickerSetupBadge,
+      setupHelp: model.apiKeyRequiredMessage,
       onTap: {
         selectedTranscriptionModel = model
         onModelChanged?()

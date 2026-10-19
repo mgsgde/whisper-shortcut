@@ -104,28 +104,10 @@ struct PromptModelSelectionView: View {
           .padding(.vertical, 4)
       }
 
-      // Model Selection Grid, grouped by provider with image-generation models split out
-      // (Nano Banana generates images, not chat replies). When only one group is present we
-      // render a single plain grid so short lists keep their original look.
-      let groups = modelGroups
-      VStack(alignment: .leading, spacing: 0) {
-        if groups.count > 1 {
-          ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-            if index > 0 { Divider().padding(.vertical, 10) }
-            groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
-            modelGrid(group.models)
-          }
-        } else {
-          modelGrid(models)
-        }
-      }
-      .padding(groups.count > 1 ? 10 : 0)
-      .background(Color(.controlBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(Color(.separatorColor), lineWidth: 1)
-      )
+      CuratedModelPicker(
+        curation: ModelPickerCuration(models: models, recommended: recommendedModel, selected: displayModel),
+        cell: { model, badges in modelCell(model, badges: badges) },
+        more: { groupedGrids($0) })
 
       if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
         HStack {
@@ -202,9 +184,27 @@ struct PromptModelSelectionView: View {
     let models: [PromptModel]
   }
 
+  /// The "More models" remainder, grouped by provider with image-generation models split out
+  /// (Nano Banana generates images, not chat replies). A single group renders as a plain grid.
+  @ViewBuilder
+  private func groupedGrids(_ models: [PromptModel]) -> some View {
+    let groups = Self.modelGroups(models)
+    VStack(alignment: .leading, spacing: 0) {
+      if groups.count > 1 {
+        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+          if index > 0 { Divider().padding(.vertical, 10) }
+          groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
+          modelGrid(group.models)
+        }
+      } else {
+        modelGrid(models)
+      }
+    }
+  }
+
   /// Models split into provider groups (Gemini / Grok / OpenAI), preserving order, with
   /// image-generation models pulled into their own trailing group. Empty groups are dropped.
-  private var modelGroups: [ModelGroup] {
+  private static func modelGroups(_ models: [PromptModel]) -> [ModelGroup] {
     let textModels = models.filter { !$0.generatesImages }
     let imageModels = models.filter { $0.generatesImages }
 
@@ -238,22 +238,24 @@ struct PromptModelSelectionView: View {
   }
 
   private func modelGrid(_ models: [PromptModel]) -> some View {
-    ModelGrid(models: models) { modelCell($0) }
+    ModelGrid(models: models) { modelCell($0, badges: []) }
   }
 
   @ViewBuilder
-  private func modelCell(_ model: PromptModel) -> some View {
+  private func modelCell(_ model: PromptModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
       title: model.displayName,
       subtitle: mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
-      // The star means "recommended for *this* picker", which is what `recommendedModel` is for.
+      // `badges` comes from the curation, whose Recommended is this picker's `recommendedModel`.
       // Letting an MLX model carry its own catalogue star put a second star into Smart
       // Improvement and meeting-summary pickers, whose recommendation is a cloud model — the
       // exact confusion the `recommendedModel` doc above was introduced to end. The catalogue's
       // own star lives in `LocalLLMModelsSection`, where it means "best offline model".
-      isRecommended: model == recommendedModel,
+      badges: badges,
+      setupBadge: subscriptionMode ? nil : model.pickerSetupBadge,
+      setupHelp: model.provider.credentialRequiredMessage,
       onTap: {
         selectedModel = model
         onModelChanged?()
