@@ -44,6 +44,7 @@ struct ChatErrorFormatterTests {
     case .openai: return "OpenAI"
     case .anthropic: return "Claude"
     case .customOpenAI: return "Custom endpoint"
+    case .openRouter: return "OpenRouter"
     case .local: return "Local LLM"
     case .localMLX: return "On-device LLM"
     }

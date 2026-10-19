@@ -25,6 +25,9 @@ enum ChatModelCommandResolver {
     while normalizedEarly.contains("  ") {
       normalizedEarly = normalizedEarly.replacingOccurrences(of: "  ", with: " ")
     }
+    if normalizedEarly == "openrouter" || normalizedEarly == "open router" {
+      return .applied(model: .openRouterChat)
+    }
     if normalizedEarly == "custom"
       || normalizedEarly.contains("openinference")
       || normalizedEarly.contains("open inference")

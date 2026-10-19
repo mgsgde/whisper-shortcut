@@ -188,10 +188,14 @@ enum UserDefaultsKeys {
   /// `SpeechService.transcribeWithOpenRouter`.
   static let openRouterTranscriptionModelID = "openRouterTranscriptionModelID"
 
-  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenRouter, LiteLLM, self-hosted proxy, …)
+  // MARK: - OpenRouter chat
+  /// Model slug sent to OpenRouter for chat (e.g. `openai/gpt-4o`); read via `OpenRouterChatPreferences`.
+  static let openRouterChatModelID = "openRouterChatModelID"
+
+  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenInference, Azure, Vertex, LiteLLM, self-hosted)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"
-  /// Model tag for the Custom endpoint chat model (e.g. `openai/gpt-4o` on OpenRouter).
+  /// Model tag for the Custom endpoint chat model (e.g. `zai-org/GLM-5.2`).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
 
   // MARK: - Grok X search

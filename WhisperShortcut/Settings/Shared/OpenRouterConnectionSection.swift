@@ -2,13 +2,10 @@ import SwiftUI
 
 /// Connect / disconnect an OpenRouter account, plus the manual key field as a fallback.
 ///
-/// Rendered in **two** places on purpose: Settings → General next to the other provider keys, where
-/// somebody looking for "how do I add a provider" will actually find it, and Settings → Dictate
-/// above the model picker, where it is needed in context. It used to live only in the Dictate
-/// section, which is shown only once OpenRouter is *already* the selected transcription model — so
-/// the one thing that makes OpenRouter selectable was invisible until you had selected it.
-///
-/// Both copies observe the same `OpenRouterOAuthService`, so connecting in one updates the other.
+/// The one place the OpenRouter credential is entered: Settings → General, next to the other
+/// provider keys, where somebody looking for "how do I add a provider" will find it. Dictate and
+/// Chat both use this account and show only `OpenRouterAccountStatusRow`, which links back here —
+/// rendering this form in each of them made one credential look like three settings.
 struct OpenRouterConnectionSection: View {
   /// Set on the General tab, where this stands alone as a provider entry. The Dictate section
   /// brings its own header, so it renders this without one.
