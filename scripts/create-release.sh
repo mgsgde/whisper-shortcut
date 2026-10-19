@@ -31,6 +31,11 @@ Usage: bash scripts/create-release.sh [options]
   --allow-dirty   Permit unrelated modified files; still requires the release files
                   (Info.plist, .github/RELEASE_NOTES.md) to be committed
   -h, --help      Show this help
+
+To test a build before users get it, keep the release a draft: set the repo variable
+RELEASE_AS_DRAFT=true (gh variable set RELEASE_AS_DRAFT --body true) before pushing the tag,
+install the DMG from the draft, then publish with: gh release edit vX --draft=false --latest
+Details: .cursor/commands/release.md -> "Draft first".
 USAGE
 }
 
