@@ -13,9 +13,18 @@ struct ChatSettingsTab: View {
 
       modelSection
 
-      SpacedSectionDivider()
-
-      CustomOpenAIChatEndpointSection()
+      // Provider-specific setup appears under the picker only for the provider in use, the way
+      // Settings → Dictate does it — neither is needed by anyone on a built-in model.
+      switch viewModel.data.selectedChatModel.provider {
+      case .openRouter:
+        SpacedSectionDivider()
+        OpenRouterChatModelSection()
+      case .customOpenAI:
+        SpacedSectionDivider()
+        CustomOpenAIChatEndpointSection()
+      default:
+        EmptyView()
+      }
 
       SpacedSectionDivider()
 
@@ -25,7 +34,7 @@ struct ChatSettingsTab: View {
 
       // Chat system prompt editor
       SystemPromptSectionEditor(
-        title: "System prompt",
+        title: "System Prompt",
         systemImage: "text.alignleft",
         subtitle: "Instructions sent to the model in Chat mode. Edit to customize chat behavior.",
         section: .chat,
@@ -113,8 +122,8 @@ struct ChatSettingsTab: View {
   @ViewBuilder
   private var modelSection: some View {
     PromptModelSelectionView(
-      title: "Chat model",
-      subtitle: "Choose which model powers the chat. Pick “Custom endpoint” for your own OpenAI-compatible URL (configured below). Grok models require an xAI API key (Settings > General).",
+      title: "Chat Model",
+      subtitle: "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → General. “Custom endpoint” is for your own OpenAI-compatible server and is set up below once you pick it.",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       recommendedModel: SettingsDefaults.selectedChatModel,

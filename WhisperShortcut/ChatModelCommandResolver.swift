@@ -25,6 +25,9 @@ enum ChatModelCommandResolver {
     while normalizedEarly.contains("  ") {
       normalizedEarly = normalizedEarly.replacingOccurrences(of: "  ", with: " ")
     }
+    if normalizedEarly == "openrouter" || normalizedEarly == "open router" {
+      return .applied(model: .openRouterChat)
+    }
     if normalizedEarly == "custom"
       || normalizedEarly.contains("openinference")
       || normalizedEarly.contains("open inference")
@@ -92,7 +95,8 @@ enum ChatModelCommandResolver {
         candidates = [.grok43, .grok47]
       }
     } else if hasClaude {
-      // Older Opus/Sonnet and Fable are hidden via chatReplacement; "fable" resolves to Opus 5.5.
+      // Older Opus/Sonnet and Fable were removed (forwarded via migrateLegacyPromptRawValue);
+      // "fable" resolves to Opus 5.5.
       if normalized.contains("opus") || normalized.contains("fable") {
         candidates = [.claudeOpus55]
       } else if normalized.contains("haiku") {

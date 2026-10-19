@@ -171,6 +171,12 @@ enum UserDefaultsKeys {
   /// Append the learned writing style (profile + example messages) to Dictate Prompt. Off by
   /// default. See `WritingStyleStore`.
   static let writingStyleEnabled = "writingStyleEnabled"
+  /// Writing samples added since the profile was last derived or the review was dismissed.
+  static let writingStyleSamplesSinceProfile = "writingStyleSamplesSinceProfile"
+  /// When the Writing Style profile was last derived and accepted.
+  static let writingStyleProfileUpdatedAt = "writingStyleProfileUpdatedAt"
+  /// When the Writing Style Gmail import last finished without error.
+  static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
@@ -188,10 +194,14 @@ enum UserDefaultsKeys {
   /// `SpeechService.transcribeWithOpenRouter`.
   static let openRouterTranscriptionModelID = "openRouterTranscriptionModelID"
 
-  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenRouter, LiteLLM, self-hosted proxy, …)
+  // MARK: - OpenRouter chat
+  /// Model slug sent to OpenRouter for chat (e.g. `openai/gpt-4o`); read via `OpenRouterChatPreferences`.
+  static let openRouterChatModelID = "openRouterChatModelID"
+
+  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenInference, Azure, Vertex, LiteLLM, self-hosted)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"
-  /// Model tag for the Custom endpoint chat model (e.g. `openai/gpt-4o` on OpenRouter).
+  /// Model tag for the Custom endpoint chat model (e.g. `zai-org/GLM-5.2`).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
 
   // MARK: - Grok X search

@@ -187,6 +187,7 @@ enum CloudModelOffer {
     case .openai: return "OpenAI"
     case .grok: return "Grok"
     case .anthropic: return "Claude"
+    case .openRouter: return "OpenRouter"
     case .customOpenAI: return "your custom endpoint"
     case .local, .localMLX: return "local models"
     }
@@ -198,6 +199,7 @@ enum CloudModelOffer {
     case .openai: return "OpenAI"
     case .grok: return "xAI"
     case .anthropic: return "Anthropic"
+    case .openRouter: return "OpenRouter"
     case .customOpenAI: return "your custom endpoint"
     case .local, .localMLX: return "this Mac"
     }

@@ -81,7 +81,7 @@ struct ImprovementSettingsTab: View {
   private var contextDataSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Context data",
+        title: "Context Data",
         systemImage: "tray.full",
         subtitle: "Interaction logs, context data, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved."
       )
@@ -187,7 +187,7 @@ struct ImprovementSettingsTab: View {
 
         let improvementSubscriptionMode = false
         PromptModelSelectionView(
-          title: "Model for Smart Improvement",
+          title: "Smart Improvement Model",
           subtitle: "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for.",
           showSectionHeader: false,
           selectedModel: Binding(

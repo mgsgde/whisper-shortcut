@@ -70,4 +70,18 @@ struct OpenRouterModelCatalogTests {
     let names = models.map(\.name)
     #expect(names == names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
   }
+
+  @Test("Chat models need text in and text out; missing architecture is dropped")
+  func filtersToChatModels() throws {
+    let data = Data(
+      """
+      {"data": [
+        {"id": "a/chat", "name": "A", "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]}},
+        {"id": "b/image-gen", "name": "B", "architecture": {"input_modalities": ["text"], "output_modalities": ["image"]}},
+        {"id": "c/no-arch", "name": "C"}
+      ]}
+      """.utf8)
+    let ids = try OpenRouterModelCatalog.decodeChatModels(from: data).map(\.id)
+    #expect(ids == ["a/chat"])
+  }
 }

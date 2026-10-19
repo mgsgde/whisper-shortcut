@@ -101,7 +101,7 @@ class TrelloOAuthService: ObservableObject {
     var errorDescription: String? {
       switch self {
       case .missingAPIKey:
-        return "Trello API key is not configured. Enter your Power-Up API key in Settings > Chat first."
+        return "Trello API key is not configured. Enter your Power-Up API key in Settings → Chat first."
       case .invalidURL:
         return "Failed to build Trello authorization URL."
       case .emptyToken:

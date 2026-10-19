@@ -20,9 +20,8 @@ struct OpenRouterTranscriptionSection: View {
         subtitle: "Dictate through any audio-capable model OpenRouter routes to, with one account."
       )
 
-      // Same view as on the General tab, sharing one service — connecting in either place updates
-      // both. Header suppressed here because this section already has one.
-      OpenRouterConnectionSection(showsHeader: false)
+      // The account is connected once, in Settings → General; this tab only shows whether it is.
+      OpenRouterAccountStatusRow()
 
       HStack(alignment: .center, spacing: 16) {
         Text("Model:")
