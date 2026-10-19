@@ -121,7 +121,7 @@ struct TelemetryTests {
     s.signal(.noSpeechDetected, mode: Self.sentinel)
     s.started(.readAloud)
     s.started(.meeting)
-    s.onboardingStepReached(.apiKeys)
+    s.onboardingStepReached(.dictationSetup)
   }
 
   // MARK: - No user text, ever
@@ -189,7 +189,7 @@ struct TelemetryTests {
   func preConsentBuffer() async {
     let h = makeHarness()
     h.service.onboardingStepReached(.intro)
-    h.service.onboardingStepReached(.privacy)
+    h.service.onboardingStepReached(.dictationSetup)
     await h.service.flush()
     #expect(h.transport.bodies.isEmpty)
     #expect(!FileManager.default.fileExists(atPath: h.storeURL.path))
@@ -197,7 +197,7 @@ struct TelemetryTests {
     h.enable()
     await h.service.flush()
     let milestones = h.transport.pings.compactMap { $0["milestone"] as? String }
-    #expect(milestones == ["telemetry.enabled", "onboarding.step.intro", "onboarding.step.privacy"])
+    #expect(milestones == ["telemetry.enabled", "onboarding.step.intro", "onboarding.step.apiKeys"])
   }
 
   @Test("Turning sharing off deletes everything queued")
@@ -238,7 +238,7 @@ struct TelemetryTests {
   func noReplayAfterOnboarding() async {
     let h = makeHarness()
     h.service.onboardingStepReached(.intro)
-    h.service.onboardingStepReached(.privacy)
+    h.service.onboardingStepReached(.dictationSetup)
     h.service.milestone(.onboardingCompleted)
     h.defaults.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
     h.enable()

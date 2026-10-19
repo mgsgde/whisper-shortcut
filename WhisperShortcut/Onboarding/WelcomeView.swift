@@ -1,34 +1,27 @@
 import AppKit
 import SwiftUI
 
+/// Five steps, one decision. Raw values are the ones these steps had in the older eight-step tour
+/// (`onboardingCurrentStep` persists them), so a tour started before an update resumes on the step
+/// that matches; the gaps are the retired privacy, auto-paste and Smart Improvement steps.
 enum WelcomeStep: Int, CaseIterable {
-  case intro
-  case privacy
-  case apiKeys
-  case permissions
-  /// Right after the microphone permission: the first successful dictation comes before the
-  /// optional setup (auto-paste, Smart Improvement), not after it.
-  case tryIt
-  case autoPaste
-  case smartImprovement
-  case done
+  case intro = 0
+  /// "How should dictation run?" — offline model or one cloud account. Privacy lives here too.
+  case dictationSetup = 2
+  /// Microphone, Screen Recording, and (direct build) the auto-paste opt-in that needs Accessibility.
+  case permissions = 3
+  /// The first successful dictation, right after the microphone is granted.
+  case tryIt = 4
+  case done = 7
 
-  /// The steps this build actually shows. The App Store build has no auto-paste (a synthetic
-  /// ⌘V needs the Accessibility permission Apple rejects under Guideline 2.4.5), so its intro
-  /// step is omitted there — never advertise (or prompt for) a feature the build doesn't have.
-  static var activeSteps: [WelcomeStep] {
-    #if APP_STORE
-    return allCases.filter { $0 != .autoPaste }
-    #else
-    return allCases
-    #endif
-  }
+  /// Both builds show the same five steps; the App Store build only drops the auto-paste card
+  /// from the permissions step (Guideline 2.4.5).
+  static var activeSteps: [WelcomeStep] { allCases }
 
-  /// Nearest active step for a persisted raw value — tolerates a stored step that this
-  /// build skips (e.g. a tour started in the direct build, resumed in the App Store build).
+  /// Nearest active step for a persisted raw value — tolerates a stored step that no longer
+  /// exists (e.g. a retired step from an older build).
   static func resume(from rawValue: Int) -> WelcomeStep {
-    let stored = WelcomeStep(rawValue: rawValue) ?? .intro
-    return activeSteps.last(where: { $0.rawValue <= stored.rawValue }) ?? .intro
+    activeSteps.last(where: { $0.rawValue <= rawValue }) ?? .intro
   }
 
   var indexLabel: String {
@@ -64,11 +57,9 @@ struct WelcomeView: View {
   /// Gates the permissions step's Continue button. Updated by `PermissionsOverview`'s
   /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
-  /// Auto-paste is opt-in (default off). Surfaced here so new users learn the feature exists and
-  /// that it needs Accessibility — the permission is requested only when they enable the toggle.
-  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
-    SettingsDefaults.autoPasteAfterDictation
+  /// The answer to "How should dictation run?". Kept here, not in the step, so Back/Continue
+  /// does not forget it. Pre-filled from what is already set up when the tour is revisited.
+  @State private var dictationChoice: DictationChoice? = DictationChoice.inferred()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -76,10 +67,9 @@ struct WelcomeView: View {
         switch step {
         case .intro:
           WelcomeIntroStep()
-        case .privacy:
-          WelcomePrivacyStep()
-        case .apiKeys:
-          WelcomeAPIKeysStep(
+        case .dictationSetup:
+          WelcomeDictationSetupStep(
+            choice: $dictationChoice,
             hasGeminiKey: $hasGeminiKey,
             hasOpenAIKey: $hasOpenAIKey,
             hasXAIKey: $hasXAIKey,
@@ -91,10 +81,6 @@ struct WelcomeView: View {
           WelcomePermissionsStep(micStatus: $micStatus)
         case .tryIt:
           WelcomeTryItStep()
-        case .autoPaste:
-          WelcomeAutoPasteStep(autoPasteEnabled: $autoPasteEnabled)
-        case .smartImprovement:
-          WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
           WelcomeDoneStep()
         }
@@ -205,7 +191,7 @@ struct WelcomeView: View {
 
   private var canAdvance: Bool {
     switch step {
-    case .apiKeys:
+    case .dictationSetup:
       return hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey
         || offlineReady
     case .permissions:
