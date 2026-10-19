@@ -286,7 +286,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
       case .missingAccessToken: return "No access token in response."
       case .missingRefreshToken: return "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut."
-      case .notConnected: return "Google is not connected. Open Settings → Chat to connect."
+      case .notConnected: return "Google is not connected. Open Settings → Accounts to connect."
       case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
       case .invalidResponse: return "Invalid response from Google."
       case .authorizationInProgress: return "Google authorization is already in progress."

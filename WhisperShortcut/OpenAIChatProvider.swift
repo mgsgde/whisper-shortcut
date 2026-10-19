@@ -89,13 +89,13 @@ final class OpenAIChatProvider: LLMChatProvider {
       }
       guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
         throw TranscriptionError.networkError(
-          "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → General if the server forwards to OpenAI.")
+          "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI.")
       }
       return apiKey
     case .openRouter:
       guard let apiKey = OpenRouterChatPreferences.apiKey else {
         throw TranscriptionError.networkError(
-          "Connect your OpenRouter account in Settings → General to use OpenRouter in Chat.")
+          "Connect your OpenRouter account in Settings → Accounts to use OpenRouter in Chat.")
       }
       return apiKey
     case .openAI:
@@ -106,9 +106,9 @@ final class OpenAIChatProvider: LLMChatProvider {
   private static func invalidKeyMessage(route: Route) -> String {
     switch route {
     case .customEndpoint:
-      return "API key is invalid for the custom endpoint. Check Settings → Chat or General."
+      return "API key is invalid for the custom endpoint. Check Settings → Chat or Accounts."
     case .openRouter:
-      return "OpenRouter rejected the key. Reconnect your account in Settings → General."
+      return "OpenRouter rejected the key. Reconnect your account in Settings → Accounts."
     case .openAI:
       return ProviderCredentials.invalidKeyMessage(.openAI)
     }

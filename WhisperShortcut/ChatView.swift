@@ -1244,7 +1244,7 @@ class ChatViewModel: ObservableObject {
       let domain = String(email.split(separator: "@").last ?? "").lowercased()
       switch await MailHostDetector.detect(domain: domain) {
       case .google:
-        return ["error": "\(domain) receives its mail through Google Workspace. Gmail is read through the Google connection: Settings → Chat → Google Account."]
+        return ["error": "\(domain) receives its mail through Google Workspace. Gmail is read through the Google connection: Settings → Accounts → Google Account."]
       case .microsoft:
         return ["error": "\(domain) receives its mail through Microsoft 365. Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet."]
       case .imapHost(let host):

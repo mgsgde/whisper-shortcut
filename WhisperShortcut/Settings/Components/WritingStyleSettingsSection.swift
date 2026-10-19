@@ -163,7 +163,7 @@ struct WritingStyleSettingsSection: View {
         if offlineMode {
           caption("Gmail import and profile updates are off in Offline Mode. A saved profile and examples keep working.")
         } else if !google.isConnected {
-          caption("Connect your Google account (Settings → Chat) and sent emails are imported automatically, or paste messages you wrote with Add examples.")
+          caption("Connect your Google account (Settings → Accounts) and sent emails are imported automatically, or paste messages you wrote with Add examples.")
         }
       }
       .padding(.top, 8)
