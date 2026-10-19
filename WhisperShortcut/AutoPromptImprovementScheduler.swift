@@ -253,7 +253,8 @@ class AutoPromptImprovementScheduler {
           total: total > 1 ? total : nil,
           originalText: original,
           suggestedText: suggested,
-          rationale: rationale
+          rationale: rationale,
+          section: kind.systemPromptSection
         )
         if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           applySuggestion(accepted, for: kind)
@@ -409,13 +410,23 @@ class AutoPromptImprovementScheduler {
   private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
-    let currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
+    // Voice feedback may have appended glossary lines since this suggestion was written.
+    // Merging additively keeps those; replacing the section with the file would delete them.
+    let currentContent: String
+    let applied: String
+    if kind == .whisperGlossary {
+      currentContent = SystemPromptsStore.shared.loadWhisperGlossary()
+      applied = GlossaryLearning.mergeAdditively(current: currentContent, suggestion: suggested)
+    } else {
+      currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
+      applied = suggested
+    }
     let previousLength = currentContent.count
-    SystemPromptsStore.shared.updateSection(section, content: suggested)
-    ContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: suggested.count, content: suggested, model: improvementModel)
+    SystemPromptsStore.shared.updateSection(section, content: applied)
+    ContextLogger.shared.appendSystemPromptsHistory(section: section, previousLength: previousLength, newLength: applied.count, content: applied, model: improvementModel)
     discardSuggestion(for: kind)
     let kindName = kind.improvementDisplayName
-    logSystemPromptChange(kind: kindName, previous: currentContent, applied: suggested)
+    logSystemPromptChange(kind: kindName, previous: currentContent, applied: applied)
   }
 
   private func logSystemPromptChange(kind: String, previous: String, applied: String) {

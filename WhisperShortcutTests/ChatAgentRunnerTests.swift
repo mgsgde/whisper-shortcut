@@ -165,4 +165,97 @@ struct ChatAgentRunnerTests {
     #expect(result.records.first?.resultJSON.contains("denied") == true)
     #expect(result.text == "Okay, not saved.")
   }
+
+  @Test("Stop mid-round keeps the calls that already ran")
+  func stopMidRoundKeepsFinishedCalls() async throws {
+    let provider = ScriptedProvider([
+      [
+        .functionCall(name: "fake_lookup", args: ["q": "x"], thoughtSignature: nil),
+        .functionCall(name: "fake_create", args: [:], thoughtSignature: nil),
+      ],
+      [.textDelta("never")],
+    ])
+    var ranSecond = false
+    let runner = makeRunner(
+      provider,
+      extraTools: ["fake_create"],
+      handlers: [
+        "fake_lookup": { _ in
+          withUnsafeCurrentTask { $0?.cancel() }
+          return ChatToolOutcome(response: ["id": "E7"])
+        },
+        "fake_create": { _ in
+          ranSecond = true
+          return ChatToolOutcome(response: ["id": "E8"])
+        },
+      ])
+    let task = Task { @MainActor in
+      try await runner.run(contents: [["role": "user", "parts": [["text": "go"]]]])
+    }
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(!ranSecond)
+    #expect(runner.records.map(\.name) == ["fake_lookup"])
+    #expect(runner.records.first?.resultJSON.contains("E7") == true)
+    #expect(runner.records.first?.status == .done)
+  }
+
+  @Test("Stop while the first call awaits approval keeps its denied record")
+  func stopDuringApprovalKeepsDeniedRecord() async throws {
+    let provider = ScriptedProvider([
+      [
+        .functionCall(name: "remember_about_user", args: ["fact": "x"], thoughtSignature: nil),
+        .functionCall(name: "fake_create", args: [:], thoughtSignature: nil),
+      ],
+      [.textDelta("never")],
+    ])
+    var remembered = false
+    var ranSecond = false
+    let runner = makeRunner(
+      provider,
+      extraTools: ["remember_about_user", "fake_create"],
+      handlers: [
+        "remember_about_user": { _ in
+          remembered = true
+          return ChatToolOutcome(response: ["ok": true])
+        },
+        "fake_create": { _ in
+          ranSecond = true
+          return ChatToolOutcome(response: ["id": "E8"])
+        },
+      ],
+      approve: { _, _, _ in
+        withUnsafeCurrentTask { $0?.cancel() }
+        return false
+      })
+    let task = Task { @MainActor in
+      try await runner.run(contents: [["role": "user", "parts": [["text": "go"]]]])
+    }
+    await #expect(throws: CancellationError.self) { try await task.value }
+    #expect(runner.records.count == 1)
+    #expect(runner.records.first?.name == "remember_about_user")
+    #expect(runner.records.first?.status == .denied)
+    #expect(!remembered)
+    #expect(!ranSecond)
+  }
+
+  @Test("A full multi-call round records every call once, in call order")
+  func fullMultiCallRoundRecordsEachCallOnce() async throws {
+    let provider = ScriptedProvider([
+      [
+        .functionCall(name: "fake_lookup", args: ["q": "x"], thoughtSignature: nil),
+        .functionCall(name: "fake_create", args: ["title": "B"], thoughtSignature: nil),
+      ],
+      [.textDelta("Done.")],
+    ])
+    let runner = makeRunner(
+      provider,
+      extraTools: ["fake_create"],
+      handlers: [
+        "fake_lookup": { _ in ChatToolOutcome(response: ["id": "E7"]) },
+        "fake_create": { _ in ChatToolOutcome(response: ["id": "E8"]) },
+      ])
+    let result = try await runner.run(contents: [["role": "user", "parts": [["text": "both"]]]])
+    #expect(result.records.map(\.name) == ["fake_lookup", "fake_create"])
+    #expect(result.records == runner.records)
+  }
 }

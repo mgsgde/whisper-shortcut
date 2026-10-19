@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merge train: every 20 minutes, merge open PRs labelled `merge-train` into main once CI is
+  green. See scripts/merge-train/README.md.
+
+  Install / remove (after this is on main — see the bootstrap note below):
+      bash scripts/merge-train/install.sh
+      bash scripts/merge-train/install.sh --remove
+
+  Pause without unloading:  touch ~/.local/state/whispershortcut-merge-train/PAUSED
+  Resume:                   rm    ~/.local/state/whispershortcut-merge-train/PAUSED
+
+  The command bootstraps from origin/main rather than running the tree's copy, same as the
+  implementer tick: the shared checkout may be on any branch. Falls back to the working tree
+  when origin/main cannot be read. The script only reads origin; it never changes a checkout.
+
+  launchd does not expand $HOME in StandardOutPath, so the log paths below carry a __HOME__
+  placeholder that install.sh replaces with the real home directory when it copies the file.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.merge-train</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>-lc</string>
+      <string>cd "$HOME/whisper-shortcut-private/whisper-shortcut" || exit 0
+git fetch -q origin main 2>/dev/null
+T=/tmp/whispershortcut-merge-train-main.sh
+if git show origin/main:scripts/merge-train/train.sh &gt;"$T" 2>/dev/null &amp;&amp; [ -s "$T" ]; then
+  MERGE_TRAIN_REPO_ROOT="$HOME/whisper-shortcut-private/whisper-shortcut" exec bash "$T"
+fi
+exec bash scripts/merge-train/train.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1200</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.local/state/whispershortcut-merge-train/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.local/state/whispershortcut-merge-train/launchd.log</string>
+  </dict>
+</plist>

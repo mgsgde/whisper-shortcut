@@ -14,7 +14,7 @@ struct DictatePromptAgentTests {
     let registered = Set(ChatToolRegistry.allDeclarations(
       calendarConnected: true, trelloConnected: true, imageGenerationAvailable: false,
       meetingContext: false, workspaceAvailable: true, workspaceWritable: false,
-      mailAvailable: false, mailAccountsConnected: false
+      mailAvailable: false, mailAccountsConnected: false, chatProvider: .gemini
     ).compactMap { $0["name"] as? String })
     for name in DictatePromptAgent.readOnlyToolNames {
       #expect(!ChatToolRegistry.requiresUserApproval(name), "\(name) must not need approval")
@@ -23,6 +23,19 @@ struct DictatePromptAgentTests {
     for writer in ["write_text_file", "edit_text_file", "google_calendar_create_event", "remember_about_user", "trello_move_card"] {
       #expect(!DictatePromptAgent.readOnlyToolNames.contains(writer))
     }
+  }
+
+  @Test("The in-process MLX chat model declares no tools; a cloud provider does")
+  func localMLXDeclaresNoTools() {
+    func names(_ provider: ChatModelProvider) -> [String] {
+      ChatToolRegistry.allDeclarations(
+        calendarConnected: true, trelloConnected: true, imageGenerationAvailable: true,
+        meetingContext: true, workspaceAvailable: true, workspaceWritable: true,
+        mailAvailable: true, mailAccountsConnected: true, chatProvider: provider
+      ).compactMap { $0["name"] as? String }
+    }
+    #expect(names(.localMLX).isEmpty)
+    #expect(!names(.gemini).isEmpty)
   }
 
   @Test("The setting off means no tools, so the classic single request runs")
@@ -99,7 +112,7 @@ struct DictatePromptAgentLiveTests {
     let tools = ChatToolRegistry.allDeclarations(
       calendarConnected: false, trelloConnected: false, imageGenerationAvailable: false,
       meetingContext: false, workspaceAvailable: true, workspaceWritable: false,
-      mailAvailable: false, mailAccountsConnected: false
+      mailAvailable: false, mailAccountsConnected: false, chatProvider: .gemini
     ).compactMap { decl -> LLMToolDeclaration? in
       guard let name = decl["name"] as? String, name == "list_workspace_folders",
             let desc = decl["description"] as? String,
@@ -178,7 +191,10 @@ struct DictatePromptAgentLiveTests {
         ["type": "text", "text": "VOICE INSTRUCTION:\nFix the spelling."],
       ],
       apiKey: apiKey)
-    #expect(text.lowercased().contains("hello world"), "got: \(text)")
+    // Punctuation is the model's call ("hello, world." is a correct fix); only the spelling is tested.
+    let words = text.lowercased().components(separatedBy: CharacterSet.letters.inverted)
+      .filter { !$0.isEmpty }.joined(separator: " ")
+    #expect(words.contains("hello world"), "got: \(text)")
   }
 
   @Test(

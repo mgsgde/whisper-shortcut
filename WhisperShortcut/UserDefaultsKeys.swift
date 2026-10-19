@@ -171,6 +171,12 @@ enum UserDefaultsKeys {
   /// Append the learned writing style (profile + example messages) to Dictate Prompt. Off by
   /// default. See `WritingStyleStore`.
   static let writingStyleEnabled = "writingStyleEnabled"
+  /// Writing samples added since the profile was last derived or the review was dismissed.
+  static let writingStyleSamplesSinceProfile = "writingStyleSamplesSinceProfile"
+  /// When the Writing Style profile was last derived and accepted.
+  static let writingStyleProfileUpdatedAt = "writingStyleProfileUpdatedAt"
+  /// When the Writing Style Gmail import last finished without error.
+  static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
@@ -241,5 +247,17 @@ enum UserDefaultsKeys {
   /// Dictionary of UserDefaults key → ["fallback": raw, "previous": raw]; until the offline model is
   /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
   static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
-}
 
+  /// Cloud providers (`ChatModelProvider` raw values) whose "use them instead of the on-device
+  /// models?" offer the user declined. A key for a provider not in this list asks again.
+  /// See `CloudModelOffer`.
+  static let cloudModelOfferDeclinedProviders = "cloudModelOfferDeclinedProviders"
+
+  // MARK: - MCP Server
+
+  /// Whether the local read-only MCP server (meeting transcripts for Claude & other AI apps) runs.
+  /// Default false. See MCPServer.
+  static let mcpServerEnabled = "mcpServerEnabled"
+  /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
+  static let mcpServerPort = "mcpServerPort"
+}

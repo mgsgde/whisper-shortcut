@@ -8,11 +8,13 @@ without a dependency change, so the lineup check can diff it against its seen-li
 provider.
 
 Sources (argv[1]):
-  mlx         mlx-community text-generation repos → reported by their *base* model
-              (e.g. `Qwen/Qwen3.5-4B`), so the six quantisations of one release are one line.
+  mlx         MLX text-generation repos from mlx-community, lmstudio-community and each model
+              lab's own org (e.g. `ibm-granite/granite-4.2-3b-q4-mlx`) → reported by their *base*
+              model (e.g. `Qwen/Qwen3.5-4B`), so the quantisations of one release are one line.
               Kept only if: the architecture is in the pinned mlx-swift-lm's LLMModelFactory,
-              1.5B–10B parameters (fits an 8 GB Mac beside a dictation model at 4-bit), the base
-              comes from a model lab rather than a community finetune, and a 4-bit build exists.
+              1.5B–10B parameters (read from the base: a 4-bit repo's tensor count is packed),
+              the base comes from a model lab rather than a community finetune, and a 4-bit build
+              exists.
   whisperkit  variant folders in argmaxinc/whisperkit-coreml (what ModelManager downloads).
   fluidaudio  FluidInference Core ML speech-recognition repos (what FluidAudio downloads).
 
@@ -22,6 +24,8 @@ fetch failure instead of silently seeing "nothing new".
 import json
 import re
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -61,26 +65,99 @@ def supported_mlx_model_types():
     return types
 
 
+def hf_or_none(path):
+    """`hf()`, but None when the repo is missing; every other error still raises.
+
+    HuggingFace answers 401 (not 404) for a repo id that does not exist, so both mean "missing".
+    """
+    try:
+        return hf(path)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 404):
+            return None
+        raise
+
+
+EXPAND = "&expand[]=config&expand[]=cardData&expand[]=safetensors"
+
+
+def mlx_candidates():
+    """MLX repos from mlx-community, lmstudio-community and every model lab's own org."""
+    query = "sort=createdAt&direction=-1" + EXPAND
+    # ~600 newest repos reach back ~3 months; the check runs every two weeks. No text-generation
+    # filter: multimodal builds (Gemma 4) are tagged image-text-to-text; model_type filters later.
+    repos = hf(f"models?author=mlx-community&{query}&limit=600")
+    repos += hf(f"models?author=lmstudio-community&{query}&limit=200")
+    for org in sorted(MODEL_LABS):
+        repos += hf_or_none(f"models?author={org}&search=mlx&{query}&limit=50") or []
+    seen = {}
+    for m in repos:
+        seen.setdefault(m["id"], m)
+    return list(seen.values())
+
+
+def derive_base(rid):
+    """Base id of a lab's own MLX repo: strip a trailing MLX/quant suffix from the name."""
+    org, name = rid.split("/", 1)
+    name = re.sub(r"(?:[-_](?:mlx|q4|[48]-?bit|mxfp4|qat|bf16))+$", "", name, flags=re.I)
+    return f"{org}/{name}"
+
+
+def guess_base(rid, guessed={}):
+    """Lab repo named like `rid` without its quant suffix, found by one name search per name."""
+    name = derive_base(rid).split("/", 1)[1]
+    if name not in guessed:
+        hits = hf(f"models?search={urllib.parse.quote(name)}&sort=downloads&direction=-1&limit=100")
+        guessed[name] = next((h["id"] for h in hits
+                              if h["id"].split("/")[0] in MODEL_LABS
+                              and h["id"].split("/", 1)[1].lower() == name.lower()), None)
+    return guessed[name]
+
+
 def mlx():
     supported = supported_mlx_model_types()
-    # ~200 newest repos reach back ~3 months; the check runs every two weeks.
-    repos = hf("models?author=mlx-community&filter=text-generation&sort=createdAt&direction=-1"
-               "&limit=200&expand[]=config&expand[]=cardData&expand[]=safetensors")
+    bases = {}  # base id -> {"config", "safetensors"} or None (404)
+
+    def base_info(base):
+        if base not in bases:
+            bases[base] = hf_or_none(f"models/{base}?expand[]=safetensors&expand[]=config")
+        return bases[base]
+
     best = {}
-    for m in repos:
+    for m in mlx_candidates():
         rid = m["id"]
-        if not re.search(r"4bit|4-bit|oq4", rid, re.I):
-            continue
-        if (m.get("config") or {}).get("model_type") not in supported:
-            continue
-        params = (m.get("safetensors") or {}).get("total") or 0
-        if not MIN_PARAMS <= params <= MAX_PARAMS:
+        org = rid.split("/")[0]
+        if not re.search(r"4bit|4-bit|oq4|q4|mxfp4", rid, re.I):
             continue
         base = (m.get("cardData") or {}).get("base_model")
         base = base[0] if isinstance(base, list) and base else base
-        if not isinstance(base, str) or base.split("/")[0] not in MODEL_LABS:
+        derived = not isinstance(base, str)
+        if derived and org in MODEL_LABS:
+            base = derive_base(rid)
+        elif derived:
+            # Repo without base_model in its card (e.g. mlx-community/gemma-4-E4B-it-qat-4bit):
+            # only worth a name search for architectures we support.
+            if (m.get("config") or {}).get("model_type") not in supported:
+                continue
+            base = guess_base(rid)
+            if not base:
+                continue
+        if base.split("/")[0] not in MODEL_LABS:
             continue
-        best.setdefault(base, (rid, params))
+        info = base_info(base)
+        if derived and info is None:
+            continue
+        info = info or {}
+        model_type = (m.get("config") or {}).get("model_type") or (info.get("config") or {}).get("model_type")
+        if model_type not in supported:
+            continue
+        params = ((info.get("safetensors") or {}).get("total")
+                  or (m.get("safetensors") or {}).get("total") or 0)
+        if not MIN_PARAMS <= params <= MAX_PARAMS:
+            continue
+        # one line per base; an mlx-community repo is the preferred example
+        if base not in best or (org == "mlx-community" and not best[base][0].startswith("mlx-community/")):
+            best[base] = (rid, params)
     for base, (rid, params) in sorted(best.items()):
         print(f"{base}\t{params / 1e9:.1f}B params, e.g. {rid}")
 

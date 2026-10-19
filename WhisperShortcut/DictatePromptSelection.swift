@@ -17,6 +17,14 @@ enum DictatePromptSelectionDecision {
     changeCountAfter != changeCountBefore
   }
 
+  /// Whether a poll tick of the synthetic ⌘C may take the pasteboard as the selection: the change
+  /// count moved AND the pasteboard already exposes a string. A changed count with no string yet
+  /// (the source app is still writing its flavors) keeps the poll running until the deadline.
+  static func acceptsCopy(changeCountBefore: Int, changeCountAfter: Int, string: String?) -> Bool {
+    copyProducedSelection(changeCountBefore: changeCountBefore, changeCountAfter: changeCountAfter)
+      && string != nil
+  }
+
   /// App Store build with a local model: there is no synthetic ⌘C (it would need Accessibility), so
   /// the user copies first and the clipboard is read as-is. It counts as a selection only when the
   /// pasteboard changed since the last Dictate Prompt run consumed it (or since launch) **and** that
@@ -39,6 +47,17 @@ enum DictatePromptSelectionDecision {
     guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty
     else { return nil }
     return trimmed
+  }
+
+  /// Whether a Dictate Prompt turn must be refused because it edits a selection that isn't there:
+  /// nothing selected, no screenshot standing in for the selection, and the instruction is an edit
+  /// quick action or only a bare edit command. The timeout placeholder is not judged.
+  static func refusesEditWithoutSelection(
+    hasSelection: Bool, hadScreenshot: Bool, instruction: String, isEditQuickAction: Bool
+  ) -> Bool {
+    !hasSelection && !hadScreenshot
+      && instruction != SpeechService.voiceInstructionPlaceholder
+      && (isEditQuickAction || isBareEditCommand(instruction))
   }
 
   /// True when the instruction is only an edit command ("Korrigiere", "Rephrase this") and

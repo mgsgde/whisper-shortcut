@@ -65,6 +65,7 @@ struct APIKeyEntrySection: View {
               keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: provider.credential)
             }
             ModelSelectionReconciler.reconcileAll()
+            if !newValue.isEmpty { CloudModelOffer.scheduleCheck() }
           }
         }
 

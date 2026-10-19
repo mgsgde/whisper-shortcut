@@ -4,6 +4,8 @@ import SwiftUI
 struct LocalLLMModelsSection: View {
   @ObservedObject private var manager = LocalLLMModelManager.shared
   @State private var errorMessage: String?
+  /// Catalogue entries to list; callers narrow it to the models their picker can actually select.
+  var models: [LocalLLMModelType] = LocalLLMModelType.offerable
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -20,7 +22,7 @@ struct LocalLLMModelsSection: View {
         .fixedSize(horizontal: false, vertical: true)
 
       VStack(spacing: 12) {
-        ForEach(LocalLLMModelType.offerable, id: \.self) { modelType in
+        ForEach(models, id: \.self) { modelType in
           row(for: modelType)
         }
       }

@@ -32,6 +32,12 @@ enum ModelStoreError: LocalizedError {
   }
 }
 
+/// Where an `ensureReady` run stands. Files first, then weights into memory.
+enum ReadyPhase: Equatable {
+  case downloading(fraction: Double, isRetry: Bool)
+  case loading
+}
+
 /// `@MainActor` on the whole type, not method by method. `readyTasks` and `downloadTasks` are
 /// touched by the settings UI, the prewarmer, the reconciler and the dictation paths; isolating
 /// only some of those methods left the two dictionaries racing (the WhisperKit manager used to
@@ -50,6 +56,11 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// Settings and the text in the dictation popup — a 1.6 GB download with no progress reads as a
   /// hang, which is exactly how the first turbo download was experienced.
   @Published var downloadProgress: [Model: Double] = [:]
+  /// Where each `ensureReady` run stands, from its first byte to the end of the weight load. One
+  /// published value every waiter observes: a second waiter used to join the in-flight task and
+  /// drop its own `onProgress`, so a Chat message sent after a picker tap had started a 5.6 GB
+  /// download showed nothing but typing dots for minutes (2026-10-18).
+  @Published private(set) var readyPhase: [Model: ReadyPhase] = [:]
 
   /// In-flight `ensureReady` work per model, so a dictation that starts while Settings is already
   /// downloading joins that download instead of starting a second one.
@@ -112,6 +123,12 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// disagree on whether a load failure means a corrupt download.
   func healsCorruptDownload(for model: Model) -> Bool { healsCorruptDownloadOnLoadFailure }
 
+  /// Whether a re-download could succeed right now. The heal deletes the files first, so when
+  /// the fetch cannot work (Offline Mode: nothing may leave this Mac) one failed load would
+  /// destroy a 0.5–1.6 GB model for nothing. When false the load error is surfaced and the
+  /// files stay. WhisperKit ties this to Offline Mode.
+  var canRedownloadNow: Bool { true }
+
   /// What `deleteModel` removes. MLX overrides this to delete the whole Hub repo, not just the
   /// snapshot `resolveModelPath` lands on.
   nonisolated func deletionTarget(for modelPath: URL) -> URL { modelPath }
@@ -127,16 +144,42 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// transcription instead (see `ModelSelectionReconciler`).
   ///
   /// `onProgress` receives user-facing status lines; it is called on the main actor.
+  ///
+  /// The starter and every joiner see the same lines: progress comes from `readyPhase`, not from
+  /// whichever caller happened to start the task.
   func ensureReady(_ model: Model, onProgress: ((String) -> Void)? = nil) async throws {
+    let observer = onProgress.map { report in
+      $readyPhase
+        .map { $0[model] }
+        .removeDuplicates()
+        .compactMap { $0 }
+        .sink { [unowned self] phase in report(self.statusLine(phase, for: model)) }
+    }
+    defer { observer?.cancel() }
+
     if let existing = readyTasks[model] {
       // Someone (Settings, a previous dictation, the launch pre-load) is already on it.
       try await existing.value
       return
     }
-    let task = Task<Void, Error> { try await self.makeReady(model, onProgress: onProgress) }
+    let task = Task<Void, Error> { try await self.makeReady(model) }
     readyTasks[model] = task
-    defer { readyTasks[model] = nil }
+    defer {
+      readyTasks[model] = nil
+      readyPhase[model] = nil
+    }
     try await task.value
+  }
+
+  /// The user-facing line for `phase`, shared by the popup and anything else that reports it.
+  func statusLine(_ phase: ReadyPhase, for model: Model) -> String {
+    switch phase {
+    case .downloading(let fraction, let isRetry):
+      let verb = isRetry ? "Downloading \(model.displayName) again" : "Downloading \(model.displayName)"
+      return "\(verb) — \(Int(fraction * 100))% of \(model.estimatedSizeLabel)"
+    case .loading:
+      return preparingMessage(for: model)
+    }
   }
 
   /// Same progress popup Dictate Prompt uses, so Chat and a picker tap are not a silent hang.
@@ -147,17 +190,15 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     }
   }
 
-  private func makeReady(_ model: Model, onProgress: ((String) -> Void)?) async throws {
+  private func makeReady(_ model: Model) async throws {
     if !isModelAvailable(model) {
-      try await downloadModel(model) { fraction in
-        onProgress?("Downloading \(model.displayName) — \(Int(fraction * 100))%")
-      }
+      try await download(model, isRetry: false)
     }
 
-    onProgress?(preparingMessage(for: model))
+    readyPhase[model] = .loading
     do {
       try await load(model)
-    } catch where healsCorruptDownload(for: model) && !Self.isCancellation(error) && !Self.isDeadline(error) {
+    } catch where healsCorruptDownload(for: model) && canRedownloadNow && !Self.isCancellation(error) && !Self.isDeadline(error) {
       // A network drop mid-download must NOT wipe the tree: Hub skips files that already
       // landed, so a retry resumes instead of looping from zero. Only a load failure on a
       // complete-looking folder gets here. A load that ran out of time or was cancelled is
@@ -167,13 +208,26 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
         "\(logPrefix): \(model.displayName) failed to load (\(error.localizedDescription)); treating as corrupt and re-downloading once")
       try? removeFiles(of: model)
       await unload(model)
-      onProgress?("The previous download was incomplete — fetching \(model.displayName) again…")
-      try await downloadModel(model) { fraction in
-        onProgress?("Downloading \(model.displayName) — \(Int(fraction * 100))%")
-      }
-      onProgress?(preparingMessage(for: model))
+      try await download(model, isRetry: true)
+      readyPhase[model] = .loading
       try await load(model)
     }
+  }
+
+  /// `downloadModel` with its progress written to `readyPhase`. Follows `downloadProgress`, not
+  /// the callback: when Settings already started this download, `downloadModel` joins it and
+  /// this callback would never fire.
+  private func download(_ model: Model, isRetry: Bool) async throws {
+    readyPhase[model] = .downloading(fraction: downloadProgress[model] ?? 0, isRetry: isRetry)
+    let follower = $downloadProgress
+      .compactMap { $0[model] }
+      // Whole percents only: Hub reports per chunk, and every write re-renders each observer.
+      .removeDuplicates { Int($0 * 100) == Int($1 * 100) }
+      .sink { [unowned self] fraction in
+        self.readyPhase[model] = .downloading(fraction: fraction, isRetry: isRetry)
+      }
+    defer { follower.cancel() }
+    try await downloadModel(model)
   }
 
   // MARK: - Download
@@ -183,6 +237,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     readyTasks[model]?.cancel()
     downloadingModels.remove(model)
     downloadProgress[model] = nil
+    readyPhase[model] = nil
     DebugLogger.log("\(logPrefix): Cancelled download for \(model.displayName)")
   }
 
