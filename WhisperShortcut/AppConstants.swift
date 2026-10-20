@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - App Constants
@@ -208,10 +209,23 @@ Output rules (CRITICAL):
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
   static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
-  /// A second dev instance launched by `rebuild-and-restart.sh` from a worktree, next to the user's
-  /// own instance. It registers no global hotkeys, no Fn toggle, no MCP server, no Sparkle and no
-  /// daily auto-run, so it cannot fight the user's instance (both share one bundle ID).
-  static let isSidecarInstance = ProcessInfo.processInfo.arguments.contains("--sidecar")
+  /// A dev instance that runs next to the user's own one. It registers no global hotkeys, no Fn
+  /// toggle, no MCP server, no Sparkle and no daily auto-run, so it cannot fight that instance.
+  /// True when launched with `--sidecar` (the dev scripts do), and also for any Dev build started
+  /// while the installed release (`com.magnusgoedde.whispershortcut`) runs: Xcode's Run button,
+  /// the driver and in-app relaunches then cannot grab the release's hotkeys, Fn key or MCP port.
+  /// Evaluated once at launch.
+  static let isSidecarInstance = sidecarReason != nil
+  /// Why this process is a sidecar ("argv" / "release running"), nil when it is not one.
+  static let sidecarReason: String? = {
+    if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
+    if isDevBuild,
+      !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty
+    {
+      return "release running"
+    }
+    return nil
+  }()
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).

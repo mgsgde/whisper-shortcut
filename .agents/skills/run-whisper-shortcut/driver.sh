@@ -56,6 +56,10 @@ SHOT_DIR="${WS_SHOT_DIR:-/tmp}"
 target_pid() { pgrep -f "$APP_PATH/Contents/MacOS" 2>/dev/null | head -n1 || true; }
 other_instance_running() {
   local pid
+  # The installed release (/Applications) owns the hotkeys whatever its process name is.
+  for pid in $(pgrep -f "^/Applications/WhisperShortcut" 2>/dev/null); do
+    [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == /Applications/WhisperShortcut* ]] && return 0
+  done
   for pid in $(pgrep -x "$APP" 2>/dev/null); do
     [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == "$APP_PATH/Contents/MacOS"* ]] || return 0
   done

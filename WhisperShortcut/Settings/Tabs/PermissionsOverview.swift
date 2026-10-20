@@ -194,7 +194,9 @@ struct PermissionsOverview: View {
   private func relaunchApp() {
     let bundlePath = Bundle.main.bundleURL.path
     let quotedPath = "'" + bundlePath.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    let command = "( /bin/sleep 0.6 && /usr/bin/open -n \(quotedPath) ) >/dev/null 2>&1 &"
+    // A sidecar must come back as one (it would otherwise register hotkeys next to the release).
+    let sidecarArgs = AppConstants.isSidecarInstance ? " --args --sidecar" : ""
+    let command = "( /bin/sleep 0.6 && /usr/bin/open -n \(quotedPath)\(sidecarArgs) ) >/dev/null 2>&1 &"
 
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")

@@ -595,7 +595,7 @@ class FullWhisperShortcut {
 
     if AppConstants.isSidecarInstance {
       // Sidecar and the user's instance share a bundle ID by design.
-      DebugLogger.log("APP-LIFECYCLE: sidecar instance, skipping single-instance check")
+      DebugLogger.log("APP-LIFECYCLE: sidecar instance (\(AppConstants.sidecarReason ?? "?")), skipping single-instance check")
     } else {
       // The user's instance must not exit because a sidecar is running. A sandboxed app cannot read
       // other processes' arguments, so sidecars are recognised by location: they only ever run
