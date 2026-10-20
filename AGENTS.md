@@ -124,6 +124,11 @@ Merging PRs and cutting releases run through one dedicated session, titled
 workflows and drive `scripts/create-release.sh` / `/submit-appstore`; you do not. That sentence
 means "get it ready and hand it over", also when the task says "release" or "ship".
 
+**Never quit, kill or reinstall the user's running app while it records a meeting.** Run
+`bash scripts/meeting-guard.sh` first and stop if it refuses (exit 1) — also before installing a
+release into `/Applications`. On 2026-10-20 an install's `osascript … quit` cut the last eight
+minutes of a live client meeting. The dev scripts already call the guard; ad-hoc commands must too.
+
 So "finished" means: committed on your branch, pushed, `bash scripts/run-tests.sh` green and
 **quoted**, a report that names the **branch and commit** plus what to look at — **and that same
 handover sent to the deployment session yourself.** Find it by title with
