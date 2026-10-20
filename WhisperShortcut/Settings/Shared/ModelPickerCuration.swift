@@ -228,6 +228,28 @@ extension TranscriptionModel: PickerCuratedModel {
     default: return nil
     }
   }
+
+  /// The models under "More models" that are their provider's own pick, for the "Best Gemini
+  /// pick" tile badge. The top row carries one recommendation; someone with a Gemini *and* an
+  /// OpenAI key otherwise met four Gemini tiles behind the disclosure with nothing saying which
+  /// one we would choose. Only marked where the provider has a choice (two or more of its models
+  /// in the list) — a badge on a provider's sole tile says nothing. Uses the stand-in ranks, so
+  /// the badge names the same model the reconciler would move a single-provider user to.
+  static func providerPicks(among models: [TranscriptionModel]) -> Set<TranscriptionModel> {
+    Set(models.filter { model in
+      model.pickerStandInRank != nil
+        && models.filter { $0.provider == model.provider }.count >= 2
+    })
+  }
+
+  /// Short provider name for the "Best … pick" badge ("Gemini", not "Google Gemini").
+  var providerPickName: String {
+    switch provider {
+    case .google: return "Gemini"
+    case .xai: return "Grok"
+    case .openAI, .openRouter, .selfHosted, .offline: return provider.displayName
+    }
+  }
 }
 
 // MARK: - Prompt models (Dictate Prompt, Chat, Meeting Summary, Smart Improvement)
