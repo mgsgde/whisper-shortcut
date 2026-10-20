@@ -36,7 +36,7 @@ struct MeetingsInAIAppsSection: View {
         setupCard(
           id: "claude-code",
           title: "Claude Code",
-          instruction: "Run once in Terminal:",
+          instruction: "Run in Terminal, then start a new Claude Code session. Run it again after a new access key:",
           code: claudeCodeCommand
         )
 
@@ -143,8 +143,11 @@ struct MeetingsInAIAppsSection: View {
 
   // MARK: - Setup text
 
+  /// Removes any earlier entry first, so the same command also repairs a setup after a new access
+  /// key. `claude mcp add` refuses a name that already exists, and a bare remove-then-add left as
+  /// two steps let users drop the working entry and never add the new one.
   private var claudeCodeCommand: String {
-    "claude mcp add --transport http --scope user \(Self.serverName) \(server.endpointURL) --header \"Authorization: Bearer \(server.token())\""
+    "claude mcp remove --scope user \(Self.serverName) 2>/dev/null; claude mcp add --transport http --scope user \(Self.serverName) \(server.endpointURL) --header \"Authorization: Bearer \(server.token())\""
   }
 
   /// `mcp-remote` bridges Claude Desktop's stdio-only local config to our HTTP endpoint. The key
