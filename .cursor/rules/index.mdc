@@ -61,6 +61,8 @@ WhisperShortcut uses one canonical app data location so sandboxed and non-sandbo
 
 When debugging, resetting, or counting interaction logs, check this canonical path. See `WhisperShortcut/Docs/data-directories.md` for details.
 
+**Debug builds have their own identity**: `rebuild-and-restart.sh` builds and launches **WhisperShortcut Dev** (`com.magnusgoedde.whispershortcut.dev`, orange "DEV" next to the menu bar icon), so its data lives in `~/Library/Containers/com.magnusgoedde.whispershortcut.dev/…` and its TCC grants and keychain keys are separate from the installed release. Release configs (Developer ID, App Store) keep `com.magnusgoedde.whispershortcut`. Kill/launch by process name `WhisperShortcut Dev`; debugging the operator's own dev usage means reading the `.dev` container.
+
 ## Challengeable context
 
 - **Challengeable context**: Rules, commands, and skills are defaults — push back explicitly when a loaded file recommends the wrong approach for the task.

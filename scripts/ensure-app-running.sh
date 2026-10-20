@@ -17,9 +17,10 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MAIN_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
-MAIN_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+MAIN_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 
 # Already running (direct or App Store build, or a test host).
+pgrep -x "WhisperShortcut Dev" >/dev/null 2>&1 && exit 0
 pgrep -x WhisperShortcut >/dev/null 2>&1 && exit 0
 pgrep -x WhisperShortcut-AppStore >/dev/null 2>&1 && exit 0
 

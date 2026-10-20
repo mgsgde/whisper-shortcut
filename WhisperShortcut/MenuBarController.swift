@@ -1064,6 +1064,27 @@ class MenuBarController: NSObject {
       button.image = nil
       button.title = state.icon
     }
+    applyDevBadge(to: button)
+  }
+
+  /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
+  /// which binary owns the hotkeys when the installed release could be running too.
+  private func applyDevBadge(to button: NSStatusBarButton) {
+    guard AppConstants.isDevBuild else { return }
+    let title = NSMutableAttributedString(
+      string: button.title,
+      attributes: [.font: NSFont.menuBarFont(ofSize: 0)])
+    let badgeFont = NSFont.systemFont(ofSize: 9, weight: .heavy)
+    title.append(NSAttributedString(
+      string: (button.title.isEmpty ? "" : " ") + "DEV",
+      attributes: [
+        .font: badgeFont,
+        .foregroundColor: NSColor.systemOrange,
+        .kern: 0.6,
+        .baselineOffset: 1,
+      ]))
+    button.attributedTitle = title
+    button.imagePosition = button.image == nil ? .noImage : .imageLeading
   }
 
   private func updateMenuItems() {
@@ -1146,6 +1167,7 @@ class MenuBarController: NSObject {
     if !hasAnyKey && !canTranscribe, let button = statusItem?.button {
       button.image = nil
       button.title = "⚠️"
+      applyDevBadge(to: button)
       button.toolTip = "Add an API key or use an offline model - click to configure"
     }
   }

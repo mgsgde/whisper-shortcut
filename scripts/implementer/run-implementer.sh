@@ -295,13 +295,13 @@ report_out() { # report_out <subject> <body-file> [send-report-mail.py flags …
 
 # The test gate below kills the app. Remember whether it was running, so we can put the user's
 # world back exactly as we found it — with THEIR build, never the branch build.
-MAIN_APP="${REPO_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+MAIN_APP="${REPO_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 APP_WAS_RUNNING=0
-pgrep -f "WhisperShortcut.app" >/dev/null 2>&1 && APP_WAS_RUNNING=1
+pgrep -f "WhisperShortcut( Dev)?\.app" >/dev/null 2>&1 && APP_WAS_RUNNING=1
 
 restore_user_app() {
     [[ "$APP_WAS_RUNNING" == "1" ]] || return 0
-    pgrep -f "WhisperShortcut.app" >/dev/null 2>&1 && return 0
+    pgrep -f "WhisperShortcut( Dev)?\.app" >/dev/null 2>&1 && return 0
     if [[ -d "$MAIN_APP" ]]; then
         log "relaunching your main build (never the branch build)"
         open "$MAIN_APP" || warn "could not relaunch ${MAIN_APP}"
@@ -314,7 +314,7 @@ restore_user_app() {
 # build to live in. It runs only at the very end of a fully green run, so an unreviewed or
 # broken build never becomes the app you dictate with. Every earlier call site still restores
 # YOUR build — mid-run the branch has not been judged yet.
-BRANCH_APP="${WT_DIR}/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+BRANCH_APP="${WT_DIR}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 launch_branch_build() {
     [[ "$LAUNCH_BRANCH_BUILD" == "1" ]] || return 0
     if [[ ! -d "$BRANCH_APP" ]]; then
@@ -322,7 +322,7 @@ launch_branch_build() {
         return 0
     fi
     log "launching the BRANCH build so you can try it now: ${BRANCH}"
-    pkill -f "WhisperShortcut.app" 2>/dev/null || true
+    pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true
     sleep 1
     open "$BRANCH_APP" || { warn "could not launch the branch build — restoring yours"; restore_user_app; return 0; }
     BRANCH_BUILD_RUNNING=1
@@ -736,7 +736,7 @@ log "gate: xcodebuild (Debug)…"
 # the SIGTERM during XCTest bootstrap), so this kills it — and restore_user_app puts YOUR build
 # back afterwards, never the branch build.
 log "gate: test plan (live roundtrips: ${LIVE_TESTS} — kills the running app for the duration)…"
-pkill -f "WhisperShortcut.app" 2>/dev/null || true
+pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true
 sleep 1
 ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
   xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
@@ -831,7 +831,7 @@ EOF
             -skipPackagePluginValidation build ) \
             >"${RUN_DIR}/build-2.log" 2>&1 || { tail -40 "${RUN_DIR}/build-2.log"; fail_run "GATE FAILED: xcodebuild (after rework)"; }
         log "gate: test plan (after rework)…"
-        pkill -f "WhisperShortcut.app" 2>/dev/null || true; sleep 1
+        pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true; sleep 1
         ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
           xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
             -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
