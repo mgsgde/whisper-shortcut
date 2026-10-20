@@ -246,4 +246,19 @@ struct ModelPickerCurationTests {
     let disjointTTSModel = TTSModel.allCases.allSatisfy { $0.pickerSpeedRank == nil || $0.pickerOfflineRank == nil }
     #expect(disjointTTSModel)
   }
+
+  @Test("More models marks each provider's own pick where that provider has a choice")
+  func providerPicks() {
+    let models = TranscriptionModel.selectableForDictation(offlineMode: false)
+    let picks = TranscriptionModel.providerPicks(among: models)
+    #expect(picks.contains(.gemini31FlashLite))
+    #expect(picks.contains(.openAIGPTTranscribe))
+    // A provider's sole tile gets no badge.
+    #expect(!picks.contains(.xaiTranscribe))
+    #expect(!picks.contains(.openRouterTranscription))
+    // With the OpenAI pick in the top row, its siblings in More models carry no badge.
+    let more = models.filter { $0 != .openAIGPTTranscribe }
+    #expect(TranscriptionModel.providerPicks(among: more) == [.gemini31FlashLite])
+    #expect(TranscriptionModel.gemini31FlashLite.providerPickName == "Gemini")
+  }
 }

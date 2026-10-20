@@ -150,6 +150,7 @@ struct ModelSelectionView: View {
       let matching = models.filter { $0.provider.group == group }
       return matching.isEmpty ? nil : (group, matching)
     }
+    let providerPicks = TranscriptionModel.providerPicks(among: models)
     VStack(alignment: .leading, spacing: 0) {
       ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
         if index > 0 {
@@ -159,19 +160,24 @@ struct ModelSelectionView: View {
           symbol: Self.symbol(for: entry.0),
           title: Self.title(for: entry.0),
           subtitle: Self.subtitle(for: entry.0))
-        ModelGrid(models: entry.1) { modelCell($0, badges: []) }
+        ModelGrid(models: entry.1) { model in
+          modelCell(model, badges: [], providerPick: providerPicks.contains(model) ? model.providerPickName : nil)
+        }
       }
     }
   }
 
   @ViewBuilder
-  private func modelCell(_ model: TranscriptionModel, badges: [ModelPickerBadge]) -> some View {
+  private func modelCell(
+    _ model: TranscriptionModel, badges: [ModelPickerBadge], providerPick: String? = nil
+  ) -> some View {
     ModelTile(
       title: model.displayName,
       subtitle: Self.routedSubtitle(for: model),
       isSelected: selectedTranscriptionModel == model,
       isDisabled: false,
       badges: badges,
+      providerPick: providerPick,
       setupBadge: model.pickerSetupBadge,
       setupHelp: model.apiKeyRequiredMessage,
       onTap: {

@@ -13,6 +13,9 @@ struct ModelTile: View {
   let isDisabled: Bool
   /// Why the tile is in the picker's top row; empty everywhere else.
   var badges: [ModelPickerBadge] = []
+  /// "Best Gemini pick" under "More models": the provider's own recommendation. Outlined star, so
+  /// it never reads as the picker's one filled-star Recommended.
+  var providerPick: String? = nil
   /// "Needs key" / "Needs setup" when the model cannot run yet; see `PickerCuratedModel`.
   var setupBadge: String? = nil
   /// Tooltip for `setupBadge`: where to fix it.
@@ -37,10 +40,13 @@ struct ModelTile: View {
           .truncationMode(.middle)
       }
 
-      if !badges.isEmpty || setupBadge != nil {
+      if !badges.isEmpty || providerPick != nil || setupBadge != nil {
         HStack(spacing: 8) {
           ForEach(badges, id: \.self) { badge in
             badgeLabel(badge.title, symbol: badge.symbol, tint: tint(for: badge))
+          }
+          if let providerPick {
+            badgeLabel("Best \(providerPick) pick", symbol: "star", tint: .yellow)
           }
           if let setupBadge {
             badgeLabel(setupBadge, symbol: "key.fill", tint: .orange)
@@ -93,7 +99,7 @@ struct ModelTile: View {
   }
 
   private var accessibilityText: String {
-    ([title, subtitle] + badges.map(\.title) + [setupBadge])
+    ([title, subtitle] + badges.map(\.title) + [providerPick.map { "Best \($0) pick" }, setupBadge])
       .compactMap { $0 }
       .joined(separator: ", ")
   }
