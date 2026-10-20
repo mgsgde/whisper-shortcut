@@ -252,6 +252,11 @@ enum UserDefaultsKeys {
   /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
   static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
 
+  /// Raw `TTSModel` value the user had before the reconciler moved Read Aloud to the macOS voice
+  /// for lack of a key. Present only while the slot still holds that automatic fallback; adding a
+  /// cloud key moves the slot back. See `ModelSelectionReconciler.readAloudUpgrade`.
+  static let keylessReadAloudFallback = "keylessReadAloudFallback"
+
   /// Cloud providers (`ChatModelProvider` raw values) whose "use them instead of the on-device
   /// models?" offer the user declined. A key for a provider not in this list asks again.
   /// See `CloudModelOffer`.
