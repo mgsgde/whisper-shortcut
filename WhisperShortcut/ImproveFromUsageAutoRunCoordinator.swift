@@ -15,6 +15,8 @@ final class ImproveFromUsageAutoRunCoordinator {
   /// Call on app launch and when the user changes the interval in Settings.
   /// If the chosen interval has elapsed since the last run (or there was no run yet), starts improvement.
   func checkAndRunIfDue() async {
+    // A sidecar shares the user's data directory and must not run the daily job a second time.
+    guard !AppConstants.isSidecarInstance else { return }
     // Writing Style does not depend on "Save usage data", so it runs first.
     await WritingStyleAutoUpdater.shared.runIfDue()
     guard ContextLoggingPreference.isEnabled else {
@@ -61,6 +63,7 @@ final class ImproveFromUsageAutoRunCoordinator {
   /// Starts a repeating 24h timer so that auto-run is checked even when the app is not restarted.
   /// Call once after launch (e.g. from FullAppDelegate). Safe to call multiple times; only one timer is active.
   func startDailyTimer() {
+    guard !AppConstants.isSidecarInstance else { return }
     guard dailyTimer == nil else { return }
     dailyTimer = Timer.scheduledTimer(withTimeInterval: Self.timerInterval, repeats: true) { [weak self] _ in
       Task { @MainActor in

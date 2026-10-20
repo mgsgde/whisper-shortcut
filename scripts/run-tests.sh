@@ -85,12 +85,17 @@ echo ""
 # bootstrap and exit before the test runner connects (FullApp's clean-shutdown handler).
 # We relaunch it on EXIT regardless of whether the tests passed, so killing it here
 # is non-destructive from the user's point of view. CI has no running app to restore.
+# The installed /Applications release is never killed (kill_unprotected), so it needs no restore;
+# only what was actually stopped comes back.
 relaunch_app() {
-  if [[ "${CI:-}" == "true" ]]; then
+  if [[ "${CI:-}" == "true" || "${KILLED_COUNT:-0}" -eq 0 ]]; then
     return 0
   fi
   # The bundle the user was running before we stopped it, if recorded; else the main build.
   local app; app="$(daily_app_or "$RELAUNCH_APP")"
+  if [[ "$app" == /Applications/* ]] || pgrep -f "$app/Contents/MacOS" >/dev/null 2>&1; then
+    return 0   # the release (never killed) or the target is already running
+  fi
   if [[ -d "$app" ]]; then
     echo ""
     echo "🚀 Relaunching WhisperShortcut..."
@@ -145,8 +150,8 @@ if [[ "${CI:-}" != "true" ]]; then
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).
   record_daily_app
-  pkill -x "WhisperShortcut Dev" 2>/dev/null || true
-  pkill -x "WhisperShortcut" 2>/dev/null || true
+  kill_unprotected -x "WhisperShortcut Dev"
+  kill_unprotected -x "WhisperShortcut"
   sleep 1
 fi
 

@@ -20,6 +20,9 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# kill_unprotected: the installed /Applications release is never killed.
+# shellcheck source=../lib/daily-app.sh
+source "${SCRIPT_DIR}/../lib/daily-app.sh"
 QUEUE_REL="plans/implementer-queue.md"
 LEDGER_REL="plans/implementer-log.md"
 STATE_DIR="${HOME}/.local/state/whispershortcut-implementer"
@@ -269,8 +272,8 @@ retries it: the change stays unmerged until you resolve it by hand." \
                 warn "#${QUEUE_NUM}: GATE FAILED after rebase (xcodebuild) — leaving the window open and the branch alone."
                 return
             fi
-            log "#${QUEUE_NUM}: gate: test plan (rebased) — this kills the running app…"
-            pkill -f "WhisperShortcut.app" 2>/dev/null || true; sleep 1
+            log "#${QUEUE_NUM}: gate: test plan (rebased) — this stops running dev builds…"
+            kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
             if ! ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
                    xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
                      -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
