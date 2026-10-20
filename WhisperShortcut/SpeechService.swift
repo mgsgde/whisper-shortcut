@@ -801,6 +801,20 @@ class SpeechService {
     }
   }
 
+  /// A local model sometimes copies a spoken "Doppelpunkt" into its reply even though the instruction
+  /// it received already had ":" — from the system prompt's own example ("Befund Doppelpunkt …"), or
+  /// because the engine wrote the command in a form the transcript pass missed (pilot report
+  /// 2026-10-19). The same deterministic pass on the reply removes it. Only when the instruction was
+  /// spoken to an offline engine: a typed quick action or a cloud transcript never carried the word.
+  static func applyingSpokenLayout(_ reply: String, when spokenOffline: Bool) -> String {
+    guard spokenOffline else { return reply }
+    let fixed = SpokenPunctuation.apply(to: reply)
+    if fixed != reply {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Converted spoken layout command(s) left in the reply")
+    }
+    return fixed
+  }
+
   // MARK: - Gemini Dictate Prompt Helpers
 
   /// Loads the user's Dictate Prompt system prompt (or the built-in default when empty)
@@ -1626,6 +1640,9 @@ class SpeechService {
     // point manages.
     let instruction: String
     let transcriptionTime: CFAbsoluteTime
+    // Set when the instruction came from an offline engine; the reply then gets the same layout
+    // pass (see `applyingSpokenLayout`).
+    var spokenOffline = false
     if let textInstruction {
       instruction = textInstruction
       transcriptionTime = 0
@@ -1636,8 +1653,8 @@ class SpeechService {
       let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
-      instruction = (TranscriptionModel.loadSelected().isOffline
-        ? SpokenPunctuation.apply(to: transcript) : transcript)
+      spokenOffline = TranscriptionModel.loadSelected().isOffline
+      instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       guard !instruction.isEmpty else {
@@ -1705,7 +1722,8 @@ class SpeechService {
       DebugLogger.logSpeech(
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
-      let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
+      let agentText = Self.applyingSpokenLayout(
+        TextProcessingUtility.normalizeTranscriptionText(agentReply), when: spokenOffline)
       try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
       if offlineMode {
         flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
@@ -1775,7 +1793,8 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
+    let normalizedText = Self.applyingSpokenLayout(
+      TextProcessingUtility.normalizeTranscriptionText(reply), when: spokenOffline)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
     if offlineMode {
       flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)

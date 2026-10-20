@@ -195,6 +195,58 @@ struct ParakeetOfflineTests {
     #expect(recorder.values.last == 1)
   }
 
+  /// Pilot report 2026-10-19: in Dictate Prompt, a spoken "Doppelpunkt" still reached the note as a
+  /// word. Prints what Parakeet actually writes for the layout commands, across the German `say`
+  /// voices, next to what `SpokenPunctuation` makes of it, and fails on any surviving command word.
+  @Test(
+    "Spoken layout commands survive Parakeet + SpokenPunctuation",
+    .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
+  func spokenLayoutCommands() async throws {
+    setvbuf(stdout, nil, _IONBF, 0)
+    try await ModelManager.shared.ensureReady(.parakeetUltra)
+    try await LocalSpeechService.shared.initializeModel(.parakeetUltra)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("parakeet-commands-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let texts = [
+      "Anamnese Doppelpunkt Patientin berichtet seit drei Wochen über Schmerzen im unteren Rücken. "
+        + "Neuer Absatz. Befund Doppelpunkt Druckschmerz paravertebral rechts, L4 L5 eingeschränkt. "
+        + "Neuer Absatz. Therapie Doppelpunkt Mobilisation der Lendenwirbelsäule.",
+      "Anamnese [[slnc 300]] Doppelpunkt [[slnc 300]] Schmerzen in der Schulter links. "
+        + "Befund [[slnc 300]] Doppelpunkt [[slnc 300]] Abduktion bis 90 Grad. "
+        + "Therapie [[slnc 300]] Doppelpunkt [[slnc 300]] Mobilisation C6 C7.",
+      "Befund Doppelpunkt neue Zeile Inspektion unauffällig neue Zeile Palpation Doppelpunkt Triggerpunkte im Trapezius.",
+    ]
+    var leftovers: [String] = []
+    for voice in ["Anna", "Eddy (German (Germany))", "Flo (German (Germany))", "Shelley (German (Germany))"] {
+      for (index, text) in texts.enumerated() {
+        let url = dir.appendingPathComponent("cmd-\(index)-\(voice.prefix(4)).wav")
+        try Self.say(text, to: url, voice: voice)
+        let raw = try await LocalSpeechService.shared.transcribe(audioURL: url, language: "de")
+        let fixed = SpokenPunctuation.apply(to: raw)
+        print("CMD voice=\(voice) case=\(index)\n  RAW:   \(raw)\n  FIXED: \(fixed.replacingOccurrences(of: "\n", with: "⏎"))")
+        let folded = fixed.lowercased()
+        if folded.contains("doppel") || folded.contains("absatz") || folded.contains("neue zeile") {
+          leftovers.append("\(voice) #\(index): \(fixed)")
+        }
+      }
+    }
+    #expect(leftovers.isEmpty, "command words left: \(leftovers)")
+  }
+
+  private static func say(_ text: String, to url: URL, voice: String) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+    process.arguments = ["-v", voice, "-o", url.path, "--data-format=LEI16@16000", text]
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+      throw NSError(domain: "ParakeetOfflineTests", code: Int(process.terminationStatus))
+    }
+  }
+
   private static func say(_ text: String, to url: URL) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
