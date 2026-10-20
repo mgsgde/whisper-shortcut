@@ -39,6 +39,7 @@ class MenuBarController: NSObject {
     case finishSetupSeparator = 126
     case retryMeetingTranscription = 127
     case showMeetingAudio = 128
+    case welcomeTour = 129
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -523,6 +524,11 @@ class MenuBarController: NSObject {
       shortcut: currentConfig.openSettings, tag: .settings)
     configureItem.image = nil
     menu.addItem(configureItem)
+
+    // Permanent way back into the tour once setup is done. While it is incomplete the
+    // "Finish setup…" row at the top opens the same window, so this one hides then.
+    menu.addItem(
+      createMenuItem("Welcome Tour…", action: #selector(showWelcomeTour), tag: .welcomeTour))
 
     // Feedback sits next to Settings, the macOS convention for it, and offers all three channels
     // rather than WhatsApp alone — a user without WhatsApp otherwise has no obvious way to reach
@@ -1106,6 +1112,7 @@ class MenuBarController: NSObject {
     let needsOnboarding = WelcomeWindowController.needsCompletion
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
+    menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
     // Show central Stop button only when something is active
     let isAnythingActive = appState.isBusy || isLiveMeetingActive
@@ -4075,6 +4082,7 @@ extension MenuBarController: NSMenuDelegate {
     let needsOnboarding = WelcomeWindowController.needsCompletion
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
+    menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
   }
 
   /// The one-time usage statistics notice waits for the menu to close: a window opened while the
