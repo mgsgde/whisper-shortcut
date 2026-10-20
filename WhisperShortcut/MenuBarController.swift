@@ -1358,6 +1358,7 @@ class MenuBarController: NSObject {
   ) {
     if mode == .transcription || mode == .prompt {
       pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
+      ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
     }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
@@ -3171,6 +3172,18 @@ class MenuBarController: NSObject {
   /// goes there, not to whatever the user has switched to since.
   private var pasteTargetAtRecordStart: PasteTarget?
 
+  /// The own window (e.g. Chat) whose text field had focus when that recording started, so a
+  /// dictation into WhisperShortcut's own input can be pasted there too.
+  private var ownTextWindowAtRecordStart: Int?
+
+  /// Window number of this app's key window when it is active and an editable text view has focus.
+  private static func ownFocusedTextWindowNumber() -> Int? {
+    guard NSApp.isActive, let window = NSApp.keyWindow,
+      let textView = window.firstResponder as? NSTextView, textView.isEditable
+    else { return nil }
+    return window.windowNumber
+  }
+
   /// Stores a dictation as a Writing Style sample when it was meant for a known app (mail,
   /// messenger, work chat). Never logs the text.
   @MainActor
@@ -3251,11 +3264,13 @@ class MenuBarController: NSObject {
 
       // The result can arrive minutes after the recording started, with another app (or this one)
       // in front. ⌘V there replaces whatever that app has selected, so paste only into the app the
-      // user dictated into, and never into our own windows.
+      // user dictated into; into our own windows only when it was the same focused text field.
       let recorded = pasteTargetAtRecordStart
       let frontApp = NSWorkspace.shared.frontmostApplication
+      let ownTextWindow = Self.ownFocusedTextWindowNumber()
       var action = PasteTargetPolicy.action(
-        frontmost: Self.pasteTarget(of: frontApp), recorded: recorded, own: Self.ownPasteTarget)
+        frontmost: Self.pasteTarget(of: frontApp), recorded: recorded, own: Self.ownPasteTarget,
+        ownTextFieldStillFocused: ownTextWindow != nil && ownTextWindow == ownTextWindowAtRecordStart)
       if action == .activateRecordedThenPaste {
         if let recorded,
           let app = NSRunningApplication(processIdentifier: recorded.pid),

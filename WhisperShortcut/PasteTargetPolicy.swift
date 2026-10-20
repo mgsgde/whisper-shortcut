@@ -16,7 +16,8 @@ struct PasteTarget: Equatable {
 /// Where auto-paste may send ⌘V. A dictation can finish minutes after it started, so the frontmost
 /// app at paste time is not necessarily the one the user dictated into — and ⌘V into the wrong app
 /// replaces whatever it has selected. The rule: paste only into the app that was frontmost when the
-/// recording started, and never into WhisperShortcut's own windows.
+/// recording started. WhisperShortcut's own windows get ⌘V only when the user dictated into one of
+/// their text fields (the Chat input) and that same field still has focus.
 ///
 /// Pure function of the three apps so it is testable without a window server.
 enum PasteTargetPolicy {
@@ -33,8 +34,17 @@ enum PasteTargetPolicy {
   /// The pill text shown when the result stayed on the clipboard.
   static let copiedHint = "Copied – press ⌘V to paste"
 
-  static func action(frontmost: PasteTarget?, recorded: PasteTarget?, own: PasteTarget) -> Action {
-    if let recorded, recorded.isSameApp(as: own) { return .clipboardOnly }
+  /// - Parameter ownTextFieldStillFocused: WhisperShortcut had an editable text field focused when
+  ///   the recording started, and the same window still has one focused now. Without it the
+  ///   frontmost own window is the pill, Settings or a popup, where ⌘V lands nowhere useful.
+  static func action(
+    frontmost: PasteTarget?, recorded: PasteTarget?, own: PasteTarget,
+    ownTextFieldStillFocused: Bool = false
+  ) -> Action {
+    if let recorded, recorded.isSameApp(as: own) {
+      let frontmostIsOwn = frontmost.map { $0.isSameApp(as: own) } ?? false
+      return frontmostIsOwn && ownTextFieldStillFocused ? .pasteNow : .clipboardOnly
+    }
     let frontmostIsOwn = frontmost.map { $0.isSameApp(as: own) } ?? false
     guard let recorded else {
       return frontmostIsOwn || frontmost == nil ? .clipboardOnly : .pasteNow
