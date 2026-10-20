@@ -44,6 +44,12 @@ If it's already built and you only need it running:
 bash .agents/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
 ```
 
+**Worktree builds are sidecars.** `rebuild-and-restart.sh` run from a `.claude/worktrees/` checkout launches
+the build as a *sidecar* (`--sidecar`, badge TEST, no global hotkeys / Fn key / MCP / Sparkle) next to the
+user's own instance and never kills it; use `--replace` to take over instead. Both share the process name
+"WhisperShortcut Dev", so the driver targets the instance running from this checkout's bundle by pid and
+`quit` only kills that pid. Hotkey-driven features cannot be tested in a sidecar; the menu can.
+
 ## Run (agent path) — the driver
 
 ```bash

@@ -50,7 +50,34 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"   # .claude/skills/run-whisper
 APP_PATH="$PROJECT_DIR/build/DerivedData/Build/Products/Debug/$APP.app"
 SHOT_DIR="${WS_SHOT_DIR:-/tmp}"
 
-is_running() { pgrep -x "$APP" >/dev/null 2>&1; }
+# A worktree build runs as a sidecar next to the user's own instance (same process name), so every
+# command targets, by pid, the instance that runs from THIS checkout's bundle when there is one.
+# Otherwise it falls back to the process name (the main checkout's build replaces the user's).
+target_pid() { pgrep -f "$APP_PATH/Contents/MacOS" 2>/dev/null | head -n1 || true; }
+other_instance_running() {
+  local pid
+  for pid in $(pgrep -x "$APP" 2>/dev/null); do
+    [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == "$APP_PATH/Contents/MacOS"* ]] || return 0
+  done
+  return 1
+}
+# AppleScript process specifier: the sidecar by pid, else by name.
+proc_spec() {
+  local pid; pid="$(target_pid)"
+  if [[ -n "$pid" ]]; then echo "(first process whose unix id is $pid)"; else echo "process \"$APP\""; fi
+}
+# Launch this checkout's bundle; as a sidecar when another instance already owns the hotkeys.
+launch_app() {
+  if other_instance_running; then open -n "$APP_PATH" --args --sidecar; else open -n "$APP_PATH"; fi
+}
+# Quit only the instance of this checkout (never `pkill -x`, which would take the user's too).
+quit_app() {
+  local pid; pid="$(target_pid)"
+  if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true
+  else osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true; fi
+}
+
+is_running() { [[ -n "$(target_pid)" ]] || pgrep -x "$APP" >/dev/null 2>&1; }
 
 require_running() {
   if ! is_running; then
@@ -61,7 +88,7 @@ require_running() {
 
 # Open the status menu (leaves it open).
 open_menu() {
-  osascript -e "tell application \"System Events\" to tell process \"$APP\" to click menu bar item 1 of menu bar 2" >/dev/null
+  osascript -e "tell application \"System Events\" to tell $(proc_spec) to click menu bar item 1 of menu bar 2" >/dev/null
   sleep 0.4
 }
 
@@ -71,7 +98,7 @@ dismiss() { osascript -e 'tell application "System Events" to key code 53' >/dev
 # Click a status-menu item by exact name.
 click_item() {
   local name="$1"
-  osascript -e "tell application \"System Events\" to tell process \"$APP\"
+  osascript -e "tell application \"System Events\" to tell $(proc_spec)
     click menu bar item 1 of menu bar 2
     delay 0.3
     click menu item \"$name\" of menu 1 of menu bar item 1 of menu bar 2
@@ -81,7 +108,7 @@ click_item() {
 # Echo "x y w h" of the front WS window in screen points, or nothing if no window.
 front_window_bounds() {
   osascript <<EOF 2>/dev/null || true
-tell application "System Events" to tell process "$APP"
+tell application "System Events" to tell $(proc_spec)
   if (count of windows) is 0 then return ""
   set p to position of window 1
   set s to size of window 1
@@ -110,11 +137,11 @@ case "$cmd" in
     bash "$PROJECT_DIR/scripts/rebuild-and-restart.sh" "$@"
     ;;
   ensure)
-    if is_running; then echo "already running"; else open "$APP_PATH"; sleep 2; echo "launched"; fi
+    if is_running; then echo "already running"; else launch_app; sleep 2; echo "launched"; fi
     ;;
   items)
     require_running
-    osascript -e "tell application \"System Events\" to tell process \"$APP\"
+    osascript -e "tell application \"System Events\" to tell $(proc_spec)
       click menu bar item 1 of menu bar 2
       delay 0.3
       set ns to name of menu items of menu 1 of menu bar item 1 of menu bar 2
@@ -142,16 +169,16 @@ case "$cmd" in
     ;;
   close)
     require_running
-    osascript -e "tell application \"System Events\" to tell process \"$APP\" to click button 1 of window 1" >/dev/null 2>&1 || true
+    osascript -e "tell application \"System Events\" to tell $(proc_spec) to click button 1 of window 1" >/dev/null 2>&1 || true
     echo "closed"
     ;;
   quit)
-    osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
+    quit_app
     echo "quit"
     ;;
   activate)
     require_running
-    osascript -e "tell application \"$APP\" to activate" >/dev/null
+    osascript -e "tell application \"System Events\" to set frontmost of $(proc_spec) to true" >/dev/null
     sleep 0.3
     echo "activated"
     ;;
@@ -164,18 +191,18 @@ case "$cmd" in
     ;;
   onboarding-reset)
     defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
-    osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
+    quit_app
     sleep 1
-    open "$APP_PATH"
+    launch_app
     sleep 2
     echo "onboarding-reset: Welcome window should be frontmost"
     ;;
   onboarding-wipe)
     echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
-    osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
+    quit_app
     sleep 1
     rm -rf "$HOME/Library/Containers/$BUNDLE_ID"
-    open "$APP_PATH"
+    launch_app
     sleep 2
     echo "onboarding-wipe: fresh first-run state"
     ;;
