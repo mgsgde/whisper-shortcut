@@ -1825,6 +1825,66 @@ class MenuBarController: NSObject {
     liveMeeting.setFastChunking(ChatWindowManager.shared.isWindowOpen())
   }
 
+  /// At launch: if the previous run died (or was quit by a script) while a meeting was recording,
+  /// either pick the meeting up again or tell the user it stopped. See `LiveMeetingRecordingMarker`.
+  func resumeInterruptedMeetingIfNeeded() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+      guard let self else { return }
+      let marker = LiveMeetingRecordingMarker.read()
+      let transcriptExists = marker.map {
+        FileManager.default.fileExists(
+          atPath: MeetingListService.transcriptURL(forStem: $0.payload.stem).path)
+      } ?? false
+      let action = LiveMeetingRecordingMarker.launchAction(
+        payload: marker?.payload, lastAlive: marker?.lastAlive, now: Date(),
+        transcriptExists: transcriptExists)
+      // A fresh session writes its own marker, so the old one always goes.
+      LiveMeetingRecordingMarker.clear()
+
+      switch action {
+      case .none:
+        DebugLogger.log("LIVE-MEETING-MARKER: Nothing to recover at launch")
+      case .resume(let stem):
+        DebugLogger.log("LIVE-MEETING-MARKER: Resuming interrupted meeting \(stem)")
+        if self.resumeMeeting(stem: stem) {
+          PopupNotificationWindow.showInfo(
+            "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing.",
+            title: "Meeting Recording Resumed", customDisplayDuration: 8)
+        } else {
+          DebugLogger.logWarning("LIVE-MEETING-MARKER: Could not resume \(stem), notifying instead")
+          self.showMeetingInterruptedNotice()
+        }
+      case .notifyInterrupted(let stem):
+        DebugLogger.log("LIVE-MEETING-MARKER: Meeting \(stem) was interrupted, notifying")
+        self.showMeetingInterruptedNotice()
+      }
+    }
+  }
+
+  private func showMeetingInterruptedNotice() {
+    PopupNotificationWindow.showInfo(
+      "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume.",
+      title: "Meeting Recording Interrupted", customDisplayDuration: 10)
+  }
+
+  /// Rehydrates the live store from disk (as the Resume button does) and restarts recording.
+  /// Returns true when the meeting is recording afterwards.
+  private func resumeMeeting(stem: String) -> Bool {
+    guard !isLiveMeetingActive, !appState.isBusy else { return false }
+    let transcriptURL = MeetingListService.transcriptURL(forStem: stem)
+    let transcript = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
+    let summary = (try? String(
+      contentsOf: MeetingListService.summaryURL(transcriptFileURL: transcriptURL),
+      encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    LiveMeetingTranscriptStore.shared.rehydrateForResume(
+      stem: stem,
+      chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
+      summary: summary,
+      notes: MeetingListService.shared.loadNotes(forStem: stem))
+    startLiveMeeting(resuming: true)
+    return isLiveMeetingActive
+  }
+
   private func stopLiveMeeting() {
     liveMeeting.stop()
   }
@@ -1896,6 +1956,8 @@ class MenuBarController: NSObject {
   }
 
   @objc private func quitApp() {
+    // A deliberate Quit must not auto-resume the meeting on the next launch.
+    LiveMeetingRecordingMarker.markUserQuit()
     // Set flag to indicate user wants to quit completely
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
     // Terminate the app completely
@@ -3251,6 +3313,7 @@ class MenuBarController: NSObject {
   }
 
   func cleanup() {
+    liveMeeting.preserveForTermination()
     stopBlinking()
     shortcuts.cleanup()
     audioRecorder.cleanup()

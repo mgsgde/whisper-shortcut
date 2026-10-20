@@ -84,7 +84,7 @@ echo ""
 # We relaunch it on EXIT regardless of whether the tests passed, so killing it here
 # is non-destructive from the user's point of view. CI has no running app to restore.
 relaunch_app() {
-  if [[ "${CI:-}" == "true" ]]; then
+  if [[ "${CI:-}" == "true" || "${SKIP_RELAUNCH:-}" == "1" ]]; then
     return 0
   fi
   if [[ -d "$RELAUNCH_APP" ]]; then
@@ -137,6 +137,12 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ "${CI:-}" != "true" ]]; then
+  # Never take a recording meeting down for a test run (2026-10-20 incident). The app is still
+  # running when we refuse, so the EXIT trap must not try to relaunch it.
+  if ! bash "$SCRIPT_DIR/meeting-guard.sh"; then
+    SKIP_RELAUNCH=1
+    exit 1
+  fi
   # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).

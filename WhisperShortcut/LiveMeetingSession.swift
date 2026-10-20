@@ -206,6 +206,10 @@ final class LiveMeetingSession: NSObject {
 
     warnIfTranscriptionUnreachable()
 
+    if let url = transcriptURL {
+      LiveMeetingRecordingMarker.write(stem: url.deletingPathExtension().lastPathComponent)
+    }
+
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
     return true
   }
@@ -218,8 +222,30 @@ final class LiveMeetingSession: NSObject {
     stop()
   }
 
+  /// Called when the app is about to exit while a meeting is recording (system quit, update
+  /// script, logout). Keeps the chunk in progress in the audio backlog so it is transcribed when the
+  /// meeting is resumed or ended, instead of vanishing with the process. The recording marker is
+  /// left in place on purpose: the next launch reads it to resume or report the interruption.
+  func preserveForTermination() {
+    guard let recorder, !stopping, !finalized else { return }
+    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    let chunk = recorder.stopForTermination()
+    self.recorder = nil
+    guard let chunk else {
+      DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
+      return
+    }
+    guard let stem else {
+      DebugLogger.logWarning("LIVE-MEETING: Terminating mid-meeting, no stem known; chunk left at \(chunk.url.lastPathComponent)")
+      return
+    }
+    let kept = MeetingAudioBacklog.retain(chunk.url, stem: stem, startTime: chunk.startTime)
+    DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, in-progress chunk kept in backlog: \(kept)")
+  }
+
   func stop() {
     DebugLogger.log("LIVE-MEETING: User requested stop")
+    LiveMeetingRecordingMarker.clear()
 
     safeguardTimer?.invalidate()
     safeguardTimer = nil
@@ -281,6 +307,7 @@ final class LiveMeetingSession: NSObject {
       return
     }
     finalized = true
+    LiveMeetingRecordingMarker.clear()
 
     let shouldDiscard = discard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(shouldDiscard))")
@@ -925,6 +952,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     DebugLogger.log(
       "LIVE-MEETING: Received chunk \(chunkIndex) at \(Self.formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")\(isFinal ? " (final)" : "")"
     )
+
+    // Heartbeat for the recording marker: tells the next launch when the app was last alive.
+    if !finalized && recorder != nil && !stopping {
+      LiveMeetingRecordingMarker.touch()
+    }
 
     // Drop late deliveries that arrive after the session was finalized.
     if finalized {

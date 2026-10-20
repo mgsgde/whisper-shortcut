@@ -146,6 +146,7 @@ case "$cmd" in
     echo "closed"
     ;;
   quit)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" || exit 1
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     echo "quit"
     ;;
@@ -163,6 +164,7 @@ case "$cmd" in
     echo "key $1"
     ;;
   onboarding-reset)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" || exit 1
     defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     sleep 1
@@ -171,6 +173,7 @@ case "$cmd" in
     echo "onboarding-reset: Welcome window should be frontmost"
     ;;
   onboarding-wipe)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" || exit 1
     echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     sleep 1

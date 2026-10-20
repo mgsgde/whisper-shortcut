@@ -61,6 +61,7 @@ fi
 
 # Both apps must be stopped: the release could write while we copy, and the dev app would
 # overwrite the copied preferences from its in-memory state on quit.
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/meeting-guard.sh" || exit 1
 for name in "WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore; do
   if pgrep -x "$name" >/dev/null 2>&1; then
     echo "• Quitting $name"

@@ -129,6 +129,11 @@ fi
 
 echo "✅ Build successful!"
 
+# The build is ready; do not take a recording meeting down to install it (2026-10-20 incident).
+if [[ "${CI:-}" != "true" ]]; then
+  bash "$SCRIPT_DIR/meeting-guard.sh" || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
+fi
+
 echo "🔄 Killing any running WhisperShortcut instances..."
 # `pkill -f WhisperShortcut` ALSO matches this script's command line (it runs from a path
 # containing "WhisperShortcut"), and AppKit's SIGTERM handler can take several seconds to
