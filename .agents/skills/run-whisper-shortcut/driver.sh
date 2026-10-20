@@ -177,6 +177,7 @@ case "$cmd" in
     echo "closed"
     ;;
   quit)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" --dev-only || exit 1
     quit_app
     echo "quit"
     ;;
@@ -194,6 +195,7 @@ case "$cmd" in
     echo "key $1"
     ;;
   onboarding-reset)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" --dev-only || exit 1
     defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
     quit_app
     sleep 1
@@ -202,6 +204,7 @@ case "$cmd" in
     echo "onboarding-reset: Welcome window should be frontmost"
     ;;
   onboarding-wipe)
+    bash "$PROJECT_DIR/scripts/meeting-guard.sh" --dev-only || exit 1
     echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
     quit_app
     sleep 1

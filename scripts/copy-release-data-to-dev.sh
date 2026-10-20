@@ -61,6 +61,7 @@ fi
 
 # Both apps must be stopped: the release could write while we copy, and the dev app would
 # overwrite the copied preferences from its in-memory state on quit.
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/meeting-guard.sh" || exit 1
 # This is the one script that quits the /Applications release on purpose (you run it by hand).
 # It remembers every bundle it quits and opens them again at the end.
 echo "ℹ️  Running apps are quit for the copy and relaunched afterwards."

@@ -218,6 +218,40 @@ class LiveMeetingRecorder: NSObject {
     }
   }
 
+  /// Ends the session synchronously because the process is about to exit, and hands back the chunk
+  /// that was being recorded so the caller can keep it instead of losing it with the app.
+  ///
+  /// The delegate is detached first: the normal path delivers the final chunk asynchronously,
+  /// which would race process exit. `AVAudioRecorder.stop()` finalizes the WAV before returning,
+  /// so the file is complete when this returns. Returns nil for a chunk under a second (not worth
+  /// keeping; the file is deleted).
+  func stopForTermination() -> (url: URL, startTime: TimeInterval)? {
+    delegate = nil
+    isSessionActive = false
+    chunkTimer?.invalidate()
+    chunkTimer = nil
+    meteringTimer?.invalidate()
+    meteringTimer = nil
+
+    let url = activeRecordingURL
+    let startTime = max(0, currentChunkStartTime)
+    let age = currentChunkWallStart.map { Date().timeIntervalSince($0) } ?? 0
+    activeRecorder?.stop()
+    for other in [recorderA, recorderB] where other !== activeRecorder {
+      other?.stop()
+    }
+    activeRecorder = nil
+    activeRecordingURL = nil
+
+    guard let url else { return nil }
+    let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64 ?? 0
+    guard size > 0, age >= 1 else {
+      try? FileManager.default.removeItem(at: url)
+      return nil
+    }
+    return (url, startTime)
+  }
+
   // MARK: - Private Methods
 
   private func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {

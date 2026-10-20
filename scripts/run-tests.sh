@@ -146,6 +146,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ "${CI:-}" != "true" ]]; then
+  # Never take a recording meeting down for a test run (2026-10-20 incident). Refusing here kills
+  # nothing, so KILLED_COUNT stays 0 and the EXIT trap relaunches nothing.
+  bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || exit 1
   # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).

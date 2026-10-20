@@ -164,6 +164,11 @@ fi
 
 echo "✅ Build successful!"
 
+# The build is ready; do not take a recording meeting down to install it (2026-10-20 incident).
+if [[ "${CI:-}" != "true" ]]; then
+  bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
+fi
+
 # Stopping goes through kill_unprotected (lib/daily-app.sh): exact process name or this build's
 # executable path, never a bare `pkill -f WhisperShortcut` (that also matches this script's own
 # command line), and never anything whose command line starts with /Applications/. SIGTERM, up to
