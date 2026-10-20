@@ -41,7 +41,10 @@
 
 set -euo pipefail
 
-APP="WhisperShortcut"
+# Debug builds run as "WhisperShortcut Dev" (bundle ….whispershortcut.dev), apart from the
+# installed release — so everything below, including onboarding-wipe, touches only the dev app.
+APP="WhisperShortcut Dev"
+BUNDLE_ID="com.magnusgoedde.whispershortcut.dev"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"   # .claude/skills/run-whisper-shortcut → project root
 APP_PATH="$PROJECT_DIR/build/DerivedData/Build/Products/Debug/$APP.app"
@@ -160,7 +163,7 @@ case "$cmd" in
     echo "key $1"
     ;;
   onboarding-reset)
-    defaults write com.magnusgoedde.whispershortcut hasCompletedOnboarding -bool false
+    defaults write "$BUNDLE_ID" hasCompletedOnboarding -bool false
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     sleep 1
     open "$APP_PATH"
@@ -171,7 +174,7 @@ case "$cmd" in
     echo "⚠️  DESTRUCTIVE: deleting app container (Keychain API keys survive)" >&2
     osascript -e "tell application \"$APP\" to quit" >/dev/null 2>&1 || pkill -x "$APP" || true
     sleep 1
-    rm -rf "$HOME/Library/Containers/com.magnusgoedde.whispershortcut"
+    rm -rf "$HOME/Library/Containers/$BUNDLE_ID"
     open "$APP_PATH"
     sleep 2
     echo "onboarding-wipe: fresh first-run state"

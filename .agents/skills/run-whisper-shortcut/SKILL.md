@@ -37,7 +37,7 @@ bash scripts/rebuild-and-restart.sh
 bash .agents/skills/run-whisper-shortcut/driver.sh build
 ```
 
-The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut.app`.
+The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app`.
 If it's already built and you only need it running:
 
 ```bash
@@ -79,7 +79,7 @@ time.
 ## Onboarding & first-run (user-perspective testing)
 
 The Welcome window appears on launch when `hasCompletedOnboarding` is false
-(`UserDefaultsKeys.hasCompletedOnboarding`, bundle `com.magnusgoedde.whispershortcut`).
+(`UserDefaultsKeys.hasCompletedOnboarding`, bundle `com.magnusgoedde.whispershortcut.dev` for the Debug build).
 Re-open it from Settings ▸ Privacy & Permissions ▸ "Show welcome tour again".
 
 ### Reset levels
@@ -138,7 +138,7 @@ Qualitative walkthrough beats aggregate metrics at low download volume. Pair wit
 
 ## Run (human path)
 
-`open build/DerivedData/Build/Products/Debug/WhisperShortcut.app` — a menu-bar icon
+`open "build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"` — a menu-bar icon
 appears (no window). Click it to use the menu manually. Useless for an agent: nothing
 to observe programmatically without the driver.
 

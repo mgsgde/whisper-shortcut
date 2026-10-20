@@ -468,10 +468,12 @@
 		BF3C90E92E3E0CC2001D325B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_DISPLAY_NAME = "WhisperShortcut Dev";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WhisperShortcut/WhisperShortcut.entitlements;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 53;
 				DEAD_CODE_STRIPPING = YES;
@@ -489,8 +491,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 5.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.dev;
+				PRODUCT_MODULE_NAME = WhisperShortcut;
+				PRODUCT_NAME = "WhisperShortcut Dev";
+				PROVISIONING_PROFILE_SPECIFIER = "WhisperShortcut Dev (Mac Development)";
 				SPARKLE_PUBLIC_ED_KEY = "LQxrkgAoqNgLwg5ifeo/8X8vrWmKsGKcBCpPqehdy5I=";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -501,6 +505,7 @@
 		BF3C90EA2E3E0CC2001D325B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_DISPLAY_NAME = WhisperShortcut;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = WhisperShortcut/WhisperShortcut.entitlements;
@@ -535,6 +540,7 @@
 		BF9918292F697163008AB3ED /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_DISPLAY_NAME = "WhisperShortcut Dev";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "WhisperShortcut/WhisperShortcut-AppStore.entitlements";
@@ -557,7 +563,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 5.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.dev;
+				PRODUCT_MODULE_NAME = WhisperShortcut_AppStore;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_STORE $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -568,6 +575,7 @@
 		BF99182A2F697163008AB3ED /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APP_DISPLAY_NAME = WhisperShortcut;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "WhisperShortcut/WhisperShortcut-AppStore.entitlements";
@@ -609,7 +617,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.5;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.WhisperShortcutTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.magnusgoedde.whispershortcut.dev.WhisperShortcutTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

@@ -72,7 +72,7 @@ DERIVED_DATA="$PROJECT_DIR/build/DerivedData-tests"
 # worktree's: an app running from a worktree loses its binary (and its microphone —
 # TCC can no longer resolve the process path) when the worktree is removed.
 MAIN_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
-RELAUNCH_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+RELAUNCH_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 
 echo "🧪 Running WhisperShortcut tests..."
 echo "   Scheme:    $SCHEME"
@@ -109,6 +109,7 @@ dump_teardown_evidence() {
   echo "──────── teardown evidence ────────"
   shopt -s nullglob
   local hangs=(
+    "$HOME/Library/Containers/com.magnusgoedde.whispershortcut.dev/Data/Library/Logs/WhisperShortcut"/hang-*.txt
     "$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Logs/WhisperShortcut"/hang-*.txt
     "$HOME/Library/Logs/WhisperShortcut"/hang-*.txt
   )
@@ -139,6 +140,7 @@ if [[ "${CI:-}" != "true" ]]; then
   # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).
+  pkill -x "WhisperShortcut Dev" 2>/dev/null || true
   pkill -x "WhisperShortcut" 2>/dev/null || true
   sleep 1
 fi

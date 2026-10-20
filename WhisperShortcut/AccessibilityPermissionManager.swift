@@ -55,8 +55,9 @@ class AccessibilityPermissionManager {
       // GitHub build). The app cannot run tccutil itself; the user pastes it into Terminal.
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
-      pasteboard.setString(
-        "tccutil reset Accessibility com.magnusgoedde.whispershortcut", forType: .string)
+      // Bundle.main, not a literal: Debug builds run as ….whispershortcut.dev.
+      let bundleID = Bundle.main.bundleIdentifier ?? "com.magnusgoedde.whispershortcut"
+      pasteboard.setString("tccutil reset Accessibility \(bundleID)", forType: .string)
     default:
       break
     }

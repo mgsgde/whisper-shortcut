@@ -2,6 +2,10 @@
 
 # WhisperShortcut Rebuild and Restart Script
 # Builds the project, kills any running instances, and starts the app that was just built.
+# The Debug build is "WhisperShortcut Dev" (bundle com.magnusgoedde.whispershortcut.dev): its own
+# TCC entries (Accessibility, Microphone, Screen Recording), keychain group and container, so it
+# never collides with the installed /Applications release. Settings/history can be copied over
+# once with scripts/copy-release-data-to-dev.sh.
 # Uses a fixed derivedData path so we always launch the build we just produced (not an old one).
 #
 # Usage:
@@ -32,7 +36,7 @@ if [[ "$APP_STORE" == true ]]; then
   APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut-AppStore.app"
 else
   DERIVED_DATA="$PROJECT_DIR/build/DerivedData"
-  APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut.app"
+  APP_PATH="$DERIVED_DATA/Build/Products/Debug/WhisperShortcut Dev.app"
 fi
 
 # An app launched from a worktree dies with it: `git worktree remove` deletes the binary under
@@ -46,7 +50,7 @@ if [[ "$MAIN_ROOT" != "$PROJECT_DIR" ]]; then
   if [[ "$APP_STORE" == true ]]; then
     MAIN_APP="$MAIN_ROOT/build/DerivedData-AppStore/Build/Products/Debug/WhisperShortcut-AppStore.app"
   else
-    MAIN_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+    MAIN_APP="$MAIN_ROOT/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
   fi
 elif [[ "$LAUNCH_FROM_MAIN" == true ]]; then
   echo "ℹ️  --launch-from-main ignored: this is the main checkout."
@@ -57,9 +61,13 @@ cd "$PROJECT_DIR"
 
 # Keychain items live in the data protection keychain, which needs the keychain-access-groups
 # entitlement and therefore a provisioning profile. With an Apple Development identity we use the
-# project's own Automatic signing (team Z59J7V26UT): it embeds the team profile and keeps the
-# designated requirement, so mic/TCC grants survive rebuilds. -allowProvisioningUpdates lets Xcode
-# renew that profile. (Manual signing cannot be used: Xcode rejects its managed profile there.)
+# project's own signing (team Z59J7V26UT), which keeps the designated requirement stable, so
+# mic/TCC grants survive rebuilds. The direct target's Debug config (bundle ….whispershortcut.dev)
+# signs Manually with the "WhisperShortcut Dev (Mac Development)" profile: Xcode has no account
+# signed in, so Automatic signing cannot mint a managed profile for the .dev App ID. That profile
+# was made with `asc profiles create` and expires 2027-10-20 — renew it the same way
+# (WhisperShortcut/Docs/data-directories.md → "Debug build identity"). The App Store target stays
+# on Automatic signing; -allowProvisioningUpdates lets Xcode renew its team profile.
 # No identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped from a
 # copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back to the
 # legacy keychain.
@@ -67,7 +75,7 @@ SIGN_ARGS=()
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
 if [[ -n "$IDENTITY" ]]; then
   SIGN_ARGS=(-allowProvisioningUpdates)
-  echo "🔏 Signing: $IDENTITY (automatic, team profile)"
+  echo "🔏 Signing: $IDENTITY (project signing settings)"
 else
   if [[ "$APP_STORE" == true ]]; then
     ENTITLEMENTS_SRC="$PROJECT_DIR/WhisperShortcut/WhisperShortcut-AppStore.entitlements"
@@ -78,7 +86,7 @@ else
   mkdir -p "$DERIVED_DATA"
   cp "$ENTITLEMENTS_SRC" "$STRIPPED"
   /usr/libexec/PlistBuddy -c 'Delete :keychain-access-groups' "$STRIPPED" >/dev/null 2>&1 || true
-  SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
+  SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
   echo "🔏 Signing: ad-hoc (no Apple Development identity; legacy keychain, prompts on rebuilds)"
 fi
 
@@ -146,12 +154,20 @@ kill_app() {
     sleep 1
   fi
 }
-kill_app WhisperShortcut
-kill_app WhisperShortcut-AppStore
+# All of them, not just the one we are about to launch: the dev build, an older Debug build still
+# named "WhisperShortcut", and the installed /Applications release (also "WhisperShortcut") all
+# bind the same global hotkeys, so only one may run at a time.
+APP_PROCESS_NAMES=("WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore)
+for name in "${APP_PROCESS_NAMES[@]}"; do kill_app "$name"; done
 
 # Sanity check before launching — without this, `open` would silently foreground a leftover
 # instance (giving the illusion of a relaunch while we keep testing the stale build).
-if pgrep -x WhisperShortcut >/dev/null 2>&1 || pgrep -x WhisperShortcut-AppStore >/dev/null 2>&1; then
+any_app_alive() {
+  local name
+  for name in "${APP_PROCESS_NAMES[@]}"; do pgrep -x "$name" >/dev/null 2>&1 && return 0; done
+  return 1
+}
+if any_app_alive; then
   echo "❌ A WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
   exit 1
 fi

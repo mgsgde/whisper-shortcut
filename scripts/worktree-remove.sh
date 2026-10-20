@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # When invoked from inside a worktree, the main checkout is the part before /.claude/worktrees/.
 MAIN_ROOT="${REPO_ROOT%%/.claude/worktrees/*}"
-MAIN_APP="${MAIN_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+MAIN_APP="${MAIN_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 
 RELAUNCH=0
 WT=""
