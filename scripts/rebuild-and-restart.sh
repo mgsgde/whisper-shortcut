@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # WhisperShortcut Rebuild and Restart Script
-# Builds the project, kills any running instances, and starts the app that was just built.
+# Builds the project, kills any running dev instances, and starts the app that was just built.
+# NOTHING under /Applications is ever killed (the installed release is the user's daily instance):
+# see kill_unprotected in lib/daily-app.sh. While the release runs, this build launches as a
+# sidecar next to it (badge TEST, no hotkeys), even from the main checkout.
 # The Debug build is "WhisperShortcut Dev" (bundle com.magnusgoedde.whispershortcut.dev): its own
 # TCC entries (Accessibility, Microphone, Screen Recording), keychain group and container, so it
 # never collides with the installed /Applications release. Settings/history can be copied over
@@ -14,20 +17,35 @@
 #   bash scripts/rebuild-and-restart.sh --development          # currently a no-op (flag parsed but unused; no scheme/endpoint switch)
 #   bash scripts/rebuild-and-restart.sh --launch-from-main     # inside a .claude/worktrees/ checkout: build here, but
 #                                                              # relaunch the MAIN checkout's app (see warning below)
+#   bash scripts/rebuild-and-restart.sh --sidecar              # launch this build NEXT TO the running instance (never kills it)
+#   bash scripts/rebuild-and-restart.sh --replace              # kill every non-/Applications instance, launch this build
+#
+# Main checkout: replaces the running dev instance (default) unless the /Applications release
+# runs, then it is a sidecar. Worktree: sidecar by default, because an agent's worktree build must
+# not take the user's all-day instance away (all instances bind the same global hotkeys). A sidecar
+# runs with `--sidecar`: badge TEST, no hotkeys / Fn key / MCP / Sparkle / daily auto-run. Only the
+# previous sidecar of this very build is restarted. (The app also turns itself into a sidecar when
+# a Dev build starts while the release runs, so Xcode's Run button is safe too.)
 
 set -e  # Exit on any error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/daily-app.sh
+source "$SCRIPT_DIR/lib/daily-app.sh"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
 LAUNCH_FROM_MAIN=false
+FORCE_SIDECAR=false
+FORCE_REPLACE=false
 for arg in "$@"; do
   case "$arg" in
     --app-store) APP_STORE=true ;;
     --development|development) DEVELOPMENT=true ;;
     --launch-from-main) LAUNCH_FROM_MAIN=true ;;
+    --sidecar) FORCE_SIDECAR=true ;;
+    --replace) FORCE_REPLACE=true ;;
   esac
 done
 
@@ -55,6 +73,23 @@ if [[ "$MAIN_ROOT" != "$PROJECT_DIR" ]]; then
 elif [[ "$LAUNCH_FROM_MAIN" == true ]]; then
   echo "ℹ️  --launch-from-main ignored: this is the main checkout."
   LAUNCH_FROM_MAIN=false
+fi
+
+# Sidecar unless told otherwise when in a worktree; --replace and --launch-from-main both mean
+# "this is the instance the user runs", so they keep the kill-everything path.
+SIDECAR=false
+if [[ "$FORCE_SIDECAR" == true && "$IN_WORKTREE" != true ]]; then
+  # Without a running release the main checkout's build IS the daily instance, and the sidecar
+  # path kills the previous instance of this very bundle path: it would take it away.
+  if release_running; then
+    SIDECAR=true   # same as the default launch below: sidecar next to the release
+  else
+    echo "ℹ️  --sidecar ignored: the main checkout's build is the daily instance."
+  fi
+elif [[ "$FORCE_SIDECAR" == true ]]; then
+  SIDECAR=true
+elif [[ "$IN_WORKTREE" == true && "$FORCE_REPLACE" != true && "$LAUNCH_FROM_MAIN" != true ]]; then
+  SIDECAR=true
 fi
 
 cd "$PROJECT_DIR"
@@ -131,50 +166,53 @@ echo "✅ Build successful!"
 
 # The build is ready; do not take a recording meeting down to install it (2026-10-20 incident).
 if [[ "${CI:-}" != "true" ]]; then
-  bash "$SCRIPT_DIR/meeting-guard.sh" || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
+  bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
 fi
 
-echo "🔄 Killing any running WhisperShortcut instances..."
-# `pkill -f WhisperShortcut` ALSO matches this script's command line (it runs from a path
-# containing "WhisperShortcut"), and AppKit's SIGTERM handler can take several seconds to
-# flush. The original `pkill || true; sleep 1; open` could leave a stale instance running,
-# and `open` would just foreground it instead of launching the fresh build. Match by exact
-# executable name and verify termination before relaunching.
-kill_app() {
-  local NAME="$1"
-  local PIDS
-  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
-  [[ -z "$PIDS" ]] && return 0
-  echo "  • SIGTERM → $NAME (pids: $PIDS)"
-  kill $PIDS 2>/dev/null || true
-  for _ in 1 2 3 4 5; do
-    sleep 1
-    PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
-    [[ -z "$PIDS" ]] && return 0
-  done
-  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
-  if [[ -n "$PIDS" ]]; then
-    echo "  • ⚠️  Did not quit within 5s — SIGKILL → $PIDS"
-    kill -9 $PIDS 2>/dev/null || true
-    sleep 1
-  fi
-}
-# All of them, not just the one we are about to launch: the dev build, an older Debug build still
-# named "WhisperShortcut", and the installed /Applications release (also "WhisperShortcut") all
-# bind the same global hotkeys, so only one may run at a time.
+# Stopping goes through kill_unprotected (lib/daily-app.sh): exact process name or this build's
+# executable path, never a bare `pkill -f WhisperShortcut` (that also matches this script's own
+# command line), and never anything whose command line starts with /Applications/. SIGTERM, up to
+# 5s of grace for AppKit to flush, then SIGKILL; a stale instance left running would make `open`
+# just foreground it instead of launching the fresh build.
+# All dev instances, not just the one we are about to launch: the dev build and an older Debug
+# build still named "WhisperShortcut" bind the same global hotkeys, so only one may run at a time.
 APP_PROCESS_NAMES=("WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore)
-for name in "${APP_PROCESS_NAMES[@]}"; do kill_app "$name"; done
 
-# Sanity check before launching — without this, `open` would silently foreground a leftover
-# instance (giving the illusion of a relaunch while we keep testing the stale build).
-any_app_alive() {
-  local name
-  for name in "${APP_PROCESS_NAMES[@]}"; do pgrep -x "$name" >/dev/null 2>&1 && return 0; done
-  return 1
-}
-if any_app_alive; then
-  echo "❌ A WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
-  exit 1
+# Computed before anything is killed; the release is never among the victims.
+RELEASE_UP=false
+release_running && RELEASE_UP=true
+
+if [[ "$SIDECAR" == true ]]; then
+  echo "🔄 Sidecar: restarting only this build's previous sidecar (other instances stay untouched)..."
+  kill_unprotected -f "$APP_PATH/Contents/MacOS"
+  if pgrep -f "$APP_PATH/Contents/MacOS" >/dev/null 2>&1; then
+    echo "❌ The previous sidecar is still alive after kill attempts — aborting."
+    exit 1
+  fi
+else
+  # Remember which bundle the user's own instance ran from, so ensure-app-running.sh and
+  # run-tests.sh bring that one back rather than a build of their own choosing.
+  record_daily_app
+
+  echo "🔄 Killing any running dev instances (anything under /Applications is left alone)..."
+  for name in "${APP_PROCESS_NAMES[@]}"; do kill_unprotected -x "$name"; done
+
+  # Sanity check before launching — without this, `open` would silently foreground a leftover
+  # instance (giving the illusion of a relaunch while we keep testing the stale build).
+  any_unprotected_alive() {
+    local name pid cmd
+    for name in "${APP_PROCESS_NAMES[@]}"; do
+      for pid in $(pgrep -x "$name" 2>/dev/null || true); do
+        cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+        [[ -n "$cmd" ]] && ! is_protected_cmd "$cmd" && return 0
+      done
+    done
+    return 1
+  }
+  if any_unprotected_alive; then
+    echo "❌ A dev WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
+    exit 1
+  fi
 fi
 
 if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" == true ]]; then
@@ -186,7 +224,7 @@ if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" == true ]]; then
     LAUNCH_FROM_MAIN=false
   fi
 fi
-if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true ]]; then
+if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true && "$SIDECAR" != true && "$RELEASE_UP" != true ]]; then
   echo ""
   echo "⚠️  ⚠️  ⚠️  Launching from a WORKTREE: $PROJECT_DIR"
   echo "   This app runs from the worktree's build/DerivedData. When the worktree is removed the"
@@ -198,7 +236,21 @@ if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true ]]; then
   echo "   (Rerun with --launch-from-main to build here but keep running the main checkout's app.)"
   echo ""
 fi
+if [[ "$SIDECAR" == true ]]; then
+  # -n: the user's instance has the same bundle ID, plain `open` would just foreground it.
+  open -n "$APP_PATH" --args --sidecar
+  echo "🧪 Sidecar: launched this worktree's build next to your running instance (badge TEST; no global hotkeys, no Fn key). Your instance was not touched. To test hotkeys, quit the /Applications release yourself and rerun with --replace."
+  exit 0
+fi
 echo "🚀 Starting WhisperShortcut application ($( [[ "$LAUNCH_FROM_MAIN" == true ]] && echo main checkout || echo this build ))..."
-open "$APP_PATH"
+# -n: every dev instance was just killed, and the launch must not be folded into a stray one.
+# The daily-app record is deliberately not touched here: it names the instance the user runs
+# (the /Applications release), and a dev build overwriting it made scripts relaunch the wrong app.
+if [[ "$RELEASE_UP" == true ]]; then
+  open -n "$APP_PATH" --args --sidecar
+  echo "🧪 The release in /Applications keeps running; this build runs next to it as a sidecar (badge TEST, no hotkeys)."
+else
+  open -n "$APP_PATH"
+fi
 
 echo "🎉 WhisperShortcut has been rebuilt and restarted!"

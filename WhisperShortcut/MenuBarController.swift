@@ -1074,7 +1074,8 @@ class MenuBarController: NSObject {
   }
 
   /// Local Debug builds carry an orange "DEV" tag next to the icon, so it is obvious at a glance
-  /// which binary owns the hotkeys when the installed release could be running too.
+  /// which binary owns the hotkeys when the installed release could be running too. A sidecar
+  /// (worktree build next to the user's instance, no hotkeys) shows a purple "TEST" instead.
   private func applyDevBadge(to button: NSStatusBarButton) {
     guard AppConstants.isDevBuild else { return }
     let title = NSMutableAttributedString(
@@ -1082,10 +1083,10 @@ class MenuBarController: NSObject {
       attributes: [.font: NSFont.menuBarFont(ofSize: 0)])
     let badgeFont = NSFont.systemFont(ofSize: 9, weight: .heavy)
     title.append(NSAttributedString(
-      string: (button.title.isEmpty ? "" : " ") + "DEV",
+      string: (button.title.isEmpty ? "" : " ") + (AppConstants.isSidecarInstance ? "TEST" : "DEV"),
       attributes: [
         .font: badgeFont,
-        .foregroundColor: NSColor.systemOrange,
+        .foregroundColor: AppConstants.isSidecarInstance ? NSColor.systemPurple : NSColor.systemOrange,
         .kern: 0.6,
         .baselineOffset: 1,
       ]))

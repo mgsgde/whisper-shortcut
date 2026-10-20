@@ -81,6 +81,11 @@ final class MCPServer: ObservableObject {
   }
 
   private func start() {
+    // Also reached from the `isEnabled` setter: a sidecar must never take the user's MCP port.
+    guard !AppConstants.isSidecarInstance else {
+      DebugLogger.log("MCP-SERVER: Not starting — sidecar instance")
+      return
+    }
     runOnMain { [self] in
       if OfflineMode.isEnabled {
         stopLocked()

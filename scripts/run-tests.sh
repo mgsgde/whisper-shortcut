@@ -11,6 +11,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/daily-app.sh
+source "$SCRIPT_DIR/lib/daily-app.sh"
 
 HERMETIC_RUN=false
 for arg in "$@"; do
@@ -83,14 +85,21 @@ echo ""
 # bootstrap and exit before the test runner connects (FullApp's clean-shutdown handler).
 # We relaunch it on EXIT regardless of whether the tests passed, so killing it here
 # is non-destructive from the user's point of view. CI has no running app to restore.
+# The installed /Applications release is never killed (kill_unprotected), so it needs no restore;
+# only what was actually stopped comes back.
 relaunch_app() {
-  if [[ "${CI:-}" == "true" || "${SKIP_RELAUNCH:-}" == "1" ]]; then
+  if [[ "${CI:-}" == "true" || "${KILLED_COUNT:-0}" -eq 0 ]]; then
     return 0
   fi
-  if [[ -d "$RELAUNCH_APP" ]]; then
+  # The bundle the user was running before we stopped it, if recorded; else the main build.
+  local app; app="$(daily_app_or "$RELAUNCH_APP")"
+  if [[ "$app" == /Applications/* ]] || pgrep -f "$app/Contents/MacOS" >/dev/null 2>&1; then
+    return 0   # the release (never killed) or the target is already running
+  fi
+  if [[ -d "$app" ]]; then
     echo ""
     echo "🚀 Relaunching WhisperShortcut..."
-    open "$RELAUNCH_APP"
+    open -n "$app"
   else
     echo ""
     echo "ℹ️  No built app at $RELAUNCH_APP — run scripts/rebuild-and-restart.sh to build it. Skipping relaunch."
@@ -137,17 +146,15 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ "${CI:-}" != "true" ]]; then
-  # Never take a recording meeting down for a test run (2026-10-20 incident). The app is still
-  # running when we refuse, so the EXIT trap must not try to relaunch it.
-  if ! bash "$SCRIPT_DIR/meeting-guard.sh"; then
-    SKIP_RELAUNCH=1
-    exit 1
-  fi
+  # Never take a recording meeting down for a test run (2026-10-20 incident). Refusing here kills
+  # nothing, so KILLED_COUNT stays 0 and the EXIT trap relaunches nothing.
+  bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || exit 1
   # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).
-  pkill -x "WhisperShortcut Dev" 2>/dev/null || true
-  pkill -x "WhisperShortcut" 2>/dev/null || true
+  record_daily_app
+  kill_unprotected -x "WhisperShortcut Dev"
+  kill_unprotected -x "WhisperShortcut"
   sleep 1
 fi
 

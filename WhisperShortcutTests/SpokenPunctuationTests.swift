@@ -108,3 +108,53 @@ struct SpokenPunctuationExtraTests {
     #expect(SpokenPunctuation.apply(to: "Die Doppelpunkten und des Doppelpunktes") == "Die Doppelpunkten und des Doppelpunktes")
   }
 }
+
+/// Live capture 2026-10-20 (`ParakeetOfflineTests.spokenLayoutCommands`, four German voices): Parakeet
+/// glues "neue Zeile" onto the next word, which left the command in the text and the line break out.
+@Suite("Spoken punctuation — glued line break")
+struct SpokenPunctuationGluedLineTests {
+
+  @Test("\"neue Zeile\" glued to the next word still breaks the line")
+  func gluedLineBreak() {
+    let raw =
+      "Befund Doppelpunkt Neue Zeileinspektion unauffällig neue Zeilepalpation Doppelpunkt Triggerpunkte im Trapezius."
+    #expect(
+      SpokenPunctuation.apply(to: raw)
+        == "Befund:\nInspektion unauffällig\nPalpation: Triggerpunkte im Trapezius.")
+  }
+
+  @Test("\"neue Zeilen\" and its compounds stay words")
+  func pluralStays() {
+    let text = "Bitte zwei neue Zeilen einfügen, neue Zeilenumbrüche vermeiden."
+    #expect(SpokenPunctuation.apply(to: text) == text)
+  }
+}
+
+/// Pilot report 2026-10-19: with Parakeet + local Qwen, ⌘2 notes still contained the word
+/// "Doppelpunkt". The same pass now also runs over the local model's reply, which may already carry
+/// its own colon after the heading.
+@Suite("Spoken punctuation — Dictate Prompt reply")
+struct SpokenPunctuationReplyTests {
+
+  @Test("A word kept after the model's own colon is dropped, not doubled")
+  func wordAfterExistingColon() {
+    #expect(SpokenPunctuation.apply(to: "Befund: Doppelpunkt Druckschmerz L4") == "Befund: Druckschmerz L4")
+    #expect(
+      SpokenPunctuation.apply(to: "Anamnese:\nDoppelpunkt Patientin berichtet\n\nBefund:\nunauffällig")
+        == "Anamnese:\nPatientin berichtet\n\nBefund:\nunauffällig")
+    #expect(SpokenPunctuation.apply(to: "Therapie: Doppelpunkt\nMobilisation") == "Therapie:\nMobilisation")
+  }
+
+  @Test("A clean structured reply passes through byte for byte")
+  func structuredReplyUnchanged() {
+    let reply = "Anamnese:\nSchmerzen LWS.\n\nBefund:\n(nicht diktiert)\n\nTherapie:\nMobilisation C6/C7."
+    #expect(SpokenPunctuation.apply(to: reply) == reply)
+  }
+
+  @Test("The reply pass runs only when the instruction was spoken to an offline engine")
+  func replyPassIsGated() {
+    let reply = "Befund Doppelpunkt Druckschmerz"
+    #expect(SpeechService.applyingSpokenLayout(reply, when: true) == "Befund: Druckschmerz")
+    #expect(SpeechService.applyingSpokenLayout(reply, when: false) == reply)
+  }
+}

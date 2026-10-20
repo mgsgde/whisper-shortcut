@@ -87,6 +87,13 @@ class Shortcuts {
     // Clean up existing shortcuts
     cleanup()
 
+    // Sidecar: the user's instance owns the global hotkeys. This guard lives here (not in setup())
+    // because setupShortcuts is re-called on config change and after recording.
+    if AppConstants.isSidecarInstance {
+      DebugLogger.log("SHORTCUTS: sidecar instance, not registering global hotkeys")
+      return
+    }
+
     // Create toggle shortcuts (only if enabled)
     if config.startRecording.isEnabled {
       toggleDictationKey = HotKey(

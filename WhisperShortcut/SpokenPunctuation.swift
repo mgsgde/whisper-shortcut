@@ -18,6 +18,9 @@ enum SpokenPunctuation {
   /// Order matters: the colon runs first so "Befund Doppelpunkt neuer Absatz" keeps its colon when
   /// the paragraph rule then strips the stray space before the break.
   private static let rules: [Rule] = [
+    // The colon is already there — a model reply that kept the spoken word after its own heading
+    // ("Befund: Doppelpunkt Druckschmerz", "Anamnese:\nDoppelpunkt Patientin"). Drop the word only.
+    rule(#"(:[ \t]*\n?[ \t]*)\bdoppelpunkt\b[ \t,.;:]*"#, "$1"),
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
     // Eats the punctuation the ASR put around the word on both sides.
     rule(#"[ \t,.;]*\bdoppelpunkt\b[ \t,.;:]*"#, ": "),
@@ -30,10 +33,13 @@ enum SpokenPunctuation {
     // Paragraph break. A sentence end before it (". ! ? :") is kept, a stray comma is not.
     rule(#"[ \t,;]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n"),
     rule(#"[ \t,;]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n"),
+    // Parakeet glues this one onto the next word too ("neue Zeileinspektion", live capture
+    // 2026-10-20). "neue Zeilen…" is left alone: that is the plural or a compound, said literally.
+    rule(#"[ \t,;]*\bneue[ \t]+zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
   ]
 
-  /// The glued-colon rule leaves a U+0001 marker before the word it split off; this upper-cases that
-  /// word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.
+  /// The glued-command rules leave a U+0001 marker before the word they split off; this upper-cases
+  /// that word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.
   private static func capitalizeAfterGluedColon(_ text: String) -> String {
     guard text.contains("\u{1}") else { return text }
     var out = ""

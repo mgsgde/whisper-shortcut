@@ -42,6 +42,9 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# kill_unprotected / daily_app_or: nothing under /Applications (the installed release) is ever killed.
+# shellcheck source=../lib/daily-app.sh
+source "${SCRIPT_DIR}/../lib/daily-app.sh"
 QUEUE_REL="plans/implementer-queue.md"
 LEDGER_REL="plans/implementer-log.md"
 QUEUE_FILE="${REPO_ROOT}/${QUEUE_REL}"
@@ -293,25 +296,38 @@ report_out() { # report_out <subject> <body-file> [send-report-mail.py flags …
         || warn "could not send mail — see ${body}"
 }
 
-# The test gate below kills the app. Remember whether it was running, so we can put the user's
-# world back exactly as we found it — with THEIR build, never the branch build.
+# The test gate below kills dev instances (never the /Applications release: kill_unprotected).
+# Remember whether one was running, so we can put the user's world back exactly as we found it —
+# with THEIR build, never the branch build. The release is never killed, so it never needs restoring.
 MAIN_APP="${REPO_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
+unprotected_app_running() {
+    local pid cmd
+    for pid in $(pgrep -f "WhisperShortcut( Dev)?\.app/Contents/MacOS" 2>/dev/null || true); do
+        cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+        [[ -n "$cmd" ]] && ! is_protected_cmd "$cmd" && return 0
+    done
+    return 1
+}
 APP_WAS_RUNNING=0
-pgrep -f "WhisperShortcut( Dev)?\.app" >/dev/null 2>&1 && APP_WAS_RUNNING=1
+unprotected_app_running && APP_WAS_RUNNING=1
 
 restore_user_app() {
     [[ "$APP_WAS_RUNNING" == "1" ]] || return 0
-    pgrep -f "WhisperShortcut( Dev)?\.app" >/dev/null 2>&1 && return 0
-    if [[ -d "$MAIN_APP" ]]; then
+    unprotected_app_running && return 0
+    local target; target="$(daily_app_or "$MAIN_APP")"
+    # Something under /Applications was never killed; what we stopped was a dev build.
+    is_protected_cmd "$target" && target="$MAIN_APP"
+    if [[ -d "$target" ]]; then
         log "relaunching your main build (never the branch build)"
-        open "$MAIN_APP" || warn "could not relaunch ${MAIN_APP}"
+        open -n "$target" || warn "could not relaunch ${target}"
     else
-        warn "your app was running but there is no build at ${MAIN_APP} — relaunch it yourself"
+        warn "your app was running but there is no build at ${target} — relaunch it yourself"
     fi
 }
 
 # The counterpart to restore_user_app, and deliberately its opposite: this hands you the branch
-# build to live in. It runs only at the very end of a fully green run, so an unreviewed or
+# build to try, as a sidecar (badge TEST, no hotkeys) next to whatever you run; none of your own
+# instances is killed, only a previous branch build from a worktree. It runs only at the very end of a fully green run, so an unreviewed or
 # broken build never becomes the app you dictate with. Every earlier call site still restores
 # YOUR build — mid-run the branch has not been judged yet.
 BRANCH_APP="${WT_DIR}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
@@ -322,9 +338,8 @@ launch_branch_build() {
         return 0
     fi
     log "launching the BRANCH build so you can try it now: ${BRANCH}"
-    pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true
-    sleep 1
-    open "$BRANCH_APP" || { warn "could not launch the branch build — restoring yours"; restore_user_app; return 0; }
+    kill_unprotected -f "/\.claude/worktrees/.*\.app/Contents/MacOS"
+    open -n "$BRANCH_APP" --args --sidecar || { warn "could not launch the branch build — restoring yours"; restore_user_app; return 0; }
     BRANCH_BUILD_RUNNING=1
 }
 BRANCH_BUILD_RUNNING=0
@@ -736,8 +751,7 @@ log "gate: xcodebuild (Debug)…"
 # the SIGTERM during XCTest bootstrap), so this kills it — and restore_user_app puts YOUR build
 # back afterwards, never the branch build.
 log "gate: test plan (live roundtrips: ${LIVE_TESTS} — kills the running app for the duration)…"
-pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true
-sleep 1
+kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
 ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
   xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
     -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
@@ -831,7 +845,7 @@ EOF
             -skipPackagePluginValidation build ) \
             >"${RUN_DIR}/build-2.log" 2>&1 || { tail -40 "${RUN_DIR}/build-2.log"; fail_run "GATE FAILED: xcodebuild (after rework)"; }
         log "gate: test plan (after rework)…"
-        pkill -f "WhisperShortcut( Dev)?\.app" 2>/dev/null || true; sleep 1
+        kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
         ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
           xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
             -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
