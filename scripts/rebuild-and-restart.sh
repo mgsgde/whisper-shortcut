@@ -14,20 +14,33 @@
 #   bash scripts/rebuild-and-restart.sh --development          # currently a no-op (flag parsed but unused; no scheme/endpoint switch)
 #   bash scripts/rebuild-and-restart.sh --launch-from-main     # inside a .claude/worktrees/ checkout: build here, but
 #                                                              # relaunch the MAIN checkout's app (see warning below)
+#   bash scripts/rebuild-and-restart.sh --sidecar              # launch this build NEXT TO the running instance (never kills it)
+#   bash scripts/rebuild-and-restart.sh --replace              # kill every instance, launch this build (old behaviour)
+#
+# Main checkout: replaces the running instance (default). Worktree: sidecar by default, because an
+# agent's worktree build must not take the user's all-day instance away (all instances bind the
+# same global hotkeys). A sidecar runs with `--sidecar`: badge TEST, no hotkeys / Fn key / MCP /
+# Sparkle / daily auto-run. Only the previous sidecar of this very build is restarted.
 
 set -e  # Exit on any error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/daily-app.sh
+source "$SCRIPT_DIR/lib/daily-app.sh"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
 LAUNCH_FROM_MAIN=false
+FORCE_SIDECAR=false
+FORCE_REPLACE=false
 for arg in "$@"; do
   case "$arg" in
     --app-store) APP_STORE=true ;;
     --development|development) DEVELOPMENT=true ;;
     --launch-from-main) LAUNCH_FROM_MAIN=true ;;
+    --sidecar) FORCE_SIDECAR=true ;;
+    --replace) FORCE_REPLACE=true ;;
   esac
 done
 
@@ -55,6 +68,18 @@ if [[ "$MAIN_ROOT" != "$PROJECT_DIR" ]]; then
 elif [[ "$LAUNCH_FROM_MAIN" == true ]]; then
   echo "ℹ️  --launch-from-main ignored: this is the main checkout."
   LAUNCH_FROM_MAIN=false
+fi
+
+# Sidecar unless told otherwise when in a worktree; --replace and --launch-from-main both mean
+# "this is the instance the user runs", so they keep the kill-everything path.
+SIDECAR=false
+if [[ "$FORCE_SIDECAR" == true && "$IN_WORKTREE" != true ]]; then
+  # The main checkout's build IS the daily instance; treating it as a sidecar would kill it.
+  echo "ℹ️  --sidecar ignored: the main checkout's build is the daily instance."
+elif [[ "$FORCE_SIDECAR" == true ]]; then
+  SIDECAR=true
+elif [[ "$IN_WORKTREE" == true && "$FORCE_REPLACE" != true && "$LAUNCH_FROM_MAIN" != true ]]; then
+  SIDECAR=true
 fi
 
 cd "$PROJECT_DIR"
@@ -129,25 +154,34 @@ fi
 
 echo "✅ Build successful!"
 
-echo "🔄 Killing any running WhisperShortcut instances..."
 # `pkill -f WhisperShortcut` ALSO matches this script's command line (it runs from a path
 # containing "WhisperShortcut"), and AppKit's SIGTERM handler can take several seconds to
 # flush. The original `pkill || true; sleep 1; open` could leave a stale instance running,
 # and `open` would just foreground it instead of launching the fresh build. Match by exact
-# executable name and verify termination before relaunching.
+# executable name (or, for a sidecar, by this build's executable path) and verify termination
+# before relaunching.
+# $1 = process name (pgrep -x), or with mode "path" the executable directory prefix (pgrep -f).
+find_pids() {
+  if [[ "${2:-name}" == path ]]; then
+    # The script's own command line holds the project dir but never "$APP_PATH/Contents/MacOS".
+    pgrep -f "$1/Contents/MacOS" 2>/dev/null || true
+  else
+    pgrep -x "$1" 2>/dev/null || true
+  fi
+}
 kill_app() {
-  local NAME="$1"
+  local NAME="$1" MODE="${2:-name}"
   local PIDS
-  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+  PIDS=$(find_pids "$NAME" "$MODE")
   [[ -z "$PIDS" ]] && return 0
   echo "  • SIGTERM → $NAME (pids: $PIDS)"
   kill $PIDS 2>/dev/null || true
   for _ in 1 2 3 4 5; do
     sleep 1
-    PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+    PIDS=$(find_pids "$NAME" "$MODE")
     [[ -z "$PIDS" ]] && return 0
   done
-  PIDS=$(pgrep -x "$NAME" 2>/dev/null || true)
+  PIDS=$(find_pids "$NAME" "$MODE")
   if [[ -n "$PIDS" ]]; then
     echo "  • ⚠️  Did not quit within 5s — SIGKILL → $PIDS"
     kill -9 $PIDS 2>/dev/null || true
@@ -158,18 +192,33 @@ kill_app() {
 # named "WhisperShortcut", and the installed /Applications release (also "WhisperShortcut") all
 # bind the same global hotkeys, so only one may run at a time.
 APP_PROCESS_NAMES=("WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore)
-for name in "${APP_PROCESS_NAMES[@]}"; do kill_app "$name"; done
 
-# Sanity check before launching — without this, `open` would silently foreground a leftover
-# instance (giving the illusion of a relaunch while we keep testing the stale build).
-any_app_alive() {
-  local name
-  for name in "${APP_PROCESS_NAMES[@]}"; do pgrep -x "$name" >/dev/null 2>&1 && return 0; done
-  return 1
-}
-if any_app_alive; then
-  echo "❌ A WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
-  exit 1
+if [[ "$SIDECAR" == true ]]; then
+  echo "🔄 Sidecar: restarting only this build's previous sidecar (other instances stay untouched)..."
+  kill_app "$APP_PATH" path
+  if [[ -n "$(find_pids "$APP_PATH" path)" ]]; then
+    echo "❌ The previous sidecar is still alive after kill attempts — aborting."
+    exit 1
+  fi
+else
+  # Remember which bundle the user's own instance ran from, so ensure-app-running.sh and
+  # run-tests.sh bring that one back rather than a build of their own choosing.
+  record_daily_app
+
+  echo "🔄 Killing any running WhisperShortcut instances..."
+  for name in "${APP_PROCESS_NAMES[@]}"; do kill_app "$name"; done
+
+  # Sanity check before launching — without this, `open` would silently foreground a leftover
+  # instance (giving the illusion of a relaunch while we keep testing the stale build).
+  any_app_alive() {
+    local name
+    for name in "${APP_PROCESS_NAMES[@]}"; do pgrep -x "$name" >/dev/null 2>&1 && return 0; done
+    return 1
+  }
+  if any_app_alive; then
+    echo "❌ A WhisperShortcut instance is still alive after kill attempts — aborting so you don't test the stale build."
+    exit 1
+  fi
 fi
 
 if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" == true ]]; then
@@ -181,7 +230,7 @@ if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" == true ]]; then
     LAUNCH_FROM_MAIN=false
   fi
 fi
-if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true ]]; then
+if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true && "$SIDECAR" != true ]]; then
   echo ""
   echo "⚠️  ⚠️  ⚠️  Launching from a WORKTREE: $PROJECT_DIR"
   echo "   This app runs from the worktree's build/DerivedData. When the worktree is removed the"
@@ -193,7 +242,19 @@ if [[ "$IN_WORKTREE" == true && "$LAUNCH_FROM_MAIN" != true ]]; then
   echo "   (Rerun with --launch-from-main to build here but keep running the main checkout's app.)"
   echo ""
 fi
+if [[ "$SIDECAR" == true ]]; then
+  # -n: the user's instance has the same bundle ID, plain `open` would just foreground it.
+  open -n "$APP_PATH" --args --sidecar
+  echo "🧪 Sidecar: launched this worktree's build next to your running instance (badge TEST; no global hotkeys, no Fn key). Your instance was not touched. To test hotkeys, rerun with --replace."
+  exit 0
+fi
 echo "🚀 Starting WhisperShortcut application ($( [[ "$LAUNCH_FROM_MAIN" == true ]] && echo main checkout || echo this build ))..."
-open "$APP_PATH"
+# -n: every instance was just killed, and a sidecar-free launch must not be folded into a stray one.
+open -n "$APP_PATH"
+# From the main checkout the build just launched is the daily instance from now on.
+if [[ "$IN_WORKTREE" != true ]]; then
+  mkdir -p "$(dirname "$DAILY_APP_FILE")"
+  printf '%s\n' "$APP_PATH" > "$DAILY_APP_FILE"
+fi
 
 echo "🎉 WhisperShortcut has been rebuilt and restarted!"

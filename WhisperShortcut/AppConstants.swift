@@ -208,6 +208,10 @@ Output rules (CRITICAL):
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
   static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
+  /// A second dev instance launched by `rebuild-and-restart.sh` from a worktree, next to the user's
+  /// own instance. It registers no global hotkeys, no Fn toggle, no MCP server, no Sparkle and no
+  /// daily auto-run, so it cannot fight the user's instance (both share one bundle ID).
+  static let isSidecarInstance = ProcessInfo.processInfo.arguments.contains("--sidecar")
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).

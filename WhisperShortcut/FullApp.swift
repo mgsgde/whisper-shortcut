@@ -110,12 +110,15 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     TelemetryService.shared.start()
 
     // Local read-only MCP server for meeting transcripts; does nothing unless the user enabled it.
-    MCPServer.shared.startIfEnabled()
+    // Skipped in a sidecar: the user's own instance owns the MCP port and the update checks.
+    if !AppConstants.isSidecarInstance {
+      MCPServer.shared.startIfEnabled()
 
-    #if !APP_STORE && canImport(Sparkle)
-    // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
-    UpdaterService.shared.start()
-    #endif
+      #if !APP_STORE && canImport(Sparkle)
+      // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
+      UpdaterService.shared.start()
+      #endif
+    }
 
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
@@ -151,10 +154,13 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // toggles it in Settings → General. The app must never register itself for
     // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
-    // Improve from usage auto-run: check if due and start daily timer
-    Task { @MainActor in
-      await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
-      ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
+    // Improve from usage auto-run: check if due and start daily timer. Not in a sidecar: it shares
+    // the user's data directory and must not run the daily job a second time.
+    if !AppConstants.isSidecarInstance {
+      Task { @MainActor in
+        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+        ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
+      }
     }
 
   }
@@ -587,9 +593,21 @@ class FullWhisperShortcut {
     let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
-    if runningApps.count > 1 {
-      DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
-      exit(0)
+    if AppConstants.isSidecarInstance {
+      // Sidecar and the user's instance share a bundle ID by design.
+      DebugLogger.log("APP-LIFECYCLE: sidecar instance, skipping single-instance check")
+    } else {
+      // The user's instance must not exit because a sidecar is running. A sandboxed app cannot read
+      // other processes' arguments, so sidecars are recognised by location: they only ever run
+      // from a worktree's build.
+      let others = runningApps.filter {
+        $0.processIdentifier != getpid()
+          && !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
+      }
+      if !others.isEmpty {
+        DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(others.count + 1)) — exiting pid=\(getpid())")
+        exit(0)
+      }
     }
 
     // Create and run the full app

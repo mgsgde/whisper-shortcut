@@ -11,6 +11,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib/daily-app.sh
+source "$SCRIPT_DIR/lib/daily-app.sh"
 
 HERMETIC_RUN=false
 for arg in "$@"; do
@@ -87,10 +89,12 @@ relaunch_app() {
   if [[ "${CI:-}" == "true" ]]; then
     return 0
   fi
-  if [[ -d "$RELAUNCH_APP" ]]; then
+  # The bundle the user was running before we stopped it, if recorded; else the main build.
+  local app; app="$(daily_app_or "$RELAUNCH_APP")"
+  if [[ -d "$app" ]]; then
     echo ""
     echo "🚀 Relaunching WhisperShortcut..."
-    open "$RELAUNCH_APP"
+    open -n "$app"
   else
     echo ""
     echo "ℹ️  No built app at $RELAUNCH_APP — run scripts/rebuild-and-restart.sh to build it. Skipping relaunch."
@@ -140,6 +144,7 @@ if [[ "${CI:-}" != "true" ]]; then
   # Exact process name, never a command-line match: `pkill -f WhisperShortcut` also matched a
   # concurrent xcodebuild in another worktree (its args contain the project path), so two
   # sessions testing at once SIGTERMed each other's build (queue #13, 2026-09-19).
+  record_daily_app
   pkill -x "WhisperShortcut Dev" 2>/dev/null || true
   pkill -x "WhisperShortcut" 2>/dev/null || true
   sleep 1

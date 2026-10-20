@@ -93,6 +93,8 @@ final class FnDictationToggle {
   }
 
   func setup() {
+    // Sidecar: global NSEvent monitors would fire in both instances.
+    if AppConstants.isSidecarInstance { return }
     #if !APP_STORE
       // The flagsChanged monitors stay installed permanently: they fire only on modifier
       // presses and every event is gated on the setting, so a disabled feature costs nothing.
