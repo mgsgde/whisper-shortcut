@@ -107,6 +107,8 @@ enum ModelSelectionReconciler {
       // Turning Offline Mode on is a decision for on-device models; a later key must not read the
       // key-less fallback as "never chosen" and move these slots to the cloud once the mode is off.
       adoptKeylessOfflineFallbacks()
+      // Same for Read Aloud: Offline Mode is a deliberate choice for the on-device voice.
+      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.keylessReadAloudFallback)
       snapshotPreOfflineSelectionsIfNeeded()
       reconcileForOfflineMode()
       return
@@ -421,13 +423,54 @@ enum ModelSelectionReconciler {
 
   // MARK: - Read Aloud (TTSModel)
 
+  /// Cloud Read Aloud models in preference order. Not `readAloudModels`: that list is filtered by
+  /// Offline Mode and starts with the macOS voice.
+  private static let readAloudCloudPreference: [TTSModel] = [
+    .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+  ]
+
+  /// Where Read Aloud goes once a cloud key exists after the macOS-voice fallback, or nil while
+  /// none does: the previous selection if its provider is keyed again, else the first keyed cloud
+  /// model. `hasKey` is passed in so the rule can be tested without the Keychain.
+  static func readAloudUpgrade(
+    previous: TTSModel?,
+    hasKey hasKeyForProvider: (TTSProvider) -> Bool
+  ) -> TTSModel? {
+    if let previous, previous != .systemMacOS,
+      readAloudCloudPreference.contains(previous), hasKeyForProvider(previous.provider)
+    {
+      return previous
+    }
+    return readAloudCloudPreference.first(where: { hasKeyForProvider($0.provider) })
+  }
+
   private static func reconcileReadAloud() {
     let key = UserDefaultsKeys.selectedReadAloudModel
+    let recordKey = UserDefaultsKeys.keylessReadAloudFallback
     let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.readAloudModel.rawValue
     let current = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(raw)) ?? SettingsDefaults.readAloudModel
+    let storedPrevious = UserDefaults.standard.string(forKey: recordKey)
+    // The macOS voice has no key, so without the record a later cloud key would never move the
+    // slot off the fallback. A slot the user changed drops its record, so a later manual pick of
+    // the macOS voice is not upgraded.
+    if let storedPrevious {
+      if current == .systemMacOS {
+        let previous = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(storedPrevious))
+        if let upgrade = readAloudUpgrade(previous: previous, hasKey: { hasKey($0) }) {
+          UserDefaults.standard.set(upgrade.rawValue, forKey: key)
+          UserDefaults.standard.removeObject(forKey: recordKey)
+          DebugLogger.log("MODEL-RECONCILE: \(key): systemMacOS → \(upgrade.rawValue) (cloud key added)")
+        }
+        return
+      }
+      UserDefaults.standard.removeObject(forKey: recordKey)
+    }
     if hasKey(current.provider) { return }
     guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
+    if replacement == .systemMacOS {
+      UserDefaults.standard.set(current.rawValue, forKey: recordKey)
+    }
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
   }
 

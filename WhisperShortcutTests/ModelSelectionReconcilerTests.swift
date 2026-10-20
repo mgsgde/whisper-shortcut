@@ -218,4 +218,24 @@ struct ModelSelectionReconcilerTests {
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: true))
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: false, isDownloaded: false))
   }
+
+  @Test("Read Aloud leaves the macOS fallback voice once a cloud key exists")
+  func readAloudUpgradeOrder() {
+    func upgrade(_ previous: TTSModel?, keyed: Set<String>) -> TTSModel? {
+      ModelSelectionReconciler.readAloudUpgrade(previous: previous) { provider in
+        switch provider {
+        case .gemini: return keyed.contains("gemini")
+        case .openai: return keyed.contains("openai")
+        case .xai: return keyed.contains("xai")
+        case .system: return true
+        }
+      }
+    }
+    #expect(upgrade(.gemini38FlashTTS, keyed: ["gemini"]) == .gemini38FlashTTS)
+    #expect(upgrade(nil, keyed: ["gemini"]) == .gemini38FlashLiteTTS)
+    #expect(upgrade(.gemini38FlashTTS, keyed: ["openai"]) == .openAIGpt4oMiniTTS)
+    #expect(upgrade(nil, keyed: ["xai"]) == .grokVoiceTTS)
+    #expect(upgrade(.gemini38FlashTTS, keyed: []) == nil)
+    #expect(upgrade(.systemMacOS, keyed: ["gemini"]) == .gemini38FlashLiteTTS)
+  }
 }
