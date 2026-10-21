@@ -1217,7 +1217,7 @@ class ChatViewModel: ObservableObject {
     StallCancellationRegistry.shared.register(sessionId, task: task)
   }
 
-  private func validateCredential(for model: PromptModel) -> Bool {
+  func validateCredential(for model: PromptModel) -> Bool {
     guard model.provider.hasCredential else {
       errorMessage = model.provider.credentialRequiredMessage
       return false
@@ -1482,6 +1482,7 @@ class ChatViewModel: ObservableObject {
   /// Sends into the session the message was queued for — NOT the currently
   /// visible one, which may have changed while the previous send ran.
   private func processNextQueued() {
+    guard validateCredential(for: Self.openChatModel) else { return }
     guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
     messageQueue.removeFirst()
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
@@ -4338,6 +4339,7 @@ struct ChatInputAreaView: View {
       Task { await viewModel.sendMessage(userInput: typed) }
       return
     }
+    guard viewModel.validateCredential(for: ChatViewModel.openChatModel) else { return }
     composer.clearAll()
     Task {
       await viewModel.sendComposed(
