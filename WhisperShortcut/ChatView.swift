@@ -1511,7 +1511,8 @@ class ChatViewModel: ObservableObject {
   /// visible one, which may have changed while the previous send ran.
   /// A busy session no longer blocks an idle one behind it in the global queue.
   private func processNextQueued() {
-    guard validateCredential(for: Self.openChatModel) else { return }
+    // Checked only with work waiting: `validateCredential` raises the banner as a side effect.
+    guard !messageQueue.isEmpty, validateCredential(for: Self.openChatModel) else { return }
     let (remaining, next) = Self.drainNextQueuedMessage(
       messageQueue,
       isSending: { self.isSendingSession($0) },
