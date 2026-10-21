@@ -2788,13 +2788,13 @@ class MenuBarController: NSObject {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
     TelemetryService.shared.started(.readAloud)
-    ttsPlayback.begin(expectedCharacters: text.count)
+    let playbackGeneration = ttsPlayback.begin(expectedCharacters: text.count)
 
     currentReadAloudTask = Task { [weak self] in
       do {
         // `ChunkTTSService` invokes this on the main actor, in playback order.
         let audioData = try await producer({ [weak self] pcm, index, total in
-          self?.ttsPlayback.enqueue(pcm, index: index, totalChunks: total)
+          self?.ttsPlayback.enqueue(pcm, index: index, totalChunks: total, generation: playbackGeneration)
         })
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
@@ -3802,6 +3802,9 @@ extension MenuBarController: ShortcutDelegate {
     // `NSPasteboard.changeCount` instead — as soon as the frontmost app finishes writing the
     // copy, we read; if no change lands within the deadline, the selection didn't get copied
     // (no focus, no selection, or no accessibility permission for the app being copied from).
+    // Snapshot before the synthetic ⌘C overwrites the user's clipboard (same setting and mechanism
+    // as Dictate Prompt); `performReadSelectedTextAloud` puts it back once the selection is read.
+    captureClipboardRestorePointIfEnabled()
     let beforeChangeCount = NSPasteboard.general.changeCount
     DebugLogger.log("READ-ALOUD: Posting synthetic Cmd+C; before changeCount = \(beforeChangeCount)")
     DispatchQueue.main.async { [weak self] in
@@ -3820,6 +3823,7 @@ extension MenuBarController: ShortcutDelegate {
             // proceed if we're still idle.
             guard case .idle = self.appState else {
               DebugLogger.logWarning("READ-ALOUD: Poll completed but state is no longer idle — abandoning")
+              self.clipboardManager.discardRestorePoint()
               return
             }
             self.performReadSelectedTextAloud()
@@ -3827,6 +3831,7 @@ extension MenuBarController: ShortcutDelegate {
           }
         }
         DebugLogger.logWarning("READ-ALOUD: Pasteboard never changed — Cmd+C did not land on a selection")
+        self.clipboardManager.discardRestorePoint()
         guard case .idle = self.appState else {
           DebugLogger.logWarning("READ-ALOUD: Poll timed out but state is no longer idle — skipping info popup")
           return
@@ -3849,8 +3854,17 @@ extension MenuBarController: ShortcutDelegate {
     // Re-check toggle-off: between the poll-window dispatch and now, the user may have
     // pressed the shortcut again, which would otherwise double-fire `beginReadAloudProcessing`
     // and orphan the first task.
-    if attemptReadAloudToggleOff() { return }
-    guard let selectedText = clipboardManager.getCleanedClipboardText(),
+    if attemptReadAloudToggleOff() {
+      clipboardManager.discardRestorePoint()
+      return
+    }
+    let copiedText = clipboardManager.getCleanedClipboardText()
+    // The selection is in hand: give the user their previous clipboard back (no paste follows, so
+    // there is no receiving app to wait for).
+    if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
+      DebugLogger.log("READ-ALOUD: Restored the clipboard contents from before the selection copy")
+    }
+    guard let selectedText = copiedText,
           !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
       showNoTextSelectedForReadAloud()

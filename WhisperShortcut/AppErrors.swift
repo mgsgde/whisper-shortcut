@@ -6,11 +6,13 @@ import Foundation
 enum TTSPlaybackError: Error, LocalizedError {
   case failedToCreateAudioFormat
   case failedToCreateBuffer
+  case noAudioProduced
 
   var errorDescription: String? {
     switch self {
     case .failedToCreateAudioFormat: return "Failed to create audio format"
     case .failedToCreateBuffer: return "Failed to create audio buffer"
+    case .noAudioProduced: return "No audio was generated for this text"
     }
   }
 }

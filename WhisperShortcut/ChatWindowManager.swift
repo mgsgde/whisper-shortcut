@@ -79,16 +79,19 @@ class ChatWindowManager {
     }
   }
 
-  /// Captures the primary display for Dictate Prompt — no chat window required.
+  /// Captures the display the user is working on for Dictate Prompt — no chat window required. That is
+  /// the display holding the frontmost app's window, else the one under the mouse, else the main one.
   /// Returns JPEG data (max 1920 px wide, 80 % quality) or nil on failure (missing permission, no display, etc.).
   @MainActor
   func captureScreenForPromptMode() async -> Data? {
-    let content: SCShareableContent
+    var content: SCShareableContent
     let now = Date()
+    var fromCache = false
     if let cached = cachedShareableContent,
        let ts = cachedShareableContentDate,
        now.timeIntervalSince(ts) < shareableContentCacheDuration {
       content = cached
+      fromCache = true
     } else {
       do {
         content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -99,11 +102,20 @@ class ChatWindowManager {
       }
     }
 
+    let targetID = ScreenshotDisplayPicker.currentTargetDisplayID()
+    // The cache may predate a display being plugged in or woken; refetch once if it lacks the target.
+    if fromCache, let targetID, !content.displays.contains(where: { $0.displayID == targetID }),
+       let fresh = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) {
+      content = fresh
+      cachedShareableContent = fresh
+      cachedShareableContentDate = Date()
+    }
+
     guard !content.displays.isEmpty else {
       return nil
     }
 
-    let display = content.displays[0]
+    let display = content.displays.first { $0.displayID == targetID } ?? content.displays[0]
     let ourApp = content.applications.first { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
     let filter = SCContentFilter(display: display, excludingApplications: ourApp.map { [$0] } ?? [], exceptingWindows: [])
 
