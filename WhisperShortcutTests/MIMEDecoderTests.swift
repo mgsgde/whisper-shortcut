@@ -122,6 +122,20 @@ struct MIMEDecoderTests {
     #expect(decoded.body.hasSuffix("…[truncated]"))
     #expect(decoded.body.count == 20_000 + "…[truncated]".count)
   }
+  @Test func htmlBlockTagsBecomeLineBreaks() {
+    let raw = mail("""
+    Content-Type: text/html; charset=utf-8
+
+    <h1>Title</h1><div>First</div><div>Second</div><ul><li>One</li><li>Two</li></ul><table><tr><td>A</td></tr><tr><td>B</td></tr></table>Line<br>Next &amp; done<p></p><p></p><p></p><p>End</p>
+    """)
+    let body = MIMEDecoder.decode(raw).body
+    #expect(body.contains("Title\nFirst\nSecond"))
+    #expect(body.contains("One\n"))
+    #expect(body.contains("A\n"))
+    #expect(body.contains("Line\nNext & done"))
+    #expect(!body.contains("\n\n\n"))
+  }
+
   @Test func rawUTF8HeaderDecodes() {
     let decoded = MIMEDecoder.decode(mail("From: a@b.test\nSubject: Grüße\n\nbody"))
     #expect(decoded.subject == "Grüße")
