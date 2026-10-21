@@ -2695,7 +2695,7 @@ class MenuBarController: NSObject {
   private func prepareDictatePromptSelection(
     logPrefix: String, model: PromptModel
   ) -> (ready: Bool, selection: DictatePromptSelectionCapture?) {
-    if model.dictatePromptUsesScreenshotSelection {
+    if model.dictatePromptSelectionPermission == .screenRecording {
       if PermissionStatusChecker.status(for: .screenRecording) != .granted {
         DebugLogger.logWarning("\(logPrefix): Screen Recording missing — Dictate Prompt needs it for the screenshot")
         Self.showScreenRecordingPermissionError()
@@ -2709,7 +2709,7 @@ class MenuBarController: NSObject {
     // Prompt took its decision (or since launch) and the change was not the app's own result copy
     // or restore — see `DictatePromptSelectionDecision.clipboardIsFreshSelection` for the residual
     // risk (a stale copy the user made by hand still looks fresh).
-    if AppConstants.dictatePromptUsesScreenshotSelection {
+    if model.dictatePromptSelectionPermission == nil {
       let current = NSPasteboard.general.changeCount
       let fresh = DictatePromptSelectionDecision.clipboardIsFreshSelection(
         currentChangeCount: current,
