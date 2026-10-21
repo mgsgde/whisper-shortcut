@@ -417,6 +417,8 @@ private class FileLogger {
     
     // Date formatters
     dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.calendar = Calendar(identifier: .gregorian)
     dateFormatter.dateFormat = "yyyy-MM-dd"
     
     timeFormatter = DateFormatter()
@@ -598,6 +600,8 @@ private class ErrorFileWriter {
     try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
 
     dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.calendar = Calendar(identifier: .gregorian)
     dateFormatter.dateFormat = "yyyy-MM-dd"
     timeFormatter = DateFormatter()
     timeFormatter.dateFormat = "HH:mm:ss.SSS"
