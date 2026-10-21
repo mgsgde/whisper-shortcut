@@ -953,6 +953,7 @@ class MenuBarController: NSObject {
 
   @objc private func onboardingStatusDidChange() {
     if let menu = statusItem?.menu { refreshMenu(menu) }
+    applyMissingSetupWarningIfNeeded()
   }
 
   @objc private func chatReadAloudStopFromNotification() {

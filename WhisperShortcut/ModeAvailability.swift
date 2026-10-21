@@ -84,8 +84,9 @@ enum ModeAvailabilityRules {
       if i.isOfflineMode, !i.readAloudUsesSystemVoice { return .blocked(.offlineModeReadAloud) }
       if i.isLiveMeetingActive { return .ignored(.liveMeetingActive) }
       // DRIFT F3 (fixed): a non-meeting recording owns the microphone; a synthetic ⌘C into the
-      // frontmost app would be pointless and the poll would abandon silently afterwards.
-      if i.appState.isRecording { return .ignored(.otherModeRecording) }
+      // frontmost app would be pointless and the poll would abandon silently afterwards. A start
+      // still waiting for the microphone counts too.
+      if i.appState.isRecording || i.pendingRecordingMode != nil { return .ignored(.otherModeRecording) }
       if !i.hasReadAloudCredential { return .blocked(.missingCredential(.readAloud)) }
       return .start
     case .readAloudChat:

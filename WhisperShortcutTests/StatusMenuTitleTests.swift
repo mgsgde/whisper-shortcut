@@ -21,7 +21,7 @@ struct StatusMenuTitleTests {
   @Test("Complex keys are padded into a column")
   func padded() {
     let title = StatusMenuTitle.render(base: "Dictate", isEnabled: true, keyEquivalent: "", display: "F5")
-    #expect(title == "Dictate".padding(toLength: StatusMenuTitle.columnWidth, withPad: " ", startingAt: 0) + "F5")
+    #expect(title == "Dictate".padding(toLength: 26, withPad: " ", startingAt: 0) + "F5")
     let long = String(repeating: "x", count: 30)
     #expect(StatusMenuTitle.render(base: long, isEnabled: true, keyEquivalent: "", display: "F5") == long + "  F5")
   }

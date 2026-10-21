@@ -105,6 +105,7 @@ struct ModeAvailabilityTests {
     #expect(a(.readAloudSelection, input(readAloud: false)) == .blocked(.missingCredential(.readAloud)))
     // F3 — fixed: no synthetic ⌘C while another (non-meeting) recording runs.
     #expect(a(.readAloudSelection, input(.recording(.transcription))) == .ignored(.otherModeRecording))
+    #expect(a(.readAloudSelection, input(pendingMode: .transcription)) == .ignored(.otherModeRecording))
   }
 
   @Test("Read Aloud from Chat")
@@ -139,5 +140,11 @@ struct ModeAvailabilityTests {
     #expect(!show(input(.recording(.voiceFeedback))))
     #expect(show(input(.processing(.contextEditing))))
     #expect(!show(input()))
+    // A pending meeting segment already reads "Stop Dictate", which is what its shortcut does.
+    #expect(!show(input(.recording(.liveMeeting), meeting: true, pending: .dictation)))
+    // F5 — preserved: the App Store menu has no Read Aloud row, but Read Aloud still counts as a
+    // Stop row there, so Chat Read Aloud playing does not show the central Stop.
+    let appStoreRows: [ModeAction] = [.dictate, .dictatePrompt, .voiceFeedback, .readAloudSelection]
+    #expect(!ModeAvailabilityRules.showsCentralStop(input(playing: true), presentRows: appStoreRows))
   }
 }
