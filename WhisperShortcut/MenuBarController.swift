@@ -13,7 +13,7 @@ class MenuBarController: NSObject {
 
   /// Identifies status-menu rows. `NSMenuItem.tag` is the only handle AppKit gives us for
   /// finding an item again after creation, so the creation site in `createMenu()` and the
-  /// refresh site in `updateMenuItems()` used to be linked by nothing but matching integer
+  /// refresh site in `refreshMenu(_:)` used to be linked by nothing but matching integer
   /// literals. Naming them makes that link something the compiler checks.
   ///
   /// Raw values are the historical tags, kept as-is: they are persisted nowhere, but leaving
@@ -289,10 +289,6 @@ class MenuBarController: NSObject {
   private var meetingIsFinishing = false
 
   // MARK: - Meeting Segment (parallel action during live meeting)
-  private enum MeetingSegment: Equatable {
-    case dictation
-    case prompt
-  }
   /// When non-nil, an action is running in parallel with the live meeting.
   private var activeMeetingSegment: MeetingSegment?
   /// True once the active segment has stopped recording and its result is being produced. A segment
@@ -362,10 +358,7 @@ class MenuBarController: NSObject {
   }
 
   /// True when TTS is running in any phase: .ttsProcessing or chunked phases with TTS context. Derived from AppState only.
-  private var isTTSRunning: Bool {
-    if case .processing(let mode) = appState { return mode.isTTSContext }
-    return false
-  }
+  private var isTTSRunning: Bool { appState.isTTSPipelineProcessing }
 
   init(
     audioRecorder: DictationAudioRecording = AppConstants.useChunkedDictateRecorder
@@ -442,39 +435,12 @@ class MenuBarController: NSObject {
     stopSeparator.tag = MenuTag.stopSeparator.rawValue
     menu.addItem(stopSeparator)
 
-    // Recording actions with keyboard shortcuts
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Dictate", action: #selector(toggleTranscription),
-        shortcut: currentConfig.startRecording, tag: .dictate))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Dictate Prompt", action: #selector(togglePrompting),
-        shortcut: currentConfig.startPrompting, tag: .dictatePrompt))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Screenshot", action: #selector(takeScreenshot),
-        shortcut: currentConfig.screenshotCapture, tag: .screenshot))
-    // Selection-based Read Aloud copies via ⌘C (Accessibility) — omitted from the App Store build.
-    #if !APP_STORE
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Read Aloud", action: #selector(readAloudFromMenu),
-        shortcut: currentConfig.readAloud, tag: .readAloud))
-    #endif
-    // Ordered last so the shortcut digits read 1-2-3-4-5 down the menu.
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Voice Feedback", action: #selector(toggleVoiceFeedback),
-        shortcut: currentConfig.voiceFeedback, tag: .voiceFeedback))
-    // Selection-based like Read Aloud: copies via ⌘C, so it needs Accessibility and is absent
-    // from the App Store build.
-    #if !APP_STORE
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Add Selection to Glossary", action: #selector(addSelectionToGlossary),
-        shortcut: currentConfig.addToGlossary, tag: .addToGlossary))
-    #endif
+    // Recording actions with keyboard shortcuts. Voice Feedback is ordered last so the shortcut
+    // digits read 1-2-3-4-5 down the menu; Read Aloud and Glossary are selection-based (⌘C needs
+    // Accessibility) and absent from the App Store build.
+    for row in Self.actionRows {
+      menu.addItem(makeItem(row))
+    }
     menu.addItem(NSMenuItem.separator())
 
     // Recovering a dictation result. Both rows hide themselves while the history is empty, so a
@@ -509,19 +475,14 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Chat", action: #selector(openChatWindow),
-        shortcut: currentConfig.openChat, tag: .chat))
+    menu.addItem(makeItem(Self.chatRow))
 
     menu.addItem(NSMenuItem.separator())
 
     // Settings and quit.
     // Use a neutral selector and clear image explicitly to avoid AppKit
     // auto-decoration that can reserve an icon column for this row.
-    let configureItem = createMenuItemWithShortcut(
-      "Settings…", action: #selector(openConfigurationPanel),
-      shortcut: currentConfig.openSettings, tag: .settings)
+    let configureItem = makeItem(Self.settingsRow)
     configureItem.image = nil
     menu.addItem(configureItem)
 
@@ -565,51 +526,76 @@ class MenuBarController: NSObject {
     return item
   }
 
-  private func createMenuItemWithShortcut(
-    _ title: String, action: Selector, shortcut: ShortcutDefinition, tag: MenuTag? = nil
-  ) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-    item.target = self
-    item.tag = tag?.rawValue ?? 0
+  /// A row of the status menu that shows a configurable shortcut. `mode` is set for the rows whose
+  /// title flips to `stopTitle` while `availability(mode) == .stop`.
+  private struct ModeRow {
+    let tag: MenuTag
+    let title: String
+    let stopTitle: String?
+    let action: Selector
+    let shortcut: KeyPath<ShortcutConfig, ShortcutDefinition>
+    let mode: ModeAction?
+  }
 
-    // Add keyboard shortcut display to the menu item
+  /// Dictate … Glossary in menu order (same order as before the table existed).
+  private static let actionRows: [ModeRow] = {
+    var rows = [
+      ModeRow(
+        tag: .dictate, title: "Dictate", stopTitle: "Stop Dictate",
+        action: #selector(toggleTranscription), shortcut: \.startRecording, mode: .dictate),
+      ModeRow(
+        tag: .dictatePrompt, title: "Dictate Prompt", stopTitle: "Stop Dictate Prompt",
+        action: #selector(togglePrompting), shortcut: \.startPrompting, mode: .dictatePrompt),
+      ModeRow(
+        tag: .screenshot, title: "Screenshot", stopTitle: nil,
+        action: #selector(takeScreenshot), shortcut: \.screenshotCapture, mode: nil),
+    ]
+    #if !APP_STORE
+    rows.append(
+      ModeRow(
+        tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
+        action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
+    #endif
+    rows.append(
+      ModeRow(
+        tag: .voiceFeedback, title: "Voice Feedback", stopTitle: "Stop Voice Feedback",
+        action: #selector(toggleVoiceFeedback), shortcut: \.voiceFeedback, mode: .voiceFeedback))
+    #if !APP_STORE
+    rows.append(
+      ModeRow(
+        tag: .addToGlossary, title: "Add Selection to Glossary", stopTitle: nil,
+        action: #selector(addSelectionToGlossary), shortcut: \.addToGlossary, mode: nil))
+    #endif
+    return rows
+  }()
+
+  private static let chatRow = ModeRow(
+    tag: .chat, title: "Chat", stopTitle: nil,
+    action: #selector(openChatWindow), shortcut: \.openChat, mode: nil)
+  private static let settingsRow = ModeRow(
+    tag: .settings, title: "Settings…", stopTitle: nil,
+    action: #selector(openConfigurationPanel), shortcut: \.openSettings, mode: nil)
+
+  private func makeItem(_ row: ModeRow) -> NSMenuItem {
+    let item = NSMenuItem(title: row.title, action: row.action, keyEquivalent: "")
+    item.target = self
+    item.tag = row.tag.rawValue
+    let shortcut = currentConfig[keyPath: row.shortcut]
     if shortcut.isEnabled {
-      // Set the actual key equivalent for single character keys
-      let keyChar = getKeyEquivalentCharacter(for: shortcut.key)
+      let keyChar = StatusMenuTitle.keyEquivalentCharacter(for: shortcut.key)
       if !keyChar.isEmpty {
         item.keyEquivalent = keyChar
         item.keyEquivalentModifierMask = shortcut.modifiers
-      } else {
-        // For complex keys, append the shortcut to the title padded to a fixed
-        // width so the shortcut glyphs align in a column across menu rows.
-        let columnWidth = 26
-        let paddedTitle =
-          title.count < columnWidth
-          ? title.padding(toLength: columnWidth, withPad: " ", startingAt: 0)
-          : title + "  "
-        item.title = "\(paddedTitle)\(shortcut.displayString)"
       }
     }
-
+    item.title = StatusMenuTitle.render(
+      base: row.title, isEnabled: shortcut.isEnabled, keyEquivalent: item.keyEquivalent,
+      display: shortcut.displayString)
     return item
   }
 
   @objc private func showWelcomeTour() {
     WelcomeWindowController.shared.show()
-  }
-
-  private func getKeyEquivalentCharacter(for key: Key) -> String {
-    let keyMap: [Key: String] = [
-      .one: "1", .two: "2", .three: "3", .four: "4", .five: "5",
-      .six: "6", .seven: "7", .eight: "8", .nine: "9", .zero: "0",
-      .a: "a", .b: "b", .c: "c", .d: "d", .e: "e", .f: "f",
-      .g: "g", .h: "h", .i: "i", .j: "j", .k: "k", .l: "l",
-      .m: "m", .n: "n", .o: "o", .p: "p", .q: "q", .r: "r",
-      .s: "s", .t: "t", .u: "u", .v: "v", .w: "w", .x: "x",
-      .y: "y", .z: "z",
-      .space: " "
-    ]
-    return keyMap[key] ?? ""  // For function keys and special keys
   }
 
   private func setupDelegates() {
@@ -966,7 +952,8 @@ class MenuBarController: NSObject {
   }
 
   @objc private func onboardingStatusDidChange() {
-    updateMenuItems()
+    if let menu = statusItem?.menu { refreshMenu(menu) }
+    applyMissingSetupWarningIfNeeded()
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -1032,7 +1019,8 @@ class MenuBarController: NSObject {
   // MARK: - UI Updates (Single Method!)
   private func updateUI() {
     updateMenuBarIcon()
-    updateMenuItems()
+    if let menu = statusItem?.menu { refreshMenu(menu) }
+    applyMissingSetupWarningIfNeeded()
     updateBlinking()
   }
 
@@ -1094,19 +1082,9 @@ class MenuBarController: NSObject {
     button.imagePosition = button.image == nil ? .noImage : .imageLeading
   }
 
-  private func updateMenuItems() {
-    guard let menu = statusItem?.menu else { return }
-
-    let selectedTranscriptionModel = TranscriptionModel.loadSelected()
-    let canTranscribe = selectedTranscriptionModel.hasRequiredCredential
-    let canPrompt = PromptModel.loadPromptModel(
-      forKey: UserDefaultsKeys.selectedPromptModel,
-      default: SettingsDefaults.selectedPromptModel).hasRequiredCredential
-    #if !APP_STORE
-    let canReadAloud = ReadAloudPreferences.model.hasRequiredCredential
-    #endif
-    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
-
+  /// Brings every state-dependent row of the status menu up to date. Runs on every `updateUI` and
+  /// when the menu opens, so it is the one place that decides what the rows say.
+  private func refreshMenu(_ menu: NSMenu) {
     // Update status
     menu.item(withTag: MenuTag.status.rawValue)?.title = presentedStatusText
 
@@ -1115,58 +1093,41 @@ class MenuBarController: NSObject {
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
-    // Show central Stop button only when something is active
-    let isAnythingActive = appState.isBusy || isLiveMeetingActive
-      || ttsPlayback.isPlaying
-    // When the matching action already reads "Stop Dictate" / "Stop Read Aloud", a second
-    // generic Stop row is the same action twice. Keep the generic Stop for processing
-    // (the action item has flipped back to start) and for a live meeting with no nested
-    // recording, where no action item covers "end this".
-    let actionAlreadyStops =
-      appState.recordingMode == .transcription
-      || appState.recordingMode == .prompt
-      || activeMeetingSegment == .dictation
-      || activeMeetingSegment == .prompt
-      || isTTSRunning || ttsPlayback.isPlaying
-    let showCentralStop = isAnythingActive && !actionAlreadyStops
+    // One decision for titles and the central Stop row (`ModeAvailabilityRules`). When a row
+    // already reads "Stop Dictate" / "Stop Read Aloud", a second generic Stop row is the same
+    // action twice; the generic one stays for processing (the row has flipped back to start) and
+    // for a live meeting with no nested recording. `.readAloudSelection` counts in every build so
+    // that, in the App Store build (no Read Aloud row), a playing Chat Read Aloud keeps its
+    // current behaviour (central Stop hidden) — DRIFT F5, preserved.
+    let input = availabilityInput()
+    let modedRows = Self.actionRows.filter { $0.mode != nil }
+    var stopRows = modedRows.compactMap(\.mode)
+    if !stopRows.contains(.readAloudSelection) { stopRows.append(.readAloudSelection) }  // F5
+    let showCentralStop = ModeAvailabilityRules.showsCentralStop(input, presentRows: stopRows)
     menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !showCentralStop
     menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !showCentralStop
 
-    // During a live meeting, all actions are available as parallel segments
-    let meetingAllowsActions = isLiveMeetingActive && activeMeetingSegment == nil
-
-    // Update action items based on current state
-    updateMenuItem(
-      menu, tag: .dictate,
-      title: (appState.recordingMode == .transcription || activeMeetingSegment == .dictation)
-        ? "Stop Dictate" : "Dictate",
-      enabled: appState.canStartTranscription(hasAPIKey: canTranscribe, hasOfflineModel: false)
-        || appState.recordingMode == .transcription
-        || meetingAllowsActions && canTranscribe
-        || activeMeetingSegment == .dictation)
-
-    updateMenuItem(
-      menu, tag: .dictatePrompt,
-      title: (appState.recordingMode == .prompt || activeMeetingSegment == .prompt)
-        ? "Stop Dictate Prompt" : "Dictate Prompt",
-      enabled: appState.canStartPrompting(hasAPIKey: canPrompt, hasOfflineModel: false)
-        || appState.recordingMode == .prompt
-        || meetingAllowsActions && canPrompt
-        || activeMeetingSegment == .prompt
-    )
-
-    // Read Aloud item: title toggles to Stop while a TTS phase is active or audio is playing.
-    // Omitted from the App Store build, where the selection-based Read Aloud menu item is absent.
-    #if !APP_STORE
-    let isReadAloudActive = isTTSRunning || ttsPlayback.isPlaying
-    updateMenuItem(
-      menu, tag: .readAloud,
-      title: isReadAloudActive ? "Stop Read Aloud" : "Read Aloud",
-      enabled: canReadAloud && (!appState.isBusy || isReadAloudActive)
-    )
-    #endif
+    // Action rows are always clickable: with `autoenablesItems` on, AppKit re-enables every row
+    // whose target answers its action, so a computed `isEnabled` never reached the user. A press
+    // that cannot start answers with a popup (`presentBlocked`) or is ignored.
+    for row in modedRows {
+      guard let mode = row.mode, let item = menu.item(withTag: row.tag.rawValue) else { continue }
+      let shortcut = currentConfig[keyPath: row.shortcut]
+      let isStop = ModeAvailabilityRules.availability(mode, input) == .stop
+      item.title = StatusMenuTitle.render(
+        base: isStop ? (row.stopTitle ?? row.title) : row.title,
+        isEnabled: shortcut.isEnabled, keyEquivalent: item.keyEquivalent,
+        display: shortcut.displayString)
+    }
 
     updateTranscriptionHistoryItems(menu)
+  }
+
+  /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
+  /// configured.
+  private func applyMissingSetupWarningIfNeeded() {
+    let canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
 
     // Handle special case when no API key (any provider) and no usable transcription is configured.
     // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
@@ -1283,12 +1244,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  private func updateMenuItem(_ menu: NSMenu, tag: MenuTag, title: String, enabled: Bool) {
-    guard let item = menu.item(withTag: tag.rawValue) else { return }
-    item.title = title
-    item.isEnabled = enabled
-  }
-
   private func updateBlinking() {
     if presentedState.shouldBlink {
       startBlinking()
@@ -1393,144 +1348,150 @@ class MenuBarController: NSObject {
     return Int((seconds * 1000).rounded())
   }
 
+  /// Everything the availability rules read, gathered once per decision.
+  private func availabilityInput() -> ModeAvailabilityInput {
+    ModeAvailabilityInput(
+      appState: appState,
+      isLiveMeetingActive: isLiveMeetingActive,
+      activeMeetingSegment: activeMeetingSegment,
+      pendingMeetingSegment: pendingMeetingSegment,
+      pendingRecordingMode: pendingRecordingMode,
+      currentJobMode: currentJob?.mode,
+      isTTSPlaying: ttsPlayback.isPlaying,
+      isOfflineMode: OfflineMode.isEnabled,
+      readAloudUsesSystemVoice: ReadAloudPreferences.model.provider == .system,
+      hasTranscriptionCredential: TranscriptionModel.loadSelected().hasRequiredCredential,
+      hasPromptCredential: Self.selectedPromptModel().hasRequiredCredentialForDictatePrompt,
+      hasImprovementCredential: Self.selectedImprovementModel()
+        .hasRequiredCredentialForDictatePrompt,
+      hasReadAloudCredential: ReadAloudPreferences.model.hasRequiredCredential,
+      hasMeetingCredential: TranscriptionModel.loadSelectedForMeeting().hasRequiredCredential)
+  }
+
+  private func availability(_ action: ModeAction) -> ModeAvailability {
+    ModeAvailabilityRules.availability(action, availabilityInput())
+  }
+
+  private static func selectedPromptModel() -> PromptModel {
+    PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
+  }
+
+  private static func selectedImprovementModel() -> PromptModel {
+    PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+  }
+
+  /// Shows the popup for a blocked press: the exact texts the handlers used before the decision
+  /// moved into `ModeAvailabilityRules`.
+  private func presentBlocked(_ reason: BlockReason) {
+    switch reason {
+    case .busy:
+      PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
+    case .missingCredential(.transcription):
+      let model = TranscriptionModel.loadSelected()
+      PopupNotificationWindow.showError(model.apiKeyRequiredMessage, title: model.credentialRequiredTitle)
+    case .missingCredential(.meeting):
+      let model = TranscriptionModel.loadSelectedForMeeting()
+      PopupNotificationWindow.showError(model.apiKeyRequiredMessage, title: model.credentialRequiredTitle)
+    case .missingCredential(.prompt):
+      PopupNotificationWindow.showError(
+        Self.selectedPromptModel().apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
+    case .missingCredential(.improvement):
+      PopupNotificationWindow.showError(
+        Self.selectedImprovementModel().apiKeyRequiredMessageForDictatePrompt,
+        title: "API Key Required")
+    case .missingCredential(.readAloud):
+      PopupNotificationWindow.showError(
+        ReadAloudPreferences.model.apiKeyRequiredMessage, title: "API Key Required")
+    case .offlineModeReadAloud:
+      PopupNotificationWindow.showError(OfflineMode.blockedMessageForReadAloud, title: "Read Aloud")
+    case .meetingWhileBusy:
+      PopupNotificationWindow.showInfo(
+        "Finish the current recording or Read Aloud first, then start the meeting again.",
+        title: "Meeting Not Started", customDisplayDuration: 5)
+    }
+  }
+
   @objc private func toggleTranscription() {
-    // During live meeting: run dictation as a parallel segment
-    if isLiveMeetingActive {
-      if activeMeetingSegment == .dictation || pendingMeetingSegment == .dictation {
-        DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment")
-        stopRecordingAfterTailDelay()
-        return
-      }
-      if activeMeetingSegment != nil || pendingMeetingSegment != nil {
-        DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring dictation")
-        return
-      }
-      let selectedModel = TranscriptionModel.loadSelected()
-      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
-      if selectedModel.hasRequiredCredential || hasOfflineModel {
-        DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
-        ConnectionPrewarmer.prewarm(for: selectedModel)
-        dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
-        beginAudioCapture(mode: .transcription, meetingSegment: .dictation)
-      } else {
-        PopupNotificationWindow.showError(
-          selectedModel.apiKeyRequiredMessage,
-          title: selectedModel.credentialRequiredTitle
-        )
-      }
-      return
-    }
-
-    // Check if currently processing transcription (incl. chunk phases for long audio) - if so, cancel it.
-    // A long Dictate Prompt also runs through the chunk phases; ⌘1 must not cancel it (and delete its
-    // recording) — it falls through to the Busy notice below. ⌘2 or ✕ cancels a prompt.
-    if isTranscriptionProcessing, currentJob?.mode != .prompt {
-      cancelInFlightTranscription()
-      return
-    }
-
-    switch appState.recordingMode {
-    case .transcription:
+    let isMeeting = isLiveMeetingActive
+    switch availability(.dictate) {
+    case .stop:
+      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Stopping dictation segment") }
       stopRecordingAfterTailDelay()
-    case .none:
-      if pendingRecordingMode != nil {
-        stopRecordingAfterTailDelay()
-        return
-      }
+    case .ignored(.otherMeetingSegmentActive):
+      DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring dictation")
+    case .cancelProcessing:
+      cancelInFlightTranscription()
+    case .cancelPendingStart:
+      stopRecordingAfterTailDelay()
+    case .blocked(.busy):
       // A run in progress is not a credential problem: answering a press during it with "API key
       // required" sent users to Settings for nothing. Ignore the press and say why.
-      if appState.isBusy {
-        DebugLogger.log("DICTATE: Shortcut ignored — a run is still in progress (\(appState))")
-        PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
-        return
-      }
+      DebugLogger.log("DICTATE: Shortcut ignored — a run is still in progress (\(appState))")
+      presentBlocked(.busy)
+    case .blocked(let reason):
+      presentBlocked(reason)
+    case .start:
       let selectedModel = TranscriptionModel.loadSelected()
-      let hasOfflineModel = selectedModel.isOfflineModelAvailable()
-
-      if appState.canStartTranscription(hasAPIKey: selectedModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel) {
+      if isMeeting {
+        DebugLogger.log("MEETING-SEGMENT: Starting dictation segment during meeting")
+      } else {
         // A dictation started seconds after an unpasted one is the user telling us the last
         // transcript was wrong. Recorded here, at the press, because the restart *is* the verdict.
         // Live-meeting dictation segments deliberately skip this: speaking repeatedly into a
         // meeting is normal use, not a retry, and would drown the signal.
         ContextLogger.shared.noteDictationStart(autoPasteAvailable: Self.autoPasteAvailable)
-        ConnectionPrewarmer.prewarm(for: selectedModel)
-        dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
-        beginAudioCapture(mode: .transcription)
-      } else {
-        PopupNotificationWindow.showError(
-          selectedModel.apiKeyRequiredMessage,
-          title: selectedModel.credentialRequiredTitle
-        )
       }
-    default:
+      ConnectionPrewarmer.prewarm(for: selectedModel)
+      dictateStreamingSession = DictateStreamingSession.makeIfEligible(speechService: speechService)
+      if isMeeting {
+        beginAudioCapture(mode: .transcription, meetingSegment: .dictation)
+      } else {
+        beginAudioCapture(mode: .transcription)
+      }
+    case .ignored:
       break
     }
   }
 
   @objc internal func togglePrompting() {
-    // During live meeting: run prompt as a parallel segment
-    if isLiveMeetingActive {
-      if activeMeetingSegment == .prompt || pendingMeetingSegment == .prompt {
+    let isMeeting = isLiveMeetingActive
+    switch availability(.dictatePrompt) {
+    case .stop:
+      if isMeeting {
         DebugLogger.log("MEETING-SEGMENT: Stopping prompt segment")
         stopRecordingAfterTailDelay()
-        return
+      } else {
+        stopPromptOrRunTyped()
       }
-      if activeMeetingSegment != nil || pendingMeetingSegment != nil {
-        DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
-        return
-      }
-      let promptModel = PromptModel.loadPromptModel(
-        forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
-      if promptModel.hasRequiredCredentialForDictatePrompt {
-        let preparation = prepareDictatePromptSelection(logPrefix: "MEETING-SEGMENT", model: promptModel)
-        guard preparation.ready else { return }
-        DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting")
-        ConnectionPrewarmer.prewarm(for: promptModel)
-        discardStreamingSession()  // prompt recordings never stream
+    case .ignored(.otherMeetingSegmentActive):
+      DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring prompt")
+    case .cancelProcessing:
+      cancelInFlightPrompt()
+    case .cancelPendingStart:
+      stopRecordingAfterTailDelay()
+    case .blocked(.busy):
+      DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
+      presentBlocked(.busy)
+    case .blocked(let reason):
+      presentBlocked(reason)
+    case .start:
+      let promptModel = Self.selectedPromptModel()
+      let logPrefix = isMeeting ? "MEETING-SEGMENT" : "PROMPT-MODE"
+      let preparation = prepareDictatePromptSelection(logPrefix: logPrefix, model: promptModel)
+      guard preparation.ready else { return }
+      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
+      ConnectionPrewarmer.prewarm(for: promptModel)
+      discardStreamingSession()  // prompt recordings never stream
+      if isMeeting {
         beginAudioCapture(
           mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
       } else {
-        PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
-      }
-      return
-    }
-
-    // Check if currently processing prompt - if so, cancel it. A prompt run on long audio can sit
-    // in the chunk phases (`.splitting` …) instead of `.prompting`; ⌘2 cancels those too.
-    if case .processing(.prompting) = appState {
-      cancelInFlightPrompt()
-      return
-    }
-    if isTranscriptionProcessing, currentJob?.mode == .prompt {
-      cancelInFlightPrompt()
-      return
-    }
-
-    switch appState.recordingMode {
-    case .prompt:
-      stopPromptOrRunTyped()
-    case .none:
-      if pendingRecordingMode != nil {
-        stopRecordingAfterTailDelay()
-        return
-      }
-      if appState.isBusy {
-        DebugLogger.log("PROMPT-MODE: Shortcut ignored — a run is still in progress (\(appState))")
-        PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
-        return
-      }
-      let promptModel = PromptModel.loadPromptModel(
-        forKey: UserDefaultsKeys.selectedPromptModel, default: SettingsDefaults.selectedPromptModel)
-      if appState.canStartPrompting(hasAPIKey: promptModel.hasRequiredCredentialForDictatePrompt, hasOfflineModel: false) {
-        let preparation = prepareDictatePromptSelection(logPrefix: "PROMPT-MODE", model: promptModel)
-        guard preparation.ready else { return }
-        ConnectionPrewarmer.prewarm(for: promptModel)
-        discardStreamingSession()  // prompt recordings never stream
         beginAudioCapture(mode: .prompt, promptSelection: preparation.selection)
-      } else {
-        PopupNotificationWindow.showError(promptModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
       }
-    default:
+    case .ignored:
       break
     }
   }
@@ -1539,55 +1500,33 @@ class MenuBarController: NSObject {
   /// Slice 1 transcribes the instruction and shows what was heard; Slice 2 turns it into a
   /// reviewable change to `system-prompts.md`.
   @objc internal func toggleVoiceFeedback() {
-    // Voice Feedback is a standalone flow — not a live-meeting segment.
-    if isLiveMeetingActive {
+    switch availability(.voiceFeedback) {
+    case .ignored(.liveMeetingActive):
+      // Voice Feedback is a standalone flow — not a live-meeting segment.
       DebugLogger.log("VOICE-FEEDBACK: Ignoring — live meeting active")
-      return
-    }
-
-    // Cancel an in-flight context-editing pass. Cancelling the job also stops the second stage
-    // (`proposeChange`), which the transcription cancel alone never reached.
-    if case .processing(.contextEditing) = appState {
+    case .cancelProcessing:
+      // Cancel an in-flight context-editing pass. Cancelling the job also stops the second stage
+      // (`proposeChange`), which the transcription cancel alone never reached.
       let job = currentJob
       speechService.cancelTranscription()
       job?.cancel()
       transitionToIdleAndCleanup(cleanupAudioURL: job?.audioURL)
-      return
-    }
-
-    switch appState.recordingMode {
-    case .voiceFeedback:
+    case .stop, .cancelPendingStart:
       stopRecordingAfterTailDelay()
-    case .none:
-      if pendingRecordingMode != nil {
-        stopRecordingAfterTailDelay()
-        return
-      }
+    case .blocked(.busy):
+      DebugLogger.log("VOICE-FEEDBACK: Shortcut ignored — a run is still in progress (\(appState))")
+      presentBlocked(.busy)
+    case .blocked(let reason):
       // Two credentials are needed: the transcription model transcribes the spoken instruction,
-      // then the improvement model turns it into a proposed change. Check both up front so the
-      // user isn't told about a missing key only after speaking.
-      let transcriptionModel = TranscriptionModel.loadSelected()
-      let hasOfflineModel = transcriptionModel.isOfflineModelAvailable()
-      guard appState.canStartTranscription(
-        hasAPIKey: transcriptionModel.hasRequiredCredential, hasOfflineModel: hasOfflineModel)
-      else {
-        PopupNotificationWindow.showError(
-          transcriptionModel.apiKeyRequiredMessage, title: transcriptionModel.credentialRequiredTitle)
-        return
-      }
-      let improvementModel = PromptModel.loadPromptModel(
-        forKey: UserDefaultsKeys.selectedImprovementModel,
-        default: SettingsDefaults.selectedImprovementModel)
-      guard improvementModel.hasRequiredCredentialForDictatePrompt else {
-        PopupNotificationWindow.showError(
-          improvementModel.apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
-        return
-      }
+      // then the improvement model turns it into a proposed change. Both are checked up front so
+      // the user isn't told about a missing key only after speaking.
+      presentBlocked(reason)
+    case .start:
       captureVoiceFeedbackSelection()
-      ConnectionPrewarmer.prewarm(for: transcriptionModel)
+      ConnectionPrewarmer.prewarm(for: TranscriptionModel.loadSelected())
       discardStreamingSession()  // voice feedback never streams
       beginAudioCapture(mode: .voiceFeedback)
-    default:
+    case .ignored:
       break
     }
   }
@@ -1735,15 +1674,7 @@ class MenuBarController: NSObject {
   }
 
   /// True when any transcription pipeline phase is active (single request or chunked).
-  private var isTranscriptionProcessing: Bool {
-    guard case .processing(let mode) = appState, !mode.isTTSContext else { return false }
-    switch mode {
-    case .transcribing, .splitting, .processingChunks, .merging:
-      return true
-    case .prompting, .ttsProcessing, .contextEditing:
-      return false
-    }
-  }
+  private var isTranscriptionProcessing: Bool { appState.isTranscriptionPipelineProcessing }
 
   @objc func openSettings() {
     SettingsManager.shared.toggleSettings()
@@ -1801,22 +1732,18 @@ class MenuBarController: NSObject {
   }
 
   private func startLiveMeeting(resuming: Bool) {
-    let meetingModel = TranscriptionModel.loadSelectedForMeeting()
-    guard meetingModel.hasRequiredCredential else {
-      PopupNotificationWindow.showError(
-        meetingModel.apiKeyRequiredMessage,
-        title: meetingModel.credentialRequiredTitle
-      )
-      return
-    }
-
-    // Check if busy with other operations
-    guard !appState.isBusy else {
+    switch availability(.liveMeeting) {
+    case .blocked(.meetingWhileBusy):
       DebugLogger.logWarning("LIVE-MEETING: Cannot start - app is busy")
-      PopupNotificationWindow.showInfo(
-        "Finish the current recording or Read Aloud first, then start the meeting again.",
-        title: "Meeting Not Started", customDisplayDuration: 5)
+      presentBlocked(.meetingWhileBusy)
       return
+    case .blocked(let reason):
+      presentBlocked(reason)
+      return
+    case .stop:
+      return  // callers already guard against a running meeting
+    default:
+      break
     }
 
     guard liveMeeting.start(resuming: resuming) else { return }
@@ -2828,22 +2755,23 @@ class MenuBarController: NSObject {
   /// when the trigger was consumed as a stop (caller should `return`), false when the caller
   /// should proceed to start a new Read Aloud.
   private func attemptReadAloudToggleOff() -> Bool {
-    if isTTSRunning {
-      finishReadAloudSession()
+    switch availability(.readAloudChat) {
+    case .stop:
+      if isTTSRunning {
+        finishReadAloudSession()
+      } else {
+        // With progressive playback, audio can already be playing while later chunks are still
+        // being synthesized, so Stop has to kill the network work too — unless the stream is
+        // already closed, in which case there is nothing left to cancel.
+        finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
+      }
       return true
-    }
-    if ttsPlayback.isPlaying {
-      // With progressive playback, audio can already be playing while later chunks are still
-      // being synthesized, so Stop has to kill the network work too — unless the stream is
-      // already closed, in which case there is nothing left to cancel.
-      finishReadAloudSession(cancelNetworkWork: !ttsPlayback.isStreamClosed)
-      return true
-    }
-    if case .processing = appState {
+    case .ignored(.otherProcessing):
       DebugLogger.logWarning("READ-ALOUD: ignoring — another operation is processing")
       return true
+    default:
+      return false
     }
-    return false
   }
 
   /// Drives the Read Aloud pipeline: sets app state, posts `ttsDidStart`, and runs the producer,
@@ -3852,22 +3780,19 @@ extension MenuBarController: ShortcutDelegate {
 
   private func triggerReadSelectedTextAloud() {
     if attemptReadAloudToggleOff() { return }
-    if OfflineMode.isEnabled, ReadAloudPreferences.model.provider != .system {
-      PopupNotificationWindow.showError(
-        OfflineMode.blockedMessageForReadAloud,
-        title: "Read Aloud")
-      return
-    }
-    if isLiveMeetingActive {
+    switch availability(.readAloudSelection) {
+    case .ignored(.liveMeetingActive):
       DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring during live meeting")
       return
-    }
-    let readAloudModel = ReadAloudPreferences.model
-    guard readAloudModel.hasRequiredCredential else {
-      PopupNotificationWindow.showError(
-        readAloudModel.apiKeyRequiredMessage,
-        title: "API Key Required"
-      )
+    case .ignored(.otherModeRecording):
+      DebugLogger.logWarning("READ-ALOUD-SHORTCUT: ignoring while another recording is active")
+      return
+    case .blocked(let reason):
+      presentBlocked(reason)
+      return
+    case .start:
+      break
+    default:
       return
     }
     guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
@@ -4165,14 +4090,10 @@ extension MenuBarController: NSMenuDelegate {
   /// is pending.
   func menuWillOpen(_ menu: NSMenu) {
     ReviewPrompter.shared.showPendingPromptIfNeeded()
-    // The history rows are otherwise only refreshed on an `appState` change, which leaves them
-    // stale right after launch (a persisted history exists but nothing has happened yet).
-    updateTranscriptionHistoryItems(menu)
+    // Titles, Stop row, onboarding and history rows are otherwise only refreshed on an `appState`
+    // change, which leaves them stale right after launch.
+    refreshMenu(menu)
     updateMeetingBacklogItems(menu)
-    let needsOnboarding = WelcomeWindowController.needsCompletion
-    menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
-    menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
-    menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
   }
 
   /// The one-time usage statistics notice waits for the menu to close: a window opened while the
