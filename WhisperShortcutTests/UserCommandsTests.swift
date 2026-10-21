@@ -140,6 +140,24 @@ struct UserCommandsTests {
     #expect(r.command?.scope == .meeting)
   }
 
+  @Test("moveToTrash drops the command and restore brings it back")
+  func trashAndRestore() throws {
+    let dir = try tempDir()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = UserCommandStore(directoryURL: dir)
+    let url = try store.createFromTemplate()
+    store.reload()
+    #expect(store.commands.map(\.name) == ["new-command"])
+
+    let trashed = try #require(try store.moveToTrash(url))
+    defer { try? FileManager.default.removeItem(at: trashed) }
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    #expect(store.commands.isEmpty)
+
+    try store.restore(from: trashed, to: url)
+    #expect(store.commands.map(\.name) == ["new-command"])
+  }
+
   // MARK: - ChatMessage
 
   @Test("ChatMessage commandName decodes nil from old JSON and round-trips")

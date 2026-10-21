@@ -4,11 +4,14 @@ import SwiftUI
 /// Settings UI for user-defined chat commands (`UserContext/commands/*.md`).
 ///
 /// The files are the source of truth and are edited in any text editor; this section only lists
-/// what the app understood, says what it could not read, and creates a starting file. There is
-/// deliberately no editor here — whoever sets the app up for a team writes the files once.
+/// what the app understood, says what it could not read, creates a starting file and deletes one
+/// (to the Trash, with Undo). There is deliberately no editor here — whoever sets the app up for a
+/// team writes the files once.
 struct UserCommandsSection: View {
   @ObservedObject private var store = UserCommandStore.shared
   @State private var createError: String?
+  /// The last file moved to the Trash, kept so the row can offer Undo until the next action.
+  @State private var lastTrashed: (fileName: String, original: URL, trashed: URL)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -45,6 +48,20 @@ struct UserCommandsSection: View {
           .pointerCursorOnHover()
           .help("Re-read the folder. The chat also re-reads it whenever its window comes forward.")
         Spacer()
+      }
+
+      if let lastTrashed {
+        HStack(spacing: 6) {
+          Image(systemName: "trash")
+            .foregroundColor(.secondary)
+          Text("Moved \(lastTrashed.fileName) to the Trash.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+          Button("Undo") { undoTrash(lastTrashed) }
+            .buttonStyle(.link)
+            .font(.caption)
+            .pointerCursorOnHover()
+        }
       }
 
       if let createError {
@@ -88,6 +105,8 @@ struct UserCommandsSection: View {
       Button("Edit") { NSWorkspace.shared.open(command.fileURL) }
         .pointerCursorOnHover()
         .help("Open \(command.fileURL.lastPathComponent) in your default editor")
+
+      deleteButton(fileURL: command.fileURL, what: command.slash)
     }
   }
 
@@ -108,7 +127,23 @@ struct UserCommandsSection: View {
         NSWorkspace.shared.open(store.directoryURL.appendingPathComponent(issue.fileName))
       }
       .pointerCursorOnHover()
+
+      deleteButton(
+        fileURL: store.directoryURL.appendingPathComponent(issue.fileName), what: issue.fileName)
     }
+  }
+
+  private func deleteButton(fileURL: URL, what: String) -> some View {
+    Button {
+      moveToTrash(fileURL)
+    } label: {
+      Image(systemName: "trash")
+    }
+    .buttonStyle(.borderless)
+    .foregroundColor(.secondary)
+    .pointerCursorOnHover()
+    .help("Delete \(what) (moves \(fileURL.lastPathComponent) to the Trash)")
+    .accessibilityLabel("Delete \(what)")
   }
 
   private func scopeBadge(_ scope: UserCommandScope) -> some View {
@@ -134,6 +169,29 @@ struct UserCommandsSection: View {
     } catch {
       createError = "Could not create the file: \(error.localizedDescription)"
     }
+  }
+
+  private func moveToTrash(_ fileURL: URL) {
+    do {
+      if let trashed = try store.moveToTrash(fileURL) {
+        lastTrashed = (fileURL.lastPathComponent, fileURL, trashed)
+      } else {
+        lastTrashed = nil
+      }
+      createError = nil
+    } catch {
+      createError = "Could not delete \(fileURL.lastPathComponent): \(error.localizedDescription)"
+    }
+  }
+
+  private func undoTrash(_ item: (fileName: String, original: URL, trashed: URL)) {
+    do {
+      try store.restore(from: item.trashed, to: item.original)
+      createError = nil
+    } catch {
+      createError = "Could not restore \(item.fileName): \(error.localizedDescription)"
+    }
+    lastTrashed = nil
   }
 
   private func openFolder() {
