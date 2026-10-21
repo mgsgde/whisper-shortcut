@@ -70,6 +70,8 @@ actor LocalSpeechService {
   private var whisperKit: WhisperKit?
   private var parakeet: ParakeetBackend?
   private var currentModelType: OfflineModelType?
+  /// The load `initializeModel` is currently running, so concurrent callers share it.
+  private var inFlightLoad: (type: OfflineModelType, task: Task<Void, Error>)?
   /// The last model that was loaded, kept across unloads so `transcribe` can put it back.
   /// `currentModelType` is cleared by `unloadModel`; this deliberately is not.
   private var lastLoadedModelType: OfflineModelType?
@@ -122,7 +124,33 @@ actor LocalSpeechService {
   private init() {}
   
   // MARK: - Initialize Model
+  /// Single-flight: this actor suspends inside the load, so without it the prewarmer and the
+  /// dictation path both passed the "already loaded" check and loaded twice, and two different
+  /// models could end up resident at once. Same-type callers join the running load; a different
+  /// type waits for it to finish first.
   func initializeModel(_ modelType: OfflineModelType) async throws {
+    while let current = inFlightLoad {
+      if current.type == modelType {
+        // Joiner: its own cancellation does not stop a load somebody else owns.
+        try await current.task.value
+        return
+      }
+      _ = try? await current.task.value
+      if inFlightLoad?.task == current.task { inFlightLoad = nil }  // guarantees progress, no spin
+    }
+    let task = Task { try await self.performInitializeModel(modelType) }
+    inFlightLoad = (modelType, task)
+    defer { if inFlightLoad?.task == task { inFlightLoad = nil } }
+    // Only the owner propagates cancellation (`ModelStore.cancelDownload` cancels the
+    // `ensureReady` run that awaits this); the load used to be cancelled structurally.
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
+  }
+
+  private func performInitializeModel(_ modelType: OfflineModelType) async throws {
     // Check if already initialized with the same model
     if let current = currentModelType, current == modelType, hasLoadedModel {
       DebugLogger.log("LOCAL-SPEECH: Model \(modelType.displayName) already loaded")
@@ -184,6 +212,7 @@ actor LocalSpeechService {
         return LoadedWhisperKit(try await WhisperKit(config))
       }
       whisperKit = loaded.kit
+      parakeet = nil  // exactly one engine resident
       currentModelType = modelType
       lastLoadedModelType = modelType
       startLifetimeGuardsIfNeeded()
@@ -241,6 +270,7 @@ actor LocalSpeechService {
         try await ParakeetBackend.load()
       }
       parakeet = backend
+      whisperKit = nil  // exactly one engine resident
       currentModelType = modelType
       lastLoadedModelType = modelType
       startLifetimeGuardsIfNeeded()
