@@ -7,9 +7,9 @@ struct PermissionsTab: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
-        title: "Privacy & Permissions",
+        title: String(localized: "Privacy & Permissions"),
         systemImage: "lock.shield",
-        subtitle: "Whether anything may leave this Mac, and what WhisperShortcut can access on it."
+        subtitle: String(localized: "Whether anything may leave this Mac, and what WhisperShortcut can access on it.")
       )
 
       Spacer().frame(height: SettingsConstants.sectionSpacing)
@@ -76,11 +76,11 @@ struct OfflineModeSection: View {
 
       if offlineMode {
         VStack(alignment: .leading, spacing: 6) {
-          offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
-          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
-          offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
+          offlineModeBullet(String(localized: "Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite."))
+          offlineModeBullet(String(localized: "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device."))
+          offlineModeBullet(String(localized: "Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours)."))
           #if !APP_STORE && canImport(Sparkle)
-          offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates.")
+          offlineModeBullet(String(localized: "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates."))
           #endif
           if !hasOfflineModel {
             OfflineModelDownloadCard {
@@ -126,9 +126,9 @@ struct PrivacySection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
-        title: "Privacy",
+        title: String(localized: "Privacy"),
         systemImage: "hand.raised",
-        subtitle: "What this app does — and doesn't do — with your data."
+        subtitle: String(localized: "What this app does — and doesn't do — with your data.")
       )
 
       Spacer().frame(height: SettingsConstants.sectionSpacing)

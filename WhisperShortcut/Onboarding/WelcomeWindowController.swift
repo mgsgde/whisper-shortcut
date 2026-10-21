@@ -12,7 +12,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
       backing: .buffered,
       defer: false
     )
-    window.title = "Welcome to WhisperShortcut"
+    window.title = String(localized: "Welcome to WhisperShortcut")
     window.contentViewController = hosting
     window.isReleasedWhenClosed = false
     window.center()

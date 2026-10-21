@@ -59,7 +59,7 @@ struct SettingsView: View {
             .foregroundColor(.accentColor)
             .frame(width: 20, height: 20)
 
-          Text(tab.rawValue)
+          Text(tab.displayName)
             .font(.body)
         }
         .padding(.vertical, 2)

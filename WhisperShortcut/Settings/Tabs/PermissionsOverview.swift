@@ -28,21 +28,21 @@ struct PermissionsOverview: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       permissionRow(
-        name: "Microphone",
-        description: "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted.",
+        name: String(localized: "Microphone"),
+        description: String(localized: "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted."),
         required: true,
         status: micStatus,
         actions: micActions,
         hint: micStatus == .denied
-          ? "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later."
+          ? String(localized: "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later.")
           : nil
       )
 
       if includeAccessibility {
         Divider()
         permissionRow(
-          name: "Accessibility",
-          description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General.",
+          name: String(localized: "Accessibility"),
+          description: String(localized: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General."),
           required: false,
           status: axStatus,
           actions: accessibilityActions
@@ -51,8 +51,8 @@ struct PermissionsOverview: View {
 
       Divider()
       permissionRow(
-        name: "Screen Recording",
-        description: "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
+        name: String(localized: "Screen Recording"),
+        description: String(localized: "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests."),
         required: false,
         status: screenStatus,
         actions: screenActions,
@@ -61,8 +61,8 @@ struct PermissionsOverview: View {
         hint: screenStatus == .granted
           ? nil
           : mode == .settings
-            ? "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below."
-            : "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen."
+            ? String(localized: "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below.")
+            : String(localized: "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen.")
       )
 
       // Relaunch affordance: Screen Recording / Accessibility grants only take effect after a full
@@ -113,7 +113,7 @@ struct PermissionsOverview: View {
         Button {
           PermissionStatusChecker.requestMicrophoneAccess { _ in refresh() }
         } label: {
-          actionLabel("Grant Access", systemImage: "mic")
+          actionLabel(String(localized: "Grant Access"), systemImage: "mic")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -126,7 +126,7 @@ struct PermissionsOverview: View {
     actionStack {
       if screenStatus != .granted {
         Button(action: requestScreenRecording) {
-          actionLabel("Grant Access", systemImage: "rectangle.inset.filled.and.person.filled")
+          actionLabel(String(localized: "Grant Access"), systemImage: "rectangle.inset.filled.and.person.filled")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -142,7 +142,7 @@ struct PermissionsOverview: View {
           AccessibilityPermissionManager.requestAccessibilityAtOptIn()
           refresh()
         } label: {
-          actionLabel("Grant Access", systemImage: "accessibility")
+          actionLabel(String(localized: "Grant Access"), systemImage: "accessibility")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -170,7 +170,7 @@ struct PermissionsOverview: View {
     Button {
       PermissionStatusChecker.openSystemSettings(for: kind)
     } label: {
-      actionLabel("Open System Settings", systemImage: "arrow.up.right.square")
+      actionLabel(String(localized: "Open System Settings"), systemImage: "arrow.up.right.square")
     }
     .buttonStyle(.bordered)
     .pointerCursorOnHover()
@@ -302,10 +302,10 @@ struct PermissionsOverview: View {
 
   private func statusLabel(_ status: PermissionStatus) -> String {
     switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
+    case .granted: return String(localized: "Granted")
+    case .denied: return String(localized: "Denied")
+    case .notDetermined: return String(localized: "Not requested")
+    case .notApplicable: return String(localized: "Not applicable")
     }
   }
 }
