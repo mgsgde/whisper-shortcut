@@ -471,7 +471,7 @@ enum MIMEDecoder {
   private static func stripHTML(_ html: String) -> String {
     var text = replacing(html, pattern: #"(?is)<script\b[^>]*>.*?</script>|<script\b[^>]*>.*"#, with: "")
     text = replacing(text, pattern: #"(?is)<style\b[^>]*>.*?</style>|<style\b[^>]*>.*"#, with: "")
-    text = replacing(text, pattern: #"(?i)<\s*br\b[^>]*>|<\s*/?\s*(?:p|div|li|tr|h[1-6]|ul|ol|table|blockquote)\b[^>]*>"#, with: "\n")
+    text = replacing(text, pattern: #"(?i)<\s*br\b[^>]*>|<\s*/?\s*p\b[^>]*>|<\s*/\s*(?:div|li|tr|h[1-6]|ul|ol|table|blockquote)\s*>"#, with: "\n")
     text = replacing(text, pattern: #"<[^>]+>"#, with: "")
     text = decodeEntities(text)
     text = replacing(text, pattern: #"\n{3,}"#, with: "\n\n")
