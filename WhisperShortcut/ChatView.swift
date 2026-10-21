@@ -4637,7 +4637,7 @@ struct ChatInputAreaView: View {
             }
           }
           Divider()
-          Button("API Keys & Endpoints…") { SettingsManager.shared.showSettings() }
+          Button("API Keys & Endpoints…") { SettingsManager.shared.showSettings(tab: .accounts) }
         } label: {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)

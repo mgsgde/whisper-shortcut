@@ -143,7 +143,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
           } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
-            SettingsManager.shared.showSettings()
+            SettingsManager.shared.showSettings(tab: .accounts)
           }
         }
       }
