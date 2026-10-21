@@ -2788,13 +2788,13 @@ class MenuBarController: NSObject {
     appState = .processing(.ttsProcessing)
     NotificationCenter.default.post(name: .ttsDidStart, object: nil)
     TelemetryService.shared.started(.readAloud)
-    ttsPlayback.begin(expectedCharacters: text.count)
+    let playbackGeneration = ttsPlayback.begin(expectedCharacters: text.count)
 
     currentReadAloudTask = Task { [weak self] in
       do {
         // `ChunkTTSService` invokes this on the main actor, in playback order.
         let audioData = try await producer({ [weak self] pcm, index, total in
-          self?.ttsPlayback.enqueue(pcm, index: index, totalChunks: total)
+          self?.ttsPlayback.enqueue(pcm, index: index, totalChunks: total, generation: playbackGeneration)
         })
         // Must check on the read-aloud task, not inside MainActor.run (different task context).
         guard !Task.isCancelled else {
