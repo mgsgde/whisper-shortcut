@@ -800,9 +800,11 @@ class ContextLogger {
         line += "\n"
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
-          if let lineData = line.data(using: .utf8) { handle.write(lineData) }
-          try handle.close()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
+          if let lineData = line.data(using: .utf8) {
+            try handle.write(contentsOf: lineData)
+          }
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -961,11 +963,11 @@ class ContextLogger {
 
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
           if let lineData = line.data(using: .utf8) {
-            handle.write(lineData)
+            try handle.write(contentsOf: lineData)
           }
-          try handle.close()
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -1000,11 +1002,11 @@ class ContextLogger {
 
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
           if let lineData = line.data(using: .utf8) {
-            handle.write(lineData)
+            try handle.write(contentsOf: lineData)
           }
-          try handle.close()
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -1063,11 +1065,11 @@ class ContextLogger {
 
       if FileManager.default.fileExists(atPath: fileURL.path) {
         let handle = try FileHandle(forWritingTo: fileURL)
-        handle.seekToEndOfFile()
+        defer { try? handle.close() }
+        _ = try handle.seekToEnd()
         if let lineData = line.data(using: .utf8) {
-          handle.write(lineData)
+          try handle.write(contentsOf: lineData)
         }
-        try handle.close()
       } else {
         try line.write(to: fileURL, atomically: true, encoding: .utf8)
       }
