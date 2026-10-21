@@ -43,21 +43,26 @@ enum TranscriptionTuning {
 
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
-// dictation**, see `isSelectableForDictation`.
+// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite,
+// gemini-3.8-flash, gemini-4-argon. Preview (keep -preview): gemini-3.1-pro-preview.
+// gemini-3.1-pro-preview and gemini-4-argon are present but **not offered for dictation**,
+// see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
 // measurement note in `plans/model-audits/2026-09-03-audit.md`. Revisit by early 2027.
 // Removed and forwarded via migrateLegacyTranscriptionRawValue: both Pro slugs
 // (gemini-3-pro-preview, shut down by Google 2026-03-09, and gemini-3.1-pro-preview, withdrawn
 // 2026-08-03 because it never answers a short dictation) → gemini-3.1-flash-lite; the Gemini 2.5
-// family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.7-flash /
-// gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash;
-// gemini-3.5-flash and gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.7-flash.
+// family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.8-flash /
+// gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending) → gemini-3.8-flash;
+// gemini-3.5-flash and gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.8-flash;
+// gemini-3.7-flash (removed 2026-10-21 because Google routes it to 3.8) → gemini-3.8-flash.
 // Do not offer a Pro tier for dictation without benchmarking the 1.3 s case first.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
+  /// Not selectable for dictation — flagship reasoning is far too slow and expensive for it.
+  /// The case stays so `PromptModel.asTranscriptionModel` can resolve the Gemini endpoint.
+  case gemini4Argon = "gemini-4-argon"
   /// **Not selectable for dictation** — excluded from every picker via `isSelectableForDictation`,
   /// and persisted selections are migrated away. The case survives only because `PromptModel`
   /// borrows this enum to resolve its Gemini endpoint (`PromptModel.asTranscriptionModel`), which
@@ -65,7 +70,6 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
-  case gemini37Flash = "gemini-3.7-flash"
   case gemini38Flash = "gemini-3.8-flash"
 
   // Offline Whisper models
@@ -110,14 +114,14 @@ enum TranscriptionModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
+    case .gemini4Argon:
+      return "Gemini 4 Argon"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
     case .gemini35FlashLite:
       return "Gemini 3.5 Flash-Lite"
-    case .gemini37Flash:
-      return "Gemini 3.7 Flash"
     case .gemini38Flash:
       return "Gemini 3.8 Flash"
     case .whisperTiny:
@@ -176,16 +180,18 @@ enum TranscriptionModel: String, CaseIterable {
   /// Mirrors `PromptModel.isSelectableInChat`: the case stays in the enum so persisted values and
   /// internal lookups keep resolving, but pickers never show it.
   ///
-  /// `gemini31Pro` is the only exclusion. Measured 2026-08-03 against the 1.3 s fixture, it returns
-  /// no response at all when sent any real transcription prompt — 4/4, including a 300 s attempt
-  /// that received zero bytes, while a trivial-prompt control answered in ~6 s between the
-  /// failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the same
-  /// way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
+  /// `gemini31Pro` and `gemini4Argon` are excluded. Measured 2026-08-03 against the 1.3 s fixture,
+  /// 3.1 Pro returns no response at all when sent any real transcription prompt — 4/4, including a
+  /// 300 s attempt that received zero bytes, while a trivial-prompt control answered in ~6 s between
+  /// the failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the
+  /// same way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
   /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
   /// Detail: plans/model-audits/2026-08-03-audit.md.
+  /// Gemini 4 Argon is flagship reasoning, far too slow and expensive for dictation, so it stays
+  /// out of the pickers the same way.
   var isSelectableForDictation: Bool {
     switch self {
-    case .gemini31Pro: return false
+    case .gemini4Argon, .gemini31Pro: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
     // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
@@ -238,8 +244,8 @@ enum TranscriptionModel: String, CaseIterable {
     // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
     case .parakeetUltra, .whisperLargeTurbo:
       return offlineModelType?.isRecommended ?? false
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
-         .gemini37Flash, .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
+    case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+         .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
          .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
@@ -251,9 +257,11 @@ enum TranscriptionModel: String, CaseIterable {
 
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini37Flash,
+    case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash:
       return "Low"
+    case .gemini4Argon:
+      return "High"
     case .gemini31Pro:
       return "Medium"
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
@@ -276,14 +284,14 @@ enum TranscriptionModel: String, CaseIterable {
 
   var description: String {
     switch self {
+    case .gemini4Argon:
+      return "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
     case .gemini35FlashLite:
       return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
-    case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents"
     case .gemini38Flash:
       return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents"
     case .whisperTiny:
@@ -336,11 +344,11 @@ enum TranscriptionModel: String, CaseIterable {
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
-    case .gemini31Pro, .gemini37Flash, .gemini38Flash:
-      // Pro, 3.7 Flash, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
-      // `thinkingBudget: 0` — they only run in thinking mode. `minimal` therefore means
-      // "as little as this model allows", i.e. `low`. Verified live: 3.7 Flash 2026-08-23,
-      // 3.8 Flash 2026-09-06 (minimal → 400, low → 200).
+    case .gemini4Argon, .gemini31Pro, .gemini38Flash:
+      // Argon, 3.1 Pro, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
+      // `thinkingBudget: 0` — they only run in thinking mode. Argon documents low/medium/high
+      // only. `minimal` therefore means "as little as this model allows", i.e. `low`.
+      // Verified live: 3.8 Flash 2026-09-06 (minimal → 400, low → 200).
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
@@ -506,20 +514,24 @@ enum TranscriptionModel: String, CaseIterable {
       // Detail: plans/model-audits/2026-08-03-audit.md.
       return TranscriptionModel.gemini31FlashLite.rawValue
     case "gemini-2.5-flash":
-      // Deprecated, shutdown 2026-10-16; 3.5 Flash was removed, so forward to 3.7.
-      return TranscriptionModel.gemini37Flash.rawValue
+      // Deprecated, shutdown 2026-10-16; 3.5 and 3.7 Flash were removed, so forward to 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return TranscriptionModel.gemini31FlashLite.rawValue
     case "gemini-3.6-flash":
-      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
-      return TranscriptionModel.gemini37Flash.rawValue
+      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed. 3.7 was removed
+      // 2026-10-21 (Google routes it to 3.8), so this lands on 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
+    case "gemini-3.7-flash":
+      // Removed 2026-10-21: Google routes every request to gemini-3.8-flash (dead alias, same price).
+      return TranscriptionModel.gemini38Flash.rawValue
     case "gemini-3-flash-preview":
-      // Deprecated-pending; 3.5 Flash was removed, so forward to 3.7.
-      return TranscriptionModel.gemini37Flash.rawValue
+      // Deprecated-pending; 3.5 and 3.7 Flash were removed, so forward to 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
     case "gemini-3.5-flash":
-      // Removed 2026-10-19: dominated by 3.7 on price and tier.
-      return TranscriptionModel.gemini37Flash.rawValue
+      // Removed 2026-10-19: dominated by 3.7 on price and tier. Forwards to 3.8 with 3.7.
+      return TranscriptionModel.gemini38Flash.rawValue
     default:
       return raw
     }
@@ -569,9 +581,9 @@ enum TranscriptionModel: String, CaseIterable {
       return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini37Flash, .gemini38Flash:
+    case .gemini38Flash:
       return .geminiFlash
-    case .gemini31Pro:
+    case .gemini4Argon, .gemini31Pro:
       return .geminiPro
     }
   }

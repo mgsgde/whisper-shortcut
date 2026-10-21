@@ -11,14 +11,14 @@ import Testing
 struct ModelSelectionReconcilerTests {
 
   private let chatCandidates: [PromptModel] = [
-    .gemini37Flash, .openaiGPT6Sol, .grok43,
+    .gemini38Flash, .openaiGPT6Sol, .grok43,
   ]
 
   @Test("Preferred prompt model follows Gemini → OpenAI → Grok")
   func preferredPromptFollowsProviderOrder() {
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .gemini })
-        == .gemini37Flash)
+        == .gemini38Flash)
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .openai })
         == .openaiGPT6Sol)
@@ -31,7 +31,7 @@ struct ModelSelectionReconcilerTests {
       ModelSelectionReconciler.preferredPromptModel(
         among: chatCandidates,
         hasKey: { $0 == .gemini || $0 == .openai }
-      ) == .gemini37Flash)
+      ) == .gemini38Flash)
   }
 
   @Test("An OpenRouter-only user is moved onto OpenRouter, but only as the last resort")
@@ -146,7 +146,7 @@ struct ModelSelectionReconcilerTests {
     let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
     let improvementKey = UserDefaultsKeys.selectedImprovementModel
     let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: summaryKey)
     defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
     defaults.set(onDevice.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
 
@@ -162,7 +162,7 @@ struct ModelSelectionReconcilerTests {
 
     // Offline Mode off: the cloud choices come back.
     ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
-    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini38Flash.rawValue)
     #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
   }
 
@@ -176,10 +176,10 @@ struct ModelSelectionReconcilerTests {
     let promptKey = UserDefaultsKeys.selectedPromptModel
     let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
     // Old build: snapshot only knows the prompt slot, which is already on-device.
-    defaults.set([promptKey: PromptModel.gemini37Flash.rawValue],
+    defaults.set([promptKey: PromptModel.gemini38Flash.rawValue],
                  forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
     defaults.set(onDevice.rawValue, forKey: promptKey)
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: summaryKey)
     defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
 
     ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
@@ -188,9 +188,9 @@ struct ModelSelectionReconcilerTests {
     #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
 
     ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
-    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini38Flash.rawValue)
     #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
-    #expect(defaults.string(forKey: promptKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: promptKey) == PromptModel.gemini38Flash.rawValue)
   }
 
   @Test("A key that was unset is removed on restore; toggling twice is stable")

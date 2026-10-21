@@ -72,17 +72,18 @@ enum ChatModelProvider: String, CaseIterable {
 
 // MARK: - Unified Prompt Model Enum (for Dictate Prompt) - Gemini multimodal models + Grok
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite,
-// gemini-3.7-flash (shipped 2026-08-13), gemini-3.8-flash (shipped 2026-09-02;
-// https://ai.google.dev/gemini-api/docs/models).
+// GA: gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.8-flash (shipped 2026-09-02),
+// gemini-4-argon (stable flagship reasoning; paid tier only;
+// https://ai.google.dev/gemini-api/docs/models/gemini-4-argon).
 // Preview: gemini-3.1-pro-preview.
 // Removed and forwarded via migrateLegacyPromptRawValue: gemini-3-pro-preview (shut down
 // 2026-03-09) → gemini-3.1-pro-preview; the Gemini 2.5 family (gemini-2.5-flash / -flash-lite /
-// -pro, shutdown 2026-10-16) → gemini-3.7-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
-// gemini-3-flash-preview (deprecated-pending) → gemini-3.7-flash; offline local-mlx-qwen3-8b
+// -pro, shutdown 2026-10-16) → gemini-3.8-flash / gemini-3.1-flash-lite / gemini-3.1-pro-preview;
+// gemini-3-flash-preview (deprecated-pending) → gemini-3.8-flash; offline local-mlx-qwen3-8b
 // (removed 2026-09-30) → local-mlx-qwen3-4b-instruct-2507; gemini-3.6-flash (removed 2026-10-19,
 // dominated by 3.7 on price, tier and speed) and gemini-3.5-flash (removed 2026-10-19, dominated by 3.7
-// on price and tier) → gemini-3.7-flash.
+// on price and tier) → gemini-3.8-flash; gemini-3.7-flash (removed 2026-10-21 because Google
+// routes every request to gemini-3.8-flash, same price) → gemini-3.8-flash.
 // Superseded chat models removed 2026-10-19 (each was Pareto-dominated: a newer same-provider
 // sibling beats it on price/context/tier) and forwarded to their replacement — see the arms in
 // migrateLegacyPromptRawValue for the reasoning and prices: grok-4.20-0309-* → grok-4.3,
@@ -94,10 +95,10 @@ enum ChatModelProvider: String, CaseIterable {
 // OpenAI model IDs: https://platform.openai.com/docs/models.
 enum PromptModel: String, CaseIterable {
   // Gemini Models (multimodal, direct audio input)
+  case gemini4Argon = "gemini-4-argon"
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
-  case gemini37Flash = "gemini-3.7-flash"
   case gemini38Flash = "gemini-3.8-flash"
 
   // Gemini native image generation/editing ("Nano Banana"). Prompt (+ optional input image) →
@@ -209,14 +210,14 @@ enum PromptModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
+    case .gemini4Argon:
+      return "Gemini 4 Argon"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
     case .gemini35FlashLite:
       return "Gemini 3.5 Flash-Lite"
-    case .gemini37Flash:
-      return "Gemini 3.7 Flash"
     case .gemini38Flash:
       return "Gemini 3.8 Flash"
     case .geminiImage:
@@ -266,10 +267,10 @@ enum PromptModel: String, CaseIterable {
   /// May extend a provider-default alias (gemini / grok / gpt) as a prefix — that's intended.
   var shortAlias: String {
     switch self {
+    case .gemini4Argon:      return "gemini4argon"
     case .gemini31Pro:       return "gemini31pro"
     case .gemini31FlashLite: return "gemini31flashlite"
     case .gemini35FlashLite: return "gemini35flashlite"
-    case .gemini37Flash:     return "gemini37flash"
     case .gemini38Flash:     return "gemini38flash"
     case .geminiImage:       return "geminiimage"
     case .geminiImagePro:    return "geminiimagepro"
@@ -292,14 +293,14 @@ enum PromptModel: String, CaseIterable {
 
   var description: String {
     switch self {
+    case .gemini4Argon:
+      return "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal"
     case .gemini31Pro:
       return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
     case .gemini31FlashLite:
       return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
     case .gemini35FlashLite:
       return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
-    case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents • Multimodal"
     case .gemini38Flash:
       return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal"
     case .geminiImage:
@@ -344,7 +345,7 @@ enum PromptModel: String, CaseIterable {
   
   var costLevel: String {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini37Flash,
+    case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .localModel, .claudeHaiku55:
       return "Low"
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
@@ -357,7 +358,7 @@ enum PromptModel: String, CaseIterable {
       return "Medium"
     case .openaiGPT5Mini, .openaiGPT6Luna:
       return "Low"
-    case .claudeOpus55:
+    case .gemini4Argon, .claudeOpus55:
       return "High"
     }
   }
@@ -367,8 +368,8 @@ enum PromptModel: String, CaseIterable {
     // newly added non-Gemini case silently claimed the Gemini credential and endpoint. Let the
     // compiler force the decision instead.
     switch self {
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
-         .gemini37Flash, .gemini38Flash, .geminiImage, .geminiImagePro:
+    case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+         .gemini38Flash, .geminiImage, .geminiImagePro:
       return .gemini
     case .grok43, .grok47:
       return .grok
@@ -545,13 +546,12 @@ enum PromptModel: String, CaseIterable {
   /// Docs: https://ai.google.dev/gemini-api/docs/thinking (3.x: thinkingLevel, not thinkingBudget).
   var geminiThinkingConfig: [String: Any]? {
     switch self {
-    // Gemini 3.x — thinkingLevel
+    // Gemini 3.x / 4 — thinkingLevel
+    case .gemini4Argon:
+      // Argon documents thinkingLevel low/medium/high only (no minimal).
+      return ["thinkingLevel": "high"]
     case .gemini31Pro:
       return ["thinkingLevel": "high"]
-    case .gemini37Flash:
-      // Live-verified 2026-08-23: gemini-3.7-flash rejects thinkingLevel MINIMAL
-      // ("Thinking level MINIMAL is not supported for this model"). `low` is the floor.
-      return ["thinkingLevel": "low"]
     case .gemini38Flash:
       // Same floor as 3.7, live-verified 2026-09-06: `thinkingLevel: minimal` returns HTTP 400
       // ("Thinking level MINIMAL is not supported for this model"), `low` returns 200. Matches
@@ -591,14 +591,14 @@ enum PromptModel: String, CaseIterable {
   // Convert to TranscriptionModel for API endpoint access (for Gemini models)
   var asTranscriptionModel: TranscriptionModel? {
     switch self {
+    case .gemini4Argon:
+      return .gemini4Argon
     case .gemini31Pro:
       return .gemini31Pro
     case .gemini31FlashLite:
       return .gemini31FlashLite
     case .gemini35FlashLite:
       return .gemini35FlashLite
-    case .gemini37Flash:
-      return .gemini37Flash
     case .gemini38Flash:
       return .gemini38Flash
     case .geminiImage, .geminiImagePro:
@@ -715,8 +715,8 @@ enum PromptModel: String, CaseIterable {
       // Shut down by Google 2026-03-09 (now returns 404); forward to the current Pro preview.
       return Self.gemini31Pro.rawValue
     case "gemini-2.5-flash":
-      // Deprecated, shutdown 2026-10-16. Forward to 3.7.
-      return Self.gemini37Flash.rawValue
+      // Deprecated, shutdown 2026-10-16. 3.7 was removed 2026-10-21; forward to 3.8.
+      return Self.gemini38Flash.rawValue
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return Self.gemini31FlashLite.rawValue
@@ -757,14 +757,18 @@ enum PromptModel: String, CaseIterable {
     case "claude-sonnet-5":
       return Self.claudeSonnet55.rawValue
     case "gemini-3.6-flash":
-      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
-      return Self.gemini37Flash.rawValue
+      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed. 3.7 itself was removed
+      // 2026-10-21 (Google routes it to 3.8), so this lands on 3.8.
+      return Self.gemini38Flash.rawValue
     case "gemini-3.5-flash":
-      // Removed 2026-10-19: dominated by 3.7 on price and tier.
-      return Self.gemini37Flash.rawValue
+      // Removed 2026-10-19: dominated by 3.7 on price and tier. Forwards to 3.8 with 3.7.
+      return Self.gemini38Flash.rawValue
+    case "gemini-3.7-flash":
+      // Removed 2026-10-21: Google routes every request to gemini-3.8-flash (dead alias, same price).
+      return Self.gemini38Flash.rawValue
     case "gemini-3-flash-preview":
-      // Deprecated-pending. Forward to 3.7.
-      return Self.gemini37Flash.rawValue
+      // Deprecated-pending. Forward to 3.8.
+      return Self.gemini38Flash.rawValue
     case "local-mlx-qwen3-8b":
       // Offline Qwen3 8B removed 2026-09-30 (see `LocalLLMModelType`): the 4B Instruct default
       // beat it on rule compliance and latency. Stays offline — never forward to a cloud model.
@@ -781,11 +785,12 @@ enum PromptModel: String, CaseIterable {
   }
 
   /// True when the live Gemini API rejects `thinkingLevel: minimal` with HTTP 400.
-  /// Verified for 3.1 Pro (2026-07), 3.7 Flash (2026-08-23) and 3.8 Flash (2026-09-06), all
-  /// with the same error: "Thinking level MINIMAL is not supported for this model".
+  /// Verified for 3.1 Pro (2026-07) and 3.8 Flash (2026-09-06), both with
+  /// "Thinking level MINIMAL is not supported for this model". 3.7 Flash did too (2026-08-23)
+  /// before it was removed. Argon documents low/medium/high only.
   var geminiRejectsMinimalThinking: Bool {
     switch self {
-    case .gemini31Pro, .gemini37Flash, .gemini38Flash: return true
+    case .gemini4Argon, .gemini31Pro, .gemini38Flash: return true
     default: return false
     }
   }
