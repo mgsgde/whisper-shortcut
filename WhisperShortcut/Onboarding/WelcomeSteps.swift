@@ -259,8 +259,7 @@ struct WelcomeDictationSetupStep: View {
     // switch goes off here rather than leaving them with key fields that do nothing.
     if value == .cloud && offlineMode {
       offlineMode = false
-      ModelSelectionReconciler.reconcileAll()
-      DebugLogger.log("OFFLINE-MODE: disabled during onboarding (user chose Cloud)")
+      OfflineMode.switchTo(false, reason: "onboarding chose Cloud")
     }
     if value == .cloud { preferCloudTranscription() }
   }
@@ -293,9 +292,7 @@ struct WelcomeDictationSetupStep: View {
         .toggleStyle(.switch)
         .font(.callout)
         .onChange(of: offlineMode) { isOn in
-          ModelSelectionReconciler.reconcileAll()
-          PromptConversationHistory.shared.clearAll()
-          DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled") during onboarding")
+          OfflineMode.switchTo(isOn, reason: "during onboarding")
         }
       Text("For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions.")
         .font(.caption)
@@ -644,10 +641,10 @@ struct OnboardingOpenRouterRow: View {
   }
 
   private func adoptOpenRouterAsTranscriptionModelIfNoOtherCredential() {
-    let hasOtherCloudKey = KeychainManager.shared.hasNonEmpty(.google)
-      || KeychainManager.shared.hasNonEmpty(.openAI)
-      || KeychainManager.shared.hasNonEmpty(.xai)
-      || KeychainManager.shared.hasNonEmpty(.anthropic)
+    let hasOtherCloudKey = ChatModelProvider.gemini.hasCredential
+      || ChatModelProvider.openai.hasCredential
+      || ChatModelProvider.grok.hasCredential
+      || ChatModelProvider.anthropic.hasCredential
     guard !hasOtherCloudKey else { return }
     UserDefaults.standard.set(
       TranscriptionModel.openRouterTranscription.rawValue,
@@ -986,10 +983,13 @@ struct WelcomeDoneStep: View {
           needsTranscriptionModel: true))
     }
     if shortcuts.startPrompting.isEnabled {
-      // The App Store build reads the selection from a screenshot (Screen Recording);
-      // the direct build copies it via a synthetic ⌘C (Accessibility).
-      let selectionRequirement: PermissionKind =
-        AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
+      // Per selected model: screenshot → Screen Recording; App Store local → clipboard the user
+      // copied, so no extra permission; direct build → Accessibility for the synthetic ⌘C.
+      let promptModel = settingsViewModel.data.selectedPromptModel
+      var promptRequirements: [PermissionKind] = [.microphone]
+      if let selection = promptModel.dictatePromptSelectionPermission {
+        promptRequirements.append(selection)
+      }
       #if APP_STORE
       let promptDetail =
         "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
@@ -1002,7 +1002,7 @@ struct WelcomeDoneStep: View {
           shortcut: shortcuts.startPrompting.displayString,
           name: "Dictate Prompt",
           detail: promptDetail,
-          requirements: [.microphone, selectionRequirement]))
+          requirements: promptRequirements))
     }
     if shortcuts.screenshotCapture.isEnabled {
       list.append(

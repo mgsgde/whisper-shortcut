@@ -58,12 +58,9 @@ struct OfflineModeSection: View {
         .toggleStyle(.switch)
         .font(.headline)
         .onChange(of: offlineMode) { _, isOn in
-          // Model selections are moved on the spot, so turning the switch on cannot leave a cloud
-          // model selected behind a mode that then refuses it.
-          ModelSelectionReconciler.reconcileAll()
-          // Earlier Dictate Prompt turns (selections, replies) must not carry across the switch.
-          PromptConversationHistory.shared.clearAll()
-          DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled")")
+          // Model selections move on the spot, and earlier Dictate Prompt turns do not carry
+          // across the switch. `switchTo` is that pair plus the flag.
+          OfflineMode.switchTo(isOn, reason: "settings")
         }
 
       Text(
