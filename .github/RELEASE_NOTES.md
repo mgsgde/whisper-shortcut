@@ -1,31 +1,24 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-A maintenance release: safer chat tools and steadier Read Aloud.
+## Claude & other AI apps can now tune your setup
+Claude Code, Claude Desktop and other MCP apps on this Mac could already read your meetings. Now, if you allow it, they can also improve your setup from what they know about you:
+- add names and terms to your glossary
+- rewrite your Dictate Prompt instructions and your writing style profile
+- create or edit commands
+- with "Save usage data" on and a second switch, look at your recent dictations to find out why one went wrong
 
-## Chat tools
-- Chat now asks before it remembers a file location or a dictation term. Two new approval cards show what would be stored.
-- Fixing a transcript term replaces whole words only, so correcting "Ana" to "Anna" no longer changes "Banana".
-- Forgetting facts about you needs a real search term, so a single letter cannot wipe your memory.
-- Edit approvals show the same "overwrite" and "all occurrences" choice the tool then carries out.
-- Reading a long text file no longer garbles non-ASCII characters at the cut-off, and very large files are checked before they are loaded.
+In Settings → Meetings, the section is now called **Claude & Other AI Apps**. Choose how much an AI app may do:
+- **Only read**
+- **Suggest changes for me to approve** (default): each change opens in a review window that does not steal focus. Return never accepts it.
+- **Make changes directly**: every change is listed under "Changed by AI apps", with Undo.
 
-## Read Aloud
-- Read Aloud no longer hangs when the audio output changes, for example when AirPods connect.
-- A synthesis that produces no audio ends cleanly instead of leaving the app busy.
-- After Read Aloud on a selection, your clipboard is restored (same "restore clipboard" setting as Dictate).
+Dictation and Chat instructions always wait for your approval. New glossary terms apply directly, because they only add. Pending changes show in the menu bar as "Review N Changes from AI Apps…".
 
-## Mail and Chat
-- Forwarded mails are read, with sender and subject of the forwarded message.
-- Mails written in HTML keep their paragraph breaks.
-- Clearing a chat also clears its error banner.
+In Claude Code, `/whisper-shortcut:tune_whisper_shortcut` runs the built-in "tune my setup" recipe.
 
-## Settings and onboarding
-- "API Keys & Endpoints…" and the missing-key hint open Settings directly on Accounts.
-- The OpenRouter model field stays visible while you type.
-- In the welcome tour, picking Cloud before pasting a key now switches Dictate to the cloud once the key is there.
+Existing connections keep reading and change nothing until you copy the new setup, which carries a separate key for changes. Everything stays local to this Mac and is switched off while Offline Mode is on.
 
-## Screenshots
-- Dictate Prompt screenshots capture the display with the frontmost window.
-- A screenshot folder on an unplugged drive keeps its setting.
+## Also
+- The Smart Improvement review collapses unchanged passages, so the actual change is easier to spot.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.55...v8.56
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.56...v8.57
