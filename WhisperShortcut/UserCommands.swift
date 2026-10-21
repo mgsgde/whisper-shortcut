@@ -236,6 +236,24 @@ final class UserCommandStore: ObservableObject {
     Keep it short and factual. Do not add anything that was not said.
     """
 
+  /// Moves a command file to the Trash (recoverable, unlike a hard delete) and re-reads the folder.
+  /// Returns where the file landed so the caller can offer Undo.
+  @discardableResult
+  func moveToTrash(_ fileURL: URL) throws -> URL? {
+    var trashed: NSURL?
+    try FileManager.default.trashItem(at: fileURL, resultingItemURL: &trashed)
+    DebugLogger.log("USER-COMMANDS: moved \(fileURL.lastPathComponent) to the Trash")
+    reload()
+    return trashed as URL?
+  }
+
+  /// Undo for `moveToTrash`: puts the file back under its original name.
+  func restore(from trashedURL: URL, to originalURL: URL) throws {
+    try FileManager.default.moveItem(at: trashedURL, to: originalURL)
+    DebugLogger.log("USER-COMMANDS: restored \(originalURL.lastPathComponent) from the Trash")
+    reload()
+  }
+
   /// Writes `new-command.md` (or `new-command-2.md`, `-3`, …). Never overwrites an existing file.
   @discardableResult
   func createFromTemplate() throws -> URL {
