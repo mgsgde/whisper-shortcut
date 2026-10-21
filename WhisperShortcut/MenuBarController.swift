@@ -1832,7 +1832,14 @@ class MenuBarController: NSObject {
   func resumeInterruptedMeetingIfNeeded() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
       guard let self else { return }
+      // A dev sidecar shares the container with the main build and must never take over its marker.
+      if AppConstants.isSidecarInstance { return }
       let marker = LiveMeetingRecordingMarker.read()
+      if let payload = marker?.payload, LiveMeetingRecordingMarker.ownerIsAlive(pid: payload.pid) {
+        DebugLogger.log(
+          "LIVE-MEETING-MARKER: Marker belongs to running process \(payload.pid), leaving it alone")
+        return
+      }
       let transcriptExists = marker.map {
         FileManager.default.fileExists(
           atPath: MeetingListService.transcriptURL(forStem: $0.payload.stem).path)

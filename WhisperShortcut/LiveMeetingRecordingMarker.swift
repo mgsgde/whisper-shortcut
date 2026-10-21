@@ -46,6 +46,14 @@ enum LiveMeetingRecordingMarker {
       ? .resume(stem: payload.stem) : .notifyInterrupted(stem: payload.stem)
   }
 
+  /// True when the process that wrote the marker is still running. `isAlive` is injectable for tests.
+  /// Our own pid never counts as another owner.
+  static func ownerIsAlive(
+    pid: Int32, currentPid: Int32 = getpid(), isAlive: (Int32) -> Bool = { kill($0, 0) == 0 }
+  ) -> Bool {
+    pid != currentPid && isAlive(pid)
+  }
+
   // MARK: - File access
 
   static func write(stem: String) {
