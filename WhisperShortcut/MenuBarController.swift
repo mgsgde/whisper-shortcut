@@ -13,7 +13,7 @@ class MenuBarController: NSObject {
 
   /// Identifies status-menu rows. `NSMenuItem.tag` is the only handle AppKit gives us for
   /// finding an item again after creation, so the creation site in `createMenu()` and the
-  /// refresh site in `updateMenuItems()` used to be linked by nothing but matching integer
+  /// refresh site in `refreshMenu(_:)` used to be linked by nothing but matching integer
   /// literals. Naming them makes that link something the compiler checks.
   ///
   /// Raw values are the historical tags, kept as-is: they are persisted nowhere, but leaving
@@ -435,39 +435,12 @@ class MenuBarController: NSObject {
     stopSeparator.tag = MenuTag.stopSeparator.rawValue
     menu.addItem(stopSeparator)
 
-    // Recording actions with keyboard shortcuts
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Dictate", action: #selector(toggleTranscription),
-        shortcut: currentConfig.startRecording, tag: .dictate))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Dictate Prompt", action: #selector(togglePrompting),
-        shortcut: currentConfig.startPrompting, tag: .dictatePrompt))
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Screenshot", action: #selector(takeScreenshot),
-        shortcut: currentConfig.screenshotCapture, tag: .screenshot))
-    // Selection-based Read Aloud copies via ⌘C (Accessibility) — omitted from the App Store build.
-    #if !APP_STORE
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Read Aloud", action: #selector(readAloudFromMenu),
-        shortcut: currentConfig.readAloud, tag: .readAloud))
-    #endif
-    // Ordered last so the shortcut digits read 1-2-3-4-5 down the menu.
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Voice Feedback", action: #selector(toggleVoiceFeedback),
-        shortcut: currentConfig.voiceFeedback, tag: .voiceFeedback))
-    // Selection-based like Read Aloud: copies via ⌘C, so it needs Accessibility and is absent
-    // from the App Store build.
-    #if !APP_STORE
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Add Selection to Glossary", action: #selector(addSelectionToGlossary),
-        shortcut: currentConfig.addToGlossary, tag: .addToGlossary))
-    #endif
+    // Recording actions with keyboard shortcuts. Voice Feedback is ordered last so the shortcut
+    // digits read 1-2-3-4-5 down the menu; Read Aloud and Glossary are selection-based (⌘C needs
+    // Accessibility) and absent from the App Store build.
+    for row in Self.actionRows {
+      menu.addItem(makeItem(row))
+    }
     menu.addItem(NSMenuItem.separator())
 
     // Recovering a dictation result. Both rows hide themselves while the history is empty, so a
@@ -502,19 +475,14 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     // Chat window
-    menu.addItem(
-      createMenuItemWithShortcut(
-        "Chat", action: #selector(openChatWindow),
-        shortcut: currentConfig.openChat, tag: .chat))
+    menu.addItem(makeItem(Self.chatRow))
 
     menu.addItem(NSMenuItem.separator())
 
     // Settings and quit.
     // Use a neutral selector and clear image explicitly to avoid AppKit
     // auto-decoration that can reserve an icon column for this row.
-    let configureItem = createMenuItemWithShortcut(
-      "Settings…", action: #selector(openConfigurationPanel),
-      shortcut: currentConfig.openSettings, tag: .settings)
+    let configureItem = makeItem(Self.settingsRow)
     configureItem.image = nil
     menu.addItem(configureItem)
 
@@ -558,51 +526,76 @@ class MenuBarController: NSObject {
     return item
   }
 
-  private func createMenuItemWithShortcut(
-    _ title: String, action: Selector, shortcut: ShortcutDefinition, tag: MenuTag? = nil
-  ) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-    item.target = self
-    item.tag = tag?.rawValue ?? 0
+  /// A row of the status menu that shows a configurable shortcut. `mode` is set for the rows whose
+  /// title flips to `stopTitle` while `availability(mode) == .stop`.
+  private struct ModeRow {
+    let tag: MenuTag
+    let title: String
+    let stopTitle: String?
+    let action: Selector
+    let shortcut: KeyPath<ShortcutConfig, ShortcutDefinition>
+    let mode: ModeAction?
+  }
 
-    // Add keyboard shortcut display to the menu item
+  /// Dictate … Glossary in menu order (same order as before the table existed).
+  private static let actionRows: [ModeRow] = {
+    var rows = [
+      ModeRow(
+        tag: .dictate, title: "Dictate", stopTitle: "Stop Dictate",
+        action: #selector(toggleTranscription), shortcut: \.startRecording, mode: .dictate),
+      ModeRow(
+        tag: .dictatePrompt, title: "Dictate Prompt", stopTitle: "Stop Dictate Prompt",
+        action: #selector(togglePrompting), shortcut: \.startPrompting, mode: .dictatePrompt),
+      ModeRow(
+        tag: .screenshot, title: "Screenshot", stopTitle: nil,
+        action: #selector(takeScreenshot), shortcut: \.screenshotCapture, mode: nil),
+    ]
+    #if !APP_STORE
+    rows.append(
+      ModeRow(
+        tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
+        action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
+    #endif
+    rows.append(
+      ModeRow(
+        tag: .voiceFeedback, title: "Voice Feedback", stopTitle: "Stop Voice Feedback",
+        action: #selector(toggleVoiceFeedback), shortcut: \.voiceFeedback, mode: .voiceFeedback))
+    #if !APP_STORE
+    rows.append(
+      ModeRow(
+        tag: .addToGlossary, title: "Add Selection to Glossary", stopTitle: nil,
+        action: #selector(addSelectionToGlossary), shortcut: \.addToGlossary, mode: nil))
+    #endif
+    return rows
+  }()
+
+  private static let chatRow = ModeRow(
+    tag: .chat, title: "Chat", stopTitle: nil,
+    action: #selector(openChatWindow), shortcut: \.openChat, mode: nil)
+  private static let settingsRow = ModeRow(
+    tag: .settings, title: "Settings…", stopTitle: nil,
+    action: #selector(openConfigurationPanel), shortcut: \.openSettings, mode: nil)
+
+  private func makeItem(_ row: ModeRow) -> NSMenuItem {
+    let item = NSMenuItem(title: row.title, action: row.action, keyEquivalent: "")
+    item.target = self
+    item.tag = row.tag.rawValue
+    let shortcut = currentConfig[keyPath: row.shortcut]
     if shortcut.isEnabled {
-      // Set the actual key equivalent for single character keys
-      let keyChar = getKeyEquivalentCharacter(for: shortcut.key)
+      let keyChar = StatusMenuTitle.keyEquivalentCharacter(for: shortcut.key)
       if !keyChar.isEmpty {
         item.keyEquivalent = keyChar
         item.keyEquivalentModifierMask = shortcut.modifiers
-      } else {
-        // For complex keys, append the shortcut to the title padded to a fixed
-        // width so the shortcut glyphs align in a column across menu rows.
-        let columnWidth = 26
-        let paddedTitle =
-          title.count < columnWidth
-          ? title.padding(toLength: columnWidth, withPad: " ", startingAt: 0)
-          : title + "  "
-        item.title = "\(paddedTitle)\(shortcut.displayString)"
       }
     }
-
+    item.title = StatusMenuTitle.render(
+      base: row.title, isEnabled: shortcut.isEnabled, keyEquivalent: item.keyEquivalent,
+      display: shortcut.displayString)
     return item
   }
 
   @objc private func showWelcomeTour() {
     WelcomeWindowController.shared.show()
-  }
-
-  private func getKeyEquivalentCharacter(for key: Key) -> String {
-    let keyMap: [Key: String] = [
-      .one: "1", .two: "2", .three: "3", .four: "4", .five: "5",
-      .six: "6", .seven: "7", .eight: "8", .nine: "9", .zero: "0",
-      .a: "a", .b: "b", .c: "c", .d: "d", .e: "e", .f: "f",
-      .g: "g", .h: "h", .i: "i", .j: "j", .k: "k", .l: "l",
-      .m: "m", .n: "n", .o: "o", .p: "p", .q: "q", .r: "r",
-      .s: "s", .t: "t", .u: "u", .v: "v", .w: "w", .x: "x",
-      .y: "y", .z: "z",
-      .space: " "
-    ]
-    return keyMap[key] ?? ""  // For function keys and special keys
   }
 
   private func setupDelegates() {
@@ -959,7 +952,7 @@ class MenuBarController: NSObject {
   }
 
   @objc private func onboardingStatusDidChange() {
-    updateMenuItems()
+    if let menu = statusItem?.menu { refreshMenu(menu) }
   }
 
   @objc private func chatReadAloudStopFromNotification() {
@@ -1025,7 +1018,8 @@ class MenuBarController: NSObject {
   // MARK: - UI Updates (Single Method!)
   private func updateUI() {
     updateMenuBarIcon()
-    updateMenuItems()
+    if let menu = statusItem?.menu { refreshMenu(menu) }
+    applyMissingSetupWarningIfNeeded()
     updateBlinking()
   }
 
@@ -1087,12 +1081,9 @@ class MenuBarController: NSObject {
     button.imagePosition = button.image == nil ? .noImage : .imageLeading
   }
 
-  private func updateMenuItems() {
-    guard let menu = statusItem?.menu else { return }
-
-    let canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
-    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
-
+  /// Brings every state-dependent row of the status menu up to date. Runs on every `updateUI` and
+  /// when the menu opens, so it is the one place that decides what the rows say.
+  private func refreshMenu(_ menu: NSMenu) {
     // Update status
     menu.item(withTag: MenuTag.status.rawValue)?.title = presentedStatusText
 
@@ -1106,30 +1097,36 @@ class MenuBarController: NSObject {
     // action twice; the generic one stays for processing (the row has flipped back to start) and
     // for a live meeting with no nested recording. `.readAloudSelection` counts in every build so
     // that, in the App Store build (no Read Aloud row), a playing Chat Read Aloud keeps its
-    // current behaviour (central Stop hidden) — see spec drift F5.
+    // current behaviour (central Stop hidden) — DRIFT F5, preserved.
     let input = availabilityInput()
-    let showCentralStop = ModeAvailabilityRules.showsCentralStop(
-      input, presentRows: [.dictate, .dictatePrompt, .readAloudSelection])
+    let modedRows = Self.actionRows.filter { $0.mode != nil }
+    var stopRows = modedRows.compactMap(\.mode)
+    if !stopRows.contains(.readAloudSelection) { stopRows.append(.readAloudSelection) }  // F5
+    let showCentralStop = ModeAvailabilityRules.showsCentralStop(input, presentRows: stopRows)
     menu.item(withTag: MenuTag.stop.rawValue)?.isHidden = !showCentralStop
     menu.item(withTag: MenuTag.stopSeparator.rawValue)?.isHidden = !showCentralStop
 
     // Action rows are always clickable: with `autoenablesItems` on, AppKit re-enables every row
     // whose target answers its action, so a computed `isEnabled` never reached the user. A press
     // that cannot start answers with a popup (`presentBlocked`) or is ignored.
-    func stopTitle(_ action: ModeAction, start: String, stop: String) -> String {
-      ModeAvailabilityRules.availability(action, input) == .stop ? stop : start
+    for row in modedRows {
+      guard let mode = row.mode, let item = menu.item(withTag: row.tag.rawValue) else { continue }
+      let shortcut = currentConfig[keyPath: row.shortcut]
+      let isStop = ModeAvailabilityRules.availability(mode, input) == .stop
+      item.title = StatusMenuTitle.render(
+        base: isStop ? (row.stopTitle ?? row.title) : row.title,
+        isEnabled: shortcut.isEnabled, keyEquivalent: item.keyEquivalent,
+        display: shortcut.displayString)
     }
-    menu.item(withTag: MenuTag.dictate.rawValue)?.title =
-      stopTitle(.dictate, start: "Dictate", stop: "Stop Dictate")
-    menu.item(withTag: MenuTag.dictatePrompt.rawValue)?.title =
-      stopTitle(.dictatePrompt, start: "Dictate Prompt", stop: "Stop Dictate Prompt")
-    // Omitted from the App Store build, where the selection-based Read Aloud menu item is absent.
-    #if !APP_STORE
-    menu.item(withTag: MenuTag.readAloud.rawValue)?.title =
-      stopTitle(.readAloudSelection, start: "Read Aloud", stop: "Stop Read Aloud")
-    #endif
 
     updateTranscriptionHistoryItems(menu)
+  }
+
+  /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
+  /// configured.
+  private func applyMissingSetupWarningIfNeeded() {
+    let canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+    let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
 
     // Handle special case when no API key (any provider) and no usable transcription is configured.
     // Tested against `canTranscribe`, not just the offline model: a user whose only setup is
@@ -4081,14 +4078,10 @@ extension MenuBarController: NSMenuDelegate {
   /// is pending.
   func menuWillOpen(_ menu: NSMenu) {
     ReviewPrompter.shared.showPendingPromptIfNeeded()
-    // The history rows are otherwise only refreshed on an `appState` change, which leaves them
-    // stale right after launch (a persisted history exists but nothing has happened yet).
-    updateTranscriptionHistoryItems(menu)
+    // Titles, Stop row, onboarding and history rows are otherwise only refreshed on an `appState`
+    // change, which leaves them stale right after launch.
+    refreshMenu(menu)
     updateMeetingBacklogItems(menu)
-    let needsOnboarding = WelcomeWindowController.needsCompletion
-    menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
-    menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
-    menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
   }
 
   /// The one-time usage statistics notice waits for the menu to close: a window opened while the

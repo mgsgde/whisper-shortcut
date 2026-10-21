@@ -126,7 +126,7 @@ struct ModeAvailabilityTests {
 
   @Test("Central Stop row")
   func centralStop() {
-    let rows: [ModeAction] = [.dictate, .dictatePrompt, .readAloudSelection]
+    let rows: [ModeAction] = [.dictate, .dictatePrompt, .readAloudSelection, .voiceFeedback]
     func show(_ i: ModeAvailabilityInput) -> Bool {
       ModeAvailabilityRules.showsCentralStop(i, presentRows: rows)
     }
@@ -135,8 +135,9 @@ struct ModeAvailabilityTests {
     #expect(show(input(.recording(.liveMeeting), meeting: true)))
     #expect(!show(input(.recording(.liveMeeting), meeting: true, active: .dictation)))
     #expect(!show(input(playing: true)))
-    // Voice Feedback has no Stop title in R62, so its recording keeps the central Stop row.
-    #expect(show(input(.recording(.voiceFeedback))))
+    // Voice Feedback reads "Stop Voice Feedback" while recording, so the central Stop hides.
+    #expect(!show(input(.recording(.voiceFeedback))))
+    #expect(show(input(.processing(.contextEditing))))
     #expect(!show(input()))
   }
 }
