@@ -457,11 +457,15 @@ struct MCPConfigTools {
         return (json(["status": "no_change", "message": "The section already has this text."]), false)
       }
       if proposalOnly {
-        let p = env.proposals.create(
-          kind: .systemPrompt, section: section.rawValue, previousContent: previous,
-          proposedContent: content, rationale: r.value!)
-        log(tool, "proposed", name, len: content.count)
-        return pendingResult(p.id)
+        do {
+          let p = try env.proposals.create(
+            kind: .systemPrompt, section: section.rawValue, previousContent: previous,
+            proposedContent: content, rationale: r.value!)
+          log(tool, "proposed", name, len: content.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       return appliedResult(
         env.applier.applySystemPrompt(section: section, content: content, rationale: r.value!, viaProposal: false),
@@ -487,10 +491,14 @@ struct MCPConfigTools {
         return (json(["status": "no_change", "message": "The profile already has this text."]), false)
       }
       if env.accessLevel() == .propose {
-        let p = env.proposals.create(
-          kind: .writingStyle, previousContent: previous, proposedContent: content, rationale: r.value!)
-        log(tool, "proposed", len: content.count)
-        return pendingResult(p.id)
+        do {
+          let p = try env.proposals.create(
+            kind: .writingStyle, previousContent: previous, proposedContent: content, rationale: r.value!)
+          log(tool, "proposed", len: content.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       return appliedResult(
         env.applier.applyWritingStyle(content: content, rationale: r.value!, viaProposal: false),
@@ -532,12 +540,16 @@ struct MCPConfigTools {
     return MCPMain.run {
       if env.accessLevel() == .propose {
         let previous = loadCommands().first { $0.name == name }?.body
-        let p = env.proposals.create(
-          kind: .saveCommand, commandName: name, commandScope: scope.rawValue, commandLabel: label,
-          commandDescription: description, previousContent: previous, proposedContent: text,
-          rationale: r.value!)
-        log(tool, "proposed", len: text.count)
-        return pendingResult(p.id)
+        do {
+          let p = try env.proposals.create(
+            kind: .saveCommand, commandName: name, commandScope: scope.rawValue, commandLabel: label,
+            commandDescription: description, previousContent: previous, proposedContent: text,
+            rationale: r.value!)
+          log(tool, "proposed", len: text.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       return appliedResult(
         env.applier.applySaveCommand(
@@ -560,11 +572,15 @@ struct MCPConfigTools {
       }
       if env.accessLevel() == .propose {
         let previous = loadCommands().first { $0.name == name }?.body
-        let p = env.proposals.create(
-          kind: .deleteCommand, commandName: name, previousContent: previous, proposedContent: nil,
-          rationale: r.value!)
-        log(tool, "proposed")
-        return pendingResult(p.id)
+        do {
+          let p = try env.proposals.create(
+            kind: .deleteCommand, commandName: name, previousContent: previous, proposedContent: nil,
+            rationale: r.value!)
+          log(tool, "proposed")
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       return appliedResult(
         env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false),

@@ -78,6 +78,72 @@ struct MCPProposalAndChangeLogTests {
     #expect(!FileManager.default.fileExists(atPath: env.commands.fileURL(forName: "recap").path))
   }
 
+  // MARK: stale, cap, replace
+
+  @Test("Accept refuses when the target changed since the proposal; proposal stays pending")
+  func acceptStale() {
+    let env = MCPTestEnv(level: .propose)
+    env.systemPrompts.updateSection(.dictation, content: "Original.")
+    let id = propose(env)
+    env.systemPrompts.updateSection(.dictation, content: "Edited by hand.")
+    guard case .failure(let error) = env.proposals.accept(id) else { Issue.record("stale accept must fail"); return }
+    #expect(error.localizedDescription == "This changed since the AI app suggested it. Decline it and ask the AI app again.")
+    #expect(env.systemPrompts.loadSection(.dictation) == "Edited by hand.")
+    #expect(env.proposals.status(of: id)?.status == .pending)
+    #expect(env.changeLog.changes.isEmpty)
+  }
+
+  @Test("Accept succeeds when the target is unchanged")
+  func acceptUnchanged() {
+    let env = MCPTestEnv(level: .propose)
+    env.systemPrompts.updateSection(.dictation, content: "Original.")
+    let id = propose(env)
+    guard case .success = env.proposals.accept(id) else { Issue.record("accept failed"); return }
+    #expect(env.systemPrompts.loadSection(.dictation) == "Proposed text")
+  }
+
+  @Test("A second proposal for the same section replaces the first")
+  func replacesPending() {
+    let env = MCPTestEnv(level: .propose)
+    let first = propose(env, content: "One")
+    let second = propose(env, content: "Two")
+    #expect(first != second)
+    #expect(env.proposals.status(of: first)?.status == .declined)
+    #expect(env.proposals.status(of: second)?.status == .pending)
+    #expect(env.proposals.pending.map(\.id) == [second])
+  }
+
+  @Test("The 21st pending proposal for a distinct target is refused as a tool error")
+  func capPending() {
+    let env = MCPTestEnv(level: .propose)
+    for i in 0..<MCPProposalStore.maxPending {
+      let r = env.tools().call(name: "save_command",
+        arguments: ["name": "cmd-\(i)", "text": "T", "scope": "chat", "rationale": "r"], access: .write)
+      #expect(!r.isError)
+    }
+    #expect(env.proposals.pending.count == MCPProposalStore.maxPending)
+    let r = env.tools().call(name: "save_command",
+      arguments: ["name": "one-too-many", "text": "T", "scope": "chat", "rationale": "r"], access: .write)
+    #expect(r.isError)
+    #expect(r.text == "Too many changes are waiting for approval in WhisperShortcut. Ask the user to review them first.")
+    #expect(env.proposals.pending.count == MCPProposalStore.maxPending)
+    // Replacing an existing target still works at the cap.
+    let again = env.tools().call(name: "save_command",
+      arguments: ["name": "cmd-0", "text": "T2", "scope": "chat", "rationale": "r"], access: .write)
+    #expect(!again.isError)
+  }
+
+  @Test("Undo of a first-time writing style change removes the profile")
+  func undoWritingStyleRemovesProfile() {
+    let env = MCPTestEnv(level: .apply)
+    #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
+    let r = env.tools().call(name: "update_writing_style_profile",
+      arguments: ["content": "Short and direct.", "rationale": "r"], access: .write)
+    #expect(FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
+    #expect(env.changeLog.undo(obj(r)["change_id"] as? String ?? "") == .undone)
+    #expect(!FileManager.default.fileExists(atPath: env.writingStyle.profileURL.path))
+  }
+
   // MARK: undo
 
   @Test("Undo restores the previous content and logs mcp-undo")

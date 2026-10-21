@@ -101,6 +101,14 @@ final class WritingStyleStore {
     }
   }
 
+  /// Removes the profile file (used when undoing the change that created it).
+  func removeProfile() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    guard FileManager.default.fileExists(atPath: profileURL.path) else { return }
+    try FileManager.default.removeItem(at: profileURL)
+  }
+
   /// Creates the profile with empty section headers if it does not exist yet, so the user has
   /// something to fill in when opening it from Settings.
   func ensureProfileFileExists() {

@@ -40,6 +40,8 @@ final class MCPProposalStore: ObservableObject {
   static let fileName = "mcp-proposals.jsonl"
   /// Resolved proposals kept so `get_proposal_status` can still answer.
   static let maxResolved = 100
+  /// Most proposals that may wait for the user at once.
+  static let maxPending = 20
 
   /// Mutated on main.
   @Published private(set) var pending: [MCPProposal] = []
@@ -84,8 +86,23 @@ final class MCPProposalStore: ObservableObject {
     kind: MCPProposal.Kind, section: String? = nil, commandName: String? = nil,
     commandScope: String? = nil, commandLabel: String? = nil, commandDescription: String? = nil,
     previousContent: String?, proposedContent: String?, rationale: String
-  ) -> MCPProposal {
-    MCPMain.run {
+  ) throws -> MCPProposal {
+    try MCPMain.run {
+      // A newer proposal for the same target replaces the older one.
+      let sameTarget = all.indices.filter { i in
+        let q = all[i]
+        guard q.status == .pending, q.kind == kind || Self.sameTargetGroup(q.kind, kind) else { return false }
+        switch kind {
+        case .systemPrompt: return q.section == section
+        case .writingStyle: return true
+        case .saveCommand, .deleteCommand: return q.commandName == commandName
+        }
+      }
+      if sameTarget.isEmpty, pending.count >= Self.maxPending {
+        throw MCPConfigError(
+          message: "Too many changes are waiting for approval in WhisperShortcut. Ask the user to review them first.")
+      }
+      for i in sameTarget { all[i].status = .declined }
       let proposal = MCPProposal(
         id: UUID().uuidString, createdAt: Date(), kind: kind, section: section,
         commandName: commandName, commandScope: commandScope, commandLabel: commandLabel,
@@ -94,6 +111,26 @@ final class MCPProposalStore: ObservableObject {
       all.append(proposal)
       commit()
       return proposal
+    }
+  }
+
+  /// save and delete of one command name target the same file.
+  private static func sameTargetGroup(_ a: MCPProposal.Kind, _ b: MCPProposal.Kind) -> Bool {
+    (a == .saveCommand || a == .deleteCommand) && (b == .saveCommand || b == .deleteCommand)
+  }
+
+  /// What the target holds now, in the form `previousContent` was captured at create time.
+  private func currentForCompare(_ proposal: MCPProposal, applier: MCPConfigApplier) -> String? {
+    switch proposal.kind {
+    case .systemPrompt:
+      return proposal.section.flatMap(SystemPromptSection.init(rawValue:)).flatMap {
+        applier.targets.systemPrompts.loadSection($0)
+      }
+    case .writingStyle:
+      return applier.targets.current(kind: .writingStyle, target: "profile")
+    case .saveCommand, .deleteCommand:
+      applier.targets.commands.reload()
+      return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
     }
   }
 
@@ -106,6 +143,12 @@ final class MCPProposalStore: ObservableObject {
       }
       guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
       var proposal = all[index]
+      let now = MCPConfigTargets.normalized(currentForCompare(proposal, applier: applier)) ?? ""
+      if now != (MCPConfigTargets.normalized(proposal.previousContent) ?? "") {
+        DebugLogger.log("MCP-CONFIG: proposal \(proposal.kind.rawValue) accept rejected (changed since)")
+        return .failure(MCPConfigError(
+          message: "This changed since the AI app suggested it. Decline it and ask the AI app again."))
+      }
       if proposal.kind != .deleteCommand, let editedContent, editedContent != proposal.proposedContent {
         proposal.proposedContent = editedContent
         proposal.edited = true

@@ -19,9 +19,9 @@ struct MCPConfigError: LocalizedError {
 /// calls handlers on a concurrent queue and the stores read-modify-write without a shared lock,
 /// so two requests would otherwise lose an update.
 enum MCPMain {
-  static func run<T>(_ block: () -> T) -> T {
-    if Thread.isMainThread { return block() }
-    return DispatchQueue.main.sync(execute: block)
+  static func run<T>(_ block: () throws -> T) rethrows -> T {
+    if Thread.isMainThread { return try block() }
+    return try DispatchQueue.main.sync(execute: block)
   }
 }
 

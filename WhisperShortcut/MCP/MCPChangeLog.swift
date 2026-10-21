@@ -159,7 +159,15 @@ final class MCPChangeLog: ObservableObject {
         targets.systemPrompts.updateSection(section, content: change.previousContent ?? "")
       else { throw MCPConfigError(message: "Could not write the section.") }
     case .writingStyle:
-      targets.writingStyle.saveProfile(change.previousContent ?? "")
+      if let previous = change.previousContent {
+        targets.writingStyle.saveProfile(previous)
+        guard targets.writingStyle.loadProfile() == previous else {
+          throw MCPConfigError(message: "Could not write the writing style profile.")
+        }
+      } else {
+        // The AI app created the profile; remove it instead of leaving an empty one.
+        try targets.writingStyle.removeProfile()
+      }
     case .saveCommand, .deleteCommand:
       let url = targets.commands.fileURL(forName: change.target)
       if let previous = change.previousContent {
