@@ -29,7 +29,6 @@ class MenuBarController: NSObject {
     case screenshot = 113
     case readAloud = 114
     case rate = 115
-    case voiceFeedback = 116
     case copyLastTranscription = 117
     case recentTranscriptions = 118
     case sendFeedback = 119
@@ -91,7 +90,6 @@ class MenuBarController: NSObject {
   private let audioRecorder: DictationAudioRecording
   private let speechService: SpeechService
   private let clipboardManager: ClipboardManager
-  private let voiceFeedbackService = VoiceFeedbackService()
   private let shortcuts: Shortcuts
   private let fnDictationToggle = FnDictationToggle()
   private let reviewPrompter: ReviewPrompter
@@ -132,10 +130,6 @@ class MenuBarController: NSObject {
     /// The quick action is an edit (fix, rewrite, shorten, format, translate), so with nothing
     /// selected there is nothing for it to act on.
     var isEditQuickAction = false
-    /// Text the user had selected when Voice Feedback started, if any. Optional context: a spoken
-    /// "the spelling of X is X" is transcribed identically on both sides and teaches nothing, so
-    /// the selection is where a correct spelling can actually come from.
-    var voiceFeedbackSelection: String?
     /// Dictate Prompt: the selection captured for THIS recording (nil in screenshot-selection mode,
     /// where the selection lives in the screenshot). Set when the intent is created, so it can
     /// never be lost to the copy finishing after a short recording — the job awaits it.
@@ -161,7 +155,7 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
-  /// The Dictate, Dictate Prompt or Voice Feedback job currently being processed, outside a live
+  /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
   /// being pasted out of idle or finishing a recording the user has started since. See `VoiceJob`.
@@ -442,8 +436,7 @@ class MenuBarController: NSObject {
     stopSeparator.tag = MenuTag.stopSeparator.rawValue
     menu.addItem(stopSeparator)
 
-    // Recording actions with keyboard shortcuts. Voice Feedback is ordered last so the shortcut
-    // digits read 1-2-3-4-5 down the menu; Read Aloud and Glossary are selection-based (⌘C needs
+    // Recording actions with keyboard shortcuts. Read Aloud and Glossary are selection-based (⌘C needs
     // Accessibility) and absent from the App Store build.
     for row in Self.actionRows {
       menu.addItem(makeItem(row))
@@ -563,10 +556,6 @@ class MenuBarController: NSObject {
         tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
         action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
     #endif
-    rows.append(
-      ModeRow(
-        tag: .voiceFeedback, title: "Voice Feedback", stopTitle: "Stop Voice Feedback",
-        action: #selector(toggleVoiceFeedback), shortcut: \.voiceFeedback, mode: .voiceFeedback))
     #if !APP_STORE
     rows.append(
       ModeRow(
@@ -757,10 +746,6 @@ class MenuBarController: NSObject {
       cancelInFlightPrompt()
       return
     }
-    if case .processing(.contextEditing) = appState {
-      speechService.cancelTranscription()
-      transitionToIdleAndCleanup()
-    }
   }
 
   /// ✓ on the indicator: same as the stop shortcut — finish recording and process.
@@ -929,12 +914,6 @@ class MenuBarController: NSObject {
       self,
       selector: #selector(refreshLiveMeetingNotesOnDemand),
       name: .liveMeetingNotesRefreshRequested,
-      object: nil
-    )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(markMeetingMomentFromNotification),
-      name: .liveMeetingMarkerRequested,
       object: nil
     )
     NotificationCenter.default.addObserver(
@@ -1509,41 +1488,6 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Voice Feedback: record a spoken instruction that edits the dictation context.
-  /// Slice 1 transcribes the instruction and shows what was heard; Slice 2 turns it into a
-  /// reviewable change to `system-prompts.md`.
-  @objc internal func toggleVoiceFeedback() {
-    switch availability(.voiceFeedback) {
-    case .ignored(.liveMeetingActive):
-      // Voice Feedback is a standalone flow — not a live-meeting segment.
-      DebugLogger.log("VOICE-FEEDBACK: Ignoring — live meeting active")
-    case .cancelProcessing:
-      // Cancel an in-flight context-editing pass. Cancelling the job also stops the second stage
-      // (`proposeChange`), which the transcription cancel alone never reached.
-      let job = currentJob
-      speechService.cancelTranscription()
-      job?.cancel()
-      transitionToIdleAndCleanup(cleanupAudioURL: job?.audioURL)
-    case .stop, .cancelPendingStart:
-      stopRecordingAfterTailDelay()
-    case .blocked(.busy):
-      DebugLogger.log("VOICE-FEEDBACK: Shortcut ignored — a run is still in progress (\(appState))")
-      presentBlocked(.busy)
-    case .blocked(let reason):
-      // Two credentials are needed: the transcription model transcribes the spoken instruction,
-      // then the improvement model turns it into a proposed change. Both are checked up front so
-      // the user isn't told about a missing key only after speaking.
-      presentBlocked(reason)
-    case .start:
-      captureVoiceFeedbackSelection()
-      ConnectionPrewarmer.prewarm(for: TranscriptionModel.loadSelected())
-      discardStreamingSession()  // voice feedback never streams
-      beginAudioCapture(mode: .voiceFeedback)
-    case .ignored:
-      break
-    }
-  }
-
   @objc private func stopCurrentOperation() {
     // Active meeting segment: stop the segment first, keep meeting running.
     // `activeMeetingSegment` stays set so the async `audioRecorderDidFinishRecording`
@@ -1616,7 +1560,7 @@ class MenuBarController: NSObject {
     // Keep the audio instead of deleting it: a cancel is one keystroke and can be an accident,
     // and the recording is the only copy of what the user said. "Transcribe Cancelled Recording"
     // in the status menu turns an unrecoverable loss into one extra click.
-    // Only for dictation: a long Voice Feedback instruction also runs through the chunked
+    // Only for dictation: a long Dictate Prompt instruction also runs through the chunked
     // transcription states, and re-transcribing it would paste the instruction as dictation.
     if job?.mode == .transcription {
       retainCancelledRecording(job?.audioURL)
@@ -1866,27 +1810,6 @@ class MenuBarController: NSObject {
     DispatchQueue.main.async { [weak self] in self?.liveMeeting.refreshLiveNotes(force: true) }
   }
 
-  /// Marker hotkey handler. Flags the current moment of a running meeting; does nothing when no
-  /// meeting is recording. No confirmation UI on purpose — the marker appears in the note stream
-  /// itself, which is the same surface the user is already reading.
-  @objc func markMeetingMoment() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      if !self.liveMeeting.addMarker(text: AppConstants.liveMeetingDefaultMarkerText) {
-        DebugLogger.log("LIVE-MEETING-NOTES: Marker hotkey ignored — no meeting recording")
-        return
-      }
-      // A marker means "what was just said matters", so cut the chunk it lands in: the flagged moment
-      // reaches the transcript in seconds instead of at the next rotation. Fire-and-forget — nothing
-      // here waits on it.
-      Task { await self.liveMeeting.flushPendingAudio() }
-    }
-  }
-
-  @objc private func markMeetingMomentFromNotification() {
-    markMeetingMoment()
-  }
-
   /// Chat window shown/hidden: switch the meeting's chunk cadence so the live view keeps up while
   /// someone is watching, and falls back to the configured (cheaper) interval when nobody is.
   @objc private func chatWindowVisibilityChanged(_ notification: Notification) {
@@ -1941,7 +1864,6 @@ class MenuBarController: NSObject {
     case .transcription: return .dictation
     case .prompt: return .prompt
     case .liveMeeting: return .meeting
-    case .voiceFeedback: return .other
     }
   }
 
@@ -2001,7 +1923,6 @@ class MenuBarController: NSObject {
         case .transcription: operationName = "Transcription"
         case .prompt: operationName = "Prompt"
         case .liveMeeting: operationName = "Live meeting"
-        case .voiceFeedback: operationName = "Voice Feedback"
         }
         shortTitle = "\(operationName) Error"
         errorMessage = SpeechErrorFormatter.formatForUser(error)
@@ -2056,12 +1977,6 @@ class MenuBarController: NSObject {
           case .liveMeeting:
             // Live meeting chunks are handled separately, no retry needed here
             break
-          case .voiceFeedback:
-            self.appState = .processing(.contextEditing)
-            self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
-              // One run, one selection: a retry goes without it, as before.
-              await self.performVoiceFeedback(audioURL: audioURL, job: job, selection: nil)
-            }
           }
         }
       } : nil
@@ -2116,18 +2031,18 @@ class MenuBarController: NSObject {
     var cancelsViaTransitionToIdle = false
 
     /// The `InteractionLogEntry.mode` this job writes, so an outcome signal can point at the right
-    /// row. Nil for modes that log no interaction (live meeting, Voice Feedback).
+    /// row. Nil for modes that log no interaction (live meeting).
     var interactionLogMode: String? {
       switch mode {
       case .transcription: return "transcription"
       case .prompt: return "prompt"
-      case .liveMeeting, .voiceFeedback: return nil
+      case .liveMeeting: return nil
       }
     }
   }
 
   /// The plain cancellation tail: finish the state machine, drop the URL, remove the file. Shared
-  /// by the prompt pipeline and Voice Feedback, which handle a cancelled recording identically.
+  /// by the prompt pipeline, which handles a cancelled recording.
   /// Transcription does not use it — it routes through `transitionToIdleAndCleanup` instead, which
   /// additionally clears chunk state.
   @MainActor
@@ -2452,123 +2367,6 @@ class MenuBarController: NSObject {
         }
         return result
       })
-  }
-
-  /// Voice Feedback pipeline: transcribe the spoken instruction, ask the improvement model to
-  /// turn it into a proposed change to one `system-prompts.md` section, present that in the
-  /// Smart Improvement review modal, and apply it on Accept.
-  @MainActor
-  private func performVoiceFeedback(audioURL: URL, job: VoiceJob, selection: String?) async {
-    // Every `appState` write below is guarded: after a cancel the state machine belongs to whatever
-    // the user does next, and a stale `finish()` / `showSuccess` would clobber it.
-    func finishIfCurrent() {
-      guard !isSuperseded(job) else { return }
-      currentJob = nil
-      appState = appState.finish()
-    }
-    do {
-      let instruction = try await speechService.transcribe(audioURL: audioURL)
-      try Task.checkCancellation()
-      let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
-      DebugLogger.log("VOICE-FEEDBACK: Heard instruction \(DebugLogger.redacted(trimmed))")
-
-      guard !trimmed.isEmpty else {
-        cleanupAudioFile(at: audioURL)
-        processedAudioURLs.remove(audioURL)
-        PopupNotificationWindow.showInfo("No speech detected.", title: "Voice Feedback")
-        finishIfCurrent()
-        return
-      }
-
-      let proposal = try await voiceFeedbackService.proposeChange(
-        instruction: trimmed, selectedText: selection)
-      try Task.checkCancellation()
-
-      // The instruction text is captured; the audio is no longer needed.
-      cleanupAudioFile(at: audioURL)
-      processedAudioURLs.remove(audioURL)
-
-      guard proposal.shouldChange else {
-        DebugLogger.log("VOICE-FEEDBACK: Model returned no_change")
-        PopupNotificationWindow.showInfo(
-          "No context change suggested from that feedback.", title: "Voice Feedback")
-        finishIfCurrent()
-        return
-      }
-
-      let section = proposal.section
-      let current = SystemPromptsStore.shared.loadSection(section) ?? ""
-
-      // Reviewing is user time, not processing — drop the pill before the modal opens. The job
-      // ends here: from now on the user is free to record, so nothing after the panel may assume
-      // the state machine is still ours.
-      finishIfCurrent()
-
-      // The model often returns a glossary term in lowercase. Lines the user already has stay
-      // as written; a new line takes the capitalisation their transcripts already use.
-      // The transcript scan is file IO over two weeks of logs — keep it off the main thread.
-      var suggestedText = proposal.suggestion
-      if section == .whisperGlossary {
-        let transcripts = await Task.detached(priority: .userInitiated) {
-          GlossaryFastLearner.shared.recentTranscriptionResults()
-        }.value
-        suggestedText = GlossaryLearning.applyingMajorityCasing(
-          to: proposal.suggestion, keepingLinesOf: current, transcripts: transcripts)
-      }
-      let edited = await SmartImprovementReviewPanel.present(
-        focusDisplayName: Self.voiceFeedbackFocusName(for: section),
-        originalText: current,
-        suggestedText: suggestedText,
-        rationale: proposal.rationale.isEmpty ? nil : proposal.rationale,
-        section: section)
-
-      guard let edited = edited,
-        !edited.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      else {
-        DebugLogger.log("VOICE-FEEDBACK: Review cancelled — no change applied")
-        return
-      }
-      // The user accepted in the panel, so the change applies even if something else is running.
-      SystemPromptsStore.shared.updateSection(section, content: edited)
-      ContextLogger.shared.appendSystemPromptsHistory(
-        section: section, previousLength: current.count, newLength: edited.count,
-        content: edited, model: nil, source: "voice-feedback")
-      DebugLogger.log("VOICE-FEEDBACK-CHANGE: Applied change to section \(section.rawValue)")
-      // Only the success pill waits for a free state machine: over a running recording it would
-      // replace the recording state.
-      if case .idle = appState {
-        appState = appState.showSuccess("Context updated")
-      }
-    } catch {
-      if isSuperseded(job) {
-        DebugLogger.log("CANCELLATION: Voice feedback ended after its job was cancelled (\(type(of: error)))")
-        processedAudioURLs.remove(audioURL)
-        cleanupAudioFile(at: audioURL)
-        return
-      }
-      if Self.isCancellation(error) {
-        currentJob = nil
-        await cancelAudioJob(logLabel: "Voice feedback", error: error, audioURL: audioURL)
-        return
-      }
-      currentJob = nil
-      await handleProcessingError(error: error, audioURL: audioURL, mode: .voiceFeedback)
-      // A Voice Feedback instruction long enough to be chunked leaves progress behind when the
-      // transcription fails before `mergingStarted` clears it; same tail as the other pipelines.
-      chunkStatuses = []
-      processedAudioURLs.remove(audioURL)
-    }
-  }
-
-  /// Human-readable section name for the Voice Feedback review modal title.
-  private static func voiceFeedbackFocusName(for section: SystemPromptSection) -> String {
-    switch section {
-    case .dictation: return "Dictation"
-    case .whisperGlossary: return "Glossary"
-    case .promptMode: return "Dictate Prompt"
-    case .chat: return "Chat"
-    case .readAloudRewrite: return "Read Aloud"
-    }
   }
 
   /// True if the error represents a user-initiated cancellation — Swift's `CancellationError`,
@@ -2934,7 +2732,7 @@ class MenuBarController: NSObject {
     let before = NSPasteboard.general.changeCount
     let copyStarted = Date()
     simulateCopy()
-    // Same polling as Voice Feedback: "nothing was copied" and "the app was slow to copy" are
+    // Polling `NSPasteboard.changeCount`: "nothing was copied" and "the app was slow to copy" are
     // otherwise indistinguishable. The capture is held strongly by this task, so it always
     // resolves within the deadline and a waiting job can never hang on it.
     Task { @MainActor in
@@ -2973,46 +2771,6 @@ class MenuBarController: NSObject {
     return (true, selection)
   }
 
-  /// Best-effort snapshot of the current selection for Voice Feedback.
-  ///
-  /// Deliberately silent and non-blocking: Voice Feedback works perfectly well without a
-  /// selection, so this never prompts for Accessibility permission and never shows an error when
-  /// nothing is selected — unlike Read Aloud, where the selection IS the input. Polls
-  /// `NSPasteboard.changeCount` rather than sleeping a fixed interval, because "nothing was
-  /// copied" and "the app was slow to copy" are otherwise indistinguishable, and mistaking the
-  /// first for the second would feed the user's unrelated clipboard to the model.
-  /// Called just before `beginAudioCapture(.voiceFeedback)`. The copied text arrives
-  /// asynchronously (≥ 15 ms later), by which point that call has created this recording's intent,
-  /// so the selection lands on it and cannot outlive the recording. On a tap shorter than the copy
-  /// (the poll allows 500 ms) the recording can finish first and the selection is dropped — a
-  /// recording that short carries no instruction worth editing the context with anyway.
-  private func captureVoiceFeedbackSelection() {
-    guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
-      DebugLogger.log("VOICE-FEEDBACK: No Accessibility permission — proceeding without a selection")
-      return
-    }
-    captureClipboardRestorePointIfEnabled()
-    let before = NSPasteboard.general.changeCount
-    simulateCopy()
-    Task { @MainActor [weak self] in
-      let deadline = Date().addingTimeInterval(0.5)
-      while Date() < deadline {
-        try? await Task.sleep(for: .milliseconds(15))
-        guard NSPasteboard.general.changeCount != before else { continue }
-        let text = NSPasteboard.general.string(forType: .string)?
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let text, !text.isEmpty {
-          self?.recording?.voiceFeedbackSelection = text
-          DebugLogger.log("VOICE-FEEDBACK: Captured selection (\(text.count) chars)")
-        }
-        // Voice Feedback never pastes, so the remembered clipboard has no job left to serve.
-        self?.clipboardManager.discardRestorePoint()
-        return
-      }
-      self?.clipboardManager.discardRestorePoint()
-      DebugLogger.log("VOICE-FEEDBACK: No selection copied — proceeding with the spoken instruction only")
-    }
-  }
 
   #if !APP_STORE
   /// Appends whatever the user has selected to the Glossary.
@@ -3362,7 +3120,7 @@ extension MenuBarController: AudioRecorderDelegate {
       guard case .recording(let recordingMode) = self.appState else {
         // The audio is the only copy of what the user said. Never drop it: a dictation is kept as
         // the recoverable cancelled recording ("Transcribe Cancelled Recording" in the status
-        // menu); an instruction recording (prompt, voice feedback) would be pasted as dictation,
+        // menu); an instruction recording (prompt) would be pasted as dictation,
         // so that one is removed.
         self.discardStreamingSession()
         self.clipboardManager.discardRestorePoint()
@@ -3413,7 +3171,7 @@ extension MenuBarController: AudioRecorderDelegate {
           ).provider
           let promptIsLocal = promptProvider == .local || promptProvider == .localMLX
           return !(promptIsLocal && TranscriptionModel.loadSelected().isOffline)
-        case .voiceFeedback, .liveMeeting:
+        case .liveMeeting:
           return true
         }
       }()
@@ -3489,7 +3247,7 @@ extension MenuBarController: AudioRecorderDelegate {
         let usesCloudAPI: Bool = {
           switch recordingMode {
           case .transcription: return !TranscriptionModel.loadSelected().isOffline
-          case .prompt, .liveMeeting, .voiceFeedback: return true
+          case .prompt, .liveMeeting: return true
           }
         }()
 
@@ -3540,11 +3298,6 @@ extension MenuBarController: AudioRecorderDelegate {
           await self.performPrompting(
             audioURL: audioURL, job: job, instruction: quickActionInstruction,
             isEditQuickAction: promptInputs.isEditQuickAction, selection: promptSelection)
-        }
-      case .voiceFeedback:
-        let selection = intent?.voiceFeedbackSelection
-        self.startVoiceJob(mode: .voiceFeedback, audioURL: audioURL) { job in
-          await self.performVoiceFeedback(audioURL: audioURL, job: job, selection: selection)
         }
       case .liveMeeting:
         DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")

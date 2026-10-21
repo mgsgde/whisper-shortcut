@@ -28,7 +28,7 @@
 #   bash driver.sh onboarding-reset   # show Welcome again (keeps Keychain + container data)
 #   bash driver.sh onboarding-wipe    # DESTRUCTIVE: delete app container, then relaunch
 #
-# Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud, Voice Feedback,
+# Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud,
 #             Copy Last Transcription, Recent Transcriptions, Chat, Settings…,
 #             Rate WhisperShortcut, Quit WhisperShortcut
 # ("Settings…" opens the window titled "Settings" — note the trailing Unicode ellipsis U+2026,

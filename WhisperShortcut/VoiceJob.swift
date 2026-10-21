@@ -1,12 +1,11 @@
 import Foundation
 
-/// One finished recording being turned into a result — Dictate, Dictate Prompt or Voice Feedback,
+/// One finished recording being turned into a result — Dictate or Dictate Prompt,
 /// outside a live meeting (meeting segments are not cancellable and carry no job).
 ///
 /// Before this, a job was only an audio URL in `MenuBarController.currentJobAudioURL`, and the work
 /// ran in a bare `Task {}` nobody held. Cancelling could only reach the inner `SpeechService` call,
-/// so Voice Feedback's second stage (`proposeChange`) kept running and its review panel could still
-/// open after the user cancelled, and a late cancellation tail could `finish()` a recording the user
+/// so a second pipeline stage kept running after the user cancelled, and a late cancellation tail could `finish()` a recording the user
 /// had started in the meantime. The job owns its task, so cancel reaches every stage, and
 /// "is this result still wanted?" is an identity check (`currentJob === job`) instead of a URL
 /// comparison that every exit path had to keep in sync.

@@ -12,7 +12,7 @@ struct ShortcutDefaultsTests {
 
   private func all(_ c: ShortcutConfig) -> [ShortcutDefinition] {
     [c.startRecording, c.startPrompting, c.openSettings, c.openChat, c.screenshotCapture,
-     c.readAloud, c.voiceFeedback, c.meetingMarker, c.addToGlossary]
+     c.readAloud, c.addToGlossary]
   }
 
   @Test("New-install defaults avoid bare ⌘-digits and do not collide")
@@ -21,6 +21,14 @@ struct ShortcutDefaultsTests {
     #expect(!defs.contains { $0.modifiers == [.command] })
     #expect(Set(defs.map { "\($0.key)-\($0.modifiers.rawValue)" }).count == defs.count)
     #expect(ShortcutConfig.default.startRecording.modifiers == [.control, .option])
+  }
+
+  @Test("Add Selection to Glossary ships without a default shortcut in both sets")
+  func glossaryShortcutDisabledByDefault() {
+    #expect(!ShortcutConfig.default.addToGlossary.isEnabled)
+    #expect(!ShortcutConfig.legacyCommandDigit.addToGlossary.isEnabled)
+    // The key and modifiers stay as the suggested binding the user can switch on.
+    #expect(ShortcutConfig.default.addToGlossary.key == .seven)
   }
 
   @Test("Legacy defaults are the ⌘-digit set existing installs were running on")

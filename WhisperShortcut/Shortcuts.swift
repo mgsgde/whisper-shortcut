@@ -4,12 +4,9 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
-  func toggleVoiceFeedback()
   func openSettings()
   func openChat()
   func takeScreenshot()
-  /// Flags the current moment of a running live meeting. No-op when no meeting is recording.
-  func markMeetingMoment()
   #if !APP_STORE
   func readAloud()
   /// Appends the current selection to the Glossary. Selection-based like Read Aloud, so it shares
@@ -33,11 +30,9 @@ class Shortcuts {
   private var openChatKey: HotKey?
   private var screenshotCaptureKey: HotKey?
   private var readAloudKey: HotKey?
-  private var voiceFeedbackKey: HotKey?
   #if !APP_STORE
   private var addToGlossaryKey: HotKey?
   #endif
-  private var meetingMarkerKey: HotKey?
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -121,14 +116,6 @@ class Shortcuts {
     }
     #endif
 
-    if config.voiceFeedback.isEnabled {
-      voiceFeedbackKey = HotKey(
-        key: config.voiceFeedback.key, modifiers: config.voiceFeedback.modifiers)
-      voiceFeedbackKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.toggleVoiceFeedback()
-      }
-    }
-
     // Create settings shortcut (only if enabled)
     if config.openSettings.isEnabled {
       openSettingsKey = HotKey(
@@ -167,16 +154,6 @@ class Shortcuts {
       }
     }
     #endif
-
-    // Create meeting marker shortcut (only if enabled). The handler is a no-op unless a meeting is
-    // recording, so the binding costs nothing the rest of the time.
-    if config.meetingMarker.isEnabled {
-      meetingMarkerKey = HotKey(
-        key: config.meetingMarker.key, modifiers: config.meetingMarker.modifiers)
-      meetingMarkerKey?.keyDownHandler = { [weak self] in
-        self?.delegate?.markMeetingMoment()
-      }
-    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -194,11 +171,9 @@ class Shortcuts {
     openChatKey = nil
     screenshotCaptureKey = nil
     readAloudKey = nil
-    voiceFeedbackKey = nil
     #if !APP_STORE
     addToGlossaryKey = nil
     #endif
-    meetingMarkerKey = nil
   }
 
   deinit {

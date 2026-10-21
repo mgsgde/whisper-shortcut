@@ -27,10 +27,4 @@ struct AppStateTests {
   func stopFromIdleIsNoOp() {
     #expect(AppState.idle.stopRecording() == .idle)
   }
-
-  @Test("Voice feedback records into context editing")
-  func voiceFeedbackProcessingMode() {
-    let state = AppState.idle.startRecording(.voiceFeedback).stopRecording()
-    #expect(state == .processing(.contextEditing))
-  }
 }

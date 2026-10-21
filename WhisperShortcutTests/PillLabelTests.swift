@@ -12,8 +12,7 @@ struct PillLabelTests {
   func recordingLabels() {
     #expect(AppState.RecordingMode.transcription.pillLabel == "Listening")
     #expect(AppState.RecordingMode.prompt.pillLabel != AppState.RecordingMode.transcription.pillLabel)
-    #expect(AppState.RecordingMode.voiceFeedback.pillLabel != AppState.RecordingMode.transcription.pillLabel)
-    for mode: AppState.RecordingMode in [.transcription, .prompt, .liveMeeting, .voiceFeedback] {
+    for mode: AppState.RecordingMode in [.transcription, .prompt, .liveMeeting] {
       #expect(mode.pillLabel.count <= 12)
     }
   }

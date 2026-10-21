@@ -118,10 +118,8 @@ struct ShortcutConfig: Codable, Equatable {
   var openChat: ShortcutDefinition
   var screenshotCapture: ShortcutDefinition
   var readAloud: ShortcutDefinition
-  var voiceFeedback: ShortcutDefinition
-  var meetingMarker: ShortcutDefinition
-  /// Appends the current selection to the Glossary. Continues the ⌘-digit run of the other
-  /// actions; ⌘7 was the first free one.
+  /// Appends the current selection to the Glossary. Ships disabled: the key and modifiers are only
+  /// the suggested binding, the user turns it on in Settings.
   var addToGlossary: ShortcutDefinition
 
   /// Defaults for new installs: ⌃⌥ + digit. ⌘1/⌘2/⌘3 switch tabs in every browser, Slack, VS Code
@@ -135,9 +133,7 @@ struct ShortcutConfig: Codable, Equatable {
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.control, .option], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.control, .option], isEnabled: true),
-    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.control, .option], isEnabled: true),
-    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.control, .option], isEnabled: true),
-    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: true)
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: false)
   )
 
   /// The ⌘-digit defaults every install before the ⌃⌥ switch was running on.
@@ -148,9 +144,7 @@ struct ShortcutConfig: Codable, Equatable {
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
-    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
-    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true),
-    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false)
   )
 }
 
@@ -164,7 +158,6 @@ extension ShortcutConfig {
       ("Dictate Prompt", startPrompting),
       ("Screenshot", screenshotCapture),
       ("Read Aloud", readAloud),
-      ("Voice Feedback", voiceFeedback),
       ("Chat", openChat),
       ("Settings", openSettings),
     ]
@@ -412,8 +405,6 @@ class ShortcutConfigManager {
     static let openChatKey = "shortcut_open_gemini"
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
     static let readAloudKey = "shortcut_read_aloud"
-    static let voiceFeedbackKey = "shortcut_voice_feedback"
-    static let meetingMarkerKey = "shortcut_meeting_marker"
     static let addToGlossaryKey = "shortcut_add_to_glossary"
   }
 
@@ -441,8 +432,6 @@ class ShortcutConfigManager {
           (Constants.openChatKey, legacy.openChat),
           (Constants.screenshotCaptureKey, legacy.screenshotCapture),
           (Constants.readAloudKey, legacy.readAloud),
-          (Constants.voiceFeedbackKey, legacy.voiceFeedback),
-          (Constants.meetingMarkerKey, legacy.meetingMarker),
           (Constants.addToGlossaryKey, legacy.addToGlossary),
         ]
         for (key, shortcut) in pins where loadShortcut(for: key) == nil {
@@ -495,10 +484,6 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.screenshotCaptureKey) ?? ShortcutConfig.default.screenshotCapture
     let readAloud =
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
-    let voiceFeedback =
-      loadShortcut(for: Constants.voiceFeedbackKey) ?? ShortcutConfig.default.voiceFeedback
-    let meetingMarker =
-      loadShortcut(for: Constants.meetingMarkerKey) ?? ShortcutConfig.default.meetingMarker
     let addToGlossary =
       loadShortcut(for: Constants.addToGlossaryKey) ?? ShortcutConfig.default.addToGlossary
     return ShortcutConfig(
@@ -508,8 +493,6 @@ class ShortcutConfigManager {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker,
       addToGlossary: addToGlossary
     )
   }
@@ -521,8 +504,6 @@ class ShortcutConfigManager {
     saveShortcut(config.openChat, for: Constants.openChatKey)
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
-    saveShortcut(config.voiceFeedback, for: Constants.voiceFeedbackKey)
-    saveShortcut(config.meetingMarker, for: Constants.meetingMarkerKey)
     saveShortcut(config.addToGlossary, for: Constants.addToGlossaryKey)
 
     // Post notification for shortcut updates
@@ -616,8 +597,6 @@ extension Notification.Name {
   /// Posted by a consumer that wants the live notes brought up to date right now for the active
   /// meeting (the user just sent a chat message). MenuBarController forwards it to the session.
   static let liveMeetingNotesRefreshRequested = Notification.Name("liveMeetingNotesRefreshRequested")
-  /// Posted by the marker hotkey to flag the current moment of the running meeting.
-  static let liveMeetingMarkerRequested = Notification.Name("liveMeetingMarkerRequested")
   /// Posted when the chat window becomes visible or hidden. userInfo["visible"] = Bool. Drives the
   /// live meeting's chunk cadence — fast while someone is watching, configured otherwise.
   static let chatWindowVisibilityChanged = Notification.Name("chatWindowVisibilityChanged")

@@ -67,7 +67,7 @@ bash $D quit                       # quit the app
 Other commands: `open <MenuItem>` (click an item, no screenshot), `ss [name]`
 (screenshot the front window cropped, or full screen if none). Menu item names are
 exactly: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
-`Voice Feedback`, `Stop`, `Copy Last Transcription`, `Recent Transcriptions`, `Settings…`,
+`Stop`, `Copy Last Transcription`, `Recent Transcriptions`, `Settings…`,
 `Send Feedback` (has a per-channel submenu), `Rate WhisperShortcut`, `Quit WhisperShortcut`.
 Two are conditional: `Stop` is hidden unless an operation is active, and `Read Aloud` is wrapped
 in `#if !APP_STORE`, so it is **absent from the App Store build**. `Settings…` opens the window titled

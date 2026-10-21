@@ -361,8 +361,7 @@ final class LiveMeetingSession: NSObject {
       if MeetingAudioBacklog.items(stem: stem).isEmpty {
         runPostProcessing(
           transcriptURL: transcriptURL,
-          chunks: LiveMeetingTranscriptStore.shared.chunks,
-          markers: LiveMeetingTranscriptStore.shared.markerTexts)
+          chunks: LiveMeetingTranscriptStore.shared.chunks)
       } else {
         // Some audio failed during the meeting (typically: no connection). The network may well be
         // back by now, so try once more right away; the summary waits until the transcript is whole,
@@ -378,7 +377,7 @@ final class LiveMeetingSession: NSObject {
   /// final summary from it. Runs detached from the session's own state — everything it needs was
   /// captured before `finish()` cleared the fields.
   private func runPostProcessing(
-    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], markers: [String]
+    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk]
   ) {
     Task {
       let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(
@@ -430,7 +429,7 @@ final class LiveMeetingSession: NSObject {
       }
       do {
         let summary = try await MeetingListService.generateSummaryText(
-          transcript: textForSummary, markers: markers, model: model)
+          transcript: textForSummary, model: model)
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
           MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -641,8 +640,7 @@ final class LiveMeetingSession: NSObject {
       }
       if !merged.isEmpty {
         runPostProcessing(
-          transcriptURL: transcriptURL, chunks: merged,
-          markers: isShownMeeting ? store.markerTexts : [])
+          transcriptURL: transcriptURL, chunks: merged)
       }
     }
     return (recoveredChunks.count, failure)
@@ -759,18 +757,6 @@ final class LiveMeetingSession: NSObject {
 
   // MARK: - Live notes
 
-  /// Marks the current moment with a user-written (or default) marker and persists it.
-  /// Called from the global marker hotkey while a meeting is recording.
-  @discardableResult
-  func addMarker(text: String) -> Bool {
-    guard appStateIsRecordingMeeting() else { return false }
-    let store = LiveMeetingTranscriptStore.shared
-    let marker = store.appendMarker(text: text, at: recorder?.currentElapsedTime)
-    persistNotes()
-    DebugLogger.log("LIVE-MEETING-NOTES: Marker set at \(marker.timestampString)")
-    return true
-  }
-
   /// Generates the next live note when enough new transcript has accumulated.
   ///
   /// Called after every transcript append — the note stream is what the user reads during the
@@ -800,9 +786,7 @@ final class LiveMeetingSession: NSObject {
       return
     }
 
-    // Only generated notes are context for the model — markers are the user's own words and
-    // repeating them back would just make the model echo them.
-    let recentNotes = store.liveNotes.filter { !$0.isMarker }.suffix(3).flatMap { $0.bullets }
+    let recentNotes = store.liveNotes.suffix(3).flatMap { $0.bullets }
     let previousLastID = lastNotedChunkID
     lastNotedChunkID = newLastID
     noteUpdateInFlight = true

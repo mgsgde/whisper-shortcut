@@ -421,10 +421,6 @@ Output rules (CRITICAL):
   /// background value (10 s) the first two thirds of every fast chunk could not rotate at all.
   static let liveMeetingFastChunkMinDuration: TimeInterval = 6
 
-  /// Text stored for a marker set by hotkey. The value of a marker is the timestamp it carries —
-  /// the user cannot type while the meeting runs, which is the whole reason the hotkey exists.
-  static let liveMeetingDefaultMarkerText = "Flagged by me"
-
   /// Transcription prompt for live meeting chunks with speaker diarization.
   static let liveMeetingDiarizationPrompt =
     """
@@ -460,19 +456,7 @@ Transcript:
 
   /// Final post-meeting summary prompt (provider-agnostic — used by whichever provider owns the
   /// selected meeting-summary model).
-  static func meetingSummaryPrompt(transcript: String, markers: [String] = []) -> String {
-    // Markers are the moments the participant flagged by hotkey while the meeting ran — the one
-    // signal in the transcript that carries explicit human attention, so the summary leans on them.
-    let markerBlock =
-      markers.isEmpty
-      ? ""
-      : """
-
-        The participant flagged these moments as important while the meeting was running. Make sure \
-        the summary covers each of them, and open with a "## Flagged Moments" section listing them:
-        \(markers.map { "- \($0)" }.joined(separator: "\n"))
-        """
-
+  static func meetingSummaryPrompt(transcript: String) -> String {
     return """
     You are summarizing a completed meeting transcript.
 
@@ -483,7 +467,6 @@ Transcript:
     4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
     5. Include: main points, key takeaways, decisions, action items (if any).
     6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
-    \(markerBlock)
 
     Transcript:
     \(transcript)

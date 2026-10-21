@@ -32,10 +32,6 @@ struct KeyboardShortcutsSection: View {
       row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
       #endif
 
-      row("Voice Feedback:", $viewModel.data.voiceFeedback, .voiceFeedbackShortcut)
-
-      row("Flag Meeting Moment:", $viewModel.data.meetingMarker, .meetingMarkerShortcut)
-
       #if !APP_STORE
       row("Add to Glossary:", $viewModel.data.addToGlossary, .addToGlossaryShortcut)
       #endif

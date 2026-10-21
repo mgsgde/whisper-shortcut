@@ -36,7 +36,7 @@ final class RecordingIndicatorModel: ObservableObject {
 
   @Published var phase: RecordingIndicatorPhase = .recording
   /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
-  /// so Dictate, Dictate Prompt and Voice Feedback no longer all read "Listening"/"Transcribing".
+  /// so Dictate and Dictate Prompt no longer both read "Listening"/"Transcribing".
   @Published var statusLabel = "Listening"
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
@@ -1013,7 +1013,6 @@ extension AppState.RecordingMode {
     switch self {
     case .transcription, .liveMeeting: return "Listening"
     case .prompt: return "Prompting"
-    case .voiceFeedback: return "Feedback"
     }
   }
 }
@@ -1023,7 +1022,7 @@ extension AppState.ProcessingMode {
   var pillLabel: String {
     switch self {
     case .transcribing: return "Transcribing"
-    case .prompting, .contextEditing: return "Thinking"
+    case .prompting: return "Thinking"
     case .ttsProcessing: return "Preparing"
     case .splitting, .processingChunks, .merging:
       return isTTSContext ? "Preparing" : "Transcribing"

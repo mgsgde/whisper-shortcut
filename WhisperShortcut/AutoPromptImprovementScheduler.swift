@@ -409,7 +409,7 @@ class AutoPromptImprovementScheduler {
 
   /// What to write for the glossary after the review panel. If nothing changed on disk since the
   /// panel opened, the accepted text (which may have user deletions) is written as is. Otherwise
-  /// only the lines appended meanwhile (by voice feedback) are kept and the accepted text is merged
+  /// only the lines appended meanwhile (by the Glossary shortcut or chat) are kept and the accepted text is merged
   /// in, so deletions the user made in the panel stay deleted.
   nonisolated static func glossaryToApply(current: String, panelOriginal: String, accepted: String) -> String {
     if current == panelOriginal { return accepted }
@@ -422,7 +422,7 @@ class AutoPromptImprovementScheduler {
   private func applySuggestion(_ suggested: String, for kind: GenerationKind, panelOriginal: String) {
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
-    // Voice feedback may have appended glossary lines since this suggestion was written.
+    // The Glossary shortcut or chat may have appended glossary lines since this suggestion was written.
     // Lines added since the panel opened are kept; lines the user deleted in the panel stay deleted.
     let currentContent: String
     let applied: String

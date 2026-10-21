@@ -257,7 +257,7 @@ final class GlossaryFastLearner {
     DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
   }
 
-  /// Internal so voice feedback and the chat tool can reuse the same transcript window
+  /// Internal so the chat tool can reuse the same transcript window
   /// when they pick a majority spelling. The scan is file IO; callers are already off the UI path.
   func recentTranscriptionResults() -> [String] {
     let decoder = JSONDecoder()
