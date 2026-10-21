@@ -640,6 +640,7 @@ class ChatViewModel: ObservableObject {
   }
 
   private func resend(id: UUID, replacingTypedText newText: String?) {
+    guard validateCredential(for: Self.openChatModel) else { return }
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
@@ -1216,7 +1217,7 @@ class ChatViewModel: ObservableObject {
     StallCancellationRegistry.shared.register(sessionId, task: task)
   }
 
-  private func validateCredential(for model: PromptModel) -> Bool {
+  func validateCredential(for model: PromptModel) -> Bool {
     guard model.provider.hasCredential else {
       errorMessage = model.provider.credentialRequiredMessage
       return false
@@ -1256,6 +1257,12 @@ class ChatViewModel: ObservableObject {
   private func confirmToolCall(
     name: String, summary: String, sessionId: UUID, requestId: UUID
   ) async -> Bool {
+    let stored = store.session(by: sessionId)
+    if stored == nil || stored?.archived == true {
+      let why = stored == nil ? "gone" : "archived"
+      DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) denied — chat \(sessionId) is \(why)")
+      return false
+    }
     if chatWideApprovals[sessionId]?.contains(name) == true {
       DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) allowed for this chat")
       return true
@@ -1389,11 +1396,13 @@ class ChatViewModel: ObservableObject {
       },
       ChatToolRegistry.refineMeetingSummaryToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeRefineMeetingSummaryTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeRefineMeetingSummaryTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.correctTranscriptTermToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeCorrectTranscriptTermTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
         guard self != nil else { return ChatToolOutcome(response: [:]) }
@@ -1475,12 +1484,45 @@ class ChatViewModel: ObservableObject {
     return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
+  /// Picks the earliest queued message whose session still exists and is not already sending,
+  /// and drops items whose session is gone. FIFO within one session is the queue order:
+  /// the first eligible item is taken and every other surviving item stays in place.
+  static func drainNextQueuedMessage(
+    _ queue: [QueuedChatMessage],
+    isSending: (UUID) -> Bool,
+    sessionExists: (UUID) -> Bool
+  ) -> (remaining: [QueuedChatMessage], next: QueuedChatMessage?) {
+    var remaining: [QueuedChatMessage] = []
+    remaining.reserveCapacity(queue.count)
+    var next: QueuedChatMessage?
+    for item in queue {
+      guard sessionExists(item.sessionId) else { continue }
+      if next == nil && !isSending(item.sessionId) {
+        next = item
+      } else {
+        remaining.append(item)
+      }
+    }
+    return (remaining, next)
+  }
+
   /// Auto-processes the next queued message once the current one finishes.
   /// Sends into the session the message was queued for — NOT the currently
   /// visible one, which may have changed while the previous send ran.
+  /// A busy session no longer blocks an idle one behind it in the global queue.
   private func processNextQueued() {
-    guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
-    messageQueue.removeFirst()
+    // Checked only with work waiting: `validateCredential` raises the banner as a side effect.
+    guard !messageQueue.isEmpty, validateCredential(for: Self.openChatModel) else { return }
+    let (remaining, next) = Self.drainNextQueuedMessage(
+      messageQueue,
+      isSending: { self.isSendingSession($0) },
+      sessionExists: { self.store.session(by: $0) != nil })
+    let dropped = messageQueue.count - remaining.count - (next == nil ? 0 : 1)
+    if dropped > 0 {
+      DebugLogger.log("GEMINI-CHAT: Dropped \(dropped) queued message(s) for chats that no longer exist")
+    }
+    messageQueue = remaining
+    guard let next else { return }
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
     performSend(
       content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId,
@@ -1798,7 +1840,7 @@ class ChatViewModel: ObservableObject {
         let live = LiveMeetingTranscriptStore.shared.meetingContextForChat()
         if !live.isEmpty { return live }
       }
-      return buildEndedMeetingContext()
+      return buildEndedMeetingContext(stem: stem)
     }()
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
@@ -2457,14 +2499,21 @@ class ChatViewModel: ObservableObject {
   /// Restores the most recently closed tab and switches to it. No-op if the
   /// undo buffer is empty.
   func reopenLastClosedTab() {
-    guard let s = recentlyClosedSessions.popLast() else {
+    guard let snapshot = recentlyClosedSessions.popLast() else {
       DebugLogger.log("GEMINI-CHAT: reopenLastClosedTab — buffer empty")
       return
     }
-    store.save(s)
-    store.switchToSession(id: s.id)
+    if store.session(by: snapshot.id) != nil {
+      // A later save may have updated the stored session after the tab was closed.
+      // Un-archive that copy; do not write the stale snapshot back over it.
+      store.restoreSession(id: snapshot.id)
+      store.switchToSession(id: snapshot.id)
+    } else {
+      store.save(snapshot)
+      store.switchToSession(id: snapshot.id)
+    }
     switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
+    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(snapshot.id)")
   }
 
   // MARK: - Search
@@ -2551,12 +2600,20 @@ class ChatViewModel: ObservableObject {
 
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingTranscriptFromDisk(stem: stem)
+  }
+
+  func loadMeetingTranscriptFromDisk(stem: String) -> String? {
     let url = MeetingListService.transcriptURL(forStem: stem)
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
   func loadMeetingSummaryFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingSummaryFromDisk(stem: stem)
+  }
+
+  func loadMeetingSummaryFromDisk(stem: String) -> String? {
     let url = MeetingListService.summaryURL(
       transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
     return try? String(contentsOf: url, encoding: .utf8)
@@ -2570,13 +2627,13 @@ class ChatViewModel: ObservableObject {
     return disk
   }
 
-  /// Builds a chat-system meeting context string from the on-disk summary + transcript of the
-  /// current meeting tab. Used when the live store no longer owns this meeting's stem (e.g. user
-  /// reopens a past meeting, or a new live meeting started). Transcript is suffix-capped to
+  /// Builds a chat-system meeting context string from the on-disk summary + transcript of `stem`.
+  /// Used when the live store no longer owns that meeting (e.g. user reopens a past meeting, or a
+  /// new live meeting started). Transcript is suffix-capped to
   /// `MeetingListService.meetingContextMaxChars` to bound request size.
-  private func buildEndedMeetingContext() -> String? {
-    let summaryDisk = loadMeetingSummaryFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let transcriptDisk = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  private func buildEndedMeetingContext(stem: String) -> String? {
+    let summaryDisk = loadMeetingSummaryFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
     if !summaryDisk.isEmpty {
@@ -2769,13 +2826,17 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
+  /// `sessionId` is the chat that issued the tool call. The still-recording check is
+  /// `isCurrentSessionTheActiveMeeting` applied to that session.
   private func endedMeetingStem(
-    notMeeting: String, stillRecording: String
+    sessionId: UUID, notMeeting: String, stillRecording: String
   ) -> Result<String, EndedMeetingRejection> {
-    guard session.isMeeting, let stem = session.meetingStem else {
+    guard let resolved = resolveSession(sessionId),
+          resolved.session.isMeeting,
+          let stem = resolved.session.meetingStem else {
       return .failure(EndedMeetingRejection(body: ["error": notMeeting]))
     }
-    if isCurrentSessionTheActiveMeeting {
+    if isMeetingActive && meetingSessionId == resolved.session.id {
       return .failure(EndedMeetingRejection(body: ["error": stillRecording]))
     }
     return .success(stem)
@@ -2784,13 +2845,14 @@ class ChatViewModel: ObservableObject {
   /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
   /// transcript with the user's instruction applied, saves it to disk, and refreshes the Summary tab.
   /// Only for ended meetings — editing while recording would race the rolling-summary updater.
-  func executeRefineMeetingSummaryTool(args: [String: Any]) async -> [String: Any] {
+  func executeRefineMeetingSummaryTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let instruction = (args["instruction"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
           !instruction.isEmpty else {
       return ["error": "Missing required argument: instruction"]
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no summary to refine.",
       stillRecording: "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2803,14 +2865,16 @@ class ChatViewModel: ObservableObject {
     guard model.hasRequiredCredential else {
       return ["error": "No API credential for the meeting-summary model (\(model.rawValue)). Add it in Settings."]
     }
-    var transcript = currentMeetingTranscriptText()
+    var transcript = (loadMeetingTranscriptFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !transcript.isEmpty else {
       return ["error": "This meeting has no transcript to base a summary on."]
     }
     if transcript.count > MeetingListService.meetingContextMaxChars {
       transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
     }
-    let currentSummary = (loadMeetingSummaryFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentSummary = (loadMeetingSummaryFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     do {
       let refined = try await MeetingListService.refineSummaryText(
         currentSummary: currentSummary, transcript: transcript, instruction: instruction, model: model)
@@ -2831,7 +2895,7 @@ class ChatViewModel: ObservableObject {
 
   /// Backs the `correct_transcript_term` chat tool. Literal find-and-replace of `from`→`to` across the
   /// on-disk transcript (no LLM rewrite, so the record stays faithful). Only for ended meetings.
-  func executeCorrectTranscriptTermTool(args: [String: Any]) async -> [String: Any] {
+  func executeCorrectTranscriptTermTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let from = args["from"] as? String, !from.isEmpty else {
       return ["error": "Missing required argument: from"]
     }
@@ -2843,6 +2907,7 @@ class ChatViewModel: ObservableObject {
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no transcript to correct.",
       stillRecording: "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2879,7 +2944,7 @@ class ChatViewModel: ObservableObject {
       let summaryResult = await executeRefineMeetingSummaryTool(args: [
         "instruction":
           "The transcript term \"\(from)\" was corrected to \"\(to)\". Update the summary to use the corrected term consistently; keep everything else unchanged."
-      ])
+      ], sessionId: sessionId)
       result["summary_updated"] = summaryResult["ok"] != nil
     }
     return result
@@ -2955,6 +3020,8 @@ class ChatViewModel: ObservableObject {
     // gated call of the same turn wait on a card that can no longer be shown.
     sendTasks[id]?.cancel()
     chatWideApprovals.removeValue(forKey: id)
+    messageQueue.removeAll { $0.sessionId == id }
+    recentlyClosedSessions.removeAll { $0.id == id }
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
@@ -4319,6 +4386,7 @@ struct ChatInputAreaView: View {
       Task { await viewModel.sendMessage(userInput: typed) }
       return
     }
+    guard viewModel.validateCredential(for: ChatViewModel.openChatModel) else { return }
     composer.clearAll()
     Task {
       await viewModel.sendComposed(
