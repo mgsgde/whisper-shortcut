@@ -950,7 +950,9 @@ struct WelcomeDoneStep: View {
     var id: String { name }
   }
 
-  private let shortcuts = ShortcutConfigManager.shared.loadConfiguration()
+  /// Read from the recorders' model, so a shortcut re-recorded on this step shows up in the list
+  /// right away (a `let` here was read once when the step appeared).
+  private var shortcuts: ShortcutConfig { SettingsViewModel.shortcutConfig(from: settingsViewModel.data) }
 
   /// Live permission state so each row's green/red status is accurate, and flips the moment the
   /// user grants a permission and returns (didBecomeActive) without leaving onboarding.
@@ -1101,6 +1103,15 @@ struct WelcomeDoneStep: View {
     }
   }
 
+  /// Writes the shortcut bindings and leaves every other settings slot alone.
+  /// `saveSettings()` would persist the snapshot taken when this step appeared,
+  /// so a model picked in Settings meanwhile would be reverted.
+  /// `saveConfiguration` posts `.shortcutsChanged`, which re-registers hotkeys.
+  private func saveRecordedShortcuts() {
+    ShortcutConfigManager.shared.saveConfiguration(
+      SettingsViewModel.shortcutConfig(from: settingsViewModel.data))
+  }
+
   @ViewBuilder
   private var onboardingShortcutRecorder: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -1117,7 +1128,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.toggleDictation,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1126,7 +1137,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.togglePrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1135,7 +1146,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )

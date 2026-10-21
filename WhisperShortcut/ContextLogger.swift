@@ -645,8 +645,7 @@ class ContextLogger {
   func pruneExpiredAudioSamples() -> Int {
     let fm = FileManager.default
     let cutoff = Date().addingTimeInterval(-Double(AppConstants.audioSampleRetentionDays) * 86_400)
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyyMMdd'T'HHmmssSSS"
+    let formatter = Self.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
     let urls = audioSampleURLs()
     var deleted = 0
@@ -691,8 +690,7 @@ class ContextLogger {
   }
 
   private func audioSampleFilename() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyyMMdd'T'HHmmssSSS"
+    let formatter = Self.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
     let stamp = formatter.string(from: Date())
     let suffix = UUID().uuidString.prefix(6)
@@ -722,8 +720,7 @@ class ContextLogger {
       guard let self else { return }
       let fm = FileManager.default
       let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.rotationDays, to: Date()) ?? Date()
-      let dateFormatter = DateFormatter()
-      dateFormatter.dateFormat = "yyyy-MM-dd"
+      let dateFormatter = Self.makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
 
       do {
         let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
@@ -800,9 +797,11 @@ class ContextLogger {
         line += "\n"
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
-          if let lineData = line.data(using: .utf8) { handle.write(lineData) }
-          try handle.close()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
+          if let lineData = line.data(using: .utf8) {
+            try handle.write(contentsOf: lineData)
+          }
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -828,11 +827,20 @@ class ContextLogger {
 
   // MARK: - File Listing (for derivation)
 
-  private static let interactionLogDateFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.dateFormat = "yyyy-MM-dd"
-    return f
-  }()
+  /// Gregorian `yyyy-MM-dd` so daily log names stay parseable when the user
+  /// calendar is Buddhist or Japanese. Internal so tests can format a fixed date.
+  static let interactionLogDateFormatter = makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
+
+  /// Locale is set before the calendar: assigning `locale` replaces the calendar
+  /// with the locale's. `en_US_POSIX` plus Gregorian keeps filename dates as
+  /// `yyyy-MM-dd` on a Buddhist or Japanese user calendar.
+  private static func makeFileNameDateFormatter(dateFormat: String) -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.dateFormat = dateFormat
+    return formatter
+  }
 
   private func logDate(for url: URL, prefix: String) -> Date? {
     let filename = url.lastPathComponent
@@ -961,11 +969,11 @@ class ContextLogger {
 
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
           if let lineData = line.data(using: .utf8) {
-            handle.write(lineData)
+            try handle.write(contentsOf: lineData)
           }
-          try handle.close()
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -1000,11 +1008,11 @@ class ContextLogger {
 
         if FileManager.default.fileExists(atPath: fileURL.path) {
           let handle = try FileHandle(forWritingTo: fileURL)
-          handle.seekToEndOfFile()
+          defer { try? handle.close() }
+          _ = try handle.seekToEnd()
           if let lineData = line.data(using: .utf8) {
-            handle.write(lineData)
+            try handle.write(contentsOf: lineData)
           }
-          try handle.close()
         } else {
           try line.write(to: fileURL, atomically: true, encoding: .utf8)
         }
@@ -1050,8 +1058,7 @@ class ContextLogger {
 
   /// Appends one JSON line to today's file for a date-stamped stream. Runs on `queue`.
   private func append<T: Encodable>(_ entry: T, toDailyFileWithPrefix prefix: String, logDescription: String) {
-    let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let dateFormatter = Self.makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
     let dateString = dateFormatter.string(from: Date())
     let filename = "\(prefix)\(dateString).jsonl"
     let fileURL = contextDirectoryURL.appendingPathComponent(filename)
@@ -1063,11 +1070,11 @@ class ContextLogger {
 
       if FileManager.default.fileExists(atPath: fileURL.path) {
         let handle = try FileHandle(forWritingTo: fileURL)
-        handle.seekToEndOfFile()
+        defer { try? handle.close() }
+        _ = try handle.seekToEnd()
         if let lineData = line.data(using: .utf8) {
-          handle.write(lineData)
+          try handle.write(contentsOf: lineData)
         }
-        try handle.close()
       } else {
         try line.write(to: fileURL, atomically: true, encoding: .utf8)
       }

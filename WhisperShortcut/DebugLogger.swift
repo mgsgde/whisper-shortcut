@@ -417,6 +417,8 @@ private class FileLogger {
     
     // Date formatters
     dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.calendar = Calendar(identifier: .gregorian)
     dateFormatter.dateFormat = "yyyy-MM-dd"
     
     timeFormatter = DateFormatter()
@@ -477,7 +479,11 @@ private class FileLogger {
       // Write to file (thread-safe, already on fileQueue)
       // Note: No synchronizeFile() here - flushed periodically by timer to avoid excessive disk writes
       if let data = logLine.data(using: .utf8) {
-        fileHandle.write(data)
+        do {
+          try fileHandle.write(contentsOf: data)
+        } catch {
+          os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to write log: %{public}@", error.localizedDescription)
+        }
       }
     }
   }
@@ -502,8 +508,16 @@ private class FileLogger {
       return nil
     }
     
-    // Seek to end of file
-    fileHandle.seekToEndOfFile()
+    // Seek to end of file. The throwing API surfaces a full disk as an error
+    // instead of an uncatchable Objective-C exception. The handle stays open
+    // for later writes, so it is closed only when the seek itself fails.
+    do {
+      try fileHandle.seekToEnd()
+    } catch {
+      try? fileHandle.close()
+      os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to seek log file: %{public}@", error.localizedDescription)
+      return nil
+    }
     
     // Store handle
     fileHandles[date] = fileHandle
@@ -586,6 +600,8 @@ private class ErrorFileWriter {
     try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
 
     dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.calendar = Calendar(identifier: .gregorian)
     dateFormatter.dateFormat = "yyyy-MM-dd"
     timeFormatter = DateFormatter()
     timeFormatter.dateFormat = "HH:mm:ss.SSS"
@@ -622,7 +638,7 @@ private class ErrorFileWriter {
       let logLine = "[\(timestamp)] ERROR \(line)\n"
       // Note: No synchronizeFile() here - OS will flush on its own schedule to avoid excessive disk writes
       if let data = logLine.data(using: .utf8) {
-        fileHandle.write(data)
+        try? fileHandle.write(contentsOf: data)
       }
     }
   }
@@ -634,7 +650,12 @@ private class ErrorFileWriter {
       FileManager.default.createFile(atPath: logFile.path, contents: nil, attributes: nil)
     }
     guard let fileHandle = try? FileHandle(forWritingTo: logFile) else { return nil }
-    fileHandle.seekToEndOfFile()
+    do {
+      try fileHandle.seekToEnd()
+    } catch {
+      try? fileHandle.close()
+      return nil
+    }
     fileHandles[date] = fileHandle
     return fileHandle
   }
