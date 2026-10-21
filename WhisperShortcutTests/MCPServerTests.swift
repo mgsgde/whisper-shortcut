@@ -7,11 +7,14 @@ struct MCPServerTests {
 
   private let token = "secret-token"
 
-  private func tools() -> MCPMeetingTools {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mcp-srv-\(UUID().uuidString)")
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    try? "[00:05] Speaker A: Hi there\n".write(to: dir.appendingPathComponent("Meeting-2026-10-19-110109.txt"), atomically: true, encoding: .utf8)
-    return MCPMeetingTools(meetingsDirectory: dir, liveStem: { "Meeting-2026-10-19-110109" })
+  private let writeToken = "write-token"
+
+  private func tools(level: MCPConfigAccessLevel = .read) -> MCPDispatcher {
+    MCPTestEnv(level: level).dispatcher()
+  }
+
+  private func handle(_ r: HTTPRequest, _ d: MCPDispatcher) -> HTTPResponse {
+    MCPServer.handle(r, readToken: token, writeToken: writeToken, dispatcher: d)
   }
 
   private func req(
@@ -25,7 +28,7 @@ struct MCPServerTests {
   }
 
   private func rpc(_ body: String) -> HTTPResponse {
-    MCPServer.handle(req(body: body), expectedToken: token, tools: tools())
+    handle(req(body: body), tools())
   }
 
   private func json(_ r: HTTPResponse) throws -> [String: Any] {
@@ -60,14 +63,14 @@ struct MCPServerTests {
   @Test("Auth, origin, method and path checks")
   func guards() {
     let t = tools()
-    #expect(MCPServer.handle(req(auth: nil), expectedToken: token, tools: t).status == 401)
-    #expect(MCPServer.handle(req(auth: "Bearer nope"), expectedToken: token, tools: t).status == 401)
-    #expect(MCPServer.handle(req(origin: "https://evil.example"), expectedToken: token, tools: t).status == 403)
-    #expect(MCPServer.handle(req(origin: "http://localhost:3000", body: "{}"), expectedToken: token, tools: t).status != 403)
-    let get = MCPServer.handle(req("GET"), expectedToken: token, tools: t)
+    #expect(handle(req(auth: nil), t).status == 401)
+    #expect(handle(req(auth: "Bearer nope"), t).status == 401)
+    #expect(handle(req(origin: "https://evil.example"), t).status == 403)
+    #expect(handle(req(origin: "http://localhost:3000", body: "{}"), t).status != 403)
+    let get = handle(req("GET"), t)
     #expect(get.status == 405)
     #expect(get.headers["Allow"] == "POST")
-    #expect(MCPServer.handle(req(path: "/other"), expectedToken: token, tools: t).status == 404)
+    #expect(handle(req(path: "/other"), t).status == 404)
   }
 
   @Test("initialize negotiates protocol version")
@@ -80,11 +83,53 @@ struct MCPServerTests {
     #expect((result["serverInfo"] as? [String: Any])?["name"] as? String == "whisper-shortcut")
   }
 
-  @Test("tools/list names the four tools")
+  @Test("tools/list for the read token names the meeting tools and the read config tools")
   func list() throws {
     let r = try json(rpc(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#))
     let list = try #require((r["result"] as? [String: Any])?["tools"] as? [[String: Any]])
-    #expect(Set(list.compactMap { $0["name"] as? String }) == ["get_live_transcript", "list_meetings", "get_meeting", "search_meetings"])
+    #expect(Set(list.compactMap { $0["name"] as? String }) == [
+      "get_live_transcript", "list_meetings", "get_meeting", "search_meetings",
+      "get_configuration", "get_recent_interactions",
+    ])
+  }
+
+  @Test("The write token lists write tools only above access level read")
+  func writeTokenList() throws {
+    let body = #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#
+    func names(_ auth: String, _ level: MCPConfigAccessLevel) throws -> Set<String> {
+      let r = handle(req(auth: auth, body: body), tools(level: level))
+      let list = try #require((try json(r)["result"] as? [String: Any])?["tools"] as? [[String: Any]])
+      return Set(list.compactMap { $0["name"] as? String })
+    }
+    #expect(try names("Bearer write-token", .read).contains("add_glossary_terms") == false)
+    #expect(try names("Bearer write-token", .propose).contains("add_glossary_terms"))
+    #expect(try names("Bearer write-token", .apply).contains("update_system_prompt"))
+    #expect(try names("Bearer secret-token", .apply).contains("add_glossary_terms") == false)
+  }
+
+  @Test("Write calls over HTTP: read token errors, write token applies")
+  func writeCall() throws {
+    let env = MCPTestEnv(level: .apply)
+    let d = env.dispatcher()
+    let body = #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"add_glossary_terms","arguments":{"terms":["Wianco"],"rationale":"name"}}}"#
+    let denied = try json(handle(req(body: body), d))
+    #expect((denied["result"] as? [String: Any])?["isError"] as? Bool == true)
+    #expect(!env.systemPrompts.loadWhisperGlossary().contains("Wianco"))
+    let done = try json(handle(req(auth: "Bearer write-token", body: body), d))
+    #expect((done["result"] as? [String: Any])?["isError"] as? Bool == false)
+    #expect(env.systemPrompts.loadWhisperGlossary().contains("Wianco"))
+  }
+
+  @Test("initialize advertises prompts and resources and mentions the configuration")
+  func capabilities() throws {
+    let r = try json(rpc(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#))
+    let result = try #require(r["result"] as? [String: Any])
+    let caps = try #require(result["capabilities"] as? [String: Any])
+    #expect(caps["prompts"] != nil)
+    #expect(caps["resources"] != nil)
+    let instructions = result["instructions"] as? String ?? ""
+    #expect(instructions.contains("tune_whisper_shortcut"))
+    #expect(!instructions.hasPrefix("Read-only"))
   }
 
   @Test("tools/call returns text content")
@@ -121,7 +166,7 @@ struct MCPServerTests {
   @Test("Real socket round trip")
   func integration() async throws {
     let t = tools()
-    let server = try LoopbackHTTPServer(port: 0) { MCPServer.handle($0, expectedToken: "secret-token", tools: t) }
+    let server = try LoopbackHTTPServer(port: 0) { MCPServer.handle($0, readToken: "secret-token", writeToken: "write-token", dispatcher: t) }
     defer { server.stop() }
     #expect(server.port > 0)
     var request = URLRequest(url: URL(string: "http://127.0.0.1:\(server.port)/mcp")!)

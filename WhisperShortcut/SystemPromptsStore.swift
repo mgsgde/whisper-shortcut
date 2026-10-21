@@ -147,8 +147,8 @@ final class SystemPromptsStore {
   static let glossaryCharBudget = 1_200
 
   /// The longest a selection may be and still be a vocabulary entry rather than prose.
-  private static let maxTermCharacters = 60
-  private static let maxTermWords = 5
+  static let maxTermCharacters = 60
+  static let maxTermWords = 5
 
   /// Adds a user-selected spelling to the Glossary, if it is a term and not already there.
   ///

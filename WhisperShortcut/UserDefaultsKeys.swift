@@ -271,4 +271,9 @@ enum UserDefaultsKeys {
   static let mcpServerEnabled = "mcpServerEnabled"
   /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
   static let mcpServerPort = "mcpServerPort"
+  /// How far AI apps connected with the write token may change the configuration:
+  /// "read" (default) | "propose" | "apply". See MCPConfigAccessLevel.
+  static let mcpConfigAccessLevel = "mcpConfigAccessLevel"
+  /// Whether AI apps may read recent dictations (needs `contextLoggingEnabled` as well). Default false.
+  static let mcpShareRecentInteractions = "mcpShareRecentInteractions"
 }
