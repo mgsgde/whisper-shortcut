@@ -640,6 +640,7 @@ class ChatViewModel: ObservableObject {
   }
 
   private func resend(id: UUID, replacingTypedText newText: String?) {
+    guard validateCredential(for: Self.openChatModel) else { return }
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
