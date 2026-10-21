@@ -122,6 +122,46 @@ struct MIMEDecoderTests {
     #expect(decoded.body.hasSuffix("…[truncated]"))
     #expect(decoded.body.count == 20_000 + "…[truncated]".count)
   }
+  @Test func htmlBlockTagsBecomeLineBreaks() {
+    let raw = mail("""
+    Content-Type: text/html; charset=utf-8
+
+    <h1>Title</h1><div>First</div><div>Second</div><ul><li>One</li><li>Two</li></ul><table><tr><td>A</td></tr><tr><td>B</td></tr></table>Line<br>Next &amp; done<p></p><p></p><p></p><p>End</p>
+    """)
+    let body = MIMEDecoder.decode(raw).body
+    #expect(body.contains("Title\nFirst\nSecond"))
+    #expect(body.contains("One\n"))
+    #expect(body.contains("A\n"))
+    #expect(body.contains("Line\nNext & done"))
+    #expect(!body.contains("\n\n\n"))
+  }
+
+  @Test func forwardedMessageTextReachesBody() {
+    let raw = mail("""
+    Content-Type: multipart/mixed; boundary="OUT"
+
+    --OUT
+    Content-Type: text/plain; charset=utf-8
+
+    See below.
+    --OUT
+    Content-Type: message/rfc822
+
+    From: boss@b.test
+    Subject: Budget
+    Content-Type: text/plain; charset=utf-8
+
+    The budget is 5.
+    --OUT--
+    """)
+    let body = MIMEDecoder.decode(raw).body
+    #expect(body.hasPrefix("See below."))
+    #expect(body.contains("---------- Forwarded message ----------"))
+    #expect(body.contains("From: boss@b.test"))
+    #expect(body.contains("Subject: Budget"))
+    #expect(body.contains("The budget is 5."))
+  }
+
   @Test func rawUTF8HeaderDecodes() {
     let decoded = MIMEDecoder.decode(mail("From: a@b.test\nSubject: Grüße\n\nbody"))
     #expect(decoded.subject == "Grüße")

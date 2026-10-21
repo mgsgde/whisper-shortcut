@@ -32,13 +32,15 @@ enum MIMEDecoder {
     } else {
       chosen = collected.plain ?? ""
     }
+    let withForwarded = collected.forwarded.isEmpty
+      ? chosen : [chosen, collected.forwarded].filter { !$0.isEmpty }.joined(separator: "\n\n")
     return DecodedMail(
       from: decodeEncodedWords(headers.joined("from")),
       to: decodeEncodedWords(headers.joined("to")),
       cc: decodeEncodedWords(headers.joined("cc")),
       subject: decodeEncodedWords(headers.joined("subject")),
       date: decodeEncodedWords(headers.joined("date")),
-      body: cap(chosen),
+      body: cap(withForwarded),
       attachments: collected.attachments)
   }
 
@@ -47,6 +49,8 @@ enum MIMEDecoder {
   private struct Collected {
     var plain: String?
     var html: String?
+    /// Text of message/rfc822 parts (forwarded mails), each behind a marker line.
+    var forwarded = ""
     var attachments: [(name: String, bytes: Int)] = []
   }
 
@@ -63,8 +67,16 @@ enum MIMEDecoder {
         if merged.plain == nil { merged.plain = child.plain }
         if merged.html == nil { merged.html = child.html }
         merged.attachments += child.attachments
+        if !child.forwarded.isEmpty {
+          merged.forwarded += (merged.forwarded.isEmpty ? "" : "\n\n") + child.forwarded
+        }
       }
       return merged
+    }
+
+    if type == "message/rfc822" {
+      let inner = decodeTransfer(body, encoding: headers.transferEncoding)
+      return Collected(forwarded: forwardedText(from: inner))
     }
 
     let decoded = decodeTransfer(body, encoding: headers.transferEncoding)
@@ -88,6 +100,24 @@ enum MIMEDecoder {
       return Collected(attachments: [(name, decoded.count)])
     }
     return Collected()
+  }
+
+  /// A nested message rendered as text: marker, From/Subject when present, then its body
+  /// (plain preferred, HTML stripped otherwise). Empty when the inner message has no text.
+  private static func forwardedText(from data: Data) -> String {
+    let (headerData, bodyData) = splitHeaderBody(data)
+    let headers = parseHeaders(headerData)
+    let inner = collect(headers: headers, body: bodyData)
+    var text = inner.plain ?? ""
+    if text.isEmpty, let html = inner.html { text = stripHTML(html) }
+    if !inner.forwarded.isEmpty { text = text.isEmpty ? inner.forwarded : text + "\n\n" + inner.forwarded }
+    guard !text.isEmpty else { return "" }
+    var lines = ["---------- Forwarded message ----------"]
+    let from = decodeEncodedWords(headers.joined("from"))
+    let subject = decodeEncodedWords(headers.joined("subject"))
+    if !from.isEmpty { lines.append("From: \(from)") }
+    if !subject.isEmpty { lines.append("Subject: \(subject)") }
+    return lines.joined(separator: "\n") + "\n\n" + text
   }
 
   private static func cap(_ body: String) -> String {
@@ -441,9 +471,10 @@ enum MIMEDecoder {
   private static func stripHTML(_ html: String) -> String {
     var text = replacing(html, pattern: #"(?is)<script\b[^>]*>.*?</script>|<script\b[^>]*>.*"#, with: "")
     text = replacing(text, pattern: #"(?is)<style\b[^>]*>.*?</style>|<style\b[^>]*>.*"#, with: "")
-    text = replacing(text, pattern: #"(?i)<\s*br\s*/?\s*>|<\s*/?\s*p\b[^>]*>"#, with: "\n")
+    text = replacing(text, pattern: #"(?i)<\s*br\b[^>]*>|<\s*/?\s*p\b[^>]*>|<\s*/\s*(?:div|li|tr|h[1-6]|ul|ol|table|blockquote)\s*>"#, with: "\n")
     text = replacing(text, pattern: #"<[^>]+>"#, with: "")
     text = decodeEntities(text)
+    text = replacing(text, pattern: #"\n{3,}"#, with: "\n\n")
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
