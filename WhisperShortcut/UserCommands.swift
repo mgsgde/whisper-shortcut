@@ -35,6 +35,11 @@ enum UserCommandParser {
   static let maxFileBytes = 32 * 1024
   static let maxDescriptionLength = 80
 
+  /// Lowercase letters, digits and dashes, at most 40 characters, not starting with a dash.
+  static func isValidName(_ name: String) -> Bool {
+    name.range(of: "^[a-z0-9][a-z0-9-]{0,39}$", options: .regularExpression) != nil
+  }
+
   static func parse(
     fileName: String,
     contents: String,
@@ -46,7 +51,7 @@ enum UserCommandParser {
     }
 
     let stem = (fileName as NSString).deletingPathExtension.lowercased()
-    guard stem.range(of: "^[a-z0-9][a-z0-9-]{0,39}$", options: .regularExpression) != nil else {
+    guard isValidName(stem) else {
       return fail("Invalid name. Use lowercase letters, digits and dashes (max 40 characters).")
     }
     if reservedNames.contains(stem) {
@@ -252,6 +257,63 @@ final class UserCommandStore: ObservableObject {
     try FileManager.default.moveItem(at: trashedURL, to: originalURL)
     DebugLogger.log("USER-COMMANDS: restored \(originalURL.lastPathComponent) from the Trash")
     reload()
+  }
+
+  enum SaveError: LocalizedError {
+    case invalidName, reserved(String), emptyText, tooLarge
+
+    var errorDescription: String? {
+      switch self {
+      case .invalidName: return "Invalid name. Use lowercase letters, digits and dashes (max 40 characters)."
+      case .reserved(let n): return "/\(n) is a built-in command"
+      case .emptyText: return "The command text is empty"
+      case .tooLarge: return "The command is larger than 32 KB"
+      }
+    }
+  }
+
+  /// Names the in-app Chat already uses.
+  func reservedNameSet() -> Set<String> {
+    let provider = reservedNames
+    return Thread.isMainThread
+      ? MainActor.assumeIsolated { provider() }
+      : DispatchQueue.main.sync { MainActor.assumeIsolated { provider() } }
+  }
+
+  func fileURL(forName name: String) -> URL {
+    directoryURL.appendingPathComponent("\(name).md")
+  }
+
+  /// The file text for a command: frontmatter the parser reads back, then the body.
+  static func render(name: String, text: String, scope: UserCommandScope, label: String?, description: String?) -> String {
+    func oneLine(_ s: String) -> String {
+      s.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }.joined(separator: " ")
+    }
+    var front = ["---", "scope: \(scope.rawValue)"]
+    if let label, !oneLine(label).isEmpty { front.append("label: \(oneLine(label))") }
+    if let description, !oneLine(description).isEmpty { front.append("description: \(oneLine(description))") }
+    front.append("---")
+    return front.joined(separator: "\n") + "\n" + text.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+  }
+
+  /// Writes (or overwrites) `<name>.md` atomically, then re-reads the folder. Validates the name
+  /// like the parser does and refuses built-in names.
+  @discardableResult
+  func save(
+    name: String, text: String, scope: UserCommandScope, label: String? = nil, description: String? = nil
+  ) throws -> URL {
+    guard UserCommandParser.isValidName(name) else { throw SaveError.invalidName }
+    guard !reservedNameSet().contains(name) else { throw SaveError.reserved(name) }
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SaveError.emptyText }
+    let rendered = Self.render(name: name, text: text, scope: scope, label: label, description: description)
+    guard rendered.utf8.count <= UserCommandParser.maxFileBytes else { throw SaveError.tooLarge }
+    AppSupportPaths.ensureDirectoryExists(directoryURL)
+    let url = fileURL(forName: name)
+    try Data(rendered.utf8).write(to: url, options: .atomic)
+    DebugLogger.log("USER-COMMANDS: saved \(name).md (\(rendered.count) chars)")
+    reload()
+    return url
   }
 
   /// Writes `new-command.md` (or `new-command-2.md`, `-3`, …). Never overwrites an existing file.

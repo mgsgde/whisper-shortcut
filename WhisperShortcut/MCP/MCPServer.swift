@@ -2,13 +2,15 @@ import Combine
 import Foundation
 import Security
 
-/// Local read-only MCP server (Streamable HTTP, JSON responses only) that exposes meeting
-/// transcripts to Claude Code / Claude Desktop. Off by default; bearer token in the Keychain.
+/// Local MCP server (Streamable HTTP, JSON responses only) that exposes meeting transcripts and the
+/// configuration to Claude Code / Claude Desktop. Off by default. Two bearer tokens in the Keychain:
+/// the read token (meetings + configuration) and the write token (also lets the client change the
+/// configuration, within the access level the user chose in Settings).
 final class MCPServer: ObservableObject {
   static let shared = MCPServer()
   static let defaultPort: UInt16 = 47823
   private static let tokenAccount = "mcp-server-token"
-  private static let supportedVersions = ["2025-06-18", "2025-03-26", "2024-11-05"]
+  private static let writeTokenAccount = "mcp-server-write-token"
 
   enum Status: Equatable {
     case stopped
@@ -66,11 +68,33 @@ final class MCPServer: ObservableObject {
     objectWillChange.send()
   }
 
-  private func makeAndStoreToken() -> String {
+  private var cachedWriteToken: String?
+
+  /// Grants read and write. Created on first use, cached like the read token.
+  func writeToken() -> String {
+    stateLock.lock(); defer { stateLock.unlock() }
+    if let cachedWriteToken { return cachedWriteToken }
+    if let existing = KeychainManager.shared.secret(account: Self.writeTokenAccount), !existing.isEmpty {
+      cachedWriteToken = existing
+      return existing
+    }
+    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
+    cachedWriteToken = fresh
+    return fresh
+  }
+
+  func regenerateWriteToken() {
+    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
+    stateLock.lock(); cachedWriteToken = fresh; stateLock.unlock()
+    DebugLogger.log("MCP-SERVER: Write token regenerated")
+    objectWillChange.send()
+  }
+
+  private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String {
     var bytes = [UInt8](repeating: 0, count: 32)
     _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
     let token = bytes.map { String(format: "%02x", $0) }.joined()
-    _ = KeychainManager.shared.saveSecret(token, account: Self.tokenAccount)
+    _ = KeychainManager.shared.saveSecret(token, account: account)
     return token
   }
 
@@ -95,9 +119,11 @@ final class MCPServer: ObservableObject {
       }
       observeLiveMeeting()
       if server != nil { stopLocked() }
-      let tools = MCPMeetingTools(
-        meetingsDirectory: Self.meetingsDirectory(),
-        liveStem: { [weak self] in self?.currentLiveStem() })
+      let dispatcher = MCPDispatcher(
+        meetingTools: MCPMeetingTools(
+          meetingsDirectory: Self.meetingsDirectory(),
+          liveStem: { [weak self] in self?.currentLiveStem() }),
+        configTools: MCPConfigTools(env: .live))
       let requested = port
       do {
         let s = try LoopbackHTTPServer(port: requested) { [weak self] request in
@@ -105,7 +131,8 @@ final class MCPServer: ObservableObject {
           // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
           // them to its provider. Checked per request so turning the mode on takes effect at once.
           if OfflineMode.isEnabled { return .empty(503) }
-          return Self.handle(request, expectedToken: self.token(), tools: tools)
+          return Self.handle(
+            request, readToken: self.token(), writeToken: self.writeToken(), dispatcher: dispatcher)
         }
         server = s
         status = .running(port: s.port)
@@ -179,7 +206,9 @@ final class MCPServer: ObservableObject {
 
   // MARK: - Request handling (pure)
 
-  static func handle(_ request: HTTPRequest, expectedToken: String, tools: MCPMeetingTools) -> HTTPResponse {
+  static func handle(
+    _ request: HTTPRequest, readToken: String, writeToken: String, dispatcher: MCPDispatcher
+  ) -> HTTPResponse {
     guard request.path == "/mcp" else { return .json(["error": "not found"], status: 404) }
 
     if let origin = request.header("origin") {
@@ -190,8 +219,10 @@ final class MCPServer: ObservableObject {
     }
 
     let supplied = request.header("authorization") ?? ""
-    let expected = "Bearer \(expectedToken)"
-    guard constantTimeEqual(supplied, expected) else {
+    // Both comparisons always run, so timing does not reveal which token was close.
+    let isWrite = constantTimeEqual(supplied, "Bearer \(writeToken)")
+    let isRead = constantTimeEqual(supplied, "Bearer \(readToken)")
+    guard isWrite || isRead else {
       return HTTPResponse(
         status: 401, headers: ["WWW-Authenticate": "Bearer"],
         body: Data(#"{"error":"unauthorized"}"#.utf8))
@@ -202,15 +233,16 @@ final class MCPServer: ObservableObject {
     }
 
     guard let parsed = try? JSONSerialization.jsonObject(with: request.body, options: [.fragmentsAllowed]) else {
-      return .json(errorEnvelope(id: NSNull(), code: -32700, message: "Parse error"))
+      return .json(["jsonrpc": "2.0", "id": NSNull(), "error": ["code": -32700, "message": "Parse error"] as [String: Any]])
     }
 
+    let access: MCPAccess = isWrite ? .write : .read
     if let batch = parsed as? [Any] {
-      let responses = batch.compactMap { dispatch($0, tools: tools) }
+      let responses = batch.compactMap { dispatcher.dispatch($0, access: access) }
       if responses.isEmpty { return .empty(202) }
       return .json(responses)
     }
-    guard let response = dispatch(parsed, tools: tools) else { return .empty(202) }
+    guard let response = dispatcher.dispatch(parsed, access: access) else { return .empty(202) }
     return .json(response)
   }
 
@@ -221,54 +253,5 @@ final class MCPServer: ObservableObject {
       diff |= Int(i < x.count ? x[i] : 0) ^ Int(i < y.count ? y[i] : 0)
     }
     return diff == 0
-  }
-
-  private static func errorEnvelope(id: Any, code: Int, message: String) -> [String: Any] {
-    ["jsonrpc": "2.0", "id": id, "error": ["code": code, "message": message]]
-  }
-
-  /// Returns nil for notifications (no id).
-  private static func dispatch(_ message: Any, tools: MCPMeetingTools) -> [String: Any]? {
-    guard let obj = message as? [String: Any], let method = obj["method"] as? String else {
-      return errorEnvelope(id: (message as? [String: Any])?["id"] ?? NSNull(), code: -32600, message: "Invalid Request")
-    }
-    let id = obj["id"]
-    if id == nil || method.hasPrefix("notifications/") { return nil }
-    let params = obj["params"] as? [String: Any]
-
-    func ok(_ result: Any) -> [String: Any] { ["jsonrpc": "2.0", "id": id!, "result": result] }
-
-    switch method {
-    case "initialize":
-      let requested = params?["protocolVersion"] as? String
-      let version = requested.flatMap { supportedVersions.contains($0) ? $0 : nil } ?? "2025-06-18"
-      let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
-      return ok([
-        "protocolVersion": version,
-        "capabilities": ["tools": [String: Any]()],
-        "serverInfo": ["name": "whisper-shortcut", "version": appVersion],
-        "instructions":
-          "Read-only access to WhisperShortcut meeting transcripts, notes and summaries on this Mac. "
-          + "During a live meeting, call get_live_transcript before answering any question about the meeting, "
-          + "passing next_since from your previous call so you only fetch what is new. "
-          + "Use list_meetings, get_meeting and search_meetings for past meetings.",
-      ])
-    case "ping":
-      return ok([String: Any]())
-    case "tools/list":
-      return ok(["tools": MCPMeetingTools.toolDefinitions])
-    case "tools/call":
-      guard let params, let name = params["name"] as? String else {
-        return errorEnvelope(id: id!, code: -32602, message: "Missing params.name")
-      }
-      let args = params["arguments"] as? [String: Any] ?? [:]
-      let start = Date()
-      let result = tools.call(name: name, arguments: args)
-      let ms = Int(Date().timeIntervalSince(start) * 1000)
-      DebugLogger.log("MCP-SERVER: tools/call \(name) \(ms)ms isError=\(result.isError)")
-      return ok(["content": [["type": "text", "text": result.text]], "isError": result.isError])
-    default:
-      return errorEnvelope(id: id!, code: -32601, message: "Method not found: \(method)")
-    }
   }
 }
