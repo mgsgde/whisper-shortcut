@@ -1389,11 +1389,13 @@ class ChatViewModel: ObservableObject {
       },
       ChatToolRegistry.refineMeetingSummaryToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeRefineMeetingSummaryTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeRefineMeetingSummaryTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.correctTranscriptTermToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeCorrectTranscriptTermTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
         guard self != nil else { return ChatToolOutcome(response: [:]) }
@@ -1798,7 +1800,7 @@ class ChatViewModel: ObservableObject {
         let live = LiveMeetingTranscriptStore.shared.meetingContextForChat()
         if !live.isEmpty { return live }
       }
-      return buildEndedMeetingContext()
+      return buildEndedMeetingContext(stem: stem)
     }()
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
@@ -2551,12 +2553,20 @@ class ChatViewModel: ObservableObject {
 
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingTranscriptFromDisk(stem: stem)
+  }
+
+  func loadMeetingTranscriptFromDisk(stem: String) -> String? {
     let url = MeetingListService.transcriptURL(forStem: stem)
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
   func loadMeetingSummaryFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingSummaryFromDisk(stem: stem)
+  }
+
+  func loadMeetingSummaryFromDisk(stem: String) -> String? {
     let url = MeetingListService.summaryURL(
       transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
     return try? String(contentsOf: url, encoding: .utf8)
@@ -2570,13 +2580,13 @@ class ChatViewModel: ObservableObject {
     return disk
   }
 
-  /// Builds a chat-system meeting context string from the on-disk summary + transcript of the
-  /// current meeting tab. Used when the live store no longer owns this meeting's stem (e.g. user
-  /// reopens a past meeting, or a new live meeting started). Transcript is suffix-capped to
+  /// Builds a chat-system meeting context string from the on-disk summary + transcript of `stem`.
+  /// Used when the live store no longer owns that meeting (e.g. user reopens a past meeting, or a
+  /// new live meeting started). Transcript is suffix-capped to
   /// `MeetingListService.meetingContextMaxChars` to bound request size.
-  private func buildEndedMeetingContext() -> String? {
-    let summaryDisk = loadMeetingSummaryFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let transcriptDisk = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  private func buildEndedMeetingContext(stem: String) -> String? {
+    let summaryDisk = loadMeetingSummaryFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
     if !summaryDisk.isEmpty {
@@ -2769,13 +2779,17 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
+  /// `sessionId` is the chat that issued the tool call. The still-recording check is
+  /// `isCurrentSessionTheActiveMeeting` applied to that session.
   private func endedMeetingStem(
-    notMeeting: String, stillRecording: String
+    sessionId: UUID, notMeeting: String, stillRecording: String
   ) -> Result<String, EndedMeetingRejection> {
-    guard session.isMeeting, let stem = session.meetingStem else {
+    guard let resolved = resolveSession(sessionId),
+          resolved.session.isMeeting,
+          let stem = resolved.session.meetingStem else {
       return .failure(EndedMeetingRejection(body: ["error": notMeeting]))
     }
-    if isCurrentSessionTheActiveMeeting {
+    if isMeetingActive && meetingSessionId == resolved.session.id {
       return .failure(EndedMeetingRejection(body: ["error": stillRecording]))
     }
     return .success(stem)
@@ -2784,13 +2798,14 @@ class ChatViewModel: ObservableObject {
   /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
   /// transcript with the user's instruction applied, saves it to disk, and refreshes the Summary tab.
   /// Only for ended meetings — editing while recording would race the rolling-summary updater.
-  func executeRefineMeetingSummaryTool(args: [String: Any]) async -> [String: Any] {
+  func executeRefineMeetingSummaryTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let instruction = (args["instruction"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
           !instruction.isEmpty else {
       return ["error": "Missing required argument: instruction"]
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no summary to refine.",
       stillRecording: "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2803,14 +2818,16 @@ class ChatViewModel: ObservableObject {
     guard model.hasRequiredCredential else {
       return ["error": "No API credential for the meeting-summary model (\(model.rawValue)). Add it in Settings."]
     }
-    var transcript = currentMeetingTranscriptText()
+    var transcript = (loadMeetingTranscriptFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !transcript.isEmpty else {
       return ["error": "This meeting has no transcript to base a summary on."]
     }
     if transcript.count > MeetingListService.meetingContextMaxChars {
       transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
     }
-    let currentSummary = (loadMeetingSummaryFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentSummary = (loadMeetingSummaryFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     do {
       let refined = try await MeetingListService.refineSummaryText(
         currentSummary: currentSummary, transcript: transcript, instruction: instruction, model: model)
@@ -2831,7 +2848,7 @@ class ChatViewModel: ObservableObject {
 
   /// Backs the `correct_transcript_term` chat tool. Literal find-and-replace of `from`→`to` across the
   /// on-disk transcript (no LLM rewrite, so the record stays faithful). Only for ended meetings.
-  func executeCorrectTranscriptTermTool(args: [String: Any]) async -> [String: Any] {
+  func executeCorrectTranscriptTermTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let from = args["from"] as? String, !from.isEmpty else {
       return ["error": "Missing required argument: from"]
     }
@@ -2843,6 +2860,7 @@ class ChatViewModel: ObservableObject {
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no transcript to correct.",
       stillRecording: "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2879,7 +2897,7 @@ class ChatViewModel: ObservableObject {
       let summaryResult = await executeRefineMeetingSummaryTool(args: [
         "instruction":
           "The transcript term \"\(from)\" was corrected to \"\(to)\". Update the summary to use the corrected term consistently; keep everything else unchanged."
-      ])
+      ], sessionId: sessionId)
       result["summary_updated"] = summaryResult["ok"] != nil
     }
     return result
