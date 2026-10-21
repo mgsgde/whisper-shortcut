@@ -1478,13 +1478,44 @@ class ChatViewModel: ObservableObject {
     return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
+  /// Picks the earliest queued message whose session still exists and is not already sending,
+  /// and drops items whose session is gone. FIFO within one session is the queue order:
+  /// the first eligible item is taken and every other surviving item stays in place.
+  static func drainNextQueuedMessage(
+    _ queue: [QueuedChatMessage],
+    isSending: (UUID) -> Bool,
+    sessionExists: (UUID) -> Bool
+  ) -> (remaining: [QueuedChatMessage], next: QueuedChatMessage?) {
+    var remaining: [QueuedChatMessage] = []
+    remaining.reserveCapacity(queue.count)
+    var next: QueuedChatMessage?
+    for item in queue {
+      guard sessionExists(item.sessionId) else { continue }
+      if next == nil && !isSending(item.sessionId) {
+        next = item
+      } else {
+        remaining.append(item)
+      }
+    }
+    return (remaining, next)
+  }
+
   /// Auto-processes the next queued message once the current one finishes.
   /// Sends into the session the message was queued for — NOT the currently
   /// visible one, which may have changed while the previous send ran.
+  /// A busy session no longer blocks an idle one behind it in the global queue.
   private func processNextQueued() {
     guard validateCredential(for: Self.openChatModel) else { return }
-    guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
-    messageQueue.removeFirst()
+    let (remaining, next) = Self.drainNextQueuedMessage(
+      messageQueue,
+      isSending: { self.isSendingSession($0) },
+      sessionExists: { self.store.session(by: $0) != nil })
+    let dropped = messageQueue.count - remaining.count - (next == nil ? 0 : 1)
+    if dropped > 0 {
+      DebugLogger.log("GEMINI-CHAT: Dropped \(dropped) queued message(s) for chats that no longer exist")
+    }
+    messageQueue = remaining
+    guard let next else { return }
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
     performSend(
       content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId,
