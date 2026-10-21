@@ -1101,6 +1101,39 @@ struct WelcomeDoneStep: View {
     }
   }
 
+  /// Writes the shortcut bindings and leaves every other settings slot alone.
+  /// `saveSettings()` would persist the snapshot taken when this step appeared,
+  /// so a model picked in Settings meanwhile would be reverted.
+  /// `saveConfiguration` posts `.shortcutsChanged`, which re-registers hotkeys.
+  private func saveRecordedShortcuts() {
+    func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
+      ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
+    }
+    let data = settingsViewModel.data
+    let factory = ShortcutConfig.default
+    let startRecording = data.toggleDictation ?? disable(factory.startRecording)
+    let startPrompting = data.togglePrompting ?? disable(factory.startPrompting)
+    let openSettings = data.openSettings ?? disable(factory.openSettings)
+    let openChat = data.openChat ?? disable(factory.openChat)
+    let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
+    let readAloud = data.readAloud ?? disable(factory.readAloud)
+    let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
+    let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
+    let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
+    let newConfig = ShortcutConfig(
+      startRecording: startRecording,
+      startPrompting: startPrompting,
+      openSettings: openSettings,
+      openChat: openChat,
+      screenshotCapture: screenshotCapture,
+      readAloud: readAloud,
+      voiceFeedback: voiceFeedback,
+      meetingMarker: meetingMarker,
+      addToGlossary: addToGlossary
+    )
+    ShortcutConfigManager.shared.saveConfiguration(newConfig)
+  }
+
   @ViewBuilder
   private var onboardingShortcutRecorder: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -1117,7 +1150,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.toggleDictation,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1126,7 +1159,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.togglePrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1135,7 +1168,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
