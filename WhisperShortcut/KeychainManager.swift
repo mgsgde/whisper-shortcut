@@ -5,9 +5,17 @@ import Security
 //
 // Every credential goes through the same four operations keyed by `KeychainCredential`, so a
 // newly added secret gets the full lifecycle (save/read/delete/presence) for free.
+extension KeychainManaging {
+  /// Default for implementations without a cache.
+  func getUncached(_ credential: KeychainCredential) -> String? { get(credential) }
+}
+
 protocol KeychainManaging {
   func save(_ value: String, for credential: KeychainCredential) -> Bool
   func get(_ credential: KeychainCredential) -> String?
+  /// Like `get`, but skips the in-memory cache and re-reads the Keychain item. For credentials a
+  /// second process may rotate (the ChatGPT plan refresh token).
+  func getUncached(_ credential: KeychainCredential) -> String?
   @discardableResult func delete(_ credential: KeychainCredential) -> Bool
   /// True when an item exists, without reading its data.
   func has(_ credential: KeychainCredential) -> Bool
@@ -269,16 +277,23 @@ class KeychainManager: KeychainManaging {
     return readSecret(account: credential.accountName)
   }
 
+  func getUncached(_ credential: KeychainCredential) -> String? {
+    if let injected = environmentOverride(for: credential) { return injected }
+    return readSecret(account: credential.accountName, bypassCache: true)
+  }
+
   func secret(account: String) -> String? {
     readSecret(account: account)
   }
 
-  private func readSecret(account accountName: String) -> String? {
+  private func readSecret(account accountName: String, bypassCache: Bool = false) -> String? {
 
-    lock.lock()
-    if let cached = valueCache[accountName] { lock.unlock(); return cached }
-    if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }
-    lock.unlock()
+    if !bypassCache {
+      lock.lock()
+      if let cached = valueCache[accountName] { lock.unlock(); return cached }
+      if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }
+      lock.unlock()
+    }
 
     var query = itemQuery(account: accountName)
     query[kSecReturnData as String] = true

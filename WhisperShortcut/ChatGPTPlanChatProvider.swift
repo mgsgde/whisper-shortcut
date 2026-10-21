@@ -94,25 +94,33 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {
-          let token = try await ChatGPTPlanOAuthService.shared.validAccessToken()
-          let config = OpenAICompatibleStream.Config(
-            endpoint: ChatGPTPlanOAuthConfig.responsesEndpoint,
-            headers: ["Authorization": "Bearer \(token)"],
-            logTag: "CHATGPT-PLAN-RESPONSES",
-            mapHTTPError: { status, text in
-              let error = ChatGPTPlanError.fromHTTP(status: status, body: text)
-              if error == .signInRequired {
-                // A confirmed rejection (401 / invalid_user): stop using this token set.
-                Task { @MainActor in ChatGPTPlanOAuthService.shared.reportRejectedToken() }
+          // A 401 is not by itself a reason to sign the user out (OpenAI: check account/scopes).
+          // Refresh once, ignoring expiry, and retry the request; if that fails too, surface the
+          // error and keep the refresh token. Only a terminal refresh error clears the tokens
+          // (inside the OAuth service).
+          var forceRefresh = false
+          while true {
+            let token = try await ChatGPTPlanOAuthService.shared.validAccessToken(forceRefresh: forceRefresh)
+            let config = OpenAICompatibleStream.Config(
+              endpoint: ChatGPTPlanOAuthConfig.responsesEndpoint,
+              headers: ["Authorization": "Bearer \(token)"],
+              logTag: "CHATGPT-PLAN-RESPONSES",
+              mapHTTPError: { status, text in ChatGPTPlanError.fromHTTP(status: status, body: text) },
+              terminalFailure: { type, payload in
+                ChatGPTPlanError.fromStreamFailure(type: type, payload: payload)
+              })
+            DebugLogger.logNetwork("CHATGPT-PLAN-RESPONSES: POST responses model=\(body["model"] as? String ?? "?")")
+            var yielded = false
+            do {
+              for try await event in OpenAICompatibleStream.responses(config, body: body, collectCitations: false) {
+                yielded = true
+                continuation.yield(event)
               }
-              return error
-            },
-            terminalFailure: { type, payload in
-              ChatGPTPlanError.fromStreamFailure(type: type, payload: payload)
-            })
-          DebugLogger.logNetwork("CHATGPT-PLAN-RESPONSES: POST responses model=\(body["model"] as? String ?? "?")")
-          for try await event in OpenAICompatibleStream.responses(config, body: body, collectCitations: false) {
-            continuation.yield(event)
+              break
+            } catch let error as ChatGPTPlanError where error == .signInRequired && !forceRefresh && !yielded {
+              DebugLogger.log("CHATGPT-PLAN: Request rejected (401); refreshing the token once and retrying")
+              forceRefresh = true
+            }
           }
           continuation.finish()
         } catch {

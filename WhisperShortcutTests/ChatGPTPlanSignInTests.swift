@@ -86,6 +86,14 @@ struct ChatGPTPlanSignInTests {
     #expect(F.queryValue("login_hint", in: url) == "a+b@example.com")
   }
 
+  @Test("Non-ASCII characters are percent-encoded as UTF-8, not passed through")
+  func nonASCIILoginHint() throws {
+    let url = try authorizeURL(saved: F.credentials(email: "jörg+ä@example.com"))
+    #expect(url.absoluteString.contains("login_hint=j%C3%B6rg%2B%C3%A4%40example.com"))
+    #expect(F.queryValue("login_hint", in: url) == "jörg+ä@example.com")
+    #expect(ChatGPTPlanOAuthService.percentEncode("A-z0_9.~ é") == "A-z0_9.~%20%C3%A9")
+  }
+
   @Test("The loopback listener hands out the exact path the docs require")
   func listenerUsesAuthCallbackPath() throws {
     let listener = try LoopbackOAuthListener(
@@ -250,6 +258,119 @@ struct ChatGPTPlanSignInTests {
     await #expect(throws: (any Error).self) { _ = try await service.validAccessToken() }
     #expect(store.record?.refreshToken == "refresh-old")
     #expect(!service.needsSignIn)
+  }
+
+  @Test("A temporary failure inside the refresh margin returns the still-valid token")
+  func transientFailureReturnsUnexpiredToken() async throws {
+    let soon = F.credentials(expiresAt: F.now.addingTimeInterval(60))  // inside the margin, not expired
+    let (service, store, _) = service(soon, transport: FakeTransport([.init(status: 503, body: "{}")]))
+    #expect(try await service.validAccessToken() == "access-old")
+    #expect(store.record?.refreshToken == "refresh-old")
+  }
+
+  @Test("forceRefresh refreshes a token that still looks valid (used once after an inference 401)")
+  func forceRefreshIgnoresExpiry() async throws {
+    let transport = FakeTransport([
+      .init(status: 200, body: #"{"access_token":"access-forced","refresh_token":"refresh-2","expires_in":3600}"#)
+    ])
+    let (service, store, _) = service(F.credentials(), transport: transport)
+    #expect(try await service.validAccessToken(forceRefresh: true) == "access-forced")
+    #expect(transport.requests.count == 1)
+    #expect(store.record?.refreshToken == "refresh-2")
+  }
+
+  @Test("A non-terminal failure on a forced refresh keeps the refresh token")
+  func forcedRefreshFailureKeepsRefreshToken() async throws {
+    let (service, store, _) = service(
+      F.credentials(), transport: FakeTransport([.init(status: 503, body: "{}")]))
+    _ = try? await service.validAccessToken(forceRefresh: true)
+    #expect(store.record?.refreshToken == "refresh-old")
+    #expect(!service.needsSignIn)
+  }
+
+  @Test("The refresh reads the Keychain uncached: a token another process rotated is used, not refreshed again")
+  func refreshAdoptsExternallyRefreshedRecord() async throws {
+    let stale = F.credentials(expiresAt: F.now.addingTimeInterval(-10))
+    let (service, store, transport) = service(stale)
+    store.externalRecord = F.credentials(accessToken: "access-other", refreshToken: "refresh-other")
+    #expect(try await service.validAccessToken() == "access-other")
+    #expect(transport.requests.isEmpty)
+  }
+
+  @Test("refresh_token_reused after another process rotated the token adopts the stored record instead of clearing it")
+  func terminalErrorAdoptsRotatedRecord() async throws {
+    let stale = F.credentials(expiresAt: F.now.addingTimeInterval(-10))
+    let store = MemoryChatGPTPlanStore(stale)
+    let rotated = F.credentials(accessToken: "access-other", refreshToken: "refresh-other")
+    let transport: ChatGPTPlanTransport = { request in
+      store.externalRecord = rotated  // the other process wins the race during our request
+      let response = HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!
+      return (Data(#"{"error":"refresh_token_reused"}"#.utf8), response)
+    }
+    let service = ChatGPTPlanOAuthService(
+      store: store, transport: transport, verifySignature: { _, _ in },
+      defaults: UserDefaults(suiteName: "chatgpt-plan-tests-\(UUID().uuidString)")!,
+      now: { F.now }, revocationRetryDelays: [0])
+    // First read (uncached) still sees the stale record; only the post-failure re-read sees the new one.
+    #expect(try await service.validAccessToken() == "access-other")
+    #expect(!service.needsSignIn)
+    #expect(store.record?.refreshToken == "refresh-old")  // we did not clear or overwrite it
+  }
+
+  @Test("A successful refresh does not overwrite a record that was replaced during the request")
+  func refreshDoesNotOverwriteReplacedRecord() async throws {
+    let stale = F.credentials(expiresAt: F.now.addingTimeInterval(-10))
+    let store = MemoryChatGPTPlanStore(stale)
+    let replaced = F.credentials(clientID: "oaiapp_other", accessToken: "access-new-account", refreshToken: "refresh-new-account")
+    let transport: ChatGPTPlanTransport = { request in
+      store.record = replaced  // sign-in with another account completes meanwhile
+      let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+      return (Data(#"{"access_token":"access-stale","refresh_token":"refresh-stale","expires_in":3600}"#.utf8), response)
+    }
+    let service = ChatGPTPlanOAuthService(
+      store: store, transport: transport, verifySignature: { _, _ in },
+      defaults: UserDefaults(suiteName: "chatgpt-plan-tests-\(UUID().uuidString)")!,
+      now: { F.now }, revocationRetryDelays: [0])
+    _ = try? await service.validAccessToken()
+    #expect(store.record == replaced)
+  }
+
+  @Test("Configured means plan scope AND tokens: sign-out and expiry make it false")
+  func configuredNeedsTokens() {
+    #expect(ChatGPTPlanPreferences.isConfigured(for: F.credentials()))
+    #expect(!ChatGPTPlanPreferences.isConfigured(for: F.credentials().clearingTokens()))
+    #expect(!ChatGPTPlanPreferences.isConfigured(for: F.credentials(scopes: ["openid"])))
+    #expect(!ChatGPTPlanPreferences.isConfigured(for: nil))
+  }
+
+  @Test("A different client or subject counts as a different account")
+  func differentAccountDetection() {
+    let base = F.credentials()
+    #expect(!ChatGPTPlanOAuthService.isDifferentAccount(previous: nil, new: base))
+    #expect(!ChatGPTPlanOAuthService.isDifferentAccount(previous: base, new: F.credentials(accessToken: "x")))
+    #expect(ChatGPTPlanOAuthService.isDifferentAccount(previous: base, new: F.credentials(clientID: "oaiapp_b")))
+    #expect(ChatGPTPlanOAuthService.isDifferentAccount(previous: base, new: F.credentials(subject: "sub-other")))
+  }
+
+  @Test("A saved model slug missing from a non-empty catalog is replaced by the first listed model")
+  func catalogReconcilesSavedSlug() {
+    let defaults = UserDefaults(suiteName: "chatgpt-plan-catalog-\(UUID().uuidString)")!
+    let entries = [
+      ChatGPTPlanModelCatalog.Entry(slug: "gpt-a", displayName: "A"),
+      ChatGPTPlanModelCatalog.Entry(slug: "gpt-b", displayName: "B"),
+    ]
+    ChatGPTPlanModelCatalog.reconcileSavedModel(with: entries, defaults: defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) == nil)  // nothing saved: untouched
+
+    defaults.set("gpt-b", forKey: UserDefaultsKeys.chatGPTPlanModelID)
+    ChatGPTPlanModelCatalog.reconcileSavedModel(with: entries, defaults: defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) == "gpt-b")
+
+    defaults.set("retired-model", forKey: UserDefaultsKeys.chatGPTPlanModelID)
+    ChatGPTPlanModelCatalog.reconcileSavedModel(with: [], defaults: defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) == "retired-model")
+    ChatGPTPlanModelCatalog.reconcileSavedModel(with: entries, defaults: defaults)
+    #expect(defaults.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) == "gpt-a")
   }
 
   @Test("No tokens, or no plan scope, never reaches the network")

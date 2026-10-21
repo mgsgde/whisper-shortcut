@@ -63,7 +63,10 @@ enum ChatGPTPlanError: LocalizedError, Equatable {
       if status == 401 { return .signInRequired }
       if status == 503 { return .usageUnavailable }
     }
-    let text = (message?.isEmpty == false ? message : nil) ?? code ?? "request failed"
+    var text = (message?.isEmpty == false ? message : nil) ?? code ?? "request failed"
+    // Keep documented-but-unmapped codes (`subscription_sharing_route_not_supported`,
+    // `chatpass_v2_*`, …) visible in the description and the logs instead of dropping them.
+    if let code, !code.isEmpty, !text.contains(code) { text += " (code: \(code))" }
     return .other(status: status, message: text, requestID: requestID)
   }
 

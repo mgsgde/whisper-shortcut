@@ -62,10 +62,14 @@ enum ChatGPTPlanFixtures {
 /// In-memory credential store.
 final class MemoryChatGPTPlanStore: ChatGPTPlanCredentialStoring {
   var record: ChatGPTPlanCredentials?
+  /// What another process wrote to the Keychain: `loadUncached()` sees it, the cached `load()` does not.
+  var externalRecord: ChatGPTPlanCredentials?
   init(_ record: ChatGPTPlanCredentials? = nil) { self.record = record }
   func load() -> ChatGPTPlanCredentials? { record }
+  func loadUncached() -> ChatGPTPlanCredentials? { externalRecord ?? record }
   func save(_ credentials: ChatGPTPlanCredentials) -> Bool {
     record = credentials
+    externalRecord = nil
     return true
   }
   func delete() { record = nil }

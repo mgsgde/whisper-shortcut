@@ -104,7 +104,10 @@ struct ChatGPTPlanRequestTests {
     #expect(ChatGPTPlanError.fromHTTP(status: 503, body: #"{"detail":"down"}"#) == .usageUnavailable)
     let other = ChatGPTPlanError.fromHTTP(
       status: 500, body: #"{"error":{"code":"server_error","message":"boom","request_id":"req_abc123"}}"#)
-    #expect(other == .other(status: 500, message: "boom", requestID: "req_abc123"))
+    #expect(other == .other(status: 500, message: "boom (code: server_error)", requestID: "req_abc123"))
+    let route = ChatGPTPlanError.fromHTTP(
+      status: 400, body: #"{"error":{"code":"subscription_sharing_route_not_supported","message":"Not on this route"}}"#)
+    #expect(route.errorDescription?.contains("subscription_sharing_route_not_supported") == true)
   }
 
   @Test("The user-facing strings are the agreed wording")

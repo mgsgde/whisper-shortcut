@@ -1599,7 +1599,13 @@ enum ChatGPTPlanPreferences {
   /// (memoized by `KeychainManager`), so it is cheap enough for view bodies.
   static var isConfigured: Bool {
     guard isAvailableInThisBuild else { return false }
-    return ChatGPTPlanCredentials.load()?.planEnabled == true
+    return isConfigured(for: ChatGPTPlanCredentials.load())
+  }
+
+  /// Tokens too: sign-out and terminal refresh errors keep the scopes but drop the tokens.
+  static func isConfigured(for credentials: ChatGPTPlanCredentials?) -> Bool {
+    guard let credentials else { return false }
+    return credentials.planEnabled && credentials.hasTokens
   }
 }
 

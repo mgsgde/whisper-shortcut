@@ -8,12 +8,19 @@ import Foundation
 /// Where the credential record lives. Production: the login Keychain.
 protocol ChatGPTPlanCredentialStoring {
   func load() -> ChatGPTPlanCredentials?
+  /// Reads the record bypassing any in-memory cache (another process may have rotated the tokens).
+  func loadUncached() -> ChatGPTPlanCredentials?
   @discardableResult func save(_ credentials: ChatGPTPlanCredentials) -> Bool
   func delete()
 }
 
+extension ChatGPTPlanCredentialStoring {
+  func loadUncached() -> ChatGPTPlanCredentials? { load() }
+}
+
 struct KeychainChatGPTPlanStore: ChatGPTPlanCredentialStoring {
   func load() -> ChatGPTPlanCredentials? { ChatGPTPlanCredentials.load() }
+  func loadUncached() -> ChatGPTPlanCredentials? { ChatGPTPlanCredentials.load(uncached: true) }
   func save(_ credentials: ChatGPTPlanCredentials) -> Bool { credentials.save() }
   func delete() { ChatGPTPlanCredentials.delete() }
 }
@@ -146,8 +153,9 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   /// Percent-encodes for a query string or form body: unreserved characters only (a `+` in an
   /// email address must not turn into a space).
   static func percentEncode(_ value: String) -> String {
-    var allowed = CharacterSet.alphanumerics
-    allowed.insert(charactersIn: "-._~")
+    // Explicit ASCII set: `CharacterSet.alphanumerics` also contains non-ASCII letters.
+    let allowed = CharacterSet(
+      charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
     return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
   }
 
@@ -335,6 +343,8 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     isBusy = true
     lastError = nil
     defer { isBusy = false }
+    // A refresh in flight would otherwise save its rotated tokens over the new sign-in.
+    await awaitRefreshInFlight()
     do {
       let signedIn = try await runConnect(useDifferentAccount: useDifferentAccount)
       if signedIn { needsSignIn = false }
@@ -427,8 +437,20 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       expiresAt: timestamp.addingTimeInterval(tokens.expiresIn),
       scopes: tokens.scopes ?? Self.parseScopes(callbackScope),
       savedAt: timestamp)
+    let previous = store.loadUncached()
+    // "Use a different account" replaces the record: end the old renewable session first.
+    if useDifferentAccount, let previous, let oldToken = previous.refreshToken, !oldToken.isEmpty,
+      oldToken != record.refreshToken
+    {
+      let revoked = await revoke(refreshToken: oldToken, clientID: previous.clientID)
+      DebugLogger.log("CHATGPT-PLAN: Previous session revoked before switching account (\(revoked ? "confirmed" : "NOT confirmed"))")
+    }
     guard store.save(record) else { throw ChatGPTPlanSignInError.keychainWriteFailed }
 
+    if Self.isDifferentAccount(previous: previous, new: record) {
+      // The saved slug belongs to the other account's catalog; let the fallback/catalog choice apply.
+      defaults.removeObject(forKey: UserDefaultsKeys.chatGPTPlanModelID)
+    }
     ChatGPTPlanModelCatalog.clearCache()
     refreshState()
     DebugLogger.logSuccess("CHATGPT-PLAN: Signed in (plan use \(record.planEnabled ? "enabled" : "NOT granted"))")
@@ -436,6 +458,16 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       Task { _ = try? await ChatGPTPlanModelCatalog.refresh() }
     }
     return true
+  }
+
+  /// True when signing in produced a different registration or identity than the one it replaces.
+  static func isDifferentAccount(previous: ChatGPTPlanCredentials?, new: ChatGPTPlanCredentials) -> Bool {
+    guard let previous else { return false }
+    return previous.clientID != new.clientID || previous.subject != new.subject
+  }
+
+  private func awaitRefreshInFlight() async {
+    if let running = refreshTask { _ = try? await running.value }
   }
 
   private func exchangeCode(
@@ -473,23 +505,33 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   /// A bearer token valid for at least five more minutes. Refreshes when needed; concurrent callers
   /// share one refresh. Throws `ChatGPTPlanError.signInRequired` when there is no usable session and
   /// `.planNotEnabled` when the plan scope was not granted. A temporary network failure keeps the
-  /// stored tokens and rethrows.
-  func validAccessToken() async throws -> String {
+  /// stored tokens and rethrows (or, while the current token has not actually expired, returns it).
+  ///
+  /// `forceRefresh` refreshes regardless of expiry: used once after an inference 401, which per
+  /// OpenAI's docs is not by itself a reason to drop the session.
+  func validAccessToken(forceRefresh: Bool = false) async throws -> String {
     guard let credentials = store.load(), credentials.hasTokens else { throw ChatGPTPlanError.signInRequired }
     guard credentials.planEnabled else { throw ChatGPTPlanError.planNotEnabled }
-    if !credentials.needsRefresh(now: now()), let token = credentials.accessToken { return token }
+    if !forceRefresh, !credentials.needsRefresh(now: now()), let token = credentials.accessToken { return token }
 
     if let running = refreshTask { return try await running.value }
-    let task = Task { try await self.performRefresh() }
+    let task = Task { try await self.performRefresh(force: forceRefresh) }
     refreshTask = task
     defer { refreshTask = nil }
     return try await task.value
   }
 
-  private func performRefresh() async throws -> String {
-    guard var credentials = store.load(), let refreshToken = credentials.refreshToken, !refreshToken.isEmpty else {
+  private func performRefresh(force: Bool) async throws -> String {
+    // Another process (release app vs. dev build) may have rotated the tokens since our cached
+    // read: always start from the Keychain's current state.
+    guard var credentials = store.loadUncached(), let refreshToken = credentials.refreshToken, !refreshToken.isEmpty
+    else {
       markSignInRequired()
       throw ChatGPTPlanError.signInRequired
+    }
+    if !force, !credentials.needsRefresh(now: now()), let token = credentials.accessToken {
+      refreshState()
+      return token  // the other process already refreshed
     }
     let body = Self.formEncode([
       ("grant_type", "refresh_token"),
@@ -497,38 +539,56 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       ("refresh_token", refreshToken),
       ("resource", ChatGPTPlanOAuthConfig.resource),
     ])
+    let usedClientID = credentials.clientID
     let (data, http) = try await transport(Self.formRequest(url: ChatGPTPlanOAuthConfig.tokenEndpoint, body: body))
+    try Task.checkCancellation()
+
+    // What is stored now; the record may have changed during the network call.
+    let current = store.loadUncached()
+    let recordUnchanged = current?.clientID == usedClientID && current?.refreshToken == refreshToken
 
     guard http.statusCode == 200 else {
       let error = Self.oauthError(from: data)
       if let code = error.code, Self.terminalRefreshErrorCodes.contains(code) {
+        guard recordUnchanged, let current else {
+          // Someone else rotated or replaced the tokens: their record wins, ours was just stale.
+          DebugLogger.log("CHATGPT-PLAN: Refresh token was superseded elsewhere (\(code)); adopting stored record")
+          refreshState()
+          if let stored = current, stored.hasTokens, let token = stored.accessToken, !token.isEmpty { return token }
+          throw ChatGPTPlanError.signInRequired
+        }
         DebugLogger.logError("CHATGPT-PLAN: Refresh token unusable (\(code)); sign-in required")
         // Keep client id, identity, ID token and host id; only the tokens go.
-        credentials = credentials.clearingTokens()
+        credentials = current.clearingTokens()
         store.save(credentials)
         markSignInRequired()
         throw ChatGPTPlanError.signInRequired
       }
       DebugLogger.logError("CHATGPT-PLAN: Refresh failed (HTTP \(http.statusCode), \(error.code ?? "no code"))")
+      // Temporary failure: a token that has not really expired yet is still good.
+      if let expiresAt = credentials.expiresAt, expiresAt > now(), let token = credentials.accessToken, !token.isEmpty {
+        return token
+      }
       throw ChatGPTPlanError.other(
         status: http.statusCode, message: error.description ?? error.code ?? "token refresh failed",
         requestID: nil)
     }
 
     let response = try Self.parseTokenResponse(data)
-    let updated = Self.applyingRefresh(response, to: credentials, now: now())
+    guard recordUnchanged, let current else {
+      // Signed out, replaced or rotated while we were refreshing: do not overwrite it.
+      DebugLogger.log("CHATGPT-PLAN: Stored record changed during refresh; discarding the result")
+      refreshState()
+      if let stored = self.store.loadUncached(), stored.hasTokens, let token = stored.accessToken, !token.isEmpty {
+        return token
+      }
+      throw ChatGPTPlanError.signInRequired
+    }
+    let updated = Self.applyingRefresh(response, to: current, now: now())
     guard store.save(updated) else { throw ChatGPTPlanSignInError.keychainWriteFailed }
     refreshState()
     DebugLogger.log("CHATGPT-PLAN: Access token refreshed")
     return response.accessToken
-  }
-
-  /// Called when a request is rejected with 401 / `invalid_user` so the UI can ask for a new sign-in.
-  /// Tokens are cleared only after a confirmed rejection, never for a network blip.
-  func reportRejectedToken() {
-    guard let credentials = store.load(), credentials.hasTokens else { return }
-    store.save(credentials.clearingTokens())
-    markSignInRequired()
   }
 
   private func markSignInRequired() {
@@ -546,10 +606,11 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   func signOut() async -> Bool {
     isBusy = true
     defer { isBusy = false }
-    refreshTask?.cancel()
-    refreshTask = nil
+    // Let a refresh in flight finish first: its rotated refresh token is the one to revoke, and it
+    // must not save tokens back after we cleared them.
+    await awaitRefreshInFlight()
 
-    guard let credentials = store.load() else {
+    guard let credentials = store.loadUncached() else {
       refreshState()
       return true
     }

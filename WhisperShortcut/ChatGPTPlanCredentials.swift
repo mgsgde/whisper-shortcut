@@ -82,8 +82,11 @@ struct ChatGPTPlanCredentials: Codable, Equatable {
   // MARK: Keychain
 
   /// Reads the record, or nil when absent or unreadable.
-  static func load(from keychain: KeychainManaging = KeychainManager.shared) -> ChatGPTPlanCredentials? {
-    guard let json = keychain.get(.chatGPTPlan), let data = json.data(using: .utf8) else { return nil }
+  static func load(
+    from keychain: KeychainManaging = KeychainManager.shared, uncached: Bool = false
+  ) -> ChatGPTPlanCredentials? {
+    let stored = uncached ? keychain.getUncached(.chatGPTPlan) : keychain.get(.chatGPTPlan)
+    guard let json = stored, let data = json.data(using: .utf8) else { return nil }
     return try? makeDecoder().decode(ChatGPTPlanCredentials.self, from: data)
   }
 
