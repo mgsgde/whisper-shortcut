@@ -16,6 +16,27 @@ Goal: any MCP client can read the user-facing configuration and change it safely
 WhisperShortcut" recipe lets the assistant compare the config with what it knows about the user
 and propose concrete edits. The knowledge stays in the assistant; the app offers tools + recipe.
 
+## Use cases (confirmed by Magnus, 2026-10-21)
+
+Slice 1 is cut to exactly these four; anything else waits for a use case.
+
+1. **Names and terms.** "Claude weiß ja, in was für einer Domäne ich unterwegs bin, und kann mit
+   Frontier Models sehr gut vermuten, was in das Glossar reinkommt." Claude fills the glossary
+   with names and domain terms, and nothing takes them out again.
+   Evidence: on 2026-10-17 an auto run dropped Christoph Michelbach, Wianco, sabaki.dance, Smikale,
+   EnBW from the glossary (history 234 → 115 chars). Fixed since `c4473634` (2026-10-19, additive
+   merge, in v8.55); the terms came back via Voice Feedback. A misspelling ("Unternhmen") had also
+   landed as a term and was removed by hand: an add path must reject obvious typos.
+2. **Messages that don't sound like AI.** "Claude weiß am besten, was ich wo für Nachrichten
+   abschicke." Claude carries its writing rules (e.g. the 161-line `nicht-nach-ki-klingen.md` in
+   Magnus's notes) into the Dictate Prompt section and the writing style profile (1.5 KB today).
+3. **Commands.** Claude creates and edits chat commands for Magnus; Martin may do the same for the
+   practice from his own assistant.
+4. **"Why did it get that wrong?"** Magnus tells the assistant a dictation was wrong; it reads the
+   recent interactions, finds the cause and proposes the rule or glossary fix.
+
+Not yet: settings (no use case named), meetings beyond v1 ("müsste ich noch weiter testen").
+
 ## The threat that shapes the design: prompt injection
 
 The same clients that will write the config also read untrusted text: meeting transcripts (v1
@@ -87,17 +108,24 @@ Read side as one tool plus MCP resources:
   "AI apps may read my recent dictations" toggle is on.
 
 Write side (slice 1):
+- `add_glossary_terms(terms[], rationale)` (use case 1): **additive only**, through
+  `GlossaryLearning.mergeAdditively`, so an assistant can never drop a term. Each term is checked
+  like `SystemPromptsStore.appendToWhisperGlossary` (≤ 60 chars, ≤ 5 words) and against
+  `glossaryCharBudget` (1,200); `Term (not "wrong")` lines keep their misheard forms. Over budget →
+  error telling the model to pick the terms that occur in the user's recent dictations. Apply-able
+  directly, because additive + capped is low risk.
 - `update_system_prompt(section, content, rationale)`: full section text, so the diff is exact.
-  Allowed sections `promptMode`, `whisperGlossary`, `dictation` (always Propose), `chat` (always
-  Propose), `readAloudRewrite`.
-- `update_writing_style_profile(content, rationale)`
+  `promptMode` and `readAloudRewrite` follow the permission level; `dictation`, `chat` and
+  `whisperGlossary` (the only way to remove or rewrite glossary lines) are always Propose.
+- `update_writing_style_profile(content, rationale)` (use case 2)
+- `save_command(name, text, scope)`, `delete_command(name)` (use case 3): needs
+  `UserCommandStore.save(name:text:scope:)` first (today only `createFromTemplate` and a
+  trash-based delete exist). Delete goes to Trash, like the Settings button. Commands are user
+  turns, not system prompts, so they follow the permission level.
+- `get_recent_interactions` (use case 4) moves from optional to slice 1, still behind its toggle.
 - `get_proposal_status(id)`
-- No separate glossary tools: the glossary is the `whisperGlossary` section, and two ways to write
-  it would drift. "Remember one term" stays in the in-app Chat (`remember_dictation_term`).
 
-Deferred to slice 2, each needs a real write API first:
-- **Commands:** `UserCommandStore` only has `createFromTemplate` and a trash-based delete, and
-  commands have a `scope` (meeting/chat/both). Add `save(name:text:scope:)` to the store first.
+Deferred to slice 2:
 - **Settings:** `SettingsViewModel.saveSettings()` rewrites every slot from one in-memory snapshot
   (`@MainActor`), so a second instance would silently undo edits made in the open Settings
   window; many settings bypass it anyway (`@AppStorage`, direct `UserDefaults.set`). Build
@@ -161,9 +189,10 @@ and falls back. Fine for v2; adding `prompts` and `resources` capabilities works
 
 ## Slices
 
-1. Read (tool + resources), Propose/Apply for prompts and writing style with the guards above,
-   inbox, Undo, tune recipe. Delivers the idea in Claude Code and Claude Desktop (via mcp-remote).
-2. Commands and settings, each after its write API exists; `run_smart_improvement`.
+1. The four use cases: read (tool + resources + recent interactions), additive glossary, prompts
+   and writing style with the guards above, commands, inbox, Undo, tune recipe. Delivers the idea
+   in Claude Code and Claude Desktop (via mcp-remote).
+2. Settings catalog, `run_smart_improvement`.
 3. `.mcpb` for Claude Desktop.
 4. a) ChatGPT through OpenAI's tunnel (docs + test). b) Own relay, only after Magnus decides.
 
@@ -171,6 +200,11 @@ Plumbing per slice goes to the cheap hand (Grok 4.7, Sonnet over cap); Opus revi
 verbatim test output and writes the UI.
 
 ## Open questions
+
+- Where Magnus will use it from (Claude Code on the Mac, Claude app, ChatGPT, phone). Decides
+  whether slice 3/4 matter soon.
+- On demand only, or also proactively: e.g. a rule in Claude's own instructions that every style
+  correction Magnus gives Claude is also sent to `update_writing_style_profile`.
 
 - Relay (4b) yes/no: data through our server vs. claude.ai/ChatGPT for everyone and on phones.
 - Should "Apply directly" exist at all for v2, or is Propose + a fast inbox enough? Kept, because
