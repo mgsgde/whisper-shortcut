@@ -1687,6 +1687,8 @@ class ChatViewModel: ObservableObject {
   func clearMessages() {
     messages = []
     session.messages = []
+    session.lastSendError = nil
+    lastSendError = nil
     session.lastUpdated = Date()
     store.save(session)
     refreshRecentSessions()
