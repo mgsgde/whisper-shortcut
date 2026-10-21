@@ -177,6 +177,7 @@ final class WritingStyleStore {
     try? FileManager.default.removeItem(at: directory)
     resetSamplesSinceProfile()
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleLastGmailImportAt)
   }
 

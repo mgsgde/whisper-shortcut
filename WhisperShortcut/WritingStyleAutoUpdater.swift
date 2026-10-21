@@ -62,6 +62,12 @@ final class WritingStyleAutoUpdater: ObservableObject {
     await derive(userTriggered: false)
   }
 
+  /// Pure due rule. A first profile is offered once enough samples exist, but not again after the
+  /// user dismissed the review; 20 NEW samples re-offer it either way.
+  nonisolated static func isProfileDue(since: Int, total: Int, hasProfile: Bool, dismissed: Bool) -> Bool {
+    since >= profileThreshold || (!hasProfile && !dismissed && total >= profileThreshold)
+  }
+
   /// Daily check (launch + 24h timer).
   func runIfDue() async {
     guard !isWorking, isEnabled, !OfflineMode.isEnabled else { return }
@@ -85,8 +91,9 @@ final class WritingStyleAutoUpdater: ObservableObject {
 
     let since = store.samplesSinceProfile
     let total = store.loadSamples().count
-    let due = since >= Self.profileThreshold
-      || (store.profileUpdatedAt == nil && total >= Self.profileThreshold)
+    let dismissed = UserDefaults.standard.object(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt) != nil
+    let due = Self.isProfileDue(
+      since: since, total: total, hasProfile: store.profileUpdatedAt != nil, dismissed: dismissed)
     DebugLogger.log("WRITING-STYLE-AUTO: check since=\(since) total=\(total) due=\(due)")
     guard due, improvementModelHasCredential else { return }
     await derive(userTriggered: false)
