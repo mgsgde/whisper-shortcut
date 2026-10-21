@@ -159,14 +159,21 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
     if let existing = readyTasks[model] {
       // Someone (Settings, a previous dictation, the launch pre-load) is already on it.
-      try await existing.value
-      return
+      guard existing.isCancelled else {
+        try await existing.value
+        return
+      }
+      // A cancelled run still finishes the file in flight; wait so two fetches never write one folder.
+      _ = try? await existing.value
     }
     let task = Task<Void, Error> { try await self.makeReady(model) }
     readyTasks[model] = task
     defer {
-      readyTasks[model] = nil
-      readyPhase[model] = nil
+      // Only clear our own entry: a newer run may have replaced a cancelled one.
+      if readyTasks[model] == task {
+        readyTasks[model] = nil
+        readyPhase[model] = nil
+      }
     }
     try await task.value
   }
@@ -243,14 +250,19 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
   func downloadModel(_ model: Model, onProgress: ((Double) -> Void)? = nil) async throws {
     if let existing = downloadTasks[model] {
-      try await existing.value
-      return
+      guard existing.isCancelled else {
+        try await existing.value
+        return
+      }
+      // A cancelled download still finishes the file in flight; wait so two fetches never write one folder.
+      _ = try? await existing.value
     }
     let task = Task<Void, Error> {
       try await self.performDownload(model, onProgress: onProgress)
     }
     downloadTasks[model] = task
-    defer { downloadTasks[model] = nil }
+    // Only clear our own entry: a newer download may have replaced a cancelled one.
+    defer { if downloadTasks[model] == task { downloadTasks[model] = nil } }
     try await withTaskCancellationHandler {
       try await task.value
     } onCancel: {
