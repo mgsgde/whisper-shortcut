@@ -136,7 +136,7 @@ enum WorkspaceWriteTools {
         if let size = existingFileSize(target), size > maxWriteBytes {
           return [
             "error":
-              "The edited file would be \(size) bytes; the limit is \(maxWriteBytes)."
+              "\(target.lastPathComponent) is \(size) bytes; files over \(maxWriteBytes) bytes cannot be edited."
           ]
         }
         guard let original = readExisting(target) else {
