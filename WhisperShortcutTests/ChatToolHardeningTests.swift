@@ -122,4 +122,14 @@ struct ChatToolHardeningTests {
     #expect(f(Int.max) == 1_000_000_000)
     #expect(ChatToolRegistry.intArgument([:], "k", default: 7) == 7)
   }
+
+  // MARK: write tools size check
+
+  @Test func existingFileSizeReadsAttributesOnly() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("ct-size-\(UUID().uuidString).txt")
+    defer { try? FileManager.default.removeItem(at: url) }
+    #expect(WorkspaceWriteTools.existingFileSize(url) == nil)
+    try Data(repeating: 0x61, count: 1234).write(to: url)
+    #expect(WorkspaceWriteTools.existingFileSize(url) == 1234)
+  }
 }
