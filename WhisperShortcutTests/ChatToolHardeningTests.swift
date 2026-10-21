@@ -44,4 +44,31 @@ struct ChatToolHardeningTests {
     let (out, _) = ChatViewModel.replacingWholeTerm("cost A", from: "A", to: "$1 \\n")
     #expect(out == "cost $1 \\n")
   }
+
+  // MARK: persistent-write tools are gated
+
+  @Test func rememberToolsNeedApprovalAndNeverChatWide() {
+    for name in ["remember_file_location", "remember_dictation_term"] {
+      #expect(ChatToolRegistry.requiresUserApproval(name))
+      #expect(!ChatToolRegistry.allowsChatWideApproval(name))
+    }
+    let folder = ChatToolRegistry.approvalSummary(
+      name: "remember_file_location", args: ["path": "~/Invoices", "note": "PDFs by year"])
+    #expect(folder == "Remember folder: ~/Invoices — PDFs by year")
+    let term = ChatToolRegistry.approvalSummary(name: "remember_dictation_term", args: ["term": "Nebius"])
+    #expect(term == "Add to dictation glossary: Nebius")
+  }
+
+  @Test func sanitizedStoredTextFlattensCapsAndRejectsEmpty() {
+    #expect(ChatToolRegistry.sanitizedStoredText("a\nb\r\nc", limit: 100) == "a b  c")
+    #expect(ChatToolRegistry.sanitizedStoredText(String(repeating: "x", count: 500), limit: 300)?.count == 300)
+    #expect(ChatToolRegistry.sanitizedStoredText(" \n ", limit: 100) == nil)
+  }
+
+  @Test func forgetAboutUserRefusesShortNeedles() {
+    for needle in ["a", "  ab ", "a b"] {
+      let result = ChatMemoryTools.executeForgetAboutUserTool(args: ["matching": needle])
+      #expect(result["error"] != nil, "\(needle)")
+    }
+  }
 }
