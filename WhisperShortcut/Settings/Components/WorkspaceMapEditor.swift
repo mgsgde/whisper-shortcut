@@ -78,7 +78,10 @@ struct WorkspaceMapEditor: View {
   }
 
   private func save() {
-    WorkspaceMapStore.shared.saveRawText(text)
+    // The model may have added lines since this text was loaded; keep them.
+    let merged = LineListMerge.textToSave(
+      edited: text, loaded: lastSavedText, onDisk: WorkspaceMapStore.shared.loadMap())
+    WorkspaceMapStore.shared.saveRawText(merged)
     load()
   }
 
