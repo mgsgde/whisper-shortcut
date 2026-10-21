@@ -9,8 +9,16 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Published State
   @Published var data = SettingsData()
 
+  /// What is on disk as far as this view model knows: set after a load, after a reconcile reload,
+  /// after a focus reload and after a successful save. `saveSettings()` writes only what differs
+  /// from it, so a value changed elsewhere since Settings loaded (Chat `/model`, `/pin`, a key
+  /// pasted in the Welcome Tour) is not overwritten by this window's stale copy. It is never
+  /// assigned from `data` before the save has run.
+  private var persisted = SettingsData()
+
   // MARK: - Initialization
   private var reconcileObserver: NSObjectProtocol?
+  private var keyWindowObserver: NSObjectProtocol?
 
   init() {
     loadCurrentSettings()
@@ -22,13 +30,44 @@ class SettingsViewModel: ObservableObject {
     ) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
-        for slot in Self.slots { slot.load(&self.data) }
+        var reloaded = self.data
+        for slot in Self.slots { slot.load(&reloaded) }
+        self.data = reloaded
+        // Mirror the reloaded slot values into `persisted` only — the other fields of `data`
+        // may hold unsaved state and must keep differing.
+        for slot in Self.slots { slot.load(&self.persisted) }
+      }
+    }
+    // Re-read from disk when the Settings window becomes key, so the pickers show a model chosen
+    // in Chat meanwhile. Filtered to the Settings window (this class also backs the Welcome Tour).
+    keyWindowObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      MainActor.assumeIsolated {
+        guard let window = note.object as? NSWindow,
+              window.delegate is SettingsWindowController
+        else { return }
+        self?.reloadFromDisk()
       }
     }
   }
 
   deinit {
     if let reconcileObserver { NotificationCenter.default.removeObserver(reconcileObserver) }
+    if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+  }
+
+  /// Re-reads the slots and the Google key from disk into both `data` and `persisted`.
+  /// Shortcuts are deliberately not re-read: a shortcut recorder may be mid-recording and its
+  /// pending value must not be replaced. Does not run the model reconciler.
+  func reloadFromDisk() {
+    guard !data.isLoading else { return }
+    var reloaded = data
+    for slot in Self.slots { slot.load(&reloaded) }
+    reloaded.googleAPIKey = KeychainManager.shared.get(.google) ?? ""
+    data = reloaded
+    for slot in Self.slots { slot.load(&persisted) }
+    persisted.googleAPIKey = reloaded.googleAPIKey
   }
   
 
@@ -183,6 +222,7 @@ class SettingsViewModel: ObservableObject {
     data.screenshotSaveFolderDisplayPath = ScreenshotSaveLocation.displayPath  // display only
     data.googleAPIKey = KeychainManager.shared.get(.google) ?? ""              // Keychain
     data.launchAtLogin = SMAppService.mainApp.status == .enabled               // SMAppService
+    persisted = data
   }
 
   // MARK: - Validation
@@ -340,16 +380,33 @@ class SettingsViewModel: ObservableObject {
     // Never write an empty value here: after a failed Keychain read at load,
     // data.googleAPIKey is "" while the real key is still stored — persisting "" would
     // wipe it.
-    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.save(data.googleAPIKey, for: .google) {
+    // Only what differs from `persisted` is written (see its doc comment).
+    var googleKeySaved = true
+    if !data.googleAPIKey.isEmpty, data.googleAPIKey != persisted.googleAPIKey,
+       !KeychainManager.shared.save(data.googleAPIKey, for: .google)
+    {
+      googleKeySaved = false
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
-    for slot in Self.slots { slot.save(data) }
+    for slot in SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted) {
+      slot.save(data)
+    }
 
-    ShortcutConfigManager.shared.saveConfiguration(Self.shortcutConfig(from: data))
+    let newShortcuts = Self.shortcutConfig(from: data)
+    if newShortcuts != Self.shortcutConfig(from: persisted) {
+      ShortcutConfigManager.shared.saveConfiguration(newShortcuts)
+    }
 
-    // Notify about model change
-    NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+    // Notify about model change only when the Dictate model actually changed: the notice makes
+    // the menu bar re-check (and re-download) the selected local model.
+    let transcriptionModelChanged = data.selectedTranscriptionModel != persisted.selectedTranscriptionModel
+    let previousGoogleKey = persisted.googleAPIKey
+    persisted = data
+    if !googleKeySaved { persisted.googleAPIKey = previousGoogleKey }
+    if transcriptionModelChanged {
+      NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+    }
 
     data.isLoading = false
 

@@ -13,26 +13,38 @@ import Foundation
 struct SettingsSlot {
   let load: (inout SettingsData) -> Void
   let save: (SettingsData) -> Void
+  /// Whether this slot's value differs between two snapshots. `SettingsViewModel.saveSettings()`
+  /// writes only slots that differ from what it last loaded or saved, so a value changed elsewhere
+  /// (Chat `/model`, `/pin`) is not overwritten by a stale copy held by a long-lived Settings window.
+  let differs: (SettingsData, SettingsData) -> Bool
+
+  /// The slots whose value in `data` differs from `persisted` — the ones a save must write.
+  static func slotsToSave(_ slots: [SettingsSlot], data: SettingsData, persisted: SettingsData)
+    -> [SettingsSlot]
+  {
+    slots.filter { $0.differs(data, persisted) }
+  }
 }
 
 extension SettingsSlot {
   /// Full control over both halves — for settings whose load routes through a migrating loader
   /// (`PromptModel.loadChatSlotModel`, `TranscriptionModel.loadSelected`, …) or a preference
   /// namespace (`ReadAloudPreferences`, `ScreenshotSaveLocation`).
-  static func custom<Value>(
+  static func custom<Value: Equatable>(
     _ keyPath: WritableKeyPath<SettingsData, Value>,
     load: @escaping () -> Value,
     save: @escaping (Value) -> Void
   ) -> SettingsSlot {
     SettingsSlot(
       load: { data in data[keyPath: keyPath] = load() },
-      save: { data in save(data[keyPath: keyPath]) }
+      save: { data in save(data[keyPath: keyPath]) },
+      differs: { lhs, rhs in lhs[keyPath: keyPath] != rhs[keyPath: keyPath] }
     )
   }
 
   /// An enum persisted as its `String` raw value. Unknown/absent raw values fall back to
   /// `fallback` — no migration, so only use it for enums that have never been renamed.
-  static func rawValue<Value: RawRepresentable>(
+  static func rawValue<Value: RawRepresentable & Equatable>(
     _ keyPath: WritableKeyPath<SettingsData, Value>,
     key: String,
     default fallback: Value
