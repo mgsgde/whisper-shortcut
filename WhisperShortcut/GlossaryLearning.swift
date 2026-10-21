@@ -21,33 +21,17 @@ enum GlossaryLearning {
   }
 
   /// Case- and diacritic-insensitive key shared with glossary dedupe ("Gödde" == "godde").
+  /// `GlossaryDocument.fold` is POSIX, so this no longer follows the user's locale.
   static func fold(_ s: String) -> String {
-    s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    GlossaryDocument.fold(s)
   }
 
   /// One entry per term on a glossary line. Rejected spellings from every `(not …)` /
   /// `(nicht …)` group on that line attach to each of its terms — a line is normally one
   /// term, but `Terms: A, B` is several and they share the line's rejections.
+  /// Parsing lives in `GlossaryDocument`; this is the tuple shape callers already use.
   static func entries(in glossary: String) -> [(term: String, rejected: [String])] {
-    var parsed: [(term: String, rejected: [String])] = []
-    for line in glossary.components(separatedBy: .newlines) {
-      if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }
-      let rejected = rejectedForms(on: line)
-      let stripped = line.replacingOccurrences(
-        of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
-        with: "",
-        options: [.regularExpression, .caseInsensitive])
-      let body = stripped.replacingOccurrences(
-        of: #"^\s*Terms:\s*"#,
-        with: "",
-        options: [.regularExpression, .caseInsensitive])
-      for raw in body.components(separatedBy: ",") {
-        let term = raw.trimmingCharacters(in: .whitespaces)
-        if term.isEmpty { continue }
-        parsed.append((term: term, rejected: rejected))
-      }
-    }
-    return parsed
+    GlossaryDocument.parse(glossary).entries.map { (term: $0.term, rejected: $0.rejectedSpellings) }
   }
 
   /// `Term (not "A", "B")` — the only annotated shape this module writes, so a suggestion
@@ -146,7 +130,7 @@ enum GlossaryLearning {
       } else {
         for entry in lineEntries {
           let term = entry.term
-          if term.isEmpty || term.split(separator: " ").count > 3 { continue }
+          if !GlossaryDocument.withinWordCap(term) { continue }
           let termFold = fold(term)
           if termFold.isEmpty || known.contains(termFold) || alreadyQueued(termFold) { continue }
           queue(term: term, rejected: [])
@@ -335,30 +319,6 @@ enum GlossaryLearning {
 
   // MARK: - Private
 
-  private static let annotationPattern = #"\((?:not|nicht)\s+[^)]*\)"#
-
-  private static func rejectedForms(on line: String) -> [String] {
-    var forms: [String] = []
-    var cursor = Substring(line)
-    while let range = cursor.range(
-      of: annotationPattern, options: [.regularExpression, .caseInsensitive])
-    {
-      var inner = String(cursor[range])
-      if let prefix = inner.range(
-        of: #"^\((?:not|nicht)\s+"#, options: [.regularExpression, .caseInsensitive])
-      {
-        inner.removeSubrange(prefix)
-      }
-      if inner.hasSuffix(")") { inner.removeLast() }
-      for form in inner.components(separatedBy: ",") {
-        let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-        if !cleaned.isEmpty { forms.append(cleaned) }
-      }
-      cursor = cursor[range.upperBound...]
-    }
-    return forms
-  }
-
   private static func trimmingTrailingWhitespaceAndNewlines(_ text: String) -> String {
     var end = text.endIndex
     while end > text.startIndex {
@@ -382,17 +342,7 @@ enum GlossaryLearning {
   }
 
   private static func recasing(_ line: String, majority: [String: String]) -> String {
-    var protected: [Range<String.Index>] = []
-    var cursor = line.startIndex
-    while cursor < line.endIndex,
-          let range = line.range(
-            of: annotationPattern,
-            options: [.regularExpression, .caseInsensitive],
-            range: cursor..<line.endIndex)
-    {
-      protected.append(range)
-      cursor = range.upperBound
-    }
+    let protected = GlossaryDocument.annotationRanges(in: line)
 
     var output = ""
     var index = line.startIndex

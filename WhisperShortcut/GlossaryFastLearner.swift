@@ -133,16 +133,13 @@ final class GlossaryFastLearner {
     guard !target.isEmpty else { return glossary }
 
     let kept = glossary.components(separatedBy: .newlines).compactMap { line -> String? in
-      if line.range(
-        of: #"\((?:not|nicht)\s+"#, options: [.regularExpression, .caseInsensitive]) != nil
-      {
-        return line
-      }
+      // Annotated lines already say which spelling is wrong. The check used to be a shorter
+      // regex than the one the prompt parses, so a broken annotation was protected here and
+      // ignored everywhere else.
+      if GlossaryDocument.carriesAnnotation(line) { return line }
       // Preserve a leading `Terms:` label so the list keeps its shape when a member is dropped.
-      let labelRange = line.range(
-        of: #"^\s*Terms:\s*"#, options: [.regularExpression, .caseInsensitive])
-      let label = labelRange.map { String(line[$0]) } ?? ""
-      let body = labelRange.map { String(line[$0.upperBound...]) } ?? line
+      let label = GlossaryDocument.termsLabel(on: line)
+      let body = String(line.dropFirst(label.count))
 
       let members = body.components(separatedBy: ",")
       let survivors = members.filter { fold($0.trimmingCharacters(in: .whitespaces)) != target }
@@ -290,9 +287,10 @@ final class GlossaryFastLearner {
   }
 
   /// Case- and diacritic-insensitive form used for phonetic-ish comparison
-  /// ("Gödde" and "godde" fold to the same string).
+  /// ("Gödde" and "godde" fold to the same string). POSIX, via `GlossaryDocument.fold`,
+  /// so a Turkish locale does not give this learner a different key than the prompt.
   private func fold(_ word: String) -> String {
-    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    GlossaryDocument.fold(word)
   }
 
   /// German/English inflectional endings a longer word may add to a shorter stem

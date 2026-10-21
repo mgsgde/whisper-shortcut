@@ -140,18 +140,19 @@ enum SmartImprovementScorecard {
 
   /// Rejected spellings from `X (not "Y")` / `X (nicht "Y, Z")` annotations.
   ///
-  /// The keyword match is case-insensitive. The inner list is comma-separated, and each form is
-  /// trimmed of spaces and `"` / `'`. Same pattern as SpeechService:
-  /// `#"\((?:not|nicht)\s+[^)]*\)"#`. Deduplicated by folded form (case- and diacritic-insensitive);
-  /// the first spelling is kept, in order of first appearance.
+  /// Read through `GlossaryDocument`, which is the same annotation parse the prompt uses.
+  /// A private copy of the regex here used to be able to disagree with it. Deduplicated by
+  /// folded form; the first spelling is kept, in order of first appearance.
   static func rejectedSpellings(in glossaries: [String]) -> [String] {
     var seen = Set<String>()
     var spellings: [String] = []
     for glossary in glossaries {
-      for spelling in annotationSpellings(in: glossary) {
-        let key = fold(spelling)
-        guard seen.insert(key).inserted else { continue }
-        spellings.append(spelling)
+      for line in glossary.components(separatedBy: .newlines) {
+        for spelling in GlossaryDocument.rejectedSpellings(on: line) {
+          let key = GlossaryDocument.fold(spelling)
+          guard seen.insert(key).inserted else { continue }
+          spellings.append(spelling)
+        }
       }
     }
     return spellings
@@ -380,32 +381,14 @@ enum SmartImprovementScorecard {
 
   // MARK: - Glossary annotations
 
-  private static let annotationPattern = #"\((?:not|nicht)\s+[^)]*\)"#
   private static let matchLocale = Locale(identifier: "en_US_POSIX")
   /// Em dash and en dash. Hyphen-minus is ordinary punctuation and is not a dash here.
   private static let dashCharacters: Set<Character> = ["\u{2014}", "\u{2013}"]
 
-  private static func annotationSpellings(in glossary: String) -> [String] {
-    var spellings: [String] = []
-    var cursor = glossary[...]
-    while let range = cursor.range(
-      of: annotationPattern, options: [.regularExpression, .caseInsensitive])
-    {
-      let inner = cursor[range]
-        .replacingOccurrences(
-          of: #"^\((?:not|nicht)\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
-        .replacingOccurrences(of: ")", with: "")
-      for form in inner.components(separatedBy: ",") {
-        let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-        if !cleaned.isEmpty { spellings.append(cleaned) }
-      }
-      cursor = cursor[range.upperBound...]
-    }
-    return spellings
-  }
-
+  /// Similarity still folds here. The key is `GlossaryDocument.fold` (POSIX); a private
+  /// fold used to be the only POSIX one while every other glossary reader used `.current`.
   private static func fold(_ text: String) -> String {
-    text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: matchLocale)
+    GlossaryDocument.fold(text)
   }
 
   private static func isWholeWord(_ match: Range<String.Index>, in text: String) -> Bool {
