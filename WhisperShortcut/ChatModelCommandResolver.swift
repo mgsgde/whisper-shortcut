@@ -121,12 +121,13 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT6Sol]
       }
+    } else if normalized.contains("argon") || padded.contains(" 4 ") {
+      candidates = [.gemini4Argon]
     } else if normalized.contains("3.8") {
       candidates = [.gemini38Flash]
-    } else if normalized.contains("3.7") {
-      candidates = [.gemini37Flash]
-    } else if normalized.contains("3.6") {
-      candidates = [.gemini37Flash]  // 3.6 was removed; land on its replacement
+    } else if normalized.contains("3.7") || normalized.contains("3.6") {
+      // 3.7 and 3.6 were removed; Google routes 3.7 to 3.8.
+      candidates = [.gemini38Flash]
     } else if normalized.contains("3.5") {
       candidates = [.gemini35FlashLite]
     } else if normalized.contains("3.1") {
@@ -216,14 +217,14 @@ enum ChatModelCommandResolver {
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
     case .gemini31FlashLite, .gemini35FlashLite,
-         .gemini37Flash, .gemini38Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
+         .gemini38Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
   }
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31Pro, .geminiImagePro: return true
+    case .gemini4Argon, .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }

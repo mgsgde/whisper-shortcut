@@ -225,18 +225,6 @@ struct ModelPickerCurationTests {
     #expect(allLocal)
   }
 
-  @Test("Gemini 3.7 Flash is hidden from transcription pickers only")
-  func gemini37Supersession() {
-    #expect(TranscriptionModel.gemini37Flash.pickerSupersededBy == .gemini38Flash)
-    #expect(PromptModel.gemini37Flash.pickerSupersededBy == nil)
-    let visible = ModelPickerCuration<TranscriptionModel>.visibleModels(
-      TranscriptionModel.selectableForDictation(offlineMode: false), selected: .openAIGPTTranscribe)
-    #expect(!visible.contains(.gemini37Flash))
-    let selected = ModelPickerCuration<TranscriptionModel>.visibleModels(
-      TranscriptionModel.selectableForDictation(offlineMode: false), selected: .gemini37Flash)
-    #expect(selected.contains(.gemini37Flash))
-  }
-
   @Test("Speed ranks never feature on-device models as Fastest")
   func ranksAreDisjoint() {
     let disjointTranscriptionModel = TranscriptionModel.allCases.allSatisfy { $0.pickerSpeedRank == nil || $0.pickerOfflineRank == nil }

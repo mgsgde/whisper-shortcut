@@ -381,9 +381,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedImprovementModel),
           stored == "gemini-3.6-flash" else { return }
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+    // 3.7 was removed 2026-10-21 (Google routes it to 3.8); this one-shot lands on 3.8 directly.
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
     DebugLogger.log(
-      "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+      "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
   }
 
   /// One-shot migration (2026-08): chat-window default moves 3.5 Flash-Lite → 3.7 Flash.
@@ -396,9 +397,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedChatModel),
           stored == PromptModel.gemini35FlashLite.rawValue else { return }
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    // 3.7 was removed 2026-10-21 (Google routes it to 3.8); this one-shot lands on 3.8 directly.
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     DebugLogger.log(
-      "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+      "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
   }
 
   /// One-shot migration (2026-09): chat-window and Smart Improvement defaults move
@@ -406,13 +408,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   /// 2026-09-02 at the same introductory price as 3.7. Only slots still sitting on
   /// exactly `gemini-3.7-flash` move — a user who picked another model keeps it.
   ///
-  /// Matches on the model the slot is *effectively* on, not the literal stored string. A slot
-  /// left on 3.5 or 3.6 Flash is superseded to 3.7 by `chatReplacement` — but that happens when
-  /// the slot is first LOADED, which is after every launch migration has run. Comparing the raw
-  /// string to `gemini-3.7-flash` therefore misses exactly the installs the supersession is
-  /// about to move: found on 2026-09-06, on a machine sitting on 3.6 whose
-  /// `didMigrateImprovementTo37Flash` flag was long spent, so the 3.6 → 3.7 hop this migration
-  /// was assumed to follow never happened at launch at all.
+  /// Compares the raw stored string. `resolvedChatSlotModel` can no longer see 3.7:
+  /// `migrateLegacyPromptRawValue` already rewrites "gemini-3.7-flash" to 3.8, so an equality
+  /// against the removed case would never match. 3.5 and 3.6 take the same path on load
+  /// (`loadPromptModel` persists the rewrite), which is why this launch pass only has to
+  /// catch the literal 3.7 slug.
   ///
   /// Same `SettingsViewModel.save()` reason as the earlier Gemini migrations: changing
   /// `SettingsDefaults` alone would reach almost nobody.
@@ -426,7 +426,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ]
     for key in keys {
       guard let stored = defaults.string(forKey: key),
-            PromptModel.resolvedChatSlotModel(forRawValue: stored) == .gemini37Flash else { continue }
+            stored == "gemini-3.7-flash" else { continue }
       defaults.set(PromptModel.gemini38Flash.rawValue, forKey: key)
       DebugLogger.log("MIGRATION: \(key) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
     }

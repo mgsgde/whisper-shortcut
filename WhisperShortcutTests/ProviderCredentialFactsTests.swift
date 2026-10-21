@@ -22,8 +22,8 @@ struct ProviderCredentialFactsTests {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
     .gemini35FlashLite:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-    .gemini37Flash:
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent",
+    .gemini4Argon:
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
     .gemini38Flash:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
   ]

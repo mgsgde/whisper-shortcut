@@ -101,7 +101,7 @@ Longer recordings (roughly ten seconds and up) start transcribing in the backgro
 **Accuracy tuning** (Settings → Dictate, cloud models only):
 
 - **Temperature** — how literally the model reproduces what it heard. `0.0` (the default) is verbatim. The models' own default is `1.0`, which is what the app sent before this setting existed and the most likely source of invented or swapped words.
-- **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below `Low` and are clamped to it.
+- **Thinking effort** (Gemini only) — how long the model may reason before transcribing. `Minimal` is the default; raising it can help with hard audio, accents, and unusual vocabulary. On Flash-Lite the latency cost is close to zero; on Pro it roughly doubles. Gemini 3.8 Flash, Gemini 3.1 Pro, and Gemini 4 Argon cannot run below `Low` and are clamped to it.
 
 **Which transcription model should I pick?** All of them work; they differ in speed, price, and how they behave on hard audio. Measured on the same recordings in September 2026 — latency is the median of 10 interleaved runs from one machine, so treat it as a ranking, not a guarantee:
 

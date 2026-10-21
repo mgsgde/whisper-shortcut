@@ -74,8 +74,10 @@ struct SettingsSlotRoundTripTests {
   /// default fails the comparison instead of coincidentally matching.
   private func makeProbe() -> SettingsData {
     var data = SettingsData()
-    data.selectedTranscriptionModel = .gemini37Flash
-    data.selectedPromptModel = .gemini37Flash
+    data.selectedTranscriptionModel = .gemini38Flash
+    // Prompt's default is already 3.8 Flash; a probe on the default would pass even if the
+    // slot fell back. 3.5 Flash-Lite is a real Gemini model that is not that default.
+    data.selectedPromptModel = .gemini35FlashLite
     // Chat-capable models only: `loadChatSlotModel` validates `supportsTextChat` and falls back
     // to the default when it fails, which would mask a key mismatch.
     data.selectedChatModel = .grok43
@@ -105,7 +107,7 @@ struct SettingsSlotRoundTripTests {
     data.settingsCloseOnFocusLoss = !SettingsDefaults.settingsCloseOnFocusLoss
     data.liveMeetingChunkInterval = .thirtySeconds
     data.liveMeetingSafeguardDuration = .twoHours
-    data.selectedTranscriptionModelForMeetings = .gemini37Flash
+    data.selectedTranscriptionModelForMeetings = .gemini38Flash
     data.selectedMeetingSummaryModel = .grok43
     return data
   }

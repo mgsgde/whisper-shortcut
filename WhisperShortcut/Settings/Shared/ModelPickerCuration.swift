@@ -160,7 +160,7 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
 extension TranscriptionModel: PickerCuratedModel {
   /// Median latency order on a 1.3 s clip, `plans/model-audits/2026-10-03-audit.md`
   /// (Transcription benchmark): grok-stt 424 ms · gpt-4o-transcribe 645 · gpt-4o-mini 654 ·
-  /// gpt-transcribe 673 · 3.1 Flash-Lite 968 · 3.5 Flash-Lite 973 · 3.8 Flash 1286 · 3.7 Flash 1822.
+  /// gpt-transcribe 673 · 3.1 Flash-Lite 968 · 3.5 Flash-Lite 973 · 3.8 Flash 1286.
   /// Re-rank when the monthly audit's table moves.
   var pickerSpeedRank: Int? {
     switch self {
@@ -171,9 +171,9 @@ extension TranscriptionModel: PickerCuratedModel {
     case .gemini31FlashLite: return 5
     case .gemini35FlashLite: return 6
     case .gemini38Flash: return 7
-    case .gemini37Flash: return 8
-    case .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .parakeetUltra, .selfHostedTranscription, .openRouterTranscription:
+    case .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
+         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .selfHostedTranscription,
+         .openRouterTranscription:
       return nil
     }
   }
@@ -193,19 +193,7 @@ extension TranscriptionModel: PickerCuratedModel {
     }
   }
 
-  /// Gemini 3.7 Flash is strictly dominated by 3.8 Flash *for transcription* — same price and
-  /// context, same 76% glossary, fewer silence leaks (7/9 vs 9/9), faster at every clip length
-  /// (`plans/model-audits/2026-10-03-audit.md`, Pareto check). It stays in the enum and in the
-  /// Dictate Prompt / Chat lists, where the two measured as a tie.
-  ///
-  /// Whisper Medium / Large are superseded by Large v3 Turbo too, but that is already handled by
-  /// `isSelectableForDictation`, which deliberately keeps a downloaded copy offered.
-  var pickerSupersededBy: TranscriptionModel? {
-    switch self {
-    case .gemini37Flash: return .gemini38Flash
-    default: return nil
-    }
-  }
+  var pickerSupersededBy: TranscriptionModel? { nil }
 
   var pickerSetupBadge: String? {
     switch provider {
@@ -257,14 +245,13 @@ extension TranscriptionModel: PickerCuratedModel {
 extension PromptModel: PickerCuratedModel {
   /// Only the Gemini tiers are ranked: they are the ones measured against each other in the app's
   /// own request shape (Flash-Lite runs `thinkingLevel: minimal`, Flash cannot go below `low`;
-  /// audio latency 968 / 973 / 1286 / 1822 ms in `plans/model-audits/2026-10-03-audit.md`).
+  /// audio latency 968 / 973 / 1286 ms in `plans/model-audits/2026-10-03-audit.md`).
   /// Other providers have no comparable measurement, so none is called fastest on a guess.
   var pickerSpeedRank: Int? {
     switch self {
     case .gemini31FlashLite: return 1
     case .gemini35FlashLite: return 2
     case .gemini38Flash: return 3
-    case .gemini37Flash: return 4
     default: return nil
     }
   }
