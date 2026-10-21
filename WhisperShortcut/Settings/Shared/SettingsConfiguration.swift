@@ -14,6 +14,9 @@ enum ChatModelProvider: String, CaseIterable {
   /// OpenRouter on the user's OpenRouter account (the key from Settings → Accounts). The model
   /// slug is read from `OpenRouterChatPreferences`.
   case openRouter
+  /// The user's ChatGPT Plus/Pro plan via "Sign in with ChatGPT" (Responses API, no API key).
+  /// Direct-download build only; the model slug is read from `ChatGPTPlanPreferences`.
+  case chatGPTPlan
   /// Local OpenAI-compatible server (Ollama / LM Studio). No API key; endpoint + model id are
   /// read from UserDefaults via `LocalLLMPreferences`. Runs fully on the user's machine.
   case local
@@ -34,6 +37,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .anthropic: return .claudeSonnet55
     case .customOpenAI: return .customOpenAIEndpoint
     case .openRouter: return .openRouterChat
+    case .chatGPTPlan: return .chatGPTPlanChat
     case .local:  return .localModel
     case .localMLX: return .localMLXQwen34BInstruct
     }
@@ -48,6 +52,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .anthropic: return "Claude"
     case .customOpenAI: return "Custom endpoint"
     case .openRouter: return "OpenRouter"
+    case .chatGPTPlan: return "ChatGPT plan"
     case .local: return "Local server"
     case .localMLX: return "On this Mac"
     }
@@ -64,6 +69,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .anthropic: return "claude"
     case .customOpenAI: return "custom"
     case .openRouter: return "openrouter"
+    case .chatGPTPlan: return "chatgpt"
     case .local:  return "local"
     case .localMLX: return "mlx"
     }
@@ -160,6 +166,9 @@ enum PromptModel: String, CaseIterable {
   case customOpenAIEndpoint = "custom-openai-endpoint"
   // Stable sentinel — the slug sent to OpenRouter is read from `OpenRouterChatPreferences.modelID`.
   case openRouterChat = "openrouter-chat"
+  // Stable sentinel — the slug sent to the Responses API is read from `ChatGPTPlanPreferences.modelID`.
+  // Direct-download build only (see `ChatGPTPlanPreferences.isAvailableInThisBuild`).
+  case chatGPTPlanChat = "chatgpt-plan-chat"
 
   // Anthropic Claude (Messages API). Chat-only — no Dictate Prompt / TTS wiring.
   // Model IDs: https://platform.claude.com/docs/en/about-claude/models/overview (verified 2026-07).
@@ -248,6 +257,8 @@ enum PromptModel: String, CaseIterable {
       return "Custom endpoint"
     case .openRouterChat:
       return OpenRouterChatPreferences.shortModelName
+    case .chatGPTPlanChat:
+      return ChatGPTPlanPreferences.displayName
     case .localModel:
       return "Local Server (Ollama / LM Studio)"
     case .localMLXQwen34BInstruct:
@@ -285,6 +296,7 @@ enum PromptModel: String, CaseIterable {
     case .claudeOpus55:      return "claudeopus55"
     case .customOpenAIEndpoint: return "custom"
     case .openRouterChat:    return "openrouter"
+    case .chatGPTPlanChat:   return "chatgpt"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
     case .localMLXQwen359B: return "mlx9b"
@@ -329,6 +341,8 @@ enum PromptModel: String, CaseIterable {
       return "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search"
     case .openRouterChat:
       return "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search"
+    case .chatGPTPlanChat:
+      return "Chat on your ChatGPT Plus or Pro plan, no API key • Sign in under Settings → Accounts • Text + images • No web search or tools yet"
     case .localModel:
       return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
     case .localMLXQwen34BInstruct:
@@ -346,7 +360,7 @@ enum PromptModel: String, CaseIterable {
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,
-         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .localModel, .claudeHaiku55:
+         .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
       return "Low"
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return "Free (Offline)"
@@ -381,6 +395,8 @@ enum PromptModel: String, CaseIterable {
       return .customOpenAI
     case .openRouterChat:
       return .openRouter
+    case .chatGPTPlanChat:
+      return .chatGPTPlan
     case .localModel:
       return .local
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
@@ -446,6 +462,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .openRouter: return OpenRouterChatPreferences.isConfigured
+    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server and in-process MLX need no API key — reachability is checked at request time.
@@ -469,6 +486,7 @@ enum PromptModel: String, CaseIterable {
     case .openai: return "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt."
     case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .openRouter: return "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
+    case .chatGPTPlan: return "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
     case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
     case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
@@ -503,6 +521,9 @@ enum PromptModel: String, CaseIterable {
       return false
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
       return true
+    // Not offered at all in the App Store build (OpenAI approval pending).
+    case .chatGPTPlanChat:
+      return ChatGPTPlanPreferences.isAvailableInThisBuild
     default:
       return true
     }
@@ -566,7 +587,7 @@ enum PromptModel: String, CaseIterable {
     case .grok43, .grok47,
          .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil
     }
   }
@@ -609,7 +630,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .openRouterChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -623,7 +644,7 @@ enum PromptModel: String, CaseIterable {
   ///   the Responses API path doesn't apply.
   var supportsGrounding: Bool {
     switch self {
-    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .localModel,
+    case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
          .localMLXQwen34BInstruct, .localMLXQwen359B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
@@ -676,7 +697,7 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAI:
       guard let base = OpenAIChatPreferences.customEndpointBaseURL else { return false }
       return OfflineMode.allows(URL(string: base))
-    case .gemini, .openai, .grok, .anthropic, .openRouter:
+    case .gemini, .openai, .grok, .anthropic, .openRouter, .chatGPTPlan:
       return false
     }
   }
@@ -1527,6 +1548,64 @@ enum ReadAloudPreferences {
       return model.defaultVoice
     }
     return stored
+  }
+}
+
+// MARK: - ChatGPT Plan Preferences
+/// Settings for the **ChatGPT plan** chat model (`PromptModel.chatGPTPlanChat`): chat on the user's
+/// ChatGPT Plus/Pro plan via the Responses API. "Configured" means signed in *and* the plan scope
+/// was granted; there is no API key. Direct-download build only — under `APP_STORE` nothing here
+/// ever reports configured, so no picker, offer or reconciler can reach the model.
+enum ChatGPTPlanPreferences {
+  static let sentinelModelRawValue = PromptModel.chatGPTPlanChat.rawValue
+
+  /// Fallback slug until the account's model catalog has been fetched.
+  static let fallbackModelID = "gpt-6-sol"
+
+  /// False in the App Store build: OpenAI requires approval before a paid app may offer this.
+  static var isAvailableInThisBuild: Bool {
+    #if APP_STORE
+      return false
+    #else
+      return true
+    #endif
+  }
+
+  static func isChatGPTPlanModel(_ model: String) -> Bool {
+    model == sentinelModelRawValue
+  }
+
+  /// Slug sent to the Responses API: the saved choice, else the first catalog entry, else
+  /// `fallbackModelID`.
+  static var modelID: String {
+    let saved = (UserDefaults.standard.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !saved.isEmpty { return saved }
+    return ChatGPTPlanModelCatalog.cachedModels().first?.slug ?? fallbackModelID
+  }
+
+  static func setModelID(_ slug: String) {
+    UserDefaults.standard.set(slug, forKey: UserDefaultsKeys.chatGPTPlanModelID)
+  }
+
+  /// Name of the selected model for the composer chip and pickers: the catalog's `display_name`,
+  /// the slug when the catalog has no entry for it.
+  static var displayName: String {
+    let id = modelID
+    return ChatGPTPlanModelCatalog.cachedModels().first(where: { $0.slug == id })?.displayName ?? id
+  }
+
+  /// Signed in AND the `chatgpt.tokens.use.direct` scope was granted. Reads the Keychain record
+  /// (memoized by `KeychainManager`), so it is cheap enough for view bodies.
+  static var isConfigured: Bool {
+    guard isAvailableInThisBuild else { return false }
+    return isConfigured(for: ChatGPTPlanCredentials.load())
+  }
+
+  /// Tokens too: sign-out and terminal refresh errors keep the scopes but drop the tokens.
+  static func isConfigured(for credentials: ChatGPTPlanCredentials?) -> Bool {
+    guard let credentials else { return false }
+    return credentials.planEnabled && credentials.hasTokens
   }
 }
 

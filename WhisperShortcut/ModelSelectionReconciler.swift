@@ -27,6 +27,7 @@ enum ModelSelectionReconciler {
     case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
     case .customOpenAI: return OpenAIChatPreferences.isConfigured
     case .openRouter: return OpenRouterChatPreferences.isConfigured
+    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
     case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
     case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
     // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
@@ -503,7 +504,7 @@ enum ModelSelectionReconciler {
     case .openai: return .openAIGPTTranscribe
     case .grok: return .xaiTranscribe
     // OpenRouter is in `providerPreference` for chat slots only; the rest are never substitutes.
-    case .local, .localMLX, .customOpenAI, .openRouter, .anthropic: return nil
+    case .local, .localMLX, .customOpenAI, .openRouter, .chatGPTPlan, .anthropic: return nil
     }
   }
 

@@ -237,7 +237,7 @@ class ContextDerivation {
         audioAttachments: audioAttachments,
         credential: credential
       )
-    case .openai, .grok, .anthropic, .local, .localMLX, .customOpenAI, .openRouter:
+    case .openai, .grok, .anthropic, .local, .localMLX, .customOpenAI, .openRouter, .chatGPTPlan:
       analysisResult = try await callTextModelForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,

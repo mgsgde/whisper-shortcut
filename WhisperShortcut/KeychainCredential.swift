@@ -27,6 +27,10 @@ enum KeychainCredential: String, CaseIterable {
   case customTranscriptionHeaders = "custom-transcription-headers"
   case customOpenAIChatAPIKey = "custom-openai-chat-api-key"
   case openRouter = "openrouter-api-key"
+  /// One JSON record (`ChatGPTPlanCredentials`) holding the ChatGPT-plan OAuth tokens. **Not an API
+  /// key**: no environment-variable fallback, and it must never be treated as one (key fields,
+  /// validation, "has any key" checks).
+  case chatGPTPlan = "chatgpt-plan-credentials"
 
   /// Keychain account name this credential is stored under.
   var accountName: String { rawValue }

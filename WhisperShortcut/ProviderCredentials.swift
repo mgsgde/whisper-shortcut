@@ -92,6 +92,7 @@ enum ProviderCredentials {
   /// this replaces.
   static var anyChatCredentialConfigured: Bool {
     ChatModelProvider.allCases.contains { $0.requiresUserSuppliedCredential && $0.hasCredential }
+      || ChatGPTPlanPreferences.isConfigured
   }
 }
 
@@ -110,6 +111,9 @@ extension ChatModelProvider {
     case gemini
     /// Configured by endpoint (URL + optional key), not by a key alone.
     case endpoint
+    /// Signed in with ChatGPT (`ChatGPTPlanCredentials`). **Not an API key**: it is an OAuth session,
+    /// so it is excluded from `requiresUserSuppliedCredential` and from every key field/validation.
+    case chatGPTPlan
     /// Nothing to configure — reachability surfaces at request time.
     case none
   }
@@ -122,6 +126,7 @@ extension ChatModelProvider {
     case .anthropic: return .key(.anthropic)
     case .customOpenAI: return .endpoint
     case .openRouter: return .key(.openRouter)
+    case .chatGPTPlan: return .chatGPTPlan
     case .local, .localMLX: return .none
     }
   }
@@ -132,6 +137,7 @@ extension ChatModelProvider {
     case .key(let kind): return kind.hasStoredKey
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .endpoint: return OpenAIChatPreferences.isConfigured
+    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
     case .none: return true
     }
   }
@@ -147,6 +153,8 @@ extension ChatModelProvider {
       return "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models."
     case .endpoint:
       return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
+    case .chatGPTPlan:
+      return "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan."
     case .none:
       return ""
     }
@@ -157,7 +165,7 @@ extension ChatModelProvider {
   var requiresUserSuppliedCredential: Bool {
     switch credentialRequirement {
     case .key, .gemini: return true
-    case .endpoint, .none: return false
+    case .endpoint, .chatGPTPlan, .none: return false
     }
   }
 }

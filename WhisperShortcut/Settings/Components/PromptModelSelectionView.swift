@@ -201,6 +201,7 @@ struct PromptModelSelectionView: View {
       (.grok, "bolt.fill", "Grok (xAI)", nil),
       (.openai, "brain", "OpenAI", nil),
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
+      (.chatGPTPlan, "person.crop.circle.badge.checkmark", "ChatGPT plan", "Your ChatGPT Plus or Pro plan · no API key"),
       (.openRouter, "arrow.triangle.branch", "OpenRouter", "Any model on your OpenRouter account"),
       (.customOpenAI, "network", "Custom endpoint", "Your own OpenAI-compatible server"),
       (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),

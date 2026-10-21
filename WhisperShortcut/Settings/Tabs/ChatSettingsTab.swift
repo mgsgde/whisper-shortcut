@@ -19,6 +19,9 @@ struct ChatSettingsTab: View {
       case .customOpenAI:
         SpacedSectionDivider()
         CustomOpenAIChatEndpointSection()
+      case .chatGPTPlan:
+        SpacedSectionDivider()
+        ChatGPTPlanChatModelSection()
       default:
         EmptyView()
       }
