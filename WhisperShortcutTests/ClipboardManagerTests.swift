@@ -33,6 +33,38 @@ struct ClipboardManagerTests {
     #expect(!manager.restorePendingSnapshot())
     #expect(manager.getClipboardText() == "user copied this")
   }
+
+  @Test("Restore after another app's copy (Read Aloud selection) puts the snapshot back")
+  func restoreAfterForeignWrite() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("original", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    pasteboard.clearContents()  // the synthetic ⌘C, written by the frontmost app
+    pasteboard.setString("selected text", forType: .string)
+    #expect(manager.getClipboardText() == "selected text")
+    #expect(manager.restorePendingSnapshot(afterForeignWriteAt: pasteboard.changeCount))
+    #expect(manager.getClipboardText() == "original")
+  }
+
+  @Test("Foreign-write restore is skipped when something wrote after the selection was read")
+  func skipForeignRestoreWhenChanged() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("original", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    pasteboard.clearContents()
+    pasteboard.setString("selected text", forType: .string)
+    let consumed = pasteboard.changeCount
+    pasteboard.clearContents()
+    pasteboard.setString("user copied this", forType: .string)
+    #expect(!manager.restorePendingSnapshot(afterForeignWriteAt: consumed))
+    #expect(manager.getClipboardText() == "user copied this")
+  }
 }
 
 /// The App Store clipboard path tells the user's copies from the app's own writes by this value.
