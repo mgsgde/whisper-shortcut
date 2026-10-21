@@ -38,9 +38,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     let id = proposal.id
     let view = SmartImprovementReviewView(
       focusDisplayName: Self.title(for: proposal),
-      originalText: proposal.previousContent ?? "",
+      originalText: Self.baseline(for: proposal),
       suggestedText: proposal.proposedContent ?? "",
-      rationale: proposal.rationale,
+      rationale: Self.rationale(for: proposal),
       section: proposal.section.flatMap(SystemPromptSection.init(rawValue:)),
       titlePrefix: "Suggested by an AI app",
       cancelTitle: "Decline",
@@ -109,6 +109,36 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   }
 
   // MARK: - Names
+
+  /// What the change replaces. A section the user never customized runs on the built-in default,
+  /// so that is what the diff compares against, not an empty text.
+  static func baseline(for proposal: MCPProposal) -> String {
+    if let previous = proposal.previousContent, !previous.isEmpty { return previous }
+    guard proposal.kind == .systemPrompt,
+      let section = proposal.section.flatMap(SystemPromptSection.init(rawValue:))
+    else { return "" }
+    switch section {
+    case .dictation: return AppConstants.defaultTranscriptionSystemPrompt
+    case .whisperGlossary: return AppConstants.defaultWhisperGlossary
+    case .promptMode: return AppConstants.defaultPromptModeSystemPrompt
+    case .chat: return AppConstants.defaultChatSystemPrompt
+    case .readAloudRewrite: return AppConstants.defaultReadAloudRewritePrompt
+    }
+  }
+
+  /// A saved command also sets where it appears and its button label; Accept applies those too,
+  /// so they belong next to the reason.
+  static func rationale(for proposal: MCPProposal) -> String {
+    guard proposal.kind == .saveCommand else { return proposal.rationale }
+    var details: [String] = []
+    if let scope = proposal.commandScope, !scope.isEmpty { details.append("Appears in: \(scope)") }
+    if let label = proposal.commandLabel, !label.isEmpty { details.append("Button: \(label)") }
+    if let description = proposal.commandDescription, !description.isEmpty {
+      details.append("Description: \(description)")
+    }
+    guard !details.isEmpty else { return proposal.rationale }
+    return proposal.rationale + "\n\n" + details.joined(separator: "\n")
+  }
 
   static func noun(for proposal: MCPProposal) -> String {
     switch proposal.kind {
