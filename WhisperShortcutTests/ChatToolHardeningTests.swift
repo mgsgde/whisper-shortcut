@@ -93,4 +93,18 @@ struct ChatToolHardeningTests {
       name: "edit_text_file", args: ["path": "a.txt", "find": "a", "replace": "b"])
     #expect(!one.contains("all occurrences"))
   }
+
+  // MARK: read_text_file truncation
+
+  @Test func truncationDropsSplitUTF8Sequence() {
+    let full = Data("aä€😀".utf8)  // 1 + 2 + 3 + 4 bytes
+    for cut in 1..<full.count {
+      let trimmed = WorkspaceFileTools.droppingIncompleteUTF8Tail(Data(full.prefix(cut)))
+      #expect(String(data: trimmed, encoding: .utf8) != nil, "cut at \(cut)")
+    }
+    #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(Data(full.prefix(2))) == Data("a".utf8))
+    #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(Data(full.prefix(3))) == Data("aä".utf8))
+    #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(full) == full)
+    #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(Data()).isEmpty)
+  }
 }
