@@ -2492,14 +2492,21 @@ class ChatViewModel: ObservableObject {
   /// Restores the most recently closed tab and switches to it. No-op if the
   /// undo buffer is empty.
   func reopenLastClosedTab() {
-    guard let s = recentlyClosedSessions.popLast() else {
+    guard let snapshot = recentlyClosedSessions.popLast() else {
       DebugLogger.log("GEMINI-CHAT: reopenLastClosedTab — buffer empty")
       return
     }
-    store.save(s)
-    store.switchToSession(id: s.id)
+    if store.session(by: snapshot.id) != nil {
+      // A later save may have updated the stored session after the tab was closed.
+      // Un-archive that copy; do not write the stale snapshot back over it.
+      store.restoreSession(id: snapshot.id)
+      store.switchToSession(id: snapshot.id)
+    } else {
+      store.save(snapshot)
+      store.switchToSession(id: snapshot.id)
+    }
     switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
+    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(snapshot.id)")
   }
 
   // MARK: - Search
@@ -3006,6 +3013,8 @@ class ChatViewModel: ObservableObject {
     // gated call of the same turn wait on a card that can no longer be shown.
     sendTasks[id]?.cancel()
     chatWideApprovals.removeValue(forKey: id)
+    messageQueue.removeAll { $0.sessionId == id }
+    recentlyClosedSessions.removeAll { $0.id == id }
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
