@@ -1257,6 +1257,12 @@ class ChatViewModel: ObservableObject {
   private func confirmToolCall(
     name: String, summary: String, sessionId: UUID, requestId: UUID
   ) async -> Bool {
+    let stored = store.session(by: sessionId)
+    if stored == nil || stored?.archived == true {
+      let why = stored == nil ? "gone" : "archived"
+      DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) denied — chat \(sessionId) is \(why)")
+      return false
+    }
     if chatWideApprovals[sessionId]?.contains(name) == true {
       DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) allowed for this chat")
       return true
