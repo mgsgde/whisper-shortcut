@@ -24,7 +24,16 @@ struct AccountsSettingsTab: View {
         subtitle: "Connect at least one. Every feature then lets you pick a model from the providers connected here. Offline models need none of this."
       )
 
-      // First because it is the shortest path: one sign-in, every model, no key to paste.
+      #if !APP_STORE
+      // First: most people already pay for ChatGPT, so this is a sign-in with no new bill. Not in
+      // the App Store build — OpenAI's self-serve flow is for open-source apps, the paid build
+      // needs OpenAI's approval first.
+      ChatGPTPlanConnectionSection()
+
+      SpacedSectionDivider()
+      #endif
+
+      // The shortest path to every model: one sign-in, no key to paste.
       OpenRouterConnectionSection()
 
       SpacedSectionDivider()

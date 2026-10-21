@@ -207,6 +207,8 @@ enum UserDefaultsKeys {
   static let chatGPTPlanModelCatalog = "chatGPTPlanModelCatalog"
   /// Stable `urn:uuid:` host identifier sent as `ext_agent_host_id`. Opaque, not user-identifying.
   static let chatGPTPlanHostID = "chatGPTPlanHostID"
+  /// Set once the "You're using your ChatGPT plan" notice was shown after the first sign-in.
+  static let chatGPTPlanFirstUseNoticeShown = "chatGPTPlanFirstUseNoticeShown"
 
   // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenInference, Azure, Vertex, LiteLLM, self-hosted)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
