@@ -207,7 +207,7 @@ class MenuBarController: NSObject {
       // recording during playback, whose state must not be clobbered. The feedback state
       // auto-resets to idle via the `appState` didSet.
       if case .speaking = self.appState {
-        self.appState = self.appState.showSuccess("Audio playback completed")
+        self.appState = self.appState.showSuccess(String(localized: "Audio playback completed"))
       } else {
         // A dictation during playback already moved `appState` on, so no state change will
         // repaint the pill — without this the finished transport stays on screen at 100 %.
@@ -343,12 +343,12 @@ class MenuBarController: NSObject {
   /// the icon alone would read as "the meeting stopped and I am dictating instead".
   private var presentedStatusText: String {
     if let segment = activeMeetingSegment {
-      let what = segment == .dictation ? "Dictating" : "Recording AI prompt"
+      let what = segment == .dictation ? String(localized: "Dictating") : String(localized: "Recording AI prompt")
       return meetingSegmentIsProcessing
-        ? "⏳ Processing — meeting still recording"
-        : "\(presentedState.icon) \(what) — meeting still recording"
+        ? String(localized: "⏳ Processing — meeting still recording")
+        : String(localized: "\(presentedState.icon) \(what) — meeting still recording")
     }
-    if meetingIsFinishing { return "⏳ Finishing meeting — saving the last seconds…" }
+    if meetingIsFinishing { return String(localized: "⏳ Finishing meeting — saving the last seconds…") }
     return appState.statusText
   }
 
@@ -417,7 +417,7 @@ class MenuBarController: NSObject {
     menu.addItem(NSMenuItem.separator())
 
     let finishSetupItem = createMenuItem(
-      "Finish setup…", action: #selector(showWelcomeTour), tag: .finishSetup)
+      String(localized: "Finish setup…"), action: #selector(showWelcomeTour), tag: .finishSetup)
     menu.addItem(finishSetupItem)
     let finishSetupSeparator = NSMenuItem.separator()
     finishSetupSeparator.tag = MenuTag.finishSetupSeparator.rawValue
@@ -425,12 +425,12 @@ class MenuBarController: NSObject {
 
     // Changes an AI app proposed over MCP; hidden while nothing waits.
     let proposalsItem = createMenuItem(
-      "Review Changes from AI Apps…", action: #selector(showAIAppProposals), tag: .aiAppProposals)
+      String(localized: "Review Changes from AI Apps…"), action: #selector(showAIAppProposals), tag: .aiAppProposals)
     proposalsItem.isHidden = true
     menu.addItem(proposalsItem)
 
     // Central stop button — visible only when any operation is active
-    let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
+    let stopItem = createMenuItem(String(localized: "Stop"), action: #selector(stopCurrentOperation), tag: .stop)
     menu.addItem(stopItem)
     let stopSeparator = NSMenuItem.separator()
     stopSeparator.tag = MenuTag.stopSeparator.rawValue
@@ -447,26 +447,26 @@ class MenuBarController: NSObject {
     // fresh install doesn't show two dead entries.
     menu.addItem(
       createMenuItem(
-        "Copy Last Transcription", action: #selector(copyLastTranscription),
+        String(localized: "Copy Last Transcription"), action: #selector(copyLastTranscription),
         tag: .copyLastTranscription))
     let recentItem = createMenuItem(
-      "Recent Transcriptions", action: nil, tag: .recentTranscriptions)
+      String(localized: "Recent Transcriptions"), action: nil, tag: .recentTranscriptions)
     recentItem.submenu = NSMenu()
     menu.addItem(recentItem)
     // Only present after a cancellation, so it reads as an undo for the action just taken
     // rather than a permanent row nobody has a use for.
     menu.addItem(
       createMenuItem(
-        "Transcribe Cancelled Recording", action: #selector(transcribeCancelledRecording),
+        String(localized: "Transcribe Cancelled Recording"), action: #selector(transcribeCancelledRecording),
         tag: .transcribeCancelledRecording))
     // Only present while a meeting has audio that failed to transcribe (e.g. recorded offline).
     // Holding ⌥ swaps it for the folder the audio is kept in.
     menu.addItem(
       createMenuItem(
-        "Retry Meeting Transcription", action: #selector(retryMeetingTranscription),
+        String(localized: "Retry Meeting Transcription"), action: #selector(retryMeetingTranscription),
         tag: .retryMeetingTranscription))
     let showMeetingAudioItem = createMenuItem(
-      "Show Untranscribed Meeting Audio", action: #selector(showMeetingAudioInFinder),
+      String(localized: "Show Untranscribed Meeting Audio"), action: #selector(showMeetingAudioInFinder),
       tag: .showMeetingAudio)
     showMeetingAudioItem.isAlternate = true
     showMeetingAudioItem.keyEquivalentModifierMask = .option
@@ -489,13 +489,13 @@ class MenuBarController: NSObject {
     // Permanent way back into the tour once setup is done. While it is incomplete the
     // "Finish setup…" row at the top opens the same window, so this one hides then.
     menu.addItem(
-      createMenuItem("Welcome Tour…", action: #selector(showWelcomeTour), tag: .welcomeTour))
+      createMenuItem(String(localized: "Welcome Tour…"), action: #selector(showWelcomeTour), tag: .welcomeTour))
 
     // Feedback sits next to Settings, the macOS convention for it, and offers all three channels
     // rather than WhatsApp alone — a user without WhatsApp otherwise has no obvious way to reach
     // the developer at all. A submenu keeps this to one row: the status menu is the app's
     // most-used surface, and three permanent contact rows in it would read as nagging.
-    let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
+    let feedbackItem = createMenuItem(String(localized: "Send Feedback"), action: nil, tag: .sendFeedback)
     let feedbackMenu = NSMenu()
     for channel in FeedbackLinks.Channel.allCases {
       let item = NSMenuItem(
@@ -509,9 +509,9 @@ class MenuBarController: NSObject {
     menu.addItem(feedbackItem)
 
     menu.addItem(
-      createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: .rate))
+      createMenuItem(String(localized: "Rate WhisperShortcut"), action: #selector(rateApp), tag: .rate))
     menu.addItem(
-      createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
+      createMenuItem(String(localized: "Quit WhisperShortcut"), action: #selector(quitApp), keyEquivalent: "q"))
 
     return menu
   }
@@ -541,35 +541,35 @@ class MenuBarController: NSObject {
   private static let actionRows: [ModeRow] = {
     var rows = [
       ModeRow(
-        tag: .dictate, title: "Dictate", stopTitle: "Stop Dictate",
+        tag: .dictate, title: String(localized: "Dictate"), stopTitle: String(localized: "Stop Dictate"),
         action: #selector(toggleTranscription), shortcut: \.startRecording, mode: .dictate),
       ModeRow(
-        tag: .dictatePrompt, title: "Dictate Prompt", stopTitle: "Stop Dictate Prompt",
+        tag: .dictatePrompt, title: String(localized: "Dictate Prompt"), stopTitle: String(localized: "Stop Dictate Prompt"),
         action: #selector(togglePrompting), shortcut: \.startPrompting, mode: .dictatePrompt),
       ModeRow(
-        tag: .screenshot, title: "Screenshot", stopTitle: nil,
+        tag: .screenshot, title: String(localized: "Screenshot"), stopTitle: nil,
         action: #selector(takeScreenshot), shortcut: \.screenshotCapture, mode: nil),
     ]
     #if !APP_STORE
     rows.append(
       ModeRow(
-        tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
+        tag: .readAloud, title: String(localized: "Read Aloud"), stopTitle: String(localized: "Stop Read Aloud"),
         action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
     #endif
     #if !APP_STORE
     rows.append(
       ModeRow(
-        tag: .addToGlossary, title: "Add Selection to Glossary", stopTitle: nil,
+        tag: .addToGlossary, title: String(localized: "Add Selection to Glossary"), stopTitle: nil,
         action: #selector(addSelectionToGlossary), shortcut: \.addToGlossary, mode: nil))
     #endif
     return rows
   }()
 
   private static let chatRow = ModeRow(
-    tag: .chat, title: "Chat", stopTitle: nil,
+    tag: .chat, title: String(localized: "Chat"), stopTitle: nil,
     action: #selector(openChatWindow), shortcut: \.openChat, mode: nil)
   private static let settingsRow = ModeRow(
-    tag: .settings, title: "Settings…", stopTitle: nil,
+    tag: .settings, title: String(localized: "Settings…"), stopTitle: nil,
     action: #selector(openConfigurationPanel), shortcut: \.openSettings, mode: nil)
 
   private func makeItem(_ row: ModeRow) -> NSMenuItem {
@@ -1018,7 +1018,7 @@ class MenuBarController: NSObject {
     if case .processing(.processingChunks(let statuses, _)) = presentedState {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
-      button.toolTip = "Transcribing [\(done)/\(statuses.count)] - \(active) active"
+      button.toolTip = String(localized: "Transcribing [\(done)/\(statuses.count)] - \(active) active")
     } else if activeMeetingSegment != nil || meetingIsFinishing {
       button.toolTip = presentedStatusText
     } else {
@@ -1081,7 +1081,7 @@ class MenuBarController: NSObject {
     if let proposalsItem = menu.item(withTag: MenuTag.aiAppProposals.rawValue) {
       proposalsItem.isHidden = pendingProposals == 0
       proposalsItem.title = pendingProposals > 1
-        ? "Review \(pendingProposals) Changes from AI Apps…" : "Review Change from AI App…"
+        ? String(localized: "Review \(pendingProposals) Changes from AI Apps…") : String(localized: "Review Change from AI App…")
     }
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
@@ -1129,7 +1129,7 @@ class MenuBarController: NSObject {
       button.image = nil
       button.title = "⚠️"
       applyDevBadge(to: button)
-      button.toolTip = "Add an API key or use an offline model - click to configure"
+      button.toolTip = String(localized: "Add an API key or use an offline model - click to configure")
     }
   }
 
@@ -1178,12 +1178,13 @@ class MenuBarController: NSObject {
     retryItem?.isHidden = count == 0 && !retrying
     showItem?.isHidden = count == 0
     retryItem?.isEnabled = !retrying
+    let partsLabel = count == 1 ? String(localized: "1 part") : String(localized: "\(count) parts")
     retryItem?.title =
       retrying
-      ? "Retrying Meeting Transcription…"
-      : "Retry Meeting Transcription (\(count == 1 ? "1 part" : "\(count) parts"))"
+      ? String(localized: "Retrying Meeting Transcription…")
+      : String(localized: "Retry Meeting Transcription (\(partsLabel))")
     retryItem?.toolTip =
-      "Audio from a meeting that couldn't be transcribed (for example while offline) is kept on this Mac until it is."
+      String(localized: "Audio from a meeting that couldn't be transcribed (for example while offline) is kept on this Mac until it is.")
   }
 
   @objc private func retryMeetingTranscription() {
@@ -1232,7 +1233,7 @@ class MenuBarController: NSObject {
     // Only surface the pill from idle — a recording or playback in progress owns the menu bar and
     // must not be overwritten by a confirmation.
     if case .idle = appState {
-      appState = appState.showSuccess("Transcription copied — press ⌘V to paste")
+      appState = appState.showSuccess(String(localized: "Transcription copied — press ⌘V to paste"))
     }
   }
 
@@ -1380,7 +1381,7 @@ class MenuBarController: NSObject {
   private func presentBlocked(_ reason: BlockReason) {
     switch reason {
     case .busy:
-      PopupNotificationWindow.showInfo("Busy – wait for the current run to finish.", title: "Busy")
+      PopupNotificationWindow.showInfo(String(localized: "Busy – wait for the current run to finish."), title: String(localized: "Busy"))
     case .missingCredential(.transcription):
       let model = TranscriptionModel.loadSelected()
       PopupNotificationWindow.showError(model.apiKeyRequiredMessage, title: model.credentialRequiredTitle)
@@ -1389,20 +1390,20 @@ class MenuBarController: NSObject {
       PopupNotificationWindow.showError(model.apiKeyRequiredMessage, title: model.credentialRequiredTitle)
     case .missingCredential(.prompt):
       PopupNotificationWindow.showError(
-        Self.selectedPromptModel().apiKeyRequiredMessageForDictatePrompt, title: "API Key Required")
+        Self.selectedPromptModel().apiKeyRequiredMessageForDictatePrompt, title: String(localized: "API Key Required"))
     case .missingCredential(.improvement):
       PopupNotificationWindow.showError(
         Self.selectedImprovementModel().apiKeyRequiredMessageForDictatePrompt,
-        title: "API Key Required")
+        title: String(localized: "API Key Required"))
     case .missingCredential(.readAloud):
       PopupNotificationWindow.showError(
-        ReadAloudPreferences.model.apiKeyRequiredMessage, title: "API Key Required")
+        ReadAloudPreferences.model.apiKeyRequiredMessage, title: String(localized: "API Key Required"))
     case .offlineModeReadAloud:
-      PopupNotificationWindow.showError(OfflineMode.blockedMessageForReadAloud, title: "Read Aloud")
+      PopupNotificationWindow.showError(OfflineMode.blockedMessageForReadAloud, title: String(localized: "Read Aloud"))
     case .meetingWhileBusy:
       PopupNotificationWindow.showInfo(
-        "Finish the current recording or Read Aloud first, then start the meeting again.",
-        title: "Meeting Not Started", customDisplayDuration: 5)
+        String(localized: "Finish the current recording or Read Aloud first, then start the meeting again."),
+        title: String(localized: "Meeting Not Started"), customDisplayDuration: 5)
     }
   }
 
@@ -1601,7 +1602,7 @@ class MenuBarController: NSObject {
     }
     guard case .idle = appState else {
       PopupNotificationWindow.showInfo(
-        "Finish the current recording first, then try again.", title: "Busy")
+        String(localized: "Finish the current recording first, then try again."), title: String(localized: "Busy"))
       return
     }
     DebugLogger.log("CANCELLATION: Re-transcribing cancelled recording \(url.lastPathComponent)")
@@ -1745,8 +1746,8 @@ class MenuBarController: NSObject {
         DebugLogger.log("LIVE-MEETING-MARKER: Resuming interrupted meeting \(stem)")
         if self.resumeMeeting(stem: stem) {
           PopupNotificationWindow.showInfo(
-            "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing.",
-            title: "Meeting Recording Resumed", customDisplayDuration: 8)
+            String(localized: "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing."),
+            title: String(localized: "Meeting Recording Resumed"), customDisplayDuration: 8)
         } else {
           DebugLogger.logWarning("LIVE-MEETING-MARKER: Could not resume \(stem), notifying instead")
           self.showMeetingInterruptedNotice()
@@ -1760,8 +1761,8 @@ class MenuBarController: NSObject {
 
   private func showMeetingInterruptedNotice() {
     PopupNotificationWindow.showInfo(
-      "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume.",
-      title: "Meeting Recording Interrupted", customDisplayDuration: 10)
+      String(localized: "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume."),
+      title: String(localized: "Meeting Recording Interrupted"), customDisplayDuration: 10)
   }
 
   /// Rehydrates the live store from disk (as the Resume button does) and restarts recording.
@@ -1848,7 +1849,7 @@ class MenuBarController: NSObject {
     message: String? = nil,
     dismissProcessingFirst: Bool = true,
     retryAction: (() -> Void)? = nil,
-    retryActionTitle: String = "Retry",
+    retryActionTitle: String = String(localized: "Retry"),
     dismissAction: (() -> Void)? = nil,
     topUpURL: URL? = nil
   ) {
@@ -1897,8 +1898,8 @@ class MenuBarController: NSObject {
         self.cleanupAudioFile(at: audioURL)
         self.appState = self.appState.finish()
         PopupNotificationWindow.showInfo(
-          "Nothing to transcribe. Check the microphone and try again.",
-          title: "Didn't catch that",
+          String(localized: "Nothing to transcribe. Check the microphone and try again."),
+          title: String(localized: "Didn't catch that"),
           customDisplayDuration: Self.noSpeechInfoDuration
         )
         return
@@ -1920,9 +1921,9 @@ class MenuBarController: NSObject {
         transcriptionError = nil
         let operationName: String
         switch mode {
-        case .transcription: operationName = "Transcription"
-        case .prompt: operationName = "Prompt"
-        case .liveMeeting: operationName = "Live meeting"
+        case .transcription: operationName = String(localized: "Transcription")
+        case .prompt: operationName = String(localized: "Prompt")
+        case .liveMeeting: operationName = String(localized: "Live meeting")
         }
         shortTitle = "\(operationName) Error"
         errorMessage = SpeechErrorFormatter.formatForUser(error)
@@ -1950,7 +1951,7 @@ class MenuBarController: NSObject {
           guard !self.appState.isBusy else {
             DebugLogger.logWarning("RETRY: Ignored — another run is in progress (\(self.appState))")
             PopupNotificationWindow.showInfo(
-              "Finish the current recording first, then try again.", title: "Busy")
+              String(localized: "Finish the current recording first, then try again."), title: String(localized: "Busy"))
             return
           }
           // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
@@ -2257,7 +2258,7 @@ class MenuBarController: NSObject {
     let spec = AudioJobSpec(
       mode: .transcription,
       logLabel: "Transcription",
-      errorTitle: "Transcription Error",
+      errorTitle: String(localized: "Transcription Error"),
       modelInfo: { await self.speechService.getTranscriptionModelInfo() },
       copyResult: { self.clipboardManager.copyTranscriptionToClipboard(text: $0) },
       presentResult: { text, info, title in
@@ -2267,7 +2268,7 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.showTranscriptionResponse(text, modelInfo: info)
         }
       },
-      successMessage: { $0 ? "Transcription copied to clipboard" : PasteTargetPolicy.copiedHint },
+      successMessage: { $0 ? String(localized: "Transcription copied to clipboard") : PasteTargetPolicy.copiedHint },
       dismissesProcessingBeforeResult: true,
       cancelsViaTransitionToIdle: true)
 
@@ -2334,7 +2335,7 @@ class MenuBarController: NSObject {
     var spec = AudioJobSpec(
       mode: .prompt,
       logLabel: "Prompt",
-      errorTitle: "Dictate Prompt Error",
+      errorTitle: String(localized: "Dictate Prompt Error"),
       modelInfo: { self.speechService.getPromptModelInfo() },
       copyResult: { self.clipboardManager.copyToClipboard(text: $0) },
       presentResult: { text, info, title in
@@ -2346,7 +2347,7 @@ class MenuBarController: NSObject {
           PopupNotificationWindow.showPromptResponse(text, modelInfo: info)
         }
       },
-      successMessage: { $0 ? "AI response copied to clipboard" : PasteTargetPolicy.copiedHint })
+      successMessage: { $0 ? String(localized: "AI response copied to clipboard") : PasteTargetPolicy.copiedHint })
     spec.resultNeedsPopup = { !undictatedWords.isEmpty }
 
     await runAudioJob(
@@ -2463,8 +2464,8 @@ class MenuBarController: NSObject {
     let waitSeconds = Int(ceil(waitTime))
     DebugLogger.log("MENU-BAR: Rate limit detected, showing wait notification for \(waitSeconds)s")
     PopupNotificationWindow.showProcessing(
-      "Rate limited by API. Automatically retrying in \(waitSeconds) seconds...",
-      title: "⏳ Waiting for API"
+      String(localized: "Rate limited by API. Automatically retrying in \(waitSeconds) seconds..."),
+      title: String(localized: "⏳ Waiting for API")
     )
   }
 
@@ -2798,28 +2799,26 @@ class MenuBarController: NSObject {
       DebugLogger.log("GLOSSARY: Nothing copied — no selection to add")
       self.clipboardManager.discardRestorePoint()
       PopupNotificationWindow.showInfo(
-        "Select the correctly spelled term first, then press the shortcut again.",
-        title: "Nothing Selected")
+        String(localized: "Select the correctly spelled term first, then press the shortcut again."),
+        title: String(localized: "Nothing Selected"))
     }
   }
 
   private func reportGlossaryAppend(_ result: SystemPromptsStore.GlossaryAppendResult) {
     switch result {
     case .added(let term):
-      PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
+      PopupNotificationWindow.showInfo(String(localized: "\"\(term)\" added to your Glossary."), title: String(localized: "Glossary"))
     case .duplicate(let term):
-      PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
+      PopupNotificationWindow.showInfo(String(localized: "\"\(term)\" is already in your Glossary."), title: String(localized: "Glossary"))
     case .notATerm(let text):
       PopupNotificationWindow.showInfo(
-        "Select a single term — a name or a piece of jargon — not a sentence. The Glossary is a "
-          + "spelling reference, and a whole sentence in it makes every dictation worse.",
-        title: "Not a Glossary Term")
+        String(localized: "Select a single term — a name or a piece of jargon — not a sentence. The Glossary is a spelling reference, and a whole sentence in it makes every dictation worse."),
+        title: String(localized: "Not a Glossary Term"))
       DebugLogger.log("GLOSSARY: Rejected selection of \(text.count) chars")
     case .budgetExceeded(let term):
       PopupNotificationWindow.showInfo(
-        "Your Glossary is full — Whisper only reads the first ~224 tokens of it, so \"\(term)\" "
-          + "would never be used. Remove terms you no longer need in Settings → Dictate.",
-        title: "Glossary Full")
+        String(localized: "Your Glossary is full — Whisper only reads the first ~224 tokens of it, so \"\(term)\" would never be used. Remove terms you no longer need in Settings → Dictate."),
+        title: String(localized: "Glossary Full"))
     }
   }
   #endif
@@ -3188,11 +3187,11 @@ extension MenuBarController: AudioRecorderDelegate {
         // Recording has finished; leave "Recording…" before the modal would be misleading.
         self.appState = self.appState.stopRecording()
         let alert = NSAlert()
-        alert.messageText = "Long recording"
-        alert.informativeText = "This recording is \(timeStr) long. Process anyway? (API usage may incur costs.)"
+        alert.messageText = String(localized: "Long recording")
+        alert.informativeText = String(localized: "This recording is \(timeStr) long. Process anyway? (API usage may incur costs.)")
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Process")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: String(localized: "Process"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         let response = alert.runModal()
         if response != .alertFirstButtonReturn {
           DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
@@ -3236,8 +3235,8 @@ extension MenuBarController: AudioRecorderDelegate {
         self.appState = self.appState.stopRecording()
         self.appState = self.appState.finish()
         PopupNotificationWindow.showError(
-          "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut.",
-          title: "No microphone input")
+          String(localized: "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut."),
+          title: String(localized: "No microphone input"))
         return
       }
 
@@ -3269,8 +3268,8 @@ extension MenuBarController: AudioRecorderDelegate {
           self.appState = self.appState.stopRecording()
           self.appState = self.appState.finish()
           PopupNotificationWindow.showInfo(
-            "Nothing to transcribe. Check the microphone and try again.",
-            title: "Didn't catch that",
+            String(localized: "Nothing to transcribe. Check the microphone and try again."),
+            title: String(localized: "Didn't catch that"),
             customDisplayDuration: Self.noSpeechInfoDuration
           )
           return
@@ -3322,15 +3321,15 @@ extension MenuBarController: AudioRecorderDelegate {
     // privacy pane instead of leaving the user with only "Contact Support".
     if errorDomain == "WhisperShortcut" && errorCode == 1001 {
       presentError(
-        shortTitle: "Microphone Access Needed",
-        message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
+        shortTitle: String(localized: "Microphone Access Needed"),
+        message: String(localized: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut."),
         dismissProcessingFirst: false,
         retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-        retryActionTitle: "Open System Settings"
+        retryActionTitle: String(localized: "Open System Settings")
       )
       return
     }
-    presentError(shortTitle: "Recording Error", message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+    presentError(shortTitle: String(localized: "Recording Error"), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
   }
 }
 
@@ -3521,12 +3520,12 @@ extension MenuBarController: ShortcutDelegate {
   private static func showScreenRecordingPermissionError() {
     PermissionStatusChecker.requestScreenRecordingAccess()
     PopupNotificationWindow.showError(
-      "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect.",
-      title: "Screen Recording Permission Needed",
+      String(localized: "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect."),
+      title: String(localized: "Screen Recording Permission Needed"),
       retryAction: {
         SettingsManager.shared.showPrivacyPermissions()
       },
-      retryActionTitle: "Review Permissions"
+      retryActionTitle: String(localized: "Review Permissions")
     )
   }
 
@@ -3611,8 +3610,8 @@ extension MenuBarController: ShortcutDelegate {
   /// "Contact Support" button) — pressing the shortcut without selecting text is normal.
   private func showNoTextSelectedForReadAloud() {
     PopupNotificationWindow.showInfo(
-      "No text selected. Highlight text first, then press the Read Aloud shortcut.",
-      title: "Read Aloud"
+      String(localized: "No text selected. Highlight text first, then press the Read Aloud shortcut."),
+      title: String(localized: "Read Aloud")
     )
   }
 
@@ -3754,13 +3753,13 @@ extension MenuBarController: ChunkProgressDelegate {
     if showsChunkProgressPopups {
       if isTTS {
         PopupNotificationWindow.showProcessing(
-          "Splitting text into \(totalChunks) chunks...",
-          title: "Processing Long Text"
+          String(localized: "Splitting text into \(totalChunks) chunks..."),
+          title: String(localized: "Processing Long Text")
         )
       } else {
         PopupNotificationWindow.showProcessing(
-          "Splitting audio into \(totalChunks) chunks...",
-          title: "Processing Long Audio"
+          String(localized: "Splitting audio into \(totalChunks) chunks..."),
+          title: String(localized: "Processing Long Audio")
         )
       }
     }
@@ -3794,7 +3793,7 @@ extension MenuBarController: ChunkProgressDelegate {
     guard showsChunkProgressPopups else { return }
     let statusGrid = generateStatusGrid()
     PopupNotificationWindow.updateProcessing(
-      title: context == .tts ? "Synthesizing Speech" : "Processing Audio",
+      title: context == .tts ? String(localized: "Synthesizing Speech") : String(localized: "Processing Audio"),
       message: popupSuffix.map { "\(statusGrid)\n\($0)" } ?? statusGrid
     )
   }
@@ -3826,7 +3825,7 @@ extension MenuBarController: ChunkProgressDelegate {
     if willRetry {
       // Keep as active (will be re-started via chunkStarted); only the popup changes.
       DebugLogger.logWarning("CHUNK-PROGRESS: Chunk \(index) failed, retrying...")
-      updateChunkPopup(context: currentChunkContext, popupSuffix: "Retrying chunk \(index + 1)...")
+      updateChunkPopup(context: currentChunkContext, popupSuffix: String(localized: "Retrying chunk \(index + 1)..."))
       return
     }
 
@@ -3854,8 +3853,8 @@ extension MenuBarController: ChunkProgressDelegate {
     // Update processing popup with appropriate message (pill-less flows only, see chunkingStarted)
     if showsChunkProgressPopups {
       PopupNotificationWindow.updateProcessing(
-        title: "Almost Done",
-        message: isTTS ? "Merging audio chunks..." : "Merging transcription results..."
+        title: String(localized: "Almost Done"),
+        message: isTTS ? String(localized: "Merging audio chunks...") : String(localized: "Merging transcription results...")
       )
     }
 

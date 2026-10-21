@@ -149,22 +149,22 @@ struct WelcomeDictationSetupStep: View {
         choiceCard(
           .offline,
           icon: "lock.laptopcomputer",
-          title: "Offline",
-          tagline: "Private and free",
+          title: String(localized: "Offline"),
+          tagline: String(localized: "Private and free"),
           facts: [
-            "Audio never leaves this Mac",
-            "Works without internet, no account",
-            "One-time download, \(OfflineModelType.mostAccurate.estimatedSizeLabel)",
+            String(localized: "Audio never leaves this Mac"),
+            String(localized: "Works without internet, no account"),
+            String(localized: "One-time download, \(OfflineModelType.mostAccurate.estimatedSizeLabel)"),
           ])
         choiceCard(
           .cloud,
           icon: "cloud",
-          title: "Cloud",
-          tagline: "Most accurate",
+          title: String(localized: "Cloud"),
+          tagline: String(localized: "Most accurate"),
           facts: [
-            "Best accuracy, in more languages",
-            "Also powers Chat and Read Aloud",
-            "Needs one account; you pay the provider",
+            String(localized: "Best accuracy, in more languages"),
+            String(localized: "Also powers Chat and Read Aloud"),
+            String(localized: "Needs one account; you pay the provider"),
           ])
       }
 
@@ -313,11 +313,11 @@ struct WelcomeDictationSetupStep: View {
     OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
 
     OnboardingAPIKeyRow(
-      providerName: "Google Gemini",
+      providerName: String(localized: "Google Gemini"),
       placeholder: "AIza…",
       linkTitle: "aistudio.google.com/api-keys",
       linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
-      description: "Already have a Google AI Studio key? Paste it here.",
+      description: String(localized: "Already have a Google AI Studio key? Paste it here."),
       isConfigured: $hasGeminiKey,
       load: { KeychainManager.shared.get(.google) ?? "" },
       save: { KeychainManager.shared.save($0, for: .google) },
@@ -327,7 +327,7 @@ struct WelcomeDictationSetupStep: View {
     DisclosureGroup(isExpanded: $showOtherProviders) {
       VStack(spacing: 12) {
         OnboardingAPIKeyRow(
-          providerName: "OpenAI",
+          providerName: String(localized: "OpenAI"),
           placeholder: "sk-…",
           linkTitle: "platform.openai.com/api-keys",
           linkURL: URL(string: "https://platform.openai.com/api-keys")!,
@@ -337,22 +337,22 @@ struct WelcomeDictationSetupStep: View {
           recommended: false
         )
         OnboardingAPIKeyRow(
-          providerName: "Anthropic (Claude)",
+          providerName: String(localized: "Anthropic (Claude)"),
           placeholder: "sk-ant-…",
           linkTitle: "console.anthropic.com",
           linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
-          description: "Chat only — Dictate Prompt is not available with Claude.",
+          description: String(localized: "Chat only — Dictate Prompt is not available with Claude."),
           isConfigured: $hasAnthropicKey,
           load: { KeychainManager.shared.get(.anthropic) ?? "" },
           save: { KeychainManager.shared.save($0, for: .anthropic) },
           recommended: false
         )
         OnboardingAPIKeyRow(
-          providerName: "xAI (Grok)",
+          providerName: String(localized: "xAI (Grok)"),
           placeholder: "xai-…",
           linkTitle: "console.x.ai",
           linkURL: URL(string: "https://console.x.ai")!,
-          description: "Dictate Prompt is not available with Grok.",
+          description: String(localized: "Dictate Prompt is not available with Grok."),
           isConfigured: $hasXAIKey,
           load: { KeychainManager.shared.get(.xai) ?? "" },
           save: { KeychainManager.shared.save($0, for: .xai) },
@@ -408,9 +408,9 @@ struct WelcomeDictationSetupStep: View {
 
   private var pendingHint: String {
     switch choice {
-    case nil: return "Pick Offline or Cloud to continue."
-    case .offline: return "Download the offline model to continue."
-    case .cloud: return "Connect OpenRouter or save a key to continue."
+    case nil: return String(localized: "Pick Offline or Cloud to continue.")
+    case .offline: return String(localized: "Download the offline model to continue.")
+    case .cloud: return String(localized: "Connect OpenRouter or save a key to continue.")
     }
   }
 }
@@ -737,7 +737,7 @@ struct OnboardingAPIKeyRow: View {
             }
           } else {
             savedConfirmation = false
-            saveError = "Couldn't save to Keychain. Try again."
+            saveError = String(localized: "Couldn't save to Keychain. Try again.")
           }
         }
         .buttonStyle(.bordered)
@@ -980,8 +980,8 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.startRecording.displayString,
-          name: "Dictate",
-          detail: "press and start speaking — your words land as text",
+          name: String(localized: "Dictate"),
+          detail: String(localized: "press and start speaking — your words land as text"),
           requirements: [.microphone],
           needsTranscriptionModel: true))
     }
@@ -992,15 +992,15 @@ struct WelcomeDoneStep: View {
         AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
       #if APP_STORE
       let promptDetail =
-        "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
+        String(localized: "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first.")
       #else
       let promptDetail =
-        "select text, speak an instruction — the selection is rewritten in place"
+        String(localized: "select text, speak an instruction — the selection is rewritten in place")
       #endif
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.startPrompting.displayString,
-          name: "Dictate Prompt",
+          name: String(localized: "Dictate Prompt"),
           detail: promptDetail,
           requirements: [.microphone, selectionRequirement]))
     }
@@ -1008,16 +1008,16 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.screenshotCapture.displayString,
-          name: "Screenshot",
-          detail: "capture your screen straight to the clipboard or a folder",
+          name: String(localized: "Screenshot"),
+          detail: String(localized: "capture your screen straight to the clipboard or a folder"),
           requirements: [.screenRecording]))
     }
     if shortcuts.openChat.isEnabled {
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.openChat.displayString,
-          name: "Chat",
-          detail: "a full conversation window, with screenshots",
+          name: String(localized: "Chat"),
+          detail: String(localized: "a full conversation window, with screenshots"),
           requirements: []))
     }
     // Selection-based Read Aloud copies via ⌘C (Accessibility) — the feature is omitted
@@ -1027,8 +1027,8 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: shortcuts.readAloud.displayString,
-          name: "Read Aloud",
-          detail: "select text anywhere and hear it spoken",
+          name: String(localized: "Read Aloud"),
+          detail: String(localized: "select text anywhere and hear it spoken"),
           requirements: [.accessibility]))
     }
     #endif
@@ -1129,7 +1129,7 @@ struct WelcomeDoneStep: View {
         .fixedSize(horizontal: false, vertical: true)
 
       ShortcutRecorderRow(
-        label: "Dictate:",
+        label: String(localized: "Dictate:"),
         shortcut: $settingsViewModel.data.toggleDictation,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
@@ -1138,7 +1138,7 @@ struct WelcomeDoneStep: View {
         clearShortcut: settingsViewModel.clearShortcut
       )
       ShortcutRecorderRow(
-        label: "Dictate Prompt:",
+        label: String(localized: "Dictate Prompt:"),
         shortcut: $settingsViewModel.data.togglePrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
@@ -1147,7 +1147,7 @@ struct WelcomeDoneStep: View {
         clearShortcut: settingsViewModel.clearShortcut
       )
       ShortcutRecorderRow(
-        label: "Screenshot:",
+        label: String(localized: "Screenshot:"),
         shortcut: $settingsViewModel.data.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
@@ -1196,19 +1196,19 @@ struct WelcomeDoneStep: View {
   @ViewBuilder
   private func statusBadge(for feature: ShortcutFeature) -> some View {
     if feature.needsTranscriptionModel && !canTranscribe {
-      badgeContent(icon: "exclamationmark.circle.fill", color: .orange, text: "Needs a model")
+      badgeContent(icon: "exclamationmark.circle.fill", color: .orange, text: String(localized: "Needs a model"))
     } else if let missing = missingRequirement(for: feature) {
       Button {
         PermissionStatusChecker.openSystemSettings(for: missing)
       } label: {
         badgeContent(
-          icon: "xmark.circle.fill", color: .red, text: "Needs \(permissionName(missing))")
+          icon: "xmark.circle.fill", color: .red, text: String(localized: "Needs \(permissionName(missing))"))
       }
       .buttonStyle(.plain)
       .pointerCursorOnHover()
       .help("Open System Settings to grant \(permissionName(missing)) access")
     } else {
-      badgeContent(icon: "checkmark.circle.fill", color: .green, text: "Ready")
+      badgeContent(icon: "checkmark.circle.fill", color: .green, text: String(localized: "Ready"))
     }
   }
 
@@ -1240,9 +1240,9 @@ struct WelcomeDoneStep: View {
 
   private func permissionName(_ kind: PermissionKind) -> String {
     switch kind {
-    case .microphone: return "Microphone"
-    case .accessibility: return "Accessibility"
-    case .screenRecording: return "Screen Recording"
+    case .microphone: return String(localized: "Microphone")
+    case .accessibility: return String(localized: "Accessibility")
+    case .screenRecording: return String(localized: "Screen Recording")
     }
   }
 
@@ -1298,10 +1298,10 @@ struct WelcomePermissionBadge: View {
 
   private var label: String {
     switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
+    case .granted: return String(localized: "Granted")
+    case .denied: return String(localized: "Denied")
+    case .notDetermined: return String(localized: "Not requested")
+    case .notApplicable: return String(localized: "Not applicable")
     }
   }
 }

@@ -78,25 +78,25 @@ struct OfflineModelStatusView: View {
   private var title: String {
     switch phase {
     case .downloading(_, let isRetry):
-      return isRetry ? "Downloading \(model.displayName) again" : "Downloading \(model.displayName)"
+      return isRetry ? String(localized: "Downloading \(model.displayName) again") : String(localized: "Downloading \(model.displayName)")
     case .loading:
-      return "Loading \(model.displayName) into memory…"
+      return String(localized: "Loading \(model.displayName) into memory…")
     }
   }
 
   private var amount: String? {
     guard let fraction else { return nil }
-    return "\(Int(fraction * 100))% of \(model.estimatedSizeLabel)"
+    return String(localized: "\(Int(fraction * 100))% of \(model.estimatedSizeLabel)")
   }
 
   private var caption: String {
     switch phase {
     case .downloading(_, let isRetry):
       return isRetry
-        ? "The last download was incomplete. Your message is sent as soon as it's ready."
-        : "One-time download, then it runs offline. Your message is sent as soon as it's ready."
+        ? String(localized: "The last download was incomplete. Your message is sent as soon as it's ready.")
+        : String(localized: "One-time download, then it runs offline. Your message is sent as soon as it's ready.")
     case .loading:
-      return "Almost there — the reply starts once the model is loaded."
+      return String(localized: "Almost there — the reply starts once the model is loaded.")
     }
   }
 }
@@ -157,7 +157,7 @@ struct ComposerModelReadinessBadge: View {
   private func shortLabel(_ phase: ReadyPhase) -> String {
     switch phase {
     case .downloading(let fraction, _): return "\(Int(fraction * 100))%"
-    case .loading: return "Loading…"
+    case .loading: return String(localized: "Loading…")
     }
   }
 }

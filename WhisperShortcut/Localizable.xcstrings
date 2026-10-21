@@ -1,0 +1,3851 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {},
+    " " : {},
+    " +%lld more" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " +%lld weitere"
+          }
+        }
+      }
+    },
+    "\"%@\" added to your Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wurde zum Glossar hinzugefügt."
+          }
+        }
+      }
+    },
+    "\"%@\" is already in your Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ steht schon im Glossar."
+          }
+        }
+      }
+    },
+    "%@\n%@ Check these words before you save the note." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@\n%2$@ Check these words before you save the note."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@\n%@ Prüfen Sie diese Wörter, bevor Sie die Notiz speichern."
+          }
+        }
+      }
+    },
+    "%@\nBefore: %lld %@ · since: %lld %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@\nBefore: %2$lld %3$@ · since: %4$lld %5$@"
+          }
+        }
+      }
+    },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %@ — meeting still recording" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ — meeting still recording"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ %@ – Meeting wird weiter aufgenommen"
+          }
+        }
+      }
+    },
+    "%@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ / %2$@"
+          }
+        }
+      }
+    },
+    "%@ chars" : {},
+    "%@ ready — you can continue." : {},
+    "%@ · SSL, port %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · SSL, port %2$lld"
+          }
+        }
+      }
+    },
+    "%@ · signed in under Settings → Accounts" : {},
+    "%@ — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$@"
+          }
+        }
+      }
+    },
+    "%@ — loaded anyway." : {},
+    "%@ — not loaded." : {},
+    "%@: “%@”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: “%2$@”"
+          }
+        }
+      }
+    },
+    "%lld" : {},
+    "%lld %@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld %2$@%3$@"
+          }
+        }
+      }
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld von %lld"
+          }
+        }
+      }
+    },
+    "%lld parts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Teile"
+          }
+        }
+      }
+    },
+    "%lld queued" : {},
+    "%lld%%" : {},
+    "%lld%% of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld%% of %2$@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld %% von %@"
+          }
+        }
+      }
+    },
+    "(Recommended)" : {},
+    "(no speech detected)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(keine Sprache erkannt)"
+          }
+        }
+      }
+    },
+    "+" : {},
+    "1 part" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Teil"
+          }
+        }
+      }
+    },
+    "1. Press your configured shortcut" : {},
+    "1. Select text" : {},
+    "2. Press your configured shortcut" : {},
+    "2. Speak your text" : {},
+    "3. Press the shortcut again to stop" : {},
+    "3. Speak your prompt instruction" : {},
+    "4. Press the shortcut again to stop" : {},
+    "4. Transcription is automatically copied to clipboard" : {},
+    "5. Modified text is automatically copied to clipboard" : {},
+    "@karpathy @simonw" : {},
+    "AI apps may" : {},
+    "AI response copied to clipboard" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Antwort in die Zwischenablage kopiert"
+          }
+        }
+      }
+    },
+    "API Key Required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "API Key:" : {},
+    "API Keys & Endpoints…" : {},
+    "About" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über"
+          }
+        }
+      }
+    },
+    "Accessibility" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen"
+          }
+        }
+      }
+    },
+    "Accessibility granted — auto-paste is ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen erlaubt – automatisches Einfügen ist bereit."
+          }
+        }
+      }
+    },
+    "Accessibility — auto-paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen – automatisch einfügen"
+          }
+        }
+      }
+    },
+    "Account:" : {},
+    "Accounts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten"
+          }
+        }
+      }
+    },
+    "Accounts:" : {},
+    "Acknowledgements" : {},
+    "Add Folder…" : {},
+    "Add Selection to Glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl zum Glossar hinzufügen"
+          }
+        }
+      }
+    },
+    "Add an API key or use an offline model - click to configure" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel hinzufügen oder Offline-Modell nutzen – zum Einrichten klicken"
+          }
+        }
+      }
+    },
+    "Add credits" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guthaben aufladen"
+          }
+        }
+      }
+    },
+    "Add custom header" : {},
+    "Add examples" : {},
+    "Add examples…" : {},
+    "Add more manually" : {},
+    "Add the matching API key in Settings → Accounts to use this model." : {},
+    "Add your OpenAI API key in Settings → Accounts to use the OpenAI transcription models." : {},
+    "Advanced" : {},
+    "All interaction data and everything in context files will be deleted. System prompts will be recreated with defaults. Settings are preserved. Continue?" : {},
+    "Allow" : {},
+    "Allow AI apps on this Mac to connect" : {},
+    "Allow Plan Use" : {},
+    "Allow for this chat" : {},
+    "Allow this action?" : {},
+    "Allowed in Offline Mode: the update check is the only request that leaves this Mac. It downloads the list of releases from github.com and sends only the app's name and version — no recordings, transcripts, settings or usage data. Turn the switch off to stop automatic checks." : {},
+    "Almost Done" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fast fertig"
+          }
+        }
+      }
+    },
+    "Almost ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fast bereit"
+          }
+        }
+      }
+    },
+    "Almost there — the reply starts once the model is loaded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gleich so weit, die Antwort beginnt, sobald das Modell geladen ist."
+          }
+        }
+      }
+    },
+    "Already have a Google AI Studio key? Paste it here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben schon einen Google-AI-Studio-Schlüssel? Hier einfügen."
+          }
+        }
+      }
+    },
+    "Also dictate with 🌐 Fn" : {},
+    "Also powers Chat and Read Aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ermöglicht auch Chat und Vorlesen"
+          }
+        }
+      }
+    },
+    "An error occurred. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Anthropic (Claude)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anthropic (Claude)"
+          }
+        }
+      }
+    },
+    "Anthropic bills $10 per 1,000 searches on your API key, plus the tokens of the results. Claude searches at most 5 times per message, and only when a question needs current information." : {},
+    "App Store link copied to clipboard" : {},
+    "Applies to both the Screenshot shortcut and the in-chat Screenshot button. The clipboard still receives the image as before." : {},
+    "Approval needed: %@" : {},
+    "Apps you already set up stop working until you paste the new setup." : {},
+    "Archive %@" : {},
+    "Archive current chat" : {},
+    "Archive current meeting" : {},
+    "Archive older chats" : {},
+    "Archive older meetings" : {},
+    "Archive other chats" : {},
+    "Archive other meetings" : {},
+    "Ask" : {},
+    "Ask about this note" : {},
+    "Ask anything" : {},
+    "Ask when meeting longer than" : {},
+    "Ask when meeting longer than:" : {},
+    "Ask when recording longer than" : {},
+    "Ask when recording longer than:" : {},
+    "Audio from a meeting that couldn't be transcribed (for example while offline) is kept on this Mac until it is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio aus einem Meeting, das nicht transkribiert werden konnte (zum Beispiel offline), bleibt auf diesem Mac, bis es transkribiert ist."
+          }
+        }
+      }
+    },
+    "Audio is sent as a chat message (OpenRouter has no dedicated transcription endpoint), so your Dictation system prompt and Glossary apply here — unlike the OpenAI and self-hosted transcription endpoints. Temperature below applies too; Thinking effort is Gemini-only." : {},
+    "Audio never leaves this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio verlässt diesen Mac nie"
+          }
+        }
+      }
+    },
+    "Audio playback completed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe beendet"
+          }
+        }
+      }
+    },
+    "Authentication required. Add your API key in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldung erforderlich. Fügen Sie Ihren API-Schlüssel unter Einstellungen → Konten hinzu."
+          }
+        }
+      }
+    },
+    "Auto-paste" : {},
+    "Auto-paste:" : {},
+    "Azure OpenAI" : {},
+    "Back" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück"
+          }
+        }
+      }
+    },
+    "Base URL up to /v1 (the app appends /chat/completions). Default: %@" : {},
+    "Base URL:" : {},
+    "Bearer Token:" : {},
+    "Best accuracy, in more languages" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beste Erkennung, in mehr Sprachen"
+          }
+        }
+      }
+    },
+    "Best of these" : {},
+    "Block all cloud features (Offline Mode)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Cloud-Funktionen sperren (Offline-Modus)"
+          }
+        }
+      }
+    },
+    "Busy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschäftigt"
+          }
+        }
+      }
+    },
+    "Busy – wait for the current run to finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschäftigt – warten Sie, bis der aktuelle Vorgang fertig ist."
+          }
+        }
+      }
+    },
+    "CC BY 4.0" : {},
+    "Cancel" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        }
+      }
+    },
+    "Cancelled" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochen"
+          }
+        }
+      }
+    },
+    "Changed by AI apps" : {},
+    "Changes are saved automatically" : {},
+    "Change…" : {},
+    "Chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat"
+          }
+        }
+      }
+    },
+    "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat kann dieselben Offline-MLX-Modelle nutzen. Vorlesen verwendet die macOS-Stimmen auf dem Gerät. Smart Improvement sowie die Google- und Trello-Integration funktionieren nicht, weil sie nicht auf dem Gerät laufen können."
+          }
+        }
+      }
+    },
+    "Chat only — Dictate Prompt is not available with Claude." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Chat. „Prompt diktieren“ ist mit Claude nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Chat requests in WhisperShortcut now count toward your ChatGPT plan. You can set a weekly limit for this app in ChatGPT Settings → Usage." : {},
+    "ChatGPT Settings → Usage" : {},
+    "ChatGPT is signed in once, in Settings → Accounts." : {},
+    "Check for Updates…" : {},
+    "Check for updates automatically" : {},
+    "Checking…" : {},
+    "Choose \"Never\" to disable." : {},
+    "Choose Folder…" : {},
+    "Claude and other apps set up with the current key lose access until you copy the new setup into them." : {},
+    "Clear all" : {},
+    "Clear search" : {},
+    "Clear shortcut" : {},
+    "Close" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        }
+      }
+    },
+    "Close Chat when clicking outside" : {},
+    "Close Other Tabs" : {},
+    "Close Settings when clicking outside" : {},
+    "Close Tab" : {},
+    "Close Tabs to the Right" : {},
+    "Close tab" : {},
+    "Closes Chat when another app is focused. Pin the window with /pin if you want it to stay open." : {},
+    "Closes Settings as soon as another app or window is focused. Turn this off if you follow API-key links — the browser would otherwise dismiss Settings." : {},
+    "Cloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud"
+          }
+        }
+      }
+    },
+    "Collapsed" : {},
+    "Configured" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingerichtet"
+          }
+        }
+      }
+    },
+    "Connect" : {},
+    "Connect %@" : {},
+    "Connect Google Account" : {},
+    "Connect OpenRouter Account" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter-Konto verbinden"
+          }
+        }
+      }
+    },
+    "Connect OpenRouter or save a key to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie OpenRouter oder speichern Sie einen Schlüssel, um weiterzumachen."
+          }
+        }
+      }
+    },
+    "Connect Trello" : {},
+    "Connect in Accounts…" : {},
+    "Connected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden"
+          }
+        }
+      }
+    },
+    "Connected %@" : {},
+    "Connected in Settings → Accounts" : {},
+    "Contact Support" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support kontaktieren"
+          }
+        }
+      }
+    },
+    "Contact me on WhatsApp" : {},
+    "Contact via WhatsApp" : {},
+    "Context" : {},
+    "Continue" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter"
+          }
+        }
+      }
+    },
+    "Continue with ChatGPT" : {},
+    "Control-%lld" : {},
+    "Copied" : {},
+    "Copied unchanged — press ⌘V to paste." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unverändert kopiert – mit ⌘V einfügen."
+          }
+        }
+      }
+    },
+    "Copied!" : {},
+    "Copy" : {},
+    "Copy %@" : {},
+    "Copy App Store link to clipboard" : {},
+    "Copy Chat" : {},
+    "Copy Last Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Transkription kopieren"
+          }
+        }
+      }
+    },
+    "Copy Transcript + Chat" : {},
+    "Copy the full transcript of this meeting to the clipboard" : {},
+    "Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen." : {},
+    "Copy the transcript, the live notes, and the full chat history of this meeting as Markdown" : {},
+    "Copy transcript" : {},
+    "Copy transcript + chat" : {},
+    "Copy transcript and chat" : {},
+    "Cost:" : {},
+    "Couldn't load the model list (%@). Type a slug below instead." : {},
+    "Couldn't load the model list (%@). Type a slug instead." : {},
+    "Couldn't save to Keychain. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern im Schlüsselbund fehlgeschlagen. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Couldn't start: %@" : {},
+    "Couldn't store the key in the macOS Keychain (error %d). It works for this session but will be lost when the app quits — your login keychain may be locked or damaged." : {},
+    "Counting…" : {},
+    "Covers Chat only. Dictation still needs an on-device model or an API key, because ChatGPT plans can't be used for transcription in other apps." : {},
+    "Create New Key" : {},
+    "Create a Power-Up (any name, your own workspace), open its \"API key\" tab and copy the key." : {},
+    "Create a new access key?" : {},
+    "Credits" : {},
+    "Current %@" : {},
+    "Current model" : {},
+    "Custom slug…" : {},
+    "Delete" : {},
+    "Delete %@" : {},
+    "Delete %@ (moves %@ to the Trash)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete %1$@ (moves %2$@ to the Trash)"
+          }
+        }
+      }
+    },
+    "Delete %@…" : {},
+    "Delete context data" : {},
+    "Delete context data?" : {},
+    "Delete writing style data" : {},
+    "Delete writing style data?" : {},
+    "Denied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgelehnt"
+          }
+        }
+      }
+    },
+    "Deny" : {},
+    "Deprecated – no longer available to new users. Consider switching to %@." : {},
+    "Details" : {},
+    "Detected from your domain's mail settings." : {},
+    "Diagnostics: dumps each final chat response as a .md file so markdown-rendering bugs can be reproduced from the exact model output. Off by default." : {},
+    "Dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren"
+          }
+        }
+      }
+    },
+    "Dictate Prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt diktieren"
+          }
+        }
+      }
+    },
+    "Dictate Prompt Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler bei „Prompt diktieren“"
+          }
+        }
+      }
+    },
+    "Dictate Prompt edits text you have selected, and nothing was selected.\n\nSelect the text you want changed first, then press the shortcut and say what to do with it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Prompt diktieren“ bearbeitet markierten Text, und es war nichts markiert.\n\nMarkieren Sie zuerst den Text, der geändert werden soll, drücken Sie dann das Tastenkürzel und sagen Sie, was damit passieren soll."
+          }
+        }
+      }
+    },
+    "Dictate Prompt is not available with Grok." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Prompt diktieren“ ist mit Grok nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Dictate Prompt runs offline too — %@ is ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Prompt diktieren“ läuft auch offline: %@ ist bereit."
+          }
+        }
+      }
+    },
+    "Dictate Prompt runs offline too — downloading %@ (%@) in the background… %lld%%. You can continue." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dictate Prompt runs offline too — downloading %1$@ (%2$@) in the background… %3$lld%%. You can continue."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Prompt diktieren“ läuft auch offline: %@ (%@) wird im Hintergrund geladen … %lld %%. Sie können weitermachen."
+          }
+        }
+      }
+    },
+    "Dictate Prompt:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt diktieren:"
+          }
+        }
+      }
+    },
+    "Dictate:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren:"
+          }
+        }
+      }
+    },
+    "Dictating" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat läuft"
+          }
+        }
+      }
+    },
+    "Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren und „Prompt diktieren“ bleiben auf diesem Mac: Parakeet oder Whisper für die Spracherkennung, ein MLX-Modell in der App (oder Ollama / LM Studio) für die Überarbeitung."
+          }
+        }
+      }
+    },
+    "Didn't catch that" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts verstanden"
+          }
+        }
+      }
+    },
+    "Diff (current → suggested)" : {},
+    "Discard unsaved changes" : {},
+    "Disconnect" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trennen"
+          }
+        }
+      }
+    },
+    "Dismiss" : {},
+    "Done" : {},
+    "Download" : {},
+    "Download %@ (≈%lld MB)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Download %1$@ (≈%2$lld MB)"
+          }
+        }
+      }
+    },
+    "Download the offline model to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laden Sie das Offline-Modell, um weiterzumachen."
+          }
+        }
+      }
+    },
+    "Downloaded" : {},
+    "Downloading %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird geladen"
+          }
+        }
+      }
+    },
+    "Downloading %@ again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird erneut geladen"
+          }
+        }
+      }
+    },
+    "Downloading %@ — %lld%%" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@ — %2$lld%%"
+          }
+        }
+      }
+    },
+    "Downloading %@… %lld%%" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@… %2$lld%%"
+          }
+        }
+      }
+    },
+    "Downloading…" : {},
+    "Downloading… %lld%%" : {},
+    "Drop a folder to share it with the chat" : {},
+    "Duration:" : {},
+    "Edit" : {},
+    "Edit profile…" : {},
+    "Email me" : {},
+    "Email the developer" : {},
+    "Enable WhisperShortcut in System Settings, then return here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktivieren Sie WhisperShortcut in den Systemeinstellungen und kommen Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "Ended" : {},
+    "Endpoint:" : {},
+    "Enter a base URL above first." : {},
+    "Enter an API key manually instead" : {},
+    "Enter this server's API key to use it." : {},
+    "Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
+          }
+        }
+      }
+    },
+    "Everything runs on this Mac. Dictation uses an on-device speech model, no request may leave the machine, and no transcript, prompt or audio sample is written to the usage log. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles läuft auf diesem Mac. Das Diktat nutzt ein Spracherkennungsmodell auf dem Gerät, keine Anfrage darf den Rechner verlassen, und weder Transkripte noch Prompts noch Audio landen im Nutzungsprotokoll. Gedacht für Diktate mit sensiblen Inhalten wie Befunden oder Akten, bei denen „die Aufnahme verlässt das Gerät nicht“ unabhängig von allen anderen Einstellungen gelten muss."
+          }
+        }
+      }
+    },
+    "Expanded" : {},
+    "File a GitHub Issue" : {},
+    "File name = command name (anamnesis.md → /anamnesis). Optional header lines: label (button text), description, scope (meeting, chat or both). Everything below the header is sent to the selected chat model as your message — offline models included. In a meeting chat the model also sees the full transcript." : {},
+    "Fill in:" : {},
+    "Finish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        }
+      }
+    },
+    "Finish setup…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichtung abschließen …"
+          }
+        }
+      }
+    },
+    "Finish the current recording first, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden Sie zuerst die laufende Aufnahme und versuchen Sie es dann erneut."
+          }
+        }
+      }
+    },
+    "Finish the current recording or Read Aloud first, then start the meeting again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden Sie zuerst die laufende Aufnahme oder das Vorlesen und starten Sie das Meeting dann erneut."
+          }
+        }
+      }
+    },
+    "Finishing…" : {},
+    "FluidAudio" : {},
+    "Folder:" : {},
+    "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here." : {},
+    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Patientendaten oder Akten: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Datenschutz & Berechtigungen."
+          }
+        }
+      }
+    },
+    "Forget everything the chat has learned about your folder layout" : {},
+    "Forget everything the chat has remembered" : {},
+    "General" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemein"
+          }
+        }
+      }
+    },
+    "Generating summary…" : {},
+    "Get your key:" : {},
+    "Glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar"
+          }
+        }
+      }
+    },
+    "Glossary Full" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar voll"
+          }
+        }
+      }
+    },
+    "Google Gemini" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Gemini"
+          }
+        }
+      }
+    },
+    "Got it" : {},
+    "Grant Access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugriff erlauben"
+          }
+        }
+      }
+    },
+    "Grant microphone access to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben Sie den Mikrofonzugriff, um weiterzumachen."
+          }
+        }
+      }
+    },
+    "Granted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        }
+      }
+    },
+    "Grok will read only these %lld account(s) on X: %@ — posts from anyone else stay invisible to it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Grok will read only these %1$lld account(s) on X: %2$@ — posts from anyone else stay invisible to it."
+          }
+        }
+      }
+    },
+    "Header name" : {},
+    "Headers:" : {},
+    "Heidelberg, Germany 🇩🇪" : {},
+    "Hide API key" : {},
+    "Hide details" : {},
+    "Hide instruction" : {},
+    "Hide key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel verbergen"
+          }
+        }
+      }
+    },
+    "Hide sidebar" : {},
+    "Hide token" : {},
+    "Hide tool steps" : {},
+    "Hide value" : {},
+    "Highlight any text with the mouse or keyboard, then press the Read Aloud shortcut." : {},
+    "How should dictation run?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wo soll das Diktat laufen?"
+          }
+        }
+      }
+    },
+    "I build this app alone, and right now the only usage I can see is my own. Your counts show me what actually breaks." : {},
+    "I encountered this error:\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei mir ist dieser Fehler aufgetreten:\n\n%@"
+          }
+        }
+      }
+    },
+    "If the browser didn't open, click \"Connect Trello\" again." : {},
+    "Import sent emails from Gmail" : {},
+    "Improve prompts and context from your usage" : {},
+    "In the chat window, Attach opens that folder first so recent screenshots are one click away." : {},
+    "Info" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Info"
+          }
+        }
+      }
+    },
+    "Input: %@" : {},
+    "Interval:" : {},
+    "It works" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert"
+          }
+        }
+      }
+    },
+    "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst nach einem Neustart von WhisperShortcut. Beenden Sie zuerst diese Tour, dann die App, und öffnen Sie sie neu."
+          }
+        }
+      }
+    },
+    "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst, wenn Sie WhisperShortcut beenden und neu öffnen. Nutzen Sie dafür die Taste unten."
+          }
+        }
+      }
+    },
+    "Language" : {},
+    "Last 4 weeks. No earlier change was measured, so accepting this one sets the baseline." : {},
+    "Last 4 weeks. No usage since the last change yet." : {},
+    "Launch at Login" : {},
+    "Launch at Login:" : {},
+    "Learns from your sent emails and your dictations, and sends your style profile plus a few of your messages with each Dictate Prompt request, chosen by the app you are writing in. Not used with local models." : {},
+    "Leave a Review" : {},
+    "Leave a review on the App Store" : {},
+    "Let AI apps read my recent dictations" : {},
+    "Let Claude search the web" : {},
+    "Let Dictate Prompt use read-only tools" : {},
+    "Let the chat create and change files in these folders" : {},
+    "Link copied!" : {},
+    "Listening — notes appear as the meeting goes on." : {},
+    "Live meeting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Meeting"
+          }
+        }
+      }
+    },
+    "Live notes" : {},
+    "Loading %@ into memory…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird in den Speicher geladen …"
+          }
+        }
+      }
+    },
+    "Loading OpenRouter's model list..." : {},
+    "Loading…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lädt …"
+          }
+        }
+      }
+    },
+    "Long recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Aufnahme"
+          }
+        }
+      }
+    },
+    "Lower means more literal. WhisperShortcut uses 0.0, which reproduces what was said. Sending no value at all — as versions before 7.96 did — leaves the AI model on its own setting of 1.0, the most likely source of invented or swapped words." : {},
+    "Make changes directly" : {},
+    "Manage usage" : {},
+    "Measured so far" : {},
+    "Meeting Not Started" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting nicht gestartet"
+          }
+        }
+      }
+    },
+    "Meeting Recording Interrupted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme unterbrochen"
+          }
+        }
+      }
+    },
+    "Meeting Recording Resumed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Aufnahme fortgesetzt"
+          }
+        }
+      }
+    },
+    "Meetings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings"
+          }
+        }
+      }
+    },
+    "Merging audio chunks..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioteile werden zusammengefügt …"
+          }
+        }
+      }
+    },
+    "Merging transcription results..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionen werden zusammengefügt …"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone Access Needed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonzugriff nötig"
+          }
+        }
+      }
+    },
+    "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon liefert kein Audio. Prüfen Sie Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Mikrofon oder starten Sie WhisperShortcut neu."
+          }
+        }
+      }
+    },
+    "Microphone is off in System Settings. You can continue and enable it later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Mikrofon ist in den Systemeinstellungen aus. Sie können weitermachen und es später aktivieren."
+          }
+        }
+      }
+    },
+    "Model tag served locally (e.g. an Ollama tag). Pull it first: `ollama pull <model>`. Prefer a plain instruct model — reasoning models spend their first seconds thinking before any text appears. Default: %@" : {},
+    "Model:" : {},
+    "More models" : {},
+    "More models, %lld" : {},
+    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it." : {},
+    "Most accurate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am genauesten"
+          }
+        }
+      }
+    },
+    "Moved %@ to the Trash." : {},
+    "NVIDIA Parakeet" : {},
+    "Needed for Screen Recording or Accessibility changes to take effect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nötig, damit Änderungen bei Bildschirmaufnahme oder Bedienungshilfen wirken."
+          }
+        }
+      }
+    },
+    "Needs \"Save usage data\" in Smart Improvement. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations." : {},
+    "Needs %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht %@"
+          }
+        }
+      }
+    },
+    "Needs a model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht ein Modell"
+          }
+        }
+      }
+    },
+    "Needs one account; you pay the provider" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht ein Konto, Sie bezahlen den Anbieter"
+          }
+        }
+      }
+    },
+    "New Command…" : {},
+    "New access key…" : {},
+    "New in this version: WhisperShortcut can tell me how often each feature is used and whether it worked. Counts only, like “12 dictations, 1 failed”. Never your words, audio, or which apps you use. No ID, no tracking." : {},
+    "New to OpenRouter? The same flow creates the account. You pay OpenRouter directly for what you use." : {},
+    "No Thanks" : {},
+    "No chats yet" : {},
+    "No commands yet. Create one from the template, or put .md files into the commands folder." : {},
+    "No folders shared. The chat cannot read any files on your Mac." : {},
+    "No key entered, so your OpenAI key from Settings → Accounts is used. That only works if this server forwards to OpenAI." : {},
+    "No key needed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Schlüssel nötig"
+          }
+        }
+      }
+    },
+    "No key required — audio never leaves your Mac. %@ runs on this Mac; other offline models are in Settings → Dictate." : {},
+    "No key required — audio never leaves your Mac. %@ transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate." : {},
+    "No meetings yet" : {},
+    "No microphone input" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Mikrofonsignal"
+          }
+        }
+      }
+    },
+    "No models loaded yet" : {},
+    "No notes for this meeting." : {},
+    "No results" : {},
+    "No text selected. Highlight text first, then press the Read Aloud shortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Text markiert. Markieren Sie zuerst Text und drücken Sie dann das Tastenkürzel für „Vorlesen“."
+          }
+        }
+      }
+    },
+    "No usage since then yet." : {},
+    "None connected. Ask the chat, for example: \"Connect my mailbox me@example.de\". It asks for the password in a secure field." : {},
+    "Not a Glossary Term" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Glossarbegriff"
+          }
+        }
+      }
+    },
+    "Not applicable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht relevant"
+          }
+        }
+      }
+    },
+    "Not connected" : {},
+    "Not downloaded" : {},
+    "Not in your dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht in Ihrem Diktat"
+          }
+        }
+      }
+    },
+    "Not requested" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht angefragt"
+          }
+        }
+      }
+    },
+    "Not saved" : {},
+    "Not set" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht gesetzt"
+          }
+        }
+      }
+    },
+    "Not signed in" : {},
+    "Note: the Dictation system prompt does not apply here — OpenAI's transcription endpoint accepts no system instruction. Your Whisper Glossary is forwarded as the `prompt` bias hint and your language selection as the `language` parameter." : {},
+    "Nothing Selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts markiert"
+          }
+        }
+      }
+    },
+    "Nothing selected — writes new text" : {},
+    "Nothing to transcribe. Check the microphone and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts zu transkribieren. Prüfen Sie das Mikrofon und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "OK" : {},
+    "Off" : {},
+    "Off by default — the chat can only read. With it on, the chat can create files, append to them, and replace exact pieces of text. It cannot delete or rename anything, it will not write into `.git` or dependency folders, and the previous content of every changed file is kept for 30 days in the app's WorkspaceBackups folder." : {},
+    "Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline"
+          }
+        }
+      }
+    },
+    "Offline MLX models run on your Mac with no server. They download from Hugging Face and stay cached locally." : {},
+    "Offline Mode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus"
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
+          }
+        }
+      }
+    },
+    "Offline dictation: Parakeet Ultra by Moondream, a retraining of NVIDIA Parakeet TDT 0.6B v3, and NVIDIA Parakeet CTC 110M for Glossary terms — all licensed CC BY 4.0 — downloaded as FluidInference's Core ML conversions and run through FluidAudio (Apache 2.0). Whisper models by OpenAI (MIT), run through WhisperKit (MIT) by Argmax." : {},
+    "Offline models allow you to transcribe audio without an internet connection. Models are automatically downloaded from HuggingFace and cached locally." : {},
+    "One-time download, %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmaliger Download, %@"
+          }
+        }
+      }
+    },
+    "One-time download, then it runs offline. Your message is sent as soon as it's ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmaliger Download, danach läuft es offline. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "Only delete interaction history and context; settings are preserved" : {},
+    "Only for Gemini models, and only for what you have connected in Settings → Accounts. Nothing is changed, created or sent. A lookup adds a few seconds to that one request." : {},
+    "Only models with audio input are listed — anything else fails at request time. Full catalogue:" : {},
+    "Only read" : {},
+    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten. Alles lässt sich später unter Einstellungen → Datenschutz & Berechtigungen ändern."
+          }
+        }
+      }
+    },
+    "Open %@ in your default editor" : {},
+    "Open Chat" : {},
+    "Open Commands Folder" : {},
+    "Open Privacy & Security" : {},
+    "Open Settings → %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen → %@ öffnen"
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemeinstellungen öffnen"
+          }
+        }
+      }
+    },
+    "Open System Settings to grant %@ access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemeinstellungen öffnen, um Zugriff auf %@ zu erlauben"
+          }
+        }
+      }
+    },
+    "Open a prefilled GitHub issue; attach hang-*.txt from Reveal Hang Reports" : {},
+    "Open app data folder" : {},
+    "Open app data folder in Finder" : {},
+    "Open context data" : {},
+    "Open context data in Finder" : {},
+    "Open file" : {},
+    "Open memory.md in the default app" : {},
+    "Open on GitHub" : {},
+    "Open raw responses folder" : {},
+    "Open system-prompts.md in the default app" : {},
+    "Open the WhisperShortcut repository on GitHub" : {},
+    "Open the WhisperShortcut source code on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode von WhisperShortcut auf GitHub öffnen"
+          }
+        }
+      }
+    },
+    "Open the daily log folder in Finder — useful when filing bug reports" : {},
+    "Open transcripts folder" : {},
+    "Open transcripts folder in Finder" : {},
+    "Open workspace-map.md in the default app" : {},
+    "OpenAI" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI"
+          }
+        }
+      }
+    },
+    "OpenInference" : {},
+    "OpenRouter" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter"
+          }
+        }
+      }
+    },
+    "OpenRouter is connected once, in Settings → Accounts, and shared by Dictate and Chat." : {},
+    "Optional" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional"
+          }
+        }
+      }
+    },
+    "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und bei „Prompt diktieren“ den Bildschirminhalt mitgeben."
+          }
+        }
+      }
+    },
+    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Standardmäßig aus, einschalten unter Einstellungen → Allgemein."
+          }
+        }
+      }
+    },
+    "Other providers — OpenAI, Anthropic, xAI" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Anbieter: OpenAI, Anthropic, xAI"
+          }
+        }
+      }
+    },
+    "Other server…" : {},
+    "Parakeet Ultra" : {},
+    "Password" : {},
+    "Password needed to connect %@" : {},
+    "Paste one or more messages you wrote yourself. Separate messages with a line containing only ---." : {},
+    "Paste the token shown by Trello in the browser" : {},
+    "Paste your Trello API key" : {},
+    "Pasted unchanged." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unverändert eingefügt."
+          }
+        }
+      }
+    },
+    "Pick Offline or Cloud to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie Offline oder Cloud, um weiterzumachen."
+          }
+        }
+      }
+    },
+    "Pick one to start. You can add the other any time in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie eins für den Anfang. Das andere können Sie jederzeit in den Einstellungen ergänzen."
+          }
+        }
+      }
+    },
+    "Plan use wasn't allowed, so Chat can't run on this account yet." : {},
+    "Playback position" : {},
+    "Playback speed %@; click to change" : {},
+    "Playback speed — click to change" : {},
+    "Please try again after adding more credits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte versuchen Sie es erneut, nachdem Sie Guthaben aufgeladen haben."
+          }
+        }
+      }
+    },
+    "Please wait %lld seconds and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte warten Sie %lld Sekunden und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Position:" : {},
+    "Preparing report…" : {},
+    "Press Fn once to start, again to stop. Needs Accessibility. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\"." : {},
+    "Press the shortcut again to stop playback." : {},
+    "Press the shortcut, then drag to select a region. The image is copied to the clipboard." : {},
+    "Privacy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz"
+          }
+        }
+      }
+    },
+    "Privacy & Permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz & Berechtigungen"
+          }
+        }
+      }
+    },
+    "Privacy details" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details zum Datenschutz"
+          }
+        }
+      }
+    },
+    "Private and free" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privat und kostenlos"
+          }
+        }
+      }
+    },
+    "Process" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verarbeiten"
+          }
+        }
+      }
+    },
+    "Processing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verarbeitung"
+          }
+        }
+      }
+    },
+    "Processing Audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird verarbeitet"
+          }
+        }
+      }
+    },
+    "Processing Long Audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Aufnahme wird verarbeitet"
+          }
+        }
+      }
+    },
+    "Processing Long Text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langer Text wird verarbeitet"
+          }
+        }
+      }
+    },
+    "Prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt"
+          }
+        }
+      }
+    },
+    "Puts dictated text straight at your cursor (a simulated ⌘V). macOS asks for Accessibility when you turn this on. Without it, your text is copied and you paste it yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setzt diktierten Text direkt an die Cursorposition (per simuliertem ⌘V). macOS fragt beim Einschalten nach der Berechtigung für Bedienungshilfen. Ohne sie wird der Text kopiert und Sie fügen ihn selbst ein."
+          }
+        }
+      }
+    },
+    "Quick action %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quick action %1$lld: %2$@"
+          }
+        }
+      }
+    },
+    "Quit & Reopen WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut beenden und neu öffnen"
+          }
+        }
+      }
+    },
+    "Quit WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut beenden"
+          }
+        }
+      }
+    },
+    "Quote this note in the composer and ask about it" : {},
+    "Rate WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut bewerten"
+          }
+        }
+      }
+    },
+    "Rate limited by API. Automatically retrying in %lld seconds..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limit des Anbieters erreicht. Neuer Versuch automatisch in %lld Sekunden …"
+          }
+        }
+      }
+    },
+    "Re-open browser" : {},
+    "Re-read the folder. The chat also re-reads it whenever its window comes forward." : {},
+    "Read Aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen"
+          }
+        }
+      }
+    },
+    "Read-only. Your password stays in your Keychain and is never sent to the AI." : {},
+    "Reading selection…" : {},
+    "Reads the selection from a screenshot" : {},
+    "Ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit"
+          }
+        }
+      }
+    },
+    "Ready to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit zum Weitermachen."
+          }
+        }
+      }
+    },
+    "Reassign" : {},
+    "Recent Transcriptions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Transkriptionen"
+          }
+        }
+      }
+    },
+    "Recommended" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen"
+          }
+        }
+      }
+    },
+    "Record" : {},
+    "Record a different combination for any of these if it clashes with an app you use." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legen Sie eine andere Kombination fest, falls eine davon mit einer Ihrer Apps kollidiert."
+          }
+        }
+      }
+    },
+    "Record a few seconds and see the transcript here. You can skip this." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nehmen Sie ein paar Sekunden auf und sehen Sie hier das Transkript. Sie können das überspringen."
+          }
+        }
+      }
+    },
+    "Recording" : {},
+    "Recording AI prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt wird aufgenommen"
+          }
+        }
+      }
+    },
+    "Recording Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmefehler"
+          }
+        }
+      }
+    },
+    "Recording… %llds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme … %lld s"
+          }
+        }
+      }
+    },
+    "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt auf, was Sie zum Diktieren und für „Prompt diktieren“ sagen. Das Audio geht nur an den Anbieter, den Sie gewählt haben, und wird danach gelöscht."
+          }
+        }
+      }
+    },
+    "Release notes" : {},
+    "Reload" : {},
+    "Remove" : {},
+    "Remove from queue" : {},
+    "Remove header" : {},
+    "Rename Tab" : {},
+    "Rename…" : {},
+    "Replace with the app default prompt. The previous version is kept in system-prompts.md.bak." : {},
+    "Replay the guided walkthrough of WhisperShortcut's features." : {},
+    "Replies come through OpenRouter's chat API, so web search and image attachments aren't available here. Full catalogue:" : {},
+    "Reply may be cut off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwort evtl. abgeschnitten"
+          }
+        }
+      }
+    },
+    "Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfragen an diesen Rechner oder das lokale Netz funktionieren weiter, ein Whisper-Server oder Ollama im eigenen Netz bleibt also erreichbar. Sprach- oder MLX-Modelle lassen sich weiter von Hugging Face laden (dabei werden keine Inhalte von Ihnen übertragen)."
+          }
+        }
+      }
+    },
+    "Required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erforderlich"
+          }
+        }
+      }
+    },
+    "Required. Dictation through OpenRouter will fail until you connect an account or set this." : {},
+    "Required. Dictation will fail until you set this." : {},
+    "Requires an API key for cloud voice models (Settings → Accounts). The on-device macOS voice needs none, and is selected automatically in Offline Mode. Gemini also works via sign in with Google." : {},
+    "Reset all to defaults" : {},
+    "Reset and quit app" : {},
+    "Reset app to default?" : {},
+    "Reset app to original state; app will quit after reset" : {},
+    "Reset to Default" : {},
+    "Reset to default" : {},
+    "Restore %@" : {},
+    "Restore clipboard after auto-paste" : {},
+    "Restore clipboard:" : {},
+    "Result: %@" : {},
+    "Resume" : {},
+    "Retry" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Retry Meeting Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription wiederholen"
+          }
+        }
+      }
+    },
+    "Retry Meeting Transcription (%@)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription wiederholen (%@)"
+          }
+        }
+      }
+    },
+    "Retrying Meeting Transcription…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription wird wiederholt …"
+          }
+        }
+      }
+    },
+    "Retrying chunk %lld..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teil %lld wird erneut versucht …"
+          }
+        }
+      }
+    },
+    "Reveal Hang Reports" : {},
+    "Reveal transcript in Finder" : {},
+    "Revert" : {},
+    "Review %lld Changes from AI Apps…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Änderungen von KI-Apps prüfen …"
+          }
+        }
+      }
+    },
+    "Review All" : {},
+    "Review Change from AI App…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderung von KI-App prüfen …"
+          }
+        }
+      }
+    },
+    "Review Changes from AI Apps…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen von KI-Apps prüfen …"
+          }
+        }
+      }
+    },
+    "Review Permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen prüfen"
+          }
+        }
+      }
+    },
+    "Review…" : {},
+    "Rewrite text for speech before reading aloud" : {},
+    "Run Improve from usage automatically" : {},
+    "Run offline with an on-device model" : {},
+    "Running at %@" : {},
+    "Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done." : {},
+    "Save" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichern"
+          }
+        }
+      }
+    },
+    "Save changes to the folder map" : {},
+    "Save changes to the memory file" : {},
+    "Save raw assistant responses to disk" : {},
+    "Save screenshots to a folder" : {},
+    "Save usage data" : {},
+    "Saved" : {},
+    "Saved in your Keychain. Read-only access." : {},
+    "Saved to Keychain" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Schlüsselbund gespeichert"
+          }
+        }
+      }
+    },
+    "Saving…" : {},
+    "Say a sentence. Later, %@ does the same in any app and puts the text where your cursor is." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sagen Sie einen Satz. Später macht %@ dasselbe in jeder App und setzt den Text dorthin, wo Ihr Cursor steht."
+          }
+        }
+      }
+    },
+    "Screen Recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme"
+          }
+        }
+      }
+    },
+    "Screen Recording Permission Needed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigung für Bildschirmaufnahme nötig"
+          }
+        }
+      }
+    },
+    "Screenshot" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto"
+          }
+        }
+      }
+    },
+    "Screenshot context" : {},
+    "Screenshot context:" : {},
+    "Screenshot:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto:"
+          }
+        }
+      }
+    },
+    "See and limit how much of your plan WhisperShortcut uses" : {},
+    "See and share an anonymous summary of how you use the app" : {},
+    "See exactly what is sent" : {},
+    "Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on." : {},
+    "Select a single term — a name or a piece of jargon — not a sentence. The Glossary is a spelling reference, and a whole sentence in it makes every dictation worse." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markieren Sie einen einzelnen Begriff, also einen Namen oder ein Fachwort, keinen Satz. Das Glossar ist eine Schreibhilfe, und ein ganzer Satz darin verschlechtert jedes Diktat."
+          }
+        }
+      }
+    },
+    "Select model" : {},
+    "Select the correctly spelled term first, then press the shortcut again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markieren Sie zuerst den richtig geschriebenen Begriff und drücken Sie dann erneut das Tastenkürzel."
+          }
+        }
+      }
+    },
+    "Send" : {},
+    "Send Feedback" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feedback senden"
+          }
+        }
+      }
+    },
+    "Send message" : {},
+    "Send via Email" : {},
+    "Send via WhatsApp" : {},
+    "Sent only to the server above." : {},
+    "Separate with spaces or commas. Pasted profile URLs work too. Applies to new chats; type `/x` in a chat to change it there, `/x off` to search all of X." : {},
+    "Settings…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen …"
+          }
+        }
+      }
+    },
+    "Share Statistics" : {},
+    "Share Usage Report" : {},
+    "Share anonymous usage statistics?" : {},
+    "Share with Friends" : {},
+    "Shortcuts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Shortcuts are set in Settings → General." : {},
+    "Shorter intervals provide more responsive updates but use more API calls." : {},
+    "Show API key" : {},
+    "Show Notifications" : {},
+    "Show Notifications:" : {},
+    "Show Tour" : {},
+    "Show Transcript File in Finder" : {},
+    "Show Untranscribed Meeting Audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht transkribiertes Meeting-Audio zeigen"
+          }
+        }
+      }
+    },
+    "Show all %lld" : {},
+    "Show fewer" : {},
+    "Show hang-*.txt watchdog captures in Finder so you can attach them to a report" : {},
+    "Show instruction" : {},
+    "Show key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüssel zeigen"
+          }
+        }
+      }
+    },
+    "Show logs" : {},
+    "Show token" : {},
+    "Show tool steps" : {},
+    "Show value" : {},
+    "Sign In in Accounts…" : {},
+    "Sign Out" : {},
+    "Sign in once and use models from every provider through one account. No account yet? The same flow creates one. You pay OpenRouter directly for what you use." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmal anmelden und Modelle aller Anbieter über ein Konto nutzen. Noch kein Konto? Derselbe Ablauf legt eins an. Sie bezahlen OpenRouter direkt für das, was Sie nutzen."
+          }
+        }
+      }
+    },
+    "Sign in to see your models" : {},
+    "Sign in with Google" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit Google anmelden"
+          }
+        }
+      }
+    },
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key." : {},
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model." : {},
+    "Sign-in for %@ expired" : {},
+    "Signed in as %@" : {},
+    "Since the last change" : {},
+    "Since the last change (%@)" : {},
+    "Slug:" : {},
+    "Smallest download" : {},
+    "Smart Improvement" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Improvement"
+          }
+        }
+      }
+    },
+    "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days." : {},
+    "Sources (%lld)" : {},
+    "Speed tip: Ollama unloads an idle model after 5 minutes, and the next dictation pays to reload it. Start the server with `OLLAMA_KEEP_ALIVE=-1` to keep it resident." : {},
+    "Speed:" : {},
+    "Splitting audio into %lld chunks..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio wird in %lld Teile aufgeteilt …"
+          }
+        }
+      }
+    },
+    "Splitting text into %lld chunks..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text wird in %lld Teile aufgeteilt …"
+          }
+        }
+      }
+    },
+    "Starting %@…" : {},
+    "Starting…" : {},
+    "Stop" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopp"
+          }
+        }
+      }
+    },
+    "Stop Dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat beenden"
+          }
+        }
+      }
+    },
+    "Stop Dictate Prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt-Diktat beenden"
+          }
+        }
+      }
+    },
+    "Stop Read Aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen beenden"
+          }
+        }
+      }
+    },
+    "Stop sending" : {},
+    "Stop sending (⌘.)" : {},
+    "Stopping…" : {},
+    "Suggest changes for me to approve" : {},
+    "Suggested %@ (editable)" : {},
+    "Superseded by Large v3 Turbo" : {},
+    "Synthesizing Speech" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache wird erzeugt"
+          }
+        }
+      }
+    },
+    "System prompt — not used by %@" : {},
+    "Tab title" : {},
+    "Temperature:" : {},
+    "Text Copied to Clipboard" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text in die Zwischenablage kopiert"
+          }
+        }
+      }
+    },
+    "Text and images only for now: web search and connected services (Google, Trello, mail) don't run on the ChatGPT plan yet. Limits:" : {},
+    "The Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set Model to your deployment name." : {},
+    "The Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id." : {},
+    "The chat can then list, read, and search files inside it." : {},
+    "The chat sees file names and text content in these folders, and sends what it reads to your selected chat model. Only share folders you are comfortable with." : {},
+    "The last download was incomplete. Your message is sent as soon as it's ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der letzte Download war unvollständig. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "The model id your server expects. On Azure, your deployment name." : {},
+    "The next change you accept is measured from then on." : {},
+    "The profile and all example messages will be deleted. Your emails are not affected." : {},
+    "The reply hit the length limit and may be cut off – check the end." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Antwort hat die Längengrenze erreicht und ist womöglich abgeschnitten. Prüfen Sie das Ende."
+          }
+        }
+      }
+    },
+    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Update-Prüfung erreicht weiterhin github.com. Sie sendet nur die App-Version, nie Inhalte. Abschalten unter Einstellungen → Über → Updates."
+          }
+        }
+      }
+    },
+    "Thinking effort:" : {},
+    "This is everything the report contains. Nothing is sent automatically — pressing a send button opens your own mail or WhatsApp with this text prefilled." : {},
+    "This is the complete content, as sent. One summary per day you use the app, plus a one-time note when you pass a setup step or use a feature for the first time. The server's code is public: github.com/mgsgde/whisper-shortcut/tree/main/server/telemetry" : {},
+    "This recording is %@ long. Process anyway? (API usage may incur costs.)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aufnahme ist %@ lang. Trotzdem verarbeiten? (Bei Cloud-Anbietern können Kosten entstehen.)"
+          }
+        }
+      }
+    },
+    "This server's API key" : {},
+    "This will delete all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data. API keys are preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?" : {},
+    "Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drei kurze Schritte: Offline- oder Cloud-Diktat wählen, das Mikrofon erlauben und einmal ausprobieren. Dauert etwa eine Minute."
+          }
+        }
+      }
+    },
+    "Tip: Compare Gemini models (speed, intelligence, pricing):" : {},
+    "Tip: Compare models (speed, intelligence, pricing):" : {},
+    "Title" : {},
+    "Toggle sidebar" : {},
+    "Token from Trello" : {},
+    "Top up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufladen"
+          }
+        }
+      }
+    },
+    "Transcribe Cancelled Recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochene Aufnahme transkribieren"
+          }
+        }
+      }
+    },
+    "Transcribing [%lld/%lld] - %lld active" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription [%lld/%lld] – %lld aktiv"
+          }
+        }
+      }
+    },
+    "Transcribing the last seconds of audio before saving the meeting" : {},
+    "Transcribing…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird transkribiert …"
+          }
+        }
+      }
+    },
+    "Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription"
+          }
+        }
+      }
+    },
+    "Transcription Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler bei der Transkription"
+          }
+        }
+      }
+    },
+    "Transcription copied to clipboard" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription in die Zwischenablage kopiert"
+          }
+        }
+      }
+    },
+    "Transcription copied — press ⌘V to paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription kopiert – mit ⌘V einfügen"
+          }
+        }
+      }
+    },
+    "Trello Power-Up API key" : {},
+    "Try again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch einmal"
+          }
+        }
+      }
+    },
+    "Try dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat ausprobieren"
+          }
+        }
+      }
+    },
+    "Try it now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt ausprobieren"
+          }
+        }
+      }
+    },
+    "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {},
+    "Turn your voice into text in any app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprache wird in jeder App zu Text."
+          }
+        }
+      }
+    },
+    "Type / in the chat to see its commands. Meetings are set up in Settings → Meetings." : {},
+    "Type a message, or press / for commands." : {},
+    "Type your own instruction" : {},
+    "URL and model for openinference.de (GLM 5.2). Enter your sk-oi-… key below." : {},
+    "Undo" : {},
+    "Undo your edits since you opened this page" : {},
+    "Undone" : {},
+    "Up to /v1 — the app appends /chat/completions." : {},
+    "Update profile now" : {},
+    "Updates" : {},
+    "Usage" : {},
+    "Usage report" : {},
+    "Use my writing style in Dictate Prompt" : {},
+    "Use the shortcut or the menu bar item \"Chat\" to open the chat window." : {},
+    "Value" : {},
+    "Version %@" : {},
+    "Vertex AI" : {},
+    "View full privacy policy" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vollständige Datenschutzerklärung"
+          }
+        }
+      }
+    },
+    "Voice" : {},
+    "Voice:" : {},
+    "Wait a moment and try again, or check billing (see above)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurz warten und erneut versuchen, oder die Abrechnung prüfen (siehe oben)."
+          }
+        }
+      }
+    },
+    "Waiting for ChatGPT sign-in in your browser…" : {},
+    "Waiting for Google sign-in..." : {},
+    "Waiting for OpenRouter sign-in..." : {},
+    "Waiting for your approval" : {},
+    "Week of" : {},
+    "Welcome Tour" : {},
+    "Welcome Tour…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Willkommenstour …"
+          }
+        }
+      }
+    },
+    "Welcome to WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Willkommen bei WhisperShortcut"
+          }
+        }
+      }
+    },
+    "What is sent" : {},
+    "What this app does — and doesn't do — with your data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was diese App mit Ihren Daten macht und was nicht."
+          }
+        }
+      }
+    },
+    "What's new in %@" : {},
+    "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update." : {},
+    "When enabled, a screenshot of the current screen is included in Dictate Prompt requests to give the AI visual context. Requires Screen Recording permission." : {},
+    "When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. On by default." : {},
+    "When enabled, popup windows will appear showing the transcribed text, AI responses, and voice response text." : {},
+    "When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate and Dictate Prompt. Requires Accessibility permission." : {},
+    "When enabled, whatever you had copied before dictating is put back on the clipboard right after the text is pasted — so dictation doesn't overwrite your clipboard. Requires auto-paste." : {},
+    "When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes." : {},
+    "When on, code, markdown, tables and other non-prose content are summarized into a speakable form. Plain prose is passed through unchanged. Adds one short Gemini call before TTS." : {},
+    "Whether anything may leave this Mac, and what WhisperShortcut can access on it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ob etwas diesen Mac verlassen darf und worauf WhisperShortcut hier zugreifen kann."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut sitzt in der Menüleiste, als %@-Symbol oben am Bildschirm."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen. Dictation needs the microphone: allow it in System Settings → Privacy & Security → Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut sitzt in der Menüleiste, als %@-Symbol oben am Bildschirm. Für das Diktat braucht es das Mikrofon: Erlauben Sie es unter Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen. Dictation still needs a transcription model: pick one in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut sitzt in der Menüleiste, als %@-Symbol oben am Bildschirm. Für das Diktat fehlt noch ein Spracherkennungsmodell: Wählen Sie eins unter Einstellungen → Diktieren."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and add a key or download the offline model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut sitzt in der Menüleiste. Bis das Diktat eingerichtet ist, zeigt es ⚠️. Klicken Sie darauf, wählen Sie „Einstellungen …“ und fügen Sie einen Schlüssel hinzu oder laden Sie das Offline-Modell."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht die Berechtigung für Bildschirmaufnahmen, um Bildschirmfotos zu machen. Prüfen Sie sie unter „Datenschutz & Berechtigungen“ und beenden und öffnen Sie WhisperShortcut danach neu, damit die Änderung wirkt."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht Zugriff auf das Mikrofon, um aufzunehmen. Öffnen Sie Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Mikrofon und aktivieren Sie WhisperShortcut."
+          }
+        }
+      }
+    },
+    "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut wurde während der Meeting-Aufnahme neu gestartet und hat dort weitergemacht, wo es aufgehört hat. Es fehlen nur die wenigen Sekunden des Neustarts."
+          }
+        }
+      }
+    },
+    "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut wurde während der Meeting-Aufnahme beendet, deshalb wurde die Aufnahme gestoppt. Das Transkript bis dahin ist gespeichert. Um das Meeting fortzusetzen, öffnen Sie es und klicken Sie auf „Resume“."
+          }
+        }
+      }
+    },
+    "Why this change" : {},
+    "With saving enabled, each capture is also stored as a PNG in your chosen folder." : {},
+    "Works with any OpenAI /v1/audio/transcriptions–compatible endpoint (OpenAI, self-hosted Whisper, faster-whisper-server, or any other compatible backend). Use custom headers for Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret) or other auth schemes." : {},
+    "Works without internet, no account" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktioniert ohne Internet und ohne Konto"
+          }
+        }
+      }
+    },
+    "Writing system-prompts.md failed. Your text is still here; it will be retried on the next edit. Details are in the log." : {},
+    "You can change this anytime in Settings → Privacy & Permissions." : {},
+    "You can revisit this tour any time from Settings → About." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Tour können Sie jederzeit unter Einstellungen → Über erneut aufrufen."
+          }
+        }
+      }
+    },
+    "You just updated. Replay the Welcome Tour below, or read the full notes on GitHub." : {},
+    "You're ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles bereit"
+          }
+        }
+      }
+    },
+    "You're using your ChatGPT plan" : {},
+    "Your Glossary is full — Whisper only reads the first ~224 tokens of it, so \"%@\" would never be used. Remove terms you no longer need in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr Glossar ist voll. Whisper liest nur die ersten etwa 224 Tokens, „%@“ würde also nie verwendet. Entfernen Sie nicht mehr benötigte Begriffe unter Einstellungen → Diktieren."
+          }
+        }
+      }
+    },
+    "Your audio goes only where you pick here — never to us. Keys stay in your Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr Audio geht nur dorthin, wo Sie es hier festlegen, nie an uns. Schlüssel bleiben in Ihrem Schlüsselbund."
+          }
+        }
+      }
+    },
+    "Your saved prompts can’t be read" : {},
+    "Your shortcuts — green is ready, red still needs a permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Tastenkürzel: Grün ist bereit, Rot braucht noch eine Berechtigung."
+          }
+        }
+      }
+    },
+    "a full conversation window, with screenshots" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ein vollständiges Chatfenster, mit Bildschirmfotos"
+          }
+        }
+      }
+    },
+    "a remote server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "einen externen Server"
+          }
+        }
+      }
+    },
+    "audio models" : {},
+    "capture your screen straight to the clipboard or a folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirm direkt in die Zwischenablage oder einen Ordner aufnehmen"
+          }
+        }
+      }
+    },
+    "collapsed" : {},
+    "expanded" : {},
+    "gemini-models" : {},
+    "https://your-whisper.example.com/v1/audio/transcriptions" : {},
+    "imap.example.com" : {},
+    "load" : {
+      "comment" : "Completes: The on-device model took too long to …",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "das Modell zu laden"
+          }
+        }
+      }
+    },
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app." : {},
+    "macOS permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS-Berechtigungen"
+          }
+        }
+      }
+    },
+    "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS fragt nicht noch einmal. Aktivieren Sie es unter Systemeinstellungen → Mikrofon und kommen Sie dann hierher zurück. Sie können das auch überspringen und später erlauben."
+          }
+        }
+      }
+    },
+    "openrouter.ai" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "openrouter.ai"
+          }
+        }
+      }
+    },
+    "openrouter.ai/models" : {},
+    "press and start speaking — your words land as text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "drücken und lossprechen, Ihre Worte werden zu Text"
+          }
+        }
+      }
+    },
+    "select text anywhere and hear it spoken" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text irgendwo markieren und vorlesen lassen"
+          }
+        }
+      }
+    },
+    "select text, speak an instruction — the selection is rewritten in place" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text markieren, eine Anweisung sprechen, die Auswahl wird an Ort und Stelle umgeschrieben"
+          }
+        }
+      }
+    },
+    "sk-..." : {},
+    "sk-or-v1-..." : {},
+    "transcribe your recording" : {
+      "comment" : "Completes: The on-device model took too long to …",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Aufnahme zu transkribieren"
+          }
+        }
+      }
+    },
+    "trello.com/power-ups/admin" : {},
+    "xAI (Grok)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "xAI (Grok)"
+          }
+        }
+      }
+    },
+    "xAI accepts at most %lld accounts — the last %lld will be ignored." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "xAI accepts at most %1$lld accounts — the last %2$lld will be ignored."
+          }
+        }
+      }
+    },
+    "· %@" : {},
+    "— Magnus • Developer" : {},
+    "•" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "•"
+          }
+        }
+      }
+    },
+    "• %@" : {},
+    "↩" : {},
+    "−" : {},
+    "⌃%lld" : {},
+    "⏰ Generic Timeout\n\nThe request timed out for an unknown reason.\n\nError: %@\n\nPlease try again or use a shorter recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung\n\nDie Anfrage ist aus unbekanntem Grund abgelaufen.\n\nFehler: %@\n\nBitte erneut versuchen oder eine kürzere Aufnahme verwenden."
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Lokales Modell zu langsam"
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to %@ (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange gebraucht, um %@ (über %lld Sekunden).\n\nMeist bedeutet das:\n• Der Mac ist stark ausgelastet oder hat wenig freien Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Ein kleineres Modell unter Einstellungen → Diktieren wählen\n• Eine kürzere Aufnahme versuchen"
+          }
+        }
+      }
+    },
+    "⏰ Network Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Netzwerkfehler"
+          }
+        }
+      }
+    },
+    "⏰ Request Timeout" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung"
+          }
+        }
+      }
+    },
+    "⏰ Request Timeout\n\nThe transcription service took too long to respond (over 60 seconds).\n\nThis usually means:\n• The service is overloaded or stalled\n• Your internet connection is very slow\n• The API endpoint is temporarily unavailable\n\nSolutions:\n• Wait a moment and try again\n• Check your internet connection\n• Try with a shorter recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung\n\nDer Transkriptionsdienst hat zu lange gebraucht (über 60 Sekunden).\n\nMeist bedeutet das:\n• Der Dienst ist überlastet oder hängt\n• Ihre Internetverbindung ist sehr langsam\n• Der API-Endpunkt ist vorübergehend nicht erreichbar\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Internetverbindung prüfen\n• Eine kürzere Aufnahme versuchen"
+          }
+        }
+      }
+    },
+    "⏰ Resource Timeout" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung"
+          }
+        }
+      }
+    },
+    "⏰ Resource Timeout\n\nThe entire request took too long to complete (over 5 minutes).\n\nThis usually means:\n• Very large audio file (close to 20MB limit)\n• Slow internet connection during upload/download\n• The provider is taking unusually long\n\nSolutions:\n• Try with a shorter recording\n• Check your internet connection speed\n• The app will automatically retry (up to 2 attempts)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung der Anfrage\n\nDie gesamte Anfrage hat zu lange gedauert (über 5 Minuten).\n\nMeist bedeutet das:\n• Sehr große Audiodatei (nahe an der Grenze von 20 MB)\n• Langsame Internetverbindung beim Hoch- oder Herunterladen\n• Der Anbieter braucht ungewöhnlich lange\n\nLösungen:\n• Eine kürzere Aufnahme versuchen\n• Geschwindigkeit der Internetverbindung prüfen\n• Die App versucht es automatisch erneut (bis zu 2 Versuche)"
+          }
+        }
+      }
+    },
+    "⏳ Daily Limit Reached\n\nYour included usage for this period is used up and your balance is insufficient for further requests.\n\nTop up your balance in the Dashboard to continue. Use the \"Top up\" button below to open the website." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Tageslimit erreicht\n\nIhr Kontingent für diesen Zeitraum ist aufgebraucht und Ihr Guthaben reicht nicht für weitere Anfragen.\n\nLaden Sie Ihr Guthaben im Dashboard auf, um weiterzumachen. Die Taste „Aufladen“ unten öffnet die Website."
+          }
+        }
+      }
+    },
+    "⏳ Finishing meeting — saving the last seconds…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Meeting wird beendet – die letzten Sekunden werden gespeichert …"
+          }
+        }
+      }
+    },
+    "⏳ Processing — meeting still recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Verarbeitung – Meeting wird weiter aufgenommen"
+          }
+        }
+      }
+    },
+    "⏳ Quota Exceeded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Kontingent überschritten"
+          }
+        }
+      }
+    },
+    "⏳ Quota Exceeded\n\nYou have exceeded your current quota. Please check your plan and billing details.\n\nCheck your current usage and quotas:\nhttps://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas\n\nTo resolve:\n1. Visit the link above to see your quota and usage\n2. Go to Billing settings in Google Cloud Console\n3. Add more credits or upgrade your plan\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Kontingent überschritten\n\nSie haben Ihr aktuelles Kontingent überschritten. Prüfen Sie Ihren Tarif und Ihre Abrechnungsdaten.\n\nAktuelle Nutzung und Kontingente:\nhttps://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas\n\nSo lösen Sie das:\n1. Öffnen Sie den Link oben und sehen Sie sich Kontingent und Nutzung an\n2. Gehen Sie in der Google Cloud Console zu den Abrechnungseinstellungen\n3. Laden Sie Guthaben auf oder wechseln Sie den Tarif\n\n%@"
+          }
+        }
+      }
+    },
+    "⏳ Rate Limit Exceeded\n\nYour AI provider rejected the request because of usage limits on your API key.\n\nCommon causes:\n• No billing / no credit on the API account — note that ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit; the developer account is billed separately\n• Free tier quota or daily limit reached (Gemini)\n• Too many requests in a short time\n\nCheck billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey (preview models like Gemini 3 Flash often need billing enabled)\n• OpenAI: https://platform.openai.com/settings/organization/billing\n• xAI: https://console.x.ai\n\nIf you use Sign in with Google instead of an API key, check your GCP project’s billing in Google Cloud Console.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Limit überschritten\n\nIhr KI-Anbieter hat die Anfrage wegen der Nutzungsgrenzen Ihres API-Schlüssels abgelehnt.\n\nHäufige Ursachen:\n• Keine Abrechnung bzw. kein Guthaben im API-Konto. Abos für die ChatGPT-, Grok- oder Gemini-App enthalten KEIN API-Guthaben, das Entwicklerkonto wird getrennt abgerechnet\n• Kostenloses Kontingent oder Tageslimit erreicht (Gemini)\n• Zu viele Anfragen in kurzer Zeit\n\nPrüfen Sie die Abrechnung beim Anbieter Ihres Schlüssels:\n• Google: https://aistudio.google.com/app/apikey (Vorschaumodelle wie Gemini 3 Flash brauchen oft aktivierte Abrechnung)\n• OpenAI: https://platform.openai.com/settings/organization/billing\n• xAI: https://console.x.ai\n\nWenn Sie sich mit Google anmelden statt einen API-Schlüssel zu nutzen, prüfen Sie die Abrechnung Ihres GCP-Projekts in der Google Cloud Console.\n\n%@"
+          }
+        }
+      }
+    },
+    "⏳ Rate Limited" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Limit erreicht"
+          }
+        }
+      }
+    },
+    "⏳ Waiting for API" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Warte auf den Anbieter"
+          }
+        }
+      }
+    },
+    "⚠️ API Issue" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Problem beim Anbieter"
+          }
+        }
+      }
+    },
+    "⚠️ API Response Issue\n\nThe transcription service returned an unexpected response.\nThis is typically a temporary API issue.\n\nPlease record again. If the problem persists, the audio might be unclear." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Problem mit der Antwort\n\nDer Transkriptionsdienst hat eine unerwartete Antwort geliefert.\nDas ist meist ein vorübergehendes Problem beim Anbieter.\n\nBitte nehmen Sie erneut auf. Wenn es bleibt, ist das Audio womöglich undeutlich."
+          }
+        }
+      }
+    },
+    "⚠️ Authentication Required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Anmeldung erforderlich"
+          }
+        }
+      }
+    },
+    "⚠️ No Gemini Credential\n\nYou have selected a Gemini model, but no credential is available.\nOpen Settings and either add your Google API key in the \"Google API Key\" section or sign in with Google (Google Account / SSO).\nWithout an API key or Google sign-in, Gemini transcription cannot be performed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Keine Gemini-Zugangsdaten\n\nSie haben ein Gemini-Modell gewählt, aber es sind keine Zugangsdaten hinterlegt.\nÖffnen Sie die Einstellungen und fügen Sie entweder Ihren Google-API-Schlüssel im Abschnitt „Google API Key“ hinzu oder melden Sie sich mit Google an (Google-Konto / SSO).\nOhne API-Schlüssel oder Google-Anmeldung ist keine Gemini-Transkription möglich."
+          }
+        }
+      }
+    },
+    "⚠️ No Google API Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Kein Google-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "⚠️ No Reply" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Keine Antwort"
+          }
+        }
+      }
+    },
+    "⚠️ No Reply\n\nThe model returned no text. Your recording was kept – try Retry or another model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Keine Antwort\n\nDas Modell hat keinen Text geliefert. Ihre Aufnahme ist gespeichert, versuchen Sie „Erneut versuchen“ oder ein anderes Modell."
+          }
+        }
+      }
+    },
+    "⚠️ Offline Model Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Fehler beim Offline-Modell"
+          }
+        }
+      }
+    },
+    "⚠️ Offline Model Error\n\nThe offline model could not be loaded or run.\n\n%@\n\nYour recording was kept – try Retry. If it keeps failing, re-download the model in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⚠️ Fehler beim Offline-Modell\n\nDas Offline-Modell konnte nicht geladen oder ausgeführt werden.\n\n%@\n\nIhre Aufnahme ist gespeichert, versuchen Sie „Erneut versuchen“. Wenn es weiter fehlschlägt, laden Sie das Modell unter Einstellungen → Diktieren neu."
+          }
+        }
+      }
+    },
+    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Anmeldung fehlgeschlagen\n\nIhr API-Schlüssel ist ungültig oder abgelaufen.\nPrüfen Sie in den Einstellungen den API-Schlüssel für den gewählten Anbieter."
+          }
+        }
+      }
+    },
+    "❌ Country Not Supported" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Land nicht unterstützt"
+          }
+        }
+      }
+    },
+    "❌ Country Not Supported\n\nYou are accessing the API from an unsupported country, region, or territory.\nPlease see Google's documentation for supported regions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Land nicht unterstützt\n\nSie greifen aus einem Land oder einer Region auf die API zu, die nicht unterstützt wird.\nDie unterstützten Regionen stehen in der Dokumentation von Google."
+          }
+        }
+      }
+    },
+    "❌ Empty Audio File\n\nThe recording contains no audio data.\nPlease try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Leere Audiodatei\n\nDie Aufnahme enthält keine Audiodaten.\nBitte versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "❌ Empty File" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Leere Datei"
+          }
+        }
+      }
+    },
+    "❌ Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Fehler"
+          }
+        }
+      }
+    },
+    "❌ File Error\n\nError: %@\n\nPlease try again with a different audio file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Dateifehler\n\nFehler: %@\n\nBitte versuchen Sie es mit einer anderen Audiodatei."
+          }
+        }
+      }
+    },
+    "❌ File Too Large" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Datei zu groß"
+          }
+        }
+      }
+    },
+    "❌ File Too Large\n\nThe audio file is larger than %@ and cannot be transcribed.\nPlease use a shorter recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Datei zu groß\n\nDie Audiodatei ist größer als %@ und kann nicht transkribiert werden.\nBitte verwenden Sie eine kürzere Aufnahme."
+          }
+        }
+      }
+    },
+    "❌ Incorrect API Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Falscher API-Schlüssel"
+          }
+        }
+      }
+    },
+    "❌ Incorrect API Key\n\nThe API key provided is not correct.\nPlease ensure the API key is correct and that you have added your payment details and activated the API key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Falscher API-Schlüssel\n\nDer angegebene API-Schlüssel ist nicht korrekt.\nPrüfen Sie, ob der Schlüssel stimmt, Zahlungsdaten hinterlegt sind und der Schlüssel aktiviert ist."
+          }
+        }
+      }
+    },
+    "❌ Invalid Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Ungültige Anmeldung"
+          }
+        }
+      }
+    },
+    "❌ Invalid Request\n\nThe request was malformed or contained invalid parameters.\nPlease check your audio file format and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Ungültige Anfrage\n\nDie Anfrage war fehlerhaft oder enthielt ungültige Parameter.\nPrüfen Sie das Format der Audiodatei und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "❌ Model No Longer Available\n\nThe requested resource was not found. This can happen if the selected model is no longer available.\n\nChoose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Modell nicht mehr verfügbar\n\nDie angefragte Ressource wurde nicht gefunden. Das passiert, wenn das gewählte Modell nicht mehr angeboten wird.\n\nWählen Sie ein anderes Modell unter Einstellungen → Diktieren (z. B. Gemini 3.1 Flash-Lite)."
+          }
+        }
+      }
+    },
+    "❌ Model no longer available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Modell nicht mehr verfügbar"
+          }
+        }
+      }
+    },
+    "❌ Network Error\n\nError: %@\n\nPlease check your internet connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Netzwerkfehler\n\nFehler: %@\n\nBitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "❌ Permission Denied\n\nYou don't have permission to access this resource.\nPlease check your API key permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Zugriff verweigert\n\nSie haben keine Berechtigung für diese Ressource.\nPrüfen Sie die Berechtigungen Ihres API-Schlüssels."
+          }
+        }
+      }
+    },
+    "❌ Resource Not Found\n\nThe requested resource was not found.\nPlease try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Ressource nicht gefunden\n\nDie angefragte Ressource wurde nicht gefunden.\nBitte versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "❌ Server Error" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Serverfehler"
+          }
+        }
+      }
+    },
+    "❌ Server Error (%lld)\n\nThe AI provider returned an error.\nPlease try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Serverfehler (%lld)\n\nDer KI-Anbieter hat einen Fehler gemeldet.\nBitte versuchen Sie es später erneut."
+          }
+        }
+      }
+    },
+    "🎤 No Speech" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Keine Sprache"
+          }
+        }
+      }
+    },
+    "🎤 No Speech Detected\n\nNo speech was detected in your recording. Please make sure to:\n• Speak clearly into your microphone\n• Wait for the recording indicator before speaking\n• Speak your prompt or instruction before stopping the recording\n\nTry recording again with clear speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Keine Sprache erkannt\n\nIn Ihrer Aufnahme wurde keine Sprache erkannt. Bitte achten Sie darauf:\n• Deutlich ins Mikrofon sprechen\n• Erst sprechen, wenn die Aufnahmeanzeige erscheint\n• Den Prompt oder die Anweisung sprechen, bevor Sie die Aufnahme beenden\n\nNehmen Sie noch einmal deutlich auf."
+          }
+        }
+      }
+    },
+    "🎤 Text Too Short" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Text zu kurz"
+          }
+        }
+      }
+    },
+    "🎤 Very Short Text Detected\n\nOnly very little text was recognized. This could mean:\n• You spoke too quietly or monotonously\n• The microphone didn't pick up clear audio\n• You spoke very briefly\n\nTry recording again and speak louder and more clearly." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Sehr wenig Text erkannt\n\nEs wurde nur sehr wenig Text erkannt. Mögliche Gründe:\n• Sie haben zu leise oder zu monoton gesprochen\n• Das Mikrofon hat kein klares Audio aufgenommen\n• Sie haben nur sehr kurz gesprochen\n\nNehmen Sie noch einmal auf und sprechen Sie lauter und deutlicher."
+          }
+        }
+      }
+    },
+    "🎤 Voice Output Requires API Key\n\nVoice output (Read Aloud) is not available when using Sign in with Google.\n\nTo use voice output, add a Google API key in Settings → Accounts → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Vorlesen braucht einen API-Schlüssel\n\nVorlesen ist mit „Mit Google anmelden“ nicht verfügbar.\n\nFügen Sie dafür einen Google-API-Schlüssel unter Einstellungen → Konten → Google API Key hinzu. Vorlesen nutzt dann direkt die Generative Language API und braucht keine Freischaltung."
+          }
+        }
+      }
+    },
+    "🎤 Voice Requires API Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🎤 Vorlesen braucht API-Schlüssel"
+          }
+        }
+      }
+    },
+    "💳 Billing Required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "💳 Abrechnung erforderlich"
+          }
+        }
+      }
+    },
+    "💳 Billing Required\n\nYour API account has no usable credit, or this model requires billing to be enabled.\n\nNote: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately.\n\nSet up billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)\n• OpenAI: https://platform.openai.com/settings/organization/billing — add credit\n• xAI: https://console.x.ai — add credit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "💳 Abrechnung erforderlich\n\nIhr API-Konto hat kein nutzbares Guthaben, oder dieses Modell setzt eine aktivierte Abrechnung voraus.\n\nHinweis: Abos für die ChatGPT-, Grok- oder Gemini-App enthalten KEIN API-Guthaben, das Entwicklerkonto wird getrennt abgerechnet.\n\nRichten Sie die Abrechnung beim Anbieter Ihres Schlüssels ein:\n• Google: https://aistudio.google.com/app/apikey – Abrechnung für das Projekt aktivieren, zu dem Ihr Schlüssel gehört (Vorschaumodelle wie Gemini 3 Flash brauchen das oft)\n• OpenAI: https://platform.openai.com/settings/organization/billing – Guthaben aufladen\n• xAI: https://console.x.ai – Guthaben aufladen"
+          }
+        }
+      }
+    },
+    "💳 Out of Credit\n\nYour OpenRouter balance is empty, so the request was rejected.\n\nAdd credit to continue. Use the \"Top up\" button below to open your OpenRouter dashboard." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "💳 Kein Guthaben\n\nIhr OpenRouter-Guthaben ist leer, deshalb wurde die Anfrage abgelehnt.\n\nLaden Sie Guthaben auf, um weiterzumachen. Die Taste „Aufladen“ unten öffnet Ihr OpenRouter-Dashboard."
+          }
+        }
+      }
+    },
+    "📝 Nothing Selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📝 Nichts markiert"
+          }
+        }
+      }
+    },
+    "📥 Model Not Downloaded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📥 Modell nicht geladen"
+          }
+        }
+      }
+    },
+    "📥 Model Not Downloaded\n\nThe offline model \"%@\" is not yet downloaded.\n\nEstimated size: %@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "📥 Model Not Downloaded\n\nThe offline model \"%1$@\" is not yet downloaded.\n\nEstimated size: %2$@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %3$@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📥 Modell nicht geladen\n\nDas Offline-Modell „%@“ ist noch nicht heruntergeladen.\n\nGeschätzte Größe: %@\n\nSo laden Sie das Modell herunter:\n1. Einstellungen öffnen (auf das Menüleistensymbol klicken und „Einstellungen“ wählen)\n2. Zum Bereich „Diktieren“ gehen, Abschnitt „Offline Models“\n3. Neben %@ auf „Download“ klicken\n4. Warten, bis der Download fertig ist (das kann einige Minuten dauern)\n5. Erneut transkribieren\n\nHinweis: Die Modelle kommen von Hugging Face und werden lokal auf Ihrem Mac gespeichert. Danach funktionieren sie komplett offline."
+          }
+        }
+      }
+    },
+    "📥 Model Not Downloaded\n\nThe offline model could not be loaded.\n\n%@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to your selected model\n4. Wait for the download to complete\n5. Try transcribing again\n\nNote: If the model was already downloaded, it may be incomplete or corrupted. Try deleting and re-downloading it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "📥 Modell nicht geladen\n\nDas Offline-Modell konnte nicht geladen werden.\n\n%@\n\nSo laden Sie das Modell herunter:\n1. Einstellungen öffnen (auf das Menüleistensymbol klicken und „Einstellungen“ wählen)\n2. Zum Bereich „Diktieren“ gehen, Abschnitt „Offline Models“\n3. Neben dem gewählten Modell auf „Download“ klicken\n4. Warten, bis der Download fertig ist\n5. Erneut transkribieren\n\nHinweis: Wenn das Modell schon geladen war, ist es womöglich unvollständig oder beschädigt. Löschen Sie es und laden Sie es neu."
+          }
+        }
+      }
+    },
+    "🔄 Service Unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔄 Dienst nicht erreichbar"
+          }
+        }
+      }
+    },
+    "🔄 Service Unavailable\n\nThe AI provider is temporarily unavailable.\nMultiple retries were attempted automatically.\nPlease wait a moment and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔄 Dienst nicht erreichbar\n\nDer KI-Anbieter ist vorübergehend nicht erreichbar.\nEs wurden automatisch mehrere Versuche unternommen.\nBitte warten Sie kurz und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "🔄 Slow Down" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔄 Zu viele Anfragen"
+          }
+        }
+      }
+    },
+    "🔄 Slow Down\n\nA sudden increase in your request rate is impacting service reliability.\nPlease reduce your request rate to its original level, maintain a consistent rate for at least %@, and then gradually increase it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🔄 Zu viele Anfragen\n\nIhre Anfragen sind plötzlich stark gestiegen und beeinträchtigen den Dienst.\nSenken Sie die Rate auf das ursprüngliche Niveau, halten Sie sie mindestens %@ konstant und steigern Sie sie dann langsam."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

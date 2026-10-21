@@ -1477,6 +1477,23 @@ enum SettingsTab: String, CaseIterable {
   // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
   case permissions = "Privacy & Permissions"
   case about = "About"
+
+  /// Sidebar label in the user's language. The raw value stays English because it is persisted.
+  var displayName: String {
+    switch self {
+    case .general: return String(localized: "General")
+    case .accounts: return String(localized: "Accounts")
+    case .speechToText: return String(localized: "Dictate")
+    case .speechToPrompt: return String(localized: "Dictate Prompt")
+    case .screenshot: return String(localized: "Screenshot")
+    case .readAloud: return String(localized: "Read Aloud")
+    case .chat: return String(localized: "Chat")
+    case .meetings: return String(localized: "Meetings")
+    case .improvement: return String(localized: "Smart Improvement")
+    case .permissions: return String(localized: "Privacy & Permissions")
+    case .about: return String(localized: "About")
+    }
+  }
 }
 
 // MARK: - Read Aloud Playback Speed

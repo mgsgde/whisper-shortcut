@@ -43,7 +43,7 @@ struct OnboardingTryItPanel: View {
           Label("It works", systemImage: "checkmark.circle.fill")
             .font(.caption)
             .foregroundStyle(.green)
-          Text(text.isEmpty ? "(no speech detected)" : text)
+          Text(text.isEmpty ? String(localized: "(no speech detected)") : text)
             .font(.callout)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
@@ -59,7 +59,7 @@ struct OnboardingTryItPanel: View {
             .foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
           HStack(spacing: 8) {
-            Button("Open Settings → \(tab.rawValue)") {
+            Button("Open Settings → \(tab.displayName)") {
               SettingsManager.shared.showSettings(tab: tab)
             }
             .buttonStyle(.bordered)

@@ -27,7 +27,7 @@ enum WelcomeStep: Int, CaseIterable {
   var indexLabel: String {
     let steps = WelcomeStep.activeSteps
     let position = (steps.firstIndex(of: self) ?? 0) + 1
-    return "\(position) of \(steps.count)"
+    return String(localized: "\(position) of \(steps.count)")
   }
 }
 
@@ -186,7 +186,7 @@ struct WelcomeView: View {
   }
 
   private var nextButtonTitle: String {
-    step == .done ? "Finish" : "Continue"
+    step == .done ? String(localized: "Finish") : String(localized: "Continue")
   }
 
   private var canAdvance: Bool {
