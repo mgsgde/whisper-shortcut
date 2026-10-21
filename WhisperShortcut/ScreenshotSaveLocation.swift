@@ -56,15 +56,51 @@ enum ScreenshotSaveLocation {
       }
       return url
     } catch {
-      // A bookmark that can no longer be resolved (folder deleted/moved, or the bookmark
-      // was invalidated by an app update or signing change) will keep failing on every
-      // save. Clear it so `hasFolder` reflects reality and Settings/onboarding can prompt
-      // the user to re-select a folder, instead of silently dropping every screenshot.
-      DebugLogger.logError(
-        "SCREENSHOT: Save folder bookmark could not be resolved (\(error.localizedDescription)). Clearing it — the user must re-select the folder in Settings.")
-      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveBookmark)
-      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveFolderDisplayPath)
+      let path = displayPath
+      if shouldDiscardBookmark(for: error, folderPath: path) {
+        // A bookmark whose data is corrupt, or whose folder is really gone (deleted/moved, or
+        // invalidated by a signing change), will keep failing on every save. Clear it so
+        // `hasFolder` reflects reality and Settings/onboarding can prompt for a new folder.
+        DebugLogger.logError(
+          "SCREENSHOT: Save folder bookmark is unusable (\(error.localizedDescription)). Clearing it — the user must re-select the folder in Settings.")
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveBookmark)
+        UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.screenshotSaveFolderDisplayPath)
+      } else {
+        // Transient (an unmounted external drive, a network share that is offline): keep the
+        // setting so it works again once the folder is back. This one screenshot goes to the
+        // clipboard only.
+        DebugLogger.logWarning(
+          "SCREENSHOT: Save folder is temporarily unavailable (\(error.localizedDescription)) — keeping the setting, this screenshot is clipboard-only")
+      }
       return nil
+    }
+  }
+
+  private static func shouldDiscardBookmark(for error: Error, folderPath: String) -> Bool {
+    shouldDiscardBookmark(
+      error: error as NSError, folderPath: folderPath,
+      volumeIsMounted: { FileManager.default.fileExists(atPath: $0) })
+  }
+
+  /// Whether a bookmark that failed to resolve should be forgotten for good. Only "the bookmark
+  /// data is corrupt" and "the folder no longer exists" qualify. An unmounted external drive
+  /// reports the same missing-file error as a deleted folder, so for paths under `/Volumes` the
+  /// volume root decides: if it is not mounted right now, the folder may well come back.
+  static func shouldDiscardBookmark(
+    error: NSError, folderPath: String, volumeIsMounted: (String) -> Bool
+  ) -> Bool {
+    guard error.domain == NSCocoaErrorDomain else { return false }
+    switch error.code {
+    case NSFileReadCorruptFileError:
+      return true
+    case NSFileReadNoSuchFileError, NSFileNoSuchFileError:
+      let parts = folderPath.split(separator: "/", omittingEmptySubsequences: true)
+      if parts.count >= 2, parts[0] == "Volumes" {
+        return volumeIsMounted("/Volumes/\(parts[1])")
+      }
+      return true
+    default:
+      return false
     }
   }
 
