@@ -288,7 +288,9 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     do {
       try await fetch(model) { fraction in
         Task { @MainActor [weak self] in
-          self?.downloadProgress[model] = fraction
+          // A hop queued before cancel/finish must not resurrect stale progress.
+          guard let self, self.downloadingModels.contains(model) else { return }
+          self.downloadProgress[model] = fraction
           onProgress?(fraction)
         }
       }
