@@ -78,7 +78,10 @@ struct ChatMemoryEditor: View {
   }
 
   private func save() {
-    ChatMemoryStore.shared.saveRawText(text)
+    // The model may have added lines since this text was loaded; keep them.
+    let merged = LineListMerge.textToSave(
+      edited: text, loaded: lastSavedText, onDisk: ChatMemoryStore.shared.loadMemory())
+    ChatMemoryStore.shared.saveRawText(merged)
     load()
   }
 
