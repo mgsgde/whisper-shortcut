@@ -288,29 +288,9 @@ class SettingsViewModel: ObservableObject {
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
   ]
 
-  // MARK: - Save Settings
-  func saveSettings() async -> String? {
-    data.isLoading = true
-
-    // Validate first
-    if let error = validateSettings() {
-      data.isLoading = false
-      // Show error to user instead of just returning it
-      showError(error)
-      return error
-    }
-
-    // Save Google API key. The key field's onChange already persists every edit (including
-    // clearing the field) live, so this write is only a safety net for a non-empty value.
-    // Never write an empty value here: after a failed Keychain read at load,
-    // data.googleAPIKey is "" while the real key is still stored — persisting "" would
-    // wipe it.
-    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.save(data.googleAPIKey, for: .google) {
-      DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
-    }
-
-    for slot in Self.slots { slot.save(data) }
-
+  /// The shortcut half of `data` as a `ShortcutConfig`. Also used by the onboarding Done step,
+  /// which must persist shortcuts without writing every other settings slot.
+  static func shortcutConfig(from data: SettingsData) -> ShortcutConfig {
     // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
     // shortcut" — we persist a disabled placeholder using the matching
     // factory default's keycode so the stored shape stays stable.
@@ -340,7 +320,33 @@ class SettingsViewModel: ObservableObject {
       meetingMarker: meetingMarker,
       addToGlossary: addToGlossary
     )
-    ShortcutConfigManager.shared.saveConfiguration(newConfig)
+    return newConfig
+  }
+
+  // MARK: - Save Settings
+  func saveSettings() async -> String? {
+    data.isLoading = true
+
+    // Validate first
+    if let error = validateSettings() {
+      data.isLoading = false
+      // Show error to user instead of just returning it
+      showError(error)
+      return error
+    }
+
+    // Save Google API key. The key field's onChange already persists every edit (including
+    // clearing the field) live, so this write is only a safety net for a non-empty value.
+    // Never write an empty value here: after a failed Keychain read at load,
+    // data.googleAPIKey is "" while the real key is still stored — persisting "" would
+    // wipe it.
+    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.save(data.googleAPIKey, for: .google) {
+      DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
+    }
+
+    for slot in Self.slots { slot.save(data) }
+
+    ShortcutConfigManager.shared.saveConfiguration(Self.shortcutConfig(from: data))
 
     // Notify about model change
     NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)

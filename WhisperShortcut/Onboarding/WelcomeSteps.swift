@@ -950,7 +950,9 @@ struct WelcomeDoneStep: View {
     var id: String { name }
   }
 
-  private let shortcuts = ShortcutConfigManager.shared.loadConfiguration()
+  /// Read from the recorders' model, so a shortcut re-recorded on this step shows up in the list
+  /// right away (a `let` here was read once when the step appeared).
+  private var shortcuts: ShortcutConfig { SettingsViewModel.shortcutConfig(from: settingsViewModel.data) }
 
   /// Live permission state so each row's green/red status is accurate, and flips the moment the
   /// user grants a permission and returns (didBecomeActive) without leaving onboarding.
@@ -1106,32 +1108,8 @@ struct WelcomeDoneStep: View {
   /// so a model picked in Settings meanwhile would be reverted.
   /// `saveConfiguration` posts `.shortcutsChanged`, which re-registers hotkeys.
   private func saveRecordedShortcuts() {
-    func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
-      ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
-    }
-    let data = settingsViewModel.data
-    let factory = ShortcutConfig.default
-    let startRecording = data.toggleDictation ?? disable(factory.startRecording)
-    let startPrompting = data.togglePrompting ?? disable(factory.startPrompting)
-    let openSettings = data.openSettings ?? disable(factory.openSettings)
-    let openChat = data.openChat ?? disable(factory.openChat)
-    let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
-    let readAloud = data.readAloud ?? disable(factory.readAloud)
-    let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
-    let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
-    let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
-    let newConfig = ShortcutConfig(
-      startRecording: startRecording,
-      startPrompting: startPrompting,
-      openSettings: openSettings,
-      openChat: openChat,
-      screenshotCapture: screenshotCapture,
-      readAloud: readAloud,
-      voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker,
-      addToGlossary: addToGlossary
-    )
-    ShortcutConfigManager.shared.saveConfiguration(newConfig)
+    ShortcutConfigManager.shared.saveConfiguration(
+      SettingsViewModel.shortcutConfig(from: settingsViewModel.data))
   }
 
   @ViewBuilder
