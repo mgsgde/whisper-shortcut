@@ -203,19 +203,26 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
     }
   }
 
-  private static func settingsTab(for error: Error, message: String) -> SettingsTab {
+  /// Where a failed try-it recording should send the user in Settings.
+  ///
+  /// Credential messages from `ProviderCredentials.missingKeyMessage` all contain "model"
+  /// ("to use OpenAI models"), and this used to test "model" before "api key", so a missing
+  /// key opened Dictate instead of Accounts.
+  static func settingsTab(for error: Error, message: String) -> SettingsTab {
     let combined = (error.localizedDescription + " " + message).lowercased()
     if combined.contains("microphone") || combined.contains("permission") {
       return .permissions
+    }
+    if combined.contains("settings → accounts") || combined.contains("api key")
+      || combined.contains("credential") || combined.contains("keychain")
+      || combined.contains("sign in")
+    {
+      return .accounts
     }
     if combined.contains("offline") || combined.contains("whisper") || combined.contains("model")
       || combined.contains("download")
     {
       return .speechToText
-    }
-    if combined.contains("api key") || combined.contains("credential") || combined.contains("keychain")
-    {
-      return .accounts
     }
     return .speechToText
   }
