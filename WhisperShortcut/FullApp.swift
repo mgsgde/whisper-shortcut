@@ -117,6 +117,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Skipped in a sidecar: the user's own instance owns the MCP port and the update checks.
     if !AppConstants.isSidecarInstance {
       MCPServer.shared.startIfEnabled()
+      MCPProposalWindows.shared.start()
 
       #if !APP_STORE && canImport(Sparkle)
       // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).

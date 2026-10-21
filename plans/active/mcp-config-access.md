@@ -1,6 +1,9 @@
 # MCP v2: Claude and ChatGPT configure WhisperShortcut
 
-Status: spec (2026-10-21), revised after an independent Opus review the same day. Nothing built.
+Status: slice 1 built (2026-10-21) on `feat/mcp-config-access`. Plumbing by Sonnet 5.5 (Grok
+over its daily cap), UI by Opus, checked in the sidecar build with screenshots. Not yet verified:
+a live client (Claude Code) against the server, because the sidecar runs no MCP server; that
+needs a release install or `--replace`. See "As built" below.
 Builds on `mcp-meeting-server.md` (v1, read-only meetings, shipped).
 
 ## Problem
@@ -26,7 +29,8 @@ Slice 1 is cut to exactly these four; anything else waits for a use case.
    Evidence: on 2026-10-17 an auto run dropped Christoph Michelbach, Wianco, sabaki.dance, Smikale,
    EnBW from the glossary (history 234 → 115 chars). Fixed since `c4473634` (2026-10-19, additive
    merge, in v8.55); the terms came back via Voice Feedback. A misspelling ("Unternhmen") had also
-   landed as a term and was removed by hand: an add path must reject obvious typos.
+   landed as a term and was removed by hand. (Built: no typo heuristic in the app; the client model
+   spells the terms, and each add is listed with Undo.)
 2. **Messages that don't sound like AI.** "Claude weiß am besten, was ich wo für Nachrichten
    abschicke." Claude carries its writing rules (e.g. the 161-line `nicht-nach-ki-klingen.md` in
    Magnus's notes) into the Dictate Prompt section and the writing style profile (1.5 KB today).
@@ -179,7 +183,7 @@ and falls back. Fine for v2; adding `prompts` and `resources` capabilities works
   injected stores; section allow-list and caps shared with `ChatTools`.
 - `MCP/MCPProposalStore.swift`: proposals jsonl, status, serial writer on main.
 - `ContextLogger`: `previousContent` in the history entry.
-- UI (Opus): permission picker, two token copy buttons, "From AI apps" inbox + menu bar badge,
+- UI (Opus): permission picker, two token copy buttons, "From AI apps" inbox + menu item,
   "Changes by AI apps" list with Undo, recent-dictations toggle. Checked in the running app.
 - Tests: section allow-list and caps per level (dictation/chat never applied directly), read
   token cannot write, proposal lifecycle and persistence, Undo with and without a later edit,
@@ -198,6 +202,20 @@ and falls back. Fine for v2; adding `prompts` and `resources` capabilities works
 
 Plumbing per slice goes to the cheap hand (Grok 4.7, Sonnet over cap); Opus reviews against the
 verbatim test output and writes the UI.
+
+## As built (slice 1), where it differs from above
+
+- **Menu item, not a badge.** "Review N Changes from AI Apps…" appears in the menu bar menu
+  while proposals wait; the list sits in Settings → Meetings → "Claude & Other AI Apps".
+- **A proposal window opens by itself** when one arrives, but does not activate the app, and
+  **Return never accepts** in these windows. Found while testing: an auto-opened window plus
+  Return-to-accept applied two proposals nobody read.
+- **Long prompts show a collapsed diff** ("⋯ N unchanged lines", two lines of context), also in
+  Smart Improvement's own review. A one-line rule appended to the Dictate Prompt was otherwise
+  300 lines below the fold.
+- **Deletions** show only the current command, with a "Delete Command" button.
+- Glossary terms with commas or newlines are rejected; bare terms over three words are dropped by
+  the additive merge (`no_change`). `GlossaryFastLearner` still writes outside the serial path.
 
 ## Open questions
 

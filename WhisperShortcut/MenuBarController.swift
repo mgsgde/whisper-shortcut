@@ -40,6 +40,7 @@ class MenuBarController: NSObject {
     case retryMeetingTranscription = 127
     case showMeetingAudio = 128
     case welcomeTour = 129
+    case aiAppProposals = 130
   }
 
   /// Display time for the benign "No speech detected" info popup — long enough to read,
@@ -427,6 +428,12 @@ class MenuBarController: NSObject {
     let finishSetupSeparator = NSMenuItem.separator()
     finishSetupSeparator.tag = MenuTag.finishSetupSeparator.rawValue
     menu.addItem(finishSetupSeparator)
+
+    // Changes an AI app proposed over MCP; hidden while nothing waits.
+    let proposalsItem = createMenuItem(
+      "Review Changes from AI Apps…", action: #selector(showAIAppProposals), tag: .aiAppProposals)
+    proposalsItem.isHidden = true
+    menu.addItem(proposalsItem)
 
     // Central stop button — visible only when any operation is active
     let stopItem = createMenuItem("Stop", action: #selector(stopCurrentOperation), tag: .stop)
@@ -1091,6 +1098,12 @@ class MenuBarController: NSObject {
     let needsOnboarding = WelcomeWindowController.needsCompletion
     menu.item(withTag: MenuTag.finishSetup.rawValue)?.isHidden = !needsOnboarding
     menu.item(withTag: MenuTag.finishSetupSeparator.rawValue)?.isHidden = !needsOnboarding
+    let pendingProposals = MCPProposalStore.shared.pending.count
+    if let proposalsItem = menu.item(withTag: MenuTag.aiAppProposals.rawValue) {
+      proposalsItem.isHidden = pendingProposals == 0
+      proposalsItem.title = pendingProposals > 1
+        ? "Review \(pendingProposals) Changes from AI Apps…" : "Review Change from AI App…"
+    }
     menu.item(withTag: MenuTag.welcomeTour.rawValue)?.isHidden = needsOnboarding
 
     // One decision for titles and the central Stop row (`ModeAvailabilityRules`). When a row
@@ -4094,6 +4107,13 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     DebugLogger.log("CHUNK-PROGRESS: Merging \(isTTS ? "audio chunks" : "transcripts")...")
+  }
+}
+
+// MARK: - AI app proposals
+extension MenuBarController {
+  @objc func showAIAppProposals() {
+    MCPProposalWindows.shared.showAll()
   }
 }
 
