@@ -812,7 +812,10 @@ final class RecordingIndicatorManager {
     NSAnimationContext.runAnimationGroup({ context in
       context.duration = Constants.fadeDuration
       panel.animator().alphaValue = 0
-    }) {
+    }) { [weak self] in
+      // A show within the fade sets isVisible again; ordering out then would
+      // hide the pill that just came back.
+      guard let self, !self.isVisible else { return }
       panel.orderOut(nil)
     }
   }
