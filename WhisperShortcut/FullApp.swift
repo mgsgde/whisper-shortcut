@@ -90,6 +90,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     migrateChatDefaultTo37Flash()
     migrateChatAndImprovementDefaultsTo38Flash()
 
+    // Once per launch, never from the reconciler: the custom-endpoint field triggers reconcileAll on
+    // every keystroke, which would migrate an openrouter.ai URL mid-edit.
+    OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
+
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
     ModelSelectionReconciler.reconcileAll()

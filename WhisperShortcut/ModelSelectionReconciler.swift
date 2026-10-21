@@ -97,7 +97,6 @@ enum ModelSelectionReconciler {
   }
 
   private static func reconcileAllSelections() {
-    OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
     LocalLLMPreferences.migrateHiddenMLXFlagIfNeeded()
     // Offline Mode inverts this type's job: instead of following the keys the user has, the
     // selections that can run locally are pulled back onto this Mac. Without it the reconciler
