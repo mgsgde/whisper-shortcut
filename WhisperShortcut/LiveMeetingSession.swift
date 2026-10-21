@@ -571,6 +571,10 @@ final class LiveMeetingSession: NSObject {
         consumed.append(item.url)
       } catch TranscriptionError.noSpeechDetected {
         consumed.append(item.url)
+      } catch let error as TranscriptionError where error == .promptLeakDetected || error == .fileTooLarge {
+        // Fails identically on every retry; skip it so it cannot block the rest of the backlog.
+        DebugLogger.logWarning("MEETING-BACKLOG: Dropping unretryable chunk \(item.url.lastPathComponent): \(error)")
+        consumed.append(item.url)
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Retry failed for \(item.url.lastPathComponent): \(error)")
         failure = error
