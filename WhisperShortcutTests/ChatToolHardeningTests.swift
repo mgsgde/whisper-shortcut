@@ -71,4 +71,26 @@ struct ChatToolHardeningTests {
       #expect(result["error"] != nil, "\(needle)")
     }
   }
+
+  // MARK: approval card matches execution
+
+  @Test func writeCardUsesTheSameBoolParsingAsExecution() {
+    for value: Any in [true, "true", "yes", "1"] {
+      let card = ChatToolRegistry.approvalSummary(
+        name: "write_text_file", args: ["path": "a.txt", "content": "x", "overwrite": value])
+      #expect(card.hasPrefix("Overwrite file"), "\(value)")
+    }
+    let create = ChatToolRegistry.approvalSummary(
+      name: "write_text_file", args: ["path": "a.txt", "content": "x", "overwrite": "no"])
+    #expect(create.hasPrefix("Create file"))
+  }
+
+  @Test func editCardMentionsReplaceAll() {
+    let all = ChatToolRegistry.approvalSummary(
+      name: "edit_text_file", args: ["path": "a.txt", "find": "a", "replace": "b", "replace_all": "true"])
+    #expect(all.contains("all occurrences"))
+    let one = ChatToolRegistry.approvalSummary(
+      name: "edit_text_file", args: ["path": "a.txt", "find": "a", "replace": "b"])
+    #expect(!one.contains("all occurrences"))
+  }
 }

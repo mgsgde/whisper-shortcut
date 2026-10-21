@@ -157,12 +157,13 @@ enum ChatToolRegistry {
       let line = "\(verb) the Dictate Prompt instructions."
       return text.isEmpty ? line : line + "\n\n" + preview(text)
     case "write_text_file":
-      let overwrite = (args["overwrite"] as? Bool) == true
+      let overwrite = boolArgument(args, "overwrite", default: false)
       return (overwrite ? "Overwrite file " : "Create file ") + "\(arg("path"))\n\n" + preview(arg("content"))
     case "append_to_file":
       return "Append to file \(arg("path")):\n\n" + preview(arg("content"))
     case "edit_text_file":
-      return "Edit file \(arg("path")):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
+      let scope = boolArgument(args, "replace_all", default: false) ? " (all occurrences)" : ""
+      return "Edit file \(arg("path"))\(scope):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
     default:
       return "Allow the chat to run \(name)?"
     }
