@@ -91,7 +91,12 @@ struct IMAPSessionTests {
     #expect(transport.transcript.contains("UID SEARCH ALL\r\n"))
   }
 
-  @Test func searchRejectsControlCharacters() {
+  @Test func tabIsLegalInAQuotedString() throws {
+    // RFC 3501 TEXT-CHAR excludes only CR and LF, so a tab (e.g. in a password) must still pass.
+    #expect(try IMAPSession.argument("a\tb") == .text("\"a\tb\""))
+  }
+
+  @Test func searchRejectsLineBreaks() {
     #expect(throws: IMAPError.self) {
       _ = try IMAPSession.searchPieces(
         from: nil, subject: "x\"\r\nA9 UID STORE 1 +FLAGS \\Deleted", text: nil, since: nil)

@@ -664,8 +664,10 @@ actor IMAPSession {
   }
 
   static func argument(_ string: String) throws -> Piece {
-    if string.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) {
-      throw IMAPError.protocolError("The search text contains control characters.")
+    // RFC 3501 quoted strings may not carry CR, LF or NUL; sent raw, a line break would end the
+    // command and let the rest run as a new one (a prompt-injected `mail_search` could EXPUNGE).
+    if string.utf8.contains(where: { $0 == 0x0D || $0 == 0x0A || $0 == 0x00 }) {
+      throw IMAPError.protocolError("A mail search or login value contains a line break.")
     }
     if needsLiteral(string) { return .literal(Data(string.utf8)) }
     return .text(quote(string))
