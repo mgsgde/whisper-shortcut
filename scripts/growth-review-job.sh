@@ -17,6 +17,15 @@
 # Installed via ~/Library/LaunchAgents/com.whispershortcut.growth-review.plist
 # (Saturdays 09:07; the 25-day gate below makes the effective cadence monthly, and a
 # missed Saturday — Mac asleep — is caught by the next one instead of waiting a month).
+#
+# SECURITY (2026-10-14): this job no longer runs with --dangerously-skip-permissions. The pass
+# reads untrusted web content (competitor pages, search results) and used to hold a full shell,
+# so a prompt-injected page could have read ~/.ssh or the Keychain and exfiltrated it. It now runs
+# with --permission-mode dontAsk: any tool call not matched by GROWTH_ALLOWED_TOOLS below is
+# denied without prompting. No MCP servers (--strict-mcp-config). If a run fails because a tool
+# was denied, add that ONE rule to the array below (exact subcommand or exact script path, never
+# a generic python3/curl/bash/sh/cat/security rule) and never go back to
+# --dangerously-skip-permissions.
 
 # Usage: growth-review-job.sh [--dry-run] [--force]
 #   --dry-run   check the plumbing (auth, gates), skip the Claude pass
@@ -74,6 +83,54 @@ if [ ! -d "$BUSINESS_DIR" ]; then
   exit 1
 fi
 mkdir -p "$REVIEW_DIR"
+
+# ---- Tool allowlist for the unattended pass (see SECURITY note in the header) -----------------
+# Reads inside $REPO and --add-dir need no rule under dontAsk; everything else is denied.
+# Canonical paths (no "..", symlinks resolved) so the Write/Edit rules below match what the agent writes.
+BUSINESS_DIR="$(cd "$BUSINESS_DIR" && pwd -P)"
+BUSINESS_ABS="$BUSINESS_DIR"
+REVIEW_DIR="$BUSINESS_DIR/growth-reviews"
+DIGEST="$REVIEW_DIR/$STAMP-review.md"
+LEDGER="$BUSINESS_DIR/growth-ledger.md"
+GROWTH_ALLOWED_TOOLS=(
+  # App Store Connect, read-only subcommands only (no versions create/update, no reviews respond)
+  "Bash(asc apps list:*)"
+  "Bash(asc status:*)"
+  "Bash(asc analytics:*)"
+  "Bash(asc finance:*)"
+  "Bash(asc insights:*)"
+  "Bash(asc performance metrics:*)"
+  "Bash(asc versions list:*)"
+  "Bash(asc versions view:*)"
+  "Bash(asc reviews --app:*)"
+  "Bash(asc reviews view:*)"
+  "Bash(asc reviews ratings:*)"
+  "Bash(asc reviews summarizations:*)"
+  # GitHub, this repo only, plus release list
+  "Bash(gh api repos/mgsgde/whisper-shortcut:*)"
+  "Bash(gh release list:*)"
+  # git effort / deploy-gate evidence
+  "Bash(git log:*)"
+  # the two evidence scripts the skill names (Cloud Run logs, opt-in telemetry), exact paths
+  "Bash(bash $REPO/scripts/web-traffic-report.sh:*)"
+  "Bash(bash scripts/web-traffic-report.sh:*)"
+  "Bash(bash $REPO/scripts/telemetry-report.sh:*)"
+  "Bash(bash scripts/telemetry-report.sh:*)"
+  # web: one search pass plus the competitor and App Store pages
+  "WebSearch"
+  "WebFetch(domain:superwhisper.com)"
+  "WebFetch(domain:wisprflow.ai)"
+  "WebFetch(domain:macwhisper.com)"
+  "WebFetch(domain:goodsnooze.gumroad.com)"
+  "WebFetch(domain:tryvoiceink.com)"
+  "WebFetch(domain:apps.apple.com)"
+  # the only files this run may write (Edit rules cover Write too): the digest and the ledger (the proposal file is appended
+  # right before the claude call, once its path is known)
+  "Edit(/$DIGEST)"
+  "Edit(/$LEDGER)"
+)
+# Secrets next to the code stay unreadable even though the repo is the working dir.
+GROWTH_DENIED_TOOLS=("Read(/$REPO/.env)" "Read(/$REPO/.env.*)")
 
 AUDIT_MAIL_TO="${AUDIT_MAIL_TO:-mail@magnus-goedde.de}"
 
@@ -199,7 +256,11 @@ echo "Review pass: model=$GROWTH_MODEL effort=$GROWTH_EFFORT budget=\$$GROWTH_BU
 KILLED_MARKER="$(mktemp -t wsgrowthkill)"
 rm -f "$KILLED_MARKER"
 
-claude -p --dangerously-skip-permissions \
+GROWTH_ALLOWED_TOOLS+=("Edit(/$IMPLEMENTER_PROPOSAL_FILE)")
+
+claude -p --permission-mode dontAsk --strict-mcp-config \
+  --allowedTools "${GROWTH_ALLOWED_TOOLS[@]}" --disallowedTools "${GROWTH_DENIED_TOOLS[@]}" \
+  --add-dir "$BUSINESS_ABS" \
   --model "$GROWTH_MODEL" --effort "$GROWTH_EFFORT" --max-budget-usd "$GROWTH_BUDGET_USD" \
   "$(cat "$PROMPT_FILE")" 2>&1 &
 CLAUDE_PID=$!
