@@ -1226,11 +1226,20 @@ enum ChatToolRegistry {
     return PromptModel(rawValue: migrated)?.provider ?? SettingsDefaults.selectedChatModel.provider
   }
 
-  private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
-    if let value = args[key] as? Int { return value }
-    if let value = args[key] as? Double { return Int(value) }
-    if let value = args[key] as? NSNumber { return value.intValue }
-    if let value = args[key] as? String, let parsed = Int(value) { return parsed }
+  /// Model-supplied numbers can be anything (1e20, NaN); `Int(Double)` traps on those. Values are
+  /// truncated toward zero and clamped to ±1_000_000_000; non-finite values fall back to the default.
+  static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
+    let limit = 1_000_000_000
+    func clamped(_ value: Double) -> Int {
+      guard value.isFinite else { return defaultValue }
+      return max(-limit, min(limit, Int(exactly: value.rounded(.towardZero)) ?? (value < 0 ? -limit : limit)))
+    }
+    if let value = args[key] as? Int { return max(-limit, min(limit, value)) }
+    if let value = args[key] as? Double { return clamped(value) }
+    if let value = args[key] as? NSNumber { return clamped(value.doubleValue) }
+    if let value = args[key] as? String, let parsed = Int(value.trimmingCharacters(in: .whitespaces)) {
+      return max(-limit, min(limit, parsed))
+    }
     return defaultValue
   }
 
@@ -1452,8 +1461,8 @@ enum ChatToolRegistry {
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let maxResults = intArgument(args, "max_results", default: 10)
-      let hoursAhead = intArgument(args, "hours_ahead", default: 168)
-      let hoursBack = intArgument(args, "hours_back", default: 0)
+      let hoursAhead = min(max(intArgument(args, "hours_ahead", default: 168), 0), 24 * 366)
+      let hoursBack = min(max(intArgument(args, "hours_back", default: 0), 0), 24 * 366)
       do {
         let events = try await GoogleCalendarAPIClient.shared.listEvents(
           maxResults: maxResults, hoursAhead: hoursAhead, hoursBack: hoursBack)

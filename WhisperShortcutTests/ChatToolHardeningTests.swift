@@ -107,4 +107,19 @@ struct ChatToolHardeningTests {
     #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(full) == full)
     #expect(WorkspaceFileTools.droppingIncompleteUTF8Tail(Data()).isEmpty)
   }
+
+  // MARK: intArgument
+
+  @Test func intArgumentNeverTraps() {
+    let f = { (v: Any) in ChatToolRegistry.intArgument(["k": v], "k", default: 7) }
+    #expect(f(1e20) == 1_000_000_000)
+    #expect(f(-1e20) == -1_000_000_000)
+    #expect(f(Double.nan) == 7)
+    #expect(f(Double.infinity) == 7)
+    #expect(f("12") == 12)
+    #expect(f(3.7) == 3)
+    #expect(f(-3.7) == -3)
+    #expect(f(Int.max) == 1_000_000_000)
+    #expect(ChatToolRegistry.intArgument([:], "k", default: 7) == 7)
+  }
 }
