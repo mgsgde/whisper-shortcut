@@ -111,7 +111,7 @@ extension NSEvent.ModifierFlags: @retroactive Codable {
 /// "stop" binding. Previously this struct had `stopRecording` / `stopPrompting` / `toggleMeeting`
 /// / `stopMeeting` siblings — they were never read after the toggle redesign and have been
 /// dropped. Existing UserDefaults entries for those keys are left in place (harmless).
-struct ShortcutConfig: Codable {
+struct ShortcutConfig: Codable, Equatable {
   var startRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var openSettings: ShortcutDefinition
