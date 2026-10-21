@@ -137,7 +137,7 @@ enum MIMEDecoder {
   }
 
   private static func parseHeaders(_ data: Data) -> HeaderMap {
-    let text = unfold(String(data: data, encoding: .isoLatin1) ?? "")
+    let text = unfold(String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "")
     var map = HeaderMap()
     for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
       let row = String(line)
