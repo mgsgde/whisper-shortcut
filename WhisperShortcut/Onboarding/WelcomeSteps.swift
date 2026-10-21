@@ -189,7 +189,7 @@ struct WelcomeDictationSetupStep: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     // Cloud picked first, key pasted afterwards: the pick found no credential yet and left the
     // offline model selected, so run the switch again once a key exists.
-    .onChange(of: hasCloudKey) { configured in
+    .onChange(of: hasCloudKey) { _, configured in
       if configured && choice == .cloud { preferCloudTranscription() }
     }
   }

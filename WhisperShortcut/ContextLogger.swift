@@ -381,7 +381,8 @@ class ContextLogger {
   }
 
   /// Emits `promptFollowUp` when this selection is the previous Dictate Prompt output.
-  /// `previousPromptAt` is the previous response's timestamp, read before this call records the new one. An empty selection emits nothing and clears nothing — the response hashes
+  /// `previousPromptAt` is the previous response's timestamp, read before this call records the
+  /// new one. An empty selection emits nothing and clears nothing — the response hashes
   /// are replaced by the caller either way.
   private func noteFollowUp(selectedText: String?, userInstruction: String, previousPromptAt: Date?) {
     let trimmed = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
