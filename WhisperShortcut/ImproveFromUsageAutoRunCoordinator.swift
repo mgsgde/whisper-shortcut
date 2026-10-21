@@ -18,7 +18,8 @@ final class ImproveFromUsageAutoRunCoordinator {
     // A sidecar shares the user's data directory and must not run the daily job a second time.
     guard !AppConstants.isSidecarInstance else { return }
     // Writing Style does not depend on "Save usage data", so it runs first.
-    await WritingStyleAutoUpdater.shared.runIfDue()
+    // Detached: the review panel can wait on the user indefinitely and must not block the rest.
+    Task { @MainActor in await WritingStyleAutoUpdater.shared.runIfDue() }
     guard ContextLoggingPreference.isEnabled else {
       DebugLogger.log(
         "AUTO-RUN: Save usage data is off (or Offline Mode is on), skipping Improve from usage")

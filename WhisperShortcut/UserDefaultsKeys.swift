@@ -175,6 +175,8 @@ enum UserDefaultsKeys {
   static let writingStyleSamplesSinceProfile = "writingStyleSamplesSinceProfile"
   /// When the Writing Style profile was last derived and accepted.
   static let writingStyleProfileUpdatedAt = "writingStyleProfileUpdatedAt"
+  /// When the user last dismissed the Writing Style profile review (Cancel). Stops the first-profile offer from repeating.
+  static let writingStyleProfileDismissedAt = "writingStyleProfileDismissedAt"
   /// When the Writing Style Gmail import last finished without error.
   static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
 

@@ -343,11 +343,13 @@ enum WritingStyleImporter {
       rationale: "Derived from \(used) of your messages.")
     else {
       store.resetSamplesSinceProfile()
+      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
       DebugLogger.log("WRITING-STYLE-PROFILE: review cancelled")
       return nil
     }
     store.saveProfile(accepted)
     UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     store.resetSamplesSinceProfile()
     DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
     return accepted

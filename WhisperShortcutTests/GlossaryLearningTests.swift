@@ -193,4 +193,26 @@ struct GlossaryLearningTests {
   private func repeated(_ word: String, count: Int) -> [String] {
     (0..<count).map { "\(word) \($0)" }
   }
+
+  // MARK: - Applying a reviewed glossary
+
+  @Test("Unchanged glossary: the accepted text is written as is, deletions included")
+  func reviewedGlossaryHonoursDeletions() {
+    let original = "Alpha\nBeta\nGamma"
+    let accepted = "Alpha\nGamma"
+    let result = AutoPromptImprovementScheduler.glossaryToApply(
+      current: original, panelOriginal: original, accepted: accepted)
+    #expect(result == accepted)
+  }
+
+  @Test("Lines appended while the panel was open are kept, user deletions stay deleted")
+  func reviewedGlossaryKeepsLateAppends() {
+    let original = "Alpha\nBeta\nGamma"
+    let current = original + "\nDelta"
+    let accepted = "Alpha\nGamma"
+    let result = AutoPromptImprovementScheduler.glossaryToApply(
+      current: current, panelOriginal: original, accepted: accepted)
+    #expect(result.contains("Delta"))
+    #expect(!result.contains("Beta"))
+  }
 }

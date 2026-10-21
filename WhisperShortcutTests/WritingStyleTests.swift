@@ -6,6 +6,23 @@ import Testing
 @Suite("Writing Style")
 struct WritingStyleTests {
 
+  // MARK: - Profile due rule
+
+  @Test("Never offered with enough samples is due")
+  func neverOfferedIsDue() {
+    #expect(WritingStyleAutoUpdater.isProfileDue(since: 0, total: 25, hasProfile: false, dismissed: false))
+  }
+
+  @Test("Dismissed with fewer than 20 new samples is not due")
+  func dismissedFewNewNotDue() {
+    #expect(!WritingStyleAutoUpdater.isProfileDue(since: 5, total: 25, hasProfile: false, dismissed: true))
+  }
+
+  @Test("Dismissed with 20 new samples is due again")
+  func dismissedManyNewDue() {
+    #expect(WritingStyleAutoUpdater.isProfileDue(since: 20, total: 40, hasProfile: false, dismissed: true))
+  }
+
   // MARK: - Cleaning sent mail
 
   @Test("German reply header and quoted text are cut")

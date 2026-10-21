@@ -83,6 +83,11 @@ final class LiveMeetingSession: NSObject {
   private var didShowTranscriptionFailureAlert: Bool = false
   /// True while `retryBacklog` runs, so a second click can't transcribe the same files twice.
   private(set) var isRetryingBacklog: Bool = false
+  /// Retry requests that arrived while a pass was running; one more pass handles them.
+  private var hasPendingRetry = false
+  private var pendingRetryStems: Set<String> = []
+  private var pendingRetryAll = false
+  private var pendingRetryAnnounce = false
   /// Consecutive live-note failures (e.g. sustained Gemini 503). Reset to 0 on any success.
   private var consecutiveNoteFailures: Int = 0
   /// True once the live-note circuit-breaker has tripped: we stop generating further notes for this
@@ -507,9 +512,32 @@ final class LiveMeetingSession: NSObject {
   /// automatic retry at meeting end only speaks up when something is still missing.
   @MainActor
   func retryBacklog(stems: [String]? = nil, announce: Bool) async {
-    guard !isRetryingBacklog else { return }
+    guard !isRetryingBacklog else {
+      // Remember the request (ending meeting B while A's retry runs) and run it after this pass.
+      hasPendingRetry = true
+      if let stems { pendingRetryStems.formUnion(stems) } else { pendingRetryAll = true }
+      pendingRetryAnnounce = pendingRetryAnnounce || announce
+      DebugLogger.log("MEETING-BACKLOG: Retry already running, queued another pass")
+      return
+    }
     isRetryingBacklog = true
     onBacklogChanged()
+    await retryBacklogPass(stems: stems, announce: announce)
+    while hasPendingRetry {
+      let nextStems: [String]? = pendingRetryAll ? nil : Array(pendingRetryStems)
+      let nextAnnounce = pendingRetryAnnounce
+      hasPendingRetry = false
+      pendingRetryAll = false
+      pendingRetryStems = []
+      pendingRetryAnnounce = false
+      await retryBacklogPass(stems: nextStems, announce: nextAnnounce)
+    }
+    isRetryingBacklog = false
+    onBacklogChanged()
+  }
+
+  @MainActor
+  private func retryBacklogPass(stems: [String]?, announce: Bool) async {
     let activeStem = recorder != nil ? transcriptURL?.deletingPathExtension().lastPathComponent : nil
     let targets = (stems ?? MeetingAudioBacklog.stemsWithBacklog()).filter { $0 != activeStem }
     DebugLogger.log("MEETING-BACKLOG: Retrying \(targets.count) meeting(s)")
@@ -525,7 +553,6 @@ final class LiveMeetingSession: NSObject {
       }
     }
     let remaining = targets.reduce(0) { $0 + MeetingAudioBacklog.items(stem: $1).count }
-    isRetryingBacklog = false
     onBacklogChanged()
     DebugLogger.log("MEETING-BACKLOG: Retry done (recovered \(recovered), remaining \(remaining))")
 
@@ -571,6 +598,10 @@ final class LiveMeetingSession: NSObject {
         consumed.append(item.url)
       } catch TranscriptionError.noSpeechDetected {
         consumed.append(item.url)
+      } catch let error as TranscriptionError where error == .promptLeakDetected || error == .fileTooLarge {
+        // Breaking here would block every later chunk and meeting. The audio stays in the backlog:
+        // a prompt leak is model output and may pass on a later retry.
+        DebugLogger.logWarning("MEETING-BACKLOG: Skipping chunk \(item.url.lastPathComponent) for now: \(error)")
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Retry failed for \(item.url.lastPathComponent): \(error)")
         failure = error
