@@ -49,7 +49,12 @@ struct OpenRouterChatModelSection: View {
             .frame(height: SettingsConstants.textFieldHeight)
             .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
             .onSubmit { commit(modelID) }
-            .onChange(of: modelID) { _, newValue in commit(newValue) }
+            .onChange(of: modelID) { _, newValue in
+              // Typing can pass through an empty field or a catalogue slug ("openai/gpt-4o" on the
+              // way to "openai/gpt-4o-mini"); keep the field while the user is in it.
+              showCustomSlugField = true
+              commit(newValue)
+            }
 
           Spacer()
         }
