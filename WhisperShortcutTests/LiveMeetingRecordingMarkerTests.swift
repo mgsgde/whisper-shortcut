@@ -57,4 +57,11 @@ struct LiveMeetingRecordingMarkerTests {
       now: now, transcriptExists: true)
     #expect(action == .resume(stem: "Meeting-1"))
   }
+
+  @Test("Owner liveness: other live pid counts, own pid and dead pid do not")
+  func ownerIsAlive() {
+    #expect(LiveMeetingRecordingMarker.ownerIsAlive(pid: 42, currentPid: 1, isAlive: { _ in true }))
+    #expect(!LiveMeetingRecordingMarker.ownerIsAlive(pid: 42, currentPid: 1, isAlive: { _ in false }))
+    #expect(!LiveMeetingRecordingMarker.ownerIsAlive(pid: 42, currentPid: 42, isAlive: { _ in true }))
+  }
 }

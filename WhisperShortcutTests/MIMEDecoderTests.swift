@@ -122,6 +122,17 @@ struct MIMEDecoderTests {
     #expect(decoded.body.hasSuffix("…[truncated]"))
     #expect(decoded.body.count == 20_000 + "…[truncated]".count)
   }
+  @Test func rawUTF8HeaderDecodes() {
+    let decoded = MIMEDecoder.decode(mail("From: a@b.test\nSubject: Grüße\n\nbody"))
+    #expect(decoded.subject == "Grüße")
+  }
+
+  @Test func rawLatin1HeaderStillDecodes() {
+    var raw = Data("From: a@b.test\r\nSubject: Gr".utf8)
+    raw.append(contentsOf: [0xFC, 0xDF, 0x65])
+    raw.append(Data("\r\n\r\nbody".utf8))
+    #expect(MIMEDecoder.decode(raw).subject == "Grüße")
+  }
 }
 
 private func mail(_ text: String) -> Data {

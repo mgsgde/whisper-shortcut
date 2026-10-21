@@ -1293,7 +1293,9 @@ enum ChatToolRegistry {
   }
 
   private static func mailString(_ args: [String: Any], _ key: String) -> String? {
-    let raw = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let raw = (args[key] as? String)?
+      .components(separatedBy: .controlCharacters).joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     return raw.isEmpty ? nil : raw
   }
 

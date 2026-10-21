@@ -1832,6 +1832,8 @@ class MenuBarController: NSObject {
   func resumeInterruptedMeetingIfNeeded() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
       guard let self else { return }
+      // A dev sidecar shares the container with the main build and must never take over its marker.
+      if AppConstants.isSidecarInstance { return }
       let marker = LiveMeetingRecordingMarker.read()
       let transcriptExists = marker.map {
         FileManager.default.fileExists(
@@ -1840,6 +1842,15 @@ class MenuBarController: NSObject {
       let action = LiveMeetingRecordingMarker.launchAction(
         payload: marker?.payload, lastAlive: marker?.lastAlive, now: Date(),
         transcriptExists: transcriptExists)
+      // A fresh heartbeat from a pid that is still running is another instance recording right
+      // now, not a crash to recover. Only checked when fresh: after a restart the old pid may have
+      // been reused by an unrelated process, and a stale marker must still be handled.
+      if case .resume = action, let payload = marker?.payload,
+         LiveMeetingRecordingMarker.ownerIsAlive(pid: payload.pid) {
+        DebugLogger.log(
+          "LIVE-MEETING-MARKER: Marker belongs to running process \(payload.pid), leaving it alone")
+        return
+      }
       // A fresh session writes its own marker, so the old one always goes.
       LiveMeetingRecordingMarker.clear()
 

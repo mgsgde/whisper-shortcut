@@ -1611,8 +1611,11 @@ enum OpenRouterChatPreferences {
         openRouterKey: KeychainManager.shared.get(.openRouter))
     else { return }
 
+    if let key = plan.keyToAdopt, !KeychainManager.shared.save(key, for: .openRouter) {
+      DebugLogger.logWarning("OPENROUTER-CHAT: could not save adopted key to Keychain; migration postponed")
+      return
+    }
     if let modelID = plan.modelID { setModelID(modelID) }
-    if let key = plan.keyToAdopt { _ = KeychainManager.shared.save(key, for: .openRouter) }
     defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
     defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatModelID)
     KeychainManager.shared.delete(.customOpenAIChatAPIKey)

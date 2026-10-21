@@ -91,6 +91,26 @@ struct IMAPSessionTests {
     #expect(transport.transcript.contains("UID SEARCH ALL\r\n"))
   }
 
+  @Test func tabIsLegalInAQuotedString() throws {
+    // RFC 3501 TEXT-CHAR excludes only CR and LF, so a tab (e.g. in a password) must still pass.
+    #expect(try IMAPSession.argument("a\tb") == .text("\"a\tb\""))
+  }
+
+  @Test func searchRejectsLineBreaks() {
+    #expect(throws: IMAPError.self) {
+      _ = try IMAPSession.searchPieces(
+        from: nil, subject: "x\"\r\nA9 UID STORE 1 +FLAGS \\Deleted", text: nil, since: nil)
+    }
+    #expect(throws: IMAPError.self) {
+      _ = try IMAPSession.searchPieces(from: "a\nb", subject: nil, text: nil, since: nil)
+    }
+  }
+
+  @Test func searchKeepsNormalStringsUnchanged() throws {
+    let pieces = try IMAPSession.searchPieces(from: nil, subject: "Rechnung \"X\"", text: nil, since: nil)
+    #expect(pieces == [.text(" UID SEARCH"), .text(" SUBJECT "), .text("\"Rechnung \\\"X\\\"\"")])
+  }
+
   @Test func fetchLiteralSplitAcrossReads() async throws {
     let header = Data("From: a@b.test\r\nSubject: Hi\r\n\r\n".utf8)
     let split = 10
