@@ -599,9 +599,9 @@ final class LiveMeetingSession: NSObject {
       } catch TranscriptionError.noSpeechDetected {
         consumed.append(item.url)
       } catch let error as TranscriptionError where error == .promptLeakDetected || error == .fileTooLarge {
-        // Fails identically on every retry; skip it so it cannot block the rest of the backlog.
-        DebugLogger.logWarning("MEETING-BACKLOG: Dropping unretryable chunk \(item.url.lastPathComponent): \(error)")
-        consumed.append(item.url)
+        // Breaking here would block every later chunk and meeting. The audio stays in the backlog:
+        // a prompt leak is model output and may pass on a later retry.
+        DebugLogger.logWarning("MEETING-BACKLOG: Skipping chunk \(item.url.lastPathComponent) for now: \(error)")
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Retry failed for \(item.url.lastPathComponent): \(error)")
         failure = error
