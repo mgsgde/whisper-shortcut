@@ -219,10 +219,11 @@ verbatim test output and writes the UI.
 
 ## Open questions
 
-- Where Magnus will use it from (Claude Code on the Mac, Claude app, ChatGPT, phone). Decides
-  whether slice 3/4 matter soon.
-- On demand only, or also proactively: e.g. a rule in Claude's own instructions that every style
-  correction Magnus gives Claude is also sent to `update_writing_style_profile`.
+- ~~Where Magnus will use it from.~~ Answered 2026-10-21: „ich nutze primär Claude Code auf
+  meinem MacBook." Slice 1 covers that; slices 3 (`.mcpb`) and 4 (ChatGPT, relay) wait until
+  another client is actually needed.
+- ~~On demand or proactive.~~ Answered 2026-10-21: „erst mal … wenn ich frage." Claude changes
+  the setup only when asked; no standing rule that forwards style corrections by itself.
 
 - Relay (4b) yes/no: data through our server vs. claude.ai/ChatGPT for everyone and on phones.
 - Should "Apply directly" exist at all for v2, or is Propose + a fast inbox enough? Kept, because
