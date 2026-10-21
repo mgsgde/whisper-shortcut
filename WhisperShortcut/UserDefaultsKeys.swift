@@ -200,6 +200,14 @@ enum UserDefaultsKeys {
   /// Model slug sent to OpenRouter for chat (e.g. `openai/gpt-4o`); read via `OpenRouterChatPreferences`.
   static let openRouterChatModelID = "openRouterChatModelID"
 
+  // MARK: - ChatGPT plan (Sign in with ChatGPT)
+  /// Model slug sent to the Responses API for chat; read via `ChatGPTPlanPreferences`.
+  static let chatGPTPlanModelID = "chatGPTPlanModelID"
+  /// Cached `[slug, displayName]` list from `GET /v1/models` (JSON), see `ChatGPTPlanModelCatalog`.
+  static let chatGPTPlanModelCatalog = "chatGPTPlanModelCatalog"
+  /// Stable `urn:uuid:` host identifier sent as `ext_agent_host_id`. Opaque, not user-identifying.
+  static let chatGPTPlanHostID = "chatGPTPlanHostID"
+
   // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenInference, Azure, Vertex, LiteLLM, self-hosted)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"

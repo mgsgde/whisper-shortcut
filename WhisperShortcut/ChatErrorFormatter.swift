@@ -7,6 +7,10 @@ enum ChatErrorFormatter {
 
   static func friendlyError(_ error: Error, provider: ChatModelProvider) -> String {
     let name = Self.chatProviderDisplayName(provider)
+    // Its messages are already user-facing and specific (limit reached, sign-in expired, …).
+    if let planError = error as? ChatGPTPlanError {
+      return planError.errorDescription ?? "ChatGPT request failed. Please try again."
+    }
     if let te = error as? TranscriptionError {
       switch te {
       case .invalidAPIKey, .incorrectAPIKey:
@@ -57,6 +61,7 @@ enum ChatErrorFormatter {
     case .anthropic: return "Claude"
     case .customOpenAI: return "Custom endpoint"
     case .openRouter: return "OpenRouter"
+    case .chatGPTPlan: return "ChatGPT plan"
     case .local: return "Local LLM"
     case .localMLX: return "On-device LLM"
     }

@@ -702,6 +702,7 @@ class SpeechService {
     case .anthropic: return "anthropic"
     case .customOpenAI: return "customOpenAI"
     case .openRouter: return "openRouter"
+    case .chatGPTPlan: return "chatGPTPlan"
     }
   }
 
@@ -798,6 +799,8 @@ class SpeechService {
       throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .openRouter:
       throw TranscriptionError.networkError("OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .chatGPTPlan:
+      throw TranscriptionError.networkError("ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }
   }
 

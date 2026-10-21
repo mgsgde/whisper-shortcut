@@ -296,6 +296,8 @@ class ChatViewModel: ObservableObject {
   static let modelCommands: [(command: String, model: PromptModel, description: String)] = {
     var out: [(command: String, model: PromptModel, description: String)] = []
     for provider in ChatModelProvider.allCases {
+      // The ChatGPT plan is not offered at all in the App Store build.
+      if provider == .chatGPTPlan && !ChatGPTPlanPreferences.isAvailableInThisBuild { continue }
       let def = provider.defaultChatModel
       out.append(("/\(provider.commandAlias)", def, "Switch to \(def.displayName)"))
       // Skip the per-model alias for the provider's default — the bare `/gemini` etc. already

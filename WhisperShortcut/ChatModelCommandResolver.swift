@@ -28,6 +28,11 @@ enum ChatModelCommandResolver {
     if normalizedEarly == "openrouter" || normalizedEarly == "open router" {
       return .applied(model: .openRouterChat)
     }
+    // "chatgpt" contains "gpt", so without this it would be routed to the OpenAI API models below.
+    if ChatGPTPlanPreferences.isAvailableInThisBuild,
+      normalizedEarly == "chatgpt" || normalizedEarly == "chat gpt" || normalizedEarly == "chatgpt plan" {
+      return .applied(model: .chatGPTPlanChat)
+    }
     if normalizedEarly == "custom"
       || normalizedEarly.contains("openinference")
       || normalizedEarly.contains("open inference")
