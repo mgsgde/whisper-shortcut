@@ -257,7 +257,7 @@ class AutoPromptImprovementScheduler {
           section: kind.systemPromptSection
         )
         if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          applySuggestion(accepted, for: kind)
+          applySuggestion(accepted, for: kind, panelOriginal: original)
           appliedKinds.append(kind)
           DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(kind) from review")
         } else {
@@ -407,16 +407,28 @@ class AutoPromptImprovementScheduler {
     try? FileManager.default.removeItem(at: url)
   }
 
-  private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
+  /// What to write for the glossary after the review panel. If nothing changed on disk since the
+  /// panel opened, the accepted text (which may have user deletions) is written as is. Otherwise
+  /// only the lines appended meanwhile (by voice feedback) are kept and the accepted text is merged
+  /// in, so deletions the user made in the panel stay deleted.
+  nonisolated static func glossaryToApply(current: String, panelOriginal: String, accepted: String) -> String {
+    if current == panelOriginal { return accepted }
+    let originalLines = Set(panelOriginal.components(separatedBy: "\n"))
+    let added = current.components(separatedBy: "\n").filter { !originalLines.contains($0) }
+    return GlossaryLearning.mergeAdditively(
+      current: added.joined(separator: "\n"), suggestion: accepted)
+  }
+
+  private func applySuggestion(_ suggested: String, for kind: GenerationKind, panelOriginal: String) {
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
     // Voice feedback may have appended glossary lines since this suggestion was written.
-    // Merging additively keeps those; replacing the section with the file would delete them.
+    // Lines added since the panel opened are kept; lines the user deleted in the panel stay deleted.
     let currentContent: String
     let applied: String
     if kind == .whisperGlossary {
       currentContent = SystemPromptsStore.shared.loadWhisperGlossary()
-      applied = GlossaryLearning.mergeAdditively(current: currentContent, suggestion: suggested)
+      applied = Self.glossaryToApply(current: currentContent, panelOriginal: panelOriginal, accepted: suggested)
     } else {
       currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
       applied = suggested
