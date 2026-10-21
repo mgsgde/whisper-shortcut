@@ -136,7 +136,7 @@ enum WorkspaceFileTools {
         // Read one byte past the cap so we can tell "exactly at the limit" from "truncated".
         let data = try handle.read(upToCount: cap + 1) ?? Data()
         let truncated = data.count > cap
-        let payload = truncated ? data.prefix(cap) : data
+        let payload = truncated ? droppingIncompleteUTF8Tail(Data(data.prefix(cap))) : data
 
         guard let text = decodeText(payload) else {
           return [
@@ -276,6 +276,29 @@ enum WorkspaceFileTools {
   }
 
   // MARK: - Helpers
+
+  /// Cutting a file at a byte cap can split a multi-byte UTF-8 character; strict decoding then
+  /// fails and the Latin-1 fallback garbles the whole file. Drops up to 3 trailing bytes that
+  /// form an incomplete sequence, leaving complete characters (and invalid data) untouched.
+  static func droppingIncompleteUTF8Tail(_ data: Data) -> Data {
+    let bytes = [UInt8](data)
+    var index = bytes.count - 1
+    var continuations = 0
+    while index >= 0, continuations < 3, bytes[index] & 0xC0 == 0x80 {
+      continuations += 1
+      index -= 1
+    }
+    guard index >= 0 else { return data }
+    let lead = bytes[index]
+    let needed: Int
+    switch lead {
+    case 0xC0...0xDF: needed = 1
+    case 0xE0...0xEF: needed = 2
+    case 0xF0...0xF7: needed = 3
+    default: return data  // ASCII, or not a lead byte: nothing to repair
+    }
+    return continuations < needed ? Data(bytes[..<index]) : data
+  }
 
   /// Decodes text, falling back to Latin-1 for files that are readable but not valid UTF-8.
   /// A NUL byte in the payload means binary, and no encoding fallback should rescue it.

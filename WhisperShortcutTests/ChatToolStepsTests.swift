@@ -187,6 +187,7 @@ struct ChatToolStepsTests {
     ChatToolRegistry.updateInstructionsToolName: false,
     "open_url": false,
     "write_text_file": false, "append_to_file": false, "edit_text_file": false,
+    "remember_file_location": false, "remember_dictation_term": false,
     // Destructive: always ask.
     "google_calendar_delete_event": false, "google_tasks_delete": false, "trello_archive_card": false,
     // Create/update/move: may be allowed for the chat.

@@ -2895,11 +2895,32 @@ class ChatViewModel: ObservableObject {
     }
   }
 
+  /// Case-sensitive replacement of `from` by `to` that only matches whole words: when `from` starts
+  /// (ends) with a letter or digit, the character before (after) a match must not be one. Keeps
+  /// "Ana"→"Anna" from rewriting "Banana". Returns the new text and the number of replacements.
+  static func replacingWholeTerm(_ text: String, from: String, to: String) -> (String, Int) {
+    guard !from.isEmpty else { return (text, 0) }
+    func isWordChar(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+    var pattern = ""
+    if let first = from.first, isWordChar(first) { pattern += #"(?<![\p{L}\p{N}])"# }
+    pattern += NSRegularExpression.escapedPattern(for: from)
+    if let last = from.last, isWordChar(last) { pattern += #"(?![\p{L}\p{N}])"# }
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return (text, 0) }
+    let range = NSRange(text.startIndex..., in: text)
+    let count = regex.numberOfMatches(in: text, range: range)
+    guard count > 0 else { return (text, 0) }
+    let template = NSRegularExpression.escapedTemplate(for: to)
+    return (regex.stringByReplacingMatches(in: text, range: range, withTemplate: template), count)
+  }
+
   /// Backs the `correct_transcript_term` chat tool. Literal find-and-replace of `from`→`to` across the
   /// on-disk transcript (no LLM rewrite, so the record stays faithful). Only for ended meetings.
   func executeCorrectTranscriptTermTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let from = args["from"] as? String, !from.isEmpty else {
       return ["error": "Missing required argument: from"]
+    }
+    guard from.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
+      return ["error": "Give the full word or phrase to replace."]
     }
     guard let to = args["to"] as? String else {
       return ["error": "Missing required argument: to"]
@@ -2922,11 +2943,10 @@ class ChatViewModel: ObservableObject {
     guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
       return ["error": "Could not read the meeting transcript file."]
     }
-    let occurrences = diskText.components(separatedBy: from).count - 1
+    let (updated, occurrences) = Self.replacingWholeTerm(diskText, from: from, to: to)
     guard occurrences > 0 else {
       return ["error": "The text \"\(from)\" was not found in the transcript. Check the exact spelling."]
     }
-    let updated = diskText.replacingOccurrences(of: from, with: to)
     do {
       try updated.write(to: url, atomically: true, encoding: .utf8)
     } catch {

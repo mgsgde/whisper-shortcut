@@ -60,7 +60,7 @@ enum ChatToolRegistry {
          "google_calendar_create_event", "google_calendar_update_event", "google_calendar_delete_event",
          "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
          "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
-         rememberAboutUserToolName,
+         rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
          "write_text_file", "append_to_file", "edit_text_file":
       return true
     case updateInstructionsToolName:
@@ -77,13 +77,24 @@ enum ChatToolRegistry {
   /// where each call destroys something different.
   static func allowsChatWideApproval(_ name: String) -> Bool {
     switch name {
-    case rememberAboutUserToolName, updateInstructionsToolName, "open_url",
+    case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         updateInstructionsToolName, "open_url",
          "write_text_file", "append_to_file", "edit_text_file",
          "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
       return false
     default:
       return requiresUserApproval(name, args: ["action": "write"])
     }
+  }
+
+  /// Text the model wants stored for good (a folder path, a glossary term): newlines become spaces
+  /// so a value cannot smuggle extra lines into a prompt block, it is trimmed and capped, and an
+  /// empty result is nil.
+  static func sanitizedStoredText(_ raw: String, limit: Int) -> String? {
+    let flat = raw.components(separatedBy: .newlines).joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !flat.isEmpty else { return nil }
+    return flat.count > limit ? String(flat.prefix(limit)) : flat
   }
 
   /// One-line summary for the approval card.
@@ -127,6 +138,12 @@ enum ChatToolRegistry {
       return "Archive Trello card \(arg("card_id"))."
     case rememberAboutUserToolName:
       return "Remember about you (added to every future chat):\n\(preview(arg("fact")))"
+    case "remember_file_location":
+      let note = arg("note")
+      let line = "Remember folder: \(preview(arg("path"), limit: 300))"
+      return note.isEmpty ? line : line + " — " + preview(note, limit: 300)
+    case "remember_dictation_term":
+      return "Add to dictation glossary: \(preview(arg("term"), limit: 100))"
     case updateInstructionsToolName:
       let action = arg("action")
       let text = arg("text")
@@ -140,12 +157,13 @@ enum ChatToolRegistry {
       let line = "\(verb) the Dictate Prompt instructions."
       return text.isEmpty ? line : line + "\n\n" + preview(text)
     case "write_text_file":
-      let overwrite = (args["overwrite"] as? Bool) == true
+      let overwrite = boolArgument(args, "overwrite", default: false)
       return (overwrite ? "Overwrite file " : "Create file ") + "\(arg("path"))\n\n" + preview(arg("content"))
     case "append_to_file":
       return "Append to file \(arg("path")):\n\n" + preview(arg("content"))
     case "edit_text_file":
-      return "Edit file \(arg("path")):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
+      let scope = boolArgument(args, "replace_all", default: false) ? " (all occurrences)" : ""
+      return "Edit file \(arg("path"))\(scope):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
     default:
       return "Allow the chat to run \(name)?"
     }
@@ -1208,11 +1226,20 @@ enum ChatToolRegistry {
     return PromptModel(rawValue: migrated)?.provider ?? SettingsDefaults.selectedChatModel.provider
   }
 
-  private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
-    if let value = args[key] as? Int { return value }
-    if let value = args[key] as? Double { return Int(value) }
-    if let value = args[key] as? NSNumber { return value.intValue }
-    if let value = args[key] as? String, let parsed = Int(value) { return parsed }
+  /// Model-supplied numbers can be anything (1e20, NaN); `Int(Double)` traps on those. Values are
+  /// truncated toward zero and clamped to ±1_000_000_000; non-finite values fall back to the default.
+  static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
+    let limit = 1_000_000_000
+    func clamped(_ value: Double) -> Int {
+      guard value.isFinite else { return defaultValue }
+      return max(-limit, min(limit, Int(exactly: value.rounded(.towardZero)) ?? (value < 0 ? -limit : limit)))
+    }
+    if let value = args[key] as? Int { return max(-limit, min(limit, value)) }
+    if let value = args[key] as? Double { return clamped(value) }
+    if let value = args[key] as? NSNumber { return clamped(value.doubleValue) }
+    if let value = args[key] as? String, let parsed = Int(value.trimmingCharacters(in: .whitespaces)) {
+      return max(-limit, min(limit, parsed))
+    }
     return defaultValue
   }
 
@@ -1355,13 +1382,11 @@ enum ChatToolRegistry {
 
     case "remember_dictation_term":
       guard let rawTerm = args["term"] as? String,
-            case let term = rawTerm.trimmingCharacters(in: .whitespacesAndNewlines),
-            !term.isEmpty
+            let term = sanitizedStoredText(rawTerm, limit: 100)
       else {
         return ["error": "Missing required argument: term"]
       }
-      let misheardAs = (args["misheard_as"] as? String)?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let misheardAs = (args["misheard_as"] as? String).flatMap { sanitizedStoredText($0, limit: 100) }
       return GlossaryFastLearner.shared.rememberTerm(
         term, misheardAs: (misheardAs?.isEmpty ?? true) ? nil : misheardAs)
 
@@ -1436,8 +1461,8 @@ enum ChatToolRegistry {
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let maxResults = intArgument(args, "max_results", default: 10)
-      let hoursAhead = intArgument(args, "hours_ahead", default: 168)
-      let hoursBack = intArgument(args, "hours_back", default: 0)
+      let hoursAhead = min(max(intArgument(args, "hours_ahead", default: 168), 0), 24 * 366)
+      let hoursBack = min(max(intArgument(args, "hours_back", default: 0), 0), 24 * 366)
       do {
         let events = try await GoogleCalendarAPIClient.shared.listEvents(
           maxResults: maxResults, hoursAhead: hoursAhead, hoursBack: hoursBack)
@@ -1846,10 +1871,12 @@ enum ChatToolRegistry {
       guard let path = args["path"] as? String, let note = args["note"] as? String else {
         return ["error": "Missing required arguments: path and note"]
       }
-      guard WorkspaceMapStore.shared.remember(path: path, note: note) else {
+      guard let cleanPath = sanitizedStoredText(path, limit: 300),
+            WorkspaceMapStore.shared.remember(path: cleanPath, note: note)
+      else {
         return ["error": "Both path and note must be non-empty."]
       }
-      return ["ok": true, "path": path]
+      return ["ok": true, "path": cleanPath]
 
     case "forget_file_location":
       guard let matching = args["matching"] as? String else {

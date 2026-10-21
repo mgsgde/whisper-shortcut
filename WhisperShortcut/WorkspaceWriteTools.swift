@@ -82,6 +82,12 @@ enum WorkspaceWriteTools {
       let (target, root) = try locateForWriting(path, scope: scope)
       return WorkspaceFolders.withAccess(to: root) {
         // Appending is additive, so it needs no backup: nothing that was there is gone.
+        if let size = existingFileSize(target), size + content.utf8.count > maxWriteBytes {
+          return [
+            "error":
+              "Appending would make the file \(size + content.utf8.count) bytes; the limit is \(maxWriteBytes)."
+          ]
+        }
         guard let existing = readExisting(target) else {
           return ["error": "\(target.lastPathComponent) exists but is not UTF-8 text."]
         }
@@ -126,6 +132,12 @@ enum WorkspaceWriteTools {
       return WorkspaceFolders.withAccess(to: root) {
         guard FileManager.default.fileExists(atPath: target.path) else {
           return ["error": "No such file: \(target.path). Use write_text_file to create it."]
+        }
+        if let size = existingFileSize(target), size > maxWriteBytes {
+          return [
+            "error":
+              "\(target.lastPathComponent) is \(size) bytes; files over \(maxWriteBytes) bytes cannot be edited."
+          ]
         }
         guard let original = readExisting(target) else {
           return ["error": "\(target.lastPathComponent) is not a UTF-8 text file."]
@@ -246,6 +258,13 @@ enum WorkspaceWriteTools {
     try FileManager.default.createDirectory(
       at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
     try content.write(to: target, atomically: true, encoding: .utf8)
+  }
+
+  /// Size on disk, read from the attributes so an oversized file is refused before it is loaded.
+  /// Nil when the file does not exist or the size is unavailable.
+  static func existingFileSize(_ url: URL) -> Int? {
+    let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber
+    return size?.intValue
   }
 
   private static func readExisting(_ url: URL) -> String? {
