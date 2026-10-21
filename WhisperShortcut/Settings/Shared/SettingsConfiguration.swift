@@ -1909,8 +1909,6 @@ struct SettingsDefaults {
   static let openChat: ShortcutDefinition? = nil
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
-  static let voiceFeedback: ShortcutDefinition? = nil
-  static let meetingMarker: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
@@ -2060,8 +2058,6 @@ struct SettingsData: Equatable {
   var openChat: ShortcutDefinition? = SettingsDefaults.openChat
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
-  var voiceFeedback: ShortcutDefinition? = SettingsDefaults.voiceFeedback
-  var meetingMarker: ShortcutDefinition? = SettingsDefaults.meetingMarker
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
 
   // MARK: - Transcription tuning
@@ -2154,9 +2150,7 @@ enum SettingsFocusField: Hashable {
   case toggleChat
   case screenshotCapture
   case readAloudShortcut
-  case voiceFeedbackShortcut
   case addToGlossaryShortcut
-  case meetingMarkerShortcut
 }
 
 // MARK: - Shortcut Conflict Descriptor

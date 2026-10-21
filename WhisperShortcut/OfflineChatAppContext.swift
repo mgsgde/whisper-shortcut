@@ -48,7 +48,7 @@ enum OfflineChatAppContext {
     "qwen", "quen", "mlx", "offline-modell", "offline modell", "offline model",
     "kurzel", "hotkey", "tastenkombi",
     "diktier", "dictat", "vorles", "read aloud", "glossar", "glossary",
-    "voice feedback", "smart improvement", "parakeet", "offline mode", "offline-modus",
+    "smart improvement", "parakeet", "offline mode", "offline-modus",
   ]
 
   static func isAboutTheApp(_ userMessages: [String]) -> Bool {

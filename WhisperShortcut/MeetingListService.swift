@@ -186,9 +186,9 @@ final class MeetingListService: ObservableObject {
   /// Final post-meeting summary for the given transcript + model. `.low` thinking: summarizing
   /// benefits from some reasoning, but the model default (`medium` on 3.5/3.6 Flash) bills
   /// thinking tokens at the output rate for little visible gain on this task.
-  static func generateSummaryText(transcript: String, markers: [String] = [], model: PromptModel) async throws -> String {
+  static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
     try await generate(
-      prompt: AppConstants.meetingSummaryPrompt(transcript: transcript, markers: markers),
+      prompt: AppConstants.meetingSummaryPrompt(transcript: transcript),
       model: model, label: "MEETING-SUMMARY", thinkingLevel: .low)
   }
 

@@ -9,7 +9,7 @@ import Foundation
 enum MeetingSegment: Equatable { case dictation, prompt }
 
 enum ModeAction: CaseIterable, Equatable {
-  case dictate, dictatePrompt, voiceFeedback, readAloudSelection, readAloudChat, liveMeeting
+  case dictate, dictatePrompt, readAloudSelection, readAloudChat, liveMeeting
 }
 
 enum CredentialNeed: Equatable { case transcription, prompt, improvement, readAloud, meeting }
@@ -58,7 +58,7 @@ extension AppState {
     switch mode {
     case .transcribing, .splitting, .processingChunks, .merging:
       return true
-    case .prompting, .ttsProcessing, .contextEditing:
+    case .prompting, .ttsProcessing:
       return false
     }
   }
@@ -77,8 +77,6 @@ enum ModeAvailabilityRules {
       return dictate(i)
     case .dictatePrompt:
       return dictatePrompt(i)
-    case .voiceFeedback:
-      return voiceFeedback(i)
     case .readAloudSelection:
       if let early = readAloudEarly(i) { return early }
       if i.isOfflineMode, !i.readAloudUsesSystemVoice { return .blocked(.offlineModeReadAloud) }
@@ -167,22 +165,6 @@ enum ModeAvailabilityRules {
     case .prompt: return .stop
     case .none:
       return startOrBlock(i, hasCredential: i.hasPromptCredential, need: .prompt)
-    default: return .ignored(.otherModeRecording)
-    }
-  }
-
-  private static func voiceFeedback(_ i: ModeAvailabilityInput) -> ModeAvailability {
-    if i.isLiveMeetingActive { return .ignored(.liveMeetingActive) }
-    if case .processing(.contextEditing) = i.appState { return .cancelProcessing }
-    switch i.appState.recordingMode {
-    case .voiceFeedback: return .stop
-    case .none:
-      if i.pendingRecordingMode != nil { return .cancelPendingStart }
-      // DRIFT F2 (fixed): a run in progress is not a credential problem — same answer as Dictate.
-      if i.appState.isBusy { return .blocked(.busy) }
-      if !i.hasTranscriptionCredential { return .blocked(.missingCredential(.transcription)) }
-      if !i.hasImprovementCredential { return .blocked(.missingCredential(.improvement)) }
-      return .start
     default: return .ignored(.otherModeRecording)
     }
   }

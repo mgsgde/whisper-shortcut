@@ -33,14 +33,10 @@ struct LiveMeetingNote: Identifiable, Sendable {
   /// Elapsed seconds from meeting start of the first chunk this note covers.
   let startTime: TimeInterval
   let bullets: [String]
-  /// True for a marker the user set by hotkey during the meeting, false for a generated note.
-  let isMarker: Bool
-
-  init(id: UUID = UUID(), startTime: TimeInterval, bullets: [String], isMarker: Bool = false) {
+  init(id: UUID = UUID(), startTime: TimeInterval, bullets: [String]) {
     self.id = id
     self.startTime = startTime
     self.bullets = bullets
-    self.isMarker = isMarker
   }
 
   var timestampString: String {
@@ -300,24 +296,6 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     liveNotes.append(note)
   }
 
-  /// Appends a user marker and returns it. Pass the recorder's live elapsed time when available —
-  /// `elapsedSeconds` only knows about transcribed chunks and so trails the actual moment by up to
-  /// one chunk. Notes stay sorted because a marker is always at or after the newest chunk.
-  /// Main thread.
-  @discardableResult
-  func appendMarker(text: String, at elapsed: TimeInterval? = nil) -> LiveMeetingNote {
-    assert(Thread.isMainThread)
-    let startTime = max(elapsed ?? elapsedSeconds, elapsedSeconds)
-    let note = LiveMeetingNote(startTime: startTime, bullets: [text], isMarker: true)
-    liveNotes.append(note)
-    return note
-  }
-
-  /// Markers the user set since the given note, used to bias the final summary.
-  var markerTexts: [String] {
-    liveNotes.filter { $0.isMarker }.flatMap { $0.bullets }
-  }
-
   // MARK: - Live notes serialization
   //
   // Notes live next to the transcript as a plain `.notes.md` file so they survive an app restart,
@@ -327,12 +305,14 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// Renders notes as the Markdown persisted in `<stem>.notes.md`.
   static func notesMarkdown(_ notes: [LiveMeetingNote]) -> String {
     notes.map { note in
-      let header = note.isMarker ? "## ★ \(note.timestampString)" : "## \(note.timestampString)"
+      let header = "## \(note.timestampString)"
       let body = note.bullets.map { "- \($0)" }.joined(separator: "\n")
       return "\(header)\n\(body)"
     }.joined(separator: "\n\n") + "\n"
   }
 
+  /// The optional ★ is what notes files written by older versions carry on a flagged moment; it
+  /// is accepted and ignored, so those notes read as ordinary ones.
   private static let noteHeaderRegex = try! NSRegularExpression(
     pattern: #"^##\s+(★\s+)?\[(\d+):(\d{2})\]\s*$"#)
 
@@ -340,13 +320,11 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   static func parseNotes(_ text: String) -> [LiveMeetingNote] {
     var result: [LiveMeetingNote] = []
     var currentStart: TimeInterval? = nil
-    var currentIsMarker = false
     var currentBullets: [String] = []
 
     func flush() {
       guard let start = currentStart, !currentBullets.isEmpty else { return }
-      result.append(
-        LiveMeetingNote(startTime: start, bullets: currentBullets, isMarker: currentIsMarker))
+      result.append(LiveMeetingNote(startTime: start, bullets: currentBullets))
       currentBullets = []
     }
 
@@ -355,8 +333,6 @@ final class LiveMeetingTranscriptStore: ObservableObject {
       let range = NSRange(line.startIndex..., in: line)
       if let match = noteHeaderRegex.firstMatch(in: line, range: range) {
         flush()
-        let markerRange = match.range(at: 1)
-        currentIsMarker = markerRange.location != NSNotFound
         let minutes = Range(match.range(at: 2), in: line).flatMap { Int(line[$0]) } ?? 0
         let seconds = Range(match.range(at: 3), in: line).flatMap { Int(line[$0]) } ?? 0
         currentStart = TimeInterval(minutes * 60 + seconds)

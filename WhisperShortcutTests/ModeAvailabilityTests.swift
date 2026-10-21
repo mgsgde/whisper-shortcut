@@ -42,7 +42,6 @@ struct ModeAvailabilityTests {
     #expect(a(.dictate, input(.feedback(.success("x")))) == .start)
     #expect(a(.dictate, input(.recording(.transcription))) == .stop)
     #expect(a(.dictate, input(.recording(.prompt))) == .ignored(.otherModeRecording))
-    #expect(a(.dictate, input(.recording(.voiceFeedback))) == .ignored(.otherModeRecording))
     #expect(a(.dictate, input(.processing(.transcribing), jobMode: .transcription)) == .cancelProcessing)
     #expect(a(.dictate, input(.processing(.transcribing))) == .cancelProcessing)
     // A long Dictate Prompt in the chunk phases is not cancelled by Dictate.
@@ -73,21 +72,6 @@ struct ModeAvailabilityTests {
     #expect(a(.dictatePrompt, input(pendingMode: .transcription)) == .cancelPendingStart)
     #expect(a(.dictatePrompt, input(.recording(.liveMeeting), meeting: true, active: .dictation)) == .ignored(.otherMeetingSegmentActive))
     #expect(a(.dictatePrompt, input(.recording(.liveMeeting), meeting: true, active: .prompt)) == .stop)
-  }
-
-  @Test("Voice Feedback")
-  func voiceFeedback() {
-    #expect(a(.voiceFeedback, input()) == .start)
-    #expect(a(.voiceFeedback, input(.recording(.liveMeeting), meeting: true)) == .ignored(.liveMeetingActive))
-    #expect(a(.voiceFeedback, input(.processing(.contextEditing))) == .cancelProcessing)
-    #expect(a(.voiceFeedback, input(.recording(.voiceFeedback))) == .stop)
-    #expect(a(.voiceFeedback, input(.recording(.transcription))) == .ignored(.otherModeRecording))
-    #expect(a(.voiceFeedback, input(pendingMode: .transcription)) == .cancelPendingStart)
-    #expect(a(.voiceFeedback, input(improvement: false)) == .blocked(.missingCredential(.improvement)))
-    #expect(a(.voiceFeedback, input(transcription: false)) == .blocked(.missingCredential(.transcription)))
-    // F2 — fixed: a busy app answers "Busy", not with the transcription credential message.
-    #expect(a(.voiceFeedback, input(.processing(.transcribing))) == .blocked(.busy))
-    #expect(a(.voiceFeedback, input(.processing(.transcribing), transcription: false)) == .blocked(.busy))
   }
 
   @Test("Read Aloud on a selection")
@@ -127,7 +111,7 @@ struct ModeAvailabilityTests {
 
   @Test("Central Stop row")
   func centralStop() {
-    let rows: [ModeAction] = [.dictate, .dictatePrompt, .readAloudSelection, .voiceFeedback]
+    let rows: [ModeAction] = [.dictate, .dictatePrompt, .readAloudSelection]
     func show(_ i: ModeAvailabilityInput) -> Bool {
       ModeAvailabilityRules.showsCentralStop(i, presentRows: rows)
     }
@@ -136,15 +120,12 @@ struct ModeAvailabilityTests {
     #expect(show(input(.recording(.liveMeeting), meeting: true)))
     #expect(!show(input(.recording(.liveMeeting), meeting: true, active: .dictation)))
     #expect(!show(input(playing: true)))
-    // Voice Feedback reads "Stop Voice Feedback" while recording, so the central Stop hides.
-    #expect(!show(input(.recording(.voiceFeedback))))
-    #expect(show(input(.processing(.contextEditing))))
     #expect(!show(input()))
     // A pending meeting segment already reads "Stop Dictate", which is what its shortcut does.
     #expect(!show(input(.recording(.liveMeeting), meeting: true, pending: .dictation)))
     // F5 — preserved: the App Store menu has no Read Aloud row, but Read Aloud still counts as a
     // Stop row there, so Chat Read Aloud playing does not show the central Stop.
-    let appStoreRows: [ModeAction] = [.dictate, .dictatePrompt, .voiceFeedback, .readAloudSelection]
+    let appStoreRows: [ModeAction] = [.dictate, .dictatePrompt, .readAloudSelection]
     #expect(!ModeAvailabilityRules.showsCentralStop(input(playing: true), presentRows: appStoreRows))
   }
 }

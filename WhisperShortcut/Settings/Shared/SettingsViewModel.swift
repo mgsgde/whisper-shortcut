@@ -212,8 +212,6 @@ class SettingsViewModel: ObservableObject {
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
-    data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
-    data.meetingMarker = currentConfig.meetingMarker.isEnabled ? currentConfig.meetingMarker : nil
     data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
 
     for slot in Self.slots { slot.load(&data) }
@@ -318,12 +316,6 @@ class SettingsViewModel: ObservableObject {
       field: .readAloudShortcut, label: "Read Aloud",
       read: { $0.readAloud }, write: { $0.readAloud = $1 }),
     ConfigurableShortcutSlot(
-      field: .voiceFeedbackShortcut, label: "Voice Feedback",
-      read: { $0.voiceFeedback }, write: { $0.voiceFeedback = $1 }),
-    ConfigurableShortcutSlot(
-      field: .meetingMarkerShortcut, label: "Flag Meeting Moment",
-      read: { $0.meetingMarker }, write: { $0.meetingMarker = $1 }),
-    ConfigurableShortcutSlot(
       field: .addToGlossaryShortcut, label: "Add Selection to Glossary",
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
   ]
@@ -346,8 +338,6 @@ class SettingsViewModel: ObservableObject {
     let openChat = data.openChat ?? disable(factory.openChat)
     let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
     let readAloud = data.readAloud ?? disable(factory.readAloud)
-    let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
-    let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
     let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
     let newConfig = ShortcutConfig(
       startRecording: startRecording,
@@ -356,8 +346,6 @@ class SettingsViewModel: ObservableObject {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker,
       addToGlossary: addToGlossary
     )
     return newConfig

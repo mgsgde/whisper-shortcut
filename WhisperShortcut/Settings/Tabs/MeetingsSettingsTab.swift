@@ -23,10 +23,6 @@ struct MeetingsSettingsTab: View {
 
       SpacedSectionDivider()
 
-      meetingMarkerSection
-
-      SpacedSectionDivider()
-
       MeetingsInAIAppsSection()
 
       SpacedSectionDivider()
@@ -55,24 +51,6 @@ struct MeetingsSettingsTab: View {
       .buttonStyle(.bordered)
       .help("Open transcripts folder in Finder")
       .pointerCursorOnHover()
-    }
-  }
-
-  // MARK: - Meeting Marker Section
-  @ViewBuilder
-  private var meetingMarkerSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Flag Meeting Moment",
-        systemImage: "star",
-        subtitle: "Press this while a meeting is recording to flag the current moment. The marker appears in the live notes and the final summary is written around what you flagged."
-      )
-
-      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.meetingMarker)
-
-      Text("Does nothing when no meeting is recording.")
-        .font(.caption)
-        .foregroundColor(.secondary)
     }
   }
 

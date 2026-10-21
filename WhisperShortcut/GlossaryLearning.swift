@@ -2,7 +2,7 @@
 //  GlossaryLearning.swift
 //  WhisperShortcut
 //
-//  The Whisper Glossary is free text the user asserts by hand (and via voice feedback).
+//  The Whisper Glossary is free text the user asserts by hand (and via the chat tool).
 //  Smart Improvement used to let the model rewrite that whole text, so an accepted
 //  suggestion deleted annotated corrections. Every automatic edit now goes through
 //  `mergeAdditively`, which only appends. Near-miss mining is the deterministic half
@@ -299,7 +299,7 @@ enum GlossaryLearning {
     misses.map { annotatedLine(term: $0.term, rejected: $0.variants) }.joined(separator: "\n")
   }
 
-  /// Voice feedback and the chat tool often hand back a lowercase term. Lines already in
+  /// The chat tool often hand back a lowercase term. Lines already in
   /// `current` stay byte-for-byte — those are the user's spelling — and tokens inside a
   /// `(not …)` / `(nicht …)` group stay too, because that group is the mishearing, not the term.
   /// Everywhere else, a letter-token whose folded form shows up at least three times is rewritten

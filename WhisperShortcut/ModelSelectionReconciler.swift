@@ -185,8 +185,8 @@ enum ModelSelectionReconciler {
   // MARK: - Offline Mode
 
   /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
-  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement
-  /// (which also drives Voice Feedback). The last two follow the Dictate Prompt model so a single
+  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement.
+  /// The last two follow the Dictate Prompt model so a single
   /// on-device model serves every text slot and only one MLX model needs to be in memory.
   private static func reconcileForOfflineMode() {
     for key in [

@@ -2730,10 +2730,7 @@ class ChatViewModel: ObservableObject {
     parts.append("")
     if !notes.isEmpty {
       parts.append("# Live Notes")
-      // Markers are the moments the user flagged by hotkey — worth telling apart from generated notes.
-      parts.append(notes.map { note in
-        note.isMarker ? "\(note.timestampString) ⚑ " + note.bullets.joined(separator: " ") : note.plainText
-      }.joined(separator: "\n"))
+      parts.append(notes.map { $0.plainText }.joined(separator: "\n"))
       parts.append("")
     }
     if hasChat {
@@ -3743,7 +3740,7 @@ struct ChatView: View {
   private func inlineNoteBlock(_ note: LiveMeetingNote) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Rectangle()
-        .fill(note.isMarker ? Color.orange.opacity(0.7) : ChatTheme.secondaryText.opacity(0.25))
+        .fill(ChatTheme.secondaryText.opacity(0.25))
         .frame(width: 2)
       noteRow(note, hovered: hoveredNoteId == note.id)
     }
@@ -3997,14 +3994,14 @@ struct ChatView: View {
     .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
-  /// One live note (or marker) as it appears both in the Notes tab and inline in the chat stream.
+  /// One live note as it appears both in the Notes tab and inline in the chat stream.
   /// Hovering reveals "Ask" — the shortest path from "that bullet is interesting" to a question
   /// about it, without retyping what was said.
   private func noteRow(_ note: LiveMeetingNote, hovered: Bool) -> some View {
     HStack(alignment: .top, spacing: 8) {
-      Text(note.isMarker ? "★" : note.timestampString)
+      Text(note.timestampString)
         .font(.system(size: 12, weight: .medium, design: .monospaced))
-        .foregroundColor(note.isMarker ? .orange : ChatTheme.secondaryText)
+        .foregroundColor(ChatTheme.secondaryText)
         .frame(minWidth: 46, alignment: .leading)
 
       VStack(alignment: .leading, spacing: 4) {

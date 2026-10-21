@@ -19,7 +19,6 @@ tree disagree, the tree wins; fix the row.
 | Text-to-speech                          | `ChunkTTSService.swift`, `SystemTTSService.swift`, `TTSPlaybackSession.swift`, `TextChunker.swift`                  |
 | Clipboard / paste at cursor             | `ClipboardManager.swift`, `AccessibilityPermissionManager.swift`, `PermissionStatusChecker.swift`                   |
 | Live meeting transcription              | `LiveMeetingRecorder.swift`, `LiveMeetingSession.swift`, `LiveMeetingTranscriptStore.swift`, `MeetingListService.swift` |
-| Voice Feedback                          | `VoiceFeedbackService.swift`                                                                                        |
 | Screenshot                              | `ScreenshotSaveLocation.swift` (+ the screenshot path in `MenuBarController.swift`)                                 |
 | Feedback UI (pill / popups)             | `RecordingIndicatorWindow.swift`, `PopupNotificationWindow.swift`, `SpeechErrorFormatter.swift`, `AppErrors.swift`  |
 

@@ -116,7 +116,7 @@ extension SystemPromptSection {
 private func scorecardSourceName(_ source: String) -> String {
   switch source {
   case "auto": return "Smart Improvement"
-  case "voice-feedback": return "Voice Feedback"
+  case "voice-feedback": return "Spoken feedback"  // legacy history rows
   case "chat": return "Chat"
   default: return source
   }
