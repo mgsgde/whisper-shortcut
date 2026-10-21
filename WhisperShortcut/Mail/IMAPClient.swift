@@ -197,7 +197,7 @@ actor IMAPSession {
       secrets.append(token)
       try await run([.text(" AUTHENTICATE PLAIN \(token)")], authenticating: true)
     } else {
-      try await run(Self.loginPieces(user: user, password: password), authenticating: true)
+      try await run(try Self.loginPieces(user: user, password: password), authenticating: true)
     }
   }
 
@@ -227,7 +227,7 @@ actor IMAPSession {
   }
 
   func uidSearch(from: String? = nil, subject: String? = nil, text: String? = nil, since: Date? = nil) async throws -> [Int] {
-    let pieces = searchPieces(from: from, subject: subject, text: text, since: since)
+    let pieces = try Self.searchPieces(from: from, subject: subject, text: text, since: since)
     let responses = try await run(pieces, authenticating: false)
     var uids: [Int] = []
     for response in responses {
@@ -277,7 +277,7 @@ actor IMAPSession {
 
   // MARK: - Commands
 
-  private enum Piece: Sendable {
+  enum Piece: Sendable, Equatable {
     case text(String)
     case literal(Data)
   }
@@ -532,7 +532,7 @@ actor IMAPSession {
 
   // MARK: - Encoding
 
-  private func searchPieces(from: String?, subject: String?, text: String?, since: Date?) -> [Piece] {
+  static func searchPieces(from: String?, subject: String?, text: String?, since: Date?) throws -> [Piece] {
     let terms: [(String, String)] = [
       ("FROM", from), ("SUBJECT", subject), ("TEXT", text),
     ].compactMap { pair in
@@ -547,7 +547,7 @@ actor IMAPSession {
     }
     for (key, value) in terms {
       pieces.append(.text(" \(key) "))
-      pieces.append(Self.argument(value))
+      pieces.append(try Self.argument(value))
     }
     if let since {
       pieces.append(.text(" SINCE \(Self.imapDate(since))"))
@@ -655,15 +655,18 @@ actor IMAPSession {
     return data.base64EncodedString()
   }
 
-  private static func loginPieces(user: String, password: String) -> [Piece] {
+  private static func loginPieces(user: String, password: String) throws -> [Piece] {
     var pieces: [Piece] = [.text(" LOGIN ")]
-    pieces.append(argument(user))
+    pieces.append(try argument(user))
     pieces.append(.text(" "))
-    pieces.append(argument(password))
+    pieces.append(try argument(password))
     return pieces
   }
 
-  private static func argument(_ string: String) -> Piece {
+  static func argument(_ string: String) throws -> Piece {
+    if string.utf8.contains(where: { $0 < 0x20 || $0 == 0x7F }) {
+      throw IMAPError.protocolError("The search text contains control characters.")
+    }
     if needsLiteral(string) { return .literal(Data(string.utf8)) }
     return .text(quote(string))
   }
