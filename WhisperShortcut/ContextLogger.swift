@@ -235,6 +235,10 @@ class ContextLogger {
   /// answers "how similar?", and keeping the user's text in a long-lived property is
   /// needless exposure. Guarded by `lastInteractionLock`.
   private var lastPromptResponseWordHashes: Set<Int>?
+  /// When the previous Dictate Prompt response was recorded. Separate from `lastPromptAt`, which
+  /// the retry detection clears whenever a run has no selection (compose) — that cleared it
+  /// before the follow-up that selects the composed text could be compared.
+  private var lastPromptResponseAt: Date?
   /// Two runs over the same selection further apart than this are a user returning to a document,
   /// not rephrasing a failed instruction.
   private static let promptRetryWindow: TimeInterval = 120
@@ -317,15 +321,16 @@ class ContextLogger {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
     let modeString = "prompt"
-    // Read before noteSelectionForRetryDetection overwrites it.
+    // Response time, not `lastPromptAt`: retry detection resets that on a compose run.
     lastInteractionLock.lock()
-    let previousPromptAt = lastPromptAt
+    let previousPromptAt = lastPromptResponseAt
     lastInteractionLock.unlock()
     noteSelectionForRetryDetection(selectedText)
     noteFollowUp(selectedText: selectedText, userInstruction: userInstruction, previousPromptAt: previousPromptAt)
     let responseHashes = Set(PromptFollowUp.words(modelResponse).map(\.hashValue))
     lastInteractionLock.lock()
     lastPromptResponseWordHashes = responseHashes
+    lastPromptResponseAt = Date()
     lastInteractionLock.unlock()
     let entry = InteractionLogEntry(
       ts: iso8601Now(),
@@ -376,8 +381,7 @@ class ContextLogger {
   }
 
   /// Emits `promptFollowUp` when this selection is the previous Dictate Prompt output.
-  /// `previousPromptAt` is passed in because `noteSelectionForRetryDetection` has already moved
-  /// `lastPromptAt`. An empty selection emits nothing and clears nothing — the response hashes
+  /// `previousPromptAt` is the previous response's timestamp, read before this call records the new one. An empty selection emits nothing and clears nothing — the response hashes
   /// are replaced by the caller either way.
   private func noteFollowUp(selectedText: String?, userInstruction: String, previousPromptAt: Date?) {
     let trimmed = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
