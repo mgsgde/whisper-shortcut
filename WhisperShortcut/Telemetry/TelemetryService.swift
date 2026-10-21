@@ -527,13 +527,12 @@ struct TelemetryEnvironment {
   }
 
   private static func liveSetup() -> TelemetrySetup {
-    let keychain = KeychainManager.shared
     var providers: [TelemetryProvider] = []
-    if keychain.hasNonEmpty(.google) { providers.append(.gemini) }
-    if keychain.hasNonEmpty(.openAI) { providers.append(.openai) }
-    if keychain.hasNonEmpty(.xai) { providers.append(.xai) }
-    if keychain.hasNonEmpty(.anthropic) { providers.append(.anthropic) }
-    if keychain.hasNonEmpty(.openRouter) { providers.append(.openrouter) }
+    if ChatModelProvider.gemini.hasCredential { providers.append(.gemini) }
+    if ChatModelProvider.openai.hasCredential { providers.append(.openai) }
+    if ChatModelProvider.grok.hasCredential { providers.append(.xai) }
+    if ChatModelProvider.anthropic.hasCredential { providers.append(.anthropic) }
+    if ChatModelProvider.openRouter.hasCredential { providers.append(.openrouter) }
     return TelemetrySetup(
       providers: providers,
       offlineWhisperModel: OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) },

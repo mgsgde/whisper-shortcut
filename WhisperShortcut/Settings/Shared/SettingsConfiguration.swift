@@ -430,6 +430,20 @@ enum PromptModel: String, CaseIterable {
     AppConstants.dictatePromptUsesScreenshotSelection && provider != .local && provider != .localMLX
   }
 
+  /// Permission Dictate Prompt needs before it can read a selection, or nil when the runtime
+  /// reads the clipboard the user already copied.
+  ///
+  /// The onboarding Done step used the build-wide `AppConstants.dictatePromptUsesScreenshotSelection`
+  /// flag, so a local model — which never screenshots, and in the App Store build never synthesizes
+  /// ⌘C — still asked for Screen Recording or Accessibility. This matches
+  /// `MenuBarController.prepareDictatePromptSelection`: screenshot → Screen Recording; App Store
+  /// local → none; direct build → Accessibility for the synthetic ⌘C.
+  var dictatePromptSelectionPermission: PermissionKind? {
+    if dictatePromptUsesScreenshotSelection { return .screenRecording }
+    if AppConstants.dictatePromptUsesScreenshotSelection { return nil }
+    return .accessibility
+  }
+
   /// True for the OpenAI audio-preview models that accept `input_audio` content parts in
   /// Chat Completions requests — i.e. the OpenAI counterpart to Gemini's native audio handling
   /// in Dictate Prompt.
@@ -454,27 +468,21 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Whether the user has the API key this model's provider needs. Used to gate chat, meeting
+  /// Whether the user has what this model's provider needs. Used to gate chat, meeting
   /// summary, Read Aloud smart rewrite, and Smart Improvement.
+  ///
+  /// Forwards to `ChatModelProvider.hasCredential` — the one switch that trims. The copy here
+  /// called `hasNonEmpty`, so a whitespace-only key looked configured in the picker and missing
+  /// in `ProviderCredentials.verifyConfigured`.
   var hasRequiredCredential: Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .openRouter: return OpenRouterChatPreferences.isConfigured
-    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server and in-process MLX need no API key — reachability is checked at request time.
-    case .local, .localMLX: return true
-    }
+    provider.hasCredential
   }
 
   /// Stricter credential check for Dictate Prompt: OpenAI audio models still hit api.openai.com
-  /// directly, so a proxy-only key is not enough.
+  /// directly, so a proxy-only key is not enough. Same trim as `hasRequiredCredential`.
   var hasRequiredCredentialForDictatePrompt: Bool {
     switch provider {
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
+    case .openai: return ProviderCredentials.hasKey(.openAI)
     default: return hasRequiredCredential
     }
   }
@@ -913,6 +921,19 @@ enum TTSProvider {
     }
   }
 
+  /// Whether Read Aloud can use this provider. Maps onto `ChatModelProvider.hasCredential` so
+  /// the picker and the reconciler share its trim: Gemini through the `.gemini` requirement,
+  /// OpenAI and xAI through their key kinds, on-device macOS with nothing to configure.
+  /// A second switch here called `hasNonEmpty` and treated a whitespace-only key as present.
+  var hasCredential: Bool {
+    switch self {
+    case .gemini: return ChatModelProvider.gemini.hasCredential
+    case .openai: return ChatModelProvider.openai.hasCredential
+    case .xai: return ChatModelProvider.grok.hasCredential
+    case .system: return true
+    }
+  }
+
   /// UserDefaults key under which this provider's selected Read Aloud voice is persisted.
   /// Voice is stored per provider (not per model) so switching providers and back keeps each
   /// provider's chosen voice.
@@ -1137,14 +1158,9 @@ enum TTSModel: String, CaseIterable {
   var availableVoices: [TTSVoice] { provider.voices }
 
   /// Whether the user has the API key this TTS model's provider needs. Gates Read Aloud so a
-  /// single provider key is enough.
+  /// single provider key is enough. See `TTSProvider.hasCredential` for why this is not its own switch.
   var hasRequiredCredential: Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .system: return true
-    }
+    provider.hasCredential
   }
 
   /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.

@@ -176,7 +176,9 @@ struct SpeechToTextSettingsTab: View {
           .textSelection(.enabled)
       }
 
-      if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasNonEmpty(.openAI) {
+      if viewModel.data.selectedTranscriptionModel.isOpenAI
+        && !viewModel.data.selectedTranscriptionModel.hasRequiredCredential
+      {
         Text("Add your OpenAI API key in Settings → Accounts to use the OpenAI transcription models.")
           .font(.callout)
           .foregroundColor(.secondary)

@@ -105,4 +105,37 @@ struct ProviderCredentialFactsTests {
         "\(provider.rawValue) disagrees with the Keychain")
     }
   }
+
+  /// `ProviderCredentials.Kind.storedKey` reads `KeychainManager.shared`, so a test cannot plant a
+  /// whitespace-only key without touching the real keychain. Agreement still locks the mapping:
+  /// every feature presence check is the provider's `hasCredential` (which trims key kinds).
+  @MainActor
+  @Test("Prompt, TTS, transcription and the reconciler agree with hasCredential")
+  func featurePresenceAgreesWithProviderCredential() {
+    for model in PromptModel.allCases {
+      #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
+      if model.provider == .openai {
+        #expect(model.hasRequiredCredentialForDictatePrompt == ProviderCredentials.hasKey(.openAI))
+      } else {
+        #expect(
+          model.hasRequiredCredentialForDictatePrompt == model.hasRequiredCredential,
+          "\(model.rawValue)")
+      }
+    }
+    for model in TTSModel.allCases {
+      #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
+    }
+    #expect(TTSProvider.gemini.hasCredential == ChatModelProvider.gemini.hasCredential)
+    #expect(TTSProvider.openai.hasCredential == ChatModelProvider.openai.hasCredential)
+    #expect(TTSProvider.xai.hasCredential == ChatModelProvider.grok.hasCredential)
+    #expect(TTSProvider.system.hasCredential)
+    #expect(TranscriptionProvider.openAI.hasCredential == ChatModelProvider.openai.hasCredential)
+    #expect(TranscriptionProvider.xai.hasCredential == ChatModelProvider.grok.hasCredential)
+    #expect(TranscriptionProvider.openRouter.hasCredential == ChatModelProvider.openRouter.hasCredential)
+    #expect(TranscriptionProvider.google.hasCredential == ChatModelProvider.gemini.hasCredential)
+    #expect(!TranscriptionProvider.offline.hasCredential)
+    for provider in ChatModelProvider.allCases {
+      #expect(ModelSelectionReconciler.hasKey(provider) == provider.hasCredential, "\(provider.rawValue)")
+    }
+  }
 }

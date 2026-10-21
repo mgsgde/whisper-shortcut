@@ -21,28 +21,15 @@ enum ModelSelectionReconciler {
 
   // MARK: - Key availability
 
+  /// Forwards to `ChatModelProvider.hasCredential`. This switch called `hasNonEmpty`, which does
+  /// not trim, so the reconciler kept a whitespace-only key that `verifyConfigured` then rejected.
+  /// Local and MLX stay "always available" because their requirement is `.none`.
   static func hasKey(_ provider: ChatModelProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .openRouter: return OpenRouterChatPreferences.isConfigured
-    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
-    // selection is never reconciled away.
-    case .local, .localMLX: return true
-    }
+    provider.hasCredential
   }
 
   private static func hasKey(_ provider: TTSProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .system: return true
-    }
+    provider.hasCredential
   }
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no

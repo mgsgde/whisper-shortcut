@@ -56,6 +56,14 @@ enum ProviderCredentials {
     }
   }
 
+  /// Whether a usable key is stored. `Kind.hasStoredKey` stays fileprivate so a caller that needs
+  /// the key itself still goes through `require` and its error. Presence checks (pickers, the
+  /// reconciler, transcription) were calling `KeychainManager.hasNonEmpty`, which does not trim,
+  /// so a whitespace-only key read as configured there and missing in `verifyConfigured`.
+  static func hasKey(_ kind: Kind) -> Bool {
+    kind.hasStoredKey
+  }
+
   /// The key for `kind`, trimmed and guaranteed non-empty, or a `.networkError` naming the exact
   /// Settings location. All three key fields live under Settings → Accounts.
   static func require(_ kind: Kind) throws -> String {

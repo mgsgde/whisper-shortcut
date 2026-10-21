@@ -42,13 +42,13 @@ struct WelcomeView: View {
   @State private var step: WelcomeStep =
     WelcomeStep.resume(from: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep))
   @State private var keyDownMonitor: Any?
-  @State private var hasGeminiKey: Bool = KeychainManager.shared.hasNonEmpty(.google)
-  @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasNonEmpty(.openAI)
-  @State private var hasXAIKey: Bool = KeychainManager.shared.hasNonEmpty(.xai)
-  @State private var hasAnthropicKey: Bool = KeychainManager.shared.hasNonEmpty(.anthropic)
+  @State private var hasGeminiKey: Bool = ChatModelProvider.gemini.hasCredential
+  @State private var hasOpenAIKey: Bool = ChatModelProvider.openai.hasCredential
+  @State private var hasXAIKey: Bool = ChatModelProvider.grok.hasCredential
+  @State private var hasAnthropicKey: Bool = ChatModelProvider.anthropic.hasCredential
   /// Set by the OpenRouter connect row. Counts as a configured provider like any pasted key —
   /// the credential slot is the same one the manual field writes.
-  @State private var hasOpenRouterKey: Bool = KeychainManager.shared.hasNonEmpty(.openRouter)
+  @State private var hasOpenRouterKey: Bool = ChatModelProvider.openRouter.hasCredential
   /// True once an offline Whisper model is downloaded, which lets a user finish
   /// setup and dictate with no provider key at all (the key step's other exit).
   @State private var offlineReady: Bool = OfflineModelType.byAccuracy.contains {
@@ -220,11 +220,11 @@ struct WelcomeView: View {
   }
 
   private func refreshState() {
-    hasGeminiKey = KeychainManager.shared.hasNonEmpty(.google)
-    hasOpenAIKey = KeychainManager.shared.hasNonEmpty(.openAI)
-    hasXAIKey = KeychainManager.shared.hasNonEmpty(.xai)
-    hasAnthropicKey = KeychainManager.shared.hasNonEmpty(.anthropic)
-    hasOpenRouterKey = KeychainManager.shared.hasNonEmpty(.openRouter)
+    hasGeminiKey = ChatModelProvider.gemini.hasCredential
+    hasOpenAIKey = ChatModelProvider.openai.hasCredential
+    hasXAIKey = ChatModelProvider.grok.hasCredential
+    hasAnthropicKey = ChatModelProvider.anthropic.hasCredential
+    hasOpenRouterKey = ChatModelProvider.openRouter.hasCredential
     // Any downloaded model unblocks the step — onboarding always offers Whisper Base,
     // and a user who already has Small has nothing left to do here.
     offlineReady = OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) }
