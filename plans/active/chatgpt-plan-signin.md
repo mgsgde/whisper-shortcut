@@ -1,6 +1,6 @@
 # Use your ChatGPT plan (Sign in with ChatGPT, open-source flow)
 
-**Status:** Planned, not started. Direct-download (GitHub) build only.
+**Status:** v1 built in PR #209 (Chat only, direct-download build). Open: real sign-in test with a Plus/Pro account, Dictate Prompt on the plan, Welcome Tour path, tool namespaces, App Store build after OpenAI approval.
 **Audience:** LLM implementing it end-to-end, one slice per PR. UI (settings card, first-sign-in
 notice, model picker entry) is written by the Opus session; OAuth client, token store, Responses
 request builder and tests go to the cheap hand.
