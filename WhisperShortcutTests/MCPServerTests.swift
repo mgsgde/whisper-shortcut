@@ -43,6 +43,7 @@ struct MCPServerTests {
     guard case .complete(let r) = LoopbackHTTPServer.parse(Data(raw.utf8)) else { Issue.record("not complete"); return }
     #expect(r.method == "POST")
     #expect(r.path == "/mcp")
+    #expect(r.query == "x=1")
     #expect(r.header("AUTHORIZATION") == "Bearer t")
     #expect(String(data: r.body, encoding: .utf8) == "hello")
   }

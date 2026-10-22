@@ -4,9 +4,20 @@ import Foundation
 struct HTTPRequest {
   let method: String
   let path: String
+  /// Raw query without the leading `?`, empty when the target had none.
+  /// `parse` used to drop this. MCP matches on `path` only; an OAuth redirect carries the code here.
+  let query: String
   /// Lowercased header names.
   let headers: [String: String]
   let body: Data
+
+  init(method: String, path: String, query: String = "", headers: [String: String], body: Data) {
+    self.method = method
+    self.path = path
+    self.query = query
+    self.headers = headers
+    self.body = body
+  }
 
   func header(_ name: String) -> String? { headers[name.lowercased()] }
 }
@@ -25,10 +36,23 @@ struct HTTPResponse {
   static func empty(_ status: Int, headers: [String: String] = [:]) -> HTTPResponse {
     HTTPResponse(status: status, headers: headers)
   }
+
+  /// The OAuth redirect page. MCP stays on `json` / `empty`; this only selects the content type
+  /// the hand-built OAuth response already sent.
+  static func html(_ markup: String, status: Int = 200) -> HTTPResponse {
+    HTTPResponse(status: status, body: Data(markup.utf8), contentType: "text/html; charset=utf-8")
+  }
 }
 
 /// A long-running HTTP/1.1 server on 127.0.0.1 built on BSD sockets (NWListener failed with EINVAL
 /// in this app, see `LoopbackOAuthListener`). One request per connection, `Connection: close`.
+///
+/// `oneShot` accepts a single connection (backlog 1) and stops. That is the OAuth redirect
+/// listener, which used to be a second socket server missing `SO_NOSIGPIPE`, the recv/send
+/// timeouts, and the read/send loops. MCP leaves `oneShot` false (backlog 16, accept forever).
+/// `onUnparsed` and `afterResponse` are how that one-shot caller unblocks when a connection never
+/// becomes a request; MCP leaves both nil, so a bad request is still 400/413 and a timeout still
+/// writes nothing.
 final class LoopbackHTTPServer {
   static let maxBodyBytes = 1_048_576
   private static let maxHeaderBytes = 32 * 1024
@@ -65,11 +89,20 @@ final class LoopbackHTTPServer {
 
   private let socketFD: Int32
   private let handler: (HTTPRequest) -> HTTPResponse
+  private let oneShot: Bool
+  private let onUnparsed: (() -> HTTPResponse)?
+  private let afterResponse: ((HTTPRequest?) -> Void)?
   private let lock = NSLock()
   private var isStopped = false
   private let workQueue = DispatchQueue(label: "mcp.loopback.http.work", qos: .userInitiated, attributes: .concurrent)
 
-  init(port requestedPort: UInt16, handler: @escaping (HTTPRequest) -> HTTPResponse) throws {
+  init(
+    port requestedPort: UInt16,
+    oneShot: Bool = false,
+    onUnparsed: (() -> HTTPResponse)? = nil,
+    afterResponse: ((HTTPRequest?) -> Void)? = nil,
+    handler: @escaping (HTTPRequest) -> HTTPResponse
+  ) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw ServerError.socketFailed(errno) }
 
@@ -94,7 +127,7 @@ final class LoopbackHTTPServer {
       close(fd)
       throw ServerError.bindFailed(code)
     }
-    guard listen(fd, 16) == 0 else {
+    guard listen(fd, oneShot ? 1 : 16) == 0 else {
       let code = errno
       close(fd)
       throw ServerError.listenFailed(code)
@@ -109,6 +142,9 @@ final class LoopbackHTTPServer {
     socketFD = fd
     port = UInt16(bigEndian: bound.sin_port)
     self.handler = handler
+    self.oneShot = oneShot
+    self.onUnparsed = onUnparsed
+    self.afterResponse = afterResponse
 
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.acceptLoop() }
   }
@@ -142,6 +178,12 @@ final class LoopbackHTTPServer {
         if errno == EINTR || errno == ECONNABORTED { continue }
         return
       }
+      if oneShot {
+        serve(client)
+        close(client)
+        stop()
+        return
+      }
       workQueue.async { [weak self] in
         self?.serve(client)
         close(client)
@@ -159,24 +201,38 @@ final class LoopbackHTTPServer {
     var buffer = Data()
     var chunk = [UInt8](repeating: 0, count: 16 * 1024)
     var request: HTTPRequest?
-    while request == nil {
+    var failed: HTTPResponse?
+    while request == nil && failed == nil {
       switch Self.parse(buffer) {
       case .complete(let r):
         request = r
       case .tooLarge:
-        write(client, HTTPResponse.json(["error": "request too large"], status: 413))
-        return
+        failed = onUnparsed?() ?? HTTPResponse.json(["error": "request too large"], status: 413)
       case .malformed:
-        write(client, HTTPResponse.json(["error": "bad request"], status: 400))
-        return
+        failed = onUnparsed?() ?? HTTPResponse.json(["error": "bad request"], status: 400)
       case .incomplete:
         let n = recv(client, &chunk, chunk.count, 0)
-        if n <= 0 { return }  // closed or timed out
-        buffer.append(chunk, count: n)
+        if n <= 0 {
+          // MCP: closed or timed out, no response. A one-shot caller passes `onUnparsed` so it
+          // can still unblock.
+          if let onUnparsed {
+            failed = onUnparsed()
+          } else {
+            return
+          }
+        } else {
+          buffer.append(chunk, count: n)
+        }
       }
+    }
+    if let failed {
+      write(client, failed)
+      afterResponse?(nil)
+      return
     }
     guard let request else { return }
     write(client, handler(request))
+    afterResponse?(request)
   }
 
   private func write(_ client: Int32, _ response: HTTPResponse) {
@@ -247,7 +303,14 @@ final class LoopbackHTTPServer {
     let body = Data(data[bodyStart..<(bodyStart + contentLength)])
 
     var path = String(parts[1])
-    if let q = path.firstIndex(of: "?") { path = String(path[path.startIndex..<q]) }
-    return .complete(HTTPRequest(method: String(parts[0]).uppercased(), path: path, headers: headers, body: body))
+    let query: String
+    if let q = path.firstIndex(of: "?") {
+      query = String(path[path.index(after: q)...])
+      path = String(path[path.startIndex..<q])
+    } else {
+      query = ""
+    }
+    return .complete(HTTPRequest(
+      method: String(parts[0]).uppercased(), path: path, query: query, headers: headers, body: body))
   }
 }

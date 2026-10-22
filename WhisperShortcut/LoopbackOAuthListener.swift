@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 
 /// A one-shot HTTP listener on 127.0.0.1 that catches an OAuth redirect.
@@ -8,9 +7,10 @@ import Foundation
 /// homepage with no consent screen and no error. Its docs name exactly two forms — a public https
 /// URL and `localhost` on any port — so loopback is the option that needs no web hosting.
 ///
-/// Uses BSD sockets rather than `NWListener`, which failed to start with `NWError 22 (EINVAL)`.
-/// The socket path is about forty lines, has no state machine to get wrong, and binds explicitly to
-/// `127.0.0.1` so the authorization code is never reachable from the local network.
+/// The sockets are `LoopbackHTTPServer` (port 0, one shot). This used to be a second BSD-socket
+/// server beside that one, without `SO_NOSIGPIPE`, recv/send timeouts, or a read/send loop, so a
+/// split redirect could sit in `recv` until the user gave up. `NWListener` is not an option: it
+/// failed to start with `NWError 22 (EINVAL)`.
 ///
 /// Deliberately single-use: it stops after the first request, so a stale listener cannot linger and
 /// accept a replayed code. Requires `com.apple.security.network.server` in the sandbox entitlements.
@@ -20,11 +20,8 @@ final class LoopbackOAuthListener {
   static let defaultCallbackPath = "/openrouter-callback"
   static let defaultProviderName = "OpenRouter"
 
-  private let socketFD: Int32
-  private let lock = NSLock()
-  private var onRequest: ((URLComponents?) -> Void)?
-  private var isStopped = false
-  private let providerName: String
+  private let server: LoopbackHTTPServer
+  private let once: Once
 
   /// The URL to hand the authorization server.
   let callbackURL: String
@@ -41,49 +38,32 @@ final class LoopbackOAuthListener {
     providerName: String = LoopbackOAuthListener.defaultProviderName,
     onRequest: @escaping (URLComponents?) -> Void
   ) throws {
-    let fd = socket(AF_INET, SOCK_STREAM, 0)
-    guard fd >= 0 else { throw ListenerError.socketFailed(errno) }
-
-    var reuse: Int32 = 1
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-
-    var address = sockaddr_in()
-    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-    address.sin_family = sa_family_t(AF_INET)
-    address.sin_port = 0  // let the kernel pick a free port
-    address.sin_addr.s_addr = inet_addr("127.0.0.1")
-
-    let didBind = withUnsafePointer(to: &address) {
-      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-        bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+    let once = Once(onRequest)
+    let server: LoopbackHTTPServer
+    do {
+      server = try LoopbackHTTPServer(
+        port: 0,
+        oneShot: true,
+        onUnparsed: {
+          HTTPResponse.html(Self.browserPage(success: false, providerName: providerName))
+        },
+        afterResponse: { request in
+          once.fire(request.flatMap(Self.components(from:)))
+        }
+      ) { request in
+        let components = Self.components(from: request)
+        let succeeded = components?.queryItems?.contains { $0.name == "code" } == true
+        return HTTPResponse.html(Self.browserPage(success: succeeded, providerName: providerName))
       }
+    } catch let error as LoopbackHTTPServer.ServerError {
+      throw Self.listenerError(from: error)
+    } catch {
+      throw error
     }
-    guard didBind == 0 else {
-      let code = errno
-      close(fd)
-      throw ListenerError.bindFailed(code)
-    }
-
-    guard listen(fd, 1) == 0 else {
-      let code = errno
-      close(fd)
-      throw ListenerError.listenFailed(code)
-    }
-
-    var boundAddress = sockaddr_in()
-    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
-    _ = withUnsafeMutablePointer(to: &boundAddress) {
-      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
-    }
-    let port = UInt16(bigEndian: boundAddress.sin_port)
-
-    socketFD = fd
-    self.onRequest = onRequest
-    self.providerName = providerName
-    callbackURL = "http://127.0.0.1:\(port)\(callbackPath)"
-
+    self.server = server
+    self.once = once
+    callbackURL = "http://127.0.0.1:\(server.port)\(callbackPath)"
     DebugLogger.log("OAUTH-LOOPBACK: Listening on \(callbackURL)")
-    DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.acceptOnce() }
   }
 
   deinit {
@@ -92,50 +72,8 @@ final class LoopbackOAuthListener {
 
   /// Safe to call repeatedly and from any thread.
   func stop() {
-    lock.lock()
-    let alreadyStopped = isStopped
-    isStopped = true
-    onRequest = nil
-    lock.unlock()
-
-    // Closing the socket is what unblocks the accept() below.
-    if !alreadyStopped { close(socketFD) }
-  }
-
-  // MARK: - Accept
-
-  private func acceptOnce() {
-    let client = accept(socketFD, nil, nil)
-    guard client >= 0 else {
-      // Expected when stop() closed the socket out from under us — the user cancelled.
-      return
-    }
-    defer { close(client) }
-
-    var buffer = [UInt8](repeating: 0, count: 8192)
-    let received = recv(client, &buffer, buffer.count, 0)
-    let components = received > 0
-      ? Self.parseRequestTarget(Data(buffer[0..<received]))
-      : nil
-
-    let succeeded = components?.queryItems?.contains { $0.name == "code" } == true
-    let response = Self.httpResponse(success: succeeded, providerName: providerName)
-    _ = response.withUnsafeBytes { send(client, $0.baseAddress, response.count, 0) }
-
-    fireOnce(with: components)
-  }
-
-  private func fireOnce(with components: URLComponents?) {
-    lock.lock()
-    let callback = onRequest
-    onRequest = nil
-    let alreadyStopped = isStopped
-    isStopped = true
-    lock.unlock()
-
-    if !alreadyStopped { close(socketFD) }
-    guard let callback else { return }
-    DispatchQueue.main.async { callback(components) }
+    once.cancel()
+    server.stop()
   }
 
   // MARK: - HTTP
@@ -156,21 +94,7 @@ final class LoopbackOAuthListener {
   }
 
   static func httpResponse(success: Bool, providerName: String = defaultProviderName) -> Data {
-    let title = success ? "You're connected" : "Something went wrong"
-    let message = success
-      ? "WhisperShortcut has your \(providerName) connection. You can close this tab."
-      : "WhisperShortcut didn't receive an authorization code. Close this tab and try again."
-
-    let body = """
-      <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title><style>
-      body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;
-      justify-content:center;height:100vh;margin:0;background:#111;color:#eee}
-      div{text-align:center;max-width:28rem;padding:2rem}h1{font-size:1.25rem;margin:0 0 .5rem}
-      p{color:#aaa;margin:0;line-height:1.5}</style></head>
-      <body><div><h1>\(title)</h1><p>\(message)</p></div></body></html>
-      """
-
-    let bodyData = Data(body.utf8)
+    let bodyData = Data(browserPage(success: success, providerName: providerName).utf8)
     let headers = """
       HTTP/1.1 200 OK\r
       Content-Type: text/html; charset=utf-8\r
@@ -196,6 +120,63 @@ final class LoopbackOAuthListener {
       case .listenFailed(let code):
         return "Could not listen on the local sign-in callback port (errno \(code))."
       }
+    }
+  }
+
+  /// GET only, same as `parseRequestTarget`. The shared server uppercases the method and keeps the
+  /// query that this listener's old parser read off the request line.
+  private static func components(from request: HTTPRequest) -> URLComponents? {
+    guard request.method == "GET" else { return nil }
+    let target = request.query.isEmpty ? request.path : "\(request.path)?\(request.query)"
+    return URLComponents(string: "http://127.0.0.1\(target)")
+  }
+
+  private static func browserPage(success: Bool, providerName: String) -> String {
+    let title = success ? "You're connected" : "Something went wrong"
+    let message = success
+      ? "WhisperShortcut has your \(providerName) connection. You can close this tab."
+      : "WhisperShortcut didn't receive an authorization code. Close this tab and try again."
+
+    return """
+      <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title><style>
+      body{font-family:-apple-system,system-ui,sans-serif;display:flex;align-items:center;
+      justify-content:center;height:100vh;margin:0;background:#111;color:#eee}
+      div{text-align:center;max-width:28rem;padding:2rem}h1{font-size:1.25rem;margin:0 0 .5rem}
+      p{color:#aaa;margin:0;line-height:1.5}</style></head>
+      <body><div><h1>\(title)</h1><p>\(message)</p></div></body></html>
+      """
+  }
+
+  private static func listenerError(from error: LoopbackHTTPServer.ServerError) -> ListenerError {
+    switch error {
+    case .socketFailed(let code): return .socketFailed(code)
+    case .bindFailed(let code): return .bindFailed(code)
+    case .listenFailed(let code): return .listenFailed(code)
+    }
+  }
+
+  /// The callback fires at most once, on the main queue, and `stop()` drops a late one.
+  private final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: ((URLComponents?) -> Void)?
+
+    init(_ handler: @escaping (URLComponents?) -> Void) {
+      self.handler = handler
+    }
+
+    func fire(_ components: URLComponents?) {
+      lock.lock()
+      let callback = handler
+      handler = nil
+      lock.unlock()
+      guard let callback else { return }
+      DispatchQueue.main.async { callback(components) }
+    }
+
+    func cancel() {
+      lock.lock()
+      handler = nil
+      lock.unlock()
     }
   }
 }
