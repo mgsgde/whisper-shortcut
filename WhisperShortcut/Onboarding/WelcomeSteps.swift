@@ -77,14 +77,7 @@ struct OpenSourceBanner: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color.accentColor.opacity(0.10))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-      )
+      .cardChrome(fill: Color.accentColor.opacity(0.10), stroke: Color.accentColor.opacity(0.35))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -148,19 +141,10 @@ struct WelcomeDictationSetupStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
-      HStack(spacing: 12) {
-        Image(systemName: "waveform.badge.mic")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("How should dictation run?")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Pick one to start. You can add the other any time in Settings.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-      }
+      WelcomeStepHeader(
+        systemImage: "waveform.badge.mic",
+        title: "How should dictation run?",
+        subtitle: "Pick one to start. You can add the other any time in Settings.")
 
       HStack(alignment: .top, spacing: 12) {
         choiceCard(
@@ -262,16 +246,10 @@ struct WelcomeDictationSetupStep: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .topLeading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(selected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(
-            selected ? Color.accentColor : Color(nsColor: .separatorColor),
-            lineWidth: selected ? 2 : 1)
-      )
+      .cardChrome(
+        fill: selected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor),
+        stroke: selected ? Color.accentColor : Color(nsColor: .separatorColor),
+        lineWidth: selected ? 2 : 1)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -736,14 +714,7 @@ struct OnboardingAPIKeyRow: View {
       }
     }
     .padding(14)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
+    .cardChrome()
     .onAppear {
       let stored = KeychainManager.shared.get(provider.credential) ?? ""
       storedKey = stored
@@ -780,20 +751,10 @@ struct WelcomeTryItStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "waveform")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Try it now")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text(tryItDetail)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
+      WelcomeStepHeader(
+        systemImage: "waveform",
+        title: "Try it now",
+        subtitle: tryItDetail)
       OnboardingTryItPanel()
       Spacer(minLength: 0)
     }
@@ -805,20 +766,10 @@ struct WelcomePermissionsStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "checkmark.shield")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("macOS permissions")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
+      WelcomeStepHeader(
+        systemImage: "checkmark.shield",
+        title: "macOS permissions",
+        subtitle: "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions.")
 
       ScrollView {
         // The same overview used in Settings → Privacy & Permissions and on permission errors —
@@ -895,7 +846,7 @@ struct OnboardingAutoPasteCard: View {
 
       if autoPasteEnabled {
         HStack(spacing: 8) {
-          WelcomePermissionBadge(status: axStatus)
+          PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
             ? "Accessibility granted — auto-paste is ready."
             : "Enable WhisperShortcut in System Settings, then return here.")
@@ -1061,14 +1012,7 @@ struct WelcomeDoneStep: View {
             shortcutRow(feature)
           }
         }
-        .background(
-          RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 10)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
+        .cardChrome()
       }
       .frame(maxWidth: 560, alignment: .leading)
 
@@ -1076,14 +1020,7 @@ struct WelcomeDoneStep: View {
       UsageStatisticsToggle()
         .padding(14)
         .frame(maxWidth: 560, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 10)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
+        .cardChrome()
 
       onboardingShortcutRecorder
         .frame(maxWidth: 560)
@@ -1154,14 +1091,7 @@ struct WelcomeDoneStep: View {
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
+    .cardChrome()
   }
 
   @ViewBuilder
@@ -1198,11 +1128,11 @@ struct WelcomeDoneStep: View {
         PermissionStatusChecker.openSystemSettings(for: missing)
       } label: {
         badgeContent(
-          icon: "xmark.circle.fill", color: .red, text: "Needs \(permissionName(missing))")
+          icon: "xmark.circle.fill", color: .red, text: "Needs \(missing.displayName)")
       }
       .buttonStyle(.plain)
       .pointerCursorOnHover()
-      .help("Open System Settings to grant \(permissionName(missing)) access")
+      .help("Open System Settings to grant \(missing.displayName) access")
     } else {
       badgeContent(icon: "checkmark.circle.fill", color: .green, text: "Ready")
     }
@@ -1234,14 +1164,6 @@ struct WelcomeDoneStep: View {
     }
   }
 
-  private func permissionName(_ kind: PermissionKind) -> String {
-    switch kind {
-    case .microphone: return "Microphone"
-    case .accessibility: return "Accessibility"
-    case .screenRecording: return "Screen Recording"
-    }
-  }
-
   private var dictationReady: Bool { canTranscribe && micStatus == .granted }
 
   private var menuBarHint: Text {
@@ -1263,41 +1185,5 @@ struct WelcomeDoneStep: View {
     micStatus = PermissionStatusChecker.status(for: .microphone)
     axStatus = PermissionStatusChecker.status(for: .accessibility)
     screenStatus = PermissionStatusChecker.status(for: .screenRecording)
-  }
-}
-
-struct WelcomePermissionBadge: View {
-  let status: PermissionStatus
-
-  var body: some View {
-    HStack(spacing: 5) {
-      Image(systemName: "circle.fill")
-        .font(.system(size: 8))
-        .foregroundStyle(color)
-      Text(label)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 3)
-    .background(Capsule().fill(color.opacity(0.12)))
-  }
-
-  private var color: Color {
-    switch status {
-    case .granted: return .green
-    case .denied: return .red
-    case .notDetermined: return .yellow
-    case .notApplicable: return .gray
-    }
-  }
-
-  private var label: String {
-    switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
-    }
   }
 }

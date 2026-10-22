@@ -28,7 +28,7 @@ struct PermissionsOverview: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       permissionRow(
-        name: "Microphone",
+        name: PermissionKind.microphone.displayName,
         description: "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted.",
         required: true,
         status: micStatus,
@@ -41,7 +41,7 @@ struct PermissionsOverview: View {
       if includeAccessibility {
         Divider()
         permissionRow(
-          name: "Accessibility",
+          name: PermissionKind.accessibility.displayName,
           description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General.",
           required: false,
           status: axStatus,
@@ -51,7 +51,7 @@ struct PermissionsOverview: View {
 
       Divider()
       permissionRow(
-        name: "Screen Recording",
+        name: PermissionKind.screenRecording.displayName,
         description: "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
         required: false,
         status: screenStatus,
@@ -252,7 +252,7 @@ struct PermissionsOverview: View {
             .background((required ? Color.accentColor : Color.secondary).opacity(0.15))
             .foregroundColor(required ? .accentColor : .secondary)
             .clipShape(Capsule())
-          statusBadge(status)
+          PermissionStatusBadge(status: status)
         }
         Text(description)
           .font(.caption)
@@ -273,39 +273,6 @@ struct PermissionsOverview: View {
       }
       Spacer(minLength: 8)
       actions
-    }
-  }
-
-  @ViewBuilder
-  private func statusBadge(_ status: PermissionStatus) -> some View {
-    HStack(spacing: 5) {
-      Image(systemName: "circle.fill")
-        .font(.system(size: 8))
-        .foregroundStyle(statusColor(status))
-      Text(statusLabel(status))
-        .font(.caption)
-        .foregroundColor(.secondary)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 3)
-    .background(Capsule().fill(statusColor(status).opacity(0.12)))
-  }
-
-  private func statusColor(_ status: PermissionStatus) -> Color {
-    switch status {
-    case .granted: return .green
-    case .denied: return .red
-    case .notDetermined: return .yellow
-    case .notApplicable: return .gray
-    }
-  }
-
-  private func statusLabel(_ status: PermissionStatus) -> String {
-    switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
     }
   }
 }
