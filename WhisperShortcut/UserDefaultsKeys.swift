@@ -228,6 +228,11 @@ enum UserDefaultsKeys {
   /// Dictate Prompt may call read-only tools (calendar, mail, Trello, shared files) when an
   /// integration is connected. Default on. Read by `DictatePromptAgent.isEnabledInSettings`.
   static let dictatePromptToolsEnabled = "dictatePromptToolsEnabled"
+  /// The user's own Dictate Prompt quick prompts, in display order. `[String]`. May contain
+  /// blank entries while editing; readers drop them.
+  static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
+  /// Also show Dictate Prompt prompts learned from usage. Bool, default true.
+  static let dictatePromptLearnedQuickActionsEnabled = "dictatePromptLearnedQuickActionsEnabled"
 
   // MARK: - Local LLM (OpenAI-compatible, e.g. Ollama / LM Studio)
   /// Base URL of the local OpenAI-compatible server (the part before `/chat/completions`),
