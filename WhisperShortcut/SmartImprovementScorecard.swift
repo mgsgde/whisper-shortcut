@@ -206,7 +206,7 @@ enum SmartImprovementScorecard {
     to: Date
   ) -> ScorecardMetrics {
     let parsed = interactions.compactMap { entry -> (entry: InteractionLogEntry, date: Date)? in
-      guard let date = parseTimestamp(entry.ts) else { return nil }
+      guard let date = UserContextLog.timestamp(entry.ts) else { return nil }
       return (entry, date)
     }
     let prompts = parsed
@@ -247,7 +247,7 @@ enum SmartImprovementScorecard {
       }
     }
     for signal in signals {
-      guard let date = parseTimestamp(signal.ts), date >= from, date < to else { continue }
+      guard let date = UserContextLog.timestamp(signal.ts), date >= from, date < to else { continue }
       switch signal.kind {
       case "promptRetry": metrics.promptRetries += 1
       case "chatRetry": metrics.chatRetries += 1
@@ -266,7 +266,7 @@ enum SmartImprovementScorecard {
   ) -> [ScorecardWeek] {
     var starts: [String: Date] = [:]
     func note(_ ts: String) {
-      guard let date = parseTimestamp(ts),
+      guard let date = UserContextLog.timestamp(ts),
             let interval = calendar.dateInterval(of: .weekOfYear, for: date) else { return }
       let id = weekID(interval.start, calendar: calendar)
       if starts[id] == nil { starts[id] = interval.start }
@@ -401,14 +401,6 @@ enum SmartImprovementScorecard {
 
   // MARK: - Timestamps and weeks
 
-  private static let fractionalTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
-  private static let plainTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
-
-  private static func parseTimestamp(_ ts: String) -> Date? {
-    if let date = try? Date(ts, strategy: fractionalTimestamp) { return date }
-    return try? Date(ts, strategy: plainTimestamp)
-  }
-
   private static func weekID(_ date: Date, calendar: Calendar) -> String {
     let year = calendar.component(.yearForWeekOfYear, from: date)
     let week = calendar.component(.weekOfYear, from: date)
@@ -425,13 +417,15 @@ enum SmartImprovementScorecard {
 
   private static func load(directory: URL, lastDays: Int, now: Date) -> LoadedLogs {
     var loaded = LoadedLogs()
-    for url in logFileURLs(directory: directory, prefix: "interactions-", lastDays: lastDays, now: now) {
-      loaded.interactions.append(contentsOf: decodeJSONL(url))
-    }
-    for url in logFileURLs(directory: directory, prefix: "signals-", lastDays: lastDays, now: now) {
-      loaded.signals.append(contentsOf: decodeJSONL(url))
-    }
-    loaded.history = decodeJSONL(directory.appendingPathComponent("system-prompts-history.jsonl"))
+    loaded.interactions = UserContextLog.decodeLines(
+      UserContextLog.files(stream: .interactions, in: directory, lastDays: lastDays, now: now),
+      as: InteractionLogEntry.self)
+    loaded.signals = UserContextLog.decodeLines(
+      UserContextLog.files(stream: .signals, in: directory, lastDays: lastDays, now: now),
+      as: SignalLogEntry.self)
+    loaded.history = UserContextLog.decodeLines(
+      [directory.appendingPathComponent("system-prompts-history.jsonl")],
+      as: UnifiedSystemPromptHistoryEntry.self)
     return loaded
   }
 
@@ -457,7 +451,7 @@ enum SmartImprovementScorecard {
     for entry in history {
       guard entry.scorecard != nil else { continue }
       if let section, entry.section != section { continue }
-      guard let date = parseTimestamp(entry.ts) else { continue }
+      guard let date = UserContextLog.timestamp(entry.ts) else { continue }
       if let current = best, date < current.date { continue }
       best = (entry, date)
     }
@@ -476,35 +470,4 @@ enum SmartImprovementScorecard {
       after: after)
   }
 
-  /// Daily `prefixYYYY-MM-DD.jsonl` files, same filename date as `ContextLogger.logFiles`.
-  private static func logFileURLs(directory: URL, prefix: String, lastDays: Int, now: Date) -> [URL] {
-    guard let contents = try? FileManager.default.contentsOfDirectory(
-      at: directory, includingPropertiesForKeys: nil)
-    else { return [] }
-    let cutoff = Calendar.current.date(byAdding: .day, value: -lastDays, to: now) ?? now
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd"
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = .current
-    return contents.filter { url in
-      let name = url.lastPathComponent
-      guard name.hasPrefix(prefix), name.hasSuffix(".jsonl") else { return false }
-      let dateString = String(name.dropFirst(prefix.count).dropLast(".jsonl".count))
-      guard let fileDate = formatter.date(from: dateString) else { return false }
-      return fileDate >= cutoff
-    }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-  }
-
-  private static func decodeJSONL<T: Decodable>(_ url: URL) -> [T] {
-    guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-    let decoder = JSONDecoder()
-    var rows: [T] = []
-    for line in text.split(whereSeparator: \.isNewline) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { continue }
-      guard let row = try? decoder.decode(T.self, from: data) else { continue }
-      rows.append(row)
-    }
-    return rows
-  }
 }

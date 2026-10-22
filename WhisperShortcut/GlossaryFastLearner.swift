@@ -257,19 +257,7 @@ final class GlossaryFastLearner {
   /// Internal so the chat tool can reuse the same transcript window
   /// when they pick a majority spelling. The scan is file IO; callers are already off the UI path.
   func recentTranscriptionResults() -> [String] {
-    let decoder = JSONDecoder()
-    var results: [String] = []
-    for fileURL in ContextLogger.shared.interactionLogFiles(lastDays: transcriptWindowDays) {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data),
-              entry.mode == "transcription",
-              let result = entry.result else { continue }
-        results.append(result)
-      }
-    }
-    return results
+    UserContextLog.interactions(lastDays: transcriptWindowDays, mode: .transcription).compactMap(\.result)
   }
 
   // MARK: - Text helpers

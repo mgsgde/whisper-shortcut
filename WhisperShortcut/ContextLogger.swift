@@ -297,7 +297,7 @@ class ContextLogger {
     TelemetryService.shared.completed(.dictation, modelKind: .transcription, model: transcriptionModel)
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
-      ts: iso8601Now(),
+      ts: UserContextLog.nowString(),
       mode: "transcription",
       model: model,
       result: result,
@@ -336,7 +336,7 @@ class ContextLogger {
     lastPromptResponseAt = Date()
     lastInteractionLock.unlock()
     let entry = InteractionLogEntry(
-      ts: iso8601Now(),
+      ts: UserContextLog.nowString(),
       mode: modeString,
       model: model,
       result: nil,
@@ -415,7 +415,7 @@ class ContextLogger {
     // already does before copy/TTS.
     let sanitizedResponse = GeminiAPIClient.stripImageMarkers(modelResponse, placeholder: "[generated image]")
     let entry = InteractionLogEntry(
-      ts: iso8601Now(),
+      ts: UserContextLog.nowString(),
       mode: "geminiChat",
       model: model,
       result: nil,
@@ -460,7 +460,7 @@ class ContextLogger {
     }
 
     let entry = SignalLogEntry(
-      ts: iso8601Now(),
+      ts: UserContextLog.nowString(),
       kind: kind.rawValue,
       refTs: refTs,
       mode: mode,
@@ -575,11 +575,6 @@ class ContextLogger {
     )
   }
 
-  /// Returns URLs of all signal files from the last N days, sorted by date ascending.
-  func signalLogFiles(lastDays: Int = 30) -> [URL] {
-    logFiles(prefix: "signals-", lastDays: lastDays)
-  }
-
   // MARK: - Audio Sample Capture (Smart Improvement verification)
 
   /// Returns the absolute URL of the on-disk audio sample directory.
@@ -653,7 +648,7 @@ class ContextLogger {
   func pruneExpiredAudioSamples() -> Int {
     let fm = FileManager.default
     let cutoff = Date().addingTimeInterval(-Double(AppConstants.audioSampleRetentionDays) * 86_400)
-    let formatter = Self.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
+    let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
     let urls = audioSampleURLs()
     var deleted = 0
@@ -698,7 +693,7 @@ class ContextLogger {
   }
 
   private func audioSampleFilename() -> String {
-    let formatter = Self.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
+    let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
     let stamp = formatter.string(from: Date())
     let suffix = UUID().uuidString.prefix(6)
@@ -728,23 +723,17 @@ class ContextLogger {
       guard let self else { return }
       let fm = FileManager.default
       let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.rotationDays, to: Date()) ?? Date()
-      let dateFormatter = Self.makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
 
       do {
         let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
         for fileURL in contents {
           let filename = fileURL.lastPathComponent
 
-          if let prefix = ["interactions-", "signals-"].first(where: { filename.hasPrefix($0) }),
-             filename.hasSuffix(".jsonl") {
-            // Date-based rotation for the daily streams
-            let dateString = filename
-              .replacingOccurrences(of: prefix, with: "")
-              .replacingOccurrences(of: ".jsonl", with: "")
-            if let fileDate = dateFormatter.date(from: dateString), fileDate < cutoffDate {
-              try fm.removeItem(at: fileURL)
-              DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
-            }
+          if let stream = UserContextLog.Stream.allCases.first(where: { filename.hasPrefix($0.rawValue) }),
+             let fileDate = UserContextLog.fileDay(in: filename, stream: stream),
+             fileDate < cutoffDate {
+            try fm.removeItem(at: fileURL)
+            DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
           } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
             // Line-count rotation for history files that have no date in their name
             self.trimJSONLFile(at: fileURL, maxLines: self.historyFileMaxLines)
@@ -789,7 +778,7 @@ class ContextLogger {
         directory: self.contextDirectoryURL,
         currentGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
       let entry = UnifiedSystemPromptHistoryEntry(
-        ts: self.iso8601Now(),
+        ts: UserContextLog.nowString(),
         section: section.rawValue,
         source: source,
         previousLength: previousLength,
@@ -801,18 +790,7 @@ class ContextLogger {
       let fileURL = self.contextDirectoryURL.appendingPathComponent("system-prompts-history.jsonl")
       do {
         let data = try JSONEncoder().encode(entry)
-        guard var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-          let handle = try FileHandle(forWritingTo: fileURL)
-          defer { try? handle.close() }
-          _ = try handle.seekToEnd()
-          if let lineData = line.data(using: .utf8) {
-            try handle.write(contentsOf: lineData)
-          }
-        } else {
-          try line.write(to: fileURL, atomically: true, encoding: .utf8)
-        }
+        try UserContextLog.appendLine(data, to: fileURL)
         DebugLogger.log("USER-CONTEXT: Appended system prompts history (\(section.rawValue))")
       } catch {
         DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.localizedDescription)")
@@ -835,43 +813,12 @@ class ContextLogger {
 
   // MARK: - File Listing (for derivation)
 
-  /// Gregorian `yyyy-MM-dd` so daily log names stay parseable when the user
-  /// calendar is Buddhist or Japanese. Internal so tests can format a fixed date.
-  static let interactionLogDateFormatter = makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
-
-  /// Locale is set before the calendar: assigning `locale` replaces the calendar
-  /// with the locale's. `en_US_POSIX` plus Gregorian keeps filename dates as
-  /// `yyyy-MM-dd` on a Buddhist or Japanese user calendar.
-  private static func makeFileNameDateFormatter(dateFormat: String) -> DateFormatter {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.dateFormat = dateFormat
-    return formatter
-  }
-
-  private func logDate(for url: URL, prefix: String) -> Date? {
-    let filename = url.lastPathComponent
-    guard filename.hasPrefix(prefix), filename.hasSuffix(".jsonl") else { return nil }
-    let dateString = filename
-      .replacingOccurrences(of: prefix, with: "")
-      .replacingOccurrences(of: ".jsonl", with: "")
-    return Self.interactionLogDateFormatter.date(from: dateString)
-  }
-
   /// Returns counts of interaction entries grouped by `mode` field over the last N days.
   /// Used by Smart Improvement to skip focuses without enough data.
   func interactionCountsByMode(lastDays: Int) -> [String: Int] {
-    let files = interactionLogFiles(lastDays: lastDays)
     var counts: [String: Int] = [:]
-    let decoder = JSONDecoder()
-    for fileURL in files {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        counts[entry.mode, default: 0] += 1
-      }
+    for entry in UserContextLog.interactions(lastDays: lastDays) {
+      counts[entry.mode, default: 0] += 1
     }
     return counts
   }
@@ -884,26 +831,12 @@ class ContextLogger {
 
   /// Returns URLs of all interaction log files from the last N days, sorted by date ascending.
   func interactionLogFiles(lastDays: Int = 30) -> [URL] {
-    logFiles(prefix: "interactions-", lastDays: lastDays)
+    UserContextLog.files(stream: .interactions, in: contextDirectoryURL, lastDays: lastDays, now: Date())
   }
 
-  /// Shared listing for the date-stamped daily JSONL streams (`interactions-`, `signals-`).
-  private func logFiles(prefix: String, lastDays: Int) -> [URL] {
-    let fm = FileManager.default
-    let cutoffDate = Calendar.current.date(byAdding: .day, value: -lastDays, to: Date()) ?? Date()
-
-    do {
-      let contents = try fm.contentsOfDirectory(at: contextDirectoryURL, includingPropertiesForKeys: nil)
-      return contents
-        .filter { url in
-          guard let fileDate = logDate(for: url, prefix: prefix) else { return false }
-          return fileDate >= cutoffDate
-        }
-        .sorted { $0.lastPathComponent < $1.lastPathComponent }
-    } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to list log files: \(error.localizedDescription)")
-      return []
-    }
+  /// Returns URLs of all signal log files from the last N days, sorted by date ascending.
+  func signalLogFiles(lastDays: Int = 30) -> [URL] {
+    UserContextLog.files(stream: .signals, in: contextDirectoryURL, lastDays: lastDays, now: Date())
   }
 
   /// Returns the URL of the context directory.
@@ -960,7 +893,7 @@ class ContextLogger {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
-        ts: self.iso8601Now(),
+        ts: UserContextLog.nowString(),
         source: "auto",
         previousLength: previousLength,
         newLength: newLength,
@@ -972,19 +905,7 @@ class ContextLogger {
 
       do {
         let data = try JSONEncoder().encode(entry)
-        guard var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-          let handle = try FileHandle(forWritingTo: fileURL)
-          defer { try? handle.close() }
-          _ = try handle.seekToEnd()
-          if let lineData = line.data(using: .utf8) {
-            try handle.write(contentsOf: lineData)
-          }
-        } else {
-          try line.write(to: fileURL, atomically: true, encoding: .utf8)
-        }
+        try UserContextLog.appendLine(data, to: fileURL)
 
         DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
       } catch {
@@ -999,7 +920,7 @@ class ContextLogger {
     queue.async { [weak self] in
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
-        ts: self.iso8601Now(),
+        ts: UserContextLog.nowString(),
         source: "auto",
         previousLength: previousLength,
         newLength: newLength,
@@ -1011,19 +932,7 @@ class ContextLogger {
 
       do {
         let data = try JSONEncoder().encode(entry)
-        guard var line = String(data: data, encoding: .utf8) else { return }
-        line += "\n"
-
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-          let handle = try FileHandle(forWritingTo: fileURL)
-          defer { try? handle.close() }
-          _ = try handle.seekToEnd()
-          if let lineData = line.data(using: .utf8) {
-            try handle.write(contentsOf: lineData)
-          }
-        } else {
-          try line.write(to: fileURL, atomically: true, encoding: .utf8)
-        }
+        try UserContextLog.appendLine(data, to: fileURL)
 
         DebugLogger.log("USER-CONTEXT: Appended user context history")
       } catch {
@@ -1033,12 +942,6 @@ class ContextLogger {
   }
 
   // MARK: - Private Helpers
-
-  private func iso8601Now() -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter.string(from: Date())
-  }
 
   private func writeEntry(_ entry: InteractionLogEntry) {
     // Remember what was just logged so a later signal can name the interaction it judges.
@@ -1066,27 +969,12 @@ class ContextLogger {
 
   /// Appends one JSON line to today's file for a date-stamped stream. Runs on `queue`.
   private func append<T: Encodable>(_ entry: T, toDailyFileWithPrefix prefix: String, logDescription: String) {
-    let dateFormatter = Self.makeFileNameDateFormatter(dateFormat: "yyyy-MM-dd")
-    let dateString = dateFormatter.string(from: Date())
-    let filename = "\(prefix)\(dateString).jsonl"
+    let filename = "\(prefix)\(UserContextLog.fileNameDayString(from: Date())).jsonl"
     let fileURL = contextDirectoryURL.appendingPathComponent(filename)
 
     do {
       let data = try JSONEncoder().encode(entry)
-      guard var line = String(data: data, encoding: .utf8) else { return }
-      line += "\n"
-
-      if FileManager.default.fileExists(atPath: fileURL.path) {
-        let handle = try FileHandle(forWritingTo: fileURL)
-        defer { try? handle.close() }
-        _ = try handle.seekToEnd()
-        if let lineData = line.data(using: .utf8) {
-          try handle.write(contentsOf: lineData)
-        }
-      } else {
-        try line.write(to: fileURL, atomically: true, encoding: .utf8)
-      }
-
+      try UserContextLog.appendLine(data, to: fileURL)
       DebugLogger.log("USER-CONTEXT: Logged \(logDescription)")
     } catch {
       DebugLogger.logError("USER-CONTEXT: Failed to write log entry: \(error.localizedDescription)")

@@ -483,21 +483,19 @@ class ContextDerivation {
   // MARK: - Log Loading & Sampling
 
   private func loadInteractionLogCorpus() -> InteractionLogCorpus {
-    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
+    let logFiles = UserContextLog.files(
+      stream: .interactions,
+      in: ContextLogger.shared.directoryURL,
+      lastDays: AppConstants.contextTier3Days,
+      now: Date())
+    // Empty directory and a directory of undecodable lines are different: only the latter
+    // still feeds the current prompt in as secondary context.
     guard !logFiles.isEmpty else {
       return InteractionLogCorpus(hadFiles: false, entries: [])
     }
-    var entries: [InteractionLogEntry] = []
-    let decoder = JSONDecoder()
-    for fileURL in logFiles {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        entries.append(entry)
-      }
-    }
-    return InteractionLogCorpus(hadFiles: true, entries: entries)
+    return InteractionLogCorpus(
+      hadFiles: true,
+      entries: UserContextLog.decodeLines(logFiles, as: InteractionLogEntry.self))
   }
 
   private func loadAndSampleLogs(
@@ -639,23 +637,10 @@ class ContextDerivation {
     return (0..<count).map { entries[Int(Double($0) * step)] }
   }
 
-  /// Both option sets the old per-call formatter tried, kept immutable so sampling does not
-  /// allocate one `ISO8601DateFormatter` three times per entry. `date(from:)` is not thread-safe,
-  /// so the lock stands in for the old "fresh formatter per call" isolation.
-  private static let interactionDateParser: (fractional: ISO8601DateFormatter, internet: ISO8601DateFormatter) = {
-    let fractional = ISO8601DateFormatter()
-    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let internet = ISO8601DateFormatter()
-    internet.formatOptions = [.withInternetDateTime]
-    return (fractional, internet)
-  }()
-  private static let interactionDateParserLock = NSLock()
-
+  /// Unparsable timestamps sort as oldest. The scorecard drops those rows instead; that
+  /// difference stays at this call site so sampling does not start discarding history.
   private func parseDate(_ iso: String) -> Date {
-    Self.interactionDateParserLock.lock()
-    defer { Self.interactionDateParserLock.unlock() }
-    if let date = Self.interactionDateParser.fractional.date(from: iso) { return date }
-    return Self.interactionDateParser.internet.date(from: iso) ?? .distantPast
+    UserContextLog.timestamp(iso) ?? .distantPast
   }
 
   // MARK: - Gemini Analysis

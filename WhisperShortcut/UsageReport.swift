@@ -78,8 +78,8 @@ enum UsageReport {
     lastDays: Int = defaultDays,
     environment: Environment = .current
   ) -> String {
-    let interactions = decode(InteractionMetaEntry.self, from: interactionFiles)
-    let signals = decode(SignalLogEntry.self, from: signalFiles)
+    let interactions = UserContextLog.decodeLines(interactionFiles, as: InteractionMetaEntry.self)
+    let signals = UserContextLog.decodeLines(signalFiles, as: SignalLogEntry.self)
 
     let buildLabel = environment.isAppStoreBuild ? "App Store build" : "direct build"
     var lines = [
@@ -276,21 +276,6 @@ enum UsageReport {
   }
 
   // MARK: - Helpers
-
-  private static func decode<T: Decodable>(_ type: T.Type, from files: [URL]) -> [T] {
-    let decoder = JSONDecoder()
-    var entries: [T] = []
-    for url in files {
-      guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-          let entry = try? decoder.decode(T.self, from: data)
-        else { continue }
-        entries.append(entry)
-      }
-    }
-    return entries
-  }
 
   private static func detail(_ entry: SignalLogEntry, _ key: String) -> String? {
     guard allowedDetailKeys.contains(key) else { return nil }
