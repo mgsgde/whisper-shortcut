@@ -181,6 +181,15 @@ enum PromptFollowUp {
       && jaccard(selectionWords, previousResponseWords) > similarityThreshold
   }
 
+  /// The string form of the predicate above. The scorecard used to reimplement follow-up
+  /// detection with word-Levenshtein at 0.8, so its count was not the `promptFollowUp` signal.
+  static func isFollowUp(selection: String, previousResponse: String, gap: TimeInterval) -> Bool {
+    isFollowUp(
+      selectionWords: words(selection),
+      previousResponseWords: words(previousResponse),
+      gap: gap)
+  }
+
   /// Transform before style: "translate this shorter" is a request, not a style complaint.
   /// `ton`, `list`, and `less` are whole words so "Tonne" / "listen" / "unless" do not match
   /// those three; `liste` stays a substring so the German word still matches.

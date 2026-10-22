@@ -122,10 +122,6 @@ struct ScorecardWeek: Identifiable, Equatable, Sendable {
 
 /// Deterministic, counts-only scorecard over the UserContext interaction and signal logs.
 enum SmartImprovementScorecard {
-  /// A later prompt is a follow-up only when it starts within this many seconds of the previous one.
-  static let followUpWindow: TimeInterval = 300
-  /// Word-level similarity at or above this counts as the same text coming back.
-  static let followUpSimilarity = 0.8
   /// Trailing window stored on a history entry and shown as "current".
   static let snapshotDays = 28
 
@@ -194,30 +190,13 @@ enum SmartImprovementScorecard {
     }.count
   }
 
-  /// Word-level similarity in `0...1`.
-  ///
-  /// Both sides are folded (case and diacritics), punctuation is dropped, whitespace is collapsed,
-  /// and the strings are split on spaces. The result is `1 - levenshtein(words) / max(wordCount)`.
-  /// Two empty strings are 0. When the shorter word list is under `followUpSimilarity` of the
-  /// longer one, the result is 0 without running the edit distance.
-  static func similarity(_ a: String, _ b: String) -> Double {
-    let wordsA = normalisedWords(a)
-    let wordsB = normalisedWords(b)
-    if wordsA.isEmpty && wordsB.isEmpty { return 0 }
-    let maxCount = max(wordsA.count, wordsB.count)
-    let minCount = min(wordsA.count, wordsB.count)
-    if Double(minCount) / Double(maxCount) < followUpSimilarity { return 0 }
-    let distance = levenshtein(wordsA, wordsB)
-    return 1 - Double(distance) / Double(maxCount)
-  }
-
   /// Counts for entries whose `ts` falls in `[from, to)`.
   ///
   /// `ts` is ISO-8601, with or without fractional seconds. Unparsable rows are skipped.
   /// A prompt P is a follow-up of the immediately previous prompt Q (the previous prompt in the
-  /// whole list, not only those inside the window) when `0 <= P.ts - Q.ts <= followUpWindow`,
-  /// P's selection is non-empty after trimming, and
-  /// `similarity(P.selectedText, Q.modelResponse) >= followUpSimilarity`.
+  /// whole list, not only those inside the window) when `PromptFollowUp.isFollowUp` says so —
+  /// the same predicate that emits the `promptFollowUp` signal. A private word-Levenshtein
+  /// cutoff of 0.8 used to count a different set.
   /// Pass every entry and let `from` / `to` decide what is counted.
   static func metrics(
     interactions: [InteractionLogEntry],
@@ -237,14 +216,10 @@ enum SmartImprovementScorecard {
     if prompts.count > 1 {
       for index in 1..<prompts.count {
         let gap = prompts[index].date.timeIntervalSince(prompts[index - 1].date)
-        guard gap >= 0, gap <= followUpWindow else { continue }
-        let selection = (prompts[index].entry.selectedText ?? "")
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !selection.isEmpty else { continue }
-        let previousResponse = prompts[index - 1].entry.modelResponse ?? ""
-        if similarity(selection, previousResponse) >= followUpSimilarity {
-          followUp[index] = true
-        }
+        followUp[index] = PromptFollowUp.isFollowUp(
+          selection: prompts[index].entry.selectedText ?? "",
+          previousResponse: prompts[index - 1].entry.modelResponse ?? "",
+          gap: gap)
       }
     }
 
@@ -385,12 +360,6 @@ enum SmartImprovementScorecard {
   /// Em dash and en dash. Hyphen-minus is ordinary punctuation and is not a dash here.
   private static let dashCharacters: Set<Character> = ["\u{2014}", "\u{2013}"]
 
-  /// Similarity still folds here. The key is `GlossaryDocument.fold` (POSIX); a private
-  /// fold used to be the only POSIX one while every other glossary reader used `.current`.
-  private static func fold(_ text: String) -> String {
-    GlossaryDocument.fold(text)
-  }
-
   private static func isWholeWord(_ match: Range<String.Index>, in text: String) -> Bool {
     if match.lowerBound > text.startIndex {
       let previous = text[text.index(before: match.lowerBound)]
@@ -428,30 +397,6 @@ enum SmartImprovementScorecard {
 
   private static func containsEmOrEnDash(_ text: String) -> Bool {
     text.contains { dashCharacters.contains($0) }
-  }
-
-  // MARK: - Similarity
-
-  private static func normalisedWords(_ text: String) -> [String] {
-    let folded = fold(text)
-    let cleaned = String(folded.map { $0.isPunctuation ? " " : $0 })
-    return cleaned.split(whereSeparator: \.isWhitespace).map(String.init)
-  }
-
-  private static func levenshtein(_ a: [String], _ b: [String]) -> Int {
-    if a.isEmpty { return b.count }
-    if b.isEmpty { return a.count }
-    var previous = Array(0...b.count)
-    var current = Array(repeating: 0, count: b.count + 1)
-    for i in 1...a.count {
-      current[0] = i
-      for j in 1...b.count {
-        let substitution = previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)
-        current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
-      }
-      swap(&previous, &current)
-    }
-    return previous[b.count]
   }
 
   // MARK: - Timestamps and weeks
