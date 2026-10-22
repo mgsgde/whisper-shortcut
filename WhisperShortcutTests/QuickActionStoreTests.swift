@@ -190,4 +190,94 @@ struct QuickActionStoreTests {
     #expect(actions.contains { $0.text == "Fix grammar and spelling" } == false)
     #expect(actions.contains { $0.text == "Korrigiere" })
   }
+
+  // MARK: - Custom prompts
+
+  @Test("Custom prompts alone stay in order, trimmed, without blanks or duplicate keys")
+  func customOnlyDropsBlanksAndDuplicates() {
+    let actions = QuickActionStore.combined(
+      custom: ["  First prompt  ", "", "   ", "ähm", "First prompt.", "Second prompt"],
+      learned: [QuickAction(key: "ignored", text: "Ignored")],
+      forceFallback: true,
+      includeLearned: false)
+    #expect(actions.map(\.text) == ["First prompt", "Second prompt"])
+  }
+
+  @Test("Custom prompts come first; a learned duplicate and the built-in defaults are left out")
+  func customThenLearnedSkipsDuplicateAndDefaults() {
+    let learned = [
+      QuickAction(key: "alpha one", text: "Alpha one"),
+      QuickAction(key: "beta two", text: "Beta two"),
+      QuickAction(key: "gamma three", text: "Gamma three"),
+    ]
+    let actions = QuickActionStore.combined(
+      custom: ["  Alpha one  ", "Write a haiku"],
+      learned: learned,
+      forceFallback: true,
+      includeLearned: true)
+    #expect(actions.map(\.text) == ["Alpha one", "Write a haiku", "Beta two", "Gamma three"])
+    #expect(QuickActionStore.fallbackTexts.allSatisfy { fallback in
+      actions.contains { $0.text == fallback } == false
+    })
+  }
+
+  @Test("More than nine custom prompts are capped at nine")
+  func capsCustomAtNine() {
+    let texts = (1...12).map { "Prompt \($0)" }
+    let actions = QuickActionStore.combined(
+      custom: texts,
+      learned: [QuickAction(key: "extra learned", text: "Extra learned")],
+      forceFallback: true,
+      includeLearned: true)
+    #expect(actions.count == 9)
+    #expect(actions.map(\.text) == Array(texts.prefix(9)))
+  }
+
+  @Test("With no custom prompts, learning on matches the ranked list")
+  func noCustomMatchesRanked() {
+    let many = repeated("Alpha one", "Beta two", "Gamma three")
+    let learnedMany = QuickActionStore.ranked(from: many, forceFallback: false)
+    #expect(learnedMany.count >= 3)
+    #expect(
+      QuickActionStore.combined(
+        custom: [], learned: learnedMany, forceFallback: false, includeLearned: true)
+      == QuickActionStore.ranked(from: many, forceFallback: false))
+    #expect(
+      QuickActionStore.combined(
+        custom: [], learned: learnedMany, forceFallback: true, includeLearned: true)
+      == QuickActionStore.ranked(from: many, forceFallback: true))
+
+    let few = repeated("Alpha one")
+    let learnedFew = QuickActionStore.rankLearned(from: few)
+    #expect(learnedFew.count < 3)
+    let padded = QuickActionStore.combined(
+      custom: [], learned: learnedFew, forceFallback: false, includeLearned: true)
+    #expect(padded == QuickActionStore.ranked(from: few, forceFallback: false))
+    #expect(padded.count == QuickActionStore.maxEntries)
+    #expect(padded.map(\.text).first == "Alpha one")
+    #expect(padded.map(\.text).contains("Fix grammar and spelling"))
+  }
+
+  @Test("With no custom prompts, learning off leaves the list empty")
+  func noCustomLearningOffIsEmpty() {
+    let learned = QuickActionStore.ranked(
+      from: repeated("Alpha one", "Beta two", "Gamma three"),
+      forceFallback: false)
+    let actions = QuickActionStore.combined(
+      custom: ["", "   "],
+      learned: learned,
+      forceFallback: true,
+      includeLearned: false)
+    #expect(actions.isEmpty)
+  }
+
+  @Test("Custom prompt text keeps the spelling the user typed")
+  func customKeepsTypedSpelling() {
+    let actions = QuickActionStore.combined(
+      custom: ["  translate to German.  "],
+      learned: [],
+      forceFallback: true,
+      includeLearned: true)
+    #expect(actions.map(\.text) == ["translate to German."])
+  }
 }
