@@ -210,7 +210,7 @@ enum SmartImprovementScorecard {
       return (entry, date)
     }
     let prompts = parsed
-      .filter { $0.entry.mode == "prompt" }
+      .filter { $0.entry.interactionMode == .prompt }
       .sorted { $0.date < $1.date }
     var followUp = Array(repeating: false, count: prompts.count)
     if prompts.count > 1 {
@@ -225,11 +225,11 @@ enum SmartImprovementScorecard {
 
     var metrics = ScorecardMetrics()
     for item in parsed where item.date >= from && item.date < to {
-      switch item.entry.mode {
-      case "transcription":
+      switch item.entry.interactionMode {
+      case .transcription:
         metrics.transcriptions += 1
         metrics.rejectedSpellingHits += rejectedSpellingHits(in: item.entry.result ?? "", rejected: rejected)
-      case "geminiChat":
+      case .chat:
         metrics.chatTurns += 1
       default:
         break
@@ -248,9 +248,9 @@ enum SmartImprovementScorecard {
     }
     for signal in signals {
       guard let date = UserContextLog.timestamp(signal.ts), date >= from, date < to else { continue }
-      switch signal.kind {
-      case "promptRetry": metrics.promptRetries += 1
-      case "chatRetry": metrics.chatRetries += 1
+      switch OutcomeSignal(rawValue: signal.kind) {
+      case .promptRetry: metrics.promptRetries += 1
+      case .chatRetry: metrics.chatRetries += 1
       default: break
       }
     }

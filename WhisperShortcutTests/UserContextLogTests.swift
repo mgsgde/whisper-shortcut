@@ -74,4 +74,40 @@ struct UserContextLogTests {
     let roundTrip = try #require(UserContextLog.timestamp(rendered))
     #expect(abs(roundTrip.timeIntervalSince(instant)) < 0.001)
   }
+
+  @Test("A JSONL line with an unknown mode still decodes")
+  func unknownModeDoesNotDropTheLine() throws {
+    let lines = [
+      #"{"ts":"2026-10-19T10:00:00Z","mode":"transcription"}"#,
+      #"{"ts":"2026-10-19T10:00:01Z","mode":"prompt"}"#,
+      #"{"ts":"2026-10-19T10:00:02Z","mode":"geminiChat"}"#,
+      #"{"ts":"2026-10-19T10:00:03Z","mode":"notAMode"}"#,
+      "",
+      "{broken",
+    ]
+    let dir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("user-context-log-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("interactions-2026-10-19.jsonl")
+    try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+
+    let rows = UserContextLog.decodeLines([url], as: InteractionLogEntry.self)
+    #expect(rows.map(\.mode) == ["transcription", "prompt", "geminiChat", "notAMode"])
+    #expect(rows.compactMap(\.interactionMode) == [.transcription, .prompt, .chat])
+    #expect(rows[3].interactionMode == nil)
+    #expect(InteractionMode.chat.rawValue == "geminiChat")
+  }
+
+  @Test("History source names match the scorecard labels, and an unknown source stays raw")
+  func historySourceDisplayNames() {
+    #expect(PromptHistorySource.auto.displayName == "Smart Improvement")
+    #expect(PromptHistorySource.voiceFeedback.displayName == "Spoken feedback")
+    #expect(PromptHistorySource.chat.displayName == "Chat")
+    #expect(PromptHistorySource.mcp.displayName == "AI app (MCP)")
+    #expect(PromptHistorySource.mcpUndo.displayName == "AI app (MCP) undo")
+    #expect(PromptHistorySource.displayName(for: "something-else") == "something-else")
+    #expect(PromptHistorySource.mcpUndo.rawValue == "mcp-undo")
+    #expect(PromptHistorySource.voiceFeedback.rawValue == "voice-feedback")
+  }
 }

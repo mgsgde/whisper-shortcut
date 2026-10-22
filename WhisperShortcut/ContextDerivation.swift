@@ -177,7 +177,7 @@ class ContextDerivation {
     }
 
     let glossaryText = prompts.whisperGlossary ?? ""
-    let transcripts = corpus.entries.filter { $0.mode == "transcription" }.compactMap(\.result)
+    let transcripts = corpus.entries.filter { $0.interactionMode == .transcription }.compactMap(\.result)
     // Strict near-misses are appended to the Whisper Glossary suggestion. Dictation does not
     // write glossary lines, so its list stays empty. Audio selection uses a looser distance
     // on both focuses so a suspected mishearing can still pick a clip.
@@ -521,7 +521,7 @@ class ContextDerivation {
     let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier1Days, to: now) ?? now
     let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier2Days, to: now) ?? now
 
-    let primaryMode = focus.primaryMode
+    let primaryMode = focus.primaryMode.rawValue
     let primaryEntries = entriesByMode[primaryMode] ?? []
     let sortedPrimary = primaryEntries.sorted { $0.ts < $1.ts }
     let tier1 = sortedPrimary.filter { parseDate($0.ts) >= tier1Cutoff }
@@ -934,7 +934,7 @@ class ContextDerivation {
       userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
     }
     if !primaryText.isEmpty {
-      let modeLabel = focus.primaryMode
+      let modeLabel = focus.primaryMode.rawValue
       userMessageParts.append("## Primary interactions – mode: \(modeLabel) (chronological, recent entries weighted)\n\n\(primaryText)")
     } else {
       userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
@@ -1063,15 +1063,6 @@ class ContextDerivation {
 }
 
 extension GenerationKind {
-  /// Interaction-log `mode` that counts as primary evidence for this focus.
-  fileprivate var primaryMode: String {
-    switch self {
-    case .dictation, .whisperGlossary: return "transcription"
-    case .promptMode: return "prompt"
-    case .chat: return "geminiChat"
-    }
-  }
-
   /// Suggestion filename without extension.
   fileprivate var suggestionBaseName: String {
     switch self {

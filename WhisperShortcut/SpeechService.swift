@@ -714,7 +714,7 @@ class SpeechService {
     if Self.isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
       DebugLogger.log("PROMPT-MODE: No selection captured for this recording — compose turn, no history")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt",
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
         detail: ["reason": "composeTurn", "model": selectedPromptModel.rawValue])
     }
 
@@ -1143,7 +1143,7 @@ class SpeechService {
       DebugLogger.logWarning(
         "\(logPrefix): Edit command with nothing selected — not pasting invented text")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue, detail: ["reason": "bareEditCommandBlocked"])
       throw TranscriptionError.noSelectedText
     }
 

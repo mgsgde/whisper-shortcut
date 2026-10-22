@@ -675,7 +675,7 @@ class ChatViewModel: ObservableObject {
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
-      .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
+      .chatRetry, mode: InteractionMode.chat.rawValue, detail: ["model": Self.openChatModel.rawValue])
     performSend(
       content: content, attachedParts: original.attachedImageParts,
       commandName: newText == nil ? original.commandName : nil)
@@ -1193,7 +1193,7 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars) toolCalls=\(runner?.records.count ?? 0))")
         ContextLogger.shared.logSignal(
           .chatStopped,
-          mode: "geminiChat",
+          mode: InteractionMode.chat.rawValue,
           detail: [
             "reason": droppedByUser != nil ? "user" : "stall",
             "partialChars": String(partialChars),
@@ -2487,7 +2487,7 @@ class ChatViewModel: ObservableObject {
       leaving.messages.lazy.filter({ $0.role == .user }).count == 1
     else { return }
     ContextLogger.shared.logSignal(
-      .chatAbandoned, mode: "geminiChat", detail: ["reason": reason, "model": Self.openChatModel.rawValue])
+      .chatAbandoned, mode: InteractionMode.chat.rawValue, detail: ["reason": reason, "model": Self.openChatModel.rawValue])
   }
 
   /// Pushes a session onto the recently-closed ring buffer if it has any

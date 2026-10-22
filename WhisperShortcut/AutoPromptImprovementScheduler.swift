@@ -139,18 +139,6 @@ class AutoPromptImprovementScheduler {
       default: SettingsDefaults.selectedImprovementModel).displayName
   }
 
-  /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
-  /// Note: `.chat` returns `"geminiChat"` because all chat turns — Gemini, Grok, OpenAI — are
-  /// currently logged under that single mode key (see ContextLogger.logChat). If chat-mode
-  /// logging is ever split by provider, this mapping needs to sum the per-provider keys.
-  private func primaryModeKey(for focus: GenerationKind) -> String {
-    switch focus {
-    case .dictation, .whisperGlossary: return "transcription"
-    case .promptMode: return "prompt"
-    case .chat: return "geminiChat"
-    }
-  }
-
   private func runImprovement(fromAutoRun: Bool) async {
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
@@ -168,7 +156,7 @@ class AutoPromptImprovementScheduler {
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
     let minPerFocus = AppConstants.smartImprovementMinPerFocusInteractions
     let focuses: [GenerationKind] = allFocuses.filter { focus in
-      let mode = primaryModeKey(for: focus)
+      let mode = focus.primaryMode.rawValue
       let n = counts[mode] ?? 0
       if n < minPerFocus {
         DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(n) entries for mode \(mode) (need \(minPerFocus))")
@@ -443,17 +431,6 @@ class AutoPromptImprovementScheduler {
 
   private func logSystemPromptChange(kind: String, previous: String, applied: String) {
     DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(previous.count) chars, new \(applied.count) chars")
-  }
-}
-
-private extension GenerationKind {
-  var systemPromptSection: SystemPromptSection {
-    switch self {
-    case .dictation: return .dictation
-    case .whisperGlossary: return .whisperGlossary
-    case .promptMode: return .promptMode
-    case .chat: return .chat
-    }
   }
 }
 

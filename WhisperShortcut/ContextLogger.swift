@@ -27,6 +27,11 @@ struct InteractionLogEntry: Codable {
   /// Milliseconds spent loading the in-process MLX model for this prompt. 0 when it was already
   /// in memory. Nil for other providers and other modes.
   let loadMs: Int?
+
+  /// Known mode, or nil when an older row used a spelling this build does not list.
+  /// `mode` stays a `String` so that unknown spelling still decodes: a strict enum would
+  /// drop the whole JSONL line.
+  var interactionMode: InteractionMode? { InteractionMode(rawValue: mode) }
 }
 
 // MARK: - Outcome Signal Entry
@@ -48,8 +53,11 @@ struct SignalLogEntry: Codable {
   let kind: String
   /// `ts` of the interaction this judges; nil when no interaction was logged this launch.
   let refTs: String?
-  /// Matches `InteractionLogEntry.mode` ("transcription", "prompt", "geminiChat").
+  /// `InteractionLogEntry.mode`. Nil when the signal is not tied to one interaction.
+  /// An unknown spelling stays in `mode` and `interactionMode` is nil.
   let mode: String?
+
+  var interactionMode: InteractionMode? { mode.flatMap(InteractionMode.init(rawValue:)) }
   /// Milliseconds between `refTs` and `ts`, when both are known.
   let gapMs: Int?
   /// Small kind-specific facts. Strings only, and never user content.
@@ -298,7 +306,7 @@ class ContextLogger {
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
       ts: UserContextLog.nowString(),
-      mode: "transcription",
+      mode: InteractionMode.transcription.rawValue,
       model: model,
       result: result,
       selectedText: nil,
@@ -323,7 +331,7 @@ class ContextLogger {
   ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
-    let modeString = "prompt"
+    let modeString = InteractionMode.prompt.rawValue
     // Response time, not `lastPromptAt`: retry detection resets that on a compose run.
     lastInteractionLock.lock()
     let previousPromptAt = lastPromptResponseAt
@@ -380,7 +388,7 @@ class ContextLogger {
     guard isRetry else { return }
     // Logged before the interaction entry it refers to, so `refTs` still points at the attempt
     // being retried rather than at this one.
-    logSignal(.promptRetry, mode: "prompt", detail: ["secondsSincePrevious": "\(gap ?? 0)"])
+    logSignal(.promptRetry, mode: InteractionMode.prompt.rawValue, detail: ["secondsSincePrevious": "\(gap ?? 0)"])
   }
 
   /// Emits `promptFollowUp` when this selection is the previous Dictate Prompt output.
@@ -399,7 +407,7 @@ class ContextLogger {
     guard PromptFollowUp.isFollowUp(
       selectionWords: selectionHashes, previousResponseWords: previousHashes, gap: gap
     ) else { return }
-    logSignal(.promptFollowUp, mode: "prompt", detail: [
+    logSignal(.promptFollowUp, mode: InteractionMode.prompt.rawValue, detail: [
       "kind": PromptFollowUp.classify(instruction: userInstruction).rawValue,
       "secondsSincePrevious": "\(Int(gap))",
     ])
@@ -416,7 +424,7 @@ class ContextLogger {
     let sanitizedResponse = GeminiAPIClient.stripImageMarkers(modelResponse, placeholder: "[generated image]")
     let entry = InteractionLogEntry(
       ts: UserContextLog.nowString(),
-      mode: "geminiChat",
+      mode: InteractionMode.chat.rawValue,
       model: model,
       result: nil,
       selectedText: nil,
@@ -503,7 +511,7 @@ class ContextLogger {
     let resolvedDuration = durationMs != "n/a" ? durationMs : context?.durationMs.map { "\($0)" } ?? durationMs
     logSignal(
       .noSpeechDetected,
-      mode: "transcription",
+      mode: InteractionMode.transcription.rawValue,
       detail: [
         "source": source,
         "origin": (origin ?? context?.origin)?.rawValue ?? "unattributed",
@@ -516,7 +524,7 @@ class ContextLogger {
   func logNoInputSignal(peakDb: String, durationMs: String, logPrefix: String) {
     logSignal(
       .noInputSignal,
-      mode: "transcription",
+      mode: InteractionMode.transcription.rawValue,
       detail: [
         "peakDb": peakDb,
         "durationMs": durationMs,
@@ -561,7 +569,7 @@ class ContextLogger {
     guard isLoggingEnabled else { return }
 
     lastInteractionLock.lock()
-    let marker = lastInteractions["transcription"]
+    let marker = lastInteractions[InteractionMode.transcription.rawValue]
     lastInteractionLock.unlock()
 
     guard let marker, !marker.pasted else { return }
@@ -570,7 +578,7 @@ class ContextLogger {
 
     logSignal(
       .dictationRestart,
-      mode: "transcription",
+      mode: InteractionMode.transcription.rawValue,
       detail: ["autoPasteAvailable": autoPasteAvailable ? "true" : "false"]
     )
   }
@@ -771,7 +779,7 @@ class ContextLogger {
   /// `source` distinguishes who made the change — "auto" for Smart Improvement, "chat" for an
   /// `update_app_instructions` tool call. Both write the same sections, so without it the history
   /// can't tell you which writer caused a behavior change.
-  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = "auto") {
+  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = PromptHistorySource.auto.rawValue) {
     queue.async { [weak self] in
       guard let self else { return }
       let scorecard = SmartImprovementScorecard.snapshot(
@@ -894,7 +902,7 @@ class ContextLogger {
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
         ts: UserContextLog.nowString(),
-        source: "auto",
+        source: PromptHistorySource.auto.rawValue,
         previousLength: previousLength,
         newLength: newLength,
         content: content,
@@ -921,7 +929,7 @@ class ContextLogger {
       guard let self else { return }
       let entry = SystemPromptHistoryEntry(
         ts: UserContextLog.nowString(),
-        source: "auto",
+        source: PromptHistorySource.auto.rawValue,
         previousLength: previousLength,
         newLength: newLength,
         content: content,

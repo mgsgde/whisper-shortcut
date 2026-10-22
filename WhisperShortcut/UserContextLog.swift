@@ -9,6 +9,32 @@ enum InteractionMode: String, Codable, CaseIterable {
   case chat = "geminiChat"
 }
 
+/// Who wrote a system-prompt history row. Raw values are the JSONL `source` strings
+/// (`mcp-undo`, `voice-feedback`). MCP still passes those strings; a source this enum does
+/// not know stays visible as the raw text instead of disappearing from the scorecard.
+enum PromptHistorySource: String, CaseIterable {
+  case auto
+  case chat
+  case mcp
+  case mcpUndo = "mcp-undo"
+  case voiceFeedback = "voice-feedback"
+
+  var displayName: String {
+    switch self {
+    case .auto: return "Smart Improvement"
+    case .voiceFeedback: return "Spoken feedback"
+    case .chat: return "Chat"
+    case .mcp: return "AI app (MCP)"
+    case .mcpUndo: return "AI app (MCP) undo"
+    }
+  }
+
+  /// `displayName` for a stored source, or `raw` when the row predates this enum.
+  static func displayName(for raw: String) -> String {
+    PromptHistorySource(rawValue: raw)?.displayName ?? raw
+  }
+}
+
 /// One reader and one writer for the UserContext JSONL streams.
 ///
 /// Listing, line decoding, ISO-8601 timestamps, and append each existed as a private copy

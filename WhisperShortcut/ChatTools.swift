@@ -1449,7 +1449,7 @@ enum ChatToolRegistry {
       // without this the app's behavior could drift with no trace of who changed what.
       ContextLogger.shared.appendSystemPromptsHistory(
         section: section, previousLength: current.count, newLength: updated.count,
-        content: updated, model: nil, source: "chat")
+        content: updated, model: nil, source: PromptHistorySource.chat.rawValue)
       DebugLogger.log(
         "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
       return [

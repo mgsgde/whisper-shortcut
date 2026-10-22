@@ -114,12 +114,7 @@ extension SystemPromptSection {
 }
 
 private func scorecardSourceName(_ source: String) -> String {
-  switch source {
-  case "auto": return "Smart Improvement"
-  case "voice-feedback": return "Spoken feedback"  // legacy history rows
-  case "chat": return "Chat"
-  default: return source
-  }
+  PromptHistorySource.displayName(for: source)
 }
 
 // MARK: - Loading

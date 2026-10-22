@@ -205,7 +205,7 @@ enum PromptFollowUp {
   static func chains(
     in entries: [InteractionLogEntry], since cutoff: Date, parseDate: (String) -> Date
   ) -> [Chain] {
-    let promptEntries = entries.filter { $0.mode == "prompt" }.sorted { $0.ts < $1.ts }
+    let promptEntries = entries.filter { $0.interactionMode == .prompt }.sorted { $0.ts < $1.ts }
     guard promptEntries.count >= 2 else { return [] }
     var found: [Chain] = []
     for index in 1..<promptEntries.count {
