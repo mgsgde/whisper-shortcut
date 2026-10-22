@@ -538,24 +538,33 @@ class MenuBarController: NSObject {
   }
 
   /// Dictate … Glossary in menu order (same order as before the table existed).
+  /// Chat and Settings are separate rows further down: Settings is titled "Settings…", and
+  /// putting them here would move them above Copy Last Transcription.
   private static let actionRows: [ModeRow] = {
     var rows = [
       ModeRow(
-        tag: .dictate, title: "Dictate", stopTitle: "Stop Dictate",
-        action: #selector(toggleTranscription), shortcut: \.startRecording, mode: .dictate),
+        tag: .dictate, title: ShortcutAction.dictate.title, stopTitle: "Stop Dictate",
+        action: #selector(toggleTranscription), shortcut: ShortcutAction.dictate.keyPath,
+        mode: .dictate),
       ModeRow(
-        tag: .dictatePrompt, title: "Dictate Prompt", stopTitle: "Stop Dictate Prompt",
-        action: #selector(togglePrompting), shortcut: \.startPrompting, mode: .dictatePrompt),
+        tag: .dictatePrompt, title: ShortcutAction.dictatePrompt.title, stopTitle: "Stop Dictate Prompt",
+        action: #selector(togglePrompting), shortcut: ShortcutAction.dictatePrompt.keyPath,
+        mode: .dictatePrompt),
       ModeRow(
-        tag: .screenshot, title: "Screenshot", stopTitle: nil,
-        action: #selector(takeScreenshot), shortcut: \.screenshotCapture, mode: nil),
+        tag: .screenshot, title: ShortcutAction.screenshot.title, stopTitle: nil,
+        action: #selector(takeScreenshot), shortcut: ShortcutAction.screenshot.keyPath, mode: nil),
     ]
+    // `readAloudFromMenu` is compiled out of the App Store target, so a runtime
+    // `isInThisBuild` check would not compile there. The condition is the same one.
     #if !APP_STORE
     rows.append(
       ModeRow(
-        tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
-        action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
+        tag: .readAloud, title: ShortcutAction.readAloud.title, stopTitle: "Stop Read Aloud",
+        action: #selector(readAloudFromMenu), shortcut: ShortcutAction.readAloud.keyPath,
+        mode: .readAloudSelection))
     #endif
+    // Not a `ShortcutAction`: the assistant list never named Glossary. The menu title is
+    // "Add Selection to Glossary", not "Add to Glossary".
     #if !APP_STORE
     rows.append(
       ModeRow(

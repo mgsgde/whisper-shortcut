@@ -769,8 +769,13 @@ struct OnboardingAPIKeyRow: View {
 /// The first successful dictation, as early as the tour can offer it: a provider or offline model
 /// is set up (previous steps) and the microphone is granted. Everything after this is optional.
 struct WelcomeTryItStep: View {
-  private var dictateShortcut: String {
-    ShortcutConfigManager.shared.loadConfiguration().startRecording.displayStringWithSeparator
+  /// A disabled Dictate binding renders as "Disabled", which used to read
+  /// "Later, Disabled does the same…". There is no other wording for that case, so the
+  /// "Later, … does the same" clause is dropped and only the instruction to try it remains.
+  private var tryItDetail: String {
+    let shortcut = ShortcutConfigManager.shared.loadConfiguration()[keyPath: ShortcutAction.dictate.keyPath]
+    guard shortcut.isEnabled else { return "Say a sentence." }
+    return "Say a sentence. Later, \(shortcut.displayStringWithSeparator) does the same in any app and puts the text where your cursor is."
   }
 
   var body: some View {
@@ -783,7 +788,7 @@ struct WelcomeTryItStep: View {
           Text("Try it now")
             .font(.title2)
             .fontWeight(.semibold)
-          Text("Say a sentence. Later, \(dictateShortcut) does the same in any app and puts the text where your cursor is.")
+          Text(tryItDetail)
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -956,16 +961,21 @@ struct WelcomeDoneStep: View {
   /// are hidden rather than shown as "Disabled".
   private var features: [ShortcutFeature] {
     var list: [ShortcutFeature] = []
-    if shortcuts.startRecording.isEnabled {
+    func binding(_ action: ShortcutAction) -> ShortcutDefinition {
+      shortcuts[keyPath: action.keyPath]
+    }
+    let dictate = binding(.dictate)
+    if dictate.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.startRecording.displayString,
-          name: "Dictate",
+          shortcut: dictate.displayString,
+          name: ShortcutAction.dictate.title,
           detail: "press and start speaking — your words land as text",
           requirements: [.microphone],
           needsTranscriptionModel: true))
     }
-    if shortcuts.startPrompting.isEnabled {
+    let prompting = binding(.dictatePrompt)
+    if prompting.isEnabled {
       // Per selected model: screenshot → Screen Recording; App Store local → clipboard the user
       // copied, so no extra permission; direct build → Accessibility for the synthetic ⌘C.
       let promptModel = settingsViewModel.data.selectedPromptModel
@@ -982,39 +992,42 @@ struct WelcomeDoneStep: View {
       #endif
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.startPrompting.displayString,
-          name: "Dictate Prompt",
+          shortcut: prompting.displayString,
+          name: ShortcutAction.dictatePrompt.title,
           detail: promptDetail,
           requirements: promptRequirements))
     }
-    if shortcuts.screenshotCapture.isEnabled {
+    let screenshot = binding(.screenshot)
+    if screenshot.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.screenshotCapture.displayString,
-          name: "Screenshot",
+          shortcut: screenshot.displayString,
+          name: ShortcutAction.screenshot.title,
           detail: "capture your screen straight to the clipboard or a folder",
           requirements: [.screenRecording]))
     }
-    if shortcuts.openChat.isEnabled {
+    // Chat stays ahead of Read Aloud. The menu and the assistant list put Read Aloud first;
+    // this page was already the other way, and Settings is not a row here at all.
+    let chat = binding(.chat)
+    if chat.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.openChat.displayString,
-          name: "Chat",
+          shortcut: chat.displayString,
+          name: ShortcutAction.chat.title,
           detail: "a full conversation window, with screenshots",
           requirements: []))
     }
     // Selection-based Read Aloud copies via ⌘C (Accessibility) — the feature is omitted
     // from the App Store build entirely (no menu item, no hotkey), so don't advertise it.
-    #if !APP_STORE
-    if shortcuts.readAloud.isEnabled {
+    // The Done step keeps `displayString` (compact), unlike the Try-it step.
+    if ShortcutAction.readAloud.isInThisBuild, binding(.readAloud).isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.readAloud.displayString,
-          name: "Read Aloud",
+          shortcut: binding(.readAloud).displayString,
+          name: ShortcutAction.readAloud.title,
           detail: "select text anywhere and hear it spoken",
           requirements: [.accessibility]))
     }
-    #endif
     return list
   }
 
