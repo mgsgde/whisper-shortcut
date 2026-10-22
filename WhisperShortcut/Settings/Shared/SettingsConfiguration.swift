@@ -352,11 +352,6 @@ enum PromptModel: String, CaseIterable {
     }
   }
   
-  /// Recommended is aligned with default; single source of truth in SettingsDefaults.
-  var isRecommended: Bool {
-    return self == SettingsDefaults.selectedPromptModel
-  }
-  
   var costLevel: String {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,

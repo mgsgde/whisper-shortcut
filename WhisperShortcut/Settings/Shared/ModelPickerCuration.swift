@@ -207,14 +207,19 @@ extension TranscriptionModel: PickerCuratedModel {
   /// `ModelSelectionReconciler.transcriptionReplacement` in `providerPreference` order, plus
   /// OpenRouter last: the reconciler has no transcription stand-in for it, but a user who
   /// connected only OpenRouter can dictate through it, and that tile is the one to recommend.
+  /// Derived from that table so a new provider does not leave the picker ranking a model the
+  /// reconciler no longer substitutes (the hand-typed ranks had already drifted once).
   var pickerStandInRank: Int? {
-    switch self {
-    case .gemini31FlashLite: return 0
-    case .openAIGPTTranscribe: return 1
-    case .xaiTranscribe: return 2
-    case .openRouterTranscription: return 3
-    default: return nil
+    var rank = 0
+    for provider in ModelSelectionReconciler.providerPreference {
+      guard let replacement = ModelSelectionReconciler.transcriptionReplacement(for: provider) else {
+        continue
+      }
+      if self == replacement { return rank }
+      rank += 1
     }
+    if self == .openRouterTranscription { return rank }
+    return nil
   }
 
   /// The models under "More models" that are their provider's own pick, for the "Best Gemini
