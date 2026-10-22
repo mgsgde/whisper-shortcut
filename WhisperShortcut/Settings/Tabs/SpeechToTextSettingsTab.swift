@@ -158,12 +158,6 @@ struct SpeechToTextSettingsTab: View {
         systemImage: "waveform",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
         onModelChanged: {
-          UserDefaults.standard.set(
-            viewModel.data.selectedTranscriptionModel.rawValue,
-            forKey: UserDefaultsKeys.selectedTranscriptionModel)
-          NotificationCenter.default.post(
-            name: .modelChanged,
-            object: viewModel.data.selectedTranscriptionModel)
           Task {
             await viewModel.saveSettings()
           }
