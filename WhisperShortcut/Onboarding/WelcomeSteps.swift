@@ -93,6 +93,31 @@ struct OpenSourceBanner: View {
   }
 }
 
+/// Where onboarding points Dictate after the user picks Cloud or connects OpenRouter.
+///
+/// Those two sites used to choose independently: one walked `TranscriptionModel.allCases` (app
+/// default first), the other a four-provider "any other key" chain. Both disagreed with
+/// `ModelSelectionReconciler.providerPreference`. A cloud model that can already run stays. An
+/// offline selection, or a cloud one that cannot run (the factory default is OpenAI, which a
+/// Gemini-only user cannot reach), moves. The offline download card does not call this — that
+/// answer is "keep this on the Mac", and the reconciler's cloud pick would undo it.
+@MainActor
+enum OnboardingTranscriptionChoice {
+  /// `onlyIfCurrentCannotRun` is for a step that is already showing Cloud (a revisited tour).
+  /// Tapping Cloud still replaces a working offline model — that was the user's answer. Merely
+  /// opening the step must not, or a key they keep for Chat would move dictation off this Mac.
+  static func preferCloud(onlyIfCurrentCannotRun: Bool = false) {
+    guard let model = ModelSelectionReconciler.preferredCloudTranscription() else { return }
+    let current = TranscriptionModel.loadSelected()
+    if current == model { return }
+    if current.hasRequiredCredential && (onlyIfCurrentCannotRun || current.provider != .offline) {
+      return
+    }
+    UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    DebugLogger.log("ONBOARDING: chose Cloud; transcription model set to \(model.rawValue)")
+  }
+}
+
 /// The one decision of the tour. Offline and Cloud are the two honest answers to "where does my
 /// audio go?", so the privacy promise is answered by the choice itself instead of a page of its own.
 enum DictationChoice {
@@ -113,21 +138,13 @@ enum DictationChoice {
 
 struct WelcomeDictationSetupStep: View {
   @Binding var choice: DictationChoice?
-  @Binding var hasGeminiKey: Bool
-  @Binding var hasOpenAIKey: Bool
-  @Binding var hasXAIKey: Bool
-  @Binding var hasAnthropicKey: Bool
-  @Binding var hasOpenRouterKey: Bool
-  @Binding var offlineReady: Bool
+  @ObservedObject var setup: OnboardingSetupState
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
   @State private var showOtherProviders = false
   @State private var showPrivacyDetails = false
 
-  private var hasCloudKey: Bool {
-    hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey
-  }
-
-  private var canContinue: Bool { hasCloudKey || offlineReady }
+  /// Same bit Continue uses. `setup` is what re-publishes it after a key, OAuth, or download.
+  private var canContinue: Bool { setup.dictationCanAdvance }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
@@ -187,11 +204,20 @@ struct WelcomeDictationSetupStep: View {
       statusLine
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    // Cloud picked first, key pasted afterwards: the pick found no credential yet and left the
-    // offline model selected, so run the switch again once a key exists.
-    .onChange(of: hasCloudKey) { _, configured in
-      if configured && choice == .cloud { preferCloudTranscription() }
+    // A revisited tour can already be on Cloud with a key, without `select` running again.
+    // The factory default is a cloud model the user may not have a key for; move it now.
+    .onAppear {
+      if choice == .cloud { OnboardingTranscriptionChoice.preferCloud(onlyIfCurrentCannotRun: true) }
+      setup.refresh()
     }
+  }
+
+  /// A key was saved or OpenRouter connected/disconnected. Cloud must re-pick a model that
+  /// can run before Continue re-reads `hasRequiredCredential`, or a Gemini key leaves the
+  /// OpenAI default selected and the step stays blocked.
+  private func credentialChanged() {
+    if choice == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    setup.refresh()
   }
 
   // MARK: - Choice cards
@@ -261,28 +287,15 @@ struct WelcomeDictationSetupStep: View {
       offlineMode = false
       OfflineMode.switchTo(false, reason: "onboarding chose Cloud")
     }
-    if value == .cloud { preferCloudTranscription() }
-  }
-
-  /// Picking Cloud after Offline (or on a Mac that was dictating offline) should mean cloud
-  /// dictation once a usable credential exists: the app default first, else any cloud model the
-  /// configured credentials can run. Without one, the offline model stays — it still works.
-  private func preferCloudTranscription() {
-    guard TranscriptionModel.loadSelected().provider == .offline else { return }
-    let cloud = TranscriptionModel.allCases.filter {
-      $0.provider != .offline && $0 != .selfHostedTranscription && $0.isSelectableForDictation
-    }
-    let preferred = [SettingsDefaults.selectedTranscriptionModel] + cloud
-    guard let model = preferred.first(where: { $0.hasRequiredCredential }) else { return }
-    UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
-    DebugLogger.log("ONBOARDING: chose Cloud; transcription model set to \(model.rawValue)")
+    if value == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    setup.refresh()
   }
 
   // MARK: - Details per choice
 
   @ViewBuilder
   private var offlineDetails: some View {
-    OnboardingOfflineRow(offlineReady: $offlineReady)
+    OnboardingOfflineRow(onReady: { setup.refresh() })
 
     // For regulated dictation (patient findings, case notes): the recording may not leave the
     // device, and neither may Chat or anything else. Offered here, where the user just said
@@ -307,53 +320,26 @@ struct WelcomeDictationSetupStep: View {
   private var cloudDetails: some View {
     // First because it is the only row a brand-new user can finish without leaving the app,
     // opening a dashboard, or copying anything — including creating the account itself.
-    OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
+    OnboardingOpenRouterRow(onCredentialChanged: credentialChanged)
 
     OnboardingAPIKeyRow(
-      providerName: "Google Gemini",
-      placeholder: "AIza…",
-      linkTitle: "aistudio.google.com/api-keys",
-      linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
-      description: "Already have a Google AI Studio key? Paste it here.",
-      isConfigured: $hasGeminiKey,
-      load: { KeychainManager.shared.get(.google) ?? "" },
-      save: { KeychainManager.shared.save($0, for: .google) },
-      recommended: false
+      provider: .google,
+      note: "Already have a Google AI Studio key? Paste it here.",
+      onStored: credentialChanged
     )
 
     DisclosureGroup(isExpanded: $showOtherProviders) {
       VStack(spacing: 12) {
+        OnboardingAPIKeyRow(provider: .openai, onStored: credentialChanged)
         OnboardingAPIKeyRow(
-          providerName: "OpenAI",
-          placeholder: "sk-…",
-          linkTitle: "platform.openai.com/api-keys",
-          linkURL: URL(string: "https://platform.openai.com/api-keys")!,
-          isConfigured: $hasOpenAIKey,
-          load: { KeychainManager.shared.get(.openAI) ?? "" },
-          save: { KeychainManager.shared.save($0, for: .openAI) },
-          recommended: false
+          provider: .anthropic,
+          note: "Chat only — Dictate Prompt is not available with Claude.",
+          onStored: credentialChanged
         )
         OnboardingAPIKeyRow(
-          providerName: "Anthropic (Claude)",
-          placeholder: "sk-ant-…",
-          linkTitle: "console.anthropic.com",
-          linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
-          description: "Chat only — Dictate Prompt is not available with Claude.",
-          isConfigured: $hasAnthropicKey,
-          load: { KeychainManager.shared.get(.anthropic) ?? "" },
-          save: { KeychainManager.shared.save($0, for: .anthropic) },
-          recommended: false
-        )
-        OnboardingAPIKeyRow(
-          providerName: "xAI (Grok)",
-          placeholder: "xai-…",
-          linkTitle: "console.x.ai",
-          linkURL: URL(string: "https://console.x.ai")!,
-          description: "Dictate Prompt is not available with Grok.",
-          isConfigured: $hasXAIKey,
-          load: { KeychainManager.shared.get(.xai) ?? "" },
-          save: { KeychainManager.shared.save($0, for: .xai) },
-          recommended: false
+          provider: .xai,
+          note: "Dictate Prompt is not available with Grok.",
+          onStored: credentialChanged
         )
       }
       .padding(.top, 8)
@@ -450,13 +436,16 @@ struct WelcomePrivacyDetails: View {
 /// Lets a new user finish setup with no provider key by downloading the recommended offline
 /// model (Parakeet Ultra, ≈700 MB — `plans/active/parakeet-offline.md` D1: new setups get it).
 struct OnboardingOfflineRow: View {
-  @Binding var offlineReady: Bool
+  /// Continue re-reads the selected model after the download (or an already-present file) has
+  /// been made the transcription backend.
+  var onReady: () -> Void = {}
   private let modelType = OfflineModelType.mostAccurate
+  @ObservedObject private var modelManager = ModelManager.shared
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
-      if offlineReady { OnboardingOfflinePromptNote() }
+      if modelManager.isModelAvailable(modelType) { OnboardingOfflinePromptNote() }
     }
   }
 
@@ -465,7 +454,6 @@ struct OnboardingOfflineRow: View {
   /// that answer wins over a cloud key they may also have. A user already on another offline
   /// model (e.g. a Whisper model for a language Parakeet lacks) keeps it.
   private func syncReady() {
-    offlineReady = true
     if TranscriptionModel.loadSelected().provider != .offline {
       UserDefaults.standard.set(
         TranscriptionModel.forOfflineModel(modelType).rawValue,
@@ -474,6 +462,7 @@ struct OnboardingOfflineRow: View {
         "ONBOARDING: chose Offline; \(modelType.displayName) set as transcription model")
     }
     prepareOfflinePromptModel()
+    onReady()
   }
 
   /// Without a key Dictate Prompt and Chat would otherwise fail on their first use. The reconciler
@@ -544,7 +533,9 @@ struct OnboardingOfflinePromptNote: View {
 /// hands the app a key without the user ever seeing one — so it is the only row that can take
 /// somebody from "just installed this" to "dictation works" without leaving the window.
 struct OnboardingOpenRouterRow: View {
-  @Binding var isConfigured: Bool
+  /// Parent re-picks a transcription model and re-reads Continue. Replaces the `isConfigured`
+  /// binding that used to be one of five Keychain booleans.
+  var onCredentialChanged: () -> Void = {}
   @ObservedObject private var oauthService = OpenRouterOAuthService.shared
 
   @State private var isAuthorizing = false
@@ -584,7 +575,10 @@ struct OnboardingOpenRouterRow: View {
         if oauthService.isConnected {
           Button("Disconnect") {
             oauthService.disconnect()
-            isConfigured = false
+            // Chat may have been running on this key. Same re-check Settings does on Disconnect,
+            // so onboarding cannot keep a slot pointed at an account that is now gone.
+            ModelSelectionReconciler.reconcileAll()
+            onCredentialChanged()
           }
           Link("Add credits", destination: OpenRouterOAuthConfig.creditsURL)
             .font(.callout)
@@ -616,7 +610,6 @@ struct OnboardingOpenRouterRow: View {
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .onAppear {
       oauthService.refreshConnectionState()
-      isConfigured = oauthService.isConnected
     }
   }
 
@@ -626,12 +619,12 @@ struct OnboardingOpenRouterRow: View {
     Task {
       do {
         if try await oauthService.connect() {
-          isConfigured = true
           // A brand-new user has no other credential, so leaving the default transcription model
-          // selected would send them to a provider they cannot reach. Point Dictate at what they
-          // just connected.
-          adoptOpenRouterAsTranscriptionModelIfNoOtherCredential()
+          // selected would send them to a provider they cannot reach. Same pick as the Cloud
+          // card: reconciler order, OpenRouter only when nothing else can transcribe.
+          OnboardingTranscriptionChoice.preferCloud()
           ModelSelectionReconciler.reconcileAll()
+          onCredentialChanged()
         }
       } catch {
         errorMessage = error.localizedDescription
@@ -640,60 +633,46 @@ struct OnboardingOpenRouterRow: View {
     }
   }
 
-  private func adoptOpenRouterAsTranscriptionModelIfNoOtherCredential() {
-    let hasOtherCloudKey = ChatModelProvider.gemini.hasCredential
-      || ChatModelProvider.openai.hasCredential
-      || ChatModelProvider.grok.hasCredential
-      || ChatModelProvider.anthropic.hasCredential
-    guard !hasOtherCloudKey else { return }
-    UserDefaults.standard.set(
-      TranscriptionModel.openRouterTranscription.rawValue,
-      forKey: UserDefaultsKeys.selectedTranscriptionModel)
-    DebugLogger.log("ONBOARDING: OpenRouter connected; set as default transcription model")
-  }
 }
 
 struct OnboardingAPIKeyRow: View {
-  let providerName: String
-  let placeholder: String
-  let linkTitle: String
-  let linkURL: URL
-  var description: String? = nil
-  @Binding var isConfigured: Bool
-  let load: () -> String
-  let save: (String) -> Bool
-  let recommended: Bool
+  let provider: APIKeyProvider
+  /// Extra line under the title. The provider's own subtitle is the Settings paragraph;
+  /// onboarding keeps the shorter note it already showed.
+  var note: String? = nil
+  /// Runs after a successful save, once `store` has reconciled. The setup step re-picks a
+  /// transcription model and re-reads Continue from here.
+  var onStored: () -> Void = {}
 
   @State private var key: String = ""
+  /// Last value read or saved. The Save button used to call `load()` inside `.disabled`, which
+  /// hit the Keychain on every render.
+  @State private var storedKey: String = ""
   @State private var isVisible: Bool = false
+  @State private var isSaving: Bool = false
   @State private var savedConfirmation: Bool = false
-  @State private var saveError: String?
+  @State private var saveError: OSStatus?
+
+  private var link: APIKeyHelpLink? { provider.helpLinks.first }
+  private var isConfigured: Bool { !storedKey.isEmpty }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 8) {
-        Text(providerName)
+        Text(provider.sectionTitle)
           .font(.callout)
           .fontWeight(.semibold)
-        if recommended {
-          Text("Recommended")
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.accentColor.opacity(0.15))
-            .foregroundColor(.accentColor)
-            .clipShape(Capsule())
-        }
         statusBadge
         Spacer()
-        Link(linkTitle, destination: linkURL)
-          .font(.caption)
-          .pointerCursorOnHover()
+        if let link {
+          Link(link.label, destination: link.url)
+            .font(.caption)
+            .pointerCursorOnHover()
+        }
       }
 
-      if let description {
-        Text(description)
+      if let note {
+        Text(note)
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -702,11 +681,11 @@ struct OnboardingAPIKeyRow: View {
       HStack(spacing: 8) {
         ZStack {
           if isVisible {
-            TextField(placeholder, text: $key)
+            TextField(provider.keyPlaceholder, text: $key)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
           } else {
-            SecureField(placeholder, text: $key)
+            SecureField(provider.keyPlaceholder, text: $key)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
           }
@@ -723,22 +702,27 @@ struct OnboardingAPIKeyRow: View {
 
         Button("Save") {
           let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard !trimmed.isEmpty else { return }
-          if save(trimmed) {
-            saveError = nil
-            isConfigured = true
-            CloudModelOffer.scheduleCheck()
+          guard !trimmed.isEmpty, !isSaving else { return }
+          isSaving = true
+          savedConfirmation = false
+          Task {
+            let status = await provider.store(trimmed)
+            isSaving = false
+            saveError = status
+            guard status == nil else { return }
+            storedKey = trimmed
+            key = trimmed
+            onStored()
             savedConfirmation = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
               savedConfirmation = false
             }
-          } else {
-            savedConfirmation = false
-            saveError = "Couldn't save to Keychain. Try again."
           }
         }
         .buttonStyle(.bordered)
-        .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || key == load())
+        .disabled(
+          isSaving || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || key == storedKey
+        )
         .pointerCursorOnHover()
       }
 
@@ -748,9 +732,7 @@ struct OnboardingAPIKeyRow: View {
           .foregroundStyle(.green)
       }
       if let saveError {
-        Label(saveError, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption2)
-          .foregroundStyle(.red)
+        KeychainSaveWarning(status: saveError)
       }
     }
     .padding(14)
@@ -763,8 +745,9 @@ struct OnboardingAPIKeyRow: View {
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
     .onAppear {
-      key = load()
-      isConfigured = !key.isEmpty
+      let stored = KeychainManager.shared.get(provider.credential) ?? ""
+      storedKey = stored
+      key = stored
     }
   }
 
