@@ -1,5 +1,3 @@
-import AuthenticationServices
-import CryptoKit
 import Foundation
 
 /// Connects an OpenRouter account without the user ever seeing an API key.
@@ -17,9 +15,9 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
   /// deliberately does not distinguish the two — "connected" is about whether dictation will work.
   @Published private(set) var isConnected: Bool = false
 
-  private var pendingContinuation: CheckedContinuation<URLComponents, Error>?
-  private var authSession: ASWebAuthenticationSession?
-  private var listener: LoopbackOAuthListener?
+  /// True only while the browser sheet is up. Cleared before the key exchange, matching the old
+  /// continuation which was nil again by the time the code was redeemed.
+  private var browserFlowActive = false
 
   private override init() {
     super.init()
@@ -33,93 +31,43 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
     isConnected = !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  // MARK: - PKCE
-
-  private func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return Self.base64URLEncode(Data(bytes))
-  }
-
-  private func codeChallengeS256(verifier: String) -> String {
-    Self.base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
-  }
-
-  private static func base64URLEncode(_ data: Data) -> String {
-    data.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Authorization
 
   /// Runs the full flow and stores the resulting key. Returns `false` when the user simply closed
   /// the sheet, so callers can stay silent instead of showing an error for a deliberate cancel.
   @discardableResult
   func connect() async throws -> Bool {
-    guard pendingContinuation == nil else {
+    guard !browserFlowActive else {
       throw OAuthError.authorizationInProgress
     }
 
-    let verifier = generateCodeVerifier()
-    let challenge = codeChallengeS256(verifier: verifier)
+    let (verifier, challenge) = PKCE.make()
     let state = OAuthCSRF.makeState()
 
-    // Started before the URL is built: the listener owns the port, and the port is part of the
-    // callback OpenRouter must be told about. OpenRouter has no top-level `state` query param;
-    // it preserves query already on `callback_url` and appends `code`, so the CSRF token lives
-    // there.
-    let listener = try LoopbackOAuthListener { [weak self] components in
-      guard let self else { return }
-      Task { @MainActor in self.finishAuthorization(with: .success(components ?? URLComponents())) }
-    }
-    self.listener = listener
-
-    var callback = URLComponents(string: listener.callbackURL)!
-    callback.queryItems = [URLQueryItem(name: "state", value: state)]
-    guard let callbackURL = callback.string else {
-      cleanUpAuthorization()
-      throw OAuthError.invalidURL
-    }
-
-    var components = URLComponents(url: OpenRouterOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
-    components.queryItems = [
-      URLQueryItem(name: "callback_url", value: callbackURL),
-      URLQueryItem(name: "code_challenge", value: challenge),
-      URLQueryItem(name: "code_challenge_method", value: "S256"),
-    ]
-
-    guard let authURL = components.url else {
-      cleanUpAuthorization()
-      throw OAuthError.invalidURL
-    }
-
-    // `callbackURLScheme` is nil on purpose: the redirect lands on 127.0.0.1, which the session
-    // cannot intercept, so the listener is what completes the flow. The session's own completion
-    // handler then only ever fires when the user closes the sheet.
-    let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: nil) { [weak self] _, error in
-      guard let self else { return }
-      Task { @MainActor in
-        self.finishAuthorization(with: .failure(error ?? OAuthError.noCallbackURL))
-      }
-    }
-
-    // Users often already have an openrouter.ai session in Safari; reusing it turns this into a
-    // single click instead of a fresh login.
-    session.prefersEphemeralWebBrowserSession = false
-    session.presentationContextProvider = self
-    authSession = session
-
-    let callbackComponents: URLComponents
+    // OpenRouter has no top-level `state` query param; it preserves query already on
+    // `callback_url` and appends `code`, so the CSRF token is baked into the redirect URI.
+    browserFlowActive = true
+    let callbackComponents: URLComponents?
     do {
-      callbackComponents = try await withCheckedThrowingContinuation { continuation in
-        self.pendingContinuation = continuation
-        if !session.start() {
-          finishAuthorization(with: .failure(OAuthError.authorizationStartFailed))
-        }
+      callbackComponents = try await LoopbackBrowserAuthorization.run(logPrefix: "OPENROUTER-OAUTH") { redirectURI in
+        var callback = URLComponents(string: redirectURI)
+        callback?.queryItems = [URLQueryItem(name: "state", value: state)]
+        guard let callbackURL = callback?.string else { return nil }
+        var components = URLComponents(url: OpenRouterOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+          URLQueryItem(name: "callback_url", value: callbackURL),
+          URLQueryItem(name: "code_challenge", value: challenge),
+          URLQueryItem(name: "code_challenge_method", value: "S256"),
+        ]
+        return components?.url
       }
-    } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+    } catch {
+      browserFlowActive = false
+      throw Self.mapBrowserError(error)
+    }
+    browserFlowActive = false
+
+    guard let callbackComponents else {
       DebugLogger.log("OPENROUTER-OAUTH: User cancelled authorization")
       return false
     }
@@ -190,30 +138,15 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
     DebugLogger.log("OPENROUTER-OAUTH: Disconnected")
   }
 
-  // MARK: - Flow completion
-
-  /// Idempotent: the listener and the sheet's completion handler race by design — whichever lands
-  /// first wins, and the other is ignored. Without this, closing the sheet after a successful
-  /// redirect would resume the same continuation twice and trap.
-  private func finishAuthorization(with result: Result<URLComponents, Error>) {
-    guard let continuation = pendingContinuation else { return }
-    pendingContinuation = nil
-    cleanUpAuthorization()
-    switch result {
-    case .success(let components):
-      continuation.resume(returning: components)
-    case .failure(let error):
-      continuation.resume(throwing: error)
+  /// `LoopbackBrowserAuthorization` speaks three shared failures. Everything else (a listener
+  /// error, a sheet error that is not cancel) already has the type the caller should see.
+  private static func mapBrowserError(_ error: Error) -> Error {
+    guard let failure = error as? LoopbackBrowserAuthorization.Failure else { return error }
+    switch failure {
+    case .invalidAuthorizeURL: return OAuthError.invalidURL
+    case .startFailed: return OAuthError.authorizationStartFailed
+    case .noCallback: return OAuthError.noCallbackURL
     }
-  }
-
-  private func cleanUpAuthorization() {
-    // Closes the sheet once the listener has the code, so a successful sign-in does not leave the
-    // user staring at the "you can close this tab" page.
-    authSession?.cancel()
-    authSession = nil
-    listener?.stop()
-    listener = nil
   }
 
   // MARK: - Errors
@@ -244,13 +177,5 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
       case .authorizationStartFailed: return "Failed to open the OpenRouter authorization window."
       }
     }
-  }
-}
-
-// MARK: - ASWebAuthenticationPresentationContextProviding
-
-extension OpenRouterOAuthService: ASWebAuthenticationPresentationContextProviding {
-  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-    NSApplication.shared.keyWindow ?? ASPresentationAnchor()
   }
 }

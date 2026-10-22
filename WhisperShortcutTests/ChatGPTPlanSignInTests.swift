@@ -268,6 +268,44 @@ struct ChatGPTPlanSignInTests {
     #expect(store.record?.refreshToken == "refresh-old")
   }
 
+  @Test("A 401 retries once with a forced refresh; a second 401 and any other error do not")
+  func authorizedRetryRefreshesOnce() async throws {
+    let transport = FakeTransport([
+      .init(status: 200, body: #"{"access_token":"access-new","refresh_token":"refresh-new","expires_in":3600}"#)
+    ])
+    let (service, _, _) = service(F.credentials(), transport: transport)
+    var tokens: [String] = []
+    let value = try await service.withAuthorizedRetry { token in
+      tokens.append(token)
+      if tokens.count == 1 { throw ChatGPTPlanError.signInRequired }
+      return "ok"
+    }
+    #expect(value == "ok")
+    #expect(tokens == ["access-old", "access-new"])
+    #expect(transport.requests.count == 1)
+
+    let (again, _, _) = self.service(F.credentials(), transport: FakeTransport([
+      .init(status: 200, body: #"{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}"#)
+    ]))
+    var attempts = 0
+    await #expect(throws: ChatGPTPlanError.signInRequired) {
+      _ = try await again.withAuthorizedRetry { _ in
+        attempts += 1
+        throw ChatGPTPlanError.signInRequired
+      }
+    }
+    #expect(attempts == 2)
+
+    var other = 0
+    await #expect(throws: ChatGPTPlanError.usageLimit) {
+      _ = try await again.withAuthorizedRetry { (_: String) in
+        other += 1
+        throw ChatGPTPlanError.usageLimit
+      }
+    }
+    #expect(other == 1)
+  }
+
   @Test("forceRefresh refreshes a token that still looks valid (used once after an inference 401)")
   func forceRefreshIgnoresExpiry() async throws {
     let transport = FakeTransport([

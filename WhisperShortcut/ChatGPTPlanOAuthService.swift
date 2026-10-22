@@ -1,6 +1,3 @@
-import AppKit
-import AuthenticationServices
-import CryptoKit
 import Foundation
 
 // MARK: - Seams (injectable for tests)
@@ -106,9 +103,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   private let defaults: UserDefaults
   private let revocationRetryDelays: [UInt64]
 
-  private var pendingContinuation: CheckedContinuation<URLComponents, Error>?
-  private var authSession: ASWebAuthenticationSession?
-  private var listener: LoopbackOAuthListener?
   private var refreshTask: Task<String, Error>?
   private var discovery: [String: Any]?
   private var cachedKeys: [ChatGPTPlanIDTokenValidator.JWK]?
@@ -151,16 +145,14 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   // MARK: - Pure helpers (unit-tested)
 
   /// Percent-encodes for a query string or form body: unreserved characters only (a `+` in an
-  /// email address must not turn into a space).
+  /// email address must not turn into a space). The rule lives in `FormURLEncoding` so Google's
+  /// token body can't drift from this again.
   static func percentEncode(_ value: String) -> String {
-    // Explicit ASCII set: `CharacterSet.alphanumerics` also contains non-ASCII letters.
-    let allowed = CharacterSet(
-      charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-    return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    FormURLEncoding.percentEncode(value)
   }
 
   static func formEncode(_ pairs: [(String, String)]) -> String {
-    pairs.map { "\(percentEncode($0.0))=\(percentEncode($0.1))" }.joined(separator: "&")
+    FormURLEncoding.encode(pairs)
   }
 
   /// The browser URL that starts an attempt.
@@ -310,25 +302,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     return (json["code"] as? String, json["error_description"] as? String ?? json["message"] as? String)
   }
 
-  // MARK: - PKCE
-
-  private static func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return base64URLEncode(Data(bytes))
-  }
-
-  private static func codeChallengeS256(verifier: String) -> String {
-    base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
-  }
-
-  private static func base64URLEncode(_ data: Data) -> String {
-    data.base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Sign in
 
   /// Runs the browser flow and stores the result. Returns `false` when the user closed the sheet or
@@ -339,7 +312,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   /// client; the saved record is only replaced once the new identity is validated.
   @discardableResult
   func connect(useDifferentAccount: Bool = false) async throws -> Bool {
-    guard pendingContinuation == nil, !isBusy else { throw ChatGPTPlanSignInError.authorizationInProgress }
+    guard !isBusy else { throw ChatGPTPlanSignInError.authorizationInProgress }
     isBusy = true
     lastError = nil
     defer { isBusy = false }
@@ -360,56 +333,33 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     let saved = useDifferentAccount ? nil : store.load()
     let hostID = saved?.extAgentHostID.isEmpty == false ? saved!.extAgentHostID : ChatGPTPlanCredentials.hostID(defaults: defaults)
 
-    let verifier = Self.generateCodeVerifier()
-    let challenge = Self.codeChallengeS256(verifier: verifier)
+    let (verifier, challenge) = PKCE.make()
     let state = OAuthCSRF.makeState()
     let nonce = OAuthCSRF.makeState()
 
     // The listener owns the port, and the port is part of the redirect URI that has to be sent
-    // identically on authorize and on the code exchange.
-    let listener = try LoopbackOAuthListener(
-      callbackPath: ChatGPTPlanOAuthConfig.callbackPath,
-      providerName: ChatGPTPlanOAuthConfig.callbackProviderName
-    ) { [weak self] components in
-      guard let self else { return }
-      Task { @MainActor in self.finishAuthorization(with: .success(components ?? URLComponents())) }
-    }
-    self.listener = listener
-    let redirectURI = listener.callbackURL
-
-    guard
-      let authURL = Self.authorizeURL(
-        savedAccount: saved, hostID: hostID, redirectURI: redirectURI, state: state, nonce: nonce,
-        codeChallenge: challenge)
-    else {
-      cleanUpAuthorization()
-      throw ChatGPTPlanSignInError.invalidURL
-    }
-
-    // `callbackURLScheme` is nil on purpose (see OpenRouterOAuthService): the redirect lands on
-    // 127.0.0.1, so the listener completes the flow and the session's handler only fires on cancel.
-    let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: nil) { [weak self] _, error in
-      guard let self else { return }
-      Task { @MainActor in
-        self.finishAuthorization(with: .failure(error ?? ChatGPTPlanSignInError.noCallbackURL))
-      }
-    }
-    session.prefersEphemeralWebBrowserSession = false
-    session.presentationContextProvider = self
-    authSession = session
-
-    DebugLogger.log("CHATGPT-PLAN: Starting \(saved == nil ? "registration" : "reauthorization")")
+    // identically on authorize and on the code exchange. The log stays after that bind.
+    var redirectURI = ""
     let callback: URLComponents
     do {
-      callback = try await withCheckedThrowingContinuation { continuation in
-        self.pendingContinuation = continuation
-        if !session.start() {
-          finishAuthorization(with: .failure(ChatGPTPlanSignInError.authorizationStartFailed))
-        }
+      let components = try await LoopbackBrowserAuthorization.run(
+        callbackPath: ChatGPTPlanOAuthConfig.callbackPath,
+        providerName: ChatGPTPlanOAuthConfig.callbackProviderName,
+        logPrefix: "CHATGPT-PLAN",
+        authorizeURL: { bound in
+          redirectURI = bound
+          DebugLogger.log("CHATGPT-PLAN: Starting \(saved == nil ? "registration" : "reauthorization")")
+          return Self.authorizeURL(
+            savedAccount: saved, hostID: hostID, redirectURI: bound, state: state, nonce: nonce,
+            codeChallenge: challenge)
+        })
+      guard let components else {
+        DebugLogger.log("CHATGPT-PLAN: User cancelled sign-in")
+        return false
       }
-    } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
-      DebugLogger.log("CHATGPT-PLAN: User cancelled sign-in")
-      return false
+      callback = components
+    } catch {
+      throw Self.mapBrowserError(error)
     }
 
     let outcome = try Self.evaluateCallback(callback, expectedState: state, pendingClientID: saved?.clientID)
@@ -509,6 +459,25 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
   ///
   /// `forceRefresh` refreshes regardless of expiry: used once after an inference 401, which per
   /// OpenAI's docs is not by itself a reason to drop the session.
+  ///
+  /// One forced refresh when `op` throws `ChatGPTPlanError.signInRequired`, then the error stands.
+  /// The model catalog had been skipping this and dying on an expired access token. A caller that
+  /// has already emitted output must not throw `signInRequired` for that failure — retrying would
+  /// replay the side effect. The chat stream wraps that case. `nonisolated` so the operation keeps
+  /// running on the caller's task (the response stream must not move onto the main actor).
+  nonisolated func withAuthorizedRetry<T>(_ op: (String) async throws -> T) async throws -> T {
+    var forceRefresh = false
+    while true {
+      let token = try await validAccessToken(forceRefresh: forceRefresh)
+      do {
+        return try await op(token)
+      } catch let error as ChatGPTPlanError where error == .signInRequired && !forceRefresh {
+        DebugLogger.log("CHATGPT-PLAN: Request rejected (401); refreshing the token once and retrying")
+        forceRefresh = true
+      }
+    }
+  }
+
   func validAccessToken(forceRefresh: Bool = false) async throws -> String {
     guard let credentials = store.load(), credentials.hasTokens else { throw ChatGPTPlanError.signInRequired }
     guard credentials.planEnabled else { throw ChatGPTPlanError.planNotEnabled }
@@ -706,32 +675,12 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     }
   }
 
-  // MARK: - Flow completion
-
-  /// Idempotent: the listener and the sheet's completion handler race by design (see
-  /// `OpenRouterOAuthService.finishAuthorization`).
-  private func finishAuthorization(with result: Result<URLComponents, Error>) {
-    guard let continuation = pendingContinuation else { return }
-    pendingContinuation = nil
-    cleanUpAuthorization()
-    switch result {
-    case .success(let components): continuation.resume(returning: components)
-    case .failure(let error): continuation.resume(throwing: error)
+  private static func mapBrowserError(_ error: Error) -> Error {
+    guard let failure = error as? LoopbackBrowserAuthorization.Failure else { return error }
+    switch failure {
+    case .invalidAuthorizeURL: return ChatGPTPlanSignInError.invalidURL
+    case .startFailed: return ChatGPTPlanSignInError.authorizationStartFailed
+    case .noCallback: return ChatGPTPlanSignInError.noCallbackURL
     }
-  }
-
-  private func cleanUpAuthorization() {
-    authSession?.cancel()
-    authSession = nil
-    listener?.stop()
-    listener = nil
-  }
-}
-
-// MARK: - ASWebAuthenticationPresentationContextProviding
-
-extension ChatGPTPlanOAuthService: ASWebAuthenticationPresentationContextProviding {
-  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-    NSApplication.shared.keyWindow ?? ASPresentationAnchor()
   }
 }

@@ -67,12 +67,18 @@ enum ChatGPTPlanModelCatalog {
     transport: ChatGPTPlanTransport = ChatGPTPlanOAuthService.liveTransport,
     defaults: UserDefaults = .standard
   ) async throws -> [Entry] {
-    let token: String
     if let accessToken {
-      token = accessToken
-    } else {
-      token = try await ChatGPTPlanOAuthService.shared.validAccessToken()
+      return try await load(token: accessToken, transport: transport, defaults: defaults)
     }
+    // Same 401 rule as chat: an expired access token refreshes once instead of failing the list.
+    return try await ChatGPTPlanOAuthService.shared.withAuthorizedRetry { token in
+      try await load(token: token, transport: transport, defaults: defaults)
+    }
+  }
+
+  private static func load(
+    token: String, transport: ChatGPTPlanTransport, defaults: UserDefaults
+  ) async throws -> [Entry] {
     var request = URLRequest(url: ChatGPTPlanOAuthConfig.modelsEndpoint)
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")

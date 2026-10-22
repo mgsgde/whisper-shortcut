@@ -136,11 +136,8 @@ enum ChatGPTPlanIDTokenValidator {
   }
 
   static func base64URLDecode(_ string: String) -> Data? {
-    var base64 = string.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-    let remainder = base64.count % 4
-    if remainder == 1 { return nil }
-    if remainder > 0 { base64 += String(repeating: "=", count: 4 - remainder) }
-    return Data(base64Encoded: base64)
+    // Shared with Gmail. This copy already rejected a remainder of 1; Gmail's padded it.
+    Data(base64URLEncoded: string)
   }
 
   // MARK: Signature (production)

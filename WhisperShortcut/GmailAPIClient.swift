@@ -208,13 +208,9 @@ actor GmailAPIClient {
   }
 
   private func decodeBase64URL(_ string: String) -> String? {
-    var base64 = string
-      .replacingOccurrences(of: "-", with: "+")
-      .replacingOccurrences(of: "_", with: "/")
-    while base64.count % 4 != 0 {
-      base64 += "="
-    }
-    guard let data = Data(base64Encoded: base64) else { return nil }
+    // A length mod 4 of 1 used to be padded into garbage. It is invalid base64url and now
+    // yields nil; `extractBody` treats that as an empty part and keeps looking.
+    guard let data = Data(base64URLEncoded: string) else { return nil }
     return String(data: data, encoding: .utf8)
   }
 

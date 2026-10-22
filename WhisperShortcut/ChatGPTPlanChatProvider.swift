@@ -90,6 +90,12 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
     ChatGPTPlanPreferences.isChatGPTPlanModel(model) ? ChatGPTPlanPreferences.modelID : model
   }
 
+  /// A 401 after bytes have already been yielded. Not `ChatGPTPlanError.signInRequired`, so
+  /// `withAuthorizedRetry` will not refresh and replay the stream.
+  private struct StreamAlreadyDelivered: Error {
+    let error: Error
+  }
+
   private static func stream(body: [String: Any]) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
@@ -97,10 +103,9 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
           // A 401 is not by itself a reason to sign the user out (OpenAI: check account/scopes).
           // Refresh once, ignoring expiry, and retry the request; if that fails too, surface the
           // error and keep the refresh token. Only a terminal refresh error clears the tokens
-          // (inside the OAuth service).
-          var forceRefresh = false
-          while true {
-            let token = try await ChatGPTPlanOAuthService.shared.validAccessToken(forceRefresh: forceRefresh)
+          // (inside the OAuth service). A 401 after the first token is not retried: the bytes
+          // already went to the UI.
+          try await ChatGPTPlanOAuthService.shared.withAuthorizedRetry { token in
             let config = OpenAICompatibleStream.Config(
               endpoint: ChatGPTPlanOAuthConfig.responsesEndpoint,
               headers: ["Authorization": "Bearer \(token)"],
@@ -116,13 +121,13 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
                 yielded = true
                 continuation.yield(event)
               }
-              break
-            } catch let error as ChatGPTPlanError where error == .signInRequired && !forceRefresh && !yielded {
-              DebugLogger.log("CHATGPT-PLAN: Request rejected (401); refreshing the token once and retrying")
-              forceRefresh = true
+            } catch let error as ChatGPTPlanError where error == .signInRequired && yielded {
+              throw StreamAlreadyDelivered(error: error)
             }
           }
           continuation.finish()
+        } catch let delivered as StreamAlreadyDelivered {
+          continuation.finish(throwing: delivered.error)
         } catch {
           continuation.finish(throwing: error)
         }

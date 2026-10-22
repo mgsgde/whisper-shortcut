@@ -1,5 +1,4 @@
 import AuthenticationServices
-import CryptoKit
 import Foundation
 
 @MainActor
@@ -18,26 +17,6 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     isConnected = KeychainManager.shared.has(.googleCalendarRefreshToken)
   }
 
-  // MARK: - PKCE
-
-  private func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return Data(bytes).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
-  private func codeChallengeS256(verifier: String) -> String {
-    let data = Data(verifier.utf8)
-    let hash = SHA256.hash(data: data)
-    return Data(hash).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
-  }
-
   // MARK: - Authorization
 
   func startAuthorization() async throws {
@@ -45,8 +24,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       throw OAuthError.authorizationInProgress
     }
 
-    let verifier = generateCodeVerifier()
-    let challenge = codeChallengeS256(verifier: verifier)
+    let (verifier, challenge) = PKCE.make()
     let state = OAuthCSRF.makeState()
 
     var components = URLComponents(url: GoogleAccountOAuthConfig.authorizationEndpoint, resolvingAgainstBaseURL: false)!
@@ -84,7 +62,7 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       }
     }
 
-    session.presentationContextProvider = self
+    session.presentationContextProvider = OAuthPresentationAnchorProvider.shared
     authSession = session
 
     callbackURL = try await withCheckedThrowingContinuation { continuation in
@@ -112,15 +90,13 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
   // MARK: - Token Exchange
 
   private func exchangeCodeForTokens(code: String, verifier: String) async throws {
-    let body: [String: String] = [
-      "grant_type": "authorization_code",
-      "client_id": GoogleAccountOAuthConfig.clientID,
-      "code": code,
-      "redirect_uri": GoogleAccountOAuthConfig.redirectURI,
-      "code_verifier": verifier,
-    ]
-
-    let tokenResponse = try await postTokenRequest(body: body)
+    let tokenResponse = try await postTokenRequest(pairs: [
+      ("grant_type", "authorization_code"),
+      ("client_id", GoogleAccountOAuthConfig.clientID),
+      ("code", code),
+      ("redirect_uri", GoogleAccountOAuthConfig.redirectURI),
+      ("code_verifier", verifier),
+    ])
 
     if let refreshToken = tokenResponse["refresh_token"] as? String {
       _ = KeychainManager.shared.save(refreshToken, for: .googleCalendarRefreshToken)
@@ -146,15 +122,13 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       throw OAuthError.notConnected
     }
 
-    let body: [String: String] = [
-      "grant_type": "refresh_token",
-      "client_id": GoogleAccountOAuthConfig.clientID,
-      "refresh_token": refreshToken,
-    ]
-
     let tokenResponse: [String: Any]
     do {
-      tokenResponse = try await postTokenRequest(body: body)
+      tokenResponse = try await postTokenRequest(pairs: [
+        ("grant_type", "refresh_token"),
+        ("client_id", GoogleAccountOAuthConfig.clientID),
+        ("refresh_token", refreshToken),
+      ])
     } catch {
       if let oauthError = error as? OAuthError, case .tokenExchangeFailed(let msg) = oauthError,
          msg.contains("invalid_grant") {
@@ -224,16 +198,13 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
   // MARK: - Helpers
 
-  private func postTokenRequest(body: [String: String]) async throws -> [String: Any] {
+  private func postTokenRequest(pairs: [(String, String)]) async throws -> [String: Any] {
     var request = URLRequest(url: GoogleAccountOAuthConfig.tokenEndpoint)
     request.httpMethod = "POST"
     request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-    let bodyString = body.map {
-      "\(Self.formURLEncoded($0.key))=\(Self.formURLEncoded($0.value))"
-    }
-      .joined(separator: "&")
-    request.httpBody = bodyString.data(using: .utf8)
+    // Same encoder as ChatGPT. For these fields the previous Google encoder produced the same
+    // bytes: they are unreserved plus ":" and "/".
+    request.httpBody = Data(FormURLEncoding.encode(pairs).utf8)
 
     let (data, response) = try await LLMHTTPSession.integrations.data(for: request)
 
@@ -252,13 +223,6 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
     }
 
     return json
-  }
-
-  private static func formURLEncoded(_ value: String) -> String {
-    var allowed = CharacterSet.alphanumerics
-    allowed.insert(charactersIn: "-._* ")
-    let escaped = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-    return escaped.replacingOccurrences(of: " ", with: "+")
   }
 
   // MARK: - Errors
@@ -293,13 +257,5 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
       case .authorizationStartFailed: return "Failed to start Google authorization."
       }
     }
-  }
-}
-
-// MARK: - ASWebAuthenticationPresentationContextProviding
-
-extension GoogleAccountOAuthService: ASWebAuthenticationPresentationContextProviding {
-  func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-    NSApplication.shared.keyWindow ?? ASPresentationAnchor()
   }
 }

@@ -16,10 +16,7 @@ enum OAuthCSRF {
       DebugLogger.logError("OAUTH-CSRF: SecRandomCopyBytes failed — falling back to UUID state")
       return UUID().uuidString + UUID().uuidString
     }
-    return Data(bytes).base64EncodedString()
-      .replacingOccurrences(of: "+", with: "-")
-      .replacingOccurrences(of: "/", with: "_")
-      .replacingOccurrences(of: "=", with: "")
+    return Data(bytes).base64URLEncodedString
   }
 
   /// True when the callback's `state` matches the one we sent. Logs a reason on mismatch so a
