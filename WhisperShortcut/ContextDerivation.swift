@@ -7,10 +7,6 @@ class ContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
   private let maxFieldChars = 1000
-  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
-  private var analysisEndpoint: String {
-    analysisTranscriptionModel?.apiEndpoint ?? AppConstants.contextDerivationEndpoint
-  }
 
   /// The TranscriptionModel form of the currently selected Smart Improvement model, when it maps to one.
   /// Used to decide per-entry whether re-listening to audio can plausibly add information.
@@ -857,9 +853,6 @@ class ContextDerivation {
     audioAttachments: [AudioAttachment],
     credential: GeminiCredential
   ) async throws -> [String: Any] {
-    let geminiClient = GeminiAPIClient()
-    var request = try geminiClient.createRequest(endpoint: analysisEndpoint, credential: credential)
-
     let systemPrompt = systemPromptForFocus(focus, audioAttached: !audioAttachments.isEmpty)
     let userMessage = buildAnalysisUserMessage(
       focus: focus,
@@ -870,48 +863,26 @@ class ContextDerivation {
       audioAttachments: audioAttachments
     )
 
-    // Build the request as a dict so we can attach a dynamic `responseSchema` (structured output).
     // Text part first, then one inline_data part per audio clip (verifier-only attachments).
     var userParts: [[String: Any]] = [["text": userMessage]]
     for attachment in audioAttachments {
       // Match the proven transcription path's request shape: part key `inline_data`, inner `mimeType`.
       userParts.append(["inline_data": ["mimeType": "audio/wav", "data": attachment.base64WAV]])
     }
-    let body: [String: Any] = [
-      "contents": [["role": "user", "parts": userParts]],
-      "system_instruction": ["parts": [["text": systemPrompt]]],
-      // Cost fuse (see AppConstants.llmMaxOutputTokens). This path matters more than most: it runs
-      // unattended on the 7-day auto-run timer, against a user-selectable model, with audio
-      // attached — the exact shape of the 2026-08-03 runaway, minus a human watching it.
-      "generationConfig": [
-        "responseMimeType": "application/json",
-        "responseSchema": Self.analysisSchema,
-        "maxOutputTokens": AppConstants.llmMaxOutputTokens,
-      ] as [String: Any],
-    ]
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-    let result = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "USER-CONTEXT-DERIVATION",
+    // The transcription twin's raw value is the model id the old hand-built URL embedded.
+    // A Gemini model with no twin (image models) keeps the id in `contextDerivationEndpoint`.
+    let modelID = analysisTranscriptionModel?.rawValue ?? PromptModel.gemini38Flash.rawValue
+    // `.low`: this run is unattended. The hand-built request sent no thinkingConfig, so Flash
+    // billed its medium default. Low is the approved level for this path.
+    return try await GeminiAPIClient().generateStructured(
+      model: modelID,
+      contents: [["role": "user", "parts": userParts]],
+      systemInstruction: ["parts": [["text": systemPrompt]]],
+      schema: Self.analysisSchema,
+      credential: credential,
+      thinkingLevel: .low,
       origin: .smartImprovement,
-      withRetry: true
-    )
-
-    guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response for context derivation")
-    }
-
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text { textContent += text }
-    }
-    guard let data = textContent.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw TranscriptionError.networkError("Gemini structured analysis response was not valid JSON: \(textContent.prefix(200))")
-    }
-    return obj
+      withRetry: true)
   }
 
   /// Builds the sectioned user message (current prompt + primary/secondary interactions + optional
