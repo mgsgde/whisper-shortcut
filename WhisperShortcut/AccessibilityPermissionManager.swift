@@ -38,7 +38,7 @@ class AccessibilityPermissionManager {
       1. Go to Privacy & Security → Accessibility
       2. Enable WhisperShortcut
 
-      Already listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click "Copy Reset Command" and run it in Terminal to clear the stale entry.
+      Already listed and switched on, but still not working? macOS remembers an older copy of the app (common after switching between the App Store and GitHub versions). Remove WhisperShortcut from the list with the − button, then click "Open System Settings" here again: this copy is added back and you only flip the switch. Or click "Copy Reset Command" and run it in Terminal.
       """
     alert.alertStyle = .informational
     alert.addButton(withTitle: "Open System Settings")
@@ -49,6 +49,9 @@ class AccessibilityPermissionManager {
 
     switch response {
     case .alertFirstButtonReturn:
+      // Re-registers this exact binary if its entry is missing (after "−" or a tccutil reset),
+      // so the user finds it in the list and only flips the switch. No-op when an entry exists.
+      PermissionStatusChecker.requestAccessibilityAccess()
       PermissionStatusChecker.openSystemSettings(for: .accessibility)
     case .alertSecondButtonReturn:
       // Clears the stale TCC entry left behind by a differently-signed copy (App Store vs
