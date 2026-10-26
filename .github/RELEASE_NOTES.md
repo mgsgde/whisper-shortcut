@@ -1,24 +1,16 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Claude & other AI apps can now tune your setup
-Claude Code, Claude Desktop and other MCP apps on this Mac could already read your meetings. Now, if you allow it, they can also improve your setup from what they know about you:
-- add names and terms to your glossary
-- rewrite your Dictate Prompt instructions and your writing style profile
-- create or edit commands
-- with "Save usage data" on and a second switch, look at your recent dictations to find out why one went wrong
+## Dictation
+- **No more glossary words tacked onto the end.** Gemini sometimes appended your Glossary terms after a correct dictation ("…im System gesperrt werden. Joschka SumUp lemniscus"). That trailing list is now removed. A sentence that only mentions your terms ("We use SumUp and Lemniscus"), a single term, or a list after a colon stays as you said it.
 
-In Settings → Meetings, the section is now called **Claude & Other AI Apps**. Choose how much an AI app may do:
-- **Only read**
-- **Suggest changes for me to approve** (default): each change opens in a review window that does not steal focus. Return never accepts it.
-- **Make changes directly**: every change is listed under "Changed by AI apps", with Undo.
+## Chat
+- **Chat on your ChatGPT plan, no API key** (GitHub download only). Click **Continue with ChatGPT** in Settings → Accounts, sign in once, then pick **ChatGPT plan** in the chat model picker or type `/chatgpt`. Requests count toward your plan's usage limits. Text and image attachments work; web search and connected services don't run on the plan yet, and dictation can't use it.
 
-Dictation and Chat instructions always wait for your approval. New glossary terms apply directly, because they only add. Pending changes show in the menu bar as "Review N Changes from AI Apps…".
+## Removed
+- **Voice Feedback and Flag Meeting Moment are gone**, along with their shortcuts and menu rows. Older meeting notes with flagged moments still open as normal notes.
+- **Add Selection to Glossary** stays, but new installs get it without a default shortcut. Set one in Settings if you use it.
 
-In Claude Code, `/whisper-shortcut:tune_whisper_shortcut` runs the built-in "tune my setup" recipe.
+## Installation
+Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-Existing connections keep reading and change nothing until you copy the new setup, which carries a separate key for changes. Everything stays local to this Mac and is switched off while Offline Mode is on.
-
-## Also
-- The Smart Improvement review collapses unchanged passages, so the actual change is easier to spot.
-
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.56...v8.57
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.57...v8.58
