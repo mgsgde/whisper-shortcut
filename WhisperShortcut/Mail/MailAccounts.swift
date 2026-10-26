@@ -209,7 +209,8 @@ enum MailAccountStore {
       transport.close()
       return value
     } catch {
-      if opened { try? await session.logout() }
+      // A dead connection cannot answer LOGOUT; skip it after a transport error or timeout.
+      if opened, !((error as? IMAPError)?.isTransportFailure ?? false) { try? await session.logout() }
       transport.close()
       throw error
     }
