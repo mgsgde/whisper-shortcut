@@ -398,8 +398,9 @@ enum TextProcessingUtility {
     }
 
     // A newline, or sentence punctuation that is immediately followed by whitespace. `sabaki.dance`
-    // has a dot with a letter after it, so it is not a boundary.
-    let boundaryPunctuation: Set<Character> = [".", "!", "?", "…", ":"]
+    // has a dot with a letter after it, so it is not a boundary. A colon is deliberately not one:
+    // "Teilnehmer: Joschka, SumUp" is a dictated list, not an echo.
+    let boundaryPunctuation: Set<Character> = [".", "!", "?", "…"]
     var boundary: String.Index?
     var index = text.startIndex
     while index < searchEnd {

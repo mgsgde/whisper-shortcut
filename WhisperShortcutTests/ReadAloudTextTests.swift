@@ -199,6 +199,14 @@ struct TranscriptPlausibilityTests {
     #expect(result == text)
   }
 
+  @Test("A dictated list after a colon stays")
+  func keepsListAfterColon() {
+    let text = "Teilnehmer: Joschka, SumUp"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
   @Test("Glossary words with no sentence boundary stay")
   func keepsGlossaryWithoutBoundary() {
     let text = "Joschka SumUp"
