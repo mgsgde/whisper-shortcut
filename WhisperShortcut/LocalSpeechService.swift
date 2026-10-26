@@ -854,11 +854,7 @@ actor LocalSpeechService {
     }
   }
   
-  // MARK: - Check if Model is Ready
-  func isReady() -> Bool {
-    return currentModelType != nil && hasLoadedModel
-  }
-
+  // MARK: - Loaded Model Queries
   /// Returns true if the given model type is currently loaded (so we use the selected model, not a previously pre-loaded one).
   func isLoaded(modelType: OfflineModelType) -> Bool {
     return currentModelType == modelType
