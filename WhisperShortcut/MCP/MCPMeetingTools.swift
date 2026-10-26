@@ -29,6 +29,7 @@ struct MCPMeetingTools {
           ]
         ],
       ] as [String: Any],
+      "annotations": ["title": "Get Live Transcript", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "list_meetings",
@@ -40,6 +41,7 @@ struct MCPMeetingTools {
           "limit": ["type": "integer", "description": "Maximum number of meetings (default 20, max 200)."]
         ],
       ] as [String: Any],
+      "annotations": ["title": "List Meetings", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_meeting",
@@ -61,6 +63,7 @@ struct MCPMeetingTools {
         ],
         "required": ["id"],
       ] as [String: Any],
+      "annotations": ["title": "Get Meeting", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "search_meetings",
@@ -74,6 +77,7 @@ struct MCPMeetingTools {
         ],
         "required": ["query"],
       ] as [String: Any],
+      "annotations": ["title": "Search Meetings", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 

@@ -124,6 +124,7 @@ struct MCPConfigTools {
           ]
         ],
       ] as [String: Any],
+      "annotations": ["title": "Get Configuration", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_recent_interactions",
@@ -136,38 +137,48 @@ struct MCPConfigTools {
           "mode": ["type": "string", "description": "Only this mode, e.g. transcription or prompt."],
         ],
       ] as [String: Any],
+      "annotations": ["title": "Get Recent Interactions", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 
-  private static func write(_ name: String, _ description: String, _ properties: [String: Any], required: [String]) -> [String: Any] {
+  private static func write(
+    _ name: String, _ title: String, _ description: String, _ properties: [String: Any], required: [String],
+    annotations: [String: Any]
+  ) -> [String: Any] {
     var props = properties
     props["rationale"] = rationaleProperty
+    var ann = annotations
+    ann["title"] = title
     return [
       "name": name, "description": description,
       "inputSchema": ["type": "object", "properties": props, "required": required + ["rationale"]] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
+      "annotations": ann,
     ]
   }
 
   static let writeToolDefinitions: [[String: Any]] = [
     write(
-      "add_glossary_terms",
+      "add_glossary_terms", "Add Glossary Terms",
       "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there.",
       ["terms": ["type": "array", "items": ["type": "string"], "description": "Terms to add."]],
-      required: ["terms"]),
+      required: ["terms"],
+      annotations: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false]),
     write(
-      "update_system_prompt",
+      "update_system_prompt", "Update System Prompt",
       "Replaces one system prompt section with the full new text (max 5,000 characters). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible.",
       [
         "section": ["type": "string", "enum": sectionNames],
         "content": ["type": "string", "description": "The complete new text of the section."],
-      ], required: ["section", "content"]),
+      ], required: ["section", "content"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "update_writing_style_profile",
+      "update_writing_style_profile", "Update Writing Style Profile",
       "Replaces the writing style profile with the full new text (max \(WritingStyleStore.maxChars) characters). Read it first.",
-      ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"]),
+      ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "save_command",
+      "save_command", "Save Command",
       "Creates or overwrites a chat command (a saved instruction the user runs as /name).",
       [
         "name": ["type": "string", "description": "Lowercase letters, digits and dashes, max 40."],
@@ -175,10 +186,12 @@ struct MCPConfigTools {
         "scope": ["type": "string", "enum": ["meeting", "chat", "both"]],
         "label": ["type": "string", "description": "Optional button text."],
         "description": ["type": "string", "description": "Optional one-line description."],
-      ], required: ["name", "text", "scope"]),
+      ], required: ["name", "text", "scope"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "delete_command", "Moves a chat command to the Trash.",
-      ["name": ["type": "string"]], required: ["name"]),
+      "delete_command", "Delete Command", "Moves a chat command to the Trash.",
+      ["name": ["type": "string"]], required: ["name"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     [
       "name": "report_problem",
       "description":
@@ -201,6 +214,7 @@ struct MCPConfigTools {
         "required": ["title", "what_happens", "why_not_settings"],
       ] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
+      "annotations": ["title": "Report Problem", "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false],
     ],
     [
       "name": "get_proposal_status",
@@ -208,15 +222,17 @@ struct MCPConfigTools {
       "inputSchema": [
         "type": "object", "properties": ["id": ["type": "string"]], "required": ["id"],
       ] as [String: Any],
-      "_meta": ["anthropic/requiresUserInteraction": true],
+      // Read-only: unlike the other write-set tools, it needs no "_meta" requiresUserInteraction hint.
+      "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 
-  /// Tool definitions visible to a client: write tools only for the write token and level above read.
+  /// Tool definitions visible to a client: gated only by token type, not by the user's configured
+  /// access level — clients fetch tools/list once per session and cache it, so the list a write
+  /// token sees must not change as the user flips Settings between read/propose/apply. Calling a
+  /// write tool at access level "read" is still rejected in `call()`, which runs per request.
   func toolDefinitions(access: MCPAccess) -> [[String: Any]] {
-    var defs = Self.readToolDefinitions
-    if access == .write && env.accessLevel() != .read { defs += Self.writeToolDefinitions }
-    return defs
+    access == .write ? Self.readToolDefinitions + Self.writeToolDefinitions : Self.readToolDefinitions
   }
 
   // MARK: - Dispatch
