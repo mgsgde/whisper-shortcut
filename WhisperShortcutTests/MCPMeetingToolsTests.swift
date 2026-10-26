@@ -157,4 +157,68 @@ struct MCPMeetingToolsTests {
     #expect(r.text.contains("end399"))
     #expect(!r.text.contains("end0 "))
   }
+
+  // MARK: - Cursor (next_since)
+
+  private func cursor(_ text: String) throws -> String {
+    let marker = "next_since: "
+    let range = try #require(text.range(of: marker))
+    return String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  @Test("Incremental: cursor count unchanged returns only the new chunks")
+  func liveCursorIncremental() throws {
+    let dir = try makeDir()
+    try write(dir, "\(live).txt", liveText)
+    let t = MCPMeetingTools(meetingsDirectory: dir, liveStem: { self.live })
+
+    let first = t.call(name: "get_live_transcript", arguments: [:])
+    let c1 = try cursor(first.text)
+    #expect(c1.contains("@3"))  // 3 chunks at or before 02:30
+
+    // Append a new chunk after the cursor's timestamp — no history before it changes.
+    try write(dir, "\(live).txt", liveText + "[03:00] Speaker B: One more thing\n")
+    let second = t.call(name: "get_live_transcript", arguments: ["since": c1])
+    #expect(!second.isError)
+    #expect(!second.text.contains("Revised"))
+    #expect(!second.text.contains("Hello team"))
+    #expect(second.text.contains("One more thing"))
+    let c2 = try cursor(second.text)
+    #expect(c2.contains("@4"))
+  }
+
+  @Test("Splice: a chunk inserted before the cursor triggers the full-transcript Revised path")
+  func liveCursorSpliceRevised() throws {
+    let dir = try makeDir()
+    try write(dir, "\(live).txt", liveText)
+    let t = MCPMeetingTools(meetingsDirectory: dir, liveStem: { self.live })
+
+    let first = t.call(name: "get_live_transcript", arguments: [:])
+    let c1 = try cursor(first.text)
+
+    // A late-transcribed chunk at 00:30 is spliced in before the cursor's 02:30 — replaceChunks can
+    // do this when a delayed transcription result finally arrives. The at-or-before count changes.
+    let revisedText = "[00:05] Speaker A: Hello team\n\n[00:30] Speaker A: Late arrival\n\n"
+      + "[01:10] Speaker B: Budget is fine\n\n[02:30] Speaker A: Ship it Friday\n"
+    try write(dir, "\(live).txt", revisedText)
+
+    let second = t.call(name: "get_live_transcript", arguments: ["since": c1])
+    #expect(!second.isError)
+    #expect(second.text.contains("Revised: earlier parts of the transcript changed, this is the full text again."))
+    #expect(second.text.contains("Hello team"))
+    #expect(second.text.contains("Late arrival"))
+    #expect(second.text.contains("Ship it Friday"))
+  }
+
+  @Test("Backward compatible: a bare mm:ss cursor (no @N) still filters by timestamp alone")
+  func liveCursorLegacyBareFormat() throws {
+    let r = try fixture().call(name: "get_live_transcript", arguments: ["since": "01:10"])
+    #expect(!r.isError)
+    #expect(!r.text.contains("Revised"))
+    #expect(!r.text.contains("Hello team"))
+    #expect(!r.text.contains("Budget is fine"))
+    #expect(r.text.contains("Ship it Friday"))
+    let c = try cursor(r.text)
+    #expect(c.contains("@"))  // the next cursor issued is still the new format
+  }
 }

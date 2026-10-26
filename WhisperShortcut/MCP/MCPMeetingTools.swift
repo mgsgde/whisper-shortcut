@@ -25,7 +25,7 @@ struct MCPMeetingTools {
         "properties": [
           "since": [
             "type": "string",
-            "description": "Timestamp (mm:ss or h:mm:ss). Only transcript after it is returned. Use next_since from the previous call.",
+            "description": "Opaque cursor from a previous call's next_since (mm:ss or mm:ss@N). Only transcript after it is returned — unless the transcript's history before it changed, in which case the full transcript is returned again, prefixed with a notice. A bare mm:ss/h:mm:ss timestamp also works.",
           ]
         ],
       ] as [String: Any],
@@ -151,6 +151,37 @@ struct MCPMeetingTools {
     parseTimestampArgument(arguments, "since")
   }
 
+  /// `get_live_transcript`'s `since` cursor. `replaceChunks` can splice a late-transcribed chunk
+  /// in *before* a cursor already handed out, so a bare "return everything after this timestamp"
+  /// filter would permanently miss it. The `@N` suffix snapshots how many chunks were at-or-before
+  /// `since` when the cursor was issued, so the next call can detect whether that history changed.
+  private struct LiveCursor {
+    let since: TimeInterval?
+    /// nil for a bare legacy cursor (no revision check) or the first call (no cursor at all).
+    let countAtIssue: Int?
+  }
+
+  private func parseLiveSince(_ arguments: [String: Any]) -> (cursor: LiveCursor, error: String?) {
+    guard let raw = arguments["since"] as? String, !raw.isEmpty else {
+      return (LiveCursor(since: nil, countAtIssue: nil), nil)
+    }
+    if let at = raw.firstIndex(of: "@") {
+      let timePart = String(raw[raw.startIndex..<at])
+      let countPart = String(raw[raw.index(after: at)...])
+      guard let time = Self.parseTimestamp(timePart), let count = Int(countPart), count >= 0 else {
+        return (
+          LiveCursor(since: nil, countAtIssue: nil),
+          "Invalid since value \"\(raw)\". Use mm:ss, h:mm:ss, or the next_since cursor from a previous call."
+        )
+      }
+      return (LiveCursor(since: time, countAtIssue: count), nil)
+    }
+    guard let time = Self.parseTimestamp(raw) else {
+      return (LiveCursor(since: nil, countAtIssue: nil), "Invalid since value \"\(raw)\". Use mm:ss or h:mm:ss.")
+    }
+    return (LiveCursor(since: time, countAtIssue: nil), nil)
+  }
+
   private func parseTimestampArgument(_ arguments: [String: Any], _ key: String) -> (value: TimeInterval?, error: String?) {
     guard let raw = arguments[key] as? String, !raw.isEmpty else { return (nil, nil) }
     guard let v = Self.parseTimestamp(raw) else {
@@ -192,28 +223,50 @@ struct MCPMeetingTools {
   // MARK: - get_live_transcript
 
   private func getLiveTranscript(_ arguments: [String: Any]) -> (text: String, isError: Bool) {
-    let since = parseSince(arguments)
-    if let e = since.error { return (e, true) }
+    let parsed = parseLiveSince(arguments)
+    if let e = parsed.error { return (e, true) }
+    let cursor = parsed.cursor
 
-    if let stem = liveStem(), let all = chunks(for: stem) {
-      let elapsed = all.last.map { Self.format($0.startTime) } ?? "00:00"
-      let fresh = all.filter { since.value == nil || $0.startTime > since.value! }
+    guard let stem = liveStem(), let all = chunks(for: stem) else {
+      if let latest = allMeetings().first {
+        return ("No meeting is being recorded right now. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
+      }
+      return ("No meeting is being recorded right now, and there are no saved meetings.", false)
+    }
+
+    let elapsed = all.last.map { Self.format($0.startTime) } ?? "00:00"
+    func countAtOrBefore(_ t: TimeInterval) -> Int { all.filter { $0.startTime <= t }.count }
+    func nextCursor(_ t: TimeInterval) -> String { "\(Self.format(t))@\(countAtOrBefore(t))" }
+
+    // A cursor with a count snapshot whose current count no longer matches means history before
+    // it was revised (a late-transcribed chunk spliced in earlier than the cursor) — the delta
+    // filter below would then permanently skip that chunk, so return the full transcript instead.
+    let revised = cursor.countAtIssue.map { countAtOrBefore(cursor.since ?? 0) != $0 } ?? false
+
+    if cursor.since == nil || revised {
       var out = "Live meeting: \(stem)\nElapsed: \(elapsed)\n\n"
-      if fresh.isEmpty {
-        let sinceText = since.value.map { Self.format($0) } ?? "00:00"
-        out += "No new transcript since \(sinceText).\nnext_since: \(sinceText)"
+      if revised { out = "Revised: earlier parts of the transcript changed, this is the full text again.\n\n" + out }
+      if all.isEmpty {
+        out += "No transcript yet."
         return (out, false)
       }
-      out += render(fresh)
+      out += render(all)
       out = Self.capNewest(out)
-      out += "\n\nnext_since: \(Self.format(fresh.last!.startTime))"
+      out += "\n\nnext_since: \(nextCursor(all.last!.startTime))"
       return (out, false)
     }
 
-    if let latest = allMeetings().first {
-      return ("No meeting is being recorded right now. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
+    let since = cursor.since!
+    let fresh = all.filter { $0.startTime > since }
+    var out = "Live meeting: \(stem)\nElapsed: \(elapsed)\n\n"
+    if fresh.isEmpty {
+      out += "No new transcript since \(Self.format(since)).\nnext_since: \(nextCursor(since))"
+      return (out, false)
     }
-    return ("No meeting is being recorded right now, and there are no saved meetings.", false)
+    out += render(fresh)
+    out = Self.capNewest(out)
+    out += "\n\nnext_since: \(nextCursor(fresh.last!.startTime))"
+    return (out, false)
   }
 
   // MARK: - list_meetings
