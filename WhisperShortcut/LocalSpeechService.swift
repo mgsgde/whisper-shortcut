@@ -391,9 +391,11 @@ actor LocalSpeechService {
     // A model switch unloads the old model before it loads the new one, so a transcribe that
     // lands mid-switch also sees nothing loaded — and `lastLoadedModelType` is still the OLD
     // model. Reloading that would queue behind the switch, then unload the model the user just
-    // selected. So first wait for the load that is already running; its failure is its owner's
-    // to report, and the reload below then covers it.
-    if !hasLoadedModel, let running = inFlightLoad {
+    // selected. So first wait for a load of a DIFFERENT model that is already running; its
+    // failure is its owner's to report, and the reload below then covers it. A running load of
+    // the same model is joined by `initializeModel` below, which surfaces its error instead of
+    // starting a second load after it failed.
+    if !hasLoadedModel, let running = inFlightLoad, running.type != lastLoadedModelType {
       DebugLogger.log(
         "LOCAL-SPEECH: Model load in flight (\(running.type.displayName)) — waiting for it instead of reloading")
       _ = try? await running.task.value
