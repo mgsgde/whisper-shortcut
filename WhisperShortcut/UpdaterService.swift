@@ -93,13 +93,27 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
   nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(
     _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
   ) -> Bool {
-    true
+    // A scheduled update must not pop a window (and steal focus) while this process records a
+    // live meeting. Declining here defers it to the next scheduled check.
+    if Self.thisProcessIsRecordingMeeting() {
+      DebugLogger.log("UPDATER: deferring scheduled update \(update.displayVersionString) (meeting recording)")
+      return false
+    }
+    return true
+  }
+
+  /// True when the live-meeting marker belongs to this process (written at session start, cleared
+  /// at the end). File-based so it is safe from Sparkle's nonisolated delegate callbacks.
+  nonisolated private static func thisProcessIsRecordingMeeting() -> Bool {
+    guard let payload = LiveMeetingRecordingMarker.read()?.payload else { return false }
+    return payload.pid == getpid()
   }
 
   nonisolated func standardUserDriverWillHandleShowingUpdate(
     _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
   ) {
     guard !state.userInitiated else { return }
+    guard handleShowingUpdate, !Self.thisProcessIsRecordingMeeting() else { return }
     DebugLogger.log("UPDATER: scheduled update found: \(update.displayVersionString)")
     // Menu-bar (LSUIElement) app: bring Sparkle's alert in front of other windows.
     Task { @MainActor in NSApp.activate(ignoringOtherApps: true) }
