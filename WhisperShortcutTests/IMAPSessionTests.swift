@@ -70,6 +70,15 @@ struct IMAPSessionTests {
     #expect(names == ["Entwürfe", "INBOX"])
   }
 
+  @Test func listResolvesLiteralFolderName() async throws {
+    let transport = ScriptedTransport(chunks: [
+      "* LIST (\\HasNoChildren) \"/\" {9}\r\nMy Folder\r\n* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\nA001 OK LIST completed\r\n",
+    ])
+    let session = IMAPSession(transport: transport)
+    let names = try await session.listMailboxes()
+    #expect(names == ["My Folder", "INBOX"])
+  }
+
   @Test func examineReadsExists() async throws {
     let transport = ScriptedTransport(chunks: [
       "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n* 1212 EXISTS\r\n* 0 RECENT\r\nA001 OK [READ-ONLY] EXAMINE completed\r\n",

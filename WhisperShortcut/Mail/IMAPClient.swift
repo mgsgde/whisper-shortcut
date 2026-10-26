@@ -563,7 +563,15 @@ actor IMAPSession {
   }
 
   private func mailboxName(in response: ServerResponse) -> String? {
-    if case .literal(let data) = response.segments.last {
+    // readResponse appends the (usually empty) rest of the line after a literal, so the literal
+    // is the mailbox name when only whitespace text follows it.
+    if let index = response.segments.lastIndex(where: { if case .literal = $0 { return true } else { return false } }),
+      case .literal(let data) = response.segments[index],
+      response.segments[(index + 1)...].allSatisfy({
+        if case .text(let text) = $0 { return text.allSatisfy(\.isWhitespace) }
+        return false
+      })
+    {
       let name = String(decoding: data, as: UTF8.self)
       return Self.decodeModifiedUTF7(name)
     }
