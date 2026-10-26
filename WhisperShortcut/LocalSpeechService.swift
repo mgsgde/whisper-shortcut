@@ -754,6 +754,9 @@ actor LocalSpeechService {
         stage: "decode",
         model: currentModelType?.rawValue ?? "unknown")
       throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
+    } catch is CancellationError {
+      // A cancelled decode is not a missing model — same pass-through as the Parakeet path.
+      throw CancellationError()
     } catch {
       let errorMessage = error.localizedDescription
       DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")
