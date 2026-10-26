@@ -5,7 +5,7 @@ rendered dark + light in a throwaway test). Deviation: step 3 (queue row on the 
 built. The issue carries `labels=ai-report` instead, so grooming can pick reports up from GitHub.
 Added with it: `default_length` per section in `get_configuration` and a `prompts` focus in the
 tune recipe, for setups whose instructions grew long. Telemetry `schema.json` lists
-`glossaryEchoRemoved`; until the server is redeployed it drops that count silently. Builds on `mcp-config-access.md` (v2, shipped in 8.57).
+`glossaryEchoRemoved`; the telemetry server was redeployed with it on 2026-10-26. Merged as #213; ships with 8.59. Builds on `mcp-config-access.md` (v2, shipped in 8.57).
 
 ## Why
 
