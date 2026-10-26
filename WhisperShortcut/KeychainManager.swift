@@ -214,42 +214,41 @@ class KeychainManager: KeychainManaging {
     writeSecret(value, account: account)
   }
 
+  /// Marks `account` present in the cache with `value`: lock, write `valueCache` /
+  /// `knownPresentAccounts` / `knownAbsentAccounts`, unlock. Every path that just confirmed or
+  /// obtained a Keychain item's value (a successful write, a successful read, a migrated-on-read
+  /// item, the eager legacy migration sweep) repeated this same four-line block (R85).
+  private func cachePresent(_ account: String, _ value: String) {
+    lock.lock()
+    valueCache[account] = value
+    knownPresentAccounts.insert(account)
+    knownAbsentAccounts.remove(account)
+    lock.unlock()
+  }
+
   private func writeSecret(_ value: String, account accountName: String) -> Bool {
     guard let data = value.data(using: .utf8) else {
       return false
     }
 
-    // Update-in-place first, add only if the item doesn't exist yet. The previous
-    // delete-then-add sequence was destructive: when SecItemAdd failed (locked/broken
-    // login keychain, sandbox denial), the old key was already deleted — observed in the
-    // wild as "my API keys disappear".
-    let match = itemQuery(account: accountName)
     // ThisDeviceOnly so a Keychain dump / iCloud Keychain sync cannot take the
     // API keys off this Mac. Included on UPDATE as well as add so items written
     // before this accessibility class are repaired in place rather than left
     // at the older AfterFirstUnlock (syncable) class forever.
     let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    let attributes: [String: Any] = [
-      kSecValueData as String: data,
-      kSecAttrAccessible as String: accessibility,
-    ]
-    var status = store.update(match, attributes)
-    if status == errSecItemNotFound {
-      var add = match
-      add[kSecValueData as String] = data
-      add[kSecAttrAccessible as String] = accessibility
-      status = store.add(add)
-    }
+    // Update-in-place first, add only if the item doesn't exist yet. The previous
+    // delete-then-add sequence was destructive: when SecItemAdd failed (locked/broken
+    // login keychain, sandbox denial), the old key was already deleted — observed in the
+    // wild as "my API keys disappear".
+    let status = upsert(account: accountName, data: data, accessibility: accessibility, updateFirst: true)
 
     // No legacy cleanup here: an unflagged delete would take this new data protection item with
     // it (see "Storage backend"). A stale legacy copy is never migrated over an existing item.
 
-    lock.lock()
     // Cache the value even when persisting failed: the key then still works for this
     // session (the UI warns that it won't survive a restart) instead of vanishing.
-    valueCache[accountName] = value
-    knownPresentAccounts.insert(accountName)
-    knownAbsentAccounts.remove(accountName)
+    cachePresent(accountName, value)
+    lock.lock()
     if status == errSecSuccess {
       lastWriteErrors.removeValue(forKey: accountName)
     } else {
@@ -260,6 +259,37 @@ class KeychainManager: KeychainManaging {
       DebugLogger.logError("KEYCHAIN: save failed for account \(accountName): status=\(status)")
     }
     return status == errSecSuccess
+  }
+
+  /// Writes `data` to `account`'s Keychain item, trying one order (update vs. add) first and
+  /// falling back to the other if that attempt reports the item in the opposite state. Both
+  /// `writeSecret` and `migrateLegacyItem` had their own copy-pasted two-call sequence (R85).
+  /// `updateFirst: true` (writeSecret's hot path: the item usually already exists) tries
+  /// `SecItemUpdate` then `SecItemAdd` on `errSecItemNotFound`; `updateFirst: false`
+  /// (`migrateLegacyItem`: the item is being copied in for the first time, so it usually does
+  /// *not* exist yet) tries `SecItemAdd` then `SecItemUpdate` on `errSecDuplicateItem`.
+  private func upsert(account accountName: String, data: Data, accessibility: CFString, updateFirst: Bool) -> OSStatus {
+    let match = itemQuery(account: accountName)
+    let attributes: [String: Any] = [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: accessibility,
+    ]
+    func update() -> OSStatus { store.update(match, attributes) }
+    func add() -> OSStatus {
+      var attrs = match
+      attrs[kSecValueData as String] = data
+      attrs[kSecAttrAccessible as String] = accessibility
+      return store.add(attrs)
+    }
+    if updateFirst {
+      var status = update()
+      if status == errSecItemNotFound { status = add() }
+      return status
+    } else {
+      var status = add()
+      if status == errSecDuplicateItem { status = update() }
+      return status
+    }
   }
 
   /// OSStatus of the most recent failed write per account, cleared on the next successful
@@ -305,20 +335,12 @@ class KeychainManager: KeychainManaging {
     if status == errSecSuccess, let data = result as? Data,
       let apiKey = String(data: data, encoding: .utf8)
     {
-      lock.lock()
-      valueCache[accountName] = apiKey
-      knownPresentAccounts.insert(accountName)
-      knownAbsentAccounts.remove(accountName)
-      lock.unlock()
+      cachePresent(accountName, apiKey)
       return apiKey
     } else {
       if status == errSecItemNotFound {
         if usesDataProtection, let migrated = migrateLegacyItem(account: accountName) {
-          lock.lock()
-          valueCache[accountName] = migrated
-          knownPresentAccounts.insert(accountName)
-          knownAbsentAccounts.remove(accountName)
-          lock.unlock()
+          cachePresent(accountName, migrated)
           return migrated
         }
         lock.lock()
@@ -368,11 +390,7 @@ class KeychainManager: KeychainManaging {
         continue
       }
       if let value = migrateLegacyItem(account: account) {
-        lock.lock()
-        valueCache[account] = value
-        knownPresentAccounts.insert(account)
-        knownAbsentAccounts.remove(account)
-        lock.unlock()
+        cachePresent(account, value)
         migrated += 1
       }
     }
@@ -399,15 +417,9 @@ class KeychainManager: KeychainManaging {
     }
 
     let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    let match = itemQuery(account: accountName)
-    var add = match
-    add[kSecValueData as String] = data
-    add[kSecAttrAccessible as String] = accessibility
-    var writeStatus = store.add(add)
-    if writeStatus == errSecDuplicateItem {
-      writeStatus = store.update(
-        match, [kSecValueData as String: data, kSecAttrAccessible as String: accessibility])
-    }
+    // Add-first: unlike writeSecret's hot path, this item is being copied in from the legacy
+    // store for the first time, so it is not expected to exist yet in the data protection store.
+    let writeStatus = upsert(account: accountName, data: data, accessibility: accessibility, updateFirst: false)
     if writeStatus == errSecSuccess {
       DebugLogger.log("KEYCHAIN: migrated account \(accountName) to the data protection keychain")
     } else {

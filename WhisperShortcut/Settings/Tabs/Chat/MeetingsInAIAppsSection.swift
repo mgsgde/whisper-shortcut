@@ -35,7 +35,7 @@ struct MeetingsInAIAppsSection: View {
 
   /// The key the setup cards carry.
   private var setupToken: String {
-    accessLevel == .read ? server.token() : server.writeToken()
+    server.token(accessLevel == .read ? .mcpReadToken : .mcpWriteToken)
   }
 
   var body: some View {
@@ -92,8 +92,8 @@ struct MeetingsInAIAppsSection: View {
           isPresented: $showRegenerateConfirm
         ) {
           Button("Create New Key", role: .destructive) {
-            server.regenerateToken()
-            server.regenerateWriteToken()
+            server.regenerate(.mcpReadToken)
+            server.regenerate(.mcpWriteToken)
           }
         } message: {
           Text("Claude and other apps set up with the current key lose access until you copy the new setup into them.")

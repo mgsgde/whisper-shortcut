@@ -32,6 +32,13 @@ enum KeychainCredential: String, CaseIterable {
   /// validation, "has any key" checks).
   case chatGPTPlan = "chatgpt-plan-credentials"
 
+  /// MCP server bearer tokens. Previously stored through `KeychainManager.saveSecret(account:)`
+  /// with these same raw account names (R85) — same service, account and accessibility, so
+  /// adding these cases addresses the keychain items already on users' Macs rather than orphaning
+  /// them.
+  case mcpReadToken = "mcp-server-token"
+  case mcpWriteToken = "mcp-server-write-token"
+
   /// Keychain account name this credential is stored under.
   var accountName: String { rawValue }
 

@@ -9,8 +9,6 @@ import Security
 final class MCPServer: ObservableObject {
   static let shared = MCPServer()
   static let defaultPort: UInt16 = 47823
-  private static let tokenAccount = "mcp-server-token"
-  private static let writeTokenAccount = "mcp-server-write-token"
 
   enum Status: Equatable {
     case stopped
@@ -44,57 +42,38 @@ final class MCPServer: ObservableObject {
   var endpointURL: String { "http://127.0.0.1:\(port)/mcp" }
 
   // MARK: - Token
+  //
+  // Read and write token share the same lifecycle (lookup, mint-on-first-use, regenerate); they
+  // used to be two hand-copied method pairs, one per Keychain account (R85).
 
   /// Cached after the first read: every request and every Settings redraw asks for it, and a
   /// failed Keychain write must not mint a different key on each call.
-  private var cachedToken: String?
+  private var cachedTokens: [KeychainCredential: String] = [:]
 
-  func token() -> String {
+  func token(_ credential: KeychainCredential) -> String {
     stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedToken { return cachedToken }
-    if let existing = KeychainManager.shared.secret(account: Self.tokenAccount), !existing.isEmpty {
-      cachedToken = existing
+    if let cached = cachedTokens[credential] { return cached }
+    if let existing = KeychainManager.shared.get(credential), !existing.isEmpty {
+      cachedTokens[credential] = existing
       return existing
     }
-    let fresh = makeAndStoreToken()
-    cachedToken = fresh
+    let fresh = makeAndStoreToken(credential)
+    cachedTokens[credential] = fresh
     return fresh
   }
 
-  func regenerateToken() {
-    let fresh = makeAndStoreToken()
-    stateLock.lock(); cachedToken = fresh; stateLock.unlock()
-    DebugLogger.log("MCP-SERVER: Token regenerated")
+  func regenerate(_ credential: KeychainCredential) {
+    let fresh = makeAndStoreToken(credential)
+    stateLock.lock(); cachedTokens[credential] = fresh; stateLock.unlock()
+    DebugLogger.log("MCP-SERVER: Token regenerated (\(credential.accountName))")
     objectWillChange.send()
   }
 
-  private var cachedWriteToken: String?
-
-  /// Grants read and write. Created on first use, cached like the read token.
-  func writeToken() -> String {
-    stateLock.lock(); defer { stateLock.unlock() }
-    if let cachedWriteToken { return cachedWriteToken }
-    if let existing = KeychainManager.shared.secret(account: Self.writeTokenAccount), !existing.isEmpty {
-      cachedWriteToken = existing
-      return existing
-    }
-    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
-    cachedWriteToken = fresh
-    return fresh
-  }
-
-  func regenerateWriteToken() {
-    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
-    stateLock.lock(); cachedWriteToken = fresh; stateLock.unlock()
-    DebugLogger.log("MCP-SERVER: Write token regenerated")
-    objectWillChange.send()
-  }
-
-  private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String {
+  private func makeAndStoreToken(_ credential: KeychainCredential) -> String {
     var bytes = [UInt8](repeating: 0, count: 32)
     _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
     let token = bytes.map { String(format: "%02x", $0) }.joined()
-    _ = KeychainManager.shared.saveSecret(token, account: account)
+    _ = KeychainManager.shared.save(token, for: credential)
     return token
   }
 
@@ -132,7 +111,7 @@ final class MCPServer: ObservableObject {
           // them to its provider. Checked per request so turning the mode on takes effect at once.
           if OfflineMode.isEnabled { return .empty(503) }
           return Self.handle(
-            request, readToken: self.token(), writeToken: self.writeToken(), dispatcher: dispatcher)
+            request, readToken: self.token(.mcpReadToken), writeToken: self.token(.mcpWriteToken), dispatcher: dispatcher)
         }
         server = s
         status = .running(port: s.port)
