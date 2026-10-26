@@ -68,6 +68,9 @@ final class LoopbackHTTPServer {
   private let lock = NSLock()
   private var isStopped = false
   private let workQueue = DispatchQueue(label: "mcp.loopback.http.work", qos: .userInitiated, attributes: .concurrent)
+  /// Caps connections actually being served; beyond this, new connections get a fast 503 instead of
+  /// piling up worker threads behind a slow or stalled client.
+  private let connectionSemaphore = DispatchSemaphore(value: 6)
 
   init(port requestedPort: UInt16, handler: @escaping (HTTPRequest) -> HTTPResponse) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -142,7 +145,14 @@ final class LoopbackHTTPServer {
         if errno == EINTR || errno == ECONNABORTED { continue }
         return
       }
+      guard connectionSemaphore.wait(timeout: .now()) == .success else {
+        // At the concurrency cap: reject fast instead of queuing behind in-flight connections.
+        write(client, HTTPResponse.json(["error": "busy"], status: 503))
+        close(client)
+        continue
+      }
       workQueue.async { [weak self] in
+        defer { self?.connectionSemaphore.signal() }
         self?.serve(client)
         close(client)
       }
