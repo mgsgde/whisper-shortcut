@@ -182,6 +182,7 @@ final class LiveMeetingSession: NSObject {
     // timers see `run !== currentRun` and no-op.
     if let previous = currentRun {
       DebugLogger.logWarning("LIVE-MEETING: Starting while run \(previous.id) was still current; orphaning it")
+      previous.recorder?.stopSession()
       previous.safeguardTimer?.invalidate()
       previous.safeguardTimer = nil
     }
@@ -232,7 +233,7 @@ final class LiveMeetingSession: NSObject {
   /// Records the user's meeting name / discard choice, then stops. Posted by the in-window
   /// "end meeting" affordance.
   func end(preferredName name: String?, discard shouldDiscard: Bool) {
-    let run = currentRun ?? MeetingRun()
+    guard let run = currentRun else { return stopWithoutRun() }
     run.preferredName = name
     run.discard = shouldDiscard
     stop(run: run)
@@ -260,9 +261,23 @@ final class LiveMeetingSession: NSObject {
   }
 
   func stop() {
-    // With no run (the owner still shows a meeting but the session holds nothing) a throwaway run
-    // keeps the old behaviour: the drain ends via the safety net and `onFinished` is reported.
-    stop(run: currentRun ?? MeetingRun())
+    guard let run = currentRun else { return stopWithoutRun() }
+    stop(run: run)
+  }
+
+  /// Stop or end with no run: nothing to drain. If the owner still shows a meeting, report it
+  /// finished right away. Otherwise it is a late or duplicate request (double click, stale end
+  /// button) and must not touch app state — a 30 s fake drain here used to reset a dictation the
+  /// user had started meanwhile to `.idle`, or leave "Finishing meeting" on through the next one.
+  private func stopWithoutRun() {
+    // The recording marker is left alone: with no run this process wrote none, and one left by a
+    // crashed earlier process is what the next launch needs to offer the resume.
+    guard appStateIsRecordingMeeting() else {
+      DebugLogger.log("LIVE-MEETING: Stop requested with no meeting run — ignoring")
+      return
+    }
+    DebugLogger.logWarning("LIVE-MEETING: Stop requested with no meeting run while app state shows one — finishing now")
+    onFinished()
   }
 
   private func stop(run: MeetingRun) {
@@ -1123,7 +1138,13 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         }()
         // Keep the audio: losing a meeting because the Wi-Fi dropped is not acceptable, and the
         // chunk can be transcribed later at its original timestamp.
-        let kept = stem.map {
+        // A run the user discarded keeps nothing — a retained chunk would bring the meeting back on
+        // the next backlog retry. A renamed run retains under its new stem, not the one captured
+        // at the start, so the retry doesn't split it into a second transcript.
+        let currentStem = await MainActor.run {
+          run.discard ? nil : (run.transcriptURL?.deletingPathExtension().lastPathComponent ?? stem)
+        }
+        let kept = currentStem.map {
           MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }

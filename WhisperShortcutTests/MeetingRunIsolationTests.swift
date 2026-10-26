@@ -40,14 +40,14 @@ struct MeetingRunIsolationTests {
     return url
   }
 
-  private func makeSession(_ harness: Harness) -> LiveMeetingSession {
+  private func makeSession(_ harness: Harness, appShowsMeeting: Bool = true) -> LiveMeetingSession {
     LiveMeetingSession(
       transcribeChunk: { url in
         await harness.gates[url.lastPathComponent]?.wait()
         return "text of \(url.lastPathComponent)"
       },
       cleanUpAudioFile: { _ in },
-      appStateIsRecordingMeeting: { true },
+      appStateIsRecordingMeeting: { appShowsMeeting },
       onStopping: {},
       onFinished: { harness.finishedCount += 1 },
       onBacklogChanged: {})
@@ -144,5 +144,22 @@ struct MeetingRunIsolationTests {
 
     #expect(harness.finishedCount == 0)
     #expect(session.currentRun === run2)
+  }
+
+  @Test("A stray stop or end with no run leaves app state alone")
+  func strayStopWithNoRunIsIgnored() {
+    let harness = Harness(gates: [:])
+    let session = makeSession(harness, appShowsMeeting: false)
+    session.stop()
+    session.end(preferredName: "late", discard: false)
+    #expect(harness.finishedCount == 0)
+  }
+
+  @Test("Stop with no run while the app still shows a meeting finishes at once, without a drain")
+  func stopWithNoRunWhileAppShowsMeetingFinishesNow() {
+    let harness = Harness(gates: [:])
+    let session = makeSession(harness, appShowsMeeting: true)
+    session.stop()
+    #expect(harness.finishedCount == 1)
   }
 }
