@@ -39,6 +39,36 @@ struct MIMEDecoderTests {
     #expect(latin.subject == "Grüße")
   }
 
+  @Test func mixedKeepsAllTextPartsInOrder() {
+    let decoded = MIMEDecoder.decode(mail("""
+    From: Ann <ann@example.com>
+    Subject: Mixed
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="b"
+
+    --b
+    Content-Type: text/plain; charset=utf-8
+
+    FIRSTPART
+    --b
+    Content-Type: image/png; name="pic.png"
+    Content-Disposition: inline; filename="pic.png"
+    Content-Transfer-Encoding: base64
+
+    iVBORw0KGgo=
+    --b
+    Content-Type: text/plain; charset=utf-8
+
+    SECONDPART
+    --b--
+    """))
+    let first = decoded.body.range(of: "FIRSTPART")
+    let second = decoded.body.range(of: "SECONDPART")
+    #expect(first != nil && second != nil)
+    if let first, let second { #expect(first.lowerBound < second.lowerBound) }
+    #expect(decoded.attachments.map(\.name) == ["pic.png"])
+  }
+
   @Test func nestedAlternativePrefersPlain() {
     let decoded = MIMEDecoder.decode(mail("""
     From: Ann <ann@example.com>

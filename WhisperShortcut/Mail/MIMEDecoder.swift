@@ -60,12 +60,20 @@ enum MIMEDecoder {
       guard let boundary = headers.parameter("content-type", "boundary"), !boundary.isEmpty else {
         return Collected()
       }
+      // multipart/alternative holds one text in several renditions: keep the first. Every other
+      // multipart (mixed, related, ...) holds consecutive parts of one message: join them.
+      let isAlternative = type == "multipart/alternative"
       var merged = Collected()
       for part in splitMultipart(body, boundary: boundary) {
         let (partHeaders, partBody) = splitHeaderBody(part)
         let child = collect(headers: parseHeaders(partHeaders), body: partBody)
-        if merged.plain == nil { merged.plain = child.plain }
-        if merged.html == nil { merged.html = child.html }
+        if isAlternative {
+          if merged.plain == nil { merged.plain = child.plain }
+          if merged.html == nil { merged.html = child.html }
+        } else {
+          merged.plain = joinText(merged.plain, child.plain)
+          merged.html = joinText(merged.html, child.html)
+        }
         merged.attachments += child.attachments
         if !child.forwarded.isEmpty {
           merged.forwarded += (merged.forwarded.isEmpty ? "" : "\n\n") + child.forwarded
@@ -100,6 +108,12 @@ enum MIMEDecoder {
       return Collected(attachments: [(name, decoded.count)])
     }
     return Collected()
+  }
+
+  private static func joinText(_ first: String?, _ second: String?) -> String? {
+    guard let first else { return second }
+    guard let second, !second.isEmpty else { return first }
+    return first.isEmpty ? second : first + "\n\n" + second
   }
 
   /// A nested message rendered as text: marker, From/Subject when present, then its body
