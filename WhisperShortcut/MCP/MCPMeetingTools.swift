@@ -152,13 +152,11 @@ struct MCPMeetingTools {
     return (v, nil)
   }
 
+  /// This site's default and range over `ChatToolRegistry.intArgument`'s shared, hostile-input-safe
+  /// parse (Int/Double/NSNumber/String, clamped and NaN/infinity-safe) — used to have its own
+  /// smaller Int/Double-only parse copied here (R84).
   private func intArg(_ arguments: [String: Any], _ key: String, default d: Int, max m: Int) -> Int {
-    let v: Int?
-    // `Int(Double)` traps on NaN, infinity and anything past Int.max ("limit": 1e20 from a model).
-    if let i = arguments[key] as? Int { v = i } else if let dbl = arguments[key] as? Double, dbl.isFinite {
-      v = Int(min(max(dbl, -1e9), 1e9))
-    } else { v = nil }
-    return min(max(v ?? d, 1), m)
+    min(max(ChatToolRegistry.intArgument(arguments, key, default: d), 1), m)
   }
 
   private func render(_ chunks: [LiveMeetingChunk]) -> String {

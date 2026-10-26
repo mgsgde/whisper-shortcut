@@ -20,6 +20,22 @@ struct MCPChange: Codable, Identifiable {
   var undoneAt: Date?
 }
 
+extension MCPChange {
+  /// This change's `kind`/`target` pair as the single addressable value `MCPConfigTargets.read`
+  /// takes, so `undo()` can ask "what's there now?" the same way the write tools do, instead of
+  /// re-deriving the mapping itself (R84). `glossaryAdd` has no `MCPConfigTarget` case of its own
+  /// (it shares `.glossary` with the section it targets); nil there isn't reached by `undo()`,
+  /// which only compares `.systemPrompt`/`.writingStyle`/command kinds against `newContent`.
+  var configTarget: MCPConfigTarget? {
+    switch kind {
+    case .glossaryAdd: return .glossary
+    case .systemPrompt: return SystemPromptSection(rawValue: target).map(MCPConfigTarget.systemPrompt)
+    case .writingStyle: return .writingStyle
+    case .saveCommand, .deleteCommand: return .command(target)
+    }
+  }
+}
+
 enum MCPUndoResult: Equatable {
   case undone
   /// The target changed after the AI app's edit; nothing was written. Carries what is there now.
@@ -126,7 +142,7 @@ final class MCPChangeLog: ObservableObject {
         return .notFound
       }
       let change = changes[index]
-      let current = targets.current(kind: change.kind, target: change.target)
+      let current = change.configTarget.flatMap { targets.read($0) }
       guard MCPConfigTargets.normalized(current) == MCPConfigTargets.normalized(change.newContent) else {
         DebugLogger.log("MCP-CONFIG: undo \(change.kind.rawValue) \(change.target) rejected (changed since)")
         return .conflict(current: current)

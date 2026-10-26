@@ -74,11 +74,11 @@ struct MCPConfigTools {
   static let maxFieldCharacters = 1_500
   static let maxGlossaryTermsPerCall = 50
 
-  /// Model-facing section names, in display order.
-  static let sections: [(name: String, section: SystemPromptSection)] = [
-    ("dictation", .dictation), ("whisper_glossary", .whisperGlossary),
-    ("dictate_prompt", .promptMode), ("chat", .chat), ("read_aloud_rewrite", .readAloudRewrite),
-  ]
+  /// Model-facing section names, in display order. This is MCPConfigTools' own allow-list of
+  /// which sections it exposes (all five) — `SystemPromptSection.modelFacingName` is just the
+  /// shared name mapping, not an endorsement to expose every section everywhere.
+  static let sections: [(name: String, section: SystemPromptSection)] =
+    [.dictation, .whisperGlossary, .promptMode, .chat, .readAloudRewrite].map { ($0.modelFacingName, $0) }
   /// Always a proposal, at every access level: applied to everything the user dictates, to the
   /// in-app model itself, or the only way to remove glossary lines.
   static let alwaysProposalSections: Set<String> = ["dictation", "chat", "whisper_glossary"]
@@ -275,14 +275,38 @@ struct MCPConfigTools {
     (json(["status": "pending_review", "id": id, "message": "Waiting for the user to accept it in WhisperShortcut."]), false)
   }
 
-  private func appliedResult(_ outcome: Result<String, Error>, tool: String, len: Int) -> MCPToolResult {
+  private func appliedResult(
+    _ outcome: Result<String, Error>, tool: String, len: Int, extra: [String: Any] = [:]
+  ) -> MCPToolResult {
     switch outcome {
     case .success(let changeID):
       log(tool, "applied", len: len)
-      return (json(["status": "applied", "change_id": changeID]), false)
+      var out: [String: Any] = ["status": "applied", "change_id": changeID]
+      for (key, value) in extra { out[key] = value }
+      return (json(out), false)
     case .failure(let error):
       return reject(tool, "write failed", error.localizedDescription)
     }
+  }
+
+  /// Shared propose-or-apply branch: every write tool either files a proposal (and logs
+  /// "proposed") or applies at once through `appliedResult` (and logs "applied"). The four write
+  /// tools each copy-pasted this branch (R84); the no-op short-circuit before it and the specific
+  /// `create`/`apply` calls stay with each tool, since those differ in shape per target.
+  private func proposeOrApply(
+    tool: String, proposalOnly: Bool, length: Int, reason: String? = nil,
+    create: () throws -> MCPProposal, apply: () -> Result<String, Error>
+  ) -> MCPToolResult {
+    if proposalOnly {
+      do {
+        let p = try create()
+        log(tool, "proposed", reason, len: length)
+        return pendingResult(p.id)
+      } catch {
+        return reject(tool, "too many pending", error.localizedDescription)
+      }
+    }
+    return appliedResult(apply(), tool: tool, len: length)
   }
 
   // MARK: - get_configuration
@@ -356,7 +380,9 @@ struct MCPConfigTools {
         "get_recent_interactions", "toggle off",
         "Recent dictations are not shared. Turn on \(missing.joined(separator: " and ")) in WhisperShortcut Settings.")
     }
-    let limit = min(max((args["limit"] as? Int) ?? 15, 1), 30)
+    // Shared with ChatTools' chat-tool arg parsing and MCPMeetingTools (R84): handles a
+    // model-supplied Double/NSNumber/String limit, not just a bare Int.
+    let limit = min(max(ChatToolRegistry.intArgument(args, "limit", default: 15), 1), 30)
     let mode = (args["mode"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     func cap(_ s: String) -> String {
       s.count > Self.maxFieldCharacters ? String(s.prefix(Self.maxFieldCharacters)) + "…" : s
@@ -451,13 +477,9 @@ struct MCPConfigTools {
       }
       let known = Set(GlossaryLearning.entries(in: current).map { GlossaryLearning.fold($0.term) })
       let added = GlossaryLearning.entries(in: merged).map(\.term).filter { !known.contains(GlossaryLearning.fold($0)) }
-      switch env.applier.applyGlossary(merged: merged, rationale: r.value!) {
-      case .success(let id):
-        log(tool, "applied", len: merged.count)
-        return (json(["status": "applied", "change_id": id, "added": added, "glossary_length": merged.count]), false)
-      case .failure(let error):
-        return reject(tool, "write failed", error.localizedDescription)
-      }
+      return appliedResult(
+        env.applier.applyGlossary(merged: merged, rationale: r.value!), tool: tool, len: merged.count,
+        extra: ["added": added, "glossary_length": merged.count])
     }
   }
 
@@ -478,25 +500,21 @@ struct MCPConfigTools {
     }
     let proposalOnly = Self.alwaysProposalSections.contains(name) || env.accessLevel() == .propose
     return MCPMain.run {
-      let previous = env.targets.systemPrompts.loadSection(section)
+      let previous = env.targets.read(.systemPrompt(section))
       if MCPConfigTargets.normalized(previous) == MCPConfigTargets.normalized(content) {
         log(tool, "applied", "no-op", len: content.count)
         return (json(["status": "no_change", "message": "The section already has this text."]), false)
       }
-      if proposalOnly {
-        do {
-          let p = try env.proposals.create(
+      return proposeOrApply(
+        tool: tool, proposalOnly: proposalOnly, length: content.count, reason: name,
+        create: {
+          try env.proposals.create(
             kind: .systemPrompt, section: section.rawValue, previousContent: previous,
             proposedContent: content, rationale: r.value!)
-          log(tool, "proposed", name, len: content.count)
-          return pendingResult(p.id)
-        } catch {
-          return reject(tool, "too many pending", error.localizedDescription)
-        }
-      }
-      return appliedResult(
-        env.applier.applySystemPrompt(section: section, content: content, rationale: r.value!, viaProposal: false),
-        tool: tool, len: content.count)
+        },
+        apply: {
+          env.applier.applySystemPrompt(section: section, content: content, rationale: r.value!, viaProposal: false)
+        })
     }
   }
 
@@ -513,23 +531,21 @@ struct MCPConfigTools {
       return reject(tool, "too long", "content is \(content.count) characters; the limit is \(WritingStyleStore.maxChars). Shorten it.")
     }
     return MCPMain.run {
-      let previous = env.targets.current(kind: .writingStyle, target: "profile")
-      if previous == content {
+      let previous = env.targets.read(.writingStyle)
+      if MCPConfigTargets.normalized(previous) == MCPConfigTargets.normalized(content) {
+        log(tool, "applied", "no-op", len: content.count)
         return (json(["status": "no_change", "message": "The profile already has this text."]), false)
       }
-      if env.accessLevel() == .propose {
-        do {
-          let p = try env.proposals.create(
+      let proposalOnly = env.accessLevel() == .propose
+      return proposeOrApply(
+        tool: tool, proposalOnly: proposalOnly, length: content.count,
+        create: {
+          try env.proposals.create(
             kind: .writingStyle, previousContent: previous, proposedContent: content, rationale: r.value!)
-          log(tool, "proposed", len: content.count)
-          return pendingResult(p.id)
-        } catch {
-          return reject(tool, "too many pending", error.localizedDescription)
-        }
-      }
-      return appliedResult(
-        env.applier.applyWritingStyle(content: content, rationale: r.value!, viaProposal: false),
-        tool: tool, len: content.count)
+        },
+        apply: {
+          env.applier.applyWritingStyle(content: content, rationale: r.value!, viaProposal: false)
+        })
     }
   }
 
@@ -565,24 +581,20 @@ struct MCPConfigTools {
       return reject(tool, "too large", "The command is larger than 32 KB.")
     }
     return MCPMain.run {
-      if env.accessLevel() == .propose {
-        let previous = loadCommands().first { $0.name == name }?.body
-        do {
-          let p = try env.proposals.create(
+      let previous = env.targets.read(.command(name))
+      return proposeOrApply(
+        tool: tool, proposalOnly: env.accessLevel() == .propose, length: text.count,
+        create: {
+          try env.proposals.create(
             kind: .saveCommand, commandName: name, commandScope: scope.rawValue, commandLabel: label,
             commandDescription: description, previousContent: previous, proposedContent: text,
             rationale: r.value!)
-          log(tool, "proposed", len: text.count)
-          return pendingResult(p.id)
-        } catch {
-          return reject(tool, "too many pending", error.localizedDescription)
-        }
-      }
-      return appliedResult(
-        env.applier.applySaveCommand(
-          name: name, text: text, scope: scope, label: label, description: description,
-          rationale: r.value!, viaProposal: false),
-        tool: tool, len: text.count)
+        },
+        apply: {
+          env.applier.applySaveCommand(
+            name: name, text: text, scope: scope, label: label, description: description,
+            rationale: r.value!, viaProposal: false)
+        })
     }
   }
 
@@ -594,24 +606,19 @@ struct MCPConfigTools {
     if let e = n.error { return e }
     let name = n.name!
     return MCPMain.run {
-      guard env.targets.current(kind: .deleteCommand, target: name) != nil else {
+      guard let previous = env.targets.read(.command(name)) else {
         return reject(tool, "not found", "No command named \(name).")
       }
-      if env.accessLevel() == .propose {
-        let previous = loadCommands().first { $0.name == name }?.body
-        do {
-          let p = try env.proposals.create(
+      return proposeOrApply(
+        tool: tool, proposalOnly: env.accessLevel() == .propose, length: 0,
+        create: {
+          try env.proposals.create(
             kind: .deleteCommand, commandName: name, previousContent: previous, proposedContent: nil,
             rationale: r.value!)
-          log(tool, "proposed")
-          return pendingResult(p.id)
-        } catch {
-          return reject(tool, "too many pending", error.localizedDescription)
-        }
-      }
-      return appliedResult(
-        env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false),
-        tool: tool, len: 0)
+        },
+        apply: {
+          env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false)
+        })
     }
   }
 

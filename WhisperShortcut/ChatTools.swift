@@ -333,7 +333,7 @@ enum ChatToolRegistry {
   /// that was correct. `whisperGlossary` stays with `remember_dictation_term`, which additionally
   /// prunes competing spellings.
   static let editableInstructionSections: [String: SystemPromptSection] = [
-    "dictate_prompt": .promptMode
+    SystemPromptSection.promptMode.modelFacingName: .promptMode
   ]
 
   static let instructionsFunctionDeclarations: [[String: Any]] = [

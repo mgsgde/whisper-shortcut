@@ -26,6 +26,20 @@ enum SystemPromptSection: String, CaseIterable {
     }
   }
 
+  /// Name an AI app or the chat model uses to address this section — distinct from `rawValue`,
+  /// which is the on-disk/history key (e.g. `.chat`'s rawValue is the legacy "geminiChat").
+  /// `ChatTools.editableInstructionSections` and `MCPConfigTools.sections` each mapped this same
+  /// name by hand (R84); each tool still keeps its own allow-list of which sections it exposes.
+  var modelFacingName: String {
+    switch self {
+    case .dictation: return "dictation"
+    case .whisperGlossary: return "whisper_glossary"
+    case .promptMode: return "dictate_prompt"
+    case .chat: return "chat"
+    case .readAloudRewrite: return "read_aloud_rewrite"
+    }
+  }
+
   /// Legacy headers supported for backward compatibility when reading existing files.
   /// Legacy Prompt Read Mode headers are recognized but skipped (section removed).
   private static let legacyHeaders: [String: SystemPromptSection] = [
