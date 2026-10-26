@@ -313,6 +313,9 @@ final class LiveMeetingSession: NSObject {
     }
     finalized = true
     LiveMeetingRecordingMarker.clear()
+    #if !APP_STORE && canImport(Sparkle)
+    Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() }
+    #endif
 
     let shouldDiscard = discard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(shouldDiscard))")

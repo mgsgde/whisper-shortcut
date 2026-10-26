@@ -24,6 +24,9 @@ final class UpdaterService: NSObject, ObservableObject {
   }
 
   private var controller: SPUStandardUpdaterController!
+  /// A scheduled update that arrived while a meeting recorded and was held back (see
+  /// `standardUserDriverShouldHandleShowingScheduledUpdate`). Shown when the meeting ends.
+  private var deferredScheduledUpdate = false
   private var started = false
   private var observations: [NSKeyValueObservation] = []
 
@@ -58,6 +61,15 @@ final class UpdaterService: NSObject, ObservableObject {
       },
     ]
     DebugLogger.log("UPDATER: started (feed \(AppConstants.sparkleFeedURL))")
+  }
+
+  /// Called when a live meeting has finished. A held-back scheduled update is brought up now;
+  /// Sparkle keeps that update session open and shows it in focus on the next check.
+  func showDeferredUpdateIfAny() {
+    guard deferredScheduledUpdate else { return }
+    deferredScheduledUpdate = false
+    DebugLogger.log("UPDATER: meeting ended, showing the deferred scheduled update")
+    controller.checkForUpdates(nil)
   }
 
   /// User-initiated check.
@@ -97,6 +109,7 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
     // live meeting. Declining here defers it to the next scheduled check.
     if Self.thisProcessIsRecordingMeeting() {
       DebugLogger.log("UPDATER: deferring scheduled update \(update.displayVersionString) (meeting recording)")
+      Task { @MainActor in UpdaterService.shared.deferredScheduledUpdate = true }
       return false
     }
     return true
