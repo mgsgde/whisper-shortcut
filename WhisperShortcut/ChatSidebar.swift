@@ -128,6 +128,25 @@ struct ChatSidebar: View {
     .frame(width: Self.sidebarWidth)
     .background(ChatTheme.sidebarBackground)
     .onChange(of: searchQuery) { _ in scheduleSearch() }
+    .onAppear { revealCurrentSession() }
+    .onChange(of: viewModel.currentSessionId) { _ in revealCurrentSession() }
+  }
+
+  /// Expands the date group (or Archived) holding the open chat or meeting. Older groups start
+  /// collapsed, so a meeting opened from a notification, search or the menu was otherwise shown
+  /// in the window with no highlighted row anywhere in the sidebar.
+  private func revealCurrentSession() {
+    guard let session = viewModel.allSessionsList.first(where: { $0.id == viewModel.currentSessionId })
+    else { return }
+    if session.isMeeting {
+      meetingsSectionCollapsed = false
+      if session.archived { meetingArchivedCollapsed = false }
+      else { meetingCollapsedGroups.remove(Self.dateGroup(for: sortDate(session))) }
+    } else {
+      chatsSectionCollapsed = false
+      if session.archived { chatArchivedCollapsed = false }
+      else { chatCollapsedGroups.remove(Self.dateGroup(for: sortDate(session))) }
+    }
   }
 
   // MARK: - Chats section
