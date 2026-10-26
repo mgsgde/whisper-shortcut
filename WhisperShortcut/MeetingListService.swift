@@ -7,6 +7,10 @@ struct MeetingFileInfo: Identifiable, Hashable {
   let displayLabel: String
   /// Stable identifier derived from filename (e.g. "Meeting-2025-03-04-143000"), used as session store scope.
   let meetingId: String
+  /// Trimmed filename suffix (e.g. "Budget" from "...-143000-Budget.txt"), nil if the meeting has none.
+  /// Unlike `displayLabel`, this does not fall back to a formatted date — callers that want to show
+  /// "no title" distinctly from a dated placeholder (e.g. MCP's list_meetings) use this.
+  let title: String?
 
   var id: String { meetingId }
 }
@@ -50,34 +54,42 @@ final class MeetingListService: ObservableObject {
 
   // MARK: - List
 
-  /// Scans the Meetings/ directory and updates the published `meetings` list.
-  func refresh() {
-    let dir = AppSupportPaths.whisperShortcutApplicationSupportURL()
+  /// The on-disk Meetings/ directory, shared with `MCPServer`/`MCPMeetingTools` so both scan the
+  /// same path (R83: used to be built inline in two places).
+  static var meetingsDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+  }
 
-    guard FileManager.default.fileExists(atPath: dir.path) else {
-      meetings = []
-      return
-    }
+  /// Pure scan of a Meetings/ directory into `MeetingFileInfo`s, sorted newest first, titles
+  /// trimmed, hidden files skipped. MCP's meeting tools used to reimplement this scan with their
+  /// own regex, no title trim and no hidden-file skip, and sorted by id string instead of date
+  /// (R83) — this is the one implementation both the app and MCP now share.
+  static func scan(directory: URL) -> [MeetingFileInfo] {
+    guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
 
     let files: [URL]
     do {
       files = try FileManager.default.contentsOfDirectory(
-        at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)
+        at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)
     } catch {
       DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.localizedDescription)")
-      meetings = []
-      return
+      return []
     }
 
     var result: [MeetingFileInfo] = []
     for fileURL in files {
-      guard let info = Self.parseMeetingFilename(fileURL) else { continue }
+      guard let info = parseMeetingFilename(fileURL) else { continue }
       result.append(info)
     }
 
     result.sort { $0.date > $1.date }
-    meetings = result
+    return result
+  }
+
+  /// Scans the Meetings/ directory and updates the published `meetings` list.
+  func refresh() {
+    meetings = Self.scan(directory: Self.meetingsDirectory)
   }
 
   // MARK: - Parse
@@ -315,13 +327,16 @@ final class MeetingListService: ObservableObject {
     guard let date = Calendar.current.date(from: components) else { return nil }
 
     let meetingId = String(filename.dropLast(4))
+    var title: String?
     let displayLabel: String
     if match.numberOfRanges > 7, let suffixRange = Range(match.range(at: 7), in: filename), !suffixRange.isEmpty {
-      displayLabel = String(filename[suffixRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+      let trimmed = String(filename[suffixRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+      title = trimmed
+      displayLabel = trimmed
     } else {
       displayLabel = displayDateFormatter.string(from: date)
     }
-    return MeetingFileInfo(url: url, date: date, displayLabel: displayLabel, meetingId: meetingId)
+    return MeetingFileInfo(url: url, date: date, displayLabel: displayLabel, meetingId: meetingId, title: title)
   }
 
   static func parseTranscriptFile(at url: URL) -> [LiveMeetingChunk] {

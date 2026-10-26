@@ -121,7 +121,7 @@ final class MCPServer: ObservableObject {
       if server != nil { stopLocked() }
       let dispatcher = MCPDispatcher(
         meetingTools: MCPMeetingTools(
-          meetingsDirectory: Self.meetingsDirectory(),
+          meetingsDirectory: MeetingListService.meetingsDirectory,
           liveStem: { [weak self] in self?.currentLiveStem() }),
         configTools: MCPConfigTools(env: .live))
       let requested = port
@@ -197,11 +197,6 @@ final class MCPServer: ObservableObject {
   private func currentLiveStem() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     return liveActive ? liveStem : nil
-  }
-
-  static func meetingsDirectory() -> URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
   }
 
   // MARK: - Request handling (pure)

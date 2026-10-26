@@ -9,8 +9,13 @@ struct MCPMeetingTools {
 
   static let maxResultCharacters = 60_000
 
-  private static let filenameRegex = try! NSRegularExpression(
-    pattern: #"^Meeting-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})(?:-(.+))?\.txt$"#)
+  /// "yyyy-MM-dd HH:mm:ss", matching the string format this tool has always reported — unlike
+  /// `MeetingListService`, which only needs the parsed `Date`.
+  private static let dateFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    return f
+  }()
 
   // MARK: - Definitions
 
@@ -91,38 +96,26 @@ struct MCPMeetingTools {
 
   // MARK: - Helpers
 
-  private struct MeetingInfo {
-    let id: String
-    let date: String
-    let title: String?
+  /// Shared scan (R83): one regex, trimmed titles, hidden files skipped, date-descending —
+  /// same scan the app's own meeting list uses, instead of a second reimplementation here.
+  private func allMeetings() -> [MeetingFileInfo] {
+    MeetingListService.scan(directory: meetingsDirectory)
   }
 
-  private func allMeetings() -> [MeetingInfo] {
-    let urls = (try? FileManager.default.contentsOfDirectory(at: meetingsDirectory, includingPropertiesForKeys: nil)) ?? []
-    var result: [MeetingInfo] = []
-    for url in urls {
-      let filename = url.lastPathComponent
-      let range = NSRange(filename.startIndex..., in: filename)
-      guard let m = Self.filenameRegex.firstMatch(in: filename, range: range) else { continue }
-      func g(_ i: Int) -> String {
-        Range(m.range(at: i), in: filename).map { String(filename[$0]) } ?? ""
-      }
-      let title = m.range(at: 7).location != NSNotFound ? g(7) : nil
-      result.append(
-        MeetingInfo(
-          id: url.deletingPathExtension().lastPathComponent,
-          date: "\(g(1))-\(g(2))-\(g(3)) \(g(4)):\(g(5)):\(g(6))",
-          title: title))
-    }
-    return result.sorted { $0.id > $1.id }
+  private func transcriptURL(_ id: String) -> URL {
+    meetingsDirectory.appendingPathComponent("\(id).txt")
   }
 
-  private func url(_ id: String, ext: String) -> URL {
-    meetingsDirectory.appendingPathComponent("\(id).\(ext)")
+  private func notesURL(_ id: String) -> URL {
+    MeetingListService.notesURL(transcriptFileURL: transcriptURL(id))
+  }
+
+  private func summaryURL(_ id: String) -> URL {
+    MeetingListService.summaryURL(transcriptFileURL: transcriptURL(id))
   }
 
   private func chunks(for id: String) -> [LiveMeetingChunk]? {
-    guard let text = try? String(contentsOf: url(id, ext: "txt"), encoding: .utf8) else { return nil }
+    guard let text = try? String(contentsOf: transcriptURL(id), encoding: .utf8) else { return nil }
     return LiveMeetingTranscriptStore.parseTranscript(text)
   }
 
@@ -226,9 +219,9 @@ struct MCPMeetingTools {
     let fm = FileManager.default
     let lines = meetings.prefix(limit).map { m -> String in
       let duration = chunks(for: m.id)?.last.map { Self.format($0.startTime) } ?? "00:00"
-      let notes = fm.fileExists(atPath: url(m.id, ext: "notes.md").path)
-      let summary = fm.fileExists(atPath: url(m.id, ext: "summary.md").path)
-      return "- id: \(m.id) | date: \(m.date) | title: \(m.title ?? "-") | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
+      let notes = fm.fileExists(atPath: notesURL(m.id).path)
+      let summary = fm.fileExists(atPath: summaryURL(m.id).path)
+      return "- id: \(m.id) | date: \(Self.dateFormatter.string(from: m.date)) | title: \(m.title ?? "-") | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
     }
     var out = lines.joined(separator: "\n")
     if meetings.count > limit { out += "\n\n(\(meetings.count - limit) older meetings not shown; raise limit.)" }
@@ -249,24 +242,24 @@ struct MCPMeetingTools {
     let until = parseTimestampArgument(arguments, "until")
     if let e = until.error { return (e, true) }
 
-    guard FileManager.default.fileExists(atPath: url(id, ext: "txt").path) else {
+    guard FileManager.default.fileExists(atPath: transcriptURL(id).path) else {
       let recent = allMeetings().prefix(5).map(\.id).joined(separator: ", ")
       return ("Unknown meeting id \"\(id)\". Use list_meetings. Recent ids: \(recent.isEmpty ? "none" : recent)", true)
     }
 
     var sections: [String] = []
-    func fileText(_ ext: String) -> String? {
-      guard let t = try? String(contentsOf: url(id, ext: ext), encoding: .utf8) else { return nil }
+    func fileText(_ url: URL) -> String? {
+      guard let t = try? String(contentsOf: url, encoding: .utf8) else { return nil }
       let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
       return trimmed.isEmpty ? nil : trimmed
     }
 
     var tail: [String] = []
     if part == "notes" || part == "all" {
-      tail.append("## Notes\n" + (fileText("notes.md") ?? "(no notes)"))
+      tail.append("## Notes\n" + (fileText(notesURL(id)) ?? "(no notes)"))
     }
     if part == "summary" || part == "all" {
-      tail.append("## Summary\n" + (fileText("summary.md") ?? "(no summary)"))
+      tail.append("## Summary\n" + (fileText(summaryURL(id)) ?? "(no summary)"))
     }
     if part == "transcript" || part == "all" {
       let all = chunks(for: id) ?? []
@@ -297,7 +290,7 @@ struct MCPMeetingTools {
         hits.append("\(m.id) [\(Self.format(chunk.startTime))] \(Self.truncate(chunk.text))")
         if hits.count >= limit { break outer }
       }
-      if let notes = try? String(contentsOf: url(m.id, ext: "notes.md"), encoding: .utf8) {
+      if let notes = try? String(contentsOf: notesURL(m.id), encoding: .utf8) {
         for line in notes.components(separatedBy: "\n") where line.range(of: query, options: opts) != nil {
           hits.append("\(m.id) [notes] \(Self.truncate(line.trimmingCharacters(in: .whitespaces)))")
           if hits.count >= limit { break outer }
