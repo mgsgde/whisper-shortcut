@@ -222,6 +222,26 @@ struct MCPConfigToolsTests {
     #expect(obj(again)["status"] as? String == "no_change")
   }
 
+  @Test("add_glossary_terms at level propose creates a reviewable proposal instead of writing; apply still writes directly")
+  func glossaryProposeVsApply() {
+    let proposeEnv = MCPTestEnv(level: .propose)
+    let pt = proposeEnv.tools()
+    let p = pt.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "names"], access: .write)
+    #expect(!p.isError)
+    #expect(obj(p)["status"] as? String == "pending_review")
+    #expect(!glossary(proposeEnv).contains("Wianco"))
+    #expect(proposeEnv.proposals.pending.count == 1)
+    #expect(proposeEnv.proposals.pending[0].section == SystemPromptSection.whisperGlossary.rawValue)
+
+    let applyEnv = MCPTestEnv(level: .apply)
+    let at = applyEnv.tools()
+    let a = at.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "names"], access: .write)
+    #expect(!a.isError)
+    #expect(obj(a)["status"] as? String == "applied")
+    #expect(glossary(applyEnv).contains("Wianco"))
+    #expect(applyEnv.proposals.pending.isEmpty)
+  }
+
   @Test("add_glossary_terms rejects over budget with nothing written")
   func glossaryBudget() {
     let env = MCPTestEnv()

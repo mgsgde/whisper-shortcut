@@ -152,7 +152,7 @@ struct MCPConfigTools {
   static let writeToolDefinitions: [[String: Any]] = [
     write(
       "add_glossary_terms",
-      "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once.",
+      "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there.",
       ["terms": ["type": "array", "items": ["type": "string"], "description": "Terms to add."]],
       required: ["terms"]),
     write(
@@ -448,6 +448,17 @@ struct MCPConfigTools {
         return reject(
           tool, "over budget",
           "The glossary budget is \(SystemPromptsStore.glossaryCharBudget) characters and only \(left) are left. Nothing was written. Pick the terms that occur most in the user's recent dictations.")
+      }
+      if env.accessLevel() == .propose {
+        do {
+          let p = try env.proposals.create(
+            kind: .systemPrompt, section: SystemPromptSection.whisperGlossary.rawValue,
+            previousContent: current, proposedContent: merged, rationale: r.value!)
+          log(tool, "proposed", len: merged.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       let known = Set(GlossaryLearning.entries(in: current).map { GlossaryLearning.fold($0.term) })
       let added = GlossaryLearning.entries(in: merged).map(\.term).filter { !known.contains(GlossaryLearning.fold($0)) }
