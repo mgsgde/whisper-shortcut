@@ -132,10 +132,11 @@ final class MCPProposalStore: ObservableObject {
     case .writingStyle:
       return applier.targets.read(.writingStyle)
     case .saveCommand, .deleteCommand:
-      // Raw file (frontmatter + body), the same form `previousContent` was captured in and the
-      // form `MCPChangeLog.restore()` writes back — `.body` used to strip the frontmatter here,
-      // so an accept's "changed since?" compare never matched its own change log entry (R84).
-      return proposal.commandName.flatMap { applier.targets.read(.command($0)) }
+      // Body, not the raw file: a proposal's previous and proposed text are both the command
+      // body, so the review window diffs like with like. The change log captures the raw file
+      // on its own when the proposal is applied.
+      applier.targets.commands.reload()
+      return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
     case .problemReport:
       return nil
     }

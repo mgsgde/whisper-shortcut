@@ -78,6 +78,19 @@ struct MCPProposalAndChangeLogTests {
     #expect(!FileManager.default.fileExists(atPath: env.commands.fileURL(forName: "recap").path))
   }
 
+  @Test("Editing an existing command: proposal carries the body, not the raw file, and accepts")
+  func commandEditProposalUsesBody() throws {
+    let env = MCPTestEnv(level: .propose)
+    _ = try env.commands.save(name: "recap", text: "Recap it.", scope: .meeting, label: "Recap", description: "Short recap")
+    let r = env.tools().call(name: "save_command",
+      arguments: ["name": "recap", "text": "Recap it briefly.", "scope": "meeting", "rationale": "r"], access: .write)
+    let id = obj(r)["id"] as? String ?? ""
+    // Both sides of the review diff are the body, so frontmatter never shows up as removed.
+    #expect(env.proposals.status(of: id)?.previousContent == "Recap it.")
+    guard case .success = env.proposals.accept(id) else { Issue.record("accept failed"); return }
+    #expect(env.commands.command(named: "recap")?.body == "Recap it briefly.")
+  }
+
   // MARK: stale, cap, replace
 
   @Test("Accept refuses when the target changed since the proposal; proposal stays pending")

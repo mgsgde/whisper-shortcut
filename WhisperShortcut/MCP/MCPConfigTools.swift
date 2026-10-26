@@ -581,7 +581,7 @@ struct MCPConfigTools {
       return reject(tool, "too large", "The command is larger than 32 KB.")
     }
     return MCPMain.run {
-      let previous = env.targets.read(.command(name))
+      let previous = commandBody(name)
       return proposeOrApply(
         tool: tool, proposalOnly: env.accessLevel() == .propose, length: text.count,
         create: {
@@ -598,6 +598,12 @@ struct MCPConfigTools {
     }
   }
 
+  /// A command's body (frontmatter stripped), the form its proposals carry on both sides so the
+  /// review diff compares like with like. Direct applies record the raw file in the change log.
+  private func commandBody(_ name: String) -> String? {
+    loadCommands().first { $0.name == name }?.body
+  }
+
   private func deleteCommand(_ args: [String: Any]) -> MCPToolResult {
     let tool = "delete_command"
     let r = rationale(args, tool: tool)
@@ -606,7 +612,7 @@ struct MCPConfigTools {
     if let e = n.error { return e }
     let name = n.name!
     return MCPMain.run {
-      guard let previous = env.targets.read(.command(name)) else {
+      guard let previous = commandBody(name) else {
         return reject(tool, "not found", "No command named \(name).")
       }
       return proposeOrApply(
