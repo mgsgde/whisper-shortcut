@@ -53,7 +53,7 @@ Heuristics:
 - Avoid creating new context files. Prefer editing existing skills, rules, or `index.mdc`.
 - Prefer replacing or tightening existing wording over appending new bullets. If a new note only makes sense with the details of today's task, skip it.
 - Keep proposed additions short: usually 1–3 bullets or a short paragraph. A longer edit must replace existing verbosity or describe a genuinely repeatable workflow.
-- Edit only under `.cursor/` — `.claude/skills` and `.claude/commands` are symlinks to `.cursor/`; one edit propagates to both.
+- Edit the real files under `.cursor/` and `.agents/skills/`, never through `.claude/` — `.claude/{commands,rules}` → `../.cursor/…` and `.claude/skills` → `../.agents/skills` are symlinks; one edit propagates to both.
 
 ### Step 2.5 — Apply the context budget
 

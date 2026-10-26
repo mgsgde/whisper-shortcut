@@ -1,6 +1,6 @@
 ---
 name: debugging-workflow
-description: Debugging in WhisperShortcut: add DebugLogger instrumentation (with right categories), rebuild, give developer a manual repro plan, then fetch and analyze logs. Use when the user reports a bug, asks to debug, wants logging added to understand flow, or the app hangs / freezes / pins the CPU.
+description: "Debugging in WhisperShortcut: add DebugLogger instrumentation (with right categories), rebuild, give developer a manual repro plan, then fetch and analyze logs. Use when the user reports a bug, asks to debug, wants logging added to understand flow, or the app hangs / freezes / pins the CPU."
 ---
 
 # Debugging Workflow
