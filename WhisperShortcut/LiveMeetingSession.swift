@@ -17,10 +17,65 @@ import Network
 /// `MenuBarController`'s to mutate — this type reports the lifecycle through `onFinished` and asks
 /// about it through `appStateIsRecordingMeeting`.
 ///
-/// One instance is kept for the app's lifetime and reused across meetings, mirroring how the fields
-/// behaved on the controller. In particular `sessionGeneration` still discriminates a straggler
-/// summary call from a previous meeting; per-meeting instances would have changed that semantics.
+/// One instance is kept for the app's lifetime and reused across meetings. Everything that belongs
+/// to ONE meeting lives in a `MeetingRun`; starting (or resuming) a meeting creates a fresh run and
+/// finishing drops it in one place. Every Task, timer and callback that touches per-meeting state
+/// captures the run it was launched under and does nothing when that run is no longer `currentRun`,
+/// so work that outlives its meeting (a slow chunk transcription, the stop safety-net timer, a live
+/// note) can never reach the next or a resumed meeting.
 final class LiveMeetingSession: NSObject {
+
+  // MARK: - Run / phase
+
+  /// All state of one recording run (start or resume until finish). Reference identity is the
+  /// run's identity: `run === currentRun` replaces the old `sessionGeneration` counter.
+  final class MeetingRun {
+    let id = UUID()
+    var recorder: LiveMeetingRecorder?
+    var transcriptURL: URL?
+    /// Set on stop; cleared when the recorder delivers its final chunk. Gates `finish` so
+    /// post-processing can't start before the last audio arrives.
+    var awaitingFinalChunk = false
+    var pendingChunks = 0
+    var safeguardTimer: Timer?
+    /// When non-nil, finish renames the transcript to this stem (or timestamp-suffix).
+    var preferredName: String?
+    /// When true, finish deletes the transcript instead of saving.
+    var discard = false
+    /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
+    var lastNotedChunkID: UUID?
+    var didShowRateLimitAlert = false
+    var didShowTranscriptionFailureAlert = false
+    var consecutiveNoteFailures = 0
+    /// True once the live-note circuit-breaker has tripped for this run.
+    var noteCircuitOpen = false
+    var didShowNoteFailureAlert = false
+    /// Single-flight guard for live-note API calls.
+    var noteUpdateInFlight = false
+    /// Callers of `flushPendingAudio()` waiting for the chunk that flush cut, keyed so a timeout
+    /// can drop its own waiter without disturbing the others.
+    var flushWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+    /// Index of the chunk the pending flush cut; see `signalFlushCompleted`.
+    var flushAwaitedChunkIndex: Int?
+  }
+
+  /// Lifecycle of the session. `.draining` = stop requested, waiting for the last chunk(s).
+  enum Phase {
+    case idle
+    case recording(MeetingRun)
+    case draining(MeetingRun)
+  }
+
+  private(set) var phase: Phase = .idle
+
+  var currentRun: MeetingRun? {
+    switch phase {
+    case .idle: return nil
+    case .recording(let run), .draining(let run): return run
+    }
+  }
+
+  private func isCurrent(_ run: MeetingRun) -> Bool { currentRun === run }
 
   // MARK: - Collaborators
 
@@ -61,26 +116,6 @@ final class LiveMeetingSession: NSObject {
 
   // MARK: - Session state
 
-  private var recorder: LiveMeetingRecorder?
-  private var stopping: Bool = false
-  /// Latched true once `finish()` has run; used to drop late chunk deliveries from AVAudioRecorder
-  /// that arrive after the post-processing Task started.
-  private var finalized: Bool = false
-  /// Set to true on stop; cleared when the recorder delivers its final chunk. Gates `finish()` so
-  /// post-processing can't start before the last audio arrives.
-  private var awaitingFinalChunk: Bool = false
-  private var transcriptURL: URL?
-  private var pendingChunks: Int = 0
-  private var safeguardTimer: Timer?
-  /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
-  private var lastNotedChunkID: UUID? = nil
-  /// When non-nil, `finish()` renames the transcript file to this stem (or timestamp-suffix) before ending.
-  private var preferredName: String?
-  /// Set to true after showing the rate-limit popup once this session so we don't spam.
-  private var didShowRateLimitAlert: Bool = false
-  /// Set after the first "this part couldn't be transcribed" popup of a session. One is enough to
-  /// tell the user; every further failed chunk is kept the same way.
-  private var didShowTranscriptionFailureAlert: Bool = false
   /// True while `retryBacklog` runs, so a second click can't transcribe the same files twice.
   private(set) var isRetryingBacklog: Bool = false
   /// Retry requests that arrived while a pass was running; one more pass handles them.
@@ -88,43 +123,19 @@ final class LiveMeetingSession: NSObject {
   private var pendingRetryStems: Set<String> = []
   private var pendingRetryAll = false
   private var pendingRetryAnnounce = false
-  /// Consecutive live-note failures (e.g. sustained Gemini 503). Reset to 0 on any success.
-  private var consecutiveNoteFailures: Int = 0
-  /// True once the live-note circuit-breaker has tripped: we stop generating further notes for this
-  /// session (the final summary is still attempted at end). Prevents hammering an unavailable model
-  /// dozens of times during one meeting.
-  private var noteCircuitOpen: Bool = false
-  /// Set to true after showing the "live notes unavailable" popup once this session so we don't spam.
-  private var didShowNoteFailureAlert: Bool = false
   /// Consecutive live-note failures before the circuit-breaker opens and we notify the user.
   private let noteFailureThreshold = 3
-  /// Single-flight guard: true while a live-note API call is in flight. Notes are small (a segment
-  /// in, two bullets out) so calls are fast, but a slow response must not let a second call start
-  /// and race on `lastNotedChunkID` — that would either duplicate or skip a segment.
-  private var noteUpdateInFlight: Bool = false
-  /// Bumped on every session start. A live-note Task captures the generation it launched under so a
-  /// straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead of
-  /// clearing the in-flight flag — or writing note/chunk state — for the newer session.
-  private var sessionGeneration = 0
   /// Minimum new transcript characters before a live note is generated. Below this a segment is
   /// usually a greeting or a stray sentence and produces a note not worth its API call.
   private let liveNoteMinChars = 400
   /// …unless this many chunks have piled up, which happens when people speak in short bursts.
   private let liveNoteMaxPendingChunks = 4
-  /// When true, `finish()` deletes the transcript instead of saving.
-  private var discard: Bool = false
-  /// Callers of `flushPendingAudio()` waiting for the chunk that flush cut to be transcribed, keyed
-  /// so a timeout can drop its own waiter without disturbing the others.
-  private var flushWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
-  /// Index of the chunk the pending flush cut; see `signalFlushCompleted`.
-  private var flushAwaitedChunkIndex: Int?
-
   /// True while this session holds a recorder. Combined with `appState` by the owner to decide
   /// whether a meeting is active.
-  var isRecording: Bool { recorder != nil }
+  var isRecording: Bool { currentRun?.recorder != nil }
 
   /// True when a meeting is active (recording, or stopping with pending chunks).
-  private var isActive: Bool { appStateIsRecordingMeeting() || recorder != nil }
+  private var isActive: Bool { appStateIsRecordingMeeting() || currentRun?.recorder != nil }
 
   // MARK: - Lifecycle
 
@@ -141,6 +152,7 @@ final class LiveMeetingSession: NSObject {
     }
 
     // Create transcript file (stem is pre-generated by LiveMeetingTranscriptStore)
+    let transcriptURL: URL
     do {
       transcriptURL = try createTranscriptFile()
     } catch {
@@ -166,54 +178,52 @@ final class LiveMeetingSession: NSObject {
       resumeOffset = 0
     }
 
-    // Create and start recorder
-    recorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
-    recorder?.delegate = self
-    recorder?.startSession(resumeTimeOffset: resumeOffset)
+    // A fresh run for every start/resume. Whatever run was still current is orphaned: its Tasks and
+    // timers see `run !== currentRun` and no-op.
+    if let previous = currentRun {
+      DebugLogger.logWarning("LIVE-MEETING: Starting while run \(previous.id) was still current; orphaning it")
+      previous.safeguardTimer?.invalidate()
+      previous.safeguardTimer = nil
+    }
+    let run = MeetingRun()
+    run.transcriptURL = transcriptURL
 
-    // Update state
-    stopping = false
-    finalized = false
-    awaitingFinalChunk = false
-    pendingChunks = 0
-    didShowRateLimitAlert = false
-    didShowTranscriptionFailureAlert = false
-    consecutiveNoteFailures = 0
-    noteCircuitOpen = false
-    didShowNoteFailureAlert = false
-    noteUpdateInFlight = false
-    sessionGeneration += 1
+    // Create and start recorder
+    let newRecorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
+    newRecorder.delegate = self
+    run.recorder = newRecorder
+    phase = .recording(run)
+    newRecorder.startSession(resumeTimeOffset: resumeOffset)
+
     if resuming && !existingChunks.isEmpty {
       LiveMeetingTranscriptStore.shared.resumeSession()
       // Everything already on disk has been noted; only new chunks need a note.
-      lastNotedChunkID = existingChunks.last?.id
+      run.lastNotedChunkID = existingChunks.last?.id
     } else {
       LiveMeetingTranscriptStore.shared.startSession()
-      lastNotedChunkID = nil
+      run.lastNotedChunkID = nil
     }
 
     // Schedule duration safeguard if enabled
     let safeguardThreshold = MeetingSafeguardDuration.loadFromUserDefaults()
     if safeguardThreshold != .never {
-      safeguardTimer?.invalidate()
-      safeguardTimer = Timer.scheduledTimer(
+      let timer = Timer.scheduledTimer(
         withTimeInterval: safeguardThreshold.rawValue, repeats: false
-      ) { [weak self] _ in
-        self?.showSafeguardAlert(thresholdMinutes: Int(safeguardThreshold.rawValue / 60))
+      ) { [weak self, weak run] _ in
+        guard let self, let run else { return }
+        self.showSafeguardAlert(
+          run: run, thresholdMinutes: Int(safeguardThreshold.rawValue / 60))
       }
-      if let timer = safeguardTimer {
-        RunLoop.main.add(timer, forMode: .common)
-      }
+      run.safeguardTimer = timer
+      RunLoop.main.add(timer, forMode: .common)
       DebugLogger.log(
         "LIVE-MEETING-SAFEGUARD: Reminder scheduled after \(Int(safeguardThreshold.rawValue / 60)) minutes"
       )
     }
 
-    warnIfTranscriptionUnreachable()
+    warnIfTranscriptionUnreachable(run: run)
 
-    if let url = transcriptURL {
-      LiveMeetingRecordingMarker.write(stem: url.deletingPathExtension().lastPathComponent)
-    }
+    LiveMeetingRecordingMarker.write(stem: transcriptURL.deletingPathExtension().lastPathComponent)
 
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
     return true
@@ -222,9 +232,10 @@ final class LiveMeetingSession: NSObject {
   /// Records the user's meeting name / discard choice, then stops. Posted by the in-window
   /// "end meeting" affordance.
   func end(preferredName name: String?, discard shouldDiscard: Bool) {
-    preferredName = name
-    discard = shouldDiscard
-    stop()
+    let run = currentRun ?? MeetingRun()
+    run.preferredName = name
+    run.discard = shouldDiscard
+    stop(run: run)
   }
 
   /// Called when the app is about to exit while a meeting is recording (system quit, update
@@ -232,10 +243,10 @@ final class LiveMeetingSession: NSObject {
   /// meeting is resumed or ended, instead of vanishing with the process. The recording marker is
   /// left in place on purpose: the next launch reads it to resume or report the interruption.
   func preserveForTermination() {
-    guard let recorder, !stopping, !finalized else { return }
-    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    guard case .recording(let run) = phase, let recorder = run.recorder else { return }
+    let stem = run.transcriptURL?.deletingPathExtension().lastPathComponent
     let chunk = recorder.stopForTermination()
-    self.recorder = nil
+    run.recorder = nil
     guard let chunk else {
       DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
       return
@@ -249,41 +260,80 @@ final class LiveMeetingSession: NSObject {
   }
 
   func stop() {
+    // With no run (the owner still shows a meeting but the session holds nothing) a throwaway run
+    // keeps the old behaviour: the drain ends via the safety net and `onFinished` is reported.
+    stop(run: currentRun ?? MeetingRun())
+  }
+
+  private func stop(run: MeetingRun) {
     DebugLogger.log("LIVE-MEETING: User requested stop")
     LiveMeetingRecordingMarker.clear()
 
-    safeguardTimer?.invalidate()
-    safeguardTimer = nil
-    stopping = true
+    run.safeguardTimer?.invalidate()
+    run.safeguardTimer = nil
     // Tell the UI *now*: the drain below needs a transcription round trip, and until it lands both
     // the menu bar and the meeting bar would otherwise keep claiming the meeting is recording.
     LiveMeetingTranscriptStore.shared.beginFinishing()
     onStopping()
-    // AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording,
-    // so wait for it before finalizing (prevents a race where post-processing rewrites
-    // the transcript file while a late chunk is still being appended).
-    awaitingFinalChunk = true
-    recorder?.stopSession()
+    enterDraining(run)
+  }
+
+  /// Switches `run` to draining, asks the recorder for its final chunk and arms the safety net.
+  /// AVAudioRecorder delivers its final chunk async via audioRecorderDidFinishRecording, so
+  /// finalizing waits for it (prevents post-processing rewriting the transcript file while a late
+  /// chunk is still being appended).
+  private func enterDraining(_ run: MeetingRun) {
+    phase = .draining(run)
+    run.awaitingFinalChunk = true
+    run.recorder?.stopSession()
 
     // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
-    // doesn't get stuck in "stopping" forever.
+    // doesn't get stuck in "stopping" forever. Bound to THIS run: a timer from a meeting that has
+    // since finished (or been resumed) must not touch the one that is running now.
     DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-      guard let self = self else { return }
-      if self.stopping && !self.finalized {
-        DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
-        self.awaitingFinalChunk = false
-        self.pendingChunks = 0
-        self.finish()
-      }
+      self?.safetyNetFired(for: run)
     }
   }
 
-  private func showSafeguardAlert(thresholdMinutes: Int) {
-    safeguardTimer?.invalidate()
-    safeguardTimer = nil
+  // MARK: - Test seams
+
+  /// Starts a recorder-less run on `transcriptURL`, orphaning any current one exactly like
+  /// `start(resuming:)` does. Lets tests drive the chunk pipeline without a microphone, the
+  /// transcript store or the recording marker.
+  func beginRunForTesting(transcriptURL: URL) -> MeetingRun {
+    let run = MeetingRun()
+    run.transcriptURL = transcriptURL
+    phase = .recording(run)
+    return run
+  }
+
+  /// Moves `run` to draining without the stop side effects (marker, store, owner callbacks, timer).
+  func markDrainingForTesting(_ run: MeetingRun) {
+    phase = .draining(run)
+    run.awaitingFinalChunk = true
+  }
+
+  func safetyNetFired(for run: MeetingRun) {
+    guard isCurrent(run), case .draining = phase else {
+      DebugLogger.log("LIVE-MEETING: Stale stop safety net for run \(run.id) ignored")
+      return
+    }
+    DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
+    run.awaitingFinalChunk = false
+    run.pendingChunks = 0
+    finish(run)
+  }
+
+  private func showSafeguardAlert(run: MeetingRun, thresholdMinutes: Int) {
+    run.safeguardTimer?.invalidate()
+    run.safeguardTimer = nil
 
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
+      guard self.isCurrent(run) else {
+        DebugLogger.log("LIVE-MEETING-SAFEGUARD: Stale reminder for run \(run.id) ignored")
+        return
+      }
       if !self.isActive {
         return
       }
@@ -298,6 +348,7 @@ final class LiveMeetingSession: NSObject {
       alert.addButton(withTitle: "Continue")
       let response = alert.runModal()
       if response == .alertFirstButtonReturn {
+        guard self.isCurrent(run) else { return }
         DebugLogger.log("LIVE-MEETING-SAFEGUARD: User chose to stop meeting")
         self.stop()
       } else {
@@ -306,22 +357,24 @@ final class LiveMeetingSession: NSObject {
     }
   }
 
-  private func finish() {
-    guard !finalized else {
-      DebugLogger.log("LIVE-MEETING: finish ignored (already finalized)")
+  private func finish(_ run: MeetingRun) {
+    guard isCurrent(run), case .draining = phase else {
+      DebugLogger.log("LIVE-MEETING: finish ignored (run \(run.id) is not the draining run)")
       return
     }
-    finalized = true
+    // The ONE place a run ends: the phase drops to idle, so every late callback of this run (and
+    // any chunk the recorder still delivers) is dropped by the identity / phase checks.
+    phase = .idle
     LiveMeetingRecordingMarker.clear()
     #if !APP_STORE && canImport(Sparkle)
     Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() }
     #endif
 
-    let shouldDiscard = discard
+    let shouldDiscard = run.discard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(shouldDiscard))")
 
     if shouldDiscard {
-      if let url = transcriptURL {
+      if let url = run.transcriptURL {
         try? FileManager.default.removeItem(at: url)
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
@@ -329,34 +382,29 @@ final class LiveMeetingSession: NSObject {
         MeetingAudioBacklog.remove(stem: url.deletingPathExtension().lastPathComponent)
         DebugLogger.log("LIVE-MEETING: Discarded transcript, notes, summary and kept audio")
       }
-      transcriptURL = nil
+      run.transcriptURL = nil
       LiveMeetingTranscriptStore.shared.clearForNewMeeting()
       MeetingListService.shared.refresh()
     } else {
-      if let url = transcriptURL, let preferred = preferredName, !preferred.isEmpty {
+      if let url = run.transcriptURL, let preferred = run.preferredName, !preferred.isEmpty {
         let currentStem = url.deletingPathExtension().lastPathComponent
         if preferred != currentStem {
-          renameTranscriptFile(from: url, preferredName: preferred, currentStem: currentStem)
+          renameTranscriptFile(run: run, from: url, preferredName: preferred, currentStem: currentStem)
         }
       }
       LiveMeetingTranscriptStore.shared.endSession()
     }
 
-    // Capture URL for the post-processing Task before we clear it.
-    let transcriptURLForPostProcessing: URL? = shouldDiscard ? nil : transcriptURL
+    // Capture URL for the post-processing Task before the run is torn down.
+    let transcriptURLForPostProcessing: URL? = shouldDiscard ? nil : run.transcriptURL
 
-    preferredName = nil
-    safeguardTimer?.invalidate()
-    safeguardTimer = nil
-    stopping = false
-    awaitingFinalChunk = false
-    discard = false
-    recorder = nil
-    pendingChunks = 0
-    transcriptURL = nil
-    lastNotedChunkID = nil
+    run.safeguardTimer?.invalidate()
+    run.safeguardTimer = nil
+    run.awaitingFinalChunk = false
+    run.recorder = nil
+    run.pendingChunks = 0
     // The meeting is over, so nothing further will arrive for a waiter to wait on.
-    signalFlushCompleted(completedChunkIndex: nil)
+    signalFlushCompleted(run, completedChunkIndex: nil)
     onFinished()
 
     if let transcriptURL = transcriptURLForPostProcessing {
@@ -506,10 +554,9 @@ final class LiveMeetingSession: NSObject {
 
   /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
   /// An on-device transcription model needs no network, so it is never warned about.
-  private func warnIfTranscriptionUnreachable() {
+  private func warnIfTranscriptionUnreachable(run: MeetingRun) {
     guard !TranscriptionModel.loadSelectedForMeeting().isOffline else { return }
     let monitor = NWPathMonitor()
-    let generation = sessionGeneration
     var answered = false
     monitor.pathUpdateHandler = { [weak self] path in
       monitor.cancel()
@@ -517,10 +564,10 @@ final class LiveMeetingSession: NSObject {
       DispatchQueue.main.async {
         guard !answered else { return }
         answered = true
-        guard let self, !isOnline, generation == self.sessionGeneration,
-          self.appStateIsRecordingMeeting(), !self.didShowTranscriptionFailureAlert
+        guard let self, !isOnline, self.isCurrent(run),
+          self.appStateIsRecordingMeeting(), !run.didShowTranscriptionFailureAlert
         else { return }
-        self.didShowTranscriptionFailureAlert = true
+        run.didShowTranscriptionFailureAlert = true
         DebugLogger.logWarning("LIVE-MEETING: Started without a network connection")
         PopupNotificationWindow.showError(
           "There is no internet connection, so this meeting can't be transcribed right now.\n\n"
@@ -568,7 +615,8 @@ final class LiveMeetingSession: NSObject {
 
   @MainActor
   private func retryBacklogPass(stems: [String]?, announce: Bool) async {
-    let activeStem = recorder != nil ? transcriptURL?.deletingPathExtension().lastPathComponent : nil
+    let activeStem = currentRun?.recorder != nil
+      ? currentRun?.transcriptURL?.deletingPathExtension().lastPathComponent : nil
     let targets = (stems ?? MeetingAudioBacklog.stemsWithBacklog()).filter { $0 != activeStem }
     DebugLogger.log("MEETING-BACKLOG: Retrying \(targets.count) meeting(s)")
 
@@ -680,7 +728,7 @@ final class LiveMeetingSession: NSObject {
   // MARK: - Transcript file
 
   /// Renames the transcript file to include the user's preferred name. Keeps timestamp prefix for parsing.
-  private func renameTranscriptFile(from url: URL, preferredName: String, currentStem: String) {
+  private func renameTranscriptFile(run: MeetingRun, from url: URL, preferredName: String, currentStem: String) {
     let timestampPrefix = "Meeting-"
     guard currentStem.hasPrefix(timestampPrefix) else { return }
     let sanitized = preferredName
@@ -706,7 +754,7 @@ final class LiveMeetingSession: NSObject {
         try? FileManager.default.moveItem(at: oldNotes, to: newNotes)
       }
       MeetingAudioBacklog.rename(stem: currentStem, to: newStem)
-      transcriptURL = newURL
+      run.transcriptURL = newURL
       MeetingListService.shared.invalidateCache(for: nil)
       DispatchQueue.main.async {
         LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem = newStem
@@ -751,8 +799,12 @@ final class LiveMeetingSession: NSObject {
     return fileURL
   }
 
-  private func appendToTranscript(_ text: String, chunkStartTime: TimeInterval) {
-    guard let url = transcriptURL else { return }
+  /// Appends a transcribed chunk to the run's OWN transcript file — never to whatever meeting is
+  /// current — so text that arrives after its run ended still lands in the right meeting. The
+  /// in-memory store and the live notes belong to the current meeting only, so a run that is no
+  /// longer current leaves them alone.
+  func appendToTranscript(run: MeetingRun, _ text: String, chunkStartTime: TimeInterval) {
+    guard let url = run.transcriptURL else { return }
 
     var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let timestamp = Self.formatTimestamp(elapsedSeconds: chunkStartTime)
@@ -772,6 +824,10 @@ final class LiveMeetingSession: NSObject {
     }
 
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard isCurrent(run) else {
+      DebugLogger.log("LIVE-MEETING: Late chunk for finished run \(run.id) written to its own transcript only")
+      return
+    }
     if !trimmedText.isEmpty {
       LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
       // `appendChunk` hops to the main queue, so the new chunk isn't visible yet — evaluate the
@@ -796,19 +852,19 @@ final class LiveMeetingSession: NSObject {
   /// question, so their turn sees a current note stream).
   func refreshLiveNotes(force: Bool = false) {
     // Only meaningful while a meeting is actively recording (the live store owns the current stem).
-    guard appStateIsRecordingMeeting() else { return }
+    guard appStateIsRecordingMeeting(), let run = currentRun else { return }
 
     // Circuit-breaker: after repeated failures (e.g. a sustained model outage) we stop generating
     // notes for the rest of the session instead of retrying for an hour. The end-of-meeting summary
     // is still attempted once in finish().
-    guard !noteCircuitOpen else { return }
+    guard !run.noteCircuitOpen else { return }
 
     // Single-flight: a second concurrent call would race on `lastNotedChunkID` and either duplicate
     // or skip a segment. Whatever is pending is picked up by the next append.
-    guard !noteUpdateInFlight else { return }
+    guard !run.noteUpdateInFlight else { return }
 
     let store = LiveMeetingTranscriptStore.shared
-    let pending = store.chunks(afterID: lastNotedChunkID)
+    let pending = store.chunks(afterID: run.lastNotedChunkID)
     guard let newLastID = pending.last?.id, let firstStart = pending.first?.startTime else { return }
 
     let segment = pending.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n")
@@ -818,10 +874,9 @@ final class LiveMeetingSession: NSObject {
     }
 
     let recentNotes = store.liveNotes.suffix(3).flatMap { $0.bullets }
-    let previousLastID = lastNotedChunkID
-    lastNotedChunkID = newLastID
-    noteUpdateInFlight = true
-    let generation = sessionGeneration
+    let previousLastID = run.lastNotedChunkID
+    run.lastNotedChunkID = newLastID
+    run.noteUpdateInFlight = true
 
     Task {
       await runLiveNoteUpdate(
@@ -829,21 +884,17 @@ final class LiveMeetingSession: NSObject {
         recentNotes: Array(recentNotes),
         noteStartTime: firstStart,
         previousLastID: previousLastID,
-        generation: generation
+        run: run
       )
-      await MainActor.run {
-        // Ignore a straggler from a previous session — clearing the flag here would defeat the
-        // single-flight guard for the meeting that's now running.
-        guard generation == self.sessionGeneration else { return }
-        self.noteUpdateInFlight = false
-      }
+      // The flag lives on the run, so a straggler can only ever clear its own run's flag.
+      await MainActor.run { run.noteUpdateInFlight = false }
     }
   }
 
   /// Generates one note for the given segment and appends it to the store. Call from a Task.
   private func runLiveNoteUpdate(
     segment: String, recentNotes: [String], noteStartTime: TimeInterval, previousLastID: UUID?,
-    generation: Int
+    run: MeetingRun
   ) async {
     let model = PromptModel.loadSelectedMeetingSummary()
     guard model.hasRequiredCredential else {
@@ -856,9 +907,12 @@ final class LiveMeetingSession: NSObject {
         segment: segment, recentNotes: recentNotes, model: model)
       let bullets = Self.parseBullets(raw)
       await MainActor.run {
-        // A straggler from a previous session must not write into the current meeting's state.
-        guard generation == self.sessionGeneration else { return }
-        self.consecutiveNoteFailures = 0
+        // A straggler from a previous run must not write into the current meeting's state.
+        guard self.isCurrent(run) else {
+          DebugLogger.log("LIVE-MEETING-NOTES: Dropping note from finished run \(run.id)")
+          return
+        }
+        run.consecutiveNoteFailures = 0
         // An empty response is a valid answer: the prompt tells the model to stay silent when a
         // segment carries nothing worth remembering. The segment still counts as noted.
         guard !bullets.isEmpty else {
@@ -867,25 +921,28 @@ final class LiveMeetingSession: NSObject {
         }
         LiveMeetingTranscriptStore.shared.appendNote(
           LiveMeetingNote(startTime: noteStartTime, bullets: bullets))
-        self.persistNotes()
+        self.persistNotes(run: run)
         DebugLogger.log("LIVE-MEETING-NOTES: Appended note with \(bullets.count) bullet(s)")
       }
     } catch {
       DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.localizedDescription)")
       await MainActor.run {
-        guard generation == self.sessionGeneration else { return }
+        guard self.isCurrent(run) else {
+          DebugLogger.log("LIVE-MEETING-NOTES: Dropping note failure from finished run \(run.id)")
+          return
+        }
         // Roll back so the next attempt covers the same segment.
-        self.lastNotedChunkID = previousLastID
-        self.consecutiveNoteFailures += 1
+        run.lastNotedChunkID = previousLastID
+        run.consecutiveNoteFailures += 1
         // Trip the circuit-breaker after sustained failures: stop hammering the model for the
         // rest of the session and tell the user once (the final summary is still attempted at end).
-        if self.consecutiveNoteFailures >= self.noteFailureThreshold && !self.noteCircuitOpen {
-          self.noteCircuitOpen = true
+        if run.consecutiveNoteFailures >= self.noteFailureThreshold && !run.noteCircuitOpen {
+          run.noteCircuitOpen = true
           DebugLogger.logWarning(
-            "LIVE-MEETING-NOTES: circuit-breaker tripped after \(self.consecutiveNoteFailures) consecutive failures — pausing live notes for this session"
+            "LIVE-MEETING-NOTES: circuit-breaker tripped after \(run.consecutiveNoteFailures) consecutive failures — pausing live notes for this session"
           )
-          if !self.didShowNoteFailureAlert {
-            self.didShowNoteFailureAlert = true
+          if !run.didShowNoteFailureAlert {
+            run.didShowNoteFailureAlert = true
             PopupNotificationWindow.showError(
               "Live notes couldn't be generated (the notes model is unavailable). Recording continues normally; a full summary will be generated when the meeting ends.",
               title: "Live Meeting – Notes Paused"
@@ -897,8 +954,8 @@ final class LiveMeetingSession: NSObject {
   }
 
   /// Writes the current note list next to the transcript so it survives a restart and a reopen.
-  private func persistNotes() {
-    guard let url = transcriptURL else { return }
+  private func persistNotes(run: MeetingRun) {
+    guard let url = run.transcriptURL else { return }
     MeetingListService.shared.saveNotes(
       LiveMeetingTranscriptStore.shared.liveNotes, transcriptFileURL: url)
   }
@@ -928,7 +985,7 @@ final class LiveMeetingSession: NSObject {
   /// stream is being watched) and the configured one. A 60 s chunk means the live view can lag a
   /// full minute behind the room — fine in the background, far too slow to follow along.
   func setFastChunking(_ fast: Bool) {
-    guard let recorder else { return }
+    guard let recorder = currentRun?.recorder else { return }
     let configured = Self.configuredChunkInterval()
     let target = fast ? min(configured, AppConstants.liveMeetingFastChunkInterval) : configured
     let minimum = fast
@@ -949,16 +1006,18 @@ final class LiveMeetingSession: NSObject {
   /// arrives in the transcript moments later.
   @MainActor
   func flushPendingAudio(timeout: TimeInterval = 3.0) async {
-    guard appStateIsRecordingMeeting(), let recorder, let cutIndex = recorder.rotateNow() else {
+    guard appStateIsRecordingMeeting(), let run = currentRun, let recorder = run.recorder,
+      let cutIndex = recorder.rotateNow()
+    else {
       return
     }
     DebugLogger.log("LIVE-MEETING: Flushing pending audio (chunk \(cutIndex)) before the user's turn")
-    flushAwaitedChunkIndex = cutIndex
+    run.flushAwaitedChunkIndex = cutIndex
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       let id = UUID()
-      flushWaiters[id] = continuation
-      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
-        guard let waiter = self?.flushWaiters.removeValue(forKey: id) else { return }
+      run.flushWaiters[id] = continuation
+      DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+        guard let waiter = run.flushWaiters.removeValue(forKey: id) else { return }
         DebugLogger.log("LIVE-MEETING: Flush wait timed out after \(Int(timeout))s")
         waiter.resume()
       }
@@ -971,14 +1030,14 @@ final class LiveMeetingSession: NSObject {
   /// one does not count, because a slow predecessor finishing first would release the waiter before
   /// the text it is actually waiting for exists. Pass nil for "nothing further is coming" (the
   /// session ended, or the delivery arrived after finalization), which always releases.
-  private func signalFlushCompleted(completedChunkIndex: Int?) {
-    guard !flushWaiters.isEmpty else { return }
-    if let awaited = flushAwaitedChunkIndex, let done = completedChunkIndex, done < awaited {
+  private func signalFlushCompleted(_ run: MeetingRun, completedChunkIndex: Int?) {
+    guard !run.flushWaiters.isEmpty else { return }
+    if let awaited = run.flushAwaitedChunkIndex, let done = completedChunkIndex, done < awaited {
       return
     }
-    flushAwaitedChunkIndex = nil
-    let waiters = flushWaiters
-    flushWaiters = [:]
+    run.flushAwaitedChunkIndex = nil
+    let waiters = run.flushWaiters
+    run.flushWaiters = [:]
     waiters.values.forEach { $0.resume() }
   }
 
@@ -1000,36 +1059,35 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     )
 
     // Heartbeat for the recording marker: tells the next launch when the app was last alive.
-    if !finalized && recorder != nil && !stopping {
+    if case .recording(let run) = phase, run.recorder != nil {
       LiveMeetingRecordingMarker.touch()
     }
 
-    // Drop late deliveries that arrive after the session was finalized.
-    if finalized {
+    // Drop late deliveries that arrive when no run is active (after it was finalized).
+    guard let run = currentRun else {
       DebugLogger.logWarning(
         "LIVE-MEETING: Dropping late chunk \(chunkIndex) (session already finalized)")
       cleanUpAudioFile(audioURL)
-      signalFlushCompleted(completedChunkIndex: nil)
       return
     }
 
     if isFinal {
-      awaitingFinalChunk = false
+      run.awaitingFinalChunk = false
     }
 
     if isSilent {
       DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) skipped (silent audio)")
       cleanUpAudioFile(audioURL)
       // A silent chunk produces no text, but it still settles what a flush was waiting for.
-      signalFlushCompleted(completedChunkIndex: chunkIndex)
-      maybeFinishAfterChunkCompletion()
+      signalFlushCompleted(run, completedChunkIndex: chunkIndex)
+      maybeFinishAfterChunkCompletion(run)
       return
     }
 
-    pendingChunks += 1
+    run.pendingChunks += 1
     // Captured now: the backlog folder must match the stem this chunk belongs to, even if the
-    // session finishes (and clears `transcriptURL`) while the call is still out.
-    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    // session finishes while the call is still out.
+    let stem = run.transcriptURL?.deletingPathExtension().lastPathComponent
 
     Task {
       do {
@@ -1042,7 +1100,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         } else {
           await MainActor.run {
             // Appending also evaluates whether the accumulated segment is worth a live note.
-            self.appendToTranscript(trimmedText, chunkStartTime: startTime)
+            // It writes to the transcript of the run that recorded this chunk.
+            self.appendToTranscript(run: run, trimmedText, chunkStartTime: startTime)
           }
         }
 
@@ -1070,18 +1129,21 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
           if kept { self.onBacklogChanged() }
+          // The popups are about the running meeting; a failure from a finished run is already
+          // covered by its backlog retry.
+          guard self.isCurrent(run) else { return }
           if isRateLimitOrQuota {
-            if !self.didShowRateLimitAlert {
-              self.didShowRateLimitAlert = true
-              self.didShowTranscriptionFailureAlert = true
+            if !run.didShowRateLimitAlert {
+              run.didShowRateLimitAlert = true
+              run.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
                 SpeechErrorFormatter.formatForUser(error)
                   + (kept ? "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : ""),
                 title: "Live Meeting – Quota Reached"
               )
             }
-          } else if !self.didShowTranscriptionFailureAlert {
-            self.didShowTranscriptionFailureAlert = true
+          } else if !run.didShowTranscriptionFailureAlert {
+            run.didShowTranscriptionFailureAlert = true
             PopupNotificationWindow.showError(
               Self.chunkFailureMessage(error: error, kept: kept),
               title: "Live Meeting – Transcription Failed"
@@ -1091,29 +1153,36 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       }
 
       await MainActor.run {
-        self.pendingChunks -= 1
+        // The count belongs to the run that started this chunk; a run that already finished (its
+        // safety net zeroed the count) must neither go negative nor drive the next meeting.
+        run.pendingChunks = max(0, run.pendingChunks - 1)
+        guard self.isCurrent(run) else {
+          DebugLogger.log("LIVE-MEETING: Chunk \(chunkIndex) completed after run \(run.id) ended")
+          return
+        }
         // Transcribed, empty, or failed — either way this chunk is settled, so a flush waiting on it
         // may proceed with whatever landed.
-        self.signalFlushCompleted(completedChunkIndex: chunkIndex)
-        self.maybeFinishAfterChunkCompletion()
+        self.signalFlushCompleted(run, completedChunkIndex: chunkIndex)
+        self.maybeFinishAfterChunkCompletion(run)
       }
     }
   }
 
-  /// Called whenever a chunk's pending work completes. Finalizes the session once
-  /// the user has requested stop, all pending chunks have completed, and the
-  /// recorder has delivered its final chunk (tracked via `awaitingFinalChunk`).
-  private func maybeFinishAfterChunkCompletion() {
-    guard stopping else { return }
-    guard pendingChunks == 0 else { return }
-    guard !awaitingFinalChunk else { return }
-    finish()
+  /// Called whenever a chunk's pending work completes. Finalizes the run once the user has
+  /// requested stop, all pending chunks have completed, and the recorder has delivered its final
+  /// chunk (tracked via `awaitingFinalChunk`).
+  private func maybeFinishAfterChunkCompletion(_ run: MeetingRun) {
+    guard isCurrent(run), case .draining = phase else { return }
+    guard run.pendingChunks == 0 else { return }
+    guard !run.awaitingFinalChunk else { return }
+    finish(run)
   }
 
   func liveMeetingRecorderDidEndWithoutFinalChunk() {
     DebugLogger.log("LIVE-MEETING: Recorder ended without a final chunk")
-    awaitingFinalChunk = false
-    maybeFinishAfterChunkCompletion()
+    guard let run = currentRun else { return }
+    run.awaitingFinalChunk = false
+    maybeFinishAfterChunkCompletion(run)
   }
 
   func liveMeetingRecorder(didFailWithError error: Error) {
