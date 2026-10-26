@@ -5,13 +5,15 @@ import SwiftUI
 /// MCP clients on this Mac read meeting transcripts, including the one recording right now, and,
 /// if the user allows it, improve the setup (glossary, instructions, writing style, commands).
 ///
-/// Off by default. When on, it shows a ready-to-paste setup for the two clients we test against,
-/// both carrying the access key, so connecting is one copy and one paste. The key in the setup
+/// Off by default. When on, it offers a "Connect Claude Code" button (copy + open Terminal, then a
+/// live "connected" check from `MCPClientRegistry`) and a ready-to-paste Claude Desktop config,
+/// both carrying the access key. The key in the setup
 /// follows the access level: the read key while AI apps may only read, the write key otherwise.
 struct MeetingsInAIAppsSection: View {
   @ObservedObject private var server = MCPServer.shared
   @ObservedObject private var proposals = MCPProposalStore.shared
   @ObservedObject private var changeLog = MCPChangeLog.shared
+  @ObservedObject private var clients = MCPClientRegistry.shared
 
   @AppStorage(UserDefaultsKeys.mcpConfigAccessLevel) private var accessLevelRaw = MCPConfigAccessLevel.read.rawValue
   @AppStorage(UserDefaultsKeys.mcpShareRecentInteractions) private var shareRecentInteractions = false
@@ -28,6 +30,15 @@ struct MeetingsInAIAppsSection: View {
   @State private var showRegenerateConfirm = false
   @State private var undoMessage: String?
   @State private var showAllChanges = false
+  /// Set when "Connect Claude Code" was clicked; drives the steps and the "Waiting…" state until
+  /// Claude Code's next `initialize` arrives.
+  @State private var connectStartedAt: Date?
+  @State private var showClaudeCodeCommand = false
+
+  /// `clientInfo.name` prefixes the two tested clients send in `initialize`. Claude Desktop's
+  /// name passes through mcp-remote unchanged.
+  private static let claudeCodeClient = "claude-code"
+  private static let claudeDesktopClient = "claude-ai"
 
   private var accessLevel: MCPConfigAccessLevel {
     MCPConfigAccessLevel(rawValue: accessLevelRaw) ?? .read
@@ -64,16 +75,12 @@ struct MeetingsInAIAppsSection: View {
           recentChanges
         }
 
-        setupCard(
-          id: "claude-code",
-          title: "Claude Code",
-          instruction: "Run in Terminal, then start a new Claude Code session. Run it again after a new access key:",
-          code: claudeCodeCommand
-        )
+        claudeCodeCard
 
         setupCard(
           id: "claude-desktop",
           title: "Claude Desktop",
+          clientPrefix: Self.claudeDesktopClient,
           instruction: "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js.",
           code: claudeDesktopConfig
         )
@@ -96,6 +103,9 @@ struct MeetingsInAIAppsSection: View {
           Button("Create New Key", role: .destructive) {
             server.regenerateToken()
             server.regenerateWriteToken()
+            // Every app connected so far holds the old key, so none of them counts as connected.
+            clients.forgetAll()
+            connectStartedAt = nil
           }
         } message: {
           Text("Claude and other apps set up with the current key lose access until you copy the new setup into them.")
@@ -139,9 +149,9 @@ struct MeetingsInAIAppsSection: View {
     case .read:
       return "AI apps can read meetings and your setup, never change anything."
     case .propose:
-      return "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access."
+      return "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access."
     case .apply:
-      return "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access."
+      return "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access."
     }
   }
 
@@ -279,15 +289,160 @@ struct MeetingsInAIAppsSection: View {
     }
   }
 
+  // MARK: - Claude Code
+
+  /// The app is sandboxed, so it cannot run `claude mcp add` itself (that writes ~/.claude.json).
+  /// The button does the rest: copies the command, opens Terminal, and then watches for Claude
+  /// Code's `initialize` so the user sees the setup worked, or that it still holds the read key.
+  private var claudeCodeCard: some View {
+    let connection = clients.client(matching: Self.claudeCodeClient)
+    let waiting = connectStartedAt.map { started in
+      connection.map { $0.lastConnected < started } ?? true
+    } ?? false
+
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        Text("Claude Code")
+          .font(.callout)
+          .fontWeight(.semibold)
+        Spacer()
+        connectionBadge(connection, waiting: waiting)
+      }
+
+      HStack(spacing: 10) {
+        Button {
+          connectClaudeCode()
+        } label: {
+          Label(connection == nil ? "Connect Claude Code" : "Connect Again", systemImage: "terminal")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(setupToken.isEmpty)
+
+        Button(showClaudeCodeCommand ? "Hide command" : "Show command") {
+          showClaudeCodeCommand.toggle()
+        }
+        .buttonStyle(.link)
+        .font(.caption)
+      }
+
+      if setupToken.isEmpty {
+        Text("The access key couldn't be read from the Keychain. Unlock your Mac's login keychain, then reopen Settings.")
+          .font(.caption)
+          .foregroundColor(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      } else if waiting {
+        connectSteps
+      } else if let connection, needsWriteKey(connection) {
+        Text("Claude Code is connected with the read-only key, so it can't suggest or make changes. Click Connect Again, then start a new Claude Code session.")
+          .font(.caption)
+          .foregroundColor(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+      } else if connection == nil {
+        Text("Copies a setup command and opens Terminal. You paste it once, and every new Claude Code session can use WhisperShortcut.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      if showClaudeCodeCommand {
+        HStack(alignment: .top) {
+          codeBlock(claudeCodeCommand)
+          Button {
+            copy(claudeCodeCommand, id: "claude-code")
+          } label: {
+            Image(systemName: copiedItem == "claude-code" ? "checkmark" : "doc.on.doc")
+          }
+          .controlSize(.small)
+          .help("Copy command")
+        }
+      }
+    }
+    .padding(12)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(Color(nsColor: .controlBackgroundColor))
+    )
+  }
+
+  private var connectSteps: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      connectStep(1, "In Terminal, press ⌘V, then Return.")
+      connectStep(2, "Start a new Claude Code session. In one that's already open, run /mcp and reconnect whisper-shortcut.")
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.small)
+        Text("Waiting for Claude Code to connect…")
+          .font(.caption)
+          .foregroundColor(.secondary)
+        Spacer()
+        Button("Cancel") { connectStartedAt = nil }
+          .buttonStyle(.link)
+          .font(.caption)
+      }
+      .padding(.top, 2)
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.08)))
+  }
+
+  private func connectStep(_ number: Int, _ text: String) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Text("\(number)")
+        .font(.caption.weight(.semibold).monospacedDigit())
+        .foregroundColor(.white)
+        .frame(width: 16, height: 16)
+        .background(Circle().fill(Color.accentColor))
+      Text(text)
+        .font(.callout)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func connectClaudeCode() {
+    copy(claudeCodeCommand, id: "claude-code")
+    connectStartedAt = Date()
+    if let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
+      NSWorkspace.shared.openApplication(at: terminal, configuration: NSWorkspace.OpenConfiguration())
+    }
+  }
+
+  /// True when the client holds the read key but the chosen access level needs the write key.
+  private func needsWriteKey(_ client: MCPConnectedClient) -> Bool {
+    accessLevel != .read && client.access == "read"
+  }
+
+  @ViewBuilder
+  private func connectionBadge(_ client: MCPConnectedClient?, waiting: Bool) -> some View {
+    if let client, !waiting {
+      // Refreshes "2 min ago" while Settings stays open.
+      TimelineView(.periodic(from: .now, by: 30)) { _ in
+        HStack(spacing: 4) {
+          Image(systemName: needsWriteKey(client) ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+            .foregroundColor(needsWriteKey(client) ? .orange : .green)
+          Text("\(client.access == "write" ? "Connected" : "Connected, read only") · \(client.lastConnected.formatted(.relative(presentation: .named)))")
+            .foregroundColor(.secondary)
+        }
+        .font(.caption)
+      }
+    } else if !waiting {
+      Text("Not connected")
+        .font(.caption)
+        .foregroundColor(.secondary)
+    }
+  }
+
   // MARK: - Setup cards
 
-  private func setupCard(id: String, title: String, instruction: String, code: String) -> some View {
+  private func setupCard(id: String, title: String, clientPrefix: String, instruction: String, code: String) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Text(title)
           .font(.callout)
           .fontWeight(.semibold)
         Spacer()
+        if clients.client(matching: clientPrefix) != nil {
+          connectionBadge(clients.client(matching: clientPrefix), waiting: false)
+        }
         Button {
           copy(code, id: id)
         } label: {
@@ -301,28 +456,32 @@ struct MeetingsInAIAppsSection: View {
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
-      // Shown masked: the setup holds the access key, and Settings may be on a shared screen.
-      Text(masked(code))
-        .font(.system(.caption, design: .monospaced))
-        .foregroundColor(.secondary)
-        .lineLimit(nil)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(Color(nsColor: .textBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
+      codeBlock(code)
     }
     .padding(12)
     .background(
       RoundedRectangle(cornerRadius: 8)
         .fill(Color(nsColor: .controlBackgroundColor))
     )
+  }
+
+  private func codeBlock(_ code: String) -> some View {
+    // Shown masked: the setup holds the access key, and Settings may be on a shared screen.
+    Text(masked(code))
+      .font(.system(.caption, design: .monospaced))
+      .foregroundColor(.secondary)
+      .lineLimit(nil)
+      .fixedSize(horizontal: false, vertical: true)
+      .padding(8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: 6)
+          .fill(Color(nsColor: .textBackgroundColor))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 6)
+          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+      )
   }
 
   // MARK: - Setup text
