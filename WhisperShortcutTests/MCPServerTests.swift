@@ -182,4 +182,29 @@ struct MCPServerTests {
     let (_, denied) = try await URLSession.shared.data(for: request)
     #expect((denied as? HTTPURLResponse)?.statusCode == 401)
   }
+
+  // MARK: MCPMain.runBounded
+
+  @Test("runBounded returns the block's value when main is free")
+  func runBoundedMainFree() async throws {
+    let value = await Task.detached { MCPMain.runBounded(timeout: 2) { 42 } }.value
+    #expect(value == 42)
+  }
+
+  @Test("runBounded times out and the block never runs when main is held")
+  func runBoundedMainBusy() async throws {
+    let gate = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async { gate.wait() }
+
+    final class Box { var ran = false }
+    let box = Box()
+    let result = await Task.detached {
+      MCPMain.runBounded(timeout: 0.2) { box.ran = true }
+    }.value
+    #expect(result == nil)
+
+    gate.signal()
+    await MainActor.run {}
+    #expect(box.ran == false)
+  }
 }

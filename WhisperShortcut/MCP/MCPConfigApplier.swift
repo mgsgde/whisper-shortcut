@@ -23,6 +23,48 @@ enum MCPMain {
     if Thread.isMainThread { return try block() }
     return try DispatchQueue.main.sync(execute: block)
   }
+
+  static let mainWaitTimeout: TimeInterval = 5
+
+  /// A plain `DispatchQueue.main.sync` hangs forever when the main queue is stuck inside a modal
+  /// run loop (`NSAlert.runModal`, `NSApp.runModal(for:)`) started from an earlier main-queue
+  /// block — the loop doesn't drain queued work until the dialog closes. This bounds the wait so
+  /// an MCP request fails fast instead of leaking a worker thread, while still letting a block
+  /// that already started running finish and report its real result.
+  static func runBounded<T>(timeout: TimeInterval, _ block: @escaping () -> T) -> T? {
+    if Thread.isMainThread { return block() }
+
+    let lock = NSLock()
+    var state = 0  // 0 = waiting, 1 = started, 2 = abandoned
+    var result: T?
+    let semaphore = DispatchSemaphore(value: 0)
+
+    DispatchQueue.main.async {
+      lock.lock()
+      guard state == 0 else {
+        lock.unlock()
+        return
+      }
+      state = 1
+      lock.unlock()
+      result = block()
+      semaphore.signal()
+    }
+
+    if semaphore.wait(timeout: .now() + timeout) == .success {
+      return result
+    }
+
+    lock.lock()
+    if state == 0 {
+      state = 2
+      lock.unlock()
+      return nil
+    }
+    lock.unlock()
+    semaphore.wait()
+    return result
+  }
 }
 
 /// The three stores MCP tools read and change, injected so tests use scratch directories.
