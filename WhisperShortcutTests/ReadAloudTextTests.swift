@@ -156,4 +156,78 @@ struct TranscriptPlausibilityTests {
       veryFast, audioDurationSeconds: 30.0, mode: "TEST")
     #expect(result == veryFast)
   }
+
+  private static let trailingEchoGlossary = ["Joschka", "SumUp", "lemniscus", "WhisperShortcut"]
+
+  @Test("Report A drops the glossary tacked on after the sentence")
+  func stripsTrailingGlossaryEchoReportA() {
+    let text = "Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden. Joschka SumUp lemniscus"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == "Wir kriegen von der Personalabteilung immer Ein- und Austrittslisten, damit ausgetretene Mitarbeiter im System gesperrt werden.")
+  }
+
+  @Test("Report B drops the glossary tacked on after the sentence")
+  func stripsTrailingGlossaryEchoReportB() {
+    let text = "Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt. Joschka, SumUp, lemniscus, WhisperShortcut."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == "Ein Kunde Medizintechnik Bartsch hat eine Anfrage an mich geschickt. Hintergrund, ich habe Im Flyer den Flyer für unsere Spracherkennung WhisperShortcut zugeschickt.")
+  }
+
+  @Test("A single glossary term after the sentence stays")
+  func keepsSingleTrailingGlossaryTerm() {
+    let text = "Das war's. SumUp."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("Glossary words out of order stay")
+  func keepsOutOfOrderGlossaryTail() {
+    let text = "Das war's. WhisperShortcut Joschka."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A real sentence that mentions glossary terms stays")
+  func keepsTailWithNonGlossaryWords() {
+    let text = "Das war's. Wir nutzen SumUp und lemniscus."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("Glossary words with no sentence boundary stay")
+  func keepsGlossaryWithoutBoundary() {
+    let text = "Joschka SumUp"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A dot inside a token is not a sentence boundary")
+  func keepsDottedToken() {
+    let text = "sabaki.dance"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: ["Sabaki", "Dance"], mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("An empty glossary disables the trailing-echo strip")
+  func keepsTrailingEchoWhenGlossaryEmpty() {
+    let text = "Hallo. Joschka SumUp"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: [], mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A newline is a sentence boundary for a trailing glossary echo")
+  func stripsGlossaryEchoAfterNewline() {
+    let text = "Erster Absatz.\nJoschka, SumUp"
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == "Erster Absatz.")
+  }
 }

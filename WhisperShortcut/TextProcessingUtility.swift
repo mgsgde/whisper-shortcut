@@ -359,6 +359,102 @@ enum TextProcessingUtility {
     return ""
   }
 
+  /// Strips a glossary list the model appended after an otherwise correct dictation.
+  ///
+  /// Observed (glossary "Joschka, SumUp, lemniscus, WhisperShortcut"):
+  /// A: "…im System gesperrt werden. Joschka SumUp lemniscus"
+  /// B: "…WhisperShortcut zugeschickt. Joschka, SumUp, lemniscus, WhisperShortcut."
+  /// `discardingGlossaryEchoTranscript` only drops a transcript that is entirely glossary, so a
+  /// correct sentence with the list tacked on survives it. Only the tail is removed.
+  ///
+  /// Each condition is what keeps a false positive out. An empty glossary leaves the text
+  /// untouched. No sentence boundary — including a dot that is not followed by whitespace, as in
+  /// `sabaki.dance`, and a transcript with no boundary at all — returns the text unchanged,
+  /// because a transcript that is *only* glossary belongs to the other gate ("Joschka SumUp" can
+  /// be what the user actually said). The head before the boundary must contain a letter or
+  /// digit, so stray punctuation cannot swallow the line. The tail is removed only when every
+  /// word is a glossary word, the words' term indices are non-decreasing (an echo keeps glossary
+  /// order, so "WhisperShortcut Joschka" stays), and at least two distinct terms appear (a single
+  /// "SumUp." is ordinary speech; "Wir nutzen SumUp und lemniscus" has words that are not in the
+  /// glossary and stays).
+  static func strippingTrailingGlossaryEcho(
+    _ text: String, glossaryTerms: [String], mode: String
+  ) -> String {
+    guard !glossaryTerms.isEmpty else { return text }
+
+    var bodyEnd = text.endIndex
+    while bodyEnd > text.startIndex {
+      let previous = text.index(before: bodyEnd)
+      if text[previous].isWhitespace { bodyEnd = previous } else { break }
+    }
+
+    // Closing punctuation of the transcript itself, and a quote glued to it (`."`), is not the
+    // boundary between the real sentence and the echo.
+    let terminalPunctuation: Set<Character> = [".", "!", "?", "…", "\"", "'", "”", "’", "“", "»", "›"]
+    var searchEnd = bodyEnd
+    while searchEnd > text.startIndex {
+      let previous = text.index(before: searchEnd)
+      if terminalPunctuation.contains(text[previous]) { searchEnd = previous } else { break }
+    }
+
+    // A newline, or sentence punctuation that is immediately followed by whitespace. `sabaki.dance`
+    // has a dot with a letter after it, so it is not a boundary.
+    let boundaryPunctuation: Set<Character> = [".", "!", "?", "…", ":"]
+    var boundary: String.Index?
+    var index = text.startIndex
+    while index < searchEnd {
+      let character = text[index]
+      if character.isNewline {
+        boundary = index
+      } else if boundaryPunctuation.contains(character) {
+        let next = text.index(after: index)
+        if next < text.endIndex, text[next].isWhitespace {
+          boundary = index
+        }
+      }
+      index = text.index(after: index)
+    }
+    guard let boundary else { return text }
+
+    let headEnd = text.index(after: boundary)
+    let head = text[..<headEnd]
+    guard head.contains(where: { $0.isLetter || $0.isNumber }) else { return text }
+
+    // First glossary entry that contains the word. Later duplicates do not reorder the echo.
+    var termIndexByWord: [String: Int] = [:]
+    for (termIndex, term) in glossaryTerms.enumerated() {
+      for word in term.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+        let folded = foldForEchoCheck(String(word))
+        if termIndexByWord[folded] == nil {
+          termIndexByWord[folded] = termIndex
+        }
+      }
+    }
+
+    let tail = text[headEnd..<bodyEnd]
+    let tailWords = tail.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+      .map { foldForEchoCheck(String($0)) }
+
+    var distinctTerms = Set<Int>()
+    var lastTermIndex: Int?
+    for word in tailWords {
+      guard let termIndex = termIndexByWord[word] else { return text }
+      if let lastTermIndex, termIndex < lastTermIndex { return text }
+      lastTermIndex = termIndex
+      distinctTerms.insert(termIndex)
+    }
+    guard distinctTerms.count >= 2 else { return text }
+
+    let trimmedTail = tail.trimmingCharacters(in: .whitespacesAndNewlines)
+    DebugLogger.logWarning("\(mode): Stripped trailing glossary echo \"\(trimmedTail)\"")
+
+    var kept = String(head)
+    while let last = kept.last, last.isWhitespace {
+      kept.removeLast()
+    }
+    return kept
+  }
+
   /// Case- and diacritic-insensitive comparison form, matching `SpeechService.foldGlossaryTerm`.
   private static func foldForEchoCheck(_ word: String) -> String {
     word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
