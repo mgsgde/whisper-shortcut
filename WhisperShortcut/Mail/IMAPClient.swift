@@ -128,7 +128,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
         let once = ResumeOnce()
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, _, error in
           guard let self else { return }
           if let error {
             if once.claim() { continuation.resume(throwing: self.map(error)) }
@@ -138,7 +138,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
             if once.claim() { continuation.resume(returning: data) }
             return
           }
-          if once.claim() { continuation.resume(returning: isComplete ? Data() : Data()) }
+          if once.claim() { continuation.resume(returning: Data()) }
         }
       }
     } onCancel: {
