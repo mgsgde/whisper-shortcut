@@ -457,8 +457,12 @@ class SpeechService {
       let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
       // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
-      // return through this one call.
-      return self.correctingRejectedSpellings(in: transcript)
+      // return through this one call. Both the trailing glossary-echo strip and the
+      // rejected-spelling correction run on that result.
+      return self.correctingRejectedSpellings(in: TextProcessingUtility.strippingTrailingGlossaryEcho(
+        transcript,
+        glossaryTerms: self.glossaryTermsForEchoCheck(),
+        mode: "TRANSCRIPTION"))
     }
 
     if cancellable {
@@ -1651,9 +1655,14 @@ class SpeechService {
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      // The same rejected-spelling correction the normal dictation path applies (`transcribe`),
-      // so a term the user struck from the Glossary cannot come back through Dictate Prompt.
-      let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
+      // The same trailing glossary-echo strip and rejected-spelling correction the normal
+      // dictation path applies (`transcribe`), so a glossary list tacked on after the
+      // instruction, or a term the user struck from the Glossary, cannot come back through
+      // Dictate Prompt.
+      let transcript = correctingRejectedSpellings(in: TextProcessingUtility.strippingTrailingGlossaryEcho(
+        try await performTranscription(audioURL: audioURL),
+        glossaryTerms: glossaryTermsForEchoCheck(),
+        mode: "DICTATE-PROMPT"))
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
       spokenOffline = TranscriptionModel.loadSelected().isOffline
