@@ -166,6 +166,10 @@ final class LoopbackHTTPServer {
     var noSigPipe: Int32 = 1
     setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
+    // SO_RCVTIMEO only bounds a single recv(); a client that trickles bytes slowly (one byte every
+    // 4s) would otherwise hold this thread indefinitely. This caps the whole read phase instead.
+    // Monotonic clock so a wall-clock jump (sleep/wake, NTP) can't extend or cut it short.
+    let deadline = DispatchTime.now() + .seconds(10)
     var buffer = Data()
     var chunk = [UInt8](repeating: 0, count: 16 * 1024)
     var request: HTTPRequest?
@@ -180,6 +184,7 @@ final class LoopbackHTTPServer {
         write(client, HTTPResponse.json(["error": "bad request"], status: 400))
         return
       case .incomplete:
+        if DispatchTime.now() >= deadline { return }  // too slow — drop without a response
         let n = recv(client, &chunk, chunk.count, 0)
         if n <= 0 { return }  // closed or timed out
         buffer.append(chunk, count: n)
