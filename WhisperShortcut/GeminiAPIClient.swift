@@ -255,7 +255,7 @@ class GeminiAPIClient {
     DebugLogger.logNetwork("\(logPrefix): POST \(endpoint)\(logDetail)")
     let (bytes, response) = try await session.bytes(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       onNon2xx?(http.statusCode)
@@ -353,7 +353,7 @@ class GeminiAPIClient {
         DebugLogger.log("\(mode): Received response")
         
         guard let httpResponse = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response")
+          throw TranscriptionError.networkError(String(localized: "Invalid response"))
         }
         
         if httpResponse.statusCode != 200 {
@@ -462,13 +462,13 @@ class GeminiAPIClient {
         } else if error.code.rawValue == -1005 || error.localizedDescription.contains("connection was lost") || error.localizedDescription.contains("network connection") {
           // Network connection lost (code -1005)
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Connection lost (URLError code: \(error.code.rawValue)) - will retry if attempts remaining")
-          lastError = TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
+          lastError = TranscriptionError.networkError(String(localized: "Network connection lost: \(error.localizedDescription)"))
           if attempt < maxAttempts {
             DebugLogger.log("\(mode)-RETRY: Connection lost, retrying in \(Constants.retryDelaySeconds)s...")
             try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
             continue
           }
-          throw TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
+          throw TranscriptionError.networkError(String(localized: "Network connection lost: \(error.localizedDescription)"))
         } else {
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.logDescription)")
           lastError = TranscriptionError.networkError(error.localizedDescription)
@@ -540,7 +540,7 @@ class GeminiAPIClient {
     }
 
     DebugLogger.log("\(mode)-RETRY: All \(maxAttempts) attempts failed")
-    throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
+    throw lastError ?? TranscriptionError.networkError(String(localized: "Gemini request failed after retries"))
   }
   
   /// Box so `openSSEStream`'s escaping `onNon2xx` callback can record the HTTP status.
@@ -1101,7 +1101,7 @@ class GeminiAPIClient {
   ) throws -> HTTPURLResponse {
     guard let httpResponse = response as? HTTPURLResponse else {
       DebugLogger.log(invalidTypeLog)
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
     guard httpResponse.statusCode == 200 else {
       let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
@@ -1159,7 +1159,7 @@ class GeminiAPIClient {
     guard let uploadURLString = uploadURLString,
           let uploadURL = URL(string: uploadURLString) else {
       DebugLogger.log("GEMINI-FILES-API: ERROR - Failed to get upload URL from headers")
-      throw TranscriptionError.networkError("Failed to get upload URL")
+      throw TranscriptionError.networkError(String(localized: "Failed to get upload URL"))
     }
     
     // Step 2: Upload file data

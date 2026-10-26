@@ -99,7 +99,7 @@ struct SupportFeedbackSection: View {
                 .foregroundColor(.purple)
                 .opacity(0.85)
 
-              Text(isBuildingReport ? "Preparing report…" : "Share Usage Report")
+              Text(isBuildingReport ? ("Preparing report…" as LocalizedStringKey) : "Share Usage Report")
                 .font(.body)
                 .fontWeight(.medium)
                 .textSelection(.enabled)
@@ -118,7 +118,7 @@ struct SupportFeedbackSection: View {
           // nobody turns the toggle on for.
           .help(
             saveUsageData
-              ? "See and share an anonymous summary of how you use the app"
+              ? ("See and share an anonymous summary of how you use the app" as LocalizedStringKey)
               : "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this"
           )
           .pointerCursorOnHover()
@@ -157,7 +157,7 @@ struct SupportFeedbackSection: View {
                 .foregroundColor(viewModel.data.appStoreLinkCopied ? .green : .blue)
                 .opacity(0.85)
 
-              Text(viewModel.data.appStoreLinkCopied ? "Link copied!" : "Share with Friends")
+              Text(viewModel.data.appStoreLinkCopied ? ("Link copied!" as LocalizedStringKey) : "Share with Friends")
                 .font(.body)
                 .fontWeight(.medium)
                 .textSelection(.enabled)
@@ -170,7 +170,7 @@ struct SupportFeedbackSection: View {
             .cornerRadius(SettingsConstants.cornerRadius)
           }
           .buttonStyle(PlainButtonStyle())
-          .help(viewModel.data.appStoreLinkCopied ? "App Store link copied to clipboard" : "Copy App Store link to clipboard")
+          .help(viewModel.data.appStoreLinkCopied ? ("App Store link copied to clipboard" as LocalizedStringKey) : "Copy App Store link to clipboard")
           .pointerCursorOnHover()
 
           Button(action: {

@@ -2,12 +2,12 @@ import SwiftUI
 
 /// Wording shared by the onboarding card and the Settings section, so both promise the same thing.
 enum UsageStatisticsCopy {
-  static let toggleTitle = "Share anonymous usage statistics"
+  static let toggleTitle = String(localized: "Share anonymous usage statistics")
   static let summary =
-    "Counts only — how often features are used and whether they worked. Never your words, audio, or which apps you use. No ID, no tracking. Off unless you turn it on."
-  static let why = "Helps a solo developer fix what actually breaks."
-  static let unavailableOffline = "Unavailable while Offline Mode is on — nothing leaves this Mac."
-  static let unavailableAdmin = "Turned off by your administrator."
+    String(localized: "Counts only — how often features are used and whether they worked. Never your words, audio, or which apps you use. No ID, no tracking. Off unless you turn it on.")
+  static let why = String(localized: "Helps a solo developer fix what actually breaks.")
+  static let unavailableOffline = String(localized: "Unavailable while Offline Mode is on — nothing leaves this Mac.")
+  static let unavailableAdmin = String(localized: "Turned off by your administrator.")
 }
 
 /// The opt-in switch plus "See exactly what is sent". Hidden behind an explanation while Offline
@@ -118,13 +118,13 @@ struct UsageStatisticsPreviewSheet: View {
   }
 
   @ViewBuilder
-  private func section(title: String, body: String, note: String?) -> some View {
+  private func section(title: LocalizedStringKey, body: String, note: LocalizedStringKey?) -> some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(title).font(.subheadline).fontWeight(.semibold)
       if let note {
         Text(note).font(.caption).foregroundStyle(.secondary)
       }
-      Text(body)
+      Text(verbatim: body)
         .font(.system(.caption, design: .monospaced))
         .textSelection(.enabled)
     }

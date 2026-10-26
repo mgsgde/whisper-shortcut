@@ -231,12 +231,12 @@ struct PermissionsOverview: View {
 
   @ViewBuilder
   private func permissionRow(
-    name: String,
-    description: String,
+    name: LocalizedStringKey,
+    description: LocalizedStringKey,
     required: Bool,
     status: PermissionStatus,
     actions: AnyView,
-    hint: String? = nil
+    hint: LocalizedStringKey? = nil
   ) -> some View {
     HStack(alignment: .top, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
@@ -244,7 +244,7 @@ struct PermissionsOverview: View {
           Text(name)
             .font(.callout)
             .fontWeight(.semibold)
-          Text(required ? "Required" : "Optional")
+          Text(required ? ("Required" as LocalizedStringKey) : "Optional")
             .font(.caption2)
             .fontWeight(.medium)
             .padding(.horizontal, 6)
@@ -302,10 +302,10 @@ struct PermissionsOverview: View {
 
   private func statusLabel(_ status: PermissionStatus) -> String {
     switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
+    case .granted: return String(localized: "Granted")
+    case .denied: return String(localized: "Denied")
+    case .notDetermined: return String(localized: "Not requested")
+    case .notApplicable: return String(localized: "Not applicable")
     }
   }
 }

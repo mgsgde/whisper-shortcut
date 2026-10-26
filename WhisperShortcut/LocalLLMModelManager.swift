@@ -252,7 +252,7 @@ final class LocalLLMModelManager: ModelStore<LocalLLMModelType> {
 
 struct MLXUnsupportedMacError: LocalizedError {
   var errorDescription: String? {
-    "Offline models need a Mac with Apple silicon. On this Mac, use a cloud model or a Local Server (Ollama / LM Studio)."
+    String(localized: "Offline models need a Mac with Apple silicon. On this Mac, use a cloud model or a Local Server (Ollama / LM Studio).")
   }
 }
 
@@ -319,7 +319,7 @@ actor MLXModelLoader {
       } catch {
         // Corrupt weights, memory pressure: typed so the recording is kept and Retry offered.
         DebugLogger.logError("MLX: load of \(type.huggingFaceID) failed: \(error.logDescription)")
-        throw TranscriptionError.localModelFailed("Failed to load \(type.displayName): \(error.localizedDescription). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
+        throw TranscriptionError.localModelFailed(String(localized: "Failed to load \(type.displayName): \(error.localizedDescription). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
       }
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")
       return ModelContainer(context: context)

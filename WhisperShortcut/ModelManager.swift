@@ -324,7 +324,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
       _ = try await ModelUtilities.loadTokenizer(for: variant, tokenizerFolder: modelFolder)
     } catch {
       if Self.isCancellation(error) { throw CancellationError() }
-      throw ModelStoreError.downloadFailed("Could not download the tokenizer for \(type.displayName): \(error.localizedDescription)")
+      throw ModelStoreError.downloadFailed(String(localized: "Could not download the tokenizer for \(type.displayName): \(error.localizedDescription)"))
     }
   }
 
@@ -405,7 +405,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
   override func preparingMessage(for type: OfflineModelType) -> String {
     // Parakeet's first load (ANE compile included) measured 0.5 s — the generic line fits.
     if type.engine == .parakeet { return super.preparingMessage(for: type) }
-    return "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes."
+    return String(localized: "Preparing \(type.displayName) for this Mac — one-time step, can take a few minutes.")
   }
 
   /// Load failure after the folder looked complete is the verified-corrupt case — purge and
@@ -456,7 +456,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
 
       if !isModelAvailable(type) {
         logDirectoryContents(rootDirectory)
-        throw ModelStoreError.downloadFailed("Model downloaded but not properly available. Please try downloading again.")
+        throw ModelStoreError.downloadFailed(String(localized: "Model downloaded but not properly available. Please try downloading again."))
       }
     } catch let error as ModelStoreError {
       throw error
@@ -470,24 +470,21 @@ final class ModelManager: ModelStore<OfflineModelType> {
         DebugLogger.logError("MODEL-MANAGER: MelSpectrogram.mlmodelc missing - this indicates an incomplete download")
         logDirectoryContents(rootDirectory)
         throw ModelStoreError.downloadFailed(
-          "Model download appears incomplete. The MelSpectrogram.mlmodelc file is missing. " +
-          "This usually means the download was interrupted or failed. " +
-          "Please try downloading again. If the problem persists, try deleting any partial downloads first."
+          String(localized: "Model download appears incomplete. The MelSpectrogram.mlmodelc file is missing. This usually means the download was interrupted or failed. Please try downloading again. If the problem persists, try deleting any partial downloads first.")
         )
       }
       if errorMessage.contains("AudioEncoder.mlmodelc") {
         DebugLogger.logError("MODEL-MANAGER: AudioEncoder.mlmodelc missing - model folder incomplete or corrupted")
         logDirectoryContents(rootDirectory)
         throw ModelStoreError.downloadFailed(
-          "Model folder exists but AudioEncoder.mlmodelc is missing (incomplete or corrupted). " +
-          "In Settings, delete the model and download it again."
+          String(localized: "Model folder exists but AudioEncoder.mlmodelc is missing (incomplete or corrupted). In Settings, delete the model and download it again.")
         )
       }
 
       let nsError = error as NSError
       DebugLogger.logError("MODEL-MANAGER: Error domain: \(nsError.domain), code: \(nsError.code)")
       DebugLogger.logError("MODEL-MANAGER: Error userInfo: \(nsError.userInfo)")
-      throw ModelStoreError.downloadFailed("Failed to download WhisperKit model: \(errorMessage)")
+      throw ModelStoreError.downloadFailed(String(localized: "Failed to download WhisperKit model: \(errorMessage)"))
     }
   }
 
@@ -517,7 +514,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
       if Self.isCancellation(error) { throw CancellationError() }
       DebugLogger.logError("MODEL-MANAGER: Parakeet download failed: \(error.logDescription)")
       logDirectoryContents(ParakeetBackend.modelsRoot)
-      throw ModelStoreError.downloadFailed("Failed to download Parakeet Ultra: \(error.localizedDescription)")
+      throw ModelStoreError.downloadFailed(String(localized: "Failed to download Parakeet Ultra: \(error.localizedDescription)"))
     }
   }
 

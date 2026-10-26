@@ -46,7 +46,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
                 Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
                   .foregroundColor(isAvailable ? .green : .secondary)
                   .font(.caption)
-                Text(isAvailable ? "Downloaded" : "Not downloaded")
+                Text(isAvailable ? ("Downloaded" as LocalizedStringKey) : "Not downloaded")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
@@ -122,7 +122,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
         // sits above the Settings window regardless of focus. 10 s — longer than the 1 s info
         // default — because this is a rare event with first-run information worth reading.
         PopupNotificationWindow.showInfo(
-          downloadedMessage,
+          verbatim: downloadedMessage,
           title: "Model Downloaded",
           customDisplayDuration: 10
         )

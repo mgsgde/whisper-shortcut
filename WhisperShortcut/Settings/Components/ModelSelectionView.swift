@@ -3,13 +3,13 @@ import SwiftUI
 /// Reusable component for transcription model selection.
 struct ModelSelectionView: View {
   @Binding var selectedTranscriptionModel: TranscriptionModel
-  let title: String
+  let title: LocalizedStringResource
   let systemImage: String?
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
 
   init(
-    title: String = "Transcription Model",
+    title: LocalizedStringResource = "Transcription Model",
     systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.selectableForDictation,
@@ -51,7 +51,7 @@ struct ModelSelectionView: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
 
-          Text(selectedTranscriptionModel.costLevel)
+          Text(selectedTranscriptionModel.costLevel.title)
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedTranscriptionModel.costLevel))
@@ -96,7 +96,7 @@ struct ModelSelectionView: View {
     }
   }
 
-  private static func title(for group: TranscriptionProvider.Group) -> String {
+  private static func title(for group: TranscriptionProvider.Group) -> LocalizedStringResource {
     switch group {
     case .direct: return "Direct"
     case .routed: return "Routed"
@@ -104,7 +104,7 @@ struct ModelSelectionView: View {
     }
   }
 
-  private static func subtitle(for group: TranscriptionProvider.Group) -> String {
+  private static func subtitle(for group: TranscriptionProvider.Group) -> LocalizedStringResource {
     switch group {
     case .direct: return "Billed to that provider's own API key"
     case .routed: return "One account or your own server · pick the model below"
@@ -134,7 +134,7 @@ struct ModelSelectionView: View {
   }
 
   @ViewBuilder
-  private func groupHeader(symbol: String, title: String, subtitle: String) -> some View {
+  private func groupHeader(symbol: String, title: LocalizedStringResource, subtitle: LocalizedStringResource) -> some View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 

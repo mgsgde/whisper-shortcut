@@ -24,7 +24,7 @@ final class MeetingListService: ObservableObject {
 
   private static let displayDateFormatter: DateFormatter = {
     let f = DateFormatter()
-    f.dateFormat = "EEEE, d MMM yyyy, HH:mm"
+    f.setLocalizedDateFormatFromTemplate("EEEE d MMM yyyy HH:mm")
     return f
   }()
 

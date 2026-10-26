@@ -27,7 +27,7 @@ import SwiftUI
 ///   a "pending conflict" state and offers an explicit "Reassign from X" button
 ///   rather than dead-ending the user with a red error.
 struct ShortcutRecorderRow: View {
-  let label: String
+  let label: LocalizedStringKey
   @Binding var shortcut: ShortcutDefinition?
   let focusedField: SettingsFocusField
   @FocusState.Binding var currentFocus: SettingsFocusField?
@@ -42,7 +42,7 @@ struct ShortcutRecorderRow: View {
 
   @State private var isRecording = false
   @State private var localMonitor: Any?
-  @State private var transientMessage: String?
+  @State private var transientMessage: LocalizedStringKey?
   @State private var pendingShortcut: ShortcutDefinition?
   @State private var pendingConflict: ShortcutConflict?
 
@@ -53,7 +53,7 @@ struct ShortcutRecorderRow: View {
   private static var activeRecorderCancel: (() -> Void)?
 
   init(
-    label: String,
+    label: LocalizedStringKey,
     shortcut: Binding<ShortcutDefinition?>,
     focusedField: SettingsFocusField,
     currentFocus: FocusState<SettingsFocusField?>.Binding,
@@ -144,7 +144,7 @@ struct ShortcutRecorderRow: View {
           .buttonStyle(.bordered)
           .controlSize(.small)
       } else {
-        Button(isRecording ? "Cancel" : "Record") {
+        Button(isRecording ? ("Cancel" as LocalizedStringKey) : "Record") {
           if isRecording {
             stopRecording()
           } else {
@@ -171,7 +171,7 @@ struct ShortcutRecorderRow: View {
   }
 
   @ViewBuilder
-  private func captionRow(icon: String, iconColor: Color, text: String) -> some View {
+  private func captionRow(icon: String, iconColor: Color, text: LocalizedStringKey) -> some View {
     HStack {
       Spacer()
         .frame(width: SettingsConstants.labelWidth)

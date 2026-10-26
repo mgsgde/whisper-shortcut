@@ -290,12 +290,12 @@ final class LiveMeetingSession: NSObject {
       DebugLogger.log(
         "LIVE-MEETING-SAFEGUARD: Showing duration prompt after \(thresholdMinutes) minutes")
       let alert = NSAlert()
-      alert.messageText = "Long meeting"
+      alert.messageText = String(localized: "Long meeting")
       alert.informativeText =
         "This meeting has been transcribing for over \(thresholdMinutes) minutes. Stop or continue?"
       alert.alertStyle = .informational
-      alert.addButton(withTitle: "Stop meeting")
-      alert.addButton(withTitle: "Continue")
+      alert.addButton(withTitle: String(localized: "Stop meeting"))
+      alert.addButton(withTitle: String(localized: "Continue"))
       let response = alert.runModal()
       if response == .alertFirstButtonReturn {
         DebugLogger.log("LIVE-MEETING-SAFEGUARD: User chose to stop meeting")
@@ -451,7 +451,7 @@ final class LiveMeetingSession: NSObject {
         let offline = OfflineMode.isEnabled
         await MainActor.run {
           PopupNotificationWindow.showError(
-            offline
+            verbatim: offline
               ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library."
               : "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
             title: "Live Meeting – Summary Failed"
@@ -466,11 +466,9 @@ final class LiveMeetingSession: NSObject {
   static func chunkFailureMessage(error: Error, kept: Bool) -> String {
     let reason = SpeechErrorFormatter.formatForUser(error)
     guard kept else {
-      return "Part of this meeting couldn't be transcribed: \(reason)"
+      return String(localized: "Part of this meeting couldn't be transcribed: \(reason)")
     }
-    return "Part of this meeting couldn't be transcribed: \(reason)\n\n"
-      + "Recording continues and the audio is kept on this Mac. It is transcribed again when the "
-      + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu."
+    return String(localized: "Part of this meeting couldn't be transcribed: \(reason)\n\nRecording continues and the audio is kept on this Mac. It is transcribed again when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu.")
   }
 
   /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
@@ -492,9 +490,7 @@ final class LiveMeetingSession: NSObject {
         self.didShowTranscriptionFailureAlert = true
         DebugLogger.logWarning("LIVE-MEETING: Started without a network connection")
         PopupNotificationWindow.showError(
-          "There is no internet connection, so this meeting can't be transcribed right now.\n\n"
-            + "Recording continues and the audio is kept on this Mac. It is transcribed when the "
-            + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online.",
+          "There is no internet connection, so this meeting can't be transcribed right now.\n\nRecording continues and the audio is kept on this Mac. It is transcribed when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online.",
           title: "Live Meeting – Offline"
         )
       }
@@ -556,12 +552,10 @@ final class LiveMeetingSession: NSObject {
     DebugLogger.log("MEETING-BACKLOG: Retry done (recovered \(recovered), remaining \(remaining))")
 
     if remaining > 0 {
-      let reason = failure.map { SpeechErrorFormatter.formatForUser($0) } ?? "The transcription failed."
-      let parts = remaining == 1 ? "1 part" : "\(remaining) parts"
+      let reason = failure.map { SpeechErrorFormatter.formatForUser($0) } ?? String(localized: "The transcription failed.")
+      let parts = remaining == 1 ? String(localized: "1 part") : String(localized: "\(remaining) parts")
       PopupNotificationWindow.showError(
-        "\(parts) of the meeting couldn't be transcribed yet: \(reason)\n\n"
-          + "The audio is kept on this Mac. Retry once you're back online — here, or with Retry "
-          + "Meeting Transcription in the menu bar menu.",
+        "\(parts) of the meeting couldn't be transcribed yet: \(reason)\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu.",
         title: "Live Meeting – Transcription Incomplete",
         retryAction: { [weak self] in
           Task { @MainActor in await self?.retryBacklog(stems: targets, announce: true) }
@@ -570,7 +564,7 @@ final class LiveMeetingSession: NSObject {
       )
     } else if announce {
       PopupNotificationWindow.showInfo(
-        recovered == 0
+        verbatim: recovered == 0
           ? "The kept meeting audio contained no speech."
           : "The meeting transcript is complete again. The summary is being regenerated.",
         title: "Meeting Transcription Recovered")
@@ -1044,7 +1038,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
               self.didShowRateLimitAlert = true
               self.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
-                SpeechErrorFormatter.formatForUser(error)
+                verbatim: SpeechErrorFormatter.formatForUser(error)
                   + (kept ? "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : ""),
                 title: "Live Meeting – Quota Reached"
               )
@@ -1052,7 +1046,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           } else if !self.didShowTranscriptionFailureAlert {
             self.didShowTranscriptionFailureAlert = true
             PopupNotificationWindow.showError(
-              Self.chunkFailureMessage(error: error, kept: kept),
+              verbatim: Self.chunkFailureMessage(error: error, kept: kept),
               title: "Live Meeting – Transcription Failed"
             )
           }
@@ -1106,7 +1100,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
 
       // Show error but don't stop the session
       PopupNotificationWindow.showError(
-        SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
+        verbatim: SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
   }
 }

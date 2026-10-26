@@ -17,7 +17,7 @@ enum ChunkedTTSError: Error, LocalizedError {
         case .chunkingFailed(let error):
             return ChunkFailureMessage.message(context: "text", error: error)
         case .allChunksFailed(let errors):
-            return "All \(errors.count) chunks failed to synthesize"
+            return String(localized: "All \(errors.count) chunks failed to synthesize")
         }
     }
 }

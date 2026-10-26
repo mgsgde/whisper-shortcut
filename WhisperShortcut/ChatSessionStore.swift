@@ -330,7 +330,7 @@ class ChatSessionStore {
         let backupURL = appSupportDir.appendingPathComponent(backupName)
         try? FileManager.default.moveItem(at: fileURL, to: backupURL)
         ChatSessionStore.lastCorruptionNotice =
-          "Chat history could not be read and was set aside as \(backupName). A new empty chat was started."
+          String(localized: "Chat history could not be read and was set aside as \(backupName). A new empty chat was started.")
         DebugLogger.logError(
           "GEMINI-CHAT: Failed to decode sessions file, moved to \(backupName): \(error.localizedDescription)")
       }

@@ -27,10 +27,10 @@ enum MailProviderPresets {
       return .unknown(suggestedHost: "")
     }
     if isMicrosoft(domain) {
-      return .unsupported(reason: "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet.")
+      return .unsupported(reason: String(localized: "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet."))
     }
     if domain == "gmail.com" || domain == "googlemail.com" {
-      return .unsupported(reason: "Gmail is read through the Google connection: Settings → Accounts → Google Account.")
+      return .unsupported(reason: String(localized: "Gmail is read through the Google connection: Settings → Accounts → Google Account."))
     }
     if let preset = presets[domain] {
       return .preset(MailServerPreset(host: preset.host, port: 993, note: preset.note))
@@ -38,9 +38,9 @@ enum MailProviderPresets {
     return .unknown(suggestedHost: "imap.\(domain)")
   }
 
-  private static let icloudNote = "Use an app-specific password from account.apple.com."
-  private static let tOnlineNote = "Use your T-Online e-mail password, not the login password."
-  private static let yahooNote = "Use an app password from Yahoo account security."
+  private static let icloudNote = String(localized: "Use an app-specific password from account.apple.com.")
+  private static let tOnlineNote = String(localized: "Use your T-Online e-mail password, not the login password.")
+  private static let yahooNote = String(localized: "Use an app password from Yahoo account security.")
 
   private static let presets: [String: (host: String, note: String?)] = [
     "ionos.de": ("imap.ionos.de", nil),

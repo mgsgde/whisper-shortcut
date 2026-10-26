@@ -2,11 +2,11 @@ import SwiftUI
 
 /// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and Smart Improvement.
 struct PromptModelSelectionView: View {
-  let title: String
+  let title: LocalizedStringResource
   /// Optional SF Symbol shown next to the section header title.
   let systemImage: String?
   /// When nil, uses the default Dictate Prompt subtitle.
-  let subtitle: String?
+  let subtitle: LocalizedStringResource?
   /// When false, renders a small label instead of SectionHeader (e.g. when embedded in another section).
   let showSectionHeader: Bool
   @Binding var selectedModel: PromptModel
@@ -26,9 +26,9 @@ struct PromptModelSelectionView: View {
   @ObservedObject private var mlxManager = LocalLLMModelManager.shared
 
   init(
-    title: String,
+    title: LocalizedStringResource,
     systemImage: String? = nil,
-    subtitle: String? = nil,
+    subtitle: LocalizedStringResource? = nil,
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     availableModels: [PromptModel]? = nil,
@@ -61,7 +61,7 @@ struct PromptModelSelectionView: View {
     return selectedModel
   }
 
-  private var effectiveSubtitle: String {
+  private var effectiveSubtitle: LocalizedStringResource {
     if subscriptionMode {
       if let custom = subscriptionFixedModelDescription {
         return "In subscription mode, model selection is not available. \(custom)"
@@ -73,7 +73,7 @@ struct PromptModelSelectionView: View {
 
   private var subscriptionModeFixedModelLine: String {
     if let custom = subscriptionFixedModelDescription { return custom }
-    return "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)"
+    return String(localized: "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)")
   }
 
   var body: some View {
@@ -112,7 +112,7 @@ struct PromptModelSelectionView: View {
       if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
         HStack {
           let fraction = mlxManager.downloadProgress[downloading] ?? 0
-          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
+          Text(fraction > 0 ? ("Downloading \(downloading.displayName)… \(Int(fraction * 100))%" as LocalizedStringKey) : "Starting \(downloading.displayName)…")
             .font(.callout)
             .foregroundColor(.secondary)
           Spacer()
@@ -142,7 +142,7 @@ struct PromptModelSelectionView: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
 
-          Text(displayModel.costLevel)
+          Text(displayModel.costLevel.title)
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
@@ -167,8 +167,8 @@ struct PromptModelSelectionView: View {
 
   private struct ModelGroup {
     let symbol: String
-    let title: String
-    let subtitle: String?
+    let title: LocalizedStringResource
+    let subtitle: LocalizedStringResource?
     let models: [PromptModel]
   }
 
@@ -196,7 +196,7 @@ struct PromptModelSelectionView: View {
     let textModels = models.filter { !$0.generatesImages }
     let imageModels = models.filter { $0.generatesImages }
 
-    let providerOrder: [(ChatModelProvider, String, String, String?)] = [
+    let providerOrder: [(ChatModelProvider, String, LocalizedStringResource, LocalizedStringResource?)] = [
       (.gemini, "sparkles", "Gemini", nil),
       (.grok, "bolt.fill", "Grok (xAI)", nil),
       (.openai, "brain", "OpenAI", nil),
@@ -222,7 +222,7 @@ struct PromptModelSelectionView: View {
   }
 
   @ViewBuilder
-  private func groupHeader(symbol: String, title: String, subtitle: String?) -> some View {
+  private func groupHeader(symbol: String, title: LocalizedStringResource, subtitle: LocalizedStringResource?) -> some View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 

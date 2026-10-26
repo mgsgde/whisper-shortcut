@@ -52,11 +52,11 @@ struct ChatSidebar: View {
 
     var label: String {
       switch self {
-      case .today: return "Today"
-      case .yesterday: return "Yesterday"
-      case .previous7Days: return "Previous 7 Days"
-      case .previous30Days: return "Previous 30 Days"
-      case .older: return "Older"
+      case .today: return String(localized: "Today")
+      case .yesterday: return String(localized: "Yesterday")
+      case .previous7Days: return String(localized: "Previous 7 Days")
+      case .previous30Days: return String(localized: "Previous 30 Days")
+      case .older: return String(localized: "Older")
       }
     }
   }
@@ -259,11 +259,11 @@ struct ChatSidebar: View {
   // MARK: - Section header row (Chats / Meetings title + action button)
 
   private func sectionHeaderRow(
-    title: String,
+    title: LocalizedStringKey,
     isCollapsed: Bool,
     toggleCollapse: @escaping () -> Void,
     actionIcon: String,
-    actionHelp: String,
+    actionHelp: LocalizedStringKey,
     actionTint: Color,
     topPadding: CGFloat,
     perform: @escaping () -> Void
@@ -310,7 +310,7 @@ struct ChatSidebar: View {
   // MARK: - Search field
 
   private func searchField(
-    placeholder: String,
+    placeholder: LocalizedStringKey,
     text: Binding<String>,
     isSearching: Bool,
     clearAction: @escaping () -> Void,
@@ -522,14 +522,14 @@ struct ChatSidebar: View {
 
     // Hover button: active → archive, archived → delete permanently. Each step
     // is one click away from removal — never an irreversible action by accident.
-    let kind = session.isMeeting ? "meeting" : "chat"
-    let hoverAction: (icon: String, help: String, perform: () -> Void) = {
+    let archiveKindHelp: LocalizedStringKey = session.isMeeting ? "Archive meeting" : "Archive chat"
+    let hoverAction: (icon: String, help: LocalizedStringKey, perform: () -> Void) = {
       if isArchived {
         return (
           "xmark", "Delete permanently", { viewModel.confirmAndDeleteSessionPermanently(id: session.id) }
         )
       } else {
-        return ("archivebox", "Archive \(kind)", { viewModel.archiveSession(id: session.id) })
+        return ("archivebox", archiveKindHelp, { viewModel.archiveSession(id: session.id) })
       }
     }()
 
@@ -597,23 +597,26 @@ struct ChatSidebar: View {
     }
     .onHover { over in hoveredRowId = over ? session.id : nil }
     .contextMenu {
-      let kind = session.isMeeting ? "meeting" : "chat"
+      let restoreTitle: LocalizedStringKey = session.isMeeting ? "Restore meeting" : "Restore chat"
+      let copyTitle: LocalizedStringKey = session.isMeeting ? "Copy meeting" : "Copy chat"
+      let archiveTitle: LocalizedStringKey = session.isMeeting ? "Archive meeting" : "Archive chat"
+      let deleteTitle: LocalizedStringKey = session.isMeeting ? "Delete meeting\u{2026}" : "Delete chat\u{2026}"
       let archiveOlderCutoff = sortDate(session)
       if isArchived {
-        Button("Restore \(kind)") {
+        Button(restoreTitle) {
           viewModel.restoreSession(id: session.id)
           viewModel.switchToSession(id: session.id)
         }
-        Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Button(copyTitle) { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Delete \(kind)\u{2026}", role: .destructive) {
+        Button(deleteTitle, role: .destructive) {
           viewModel.confirmAndDeleteSessionPermanently(id: session.id)
         }
       } else {
         Button("Rename\u{2026}") { beginRename(session) }
-        Button("Copy \(kind)") { viewModel.copyChatToClipboard(sessionId: session.id) }
+        Button(copyTitle) { viewModel.copyChatToClipboard(sessionId: session.id) }
         Divider()
-        Button("Archive \(kind)") { viewModel.archiveSession(id: session.id) }
+        Button(archiveTitle) { viewModel.archiveSession(id: session.id) }
           .keyboardShortcut(.delete, modifiers: .command)
         if session.isMeeting {
           Button("Archive older meetings") {
@@ -631,7 +634,7 @@ struct ChatSidebar: View {
           }
         }
         Divider()
-        Button("Delete \(kind)\u{2026}", role: .destructive) {
+        Button(deleteTitle, role: .destructive) {
           viewModel.confirmAndDeleteSessionPermanently(id: session.id)
         }
       }

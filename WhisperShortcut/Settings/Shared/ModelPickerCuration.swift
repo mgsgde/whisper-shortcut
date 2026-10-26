@@ -27,9 +27,9 @@ enum ModelPickerBadge: Hashable, CaseIterable {
 
   var title: String {
     switch self {
-    case .recommended: return "Recommended"
-    case .fastest: return "Fastest"
-    case .offline: return "Offline"
+    case .recommended: return String(localized: "Recommended", comment: "Model picker badge")
+    case .fastest: return String(localized: "Fastest", comment: "Model picker badge")
+    case .offline: return String(localized: "Offline", comment: "Model picker badge: runs on-device")
     }
   }
 
@@ -199,8 +199,8 @@ extension TranscriptionModel: PickerCuratedModel {
     switch provider {
     // A missing offline file is a download, not a key — the offline section handles it.
     case .offline: return nil
-    case .selfHosted: return hasRequiredCredential ? nil : "Needs setup"
-    case .google, .openAI, .xai, .openRouter: return hasRequiredCredential ? nil : "Needs key"
+    case .selfHosted: return hasRequiredCredential ? nil : String(localized: "Needs setup", comment: "Tile badge: provider not configured")
+    case .google, .openAI, .xai, .openRouter: return hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing")
     }
   }
 
@@ -268,8 +268,8 @@ extension PromptModel: PickerCuratedModel {
 
   var pickerSetupBadge: String? {
     guard !hasRequiredCredential else { return nil }
-    if case .endpoint = provider.credentialRequirement { return "Needs setup" }
-    return "Needs key"
+    if case .endpoint = provider.credentialRequirement { return String(localized: "Needs setup", comment: "Tile badge: provider not configured") }
+    return String(localized: "Needs key", comment: "Tile badge: API key missing")
   }
 
   /// `ModelSelectionReconciler.preferredPromptModel`: providers in `providerPreference` order,
@@ -300,7 +300,7 @@ extension TTSModel: PickerCuratedModel {
 
   var pickerSupersededBy: TTSModel? { nil }
 
-  var pickerSetupBadge: String? { hasRequiredCredential ? nil : "Needs key" }
+  var pickerSetupBadge: String? { hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing") }
 
   /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
   /// leaving every rank `nil` lets the curation reach the same model through its Offline step.

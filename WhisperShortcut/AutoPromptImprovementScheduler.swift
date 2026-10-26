@@ -39,7 +39,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("SMART-IMPROVEMENT: No credential for \(improvementModel.displayName), skipping run")
       if !fromAutoRun {
         PopupNotificationWindow.showError(
-          improvementModel.provider.credentialRequiredMessage, title: "Smart Improvement")
+          verbatim: improvementModel.provider.credentialRequiredMessage, title: "Smart Improvement")
       }
       return
     }
@@ -107,10 +107,7 @@ class AutoPromptImprovementScheduler {
 
   private func showQueuedMessage() {
     let n = improvementQueue.count
-    let message = n == 1
-      ? "Added to queue. 1 improvement queued."
-      : "Added to queue. \(n) improvements queued."
-    PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+    PopupNotificationWindow.showInfo("Added to queue. \(n) improvements queued.", title: "Smart Improvement")
   }
 
   /// Runs the next job in the queue if any. Call after the current run finishes. Does not set isImprovementRunning; caller must set/clear it for the job being run.
@@ -268,9 +265,9 @@ class AutoPromptImprovementScheduler {
       if !appliedKinds.isEmpty {
         let kindNames = appliedKinds.map(\.improvementDisplayName)
         DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
-        let message = "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+        let message = String(localized: "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert.")
         await MainActor.run {
-          PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+          PopupNotificationWindow.showInfo(verbatim: message, title: "Smart Improvement")
         }
       } else {
         await MainActor.run {
@@ -285,7 +282,7 @@ class AutoPromptImprovementScheduler {
       await MainActor.run {
         if let firstError = failedErrors.first {
           PopupNotificationWindow.showError(
-            SpeechErrorFormatter.formatForUser(firstError),
+            verbatim: SpeechErrorFormatter.formatForUser(firstError),
             title: "Smart Improvement"
           )
         } else {

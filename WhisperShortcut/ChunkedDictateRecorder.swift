@@ -108,7 +108,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       } else {
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.permissionDeniedCode,
-          userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"])
+          userInfo: [NSLocalizedDescriptionKey: String(localized: "Microphone permission denied")])
         self.delegate?.audioRecorderDidFailWithError(error)
       }
     }
@@ -261,7 +261,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
         guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to start recording"])
+          userInfo: [NSLocalizedDescriptionKey: String(localized: "Failed to start recording")])
         DebugLogger.logError("AUDIO: Chunk recorder failed to start: \(error.logDescription)")
         self.meteringTimer?.invalidate()
         self.meteringTimer = nil
@@ -349,7 +349,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     guard let firstFile = try? AVAudioFile(forReading: urls[0]) else {
       throw NSError(
         domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
-        userInfo: [NSLocalizedDescriptionKey: "Could not read first chunk for merging"])
+        userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not read first chunk for merging")])
     }
     let output = try AVAudioFile(
       forWriting: outputURL,
@@ -396,7 +396,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
         guard fileSize > 0 else {
           throw NSError(
             domain: Constants.errorDomain, code: Constants.emptyFileCode,
-            userInfo: [NSLocalizedDescriptionKey: "Recording file is empty"])
+            userInfo: [NSLocalizedDescriptionKey: String(localized: "Recording file is empty")])
         }
         DispatchQueue.main.async {
           if urls.count > 1 {
@@ -441,7 +441,7 @@ extension ChunkedDictateRecorder: AVAudioRecorderDelegate {
       } else {
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
-          userInfo: [NSLocalizedDescriptionKey: "Recording finished unsuccessfully"])
+          userInfo: [NSLocalizedDescriptionKey: String(localized: "Recording finished unsuccessfully")])
         self.delegate?.audioRecorderDidFailWithError(error)
       }
     }

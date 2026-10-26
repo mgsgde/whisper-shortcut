@@ -7,6 +7,9 @@
     " " : {
       "shouldTranslate" : false
     },
+    " (request ID: %@)" : {},
+    "\"%@\" added to your Glossary." : {},
+    "\"%@\" is already in your Glossary." : {},
     "%@\nBefore: %lld %@ · since: %lld %@" : {
       "localizations" : {
         "en" : {
@@ -40,7 +43,61 @@
       "shouldTranslate" : false
     },
     "%@ chars" : {},
+    "%@ Check these words before you save the note." : {},
+    "%@ Dictating — meeting still recording" : {},
+    "%@ Error" : {
+      "comment" : "Popup title; the argument is the kind of operation that failed"
+    },
+    "%@ ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured." : {},
+    "%@ is temporarily unavailable. Please try again in a few seconds." : {},
+    "%@ of the meeting couldn't be transcribed yet: %@\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of the meeting couldn't be transcribed yet: %2$@\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu."
+          }
+        }
+      }
+    },
     "%@ ready — you can continue." : {},
+    "%@ Recording AI prompt — meeting still recording" : {},
+    "%@ was changed again after this, so it was left as it is. Edit it in Settings instead." : {},
+    "%@ · needs setup" : {},
+    "%@ · profile follows after %lld more messages" : {
+      "comment" : "Plural variation on the number of messages",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@ · profile follows after %lld more message"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@ · profile follows after %lld more messages"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%@ · profile follows with the next update" : {},
+    "%@ · profile updated %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · profile updated %2$@"
+          }
+        }
+      }
+    },
     "%@ · signed in under Settings → Accounts" : {},
     "%@ · SSL, port %lld" : {
       "localizations" : {
@@ -48,6 +105,27 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ · SSL, port %2$lld"
+          }
+        }
+      }
+    },
+    "%@ – %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%@ – %@ (%lld of %lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@ (%3$lld of %4$lld)"
           }
         }
       }
@@ -63,19 +141,19 @@
       },
       "shouldTranslate" : false
     },
-    "%@ — loaded anyway." : {},
-    "%@ — not loaded." : {},
-    "%@: “%@”" : {
+    "%@ — %lld%% of %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@: “%2$@”"
+            "value" : "%1$@ — %2$lld%% of %3$@"
           }
         }
-      },
-      "shouldTranslate" : false
+      }
     },
+    "%@ — loaded anyway." : {},
+    "%@ — needs setup" : {},
+    "%@ — not loaded." : {},
     "%lld" : {
       "shouldTranslate" : false
     },
@@ -90,98 +168,688 @@
       },
       "shouldTranslate" : false
     },
+    "%lld accounts" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld account"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld accounts"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld boards" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld board"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld boards"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld cards" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld card"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld cards"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld denied" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld denied"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld denied"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld emails" : {
+      "comment" : "Plural variation on the number",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld email"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld emails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld entries" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld entry"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld entries"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld events" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld event"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld events"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld failed" : {},
+    "%lld lists" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld list"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld lists"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld matches" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld match"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld matches"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld messages" : {
+      "comment" : "Plural variation on the number",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld message"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld messages"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld parts" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld part"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld parts"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld queued" : {},
+    "%lld results" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld result"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld results"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld tasks" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld task"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tasks"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "shouldTranslate" : false
     },
+    "%lld%% of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld%% of %2$@"
+          }
+        }
+      }
+    },
     "(Recommended)" : {},
+    "**%@** can't run on this Mac: it needs a Mac with Apple silicon." : {},
+    "**%@** can't run on this Mac: it needs at least %lld GB of memory." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "**%1$@** can't run on this Mac: it needs at least %2$lld GB of memory."
+          }
+        }
+      }
+    },
+    "**%@** isn't available in Chat." : {},
+    "**%@** only powers Dictate Prompt for now, not Chat." : {},
     "+" : {
       "shouldTranslate" : false
     },
+    "+%lld more" : {
+      "comment" : "Appended to a list of words that was cut off"
+    },
+    "/%@ is a built-in command" : {},
+    "0.0 · verbatim" : {},
+    "1 minute" : {},
+    "1 part" : {},
+    "1 second" : {},
     "1. Press your configured shortcut" : {},
     "1. Select text" : {},
+    "10 minutes" : {},
+    "10 seconds" : {},
+    "15 minutes" : {},
+    "15 seconds" : {},
+    "2 hours" : {},
+    "2 minutes" : {},
+    "2 seconds" : {},
     "2. Press your configured shortcut" : {},
     "2. Speak your text" : {},
+    "3 seconds" : {},
     "3. Press the shortcut again to stop" : {},
     "3. Speak your prompt instruction" : {},
+    "30 seconds" : {},
     "4. Press the shortcut again to stop" : {},
     "4. Transcription is automatically copied to clipboard" : {},
+    "45 seconds" : {},
+    "5 minutes" : {},
+    "5 seconds" : {},
     "5. Modified text is automatically copied to clipboard" : {},
+    "60 minutes" : {},
+    "60 seconds" : {},
+    "7 seconds" : {},
+    "90 minutes" : {},
     "@karpathy @simonw" : {},
+    "`%@` needs a meeting chat: it works on the meeting transcript." : {},
+    "`/new` is unavailable in this window because it is bound to a single chat session." : {},
+    "A ChatGPT sign-in is already in progress." : {},
+    "a full conversation window, with screenshots" : {},
+    "a remote server" : {},
+    "A run is already in progress and the queue is full. Try again later." : {},
+    "About" : {
+      "comment" : "Settings tab"
+    },
+    "Accept" : {},
+    "Accessibility" : {},
     "Accessibility granted — auto-paste is ready." : {},
     "Accessibility — auto-paste" : {},
     "Account:" : {},
+    "Accounts" : {
+      "comment" : "Settings tab"
+    },
     "Accounts:" : {},
+    "Accuracy Tuning" : {},
     "Acknowledgements" : {},
+    "Add a rule to the Dictate Prompt instructions." : {},
+    "Add a screenshot to your next message (can add multiple)" : {},
+    "Add an Anthropic API key to use Claude models in the chat window. Get a key from the Anthropic Console (link below)." : {},
+    "Add an API key or use an offline model - click to configure" : {},
+    "Add an OpenAI API key to use OpenAI's transcription models (gpt-4o-transcribe, gpt-4o-mini-transcribe). Get a key from the OpenAI platform (link below)." : {},
+    "Add an xAI API key to use Grok models in the chat window. Get a key from the xAI console (link below)." : {},
     "Add credits" : {},
     "Add custom header" : {},
     "Add examples" : {},
     "Add examples…" : {},
     "Add Folder…" : {},
     "Add more manually" : {},
+    "Add Selection to Glossary" : {},
+    "Add Selection to Glossary:" : {},
     "Add the matching API key in Settings → Accounts to use this model." : {},
+    "Add to dictation glossary: %@" : {},
+    "Add to Glossary:" : {},
+    "Add your Gemini API key in Settings → Accounts or sign in with Google to use Read Aloud." : {},
+    "Add your Gemini API key in Settings → Accounts to use Dictate Prompt." : {},
+    "Add your Gemini API key in Settings → Accounts to use dictation. For offline use, download an offline model in Settings → Dictate." : {},
+    "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt." : {},
+    "Add your OpenAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate." : {},
+    "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model." : {},
     "Add your OpenAI API key in Settings → Accounts to use the OpenAI transcription models." : {},
+    "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate." : {},
+    "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model." : {},
+    "Add ⌘/⌥/⌃ — or use an F-key (F1–F20) on its own" : {},
+    "Added to queue. %lld improvements queued." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added to queue. %lld improvement queued."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added to queue. %lld improvements queued."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Advanced" : {},
+    "AI apps can read meetings and your setup, never change anything." : {},
+    "AI apps can read transcripts, notes, summaries and your setup, never change or delete them." : {},
+    "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared." : {},
     "AI apps may" : {},
+    "AI Providers" : {},
+    "AI response copied to clipboard" : {},
+    "aistudio.google.com/api-keys" : {},
+    "All %lld chunks failed to synthesize" : {},
+    "All %lld chunks failed to transcribe" : {},
+    "All chunks complete - merging audio..." : {},
+    "All chunks complete - merging results..." : {},
+    "All enabled shortcuts must be different. Please use unique shortcuts." : {},
     "All interaction data and everything in context files will be deleted. System prompts will be recreated with defaults. Settings are preserved. Continue?" : {},
+    "All messages in this chat are deleted. This can't be undone." : {},
+    "All request attempts failed" : {},
     "Allow" : {},
     "Allow AI apps on this Mac to connect" : {},
     "Allow for this chat" : {},
     "Allow Plan Use" : {},
+    "Allow the chat to run %@?" : {},
     "Allow this action?" : {},
     "Allowed in Offline Mode: the update check is the only request that leaves this Mac. It downloads the list of releases from github.com and sends only the app's name and version — no recordings, transcripts, settings or usage data. Turn the switch off to stop automatic checks." : {},
+    "Almost Done" : {},
     "Almost ready" : {},
+    "Almost there — the reply starts once the model is loaded." : {},
+    "Already have a Google AI Studio key? Paste it here." : {},
+    "Already stopping — saving the last seconds of audio." : {},
     "Also dictate with 🌐 Fn" : {},
+    "Also powers Chat and Read Aloud" : {},
+    "Also write each screenshot as a PNG into a folder, so the chat Attach picker finds them right away" : {},
+    "An error occurred. Please try again." : {},
+    "An OpenRouter authorization is already in progress." : {},
+    "Anthropic API Key (Claude)" : {},
     "Anthropic bills $10 per 1,000 searches on your API key, plus the tokens of the results. Claude searches at most 5 times per message, and only when a question needs current information." : {},
+    "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key" : {},
+    "Anthropic's Claude Opus 5.5 • Deeper reasoning for hard questions • Text + images • 1M context • Needs an Anthropic API key" : {},
+    "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key" : {},
+    "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → Accounts" : {},
+    "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search" : {},
+    "Any model on your OpenRouter account" : {},
+    "API Key Required" : {},
     "API Key:" : {},
     "API Keys & Endpoints…" : {},
+    "API keys are stored in the macOS Keychain. They never leave your machine except in authenticated requests to the provider you configured." : {},
+    "API keys, OpenRouter, and connected services" : {},
+    "API quota exceeded. Please try again later." : {},
+    "API Response Issue" : {},
     "App Store link copied to clipboard" : {},
+    "Appears in: %@" : {},
+    "Append to file %@:" : {},
+    "Appended to" : {},
+    "Appended to a file" : {},
+    "Appending to" : {},
+    "Appending to a file" : {},
     "Applies to both the Screenshot shortcut and the in-chat Screenshot button. The clipboard still receives the image as before." : {},
     "Approval needed: %@" : {},
     "Apps you already set up stop working until you paste the new setup." : {},
-    "Archive %@" : {},
+    "Arabic" : {},
+    "Archive chat" : {},
     "Archive current chat" : {},
     "Archive current meeting" : {},
+    "Archive meeting" : {},
     "Archive older chats" : {},
     "Archive older meetings" : {},
     "Archive other chats" : {},
     "Archive other meetings" : {},
+    "Archive Trello card %@." : {},
+    "Archived card" : {},
+    "Archiving card" : {},
     "Ask" : {},
     "Ask about this note" : {},
+    "Ask after this duration to optionally stop the meeting or continue transcribing" : {},
     "Ask anything" : {},
+    "Ask before processing long recordings to avoid accidental API usage" : {},
     "Ask when meeting longer than" : {},
     "Ask when meeting longer than:" : {},
     "Ask when recording longer than" : {},
     "Ask when recording longer than:" : {},
+    "Attach a file (PDF, image, …) to your next message." : {},
+    "Audio file not found" : {},
+    "Audio from a meeting that couldn't be transcribed (for example while offline) is kept on this Mac until it is." : {},
+    "Audio is long - splitting into chunks for processing..." : {},
     "Audio is sent as a chat message (OpenRouter has no dedicated transcription endpoint), so your Dictation system prompt and Glossary apply here — unlike the OpenAI and self-hosted transcription endpoints. Temperature below applies too; Thinking effort is Gemini-only." : {},
+    "Audio is too long for OpenAI Dictate Prompt (%@ MB > %@ MB limit). Switch to a Gemini Dictate Prompt model for longer recordings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Audio is too long for OpenAI Dictate Prompt (%1$@ MB > %2$@ MB limit). Switch to a Gemini Dictate Prompt model for longer recordings."
+          }
+        }
+      }
+    },
     "audio models" : {},
+    "Audio never leaves this Mac" : {},
+    "Audio playback completed" : {},
+    "Authentication required. Add your API key in Settings → Accounts." : {},
+    "auto" : {},
+    "Auto-detect" : {},
     "Auto-paste" : {},
+    "Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.\n\nDictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.\n\nTo turn on auto-paste, click \"Open System Settings\". There:\n1. Go to Privacy & Security → Accessibility\n2. Enable WhisperShortcut\n\nAlready listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click \"Copy Reset Command\" and run it in Terminal to clear the stale entry." : {},
     "Auto-paste — inserting dictated text right at your cursor — isn't available in the Mac App Store version, because it requires a system permission that isn't allowed for App Store apps. Your text is always copied to the clipboard, so you can paste it with ⌘V. The direct-download version from whispershortcut.com supports auto-paste." : {},
     "Auto-paste:" : {},
+    "Automatically start WhisperShortcut when you log in" : {},
+    "Available Models" : {},
     "Azure OpenAI" : {},
     "Back" : {},
+    "Back 10 seconds" : {},
     "Base URL up to /v1 (the app appends /chat/completions). Default: %@" : {},
     "Base URL:" : {},
     "Bearer Token:" : {},
+    "Best %@ pick" : {
+      "comment" : "Tile badge: the provider's own recommended model, e.g. 'Best Gemini pick'"
+    },
+    "Best accuracy, in more languages" : {},
     "Best of these" : {},
+    "Billed to that provider's own API key" : {},
+    "Billing Required" : {},
     "Block all cloud features (Offline Mode)" : {},
+    "Busy" : {},
+    "Busy – wait for the current run to finish." : {},
+    "Button: %@" : {},
     "Cancel" : {},
+    "Cancel processing" : {},
+    "Cancelled" : {},
+    "Capture a screenshot anywhere on your Mac" : {},
+    "Capture screen without this window; image will be attached to your next message." : {},
+    "Capture Screenshot" : {},
+    "capture your screen straight to the clipboard or a folder" : {},
     "CC BY 4.0" : {},
+    "Center bottom" : {},
+    "Center top" : {},
+    "Change the Dictate Prompt instructions." : {},
     "Changed by AI apps" : {},
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access." : {},
     "Changes are saved automatically" : {},
     "Change…" : {},
+    "chat" : {},
+    "Chat" : {
+      "comment" : "Settings tab and feature"
+    },
+    "Chat + Meeting" : {},
+    "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device." : {},
+    "Chat copied to clipboard (%lld messages)." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Chat copied to clipboard (%lld message)."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Chat copied to clipboard (%lld messages)."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Chat history could not be read and was set aside as %@. A new empty chat was started." : {},
+    "Chat instructions" : {},
+    "Chat is empty — nothing to copy." : {},
+    "Chat messages sent again because the answer wasn't good enough, per 100 chat turns." : {},
+    "Chat Model" : {},
+    "Chat not found." : {},
+    "Chat on your ChatGPT Plus or Pro plan, no API key • Sign in under Settings → Accounts • Text + images • No web search or tools yet" : {},
+    "Chat only — Dictate Prompt is not available with Claude." : {},
     "Chat requests in WhisperShortcut now count toward your ChatGPT plan. You can set a weekly limit for this app in ChatGPT Settings → Usage." : {},
+    "Chat retries" : {},
+    "Chat runs on your ChatGPT Plus or Pro plan and counts toward its usage limits." : {},
+    "Chat sees the full transcript of this meeting." : {},
+    "Chat sees the full transcript · %lld min so far · %lld notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Chat sees the full transcript · %1$lld min so far · %2$lld notes"
+          }
+        }
+      }
+    },
+    "Chat sees the summary and full transcript of this meeting." : {},
+    "Chat System Prompt" : {},
+    "Chat with any model OpenRouter routes to, billed to your OpenRouter account." : {},
+    "ChatGPT" : {},
+    "ChatGPT answered for a different registration than the saved one. Sign-in was refused." : {},
+    "ChatGPT couldn't check your plan usage right now. Try again in a minute." : {},
+    "ChatGPT did not finish registering WhisperShortcut. Try signing in again." : {},
+    "ChatGPT did not return a callback." : {},
     "ChatGPT is signed in once, in Settings → Accounts." : {},
+    "ChatGPT plan" : {},
+    "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {},
+    "ChatGPT plan use wasn't allowed when you signed in. Turn it on in Settings → Accounts." : {},
+    "ChatGPT rejected the sign-in: %@" : {},
+    "ChatGPT request failed. Please try again." : {},
+    "ChatGPT returned an error (HTTP %lld): %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ChatGPT returned an error (HTTP %1$lld): %2$@"
+          }
+        }
+      }
+    },
+    "ChatGPT returned an error: %@" : {},
     "ChatGPT Settings → Usage" : {},
+    "ChatGPT sign-in failed: %@" : {},
+    "ChatGPT sign-in was refused because the callback did not match this attempt. Try again." : {},
+    "ChatGPT's response contained no ID token." : {},
+    "Chats" : {},
     "Check for updates automatically" : {},
     "Check for Updates…" : {},
+    "Checked the app docs" : {},
+    "Checked Trello cards" : {},
+    "Checked your calendar" : {},
+    "Checked your tasks" : {},
+    "Checking the app docs" : {},
+    "Checking the key with the provider…" : {},
+    "Checking Trello cards" : {},
+    "Checking your calendar" : {},
+    "Checking your tasks" : {},
     "Checking…" : {},
+    "Chinese" : {},
+    "Choose" : {},
     "Choose \"Never\" to disable." : {},
+    "Choose a folder to save screenshots into" : {},
+    "Choose folders the chat may read" : {},
     "Choose Folder…" : {},
+    "Choose the model that hears your spoken instruction and applies it to the selected text" : {},
+    "Choose the transcription model for speech recognition" : {},
+    "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → Accounts. “Custom endpoint” is for your own OpenAI-compatible server and is set up below once you pick it." : {},
+    "Chunk Interval" : {},
+    "Claude & Other AI Apps" : {},
+    "Claude (Anthropic)" : {},
     "Claude and other apps set up with the current key lose access until you copy the new setup into them." : {},
+    "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {},
+    "Claude Code" : {},
+    "Claude Desktop" : {},
+    "Claude is overloaded right now. Try again in a moment." : {},
+    "Claude models" : {},
+    "Claude models can search the web for current information and show their sources under each paragraph." : {},
+    "Claude stopped mid-reply: %@" : {},
     "Clear all" : {},
+    "Clear Chat" : {},
     "Clear search" : {},
     "Clear shortcut" : {},
+    "Clear this chat?" : {},
+    "Click to stop" : {},
+    "Clipboard Behavior" : {},
+    "Clipboard: “%@”" : {},
+    "Close" : {},
     "Close Chat when clicking outside" : {},
     "Close Other Tabs" : {},
     "Close Settings when clicking outside" : {},
@@ -190,50 +858,164 @@
     "Close Tabs to the Right" : {},
     "Closes Chat when another app is focused. Pin the window with /pin if you want it to stay open." : {},
     "Closes Settings as soon as another app or window is focused. Turn this off if you follow API-key links — the browser would otherwise dismiss Settings." : {},
+    "Cloud" : {},
     "collapsed" : {},
     "Collapsed" : {},
+    "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning." : {},
+    "Command /%@" : {},
+    "Commands" : {},
+    "Completed task" : {},
+    "Completing task" : {},
+    "Configure rate limits at " : {},
+    "Configure what happens after dictation or dictate prompt completes" : {},
+    "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model." : {},
     "Configured" : {},
     "Connect" : {},
     "Connect %@" : {},
+    "Connect at least one. Every feature then lets you pick a model from the providers connected here. Offline models need none of this." : {},
     "Connect Google Account" : {},
     "Connect in Accounts…" : {},
     "Connect OpenRouter Account" : {},
+    "Connect OpenRouter or save a key to continue." : {},
     "Connect Trello" : {},
+    "Connect your Google account (Settings → Accounts) and sent emails are imported automatically, or paste messages you wrote with Add examples." : {},
+    "Connect your Google account to let Gemini access Calendar, Tasks, and Gmail" : {},
+    "Connect your OpenRouter account in Settings → Accounts to transcribe through OpenRouter, or pick a different model." : {},
+    "Connect your OpenRouter account in Settings → Accounts to use OpenRouter in Chat." : {},
+    "Connect your Trello account to let the chat read and edit boards, lists, and cards" : {},
     "Connected" : {},
     "Connected %@" : {},
     "Connected in Settings → Accounts" : {},
+    "Connected Services" : {},
+    "Connected your mailbox" : {},
+    "Connecting your mailbox" : {},
+    "console.anthropic.com" : {},
+    "console.x.ai" : {},
     "Contact me on WhatsApp" : {},
+    "Contact Support" : {},
     "Contact via WhatsApp" : {},
     "Context" : {},
+    "Context Data" : {},
+    "Continue" : {},
     "Continue with ChatGPT" : {},
+    "Control how the chat window behaves" : {},
+    "Control how the Settings window behaves" : {},
     "Control-%lld" : {},
     "Copied" : {},
+    "Copied to the clipboard" : {},
+    "Copied unchanged — press ⌘V to paste." : {},
     "Copied!" : {},
     "Copy" : {},
-    "Copy %@" : {},
     "Copy App Store link to clipboard" : {},
+    "Copy chat" : {},
     "Copy Chat" : {},
+    "Copy Last Transcription" : {},
+    "Copy meeting" : {},
+    "Copy Reset Command" : {},
+    "Copy the entire chat history to clipboard as Markdown" : {},
     "Copy the full transcript of this meeting to the clipboard" : {},
     "Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen." : {},
     "Copy the transcript, the live notes, and the full chat history of this meeting as Markdown" : {},
+    "Copy this message to the clipboard" : {},
+    "Copy this reply to the clipboard" : {},
     "Copy transcript" : {},
     "Copy transcript + chat" : {},
     "Copy Transcript + Chat" : {},
     "Copy transcript and chat" : {},
+    "Copying to the clipboard" : {},
+    "Corrected the transcript" : {},
+    "Correcting the transcript" : {},
     "Cost:" : {},
+    "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again." : {},
+    "Could not create the file: %@" : {},
+    "Could not delete %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not delete %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Could not download the tokenizer for %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not download the tokenizer for %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Could not read audio file: %@" : {},
+    "Could not read first chunk for merging" : {},
+    "Could not read: %@" : {},
+    "Could not restore %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not restore %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Could not save the OpenRouter key to your Keychain." : {},
+    "Could not save the Trello token to the Keychain." : {},
+    "Could not save your ChatGPT sign-in to the Keychain." : {},
+    "Could not share: %@" : {},
+    "Couldn't apply the change" : {},
     "Couldn't load the model list (%@). Type a slug below instead." : {},
     "Couldn't load the model list (%@). Type a slug instead." : {},
+    "Couldn't open WhatsApp — use Settings → About for the other contact options." : {},
+    "Couldn't open your browser" : {},
+    "Couldn't save to Keychain. Try again." : {},
     "Couldn't start: %@" : {},
     "Couldn't store the key in the macOS Keychain (error %d). It works for this session but will be lost when the app quits — your login keychain may be locked or damaged." : {},
+    "Couldn't undo: %@" : {},
+    "Couldn't verify the key (offline or provider unreachable)" : {},
     "Counting…" : {},
+    "Country Not Supported" : {},
+    "Counts only — how often features are used and whether they worked. Never your words, audio, or which apps you use. No ID, no tracking. Off unless you turn it on." : {},
     "Covers Chat only. Dictation still needs an on-device model or an API key, because ChatGPT plans can't be used for transcription in other apps." : {},
+    "Create a calendar event." : {},
     "Create a new access key?" : {},
     "Create a Power-Up (any name, your own workspace), open its \"API key\" tab and copy the key." : {},
+    "Create a task." : {},
+    "Create a Trello card." : {},
+    "Create calendar event: %@" : {},
+    "Create file %@" : {},
     "Create New Key" : {},
+    "Create task: %@" : {},
+    "Create Trello card: %@" : {},
+    "Created card" : {},
+    "Created event" : {},
+    "Created task" : {},
+    "Creating card" : {},
+    "Creating event" : {},
+    "Creating task" : {},
     "Credits" : {},
-    "Current %@" : {},
+    "Current command" : {},
+    "Current instructions" : {},
     "Current model" : {},
+    "Current model: **%@**. Type `/model ` to pick another from the list." : {},
+    "Current profile" : {},
+    "Current prompt" : {},
+    "Current report" : {},
+    "Currently used by %@" : {},
+    "Custom" : {},
+    "Custom endpoint" : {},
+    "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {},
+    "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model." : {},
     "Custom slug…" : {},
+    "Cut" : {},
+    "Czech" : {},
+    "Danish" : {},
+    "Dashes" : {},
+    "Dashes added" : {},
+    "Data & Reset" : {},
+    "Decline" : {},
     "Delete" : {},
     "Delete %@" : {},
     "Delete %@ (moves %@ to the Trash)" : {
@@ -246,17 +1028,45 @@
         }
       }
     },
-    "Delete %@…" : {},
+    "Delete calendar event %@." : {},
+    "Delete chat…" : {},
+    "Delete Command" : {},
+    "Delete command /%@" : {},
     "Delete context data" : {},
     "Delete context data?" : {},
+    "Delete meeting…" : {},
+    "Delete permanently" : {},
+    "Delete task %@." : {},
+    "Delete this chat permanently?" : {},
+    "Delete this meeting permanently?" : {},
     "Delete writing style data" : {},
     "Delete writing style data?" : {},
+    "Deleted command /%@" : {},
+    "Deleted event" : {},
+    "Deleted task" : {},
+    "Deleting event" : {},
+    "Deleting task" : {},
+    "Denied" : {},
+    "Denied by you" : {},
     "Deny" : {},
     "Deprecated – no longer available to new users. Consider switching to %@." : {},
+    "Description: %@" : {},
     "Details" : {},
     "Detected from your domain's mail settings." : {},
     "Diagnostics: dumps each final chat response as a .md file so markdown-rendering bugs can be reproduced from the exact model output. Off by default." : {},
-    "Dictate Prompt" : {},
+    "Dictate" : {
+      "comment" : "Settings tab and feature"
+    },
+    "Dictate Prompt" : {
+      "comment" : "Feature name"
+    },
+    "Dictate Prompt can read your calendar, tasks, email, Trello and shared folders when an instruction needs a fact." : {},
+    "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack." : {},
+    "Dictate Prompt edits text you have selected, and nothing was selected.\n\nSelect the text you want changed first, then press the shortcut and say what to do with it." : {},
+    "Dictate Prompt Error" : {},
+    "Dictate Prompt instructions" : {},
+    "Dictate Prompt is not available with Grok." : {},
+    "Dictate Prompt Model" : {},
     "Dictate Prompt runs offline too — %@ is ready." : {},
     "Dictate Prompt runs offline too — downloading %@ (%@) in the background… %lld%%. You can continue." : {
       "localizations" : {
@@ -268,8 +1078,23 @@
         }
       }
     },
+    "Dictate Prompt System Prompt" : {},
+    "Dictate Prompt:" : {},
+    "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: %@ (fixed)" : {},
+    "Dictate Prompts re-run on the same selection with a new instruction, per 100 prompts." : {},
+    "Dictate through any audio-capable model OpenRouter routes to, with one account." : {},
+    "Dictate:" : {},
+    "Dictating... Click to stop" : {},
+    "Dictation" : {},
+    "Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite." : {},
+    "Dictation instructions" : {},
+    "Dictation Prompt" : {},
+    "Did the changes you accepted help? Counted on this Mac from your usage logs, without AI, and nothing leaves your Mac. Lower is better for every number." : {},
+    "Didn't catch that" : {},
     "Diff (current → suggested)" : {},
+    "Direct" : {},
     "Discard" : {},
+    "Discard recording" : {},
     "Discard unsaved changes" : {},
     "Disconnect" : {},
     "Dismiss" : {},
@@ -285,7 +1110,15 @@
         }
       }
     },
+    "Download and manage offline MLX models for Dictate Prompt and Chat. They run in the app itself — no server to install." : {},
+    "Download and manage offline transcription models" : {},
+    "Download failed: %@" : {},
+    "Download the offline model to continue." : {},
+    "Download the selected offline model in Settings → Dictate, or pick a different transcription model." : {},
+    "Download this image" : {},
     "Downloaded" : {},
+    "Downloading %@" : {},
+    "Downloading %@ again" : {},
     "Downloading %@ — %lld%%" : {
       "localizations" : {
         "en" : {
@@ -309,37 +1142,181 @@
     "Downloading…" : {},
     "Downloading… %lld%%" : {},
     "Drop a folder to share it with the chat" : {},
+    "Durable facts the chat remembers about you across conversations, injected into every chat. The model adds these automatically; edit or clear them here. One fact per line. Leave empty to disable." : {},
     "Duration:" : {},
+    "Dutch" : {},
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access." : {},
     "Edit" : {},
+    "Edit and resend this message" : {},
+    "Edit file %@ (all occurrences):" : {},
+    "Edit file %@:" : {},
     "Edit profile…" : {},
+    "Edit this message and send it again" : {},
+    "Edited" : {},
+    "Edited a file" : {},
+    "Editing" : {},
+    "Editing a file" : {},
     "Email me" : {},
     "Email the developer" : {},
+    "Empty File" : {},
+    "Enable Accessibility for Auto-Paste" : {},
     "Enable WhisperShortcut in System Settings, then return here." : {},
     "Ended" : {},
+    "Endpoint Not Configured" : {},
     "Endpoint:" : {},
+    "English" : {},
     "Enter a base URL above first." : {},
     "Enter an API key manually instead" : {},
     "Enter this server's API key to use it." : {},
     "Error" : {},
+    "Error: %@" : {},
+    "Every 14 days" : {},
+    "Every 3 days" : {},
+    "Every 30 days" : {},
+    "Every 7 days" : {},
+    "Every line is public on GitHub — audit it or build it yourself." : {},
     "Everything runs on this Mac. Dictation uses an on-device speech model, no request may leave the machine, and no transcript, prompt or audio sample is written to the usage log. Built for regulated dictation — patient findings, case notes — where \"the recording never leaves this device\" has to hold whatever is configured." : {},
+    "Exhausted retry attempts without a response" : {},
     "expanded" : {},
     "Expanded" : {},
+    "Expected a continuation from the mail server." : {},
+    "Expected a line from the mail server." : {},
+    "Failed" : {},
+    "Failed to build authorization URL." : {},
+    "Failed to build the ChatGPT sign-in URL." : {},
+    "Failed to build the OpenRouter authorization URL." : {},
+    "Failed to build Trello authorization URL." : {},
+    "Failed to chunk %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to chunk %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Failed to create audio buffer" : {},
+    "Failed to create audio format" : {},
+    "Failed to create chunk file" : {},
+    "Failed to create transcript file" : {},
+    "Failed to determine audio duration" : {},
+    "Failed to download Parakeet Ultra: %@" : {},
+    "Failed to download WhisperKit model: %@" : {},
+    "Failed to export audio chunk: %@" : {},
+    "Failed to get upload URL" : {},
+    "Failed to load %@: %@. The model may be incomplete or corrupted. Please try downloading it again in Settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to load %1$@: %2$@. The model may be incomplete or corrupted. Please try downloading it again in Settings."
+          }
+        }
+      }
+    },
+    "Failed to load model: %@. The model may be incomplete or corrupted. Please try downloading it again in Settings." : {},
+    "Failed to open the ChatGPT sign-in window." : {},
+    "Failed to open the OpenRouter authorization window." : {},
+    "Failed to start Google authorization." : {},
+    "Failed to start recording" : {},
+    "Failed to update Launch at Login setting: %@" : {},
+    "Failed: %@" : {},
+    "Fastest" : {
+      "comment" : "Model picker badge"
+    },
     "File a GitHub Issue" : {},
+    "File access is **off** for this chat — no folders, and no context files from them. Turn it back on with `/workspace all`." : {},
+    "File access is **off** in this chat." : {},
+    "File Error" : {},
+    "File error: %@" : {},
+    "File is larger than 32 KB" : {},
+    "File is not valid UTF-8 text" : {},
     "File name = command name (anamnesis.md → /anamnesis). Optional header lines: label (button text), description, scope (meeting, chat or both). Everything below the header is sent to the selected chat model as your message — offline models included. In a meeting chat the model also sees the full transcript." : {},
+    "File Too Large" : {},
+    "File · %@" : {},
     "Fill in:" : {},
+    "Finish setup…" : {},
+    "Finish the current recording first, then try again." : {},
+    "Finish the current recording or Read Aloud first, then start the meeting again." : {},
     "Finishing…" : {},
+    "Finnish" : {},
     "FluidAudio" : {},
+    "Folder Map" : {},
     "Folder:" : {},
+    "Folders the chat may read — and, if you enable writing below, edit. Nothing outside these folders is accessible." : {},
+    "Follow-up fixes" : {},
+    "Follow-ups" : {},
+    "For a chat that stays on this Mac, pick an offline model: `/model offline`." : {},
     "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here." : {},
     "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions." : {},
+    "For your own OpenAI-compatible /v1/audio/transcriptions server (faster-whisper-server, whisper-asr-webservice, or any proxy). If you want OpenAI's hosted models, use the OpenAI entries in the model picker instead." : {},
     "Forget everything the chat has learned about your folder layout" : {},
     "Forget everything the chat has remembered" : {},
+    "Forgetting a file location" : {},
+    "Forgot a file location" : {},
+    "Forward 10 seconds" : {},
+    "Free" : {},
+    "Free (Offline)" : {},
+    "French" : {},
+    "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key." : {},
+    "Gemini" : {},
+    "Gemini request failed after retries" : {},
+    "Gemini TTS blocked the request: %@" : {},
+    "Gemini TTS returned no audio" : {},
+    "Gemini TTS stream error: %@" : {},
+    "Gemini TTS stream stalled after %llds" : {},
     "gemini-models" : {},
+    "General" : {
+      "comment" : "Settings tab"
+    },
+    "Generated an image" : {},
+    "Generates images, not chat replies" : {},
+    "Generating an image" : {},
     "Generating summary…" : {},
+    "German" : {},
+    "Get an API key at " : {},
     "Get the direct-download version" : {},
     "Get your key:" : {},
+    "Global shortcuts — they work from any app. Press a shortcut once to start, again to stop." : {},
+    "Glossary" : {
+      "comment" : "Dictation term list"
+    },
+    "Glossary Full" : {},
+    "Gmail import and profile updates are off in Offline Mode. A saved profile and examples keep working." : {},
+    "Gmail is read through the Google connection: Settings → Accounts → Google Account." : {},
+    "Google access was revoked. Please connect again in Settings." : {},
+    "Google Account" : {},
+    "Google API Key" : {},
+    "Google authorization is already in progress." : {},
+    "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut." : {},
+    "Google is not connected. Open Settings → Accounts to connect." : {},
+    "Google sign-in was refused because the callback did not match this attempt. Try connecting again." : {},
+    "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation" : {},
+    "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal" : {},
+    "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal" : {},
+    "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput" : {},
+    "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal" : {},
+    "Google's Gemini 3.8 Flash TTS • Highest voice quality • Slower to start than Flash-Lite" : {},
+    "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents" : {},
+    "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal" : {},
+    "Google's Gemini 3.8 Flash-Lite TTS • Fastest start, lowest cost • 100+ languages • Recommended" : {},
+    "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)" : {},
+    "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal" : {},
+    "Google's Gemini Image (Nano Banana 2.1) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key" : {},
+    "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key" : {},
     "Got it" : {},
     "Grant microphone access to continue." : {},
+    "Granted" : {},
+    "Greek" : {},
+    "Grok (xAI)" : {},
+    "Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt." : {},
+    "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings." : {},
+    "Grok models" : {},
+    "Grok models search X.com posts alongside the web. Listing accounts here limits that search to them — useful when you follow a specific crowd's opinions. Leave empty to search all of X." : {},
+    "Grok only supports image attachments — %@ isn't supported. Switch to a Gemini model to chat about PDFs and documents." : {},
+    "Grok only: limit X search to these accounts, e.g. /x @karpathy @simonw (`/x off` = all of X)" : {},
+    "Grok will now search **only** %@ on X in this chat — posts from anyone else stay invisible to it." : {},
     "Grok will read only these %lld account(s) on X: %@ — posts from anyone else stay invisible to it." : {
       "localizations" : {
         "en" : {
@@ -353,6 +1330,8 @@
     "Header name" : {},
     "Headers:" : {},
     "Heidelberg, Germany 🇩🇪" : {},
+    "Helps a solo developer fix what actually breaks." : {},
+    "Hey, I'm Magnus — the developer" : {},
     "Hide API key" : {},
     "Hide details" : {},
     "Hide instruction" : {},
@@ -361,94 +1340,467 @@
     "Hide token" : {},
     "Hide tool steps" : {},
     "Hide value" : {},
+    "High" : {},
     "Highlight any text with the mouse or keyboard, then press the Read Aloud shortcut." : {},
+    "Hindi" : {},
+    "Hosted at" : {},
+    "How fast the audio is played back. Pitch is preserved." : {},
+    "How freely the model may deviate from what it heard, and how long it may think first." : {},
+    "How often the audio is transcribed and added to the file" : {},
     "How should dictation run?" : {},
+    "How to Use" : {},
     "https://your-whisper.example.com/v1/audio/transcriptions" : {},
+    "Hungarian" : {},
     "I build this app alone, and right now the only usage I can see is my own. Your counts show me what actually breaks." : {},
     "If the browser didn't open, click \"Connect Trello\" again." : {},
+    "If you enjoy WhisperShortcut, feel free to buy it on the App Store and leave a short review. It really helps me out as a solo developer.\n\nBest wishes from Heidelberg, Germany" : {},
+    "If you have feedback, if something doesn't work, or if you have suggestions for improvement, message me on WhatsApp or send an email — whichever suits you." : {},
+    "Image generation" : {},
+    "Image · %@" : {},
+    "IMAP mailboxes (IONOS, GMX, web.de, iCloud, …) the chat can search and read. Read-only." : {},
+    "IMAP server" : {},
     "imap.example.com" : {},
     "Import sent emails from Gmail" : {},
+    "Imported %lld new messages." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Imported %lld new message."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Imported %lld new messages."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Imported %lld new messages; %lld threads could not be read, try again later for the rest." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Imported %1$lld new messages; %2$lld threads could not be read, try again later for the rest."
+          }
+        }
+      }
+    },
     "Improve prompts and context from your usage" : {},
+    "Improve prompts from your usage and manage context data" : {},
+    "Improve prompts from your usage logs" : {},
+    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {},
+    "In subscription mode, model selection is not available. %@" : {},
+    "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Smart Improvement uses %@ (fixed)." : {},
     "In the chat window, Attach opens that folder first so recent screenshots are one click away." : {},
+    "Incorrect API Key" : {},
+    "Info" : {},
     "Input: %@" : {},
+    "Instructions" : {},
+    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {},
+    "Instructions sent to the model in Chat mode. Edit to customize chat behavior." : {},
+    "Instructions sent to the model in Dictate Prompt mode. Edit to customize how voice instructions are applied to text." : {},
+    "Instructions sent to your chat model when Smart Rewriting is enabled. It receives the selected text and returns a speech-friendly version." : {},
+    "Interaction logs, context data, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved." : {},
     "Interval:" : {},
+    "Invalid %@ endpoint URL" : {},
+    "Invalid API key. Please check your API key in Settings." : {},
+    "Invalid Authentication" : {},
+    "Invalid format for chunk %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid format for chunk %1$lld: %2$@"
+          }
+        }
+      }
+    },
+    "Invalid key" : {},
+    "Invalid name. Use lowercase letters, digits and dashes (max 40 characters)." : {},
+    "Invalid offline model type" : {},
+    "Invalid OpenAI endpoint URL" : {},
+    "Invalid Request" : {},
+    "Invalid response" : {},
+    "Invalid response from %@ API" : {},
+    "Invalid response from ChatGPT." : {},
+    "Invalid response from Google." : {},
+    "Invalid response from OpenRouter." : {},
+    "Invalid response from server" : {},
     "It works" : {},
+    "It's removed from the archive and can't be restored." : {},
+    "Italian" : {},
+    "Japanese" : {},
+    "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen." : {},
+    "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below." : {},
+    "Keep On-Device" : {},
+    "Keyboard Shortcuts" : {},
+    "Korean" : {},
     "Language" : {},
     "Last 4 weeks. No earlier change was measured, so accepting this one sets the baseline." : {},
     "Last 4 weeks. No usage since the last change yet." : {},
+    "Last sent" : {},
+    "Later" : {},
     "Launch at Login" : {},
     "Launch at Login:" : {},
+    "Learned from %@" : {},
+    "Learned from %@ and %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Learned from %1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "Learning starts with your next dictation in Mail, Messages, WhatsApp or Slack." : {},
+    "Learning starts with your sent emails and your next dictations." : {},
+    "Learning your writing style…" : {},
     "Learns from your sent emails and your dictations, and sends your style profile plus a few of your messages with each Dictate Prompt request, chosen by the app you are writing in. Not used with local models." : {},
     "Leave a Review" : {},
     "Leave a review on the App Store" : {},
+    "Left bottom" : {},
+    "Left top" : {},
     "Let AI apps read my recent dictations" : {},
+    "Let Claude and other MCP apps on this Mac read your meetings, including the one recording right now. If you allow it, they can also improve your setup from what they already know about you: names for the glossary, how your messages should sound, your commands." : {},
     "Let Claude search the web" : {},
     "Let Dictate Prompt use read-only tools" : {},
     "Let the chat create and change files in these folders" : {},
+    "Let your chat model (Settings → Chat) rewrite code, logs, Markdown or messy notes for natural speech. Plain prose is read as is, without the extra round trip." : {},
+    "Limit this chat to one shared folder, e.g. /workspace notes (`all` = every folder, `off` = none)" : {},
     "Link copied!" : {},
+    "Listed" : {},
+    "Listed a folder" : {},
+    "Listed mail accounts" : {},
+    "Listed shared folders" : {},
+    "Listed task lists" : {},
+    "Listed Trello boards" : {},
+    "Listed Trello lists" : {},
+    "Listening" : {},
     "Listening — notes appear as the meeting goes on." : {},
+    "Listening — nothing transcribed yet." : {},
+    "Listing" : {},
+    "Listing a folder" : {},
+    "Listing mail accounts" : {},
+    "Listing shared folders" : {},
+    "Listing task lists" : {},
+    "Listing Trello boards" : {},
+    "Listing Trello lists" : {},
+    "Live meeting" : {},
+    "Live Meeting" : {},
+    "Live Meeting Error" : {},
+    "Live meeting transcription... Click menu to stop" : {},
+    "Live Meeting – Notes Paused" : {},
+    "Live Meeting – Offline" : {},
+    "Live Meeting – Quota Reached" : {},
+    "Live Meeting – Summary Failed" : {},
+    "Live Meeting – Transcription Failed" : {},
+    "Live Meeting – Transcription Incomplete" : {},
     "Live notes" : {},
+    "Live notes couldn't be generated (the notes model is unavailable). Recording continues normally; a full summary will be generated when the meeting ends." : {},
+    "Loading %@ into memory…" : {},
+    "Loading more audio — click to pause" : {},
     "Loading OpenRouter's model list..." : {},
     "Loading…" : {},
+    "Local LLM" : {},
+    "Local Processing Timeout" : {},
+    "Local server" : {},
+    "Local Server" : {},
+    "Local Server (Ollama / LM Studio)" : {},
+    "Local server returned 404 for model \"%@\". Pull/select the model first (e.g. `ollama pull %@`) or fix the model id in Dictate Prompt settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Local server returned 404 for model \"%1$@\". Pull/select the model first (e.g. `ollama pull %2$@`) or fix the model id in Dictate Prompt settings."
+          }
+        }
+      }
+    },
+    "Long meeting" : {},
+    "Long recording" : {},
+    "Look Things Up" : {},
+    "Low" : {},
     "Lower means more literal. WhisperShortcut uses 0.0, which reproduces what was said. Sending no value at all — as versions before 7.96 did — leaves the AI model on its own setting of 1.0, the most likely source of invented or swapped words." : {},
+    "macOS (On-Device)" : {},
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit and reopen the app." : {},
     "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app." : {},
     "macOS permissions" : {},
+    "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later." : {},
+    "Mail Accounts" : {},
     "Make changes directly" : {},
+    "Make the window close when losing focus" : {},
+    "Manage or remove folders in Settings → Chat → Workspace Folders." : {},
     "Manage usage" : {},
+    "Mark task %@ complete." : {},
+    "Maximum number of file attachments reached (%lld)." : {},
+    "Maximum number of screenshots reached (%lld)." : {},
+    "Maybe Later" : {},
     "Measured so far" : {},
+    "Medium" : {},
+    "Meeting" : {},
+    "Meeting Not Started" : {},
+    "Meeting Recording Interrupted" : {},
+    "Meeting Recording Resumed" : {},
+    "Meeting Safeguard" : {},
+    "Meeting summary" : {},
+    "Meeting Summary Model" : {},
+    "Meeting transcription" : {},
+    "Meeting Transcription Model" : {},
+    "Meeting Transcription Recovered" : {},
+    "Meeting transcription, summaries, and sharing with AI apps" : {},
+    "Meetings" : {
+      "comment" : "Settings tab"
+    },
+    "Memory" : {},
+    "Merging audio chunks..." : {},
+    "Merging transcription results..." : {},
+    "Message %@ · no web search or tools…" : {},
+    "Message %@…" : {},
+    "Message Gemini…" : {},
+    "Message the developer on WhatsApp" : {},
+    "Message the developer, with the end of this chat attached" : {},
+    "Microphone" : {},
+    "Microphone Access Needed" : {},
+    "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut." : {},
     "Microphone is off in System Settings. You can continue and enable it later." : {},
+    "Microphone permission denied" : {},
+    "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet." : {},
+    "Minimal" : {},
+    "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline" : {},
+    "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM" : {},
+    "Model download appears incomplete. The MelSpectrogram.mlmodelc file is missing. This usually means the download was interrupted or failed. Please try downloading again. If the problem persists, try deleting any partial downloads first." : {},
+    "Model Downloaded" : {},
+    "Model downloaded but not properly available. Please try downloading again." : {},
+    "Model downloaded but required files are missing. Please try again." : {},
+    "Model folder exists but AudioEncoder.mlmodelc is missing (incomplete or corrupted). In Settings, delete the model and download it again." : {},
+    "Model is missing or incomplete. Please download it in Settings." : {},
+    "Model No Longer Available" : {},
+    "Model Not Downloaded" : {},
+    "Model not found" : {},
+    "Model set to **%@**." : {},
     "Model tag served locally (e.g. an Ollama tag). Pull it first: `ollama pull <model>`. Prefer a plain instruct model — reasoning models spend their first seconds thinking before any text appears. Default: %@" : {},
+    "Model used for the rolling summary during the meeting and the final summary when it ends" : {},
+    "Model, system prompt, and shortcut" : {},
+    "Model, system prompt, commands, and memory" : {},
     "Model:" : {},
     "More models" : {},
     "More models, %lld" : {},
     "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it." : {},
+    "Most accurate" : {},
+    "Move Trello card %@." : {},
     "Moved %@ to the Trash." : {},
+    "Moved card" : {},
+    "Moving card" : {},
+    "Multiple matches. Be more specific:\n%@" : {},
+    "Narrow with `/workspace <name>`, restore every folder with `/workspace all`, or drop file access entirely with `/workspace off`." : {},
+    "Need an API key? Get one at " : {},
     "Needed for Screen Recording or Accessibility changes to take effect." : {},
     "Needs \"Save usage data\" in Smart Improvement. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations." : {},
+    "Needs %@" : {},
+    "Needs a model" : {},
+    "Needs key" : {
+      "comment" : "Tile badge: API key missing"
+    },
+    "Needs one account; you pay the provider" : {},
+    "Needs setup" : {
+      "comment" : "Tile badge: provider not configured"
+    },
+    "Network connection lost: %@" : {},
+    "Network Error" : {},
+    "Network error: %@" : {},
+    "Never" : {},
     "New access key…" : {},
+    "New chat" : {},
+    "New Chat" : {},
+    "New command /%@" : {},
     "New Command…" : {},
     "New in this version: WhisperShortcut can tell me how often each feature is used and whether it worked. Counts only, like “12 dictations, 1 failed”. Never your words, audio, or which apps you use. No ID, no tracking." : {},
     "New to OpenRouter? The same flow creates the account. You pay OpenRouter directly for what you use." : {},
+    "No %@ API key configured. Add your %@ API key in Settings → Accounts to use Claude models." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Claude models."
+          }
+        }
+      }
+    },
+    "No %@ API key configured. Add your %@ API key in Settings → Accounts to use Grok models." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Grok models."
+          }
+        }
+      }
+    },
+    "No %@ API key configured. Add your %@ API key in Settings → Accounts to use OpenAI models." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenAI models."
+          }
+        }
+      }
+    },
+    "No %@ API key configured. Add your %@ API key in Settings → Accounts to use OpenRouter models." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenRouter models."
+          }
+        }
+      }
+    },
+    "No access token in response." : {},
+    "No API key entered" : {},
+    "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI." : {},
+    "No audio chunks provided for merging" : {},
+    "No audio track found in the file" : {},
+    "No audio was generated for this text" : {},
+    "No authorization code in callback." : {},
+    "No authorization code in ChatGPT's callback." : {},
+    "No authorization code in OpenRouter's callback." : {},
+    "No callback URL received." : {},
+    "No candidates in Gemini response" : {},
+    "No changes applied. You cancelled all suggestions or left them empty." : {},
     "No chats yet" : {},
     "No commands yet. Create one from the template, or put .md files into the commands folder." : {},
+    "No folders are shared yet. Use `/folder`, or drop a folder onto this window, to grant access — macOS only allows that through the picker or a drop." : {},
     "No folders shared. The chat cannot read any files on your Mac." : {},
+    "No Gemini credential available. Add your Google API key in Settings or sign in with Google." : {},
+    "No Google API Key" : {},
+    "No internet connection. Please check your network and try again." : {},
     "No key entered, so your OpenAI key from Settings → Accounts is used. That only works if this server forwards to OpenAI." : {},
     "No key needed" : {},
     "No key required — audio never leaves your Mac. %@ runs on this Mac; other offline models are in Settings → Dictate." : {},
     "No key required — audio never leaves your Mac. %@ transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate." : {},
     "No meetings yet" : {},
+    "No microphone input" : {},
+    "No model matched \"%@\". Try a version and variant, e.g. `3.1 flash lite` or `3.8 flash`." : {},
     "No models loaded yet" : {},
     "No notes for this meeting." : {},
+    "No Reply" : {},
     "No results" : {},
+    "No shared folder matches \"%@\"." : {},
+    "No Speech Detected" : {},
+    "No suggestions could be generated. Try again later or check that you have interaction data." : {},
+    "No text selected. Highlight text first, then press the Read Aloud shortcut." : {},
     "No Thanks" : {},
+    "No third-party tracking. Optional anonymous usage statistics, off unless you turn them on: counts only — never your words, audio, or which apps you use — sent to our own small server, whose code is public." : {},
+    "No transcript file yet" : {},
+    "No transcript or chat yet" : {},
+    "No transcript yet" : {},
+    "No transcription in response" : {},
+    "No transcription result" : {},
+    "No usable X handles in \"%@\". %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No usable X handles in \"%1$@\". %2$@"
+          }
+        }
+      }
+    },
     "No usage since then yet." : {},
     "None connected. Ask the chat, for example: \"Connect my mailbox me@example.de\". It asks for the password in a secure field." : {},
+    "Norwegian" : {},
+    "Not a Glossary Term" : {},
+    "Not applicable" : {},
+    "Not available here" : {},
     "Not connected" : {},
     "Not downloaded" : {},
+    "Not enough per-mode usage yet. Use the app a bit more and try again." : {},
+    "Not Found" : {},
+    "Not in your dictation" : {},
+    "Not Now" : {},
+    "Not requested" : {},
     "Not saved" : {},
     "Not set" : {},
     "Not signed in" : {},
     "Note: the Dictation system prompt does not apply here — OpenAI's transcription endpoint accepts no system instruction. Your Whisper Glossary is forwarded as the `prompt` bias hint and your language selection as the `language` parameter." : {},
+    "Notes" : {},
+    "Nothing collected yet — this is an example of a daily summary." : {},
+    "Nothing learned yet." : {},
+    "Nothing Selected" : {},
     "Nothing selected — writes new text" : {},
+    "Nothing to measure yet. Numbers appear once you've used the app for a few days." : {},
+    "Nothing to transcribe. Check the microphone and try again." : {},
     "NVIDIA Parakeet" : {},
+    "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline" : {},
     "Off" : {},
     "Off by default — the chat can only read. With it on, the chat can create files, append to them, and replace exact pieces of text. It cannot delete or rename anything, it will not write into `.git` or dependency folders, and the previous content of every changed file is kept for 30 days in the app's WorkspaceBackups folder." : {},
+    "Offline" : {
+      "comment" : "Model picker badge: runs on-device"
+    },
+    "Offline Dictation" : {},
     "Offline dictation: Parakeet Ultra by Moondream, a retraining of NVIDIA Parakeet TDT 0.6B v3, and NVIDIA Parakeet CTC 110M for Glossary terms — all licensed CC BY 4.0 — downloaded as FluidInference's Core ML conversions and run through FluidAudio (Apache 2.0). Whisper models by OpenAI (MIT), run through WhisperKit (MIT) by Argmax." : {},
     "Offline MLX models run on your Mac with no server. They download from Hugging Face and stay cached locally." : {},
     "Offline Mode" : {},
+    "Offline Mode and macOS permissions" : {},
+    "Offline Mode is on, so Chat only uses models on this Mac. Turn it off in Settings to use **%@**." : {},
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions." : {},
+    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions." : {},
+    "Offline Mode keeps no usage logs, so there is nothing to measure." : {},
+    "Offline Model" : {},
+    "Offline Model Error" : {},
+    "Offline model not initialized" : {},
     "Offline models allow you to transcribe audio without an internet connection. Models are automatically downloaded from HuggingFace and cached locally." : {},
+    "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for." : {},
+    "Offline models need a Mac with Apple silicon. On this Mac, use a cloud model or a Local Server (Ollama / LM Studio)." : {},
+    "Offline transcription failed: %@" : {},
     "OK" : {},
+    "Older" : {},
+    "On this Mac" : {},
+    "On-device" : {},
+    "On-device LLM" : {},
+    "On-device macOS voices need no API key." : {},
+    "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode" : {},
+    "One account for models from every provider. Sign in once — there is no API key to copy." : {},
+    "One account or your own server · pick the model below" : {},
+    "One-time download, %@" : {},
+    "One-time download, then it runs offline. Your message is sent as soon as it's ready." : {},
+    "Only %lld of %lld files attached (limit: %lld)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only %1$lld of %2$lld files attached (limit: %3$lld)."
+          }
+        }
+      }
+    },
+    "Only apps set up with your access key get in, and nothing is reachable from other devices. What you read in an AI app is sent to that app's provider." : {},
     "Only delete interaction history and context; settings are preserved" : {},
     "Only for Gemini models, and only for what you have connected in Settings → Accounts. Nothing is changed, created or sent. A lookup adds a few seconds to that one request." : {},
     "Only models with audio input are listed — anything else fails at request time. Full catalogue:" : {},
     "Only read" : {},
     "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions." : {},
+    "Open %@ in your browser." : {},
     "Open %@ in your default editor" : {},
+    "Open a GitHub issue" : {},
     "Open a prefilled GitHub issue; attach hang-*.txt from Reveal Hang Reports" : {},
+    "Open a URL in your browser." : {},
     "Open app data folder" : {},
     "Open app data folder in Finder" : {},
+    "Open App Store" : {},
     "Open as GitHub Issue…" : {},
     "Open Chat" : {},
+    "Open Chat:" : {},
     "Open Commands Folder" : {},
     "Open context data" : {},
     "Open context data in Finder" : {},
@@ -457,44 +1809,152 @@
     "Open on GitHub" : {},
     "Open Privacy & Security" : {},
     "Open raw responses folder" : {},
+    "Open Settings" : {},
     "Open Settings → %@" : {},
+    "Open Settings:" : {},
+    "Open source" : {},
     "Open System Settings" : {},
     "Open System Settings to grant %@ access" : {},
     "Open system-prompts.md in the default app" : {},
     "Open the daily log folder in Finder — useful when filing bug reports" : {},
+    "Open the file picker to attach files (PDF, images, text)" : {},
     "Open the WhisperShortcut repository on GitHub" : {},
     "Open the WhisperShortcut source code on GitHub" : {},
     "Open transcripts folder" : {},
     "Open transcripts folder in Finder" : {},
     "Open workspace-map.md in the default app" : {},
+    "OpenAI" : {},
+    "OpenAI API Key" : {},
+    "OpenAI Whisper Base • Smallest download • ~140MB • Offline" : {},
+    "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline" : {},
+    "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline" : {},
+    "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline" : {},
+    "OpenAI Whisper Small • Better quality • ~460MB • Offline" : {},
+    "OpenAI Whisper Tiny • Fastest • ~75MB • Offline" : {},
+    "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt" : {},
+    "OpenAI's faster, cheaper transcription model • Cloud" : {},
+    "OpenAI's flagship audio transcription model • High accuracy • Cloud" : {},
+    "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key" : {},
+    "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key" : {},
+    "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key" : {},
+    "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key" : {},
+    "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key" : {},
+    "Opened" : {},
+    "Opened a link" : {},
+    "Opened WhatsApp with the end of this chat attached. Edit before sending." : {},
+    "Opened WhatsApp. Edit the message before sending." : {},
     "OpenInference" : {},
+    "Opening" : {},
+    "Opening a link" : {},
     "OpenRouter" : {},
+    "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {},
+    "OpenRouter did not return a callback." : {},
     "OpenRouter is connected once, in Settings → Accounts, and shared by Dictate and Chat." : {},
+    "OpenRouter rejected the authorization: %@" : {},
+    "OpenRouter sign-in was refused because the callback did not match this attempt. Try connecting again." : {},
+    "OpenRouter's response contained no API key." : {},
     "openrouter.ai" : {},
     "openrouter.ai/models" : {},
     "Opens in your browser. You submit it there." : {},
     "Optional" : {},
+    "Optional screenshot sent with voice Dictate Prompt requests" : {},
+    "Optional. Lets the chat look things up for you. Everything is read-only unless a section says otherwise." : {},
+    "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {},
+    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General." : {},
     "Other providers — OpenAI, Anthropic, xAI" : {},
     "Other server…" : {},
+    "Overwrite file %@" : {},
     "Parakeet Ultra" : {},
+    "Parakeet Ultra (Offline)" : {},
+    "Parakeet Ultra is not fully downloaded." : {},
+    "Parakeet Ultra was not loaded." : {},
+    "Part of this meeting couldn't be transcribed: %@" : {},
+    "Part of this meeting couldn't be transcribed: %@\n\nRecording continues and the audio is kept on this Mac. It is transcribed again when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu." : {},
+    "Partial transcription: %lld chunk(s) failed" : {},
     "Password" : {},
     "Password needed to connect %@" : {},
+    "Paste" : {},
     "Paste one or more messages you wrote yourself. Separate messages with a line containing only ---." : {},
     "Paste the token shown by Trello in the browser" : {},
     "Paste your Trello API key" : {},
+    "Pasted unchanged." : {},
+    "Pasted · %lld lines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pasted · %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pasted · %lld lines"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Pause reading aloud" : {},
+    "PDF · %@" : {},
+    "Permission Denied" : {},
+    "Pick Offline or Cloud to continue." : {},
     "Pick one to start. You can add the other any time in Settings." : {},
     "Plan use wasn't allowed, so Chat can't run on this account yet." : {},
+    "platform.openai.com/api-keys" : {},
     "Playback position" : {},
+    "Playback Speed" : {},
     "Playback speed %@; click to change" : {},
     "Playback speed — click to change" : {},
+    "Please try again after adding more credits." : {},
+    "Please wait %lld seconds and try again." : {},
+    "Polish" : {},
+    "Popup Notifications" : {},
+    "Popup placement" : {},
+    "Portuguese" : {},
     "Position:" : {},
+    "Powers Gemini transcription, Dictate Prompt, Read Aloud, and Chat. Get a key from Google AI Studio (link below)." : {},
+    "Preparing" : {},
+    "Preparing %@ for this Mac — one-time step, can take a few minutes." : {},
     "Preparing report…" : {},
+    "press and start speaking — your words land as text" : {},
     "Press Fn once to start, again to stop. Needs Accessibility. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\"." : {},
     "Press the shortcut again to stop playback." : {},
     "Press the shortcut, then drag to select a region. The image is copied to the clipboard." : {},
+    "Previous 30 Days" : {},
+    "Previous 7 Days" : {},
+    "Privacy" : {},
+    "Privacy & Permissions" : {
+      "comment" : "Settings tab"
+    },
     "Privacy details" : {},
+    "Privacy promise" : {},
+    "Privacy, welcome tour, shortcuts, reset, and support" : {},
+    "Private and free" : {},
+    "Private · runs on your Mac" : {},
+    "Problem report" : {},
     "Problem Report from an AI App" : {},
+    "Problem report: %@" : {},
+    "Process" : {
+      "comment" : "Alert button: go ahead and transcribe the long recording"
+    },
+    "Processing" : {},
+    "Processing AI prompt... Please wait" : {},
+    "Processing Audio" : {},
+    "Processing Long Audio" : {},
+    "Processing Long Text" : {},
+    "Processing text-to-speech... Please wait" : {},
+    "Profile update cancelled." : {},
+    "Prompt" : {},
+    "Prompt retries" : {},
+    "Prompting" : {},
     "Puts dictated text straight at your cursor (a simulated ⌘V). macOS asks for Accessibility when you turn this on. Without it, your text is copied and you paste it yourself." : {},
+    "Queued" : {},
     "Quick action %lld: %@" : {
       "localizations" : {
         "en" : {
@@ -506,31 +1966,120 @@
       }
     },
     "Quit & Reopen WhisperShortcut" : {},
+    "Quit WhisperShortcut" : {},
+    "Quota Exceeded" : {},
     "Quote this note in the composer and ask about it" : {},
+    "Quote · %@" : {},
+    "Qwen3 4B Instruct (Offline)" : {},
+    "Qwen3.5 9B (Offline)" : {},
+    "Ran %@" : {},
+    "Rate limit reached. Please wait a moment and try again." : {},
+    "Rate Limited" : {},
+    "Rate limited by API. Automatically retrying in %lld seconds..." : {},
+    "Rate WhisperShortcut" : {},
     "Re-open browser" : {},
     "Re-read the folder. The chat also re-reads it whenever its window comes forward." : {},
+    "Read" : {},
+    "Read a file" : {},
+    "Read Aloud" : {
+      "comment" : "Settings tab and feature"
+    },
+    "Read Aloud instructions" : {},
+    "Read Aloud paused" : {},
+    "Read Aloud:" : {},
+    "Read an email" : {},
+    "Read app instructions" : {},
+    "Read selected text aloud anywhere on your Mac" : {},
+    "Read the app docs" : {},
+    "Read the clipboard" : {},
+    "Read this reply aloud" : {},
     "Read-only. Your password stays in your Keychain and is never sent to the AI." : {},
+    "Reading" : {},
+    "Reading a file" : {},
+    "Reading aloud" : {},
+    "Reading aloud — loading" : {},
+    "Reading aloud... Click menu to stop" : {},
+    "Reading aloud; click to stop" : {},
+    "Reading an email" : {},
+    "Reading app instructions…" : {},
     "Reading selection…" : {},
+    "Reading the app docs" : {},
+    "Reading the clipboard" : {},
     "Reads the selection from a screenshot" : {},
+    "Ready" : {},
     "Ready to continue." : {},
+    "Ready to record" : {},
+    "Reasoning depth for this chat: **%@**. Set with `/think <level>` — %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reasoning depth for this chat: **%1$@**. Set with `/think <level>` — %2$@."
+          }
+        }
+      }
+    },
+    "Reasoning depth reset to the model's **default** for this chat." : {},
+    "Reasoning depth set to **%@** for this chat. Higher = more thorough but slower and pricier." : {},
     "Reassign" : {},
-    "Recommended" : {},
+    "Recent Transcriptions" : {},
+    "Recommended" : {
+      "comment" : "Model picker badge"
+    },
     "Record" : {},
     "Record a different combination for any of these if it clashes with an app you use." : {},
     "Record a few seconds and see the transcript here. You can skip this." : {},
+    "Record a meeting from the chat window: type /meeting, or click the record button next to Meetings in the sidebar. The transcript is written as you talk, summarized when you stop, and you can ask the chat about it at any point." : {},
     "Recording" : {},
+    "Recording Dictate Prompt... Click to stop" : {},
+    "Recording Error" : {},
+    "Recording file is empty" : {},
+    "Recording finished unsuccessfully" : {},
+    "Recording Safeguards" : {},
     "Recording… %llds" : {},
+    "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted." : {},
+    "Redo" : {},
+    "Refined the meeting summary" : {},
+    "Refining the meeting summary" : {},
+    "Regenerate this response" : {},
+    "Rejected spellings" : {},
     "Release notes" : {},
     "Reload" : {},
+    "Remember about you (added to every future chat):\n%@" : {},
+    "Remember folder: %@" : {},
+    "Remember folder: %@ — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remember folder: %1$@ — %2$@"
+          }
+        }
+      }
+    },
+    "Remembered a file location" : {},
+    "Remembered where to find" : {},
+    "Remembering a file location" : {},
+    "Remembering where to find" : {},
     "Remove" : {},
     "Remove from queue" : {},
     "Remove header" : {},
+    "Remove rules from the Dictate Prompt instructions." : {},
+    "Removed from memory" : {},
+    "Removing from memory" : {},
     "Rename Tab" : {},
     "Rename…" : {},
+    "Replace the Dictate Prompt instructions." : {},
     "Replace with the app default prompt. The previous version is kept in system-prompts.md.bak." : {},
+    "Replace:" : {},
     "Replay the guided walkthrough of WhisperShortcut's features." : {},
     "Replies come through OpenRouter's chat API, so web search and image attachments aren't available here. Full catalogue:" : {},
+    "Reply may be cut off" : {},
     "Report (editable)" : {},
+    "Request failed. Please try again." : {},
+    "Request timed out. Please try again." : {},
+    "Request Timeout" : {},
+    "Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours)." : {},
     "Required" : {},
     "Required. Dictation through OpenRouter will fail until you connect an account or set this." : {},
     "Required. Dictation will fail until you set this." : {},
@@ -541,51 +2090,200 @@
     "Reset app to original state; app will quit after reset" : {},
     "Reset to default" : {},
     "Reset to Default" : {},
-    "Restore %@" : {},
+    "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only usage data, use Settings → Smart Improvement." : {},
+    "Resource Timeout" : {},
+    "Restore chat" : {},
     "Restore clipboard after auto-paste" : {},
     "Restore clipboard:" : {},
+    "Restore meeting" : {},
     "Result: %@" : {},
     "Resume" : {},
+    "Resume reading aloud" : {},
     "Retry" : {},
+    "Retry is unavailable while queued messages are pending. Remove them first." : {},
+    "Retry Meeting Transcription" : {},
+    "Retry Meeting Transcription (%lld parts)" : {
+      "comment" : "Menu item; plural variation on the number of parts",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Retry Meeting Transcription (%lld part)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Retry Meeting Transcription (%lld parts)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Retry Now" : {},
+    "Retry this message" : {},
+    "Retrying chunk %lld..." : {},
+    "Retrying Meeting Transcription…" : {},
     "Reveal Hang Reports" : {},
     "Reveal transcript in Finder" : {},
     "Revert" : {},
+    "Review %lld Changes from AI Apps…" : {},
     "Review All" : {},
+    "Review Change from AI App…" : {},
+    "Review Changes from AI Apps…" : {},
+    "Review Permissions" : {},
     "Review…" : {},
+    "Rewrite Prompt" : {},
     "Rewrite text for speech before reading aloud" : {},
+    "Right bottom" : {},
+    "Right top" : {},
+    "Romanian" : {},
+    "Routed" : {},
     "Run Improve from usage automatically" : {},
+    "Run in Terminal, then start a new Claude Code session. Run it again after a new access key:" : {},
     "Run offline with an on-device model" : {},
+    "Run typed instruction" : {},
+    "Running %@…" : {},
     "Running at %@" : {},
+    "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings" : {},
     "Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done." : {},
+    "Runs on your Mac · nothing to install" : {},
+    "Russian" : {},
     "Save" : {},
     "Save changes to the folder map" : {},
     "Save changes to the memory file" : {},
     "Save raw assistant responses to disk" : {},
+    "Save Screenshots" : {},
     "Save screenshots to a folder" : {},
+    "Save the generated image" : {},
     "Save usage data" : {},
     "Saved" : {},
+    "Saved dictation term" : {},
     "Saved in your Keychain. Read-only access." : {},
     "Saved to Keychain" : {},
+    "Saved to memory" : {},
+    "Saving dictation term" : {},
+    "Saving to memory" : {},
     "Saving…" : {},
     "Say a sentence. Later, %@ does the same in any app and puts the text where your cursor is." : {},
+    "Scorecard" : {},
+    "Screen capture failed. Opening Privacy & Permissions..." : {},
+    "Screen Context" : {},
+    "Screen Recording" : {},
+    "Screen Recording Permission Needed" : {},
+    "Screenshot" : {
+      "comment" : "Settings tab and feature"
+    },
     "Screenshot context" : {},
     "Screenshot context:" : {},
+    "Screenshot to Clipboard" : {},
+    "Screenshot:" : {},
+    "Search chats & meetings" : {},
+    "Searched files" : {},
+    "Searched files for" : {},
+    "Searched Gmail" : {},
+    "Searched Gmail for" : {},
+    "Searched the web" : {},
+    "Searched your mail" : {},
+    "Searching files" : {},
+    "Searching files for" : {},
+    "Searching Gmail" : {},
+    "Searching Gmail for" : {},
+    "Searching the web" : {},
+    "Searching your mail" : {},
     "See and limit how much of your plan WhisperShortcut uses" : {},
     "See and share an anonymous summary of how you use the app" : {},
     "See exactly what is sent" : {},
     "Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on." : {},
+    "Select a single term — a name or a piece of jargon — not a sentence. The Glossary is a spelling reference, and a whole sentence in it makes every dictation worse." : {},
+    "Select All" : {},
+    "Select an offline MLX model above. It downloads automatically when you pick it or dictate with it." : {},
+    "Select files to attach to your next message" : {},
     "Select model" : {},
+    "select text anywhere and hear it spoken" : {},
+    "select text, speak an instruction — the selection is rewritten in place" : {},
+    "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first." : {},
+    "Select the correctly spelled term first, then press the shortcut again." : {},
+    "Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio." : {},
+    "Selected model is not a Gemini model" : {},
+    "Selection · %lld lines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Selection · %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Selection · %lld lines"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Selection: “%@”" : {},
+    "Self-hosted" : {},
+    "Self-hosted Transcription Endpoint" : {},
     "Send" : {},
+    "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint" : {},
+    "Send Feedback" : {},
     "Send message" : {},
+    "Send this message again and regenerate the response" : {},
     "Send via Email" : {},
     "Send via WhatsApp" : {},
     "Sent only to the server above." : {},
     "Separate with spaces or commas. Pasted profile URLs work too. Applies to new chats; type `/x` in a chat to change it there, `/x off` to search all of X." : {},
+    "Server" : {},
+    "Server Error" : {},
+    "Service Unavailable" : {},
+    "Set reasoning depth for this chat: minimal | low | medium | high | default" : {},
+    "Set with `/x @karpathy @simonw`, clear with `/x off`." : {},
+    "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running." : {},
+    "Settings" : {
+      "comment" : "Settings window and menu item"
+    },
+    "Settings…" : {},
+    "Share" : {},
+    "Share a folder so the chat can list, read, and search files in it" : {},
+    "Share a folder so the chat can list, read, and search files in it. You can also drop a folder onto this window." : {},
+    "Share anonymous usage statistics" : {},
     "Share anonymous usage statistics?" : {},
+    "Share folder" : {},
+    "Share of Dictate Prompts that added an em or en dash to text that had none." : {},
+    "Share of Dictate Prompts that reworked the previous result within 5 minutes, because the first one missed." : {},
     "Share Statistics" : {},
     "Share Usage Report" : {},
     "Share with Friends" : {},
+    "Shared %@ with this chat. I can now list, read, and search files in: " : {},
+    "Shared folders:" : {},
+    "Shift alone won't fire — add ⌘/⌥/⌃" : {},
+    "Shortcut '%@' is used by both %@. Please use unique shortcuts." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shortcut '%1$@' is used by both %2$@. Please use unique shortcuts."
+          }
+        }
+      }
+    },
+    "Shortcut and save-to-folder settings" : {},
+    "Shortcut and smart-rewrite settings" : {},
+    "Shortcut:" : {},
     "Shortcuts" : {},
+    "Shortcuts and app behavior" : {},
     "Shortcuts are set in Settings → General." : {},
     "Shorter intervals provide more responsive updates but use more API calls." : {},
     "Show all %lld" : {},
@@ -597,14 +2295,17 @@
     "Show logs" : {},
     "Show Notifications" : {},
     "Show Notifications:" : {},
+    "Show popup windows with transcription and AI response text" : {},
     "Show token" : {},
     "Show tool steps" : {},
     "Show Tour" : {},
     "Show Transcript File in Finder" : {},
+    "Show Untranscribed Meeting Audio" : {},
     "Show value" : {},
     "Sign In in Accounts…" : {},
     "Sign in once and use models from every provider through one account. No account yet? The same flow creates one. You pay OpenRouter directly for what you use." : {},
     "Sign in to see your models" : {},
+    "Sign in with Google" : {},
     "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key." : {},
     "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model." : {},
     "Sign Out" : {},
@@ -614,80 +2315,325 @@
     "Since the last change (%@)" : {},
     "sk-..." : {},
     "sk-or-v1-..." : {},
+    "Slow Down" : {},
     "Slug:" : {},
     "Smallest download" : {},
+    "Smart Improvement" : {
+      "comment" : "Settings tab"
+    },
+    "Smart Improvement analyses your usage log with a cloud model, so it is off while Offline Mode is on." : {},
+    "Smart Improvement is on cooldown. Try again in %llds." : {},
+    "Smart Improvement is optional: when you turn it on in Settings → Smart Improvement, your usage logs are sent to your chosen provider to refine prompts — never to us or anyone else." : {},
+    "Smart Improvement Model" : {},
+    "Smart Improvement started. You can switch tabs; we'll notify you when it's done." : {},
+    "Smart Rewriting" : {},
     "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days." : {},
+    "Something went wrong" : {},
     "Sources (%lld)" : {},
+    "Spanish" : {},
+    "Speak your instruction" : {},
+    "Specify the language for Whisper transcription. Auto-detect lets Whisper determine the language automatically." : {},
+    "Speech service was deallocated" : {},
     "Speed tip: Ollama unloads an idle model after 5 minutes, and the next dictation pays to reload it. Start the server with `OLLAMA_KEEP_ALIVE=-1` to keep it resident." : {},
     "Speed:" : {},
+    "Spellings" : {},
+    "Spellings you rejected in the Glossary (X (not \"Y\")) that still showed up, per 100 dictations." : {},
+    "Splitting audio into %lld chunks..." : {},
+    "Splitting text into %lld chunks..." : {},
+    "Spoken feedback" : {},
+    "Start a new chat (previous chat stays in history)" : {},
+    "Start a new live meeting recording" : {},
+    "Start meeting" : {},
+    "Start or stop live meeting recording" : {},
     "Starting %@…" : {},
     "Starting…" : {},
+    "Startup" : {},
+    "Step %lld · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld · %2$@"
+          }
+        }
+      }
+    },
+    "Step-by-step instructions for using Dictate Prompt" : {},
+    "Step-by-step instructions for using dictation mode" : {},
     "Stop" : {},
+    "Stop and process" : {},
+    "Stop Dictate" : {},
+    "Stop Dictate Prompt" : {},
+    "Stop meeting" : {},
+    "Stop Read Aloud" : {},
+    "Stop reading aloud" : {},
     "Stop sending" : {},
     "Stop sending (⌘.)" : {},
+    "Stop the current meeting recording" : {},
+    "Stopping the meeting — transcribing the last seconds…" : {},
     "Stopping…" : {},
+    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Smart Improvement model drafts an updated profile from a sample of them and shows it for your review before saving." : {},
+    "Structured output is not supported for local models yet." : {},
+    "Style profile updated." : {},
+    "Subscription Required" : {},
+    "Success: %@" : {},
     "Suggest changes for me to approve" : {},
-    "Suggested %@ (editable)" : {},
+    "Suggested by an AI app" : {},
+    "Suggested command (editable)" : {},
+    "Suggested instructions (editable)" : {},
+    "Suggested profile (editable)" : {},
+    "Suggested prompt (editable)" : {},
+    "Suggested report (editable)" : {},
     "Superseded by Large v3 Turbo" : {},
+    "Support & Feedback" : {},
+    "Swedish" : {},
+    "Switch" : {},
+    "Switch model…" : {},
+    "Switch to %@" : {},
+    "Synthesizing Speech" : {},
+    "System Prompt" : {},
     "System prompt — not used by %@" : {},
+    "System prompts updated: %@. Check Settings to review or revert." : {},
     "Tab title" : {},
     "Temperature:" : {},
     "Text and images only for now: web search and connected services (Google, Trello, mail) don't run on the ChatGPT plan yet. Limits:" : {},
+    "Text Copied to Clipboard" : {},
+    "Text is empty" : {},
+    "Text Too Short" : {},
+    "That matches every shared folder, so this chat still uses all of them." : {},
+    "The audio file is invalid or cannot be read" : {},
     "The Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set Model to your deployment name." : {},
     "The chat can then list, read, and search files inside it." : {},
     "The chat sees file names and text content in these folders, and sends what it reads to your selected chat model. Only share folders you are comfortable with." : {},
+    "The command is larger than 32 KB" : {},
+    "The command text is empty" : {},
+    "The connection ended before ChatGPT finished the reply." : {},
+    "the key entered above for this server" : {},
+    "The last download was incomplete. Your message is sent as soon as it's ready." : {},
+    "The mail server did not respond in time." : {},
+    "The mail server did not return the message." : {},
+    "The mail server request failed." : {},
+    "The message is larger than 2 MB." : {},
     "The model id your server expects. On Azure, your deployment name." : {},
     "The next change you accept is measured from then on." : {},
+    "The password contains a line break." : {},
     "The profile and all example messages will be deleted. Your emails are not affected." : {},
+    "The provider accepted this key" : {},
+    "The provider rejected this key — check for typos or an expired key" : {},
+    "The recording is too short to transcribe." : {},
+    "The reply hit the length limit and may be cut off – check the end." : {},
+    "The reply was cut off (%@)." : {},
+    "The reply was cut off." : {},
+    "The report is still here. Try again, or copy the text into a new issue on GitHub." : {},
+    "The secure connection to the mail server failed." : {},
+    "The server closed the connection." : {},
+    "The server rejected the email address or password." : {},
+    "The specific voice %@ uses. Each provider has its own set." : {},
+    "The transcription failed." : {},
+    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates." : {},
     "The Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id." : {},
+    "There is no internet connection, so this meeting can't be transcribed right now.\n\nRecording continues and the audio is kept on this Mac. It is transcribed when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online." : {},
+    "These features still run on this Mac:\n\n%@\n\nThe cloud models are more accurate and faster. Recordings and text for these features are then sent to %@. You can change each one later in Settings." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "These features still run on this Mac:\n\n%1$@\n\nThe cloud models are more accurate and faster. Recordings and text for these features are then sent to %2$@. You can change each one later in Settings."
+          }
+        }
+      }
+    },
+    "Thinking" : {},
     "Thinking effort:" : {},
+    "This change is no longer on record." : {},
+    "This chat can use **all %lld shared folders** again." : {},
+    "This chat can use **all %lld shared folders**." : {},
+    "This chat is limited to **%@**." : {},
+    "This chat is pinned to a folder that is no longer shared, so it currently has **no file access**." : {},
+    "This chat now uses %@ only — its files and its context files. `/workspace all` restores the rest." : {},
+    "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead." : {},
+    "This endpoint" : {},
     "This is everything the report contains. Nothing is sent automatically — pressing a send button opens your own mail or WhatsApp with this text prefilled." : {},
     "This is the complete content, as sent. One summary per day you use the app, plus a one-time note when you pass a setup step or use a feature for the first time. The server's code is public: github.com/mgsgde/whisper-shortcut/tree/main/server/telemetry" : {},
+    "This key is not supported" : {},
+    "This recording is %@ long. Process anyway? (API usage may incur costs.)" : {},
     "This server's API key" : {},
     "This will delete all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data. API keys are preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?" : {},
     "Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute." : {},
     "Tip: Compare Gemini models (speed, intelligence, pricing):" : {},
     "Tip: Compare models (speed, intelligence, pricing):" : {},
     "Title" : {},
+    "today" : {},
+    "Today" : {},
+    "Toggle Dictate Prompt" : {},
+    "Toggle Dictation" : {},
+    "Toggle Settings" : {},
     "Toggle sidebar" : {},
+    "Toggle whether the window stays open when losing focus" : {},
+    "Token exchange failed: %@" : {},
     "Token from Trello" : {},
+    "Token is empty. Paste the token shown by Trello in the browser." : {},
+    "Top up" : {},
+    "Transcribe Cancelled Recording" : {},
+    "Transcribing" : {},
+    "Transcribing [%lld/%lld] - %lld active" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+          }
+        }
+      }
+    },
+    "Transcribing audio... Please wait" : {},
     "Transcribing the last seconds of audio before saving the meeting" : {},
     "Transcribing…" : {},
+    "Transcript + chat copied (%lld messages)" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Transcript + chat copied (%lld message)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Transcript + chat copied (%lld messages)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Transcript copied" : {},
+    "Transcript copied — chat is empty" : {},
+    "Transcription" : {},
+    "Transcription copied to clipboard" : {},
+    "Transcription copied — press ⌘V to paste" : {},
+    "Transcription Error" : {},
+    "Transcription failed: %@. The model may be incomplete or corrupted. Please try downloading it again in Settings." : {},
+    "Transcription Model" : {},
+    "Trello" : {},
+    "Trello API key is not configured. Enter your Power-Up API key in Settings → Accounts first." : {},
+    "Trello is not connected. Open Settings → Accounts to connect." : {},
     "Trello Power-Up API key" : {},
     "trello.com/power-ups/admin" : {},
     "Try again" : {},
     "Try dictation" : {},
     "Try it now" : {},
+    "Turkish" : {},
     "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {},
+    "Turn on \"Save usage data\" to start measuring." : {},
     "Turn your voice into text in any app." : {},
+    "Turned off by your administrator." : {},
     "Type / in the chat to see its commands. Meetings are set up in Settings → Meetings." : {},
     "Type a message, or press / for commands." : {},
+    "Type an instruction, or just speak" : {},
     "Type your own instruction" : {},
+    "Unavailable while Offline Mode is on — nothing leaves this Mac." : {},
     "Undo" : {},
     "Undo your edits since you opened this page" : {},
     "Undone" : {},
+    "Unexpected continuation from the mail server." : {},
+    "Unexpected greeting from the mail server." : {},
+    "Unexpected OpenAI response shape" : {},
+    "Unexpected response from the mail server." : {},
+    "unknown" : {},
+    "Unknown MLX model \"%@\". Pick an offline MLX model in Settings." : {},
+    "Unknown reasoning depth \"%@\". Use one of: %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Unknown reasoning depth \"%1$@\". Use one of: %2$@."
+          }
+        }
+      }
+    },
+    "Unknown scope \"%@\" (use meeting, chat or both); using both" : {},
+    "Unsupported audio format: %@" : {},
+    "Unsupported transcription model" : {},
+    "untitled" : {},
+    "Unverified" : {},
     "Up to /v1 — the app appends /chat/completions." : {},
+    "Update calendar event %@." : {},
     "Update profile now" : {},
+    "Update task %@." : {},
+    "Update Trello card %@." : {},
+    "Updated app instructions" : {},
+    "Updated card" : {},
+    "Updated event" : {},
+    "Updated task" : {},
     "Updates" : {},
+    "Updating app instructions" : {},
+    "Updating card" : {},
+    "Updating event" : {},
+    "Updating task" : {},
     "URL and model for openinference.de (GLM 5.2). Enter your sk-oi-… key below." : {},
     "Usage" : {},
     "Usage report" : {},
+    "Use %@ instead of the on-device models?" : {},
+    "Use an app password from Yahoo account security." : {},
+    "Use an app-specific password from account.apple.com." : {},
     "Use my writing style in Dictate Prompt" : {},
     "Use the shortcut or the menu bar item \"Chat\" to open the chat window." : {},
+    "Use your ChatGPT Plus or Pro plan in Chat. Sign in once, no API key." : {},
+    "Use your cloud models instead of the on-device ones?" : {},
+    "Use your T-Online e-mail password, not the login password." : {},
+    "Used %lld tools" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Used %lld tool"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Used %lld tools"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for." : {},
     "Value" : {},
+    "Varies" : {},
     "Version %@" : {},
     "Vertex AI" : {},
     "View full privacy policy" : {},
     "Voice" : {},
+    "Voice Model" : {},
+    "Voice Requires API Key" : {},
+    "voice-feedback" : {},
     "Voice:" : {},
+    "Wait a moment and try again, or check billing (see above)." : {},
+    "Wait for the current response to finish (or press Stop)." : {},
     "Waiting for ChatGPT sign-in in your browser…" : {},
     "Waiting for Google sign-in..." : {},
     "Waiting for OpenRouter sign-in..." : {},
     "Waiting for your approval" : {},
+    "Waiting for your approval…" : {},
+    "Web Search for Claude" : {},
     "Week of" : {},
     "Welcome to WhisperShortcut" : {},
     "Welcome Tour" : {},
+    "Welcome Tour…" : {},
     "What is sent" : {},
+    "What the chat has learned about where things live in your shared folders, injected into every chat so it knows where to look. The model writes these itself; edit or clear them here. One entry per line, \"path — note\"." : {},
+    "What this app does — and doesn't do — with your data." : {},
     "What's new in %@" : {},
     "When a new version is out, you see a notice with its release notes. Nothing is downloaded or installed until you click Install Update." : {},
     "When enabled, a screenshot of the current screen is included in Dictate Prompt requests to give the AI visual context. Requires Screen Recording permission." : {},
@@ -697,14 +2643,47 @@
     "When enabled, whatever you had copied before dictating is put back on the clipboard right after the text is pasted — so dictation doesn't overwrite your clipboard. Requires auto-paste." : {},
     "When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes." : {},
     "When on, code, markdown, tables and other non-prose content are summarized into a speakable form. Plain prose is passed through unchanged. Adds one short Gemini call before TTS." : {},
+    "Whether anything may leave this Mac, and what WhisperShortcut can access on it." : {},
+    "Which provider generates the spoken audio. Pick the specific voice below." : {},
+    "Whisper Base (Offline)" : {},
+    "Whisper Large (Offline)" : {},
+    "Whisper Large v3 Turbo (Offline)" : {},
+    "Whisper Medium (Offline)" : {},
+    "Whisper Small (Offline)" : {},
+    "Whisper Tiny (Offline)" : {},
+    "WhisperShortcut - Click to record" : {},
+    "WhisperShortcut can’t read your saved prompts" : {},
+    "WhisperShortcut didn't receive an authorization code. Close this tab and try again." : {},
+    "WhisperShortcut has your %@ connection. You can close this tab." : {},
     "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen." : {},
     "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen. Dictation needs the microphone: allow it in System Settings → Privacy & Security → Microphone." : {},
     "WhisperShortcut lives in your menu bar — the %@ icon at the top of your screen. Dictation still needs a transcription model: pick one in Settings → Dictate." : {},
     "WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and add a key or download the offline model." : {},
+    "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {},
+    "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect." : {},
+    "WhisperShortcut restarted while your meeting was being recorded, so it picked up where it left off. Only the few seconds of the restart itself are missing." : {},
+    "WhisperShortcut was quit while your meeting was being recorded, so the recording stopped. The transcript up to that point is saved. To continue the meeting, open it and click Resume." : {},
     "Why this change" : {},
+    "Window Behavior" : {},
+    "Window pinned — it stays open when it loses focus." : {},
+    "Window unpinned — it closes when it loses focus." : {},
+    "With an offline model, audio never leaves your Mac. With a cloud model, audio is sent only to the provider you chose (OpenRouter, OpenAI, Google Gemini, xAI, or Anthropic) and deleted afterwards." : {},
     "With saving enabled, each capture is also stored as a PNG in your chosen folder." : {},
+    "With:" : {},
     "Works with any OpenAI /v1/audio/transcriptions–compatible endpoint (OpenAI, self-hosted Whisper, faster-whisper-server, or any other compatible backend). Use custom headers for Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret) or other auth schemes." : {},
+    "Works without internet, no account" : {},
+    "Workspace Folders" : {},
+    "Writing" : {},
+    "Writing a file" : {},
+    "Writing Style" : {},
+    "Writing style profile" : {},
     "Writing system-prompts.md failed. Your text is still here; it will be retried on the next edit. Details are in the log." : {},
+    "Wrote" : {},
+    "Wrote a file" : {},
+    "X Accounts for Grok" : {},
+    "X search covers **all of X** in this chat." : {},
+    "X search in this chat is limited to **%@**." : {},
+    "X search now covers **all of X** in this chat." : {},
     "xAI accepts at most %lld accounts — the last %lld will be ignored." : {
       "localizations" : {
         "en" : {
@@ -715,12 +2694,42 @@
         }
       }
     },
+    "xAI accepts at most %lld accounts, so the last %lld were dropped." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "xAI accepts at most %1$lld accounts, so the last %2$lld were dropped."
+          }
+        }
+      }
+    },
+    "xAI API Key (Grok)" : {},
+    "xAI's Grok 4.3 • Cheaper 1M-context option • Leading non-hallucination + agentic tool use • Web + X search • Requires xAI API key" : {},
+    "xAI's Grok 4.7 • Flagship • Most intelligent and fastest model • 500k context • Needs an xAI API key" : {},
+    "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key" : {},
+    "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key" : {},
+    "yesterday" : {},
+    "Yesterday" : {},
     "You can change this anytime in Settings → Privacy & Permissions." : {},
     "You can revisit this tour any time from Settings → About." : {},
     "You just updated. Replay the Welcome Tour below, or read the full notes on GitHub." : {},
+    "You're connected" : {},
     "You're ready" : {},
     "You're using your ChatGPT plan" : {},
+    "You've reached the ChatGPT plan limit for WhisperShortcut. Check or raise it in ChatGPT Settings → Usage." : {},
     "Your audio goes only where you pick here — never to us. Keys stay in your Keychain." : {},
+    "Your ChatGPT plan can't run part of this request (%@). Remove it and try again." : {},
+    "Your ChatGPT plan or workspace doesn't allow use in WhisperShortcut. Pick another chat model, or add an API key in Settings → Accounts." : {},
+    "Your ChatGPT Plus or Pro plan · no API key" : {},
+    "Your ChatGPT sign-in has expired. Sign in again in Settings → Accounts." : {},
+    "Your Glossary is full — Whisper only reads the first ~224 tokens of it, so \"%@\" would never be used. Remove terms you no longer need in Settings → Dictate." : {},
+    "your OpenAI API key from Settings → Accounts" : {},
+    "Your own Ollama / LM Studio · any model you have pulled" : {},
+    "Your own one-click instructions. Each Markdown file in the commands folder becomes a slash command in the chat. Commands for meetings also get a button above the meeting chat's message field." : {},
+    "Your own OpenAI-compatible server" : {},
+    "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search" : {},
+    "Your own OpenAI-compatible server: OpenInference, Azure OpenAI, Vertex AI, LiteLLM or self-hosted. The key entered here is sent only to this server." : {},
     "Your saved prompts can’t be read" : {},
     "Your shortcuts — green is ready, red still needs a permission." : {},
     "· %@" : {
@@ -736,12 +2745,136 @@
     "↩" : {
       "shouldTranslate" : false
     },
+    "↩ runs what you typed" : {},
+    "↩ runs “%@”" : {},
     "−" : {
       "shouldTranslate" : false
     },
+    "⋯ %lld unchanged lines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "⋯ %lld unchanged line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "⋯ %lld unchanged lines"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "⌃%lld" : {
       "shouldTranslate" : false
-    }
+    },
+    "⏰ Generic Timeout\n\nThe request timed out for an unknown reason.\n\nError: %@\n\nPlease try again or use a shorter recording." : {},
+    "⏰ Local Model Timeout" : {},
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to %@ (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
+          }
+        }
+      }
+    },
+    "⏰ Network Error" : {},
+    "⏰ Request Timeout" : {},
+    "⏰ Request Timeout\n\nThe transcription service took too long to respond (over 60 seconds).\n\nThis usually means:\n• The service is overloaded or stalled\n• Your internet connection is very slow\n• The API endpoint is temporarily unavailable\n\nSolutions:\n• Wait a moment and try again\n• Check your internet connection\n• Try with a shorter recording" : {},
+    "⏰ Resource Timeout" : {},
+    "⏰ Resource Timeout\n\nThe entire request took too long to complete (over 5 minutes).\n\nThis usually means:\n• Very large audio file (close to 20MB limit)\n• Slow internet connection during upload/download\n• The provider is taking unusually long\n\nSolutions:\n• Try with a shorter recording\n• Check your internet connection speed\n• The app will automatically retry (up to 2 attempts)" : {},
+    "⏳ %lld processing, %lld/%lld done" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⏳ %1$lld processing, %2$lld/%3$lld done"
+          }
+        }
+      }
+    },
+    "⏳ Daily Limit Reached\n\nYour included usage for this period is used up and your balance is insufficient for further requests.\n\nTop up your balance in the Dashboard to continue. Use the \"Top up\" button below to open the website." : {},
+    "⏳ Finishing meeting — saving the last seconds…" : {},
+    "⏳ Processing AI prompt..." : {},
+    "⏳ Processing text-to-speech..." : {},
+    "⏳ Processing — meeting still recording" : {},
+    "⏳ Quota Exceeded" : {},
+    "⏳ Quota Exceeded\n\nYou have exceeded your current quota. Please check your plan and billing details.\n\nCheck your current usage and quotas:\nhttps://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas\n\nTo resolve:\n1. Visit the link above to see your quota and usage\n2. Go to Billing settings in Google Cloud Console\n3. Add more credits or upgrade your plan\n\n%@" : {},
+    "⏳ Rate Limit Exceeded\n\nYour AI provider rejected the request because of usage limits on your API key.\n\nCommon causes:\n• No billing / no credit on the API account — note that ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit; the developer account is billed separately\n• Free tier quota or daily limit reached (Gemini)\n• Too many requests in a short time\n\nCheck billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey (preview models like Gemini 3 Flash often need billing enabled)\n• OpenAI: https://platform.openai.com/settings/organization/billing\n• xAI: https://console.x.ai\n\nIf you use Sign in with Google instead of an API key, check your GCP project’s billing in Google Cloud Console.\n\n%@" : {},
+    "⏳ Rate Limited" : {},
+    "⏳ Transcribing audio..." : {},
+    "⏳ Waiting for API" : {},
+    "⚠️ API Issue" : {},
+    "⚠️ API Response Issue\n\nThe transcription service returned an unexpected response.\nThis is typically a temporary API issue.\n\nPlease record again. If the problem persists, the audio might be unclear." : {},
+    "⚠️ Authentication Required" : {},
+    "⚠️ No Gemini Credential\n\nYou have selected a Gemini model, but no credential is available.\nOpen Settings and either add your Google API key in the \"Google API Key\" section or sign in with Google (Google Account / SSO).\nWithout an API key or Google sign-in, Gemini transcription cannot be performed." : {},
+    "⚠️ No Google API Key" : {},
+    "⚠️ No Reply" : {},
+    "⚠️ No Reply\n\nThe model returned no text. Your recording was kept – try Retry or another model." : {},
+    "⚠️ Offline Model Error" : {},
+    "⚠️ Offline Model Error\n\nThe offline model could not be loaded or run.\n\n%@\n\nYour recording was kept – try Retry. If it keeps failing, re-download the model in Settings → Dictate." : {},
+    "✂️ Splitting audio into chunks..." : {},
+    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {},
+    "❌ Country Not Supported" : {},
+    "❌ Country Not Supported\n\nYou are accessing the API from an unsupported country, region, or territory.\nPlease see Google's documentation for supported regions." : {},
+    "❌ Empty Audio File\n\nThe recording contains no audio data.\nPlease try again." : {},
+    "❌ Empty File" : {},
+    "❌ Error" : {},
+    "❌ File Error\n\nError: %@\n\nPlease try again with a different audio file." : {},
+    "❌ File Too Large" : {},
+    "❌ File Too Large\n\nThe audio file is larger than %@ and cannot be transcribed.\nPlease use a shorter recording." : {},
+    "❌ Incorrect API Key" : {},
+    "❌ Incorrect API Key\n\nThe API key provided is not correct.\nPlease ensure the API key is correct and that you have added your payment details and activated the API key." : {},
+    "❌ Invalid Authentication" : {},
+    "❌ Invalid Request\n\nThe request was malformed or contained invalid parameters.\nPlease check your audio file format and try again." : {},
+    "❌ Model no longer available" : {},
+    "❌ Model No Longer Available\n\nThe requested resource was not found. This can happen if the selected model is no longer available.\n\nChoose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite)." : {},
+    "❌ Network Error\n\nError: %@\n\nPlease check your internet connection and try again." : {},
+    "❌ Permission Denied\n\nYou don't have permission to access this resource.\nPlease check your API key permissions." : {},
+    "❌ Resource Not Found\n\nThe requested resource was not found.\nPlease try again." : {},
+    "❌ Server Error" : {},
+    "❌ Server Error (%lld)\n\nThe AI provider returned an error.\nPlease try again later." : {},
+    "🎤 No Speech" : {},
+    "🎤 No Speech Detected\n\nNo speech was detected in your recording. Please make sure to:\n• Speak clearly into your microphone\n• Wait for the recording indicator before speaking\n• Speak your prompt or instruction before stopping the recording\n\nTry recording again with clear speech." : {},
+    "🎤 Text Too Short" : {},
+    "🎤 Very Short Text Detected\n\nOnly very little text was recognized. This could mean:\n• You spoke too quietly or monotonously\n• The microphone didn't pick up clear audio\n• You spoke very briefly\n\nTry recording again and speak louder and more clearly." : {},
+    "🎤 Voice Output Requires API Key\n\nVoice output (Read Aloud) is not available when using Sign in with Google.\n\nTo use voice output, add a Google API key in Settings → Accounts → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access." : {},
+    "🎤 Voice Requires API Key" : {},
+    "💳 Billing Required" : {},
+    "💳 Billing Required\n\nYour API account has no usable credit, or this model requires billing to be enabled.\n\nNote: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately.\n\nSet up billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)\n• OpenAI: https://platform.openai.com/settings/organization/billing — add credit\n• xAI: https://console.x.ai — add credit" : {},
+    "💳 Out of Credit\n\nYour OpenRouter balance is empty, so the request was rejected.\n\nAdd credit to continue. Use the \"Top up\" button below to open your OpenRouter dashboard." : {},
+    "📝 Live transcription..." : {},
+    "📝 Nothing Selected" : {},
+    "📥 Model Not Downloaded" : {},
+    "📥 Model Not Downloaded\n\nThe offline model \"%@\" is not yet downloaded.\n\nEstimated size: %@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "📥 Model Not Downloaded\n\nThe offline model \"%1$@\" is not yet downloaded.\n\nEstimated size: %2$@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %3$@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline."
+          }
+        }
+      }
+    },
+    "📥 Model Not Downloaded\n\nThe offline model could not be loaded.\n\n%@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to your selected model\n4. Wait for the download to complete\n5. Try transcribing again\n\nNote: If the model was already downloaded, it may be incomplete or corrupted. Try deleting and re-downloading it." : {},
+    "🔄 Service Unavailable" : {},
+    "🔄 Service Unavailable\n\nThe AI provider is temporarily unavailable.\nMultiple retries were attempted automatically.\nPlease wait a moment and try again." : {},
+    "🔄 Slow Down" : {},
+    "🔄 Slow Down\n\nA sudden increase in your request rate is impacting service reliability.\nPlease reduce your request rate to its original level, maintain a consistent rate for at least %@, and then gradually increase it." : {},
+    "🔊 Speaking..." : {},
+    "🔗 Merging audio..." : {},
+    "🔗 Merging transcription..." : {},
+    "🔴 Dictating..." : {},
+    "🔴 Recording Dictate Prompt..." : {}
   },
   "version" : "1.0"
 }

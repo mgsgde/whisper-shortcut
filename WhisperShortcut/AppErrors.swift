@@ -10,9 +10,9 @@ enum TTSPlaybackError: Error, LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case .failedToCreateAudioFormat: return "Failed to create audio format"
-    case .failedToCreateBuffer: return "Failed to create audio buffer"
-    case .noAudioProduced: return "No audio was generated for this text"
+    case .failedToCreateAudioFormat: return String(localized: "Failed to create audio format")
+    case .failedToCreateBuffer: return String(localized: "Failed to create audio buffer")
+    case .noAudioProduced: return String(localized: "No audio was generated for this text")
     }
   }
 }
@@ -35,7 +35,7 @@ enum LiveMeetingRecorderError: Error, LocalizedError {
 /// Shared message for chunking failures (audio or text) to avoid duplicated string building.
 enum ChunkFailureMessage {
   static func message(context: String, error: Error) -> String {
-    "Failed to chunk \(context): \(error.localizedDescription)"
+    String(localized: "Failed to chunk \(context): \(error.localizedDescription)")
   }
 }
 

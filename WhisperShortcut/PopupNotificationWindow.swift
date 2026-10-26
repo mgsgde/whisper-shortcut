@@ -140,7 +140,7 @@ class PopupNotificationWindow: NSWindow {
   private var retryAction: (() -> Void)?
   /// Label for the action button driven by `retryAction`. Defaults to "Retry";
   /// callers whose action isn't a retry (e.g. opening System Settings) override it.
-  private var retryActionTitle: String = "Retry"
+  private var retryActionTitle: String = String(localized: "Retry")
   private var dismissAction: (() -> Void)?
   private var signInAction: (() -> Void)?
   private var wasRetried: Bool = false
@@ -148,7 +148,7 @@ class PopupNotificationWindow: NSWindow {
   private var topUpURL: URL?
 
   // MARK: - Initialization
-  init(title: String, text: String, kind: PopupKind = .success, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, kind: PopupKind = .success, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = String(localized: "Retry"), dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     self.kind = kind
     // Create window with specific style for notifications
     super.init(
@@ -175,15 +175,15 @@ class PopupNotificationWindow: NSWindow {
     if kind == .error {
       var buttons: [NSButton] = []
       if signInAction != nil {
-        buttons.append(makeActionButton(title: "Sign in with Google", action: #selector(signInButtonClicked)))
+        buttons.append(makeActionButton(title: String(localized: "Sign in with Google"), action: #selector(signInButtonClicked)))
       }
       if retryAction != nil {
         buttons.append(makeActionButton(title: retryActionTitle, action: #selector(retryButtonClicked)))
       }
       if topUpURL != nil {
-        buttons.append(makeActionButton(title: "Top up", action: #selector(topUpButtonClicked)))
+        buttons.append(makeActionButton(title: String(localized: "Top up"), action: #selector(topUpButtonClicked)))
       }
-      buttons.append(makeActionButton(title: "Contact Support", action: #selector(whatsappButtonClicked)))
+      buttons.append(makeActionButton(title: String(localized: "Contact Support"), action: #selector(whatsappButtonClicked)))
       actionButtons = buttons
     }
     layoutContent()
@@ -278,7 +278,7 @@ class PopupNotificationWindow: NSWindow {
     closeButton.translatesAutoresizingMaskIntoConstraints = false
     
     // Create a close symbol (X)
-    let closeSymbol = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close")
+    let closeSymbol = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: String(localized: "Close"))
     closeButton.image = closeSymbol
     closeButton.imagePosition = .imageOnly
     closeButton.contentTintColor = NSColor.secondaryLabelColor
@@ -989,11 +989,11 @@ extension PopupNotificationWindow {
   }
 
   private static func showSuccessNotification(
-    title: String = "Text Copied to Clipboard", text: String, modelInfo: String? = nil
+    title: LocalizedStringResource = "Text Copied to Clipboard", text: String, modelInfo: String? = nil
   ) {
     present {
       PopupNotificationWindow(
-        title: title,
+        title: String(localized: title),
         text: text,
         modelInfo: modelInfo
       )
@@ -1001,7 +1001,7 @@ extension PopupNotificationWindow {
   }
 
   static func showPromptResponse(
-    _ response: String, modelInfo: String? = nil, title: String = "Text Copied to Clipboard"
+    _ response: String, modelInfo: String? = nil, title: LocalizedStringResource = "Text Copied to Clipboard"
   ) {
     showSuccessNotification(title: title, text: response, modelInfo: modelInfo)
   }
@@ -1013,7 +1013,7 @@ extension PopupNotificationWindow {
   static func showUndictatedWords(_ words: [String], pasteHint: String?) {
     present(ignoresPreference: true) {
       PopupNotificationWindow(
-        title: "Not in your dictation",
+        title: String(localized: "Not in your dictation"),
         text: undictatedWordsMessage(words, pasteHint: pasteHint),
         kind: .warning
       )
@@ -1025,8 +1025,8 @@ extension PopupNotificationWindow {
   static func showReplyTruncated() {
     present(ignoresPreference: true) {
       PopupNotificationWindow(
-        title: "Reply may be cut off",
-        text: "The reply hit the length limit and may be cut off – check the end.",
+        title: String(localized: "Reply may be cut off"),
+        text: String(localized: "The reply hit the length limit and may be cut off – check the end."),
         kind: .warning
       )
     }
@@ -1035,22 +1035,27 @@ extension PopupNotificationWindow {
   /// At most `limit` words, so the advice after them survives the preview cut-off.
   static func undictatedWordsMessage(_ words: [String], pasteHint: String?, limit: Int = 8) -> String {
     var list = words.prefix(limit).joined(separator: ", ")
-    if words.count > limit { list += " +\(words.count - limit) more" }
-    let delivery = pasteHint == nil ? "Pasted unchanged." : "Copied unchanged — press ⌘V to paste."
-    return "\(list)\n\(delivery) Check these words before you save the note."
+    if words.count > limit { list += " " + String(localized: "+\(words.count - limit) more", comment: "Appended to a list of words that was cut off") }
+    let delivery = pasteHint == nil ? String(localized: "Pasted unchanged.") : String(localized: "Copied unchanged — press ⌘V to paste.")
+    return "\(list)\n" + String(localized: "\(delivery) Check these words before you save the note.")
   }
 
   static func showTranscriptionResponse(
-    _ transcription: String, modelInfo: String? = nil, title: String = "Text Copied to Clipboard"
+    _ transcription: String, modelInfo: String? = nil, title: LocalizedStringResource = "Text Copied to Clipboard"
   ) {
     showSuccessNotification(title: title, text: transcription, modelInfo: modelInfo)
   }
 
   /// Show an informational popup (ℹ️ icon, auto-dismiss). Use for system messages that are neither success nor error.
-  static func showInfo(_ text: String, title: String = "Info", customDisplayDuration: TimeInterval? = nil) {
+  static func showInfo(_ text: LocalizedStringResource, title: LocalizedStringResource = "Info", customDisplayDuration: TimeInterval? = nil) {
+    showInfo(verbatim: String(localized: text), title: title, customDisplayDuration: customDisplayDuration)
+  }
+
+  /// `showInfo` for text that is already final (built from user content or localized at its source).
+  static func showInfo(verbatim text: String, title: LocalizedStringResource = "Info", customDisplayDuration: TimeInterval? = nil) {
     present {
       PopupNotificationWindow(
-        title: title,
+        title: String(localized: title),
         text: text,
         kind: .info,
         customDisplayDuration: customDisplayDuration
@@ -1058,14 +1063,19 @@ extension PopupNotificationWindow {
     }
   }
 
-  static func showError(_ error: String, title: String = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: String = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  static func showError(_ error: LocalizedStringResource, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+    showError(verbatim: String(localized: error), title: title, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, signInAction: signInAction, customDisplayDuration: customDisplayDuration, topUpURL: topUpURL)
+  }
+
+  /// `showError` for text that is already final (a formatted error, user content).
+  static func showError(verbatim error: String, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
     present(ignoresPreference: true) {
       PopupNotificationWindow(
-        title: title,
+        title: String(localized: title),
         text: error,
         kind: .error,
         retryAction: retryAction,
-        retryActionTitle: retryActionTitle,
+        retryActionTitle: String(localized: retryActionTitle),
         dismissAction: dismissAction,
         signInAction: signInAction,
         customDisplayDuration: customDisplayDuration,
@@ -1074,10 +1084,14 @@ extension PopupNotificationWindow {
     }
   }
 
-  static func showCancelled(_ message: String) {
+  static func showCancelled(_ message: LocalizedStringResource) {
+    showCancelled(verbatim: String(localized: message))
+  }
+
+  static func showCancelled(verbatim message: String) {
     present {
       PopupNotificationWindow(
-        title: "Cancelled",
+        title: String(localized: "Cancelled"),
         text: message,
         kind: .cancelled
       )
@@ -1091,13 +1105,17 @@ extension PopupNotificationWindow {
   /// - Parameters:
   ///   - message: The processing message to display
   ///   - title: Optional title (defaults to "Processing")
-  static func showProcessing(_ message: String, title: String = "Processing") {
+  static func showProcessing(_ message: LocalizedStringResource, title: LocalizedStringResource = "Processing") {
+    showProcessing(verbatim: String(localized: message), title: title)
+  }
+
+  static func showProcessing(verbatim message: String, title: LocalizedStringResource = "Processing") {
     present {
       // Dismiss any existing processing popup. Runs only after the enabled-guard inside `present`.
       dismissProcessing()
 
       let popup = PopupNotificationWindow(
-        title: title,
+        title: String(localized: title),
         text: message,
         kind: .processing
       )
@@ -1117,20 +1135,28 @@ extension PopupNotificationWindow {
   ///
   /// `showProcessing` tears the window down and builds a new one, which flickers when called for
   /// every progress tick of a download. Progress reporting wants this instead.
-  static func showOrUpdateProcessing(_ message: String, title: String = "Processing") {
+  static func showOrUpdateProcessing(_ message: LocalizedStringResource, title: LocalizedStringResource = "Processing") {
+    showOrUpdateProcessing(verbatim: String(localized: message), title: title)
+  }
+
+  static func showOrUpdateProcessing(verbatim message: String, title: LocalizedStringResource = "Processing") {
     if processingPopup != nil {
-      updateProcessingMessage(message)
+      updateProcessingMessage(verbatim: message)
     } else {
-      showProcessing(message, title: title)
+      showProcessing(verbatim: message, title: title)
     }
   }
 
   /// Update the message of the current processing popup.
   /// - Parameter message: The new message to display
-  static func updateProcessingMessage(_ message: String) {
+  static func updateProcessingMessage(_ message: LocalizedStringResource) {
+    updateProcessingMessage(verbatim: String(localized: message))
+  }
+
+  static func updateProcessingMessage(verbatim message: String) {
     guard let popup = processingPopup else {
       // If no processing popup exists, create one
-      showProcessing(message)
+      showProcessing(verbatim: message)
       return
     }
 
@@ -1142,13 +1168,17 @@ extension PopupNotificationWindow {
   /// - Parameters:
   ///   - title: The new title
   ///   - message: The new message
-  static func updateProcessing(title: String, message: String) {
+  static func updateProcessing(title: LocalizedStringResource, message: LocalizedStringResource) {
+    updateProcessing(title: title, verbatim: String(localized: message))
+  }
+
+  static func updateProcessing(title: LocalizedStringResource, verbatim message: String) {
     guard let popup = processingPopup else {
-      showProcessing(message, title: title)
+      showProcessing(verbatim: message, title: title)
       return
     }
 
-    popup.titleLabel?.stringValue = title
+    popup.titleLabel?.stringValue = String(localized: title)
     popup.setProcessingMessage(message)
   }
 
