@@ -83,6 +83,14 @@ enum FeedbackLinks {
     }
   }
 
+  /// Prefills a GitHub issue for a problem an AI app reported. The user still submits it.
+  static func issueURL(title: String, body: String) -> URL? {
+    let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    let limited = trimmed.count > 6_000 ? String(trimmed.prefix(6_000)) + "…(truncated)" : trimmed
+    guard let encodedTitle = encode(title), let encodedBody = encode(limited) else { return nil }
+    return URL(string: "\(AppConstants.githubRepositoryURL)/issues/new?title=\(encodedTitle)&body=\(encodedBody)&labels=ai-report")
+  }
+
   /// The message every channel starts from: a greeting, the caller's context, and the environment
   /// facts a report is useless without.
   static func messageBody(context: String? = nil) -> String {
@@ -106,7 +114,7 @@ enum FeedbackLinks {
     return String(trimmed.prefix(limit)) + "…"
   }
 
-  private static var environmentBlock: String {
+  static var environmentBlock: String {
     let os = ProcessInfo.processInfo.operatingSystemVersion
     return """
       ---

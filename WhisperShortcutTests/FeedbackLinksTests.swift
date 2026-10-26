@@ -92,4 +92,29 @@ struct FeedbackLinksTests {
     #expect(url.absoluteString.removingPercentEncoding?.contains("hang-20260902-100000.txt") == true)
     #expect(url.absoluteString.removingPercentEncoding?.contains("Reveal Hang Reports") == true)
   }
+
+  @Test("An AI problem-report URL carries the title, body and ai-report label")
+  func issueURLCarriesFields() {
+    guard let url = FeedbackLinks.issueURL(title: "Glossary echo", body: "The list was appended.") else {
+      Issue.record("no URL")
+      return
+    }
+    let decoded = url.absoluteString.removingPercentEncoding ?? ""
+    #expect(url.path.hasSuffix("/issues/new"))
+    #expect(decoded.contains("title=Glossary echo"))
+    #expect(decoded.contains("The list was appended."))
+    #expect(url.absoluteString.contains("labels=ai-report"))
+  }
+
+  @Test("A 10,000-character issue body is truncated")
+  func issueURLTruncatesLongBody() {
+    let body = String(repeating: "x", count: 10_000)
+    guard let url = FeedbackLinks.issueURL(title: "T", body: body) else {
+      Issue.record("no URL")
+      return
+    }
+    let decoded = url.absoluteString.removingPercentEncoding ?? ""
+    #expect(decoded.contains("…(truncated)"))
+    #expect(!decoded.contains(String(repeating: "x", count: 6_001)))
+  }
 }

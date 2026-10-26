@@ -48,6 +48,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case requestTimedOut
   case noSpeechDetected
   case noInputSignal
+  case glossaryEchoRemoved
 
   init(signal: OutcomeSignal) {
     switch signal {
@@ -63,6 +64,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .requestTimedOut: self = .requestTimedOut
     case .noSpeechDetected: self = .noSpeechDetected
     case .noInputSignal: self = .noInputSignal
+    case .glossaryEchoRemoved: self = .glossaryEchoRemoved
     }
   }
 }

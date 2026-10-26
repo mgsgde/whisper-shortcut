@@ -145,6 +145,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .systemPrompt: return "instructions"
     case .writingStyle: return "profile"
     case .saveCommand, .deleteCommand: return "command"
+    case .problemReport: return "report"
     }
   }
 
@@ -157,6 +158,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       return proposal.previousContent == nil
         ? "New command /\(proposal.commandName ?? "")" : "Command /\(proposal.commandName ?? "")"
     case .deleteCommand: return "Delete command /\(proposal.commandName ?? "")"
+    case .problemReport: return proposal.title ?? "Problem report"
     }
   }
 

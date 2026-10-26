@@ -69,7 +69,7 @@ struct MCPConfigToolsTests {
 
   private let writeTools: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status",
+    "delete_command", "get_proposal_status", "report_problem",
   ]
 
   private func obj(_ r: MCPToolResult) -> [String: Any] {
@@ -364,6 +364,72 @@ struct MCPConfigToolsTests {
       #expect(!o.contains(writeTok))
       #expect(!o.contains("sk-secret"))
     }
+  }
+
+  // MARK: report_problem
+
+  @Test("report_problem saves a pending problem report whose body has every section")
+  func reportProblem() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(name: "report_problem", arguments: [
+      "title": "Glossary appended",
+      "what_happens": "The glossary is appended after the dictation.",
+      "examples": ["gesperrt werden. Name Product"],
+      "suspected_cause": "The model echoes the glossary.",
+      "why_not_settings": "The prompt already forbids it.",
+    ], access: .write)
+    #expect(!r.isError)
+    #expect(r.text.contains("Saved as a problem report"))
+    #expect(env.proposals.pending.count == 1)
+    #expect(env.changeLog.changes.isEmpty)
+    let proposal = env.proposals.pending[0]
+    #expect(proposal.kind == .problemReport)
+    #expect(proposal.title == "Glossary appended")
+    let body = proposal.proposedContent ?? ""
+    #expect(body.contains("## What happens\nThe glossary is appended after the dictation."))
+    #expect(body.contains("## Examples\n- gesperrt werden. Name Product"))
+    #expect(body.contains("## Suspected cause\nThe model echoes the glossary."))
+    #expect(body.contains("## Why settings can't fix it\nThe prompt already forbids it."))
+    #expect(body.contains("Reported by an AI app via WhisperShortcut's MCP server."))
+    #expect(r.text.contains(proposal.id))
+  }
+
+  @Test("report_problem rejects a missing why_not_settings")
+  func reportProblemMissingWhy() {
+    let env = MCPTestEnv()
+    let r = env.tools().call(name: "report_problem", arguments: [
+      "title": "Glossary appended",
+      "what_happens": "The glossary is appended after the dictation.",
+    ], access: .write)
+    #expect(r.isError)
+    #expect(r.text.contains("why_not_settings"))
+    #expect(env.proposals.pending.isEmpty)
+  }
+
+  @Test("report_problem rejects more than three examples")
+  func reportProblemTooManyExamples() {
+    let env = MCPTestEnv()
+    let r = env.tools().call(name: "report_problem", arguments: [
+      "title": "Glossary appended",
+      "what_happens": "The glossary is appended after the dictation.",
+      "why_not_settings": "The prompt already forbids it.",
+      "examples": ["one", "two", "three", "four"],
+    ], access: .write)
+    #expect(r.isError)
+    #expect(env.proposals.pending.isEmpty)
+  }
+
+  @Test("report_problem rejects a read token")
+  func reportProblemReadToken() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(name: "report_problem", arguments: [
+      "title": "Glossary appended",
+      "what_happens": "The glossary is appended after the dictation.",
+      "why_not_settings": "The prompt already forbids it.",
+    ], access: .read)
+    #expect(r.isError)
+    #expect(r.text.contains("can only read"))
+    #expect(env.proposals.pending.isEmpty)
   }
 
   // MARK: prompts and resources

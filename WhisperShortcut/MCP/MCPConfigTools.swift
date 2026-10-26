@@ -95,7 +95,7 @@ struct MCPConfigTools {
   static let readToolNames: Set<String> = ["get_configuration", "get_recent_interactions"]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status",
+    "delete_command", "get_proposal_status", "report_problem",
   ]
 
   func handles(_ name: String) -> Bool {
@@ -180,6 +180,29 @@ struct MCPConfigTools {
       "delete_command", "Moves a chat command to the Trash.",
       ["name": ["type": "string"]], required: ["name"]),
     [
+      "name": "report_problem",
+      "description":
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [
+          "title": ["type": "string", "description": "Short summary, max 120 characters."],
+          "what_happens": ["type": "string", "description": "What the app does wrong, max 1,000 characters."],
+          "examples": [
+            "type": "array", "items": ["type": "string"],
+            "description": "Up to 3 short redacted excerpts, each max 500 characters.",
+          ],
+          "suspected_cause": ["type": "string", "description": "Optional. Where the bug might be, max 1,000 characters."],
+          "why_not_settings": [
+            "type": "string",
+            "description": "Why a setting or prompt change cannot fix it, max 500 characters.",
+          ],
+        ],
+        "required": ["title", "what_happens", "why_not_settings"],
+      ] as [String: Any],
+      "_meta": ["anthropic/requiresUserInteraction": true],
+    ],
+    [
       "name": "get_proposal_status",
       "description": "Reports whether a proposal made earlier is pending, accepted or declined.",
       "inputSchema": [
@@ -215,6 +238,7 @@ struct MCPConfigTools {
     case "update_writing_style_profile": return updateWritingStyle(arguments)
     case "save_command": return saveCommand(arguments)
     case "delete_command": return deleteCommand(arguments)
+    case "report_problem": return reportProblem(arguments)
     case "get_proposal_status": return getProposalStatus(arguments)
     default: return ("Unknown tool: \(name)", true)
     }
@@ -585,6 +609,91 @@ struct MCPConfigTools {
       return appliedResult(
         env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false),
         tool: tool, len: 0)
+    }
+  }
+
+  // MARK: - report_problem
+
+  private func boundedText(
+    _ args: [String: Any], key: String, limit: Int, required: Bool
+  ) -> (value: String?, error: MCPToolResult?) {
+    let raw = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if raw.isEmpty {
+      if required {
+        return (nil, reject("report_problem", "missing \(key)", "\(key) is required."))
+      }
+      return (nil, nil)
+    }
+    guard raw.count <= limit else {
+      return (nil, reject(
+        "report_problem", "\(key) too long",
+        "\(key) is \(raw.count) characters; the limit is \(limit)."))
+    }
+    return (raw, nil)
+  }
+
+  private func problemReportBody(
+    whatHappens: String, examples: [String], suspectedCause: String?, whyNotSettings: String
+  ) -> String {
+    var parts = ["## What happens\n\(whatHappens)"]
+    if !examples.isEmpty {
+      parts.append("## Examples\n" + examples.map { "- \($0)" }.joined(separator: "\n"))
+    }
+    if let suspectedCause, !suspectedCause.isEmpty {
+      parts.append("## Suspected cause\n\(suspectedCause)")
+    }
+    parts.append("## Why settings can't fix it\n\(whyNotSettings)")
+    parts.append(
+      "---\nReported by an AI app via WhisperShortcut's MCP server.\n\(FeedbackLinks.environmentBlock)")
+    return parts.joined(separator: "\n\n")
+  }
+
+  /// Always a proposal, at every access level above read: the user decides whether to open the issue.
+  private func reportProblem(_ args: [String: Any]) -> MCPToolResult {
+    let title = boundedText(args, key: "title", limit: 120, required: true)
+    if let e = title.error { return e }
+    let what = boundedText(args, key: "what_happens", limit: 1_000, required: true)
+    if let e = what.error { return e }
+    let why = boundedText(args, key: "why_not_settings", limit: 500, required: true)
+    if let e = why.error { return e }
+    let cause = boundedText(args, key: "suspected_cause", limit: 1_000, required: false)
+    if let e = cause.error { return e }
+
+    var examples: [String] = []
+    if args["examples"] != nil {
+      guard let list = args["examples"] as? [String] else {
+        return reject("report_problem", "examples not strings", "examples must be a list of strings.")
+      }
+      guard list.count <= 3 else {
+        return reject(
+          "report_problem", "too many examples",
+          "examples has \(list.count) items; the limit is 3.")
+      }
+      for item in list {
+        let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 500 else {
+          return reject(
+            "report_problem", "example too long",
+            "An example is \(trimmed.count) characters; the limit is 500.")
+        }
+        if !trimmed.isEmpty { examples.append(trimmed) }
+      }
+    }
+
+    let body = problemReportBody(
+      whatHappens: what.value!, examples: examples, suspectedCause: cause.value, whyNotSettings: why.value!)
+    return MCPMain.run {
+      do {
+        let proposal = try env.proposals.create(
+          kind: .problemReport, title: title.value, previousContent: nil,
+          proposedContent: body, rationale: why.value!)
+        log("report_problem", "proposed", len: body.count)
+        return (
+          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The user decides whether to send it; nothing leaves the Mac unless they open it as a GitHub issue.",
+          false)
+      } catch {
+        return reject("report_problem", "too many pending", error.localizedDescription)
+      }
     }
   }
 

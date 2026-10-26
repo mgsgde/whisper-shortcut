@@ -210,4 +210,54 @@ struct MCPProposalAndChangeLogTests {
     #expect(reopened.changes.count == 2)
     #expect(reopened.changes.first?.newContent?.contains("Beta") == true)
   }
+
+  // MARK: problem reports
+
+  @Test("Two problem reports both stay pending")
+  func problemReportsStayPending() throws {
+    let env = MCPTestEnv()
+    let first = try env.proposals.create(
+      kind: .problemReport, title: "One", previousContent: nil, proposedContent: "Body one", rationale: "why")
+    let second = try env.proposals.create(
+      kind: .problemReport, title: "Two", previousContent: nil, proposedContent: "Body two", rationale: "why")
+    #expect(env.proposals.status(of: first.id)?.status == .pending)
+    #expect(env.proposals.status(of: second.id)?.status == .pending)
+    #expect(Set(env.proposals.pending.map(\.id)) == [first.id, second.id])
+  }
+
+  @Test("Accepting a problem report with edited text marks it accepted and writes no change")
+  func acceptProblemReport() throws {
+    let env = MCPTestEnv()
+    let proposal = try env.proposals.create(
+      kind: .problemReport, title: "Bug", previousContent: nil, proposedContent: "Original body", rationale: "why")
+    guard case .success(let id) = env.proposals.accept(proposal.id, editedContent: "Edited body") else {
+      Issue.record("accept failed")
+      return
+    }
+    #expect(id == proposal.id)
+    let saved = env.proposals.status(of: proposal.id)
+    #expect(saved?.status == .accepted)
+    #expect(saved?.edited == true)
+    #expect(saved?.proposedContent == "Edited body")
+    #expect(env.changeLog.changes.isEmpty)
+    #expect(env.proposals.pending.isEmpty)
+  }
+
+  @Test("An old proposal line without title still decodes")
+  func decodesWithoutTitle() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("mcp-old-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let line = """
+      {"id":"old-1","createdAt":"2026-10-01T12:00:00Z","kind":"systemPrompt","section":"dictation","proposedContent":"Old text","rationale":"because","status":"pending","edited":false}
+      """
+    try (line + "\n").write(
+      to: dir.appendingPathComponent(MCPProposalStore.fileName), atomically: true, encoding: .utf8)
+    let store = MCPProposalStore(directory: dir)
+    let proposal = store.status(of: "old-1")
+    #expect(proposal?.title == nil)
+    #expect(proposal?.proposedContent == "Old text")
+    #expect(proposal?.status == .pending)
+    #expect(proposal?.kind == .systemPrompt)
+  }
 }
