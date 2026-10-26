@@ -72,8 +72,8 @@ data warehouse. Compare the last 30 days against the 30 before where the source 
    the developer's own usage, not customers' — they measure product quality, not demand.
 7. **Competitors** (light touch): one WebSearch pass for pricing/positioning moves by the
    usual suspects (superwhisper, Wispr Flow, MacWhisper, VoiceInk). A deep dive is
-   `/competitor-teardown`'s job, not yours — reference `plans/research/` if fresh teardowns
-   exist. Note anything that changes OUR pricing/positioning calculus, ignore the rest.
+   `/competitor-teardown`'s job, not yours — reference `plans/active/competitor-*.md` if fresh
+   teardowns exist. Note anything that changes OUR pricing/positioning calculus, ignore the rest.
 
 ## Phase 2 — First-principles decomposition
 

@@ -279,7 +279,7 @@ Refactors must not change behavior. For each applied change:
    the equivalence lock against the old copies.
 5. Keep comments and naming at the density of the surrounding code. Document _why_ the seam exists,
    never what the line does.
-6. Hold everything in the working tree. Do not commit, push, or cut a release unless explicitly told.
+6. Commit only the files you touched, per `AGENTS.md` → Git; never tag or release.
 
 ## Step 6 — Report, then update the ledger
 

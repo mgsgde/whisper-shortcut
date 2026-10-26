@@ -11,6 +11,7 @@ Triage a chat-window main-thread freeze from the `MainThreadWatchdog` captures a
 
 All paths are in the sandbox Logs directory:
 `~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Logs/WhisperShortcut/`
+(Dev build: `com.magnusgoedde.whispershortcut.dev` — read that container for the operator's own Dev usage)
 
 - **Captures:** `hang-<YYYYMMDD-HHMMSS>.txt` — each has a header `activity: <breadcrumb>` and a symbolicated main-thread stack. List them; default to the newest (or the `--file` the user named).
 - **Daily log:** `app_<YYYY-MM-DD>.log` for the capture's date — reconstruct the timeline around the hang timestamp.
@@ -62,7 +63,7 @@ Reproduce with the recipe in `plans/active/chat-freeze-investigation.md` (4+ gro
 - `finalizing` present, `final UI update committed` absent → wedge in the **finalize render** (the one-shot streaming→final swap with grounding sources).
 - Neither present during the stream → wedge in the **streaming UI updates**.
 
-Propose the smallest change consistent with the shipped architecture — keep the streaming bubble out of the lazy/anchored layout. Rank alternatives (see the brief's candidate table) only if a minimal change can't localize the cost. Do not commit unless asked.
+Propose the smallest change consistent with the shipped architecture — keep the streaming bubble out of the lazy/anchored layout. Rank alternatives (see the brief's candidate table) only if a minimal change can't localize the cost. Commit only the files you touched, per `AGENTS.md` → Git; never tag or release.
 
 **When the user follows up with "fix" / "apply":** only act if the triage found a *new real* wedge, not the resolved one. Apply the change, then rebuild via `bash scripts/rebuild-and-restart.sh` (per the always-applied rule in `.cursor/rules/index.mdc`) before reporting completion.
 

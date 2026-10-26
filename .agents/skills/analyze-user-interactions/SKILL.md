@@ -20,6 +20,7 @@ Path:
 ```
 ~/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/interactions-YYYY-MM-DD.jsonl
 ```
+(Dev build: `com.magnusgoedde.whispershortcut.dev` — read that container for the operator's own Dev usage)
 
 Three modes, each with its own schema:
 
@@ -45,10 +46,8 @@ the macOS log.
 
 `SignalLogEntry` (`ContextLogger.swift`): `ts`, `kind`, `refTs`, `mode`, `gapMs`, `detail`.
 Join to an interaction on **`refTs` == the interaction's `ts`**; `gapMs` is the delay between them.
-`kind` is an `OutcomeSignal`: `pasted` (delivered where the user wanted it), `dictationRestart`
-(a new dictation right after one that was never pasted → the transcript was unusable),
-`cancelledWhileProcessing`, `chatStopped`, `chatRetry`, `promptRetry`, `promptNoSelection`,
-`requestTimedOut`.
+`kind` is an `OutcomeSignal` — see `enum OutcomeSignal` in `ContextLogger.swift` for the current
+list of cases.
 
 Read them as verdicts, not events: a `dictationRestart` cluster on one model is a quality signal
 that no amount of reading transcripts will give you, and a `pasted` with a small `gapMs` is the
@@ -97,7 +96,7 @@ distinct models actually used — so the user can reject the default before you 
 State your scope assumptions out loud before analyzing.
 
 Example invocations: `/analyze-user-interactions` · `/analyze-user-interactions --mode prompt` ·
-`/analyze-user-interactions --since "2 days" --model gemini-3.5-flash`.
+`/analyze-user-interactions --since "2 days" --model gemini-3.8-flash`.
 
 ### Step 2 — Extract structured data
 Parse the JSONL via Python over Bash. Sample one-liner:

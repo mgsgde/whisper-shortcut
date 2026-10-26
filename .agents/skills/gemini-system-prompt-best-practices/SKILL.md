@@ -11,13 +11,13 @@ When writing or editing **system prompts** for Gemini, apply these practices. Th
 
 - Adding or changing `systemInstruction` / system prompt text.
 - Reviewing or refactoring existing system prompts (transcription, Dictate Prompt, chat, Read Aloud rewrite).
+- User asks how to improve a Gemini system prompt or about best practices.
 
 **Where prompts actually live:** `SystemPromptsStore` is the live layer — it reads
-`UserContext/system-prompts.md` (sections `dictation`, `whisperGlossary`, `promptMode`, `chat`,
-`readAloudRewrite`) and falls back to `AppConstants.default*SystemPrompt` **only when the user has
-no override**. Editing the constants alone is a no-op for anyone with an override or an applied
-Smart Improvement suggestion, so check the store first.
-- User asks how to improve a Gemini system prompt or about best practices.
+`UserContext/system-prompts.md` (sections `dictation`, `whisperGlossary`, `promptMode`,
+`geminiChat`, `readAloudRewrite`) and falls back to `AppConstants.default*SystemPrompt` **only
+when the user has no override**. Editing the constants alone is a no-op for anyone with an
+override or an applied Smart Improvement suggestion, so check the store first.
 
 ## Structure of a Good System Prompt (Order Matters)
 
