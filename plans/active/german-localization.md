@@ -207,10 +207,10 @@ where Apple has one.
 | Problem report | **Problembericht** | |
 | Popup | **Hinweis** | |
 
-**Form of address: `Sie`** (recommended). The pilot audience is medical practices, and the German
-`/praxis` page already uses `Sie`. The current de-DE App Store listing uses `du`; if Magnus
-confirms `Sie`, the listing moves to `Sie` with the next version (it can only change with a version
-submission). This is the one decision the spec cannot take alone; see section 6.
+**Form of address: `Sie`** (decided by Magnus, 2026-10-26). App, website and, from the next
+version, the de-DE App Store listing, which still uses `du` today and can only change with a
+version submission. The pilot audience is medical practices, and the German `/praxis` page already
+uses `Sie`.
 
 ---
 
@@ -279,11 +279,10 @@ pick them.
 
 ---
 
-## 6. Open decision for Magnus
+## 6. Decisions taken
 
-**`Sie` or `du`?** Recommended: `Sie`, in app, website and (from the next version) the App Store
-listing, because the first German audience is medical practices. Everything else in this spec has
-a default and proceeds without an answer.
+- **`Sie`, not `du`** (Magnus, 2026-10-26): "Use Sie in the app, on the website and, from the next
+  version, in the App Store listing."
 
 ## 7. Out of scope (follow-ups)
 
