@@ -34,12 +34,11 @@ struct MailProviderTableTests {
     }
   }
 
-  @Test func newMXRules() {
-    #expect(MailHostDetector.guess(mxHosts: ["mx00.t-online.de"]) == .imapHost("secureimap.t-online.de"))
-    #expect(MailHostDetector.guess(mxHosts: ["mta5.am0.yahoodns.net"]) == .imapHost("imap.mail.yahoo.com"))
-  }
-
-  @Test func pickerListsPosteo() {
-    #expect(MailCredentialRequest.hostedProviders.contains { $0.host == "posteo.de" })
+  @Test func pickerListsCustomDomainHostsOnly() {
+    let hosts = MailCredentialRequest.hostedProviders.map(\.host)
+    #expect(hosts.contains("posteo.de"))
+    #expect(!hosts.contains("secureimap.t-online.de"))
+    #expect(!hosts.contains("imap.mail.yahoo.com"))
+    #expect(!hosts.contains("mx.freenet.de"))
   }
 }

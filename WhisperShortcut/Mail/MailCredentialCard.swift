@@ -31,7 +31,7 @@ struct MailCredentialRequest: Identifiable {
 
   /// Where custom-domain mailboxes are commonly hosted. Offered on the card for own domains.
   static var hostedProviders: [(name: String, host: String)] {
-    MailProvider.all.map { ($0.name, $0.host) }
+    MailProvider.all.filter(\.hostsCustomDomains).map { ($0.name, $0.host) }
   }
 
   /// The server the card preselects for an own domain. A host the model suggested is used only when

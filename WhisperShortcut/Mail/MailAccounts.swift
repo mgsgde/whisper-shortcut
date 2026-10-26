@@ -37,6 +37,9 @@ struct MailProvider: Sendable {
   let domains: [String]
   /// MX host suffixes that mean a custom domain is hosted here.
   let mxSuffixes: [String]
+  /// Offered in the card's server picker for an own domain. Off for mailbox-only providers that
+  /// don't host custom domains (T-Online, Yahoo, freenet), which only appear via their own addresses.
+  let hostsCustomDomains: Bool
 
   private static let icloudNote = "Use an app-specific password from account.apple.com."
   private static let tOnlineNote = "Use your T-Online e-mail password, not the login password."
@@ -44,12 +47,14 @@ struct MailProvider: Sendable {
 
   private static func make(
     _ name: String, _ host: String, note: String? = nil,
-    domains: [String] = [], mx: [String] = []
+    domains: [String] = [], mx: [String] = [], hostsCustomDomains: Bool = true
   ) -> MailProvider {
-    MailProvider(name: name, host: host, port: 993, security: .ssl, note: note, domains: domains, mxSuffixes: mx)
+    MailProvider(
+      name: name, host: host, port: 993, security: .ssl, note: note, domains: domains, mxSuffixes: mx,
+      hostsCustomDomains: hostsCustomDomains)
   }
 
-  /// Order is the picker order on the card.
+  /// Order is the picker order on the card (rows with `hostsCustomDomains`).
   static let all: [MailProvider] = [
     make("IONOS", "imap.ionos.de",
          domains: ["ionos.de", "ionos.com", "1und1.de", "online.de"],
@@ -67,11 +72,10 @@ struct MailProvider: Sendable {
     make("Hostinger", "imap.hostinger.com", mx: ["hostinger.com"]),
     make("Posteo", "posteo.de", domains: ["posteo.de", "posteo.net"], mx: ["posteo.de"]),
     make("T-Online", "secureimap.t-online.de", note: tOnlineNote,
-         domains: ["t-online.de"], mx: ["t-online.de"]),
+         domains: ["t-online.de"], hostsCustomDomains: false),
     make("Yahoo", "imap.mail.yahoo.com", note: yahooNote,
-         domains: ["yahoo.com", "yahoo.de"], mx: ["yahoodns.net"]),
-    // TODO(verify MX): freenet.de's MX host names are not confirmed, so no MX suffix yet.
-    make("freenet", "mx.freenet.de", domains: ["freenet.de"]),
+         domains: ["yahoo.com", "yahoo.de"], hostsCustomDomains: false),
+    make("freenet", "mx.freenet.de", domains: ["freenet.de"], hostsCustomDomains: false),
   ]
 
   static func provider(forDomain domain: String) -> MailProvider? {
