@@ -39,6 +39,66 @@ struct MIMEDecoderTests {
     #expect(latin.subject == "Grüße")
   }
 
+  @Test func adjacentEncodedWordsJoinBeforeCharsetDecoding() {
+    // "ü" (C3 BC) split across two Q words, plus a space that must be dropped between them.
+    let split = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?Q?Gr=C3?= =?UTF-8?Q?=BC=C3=9Fe?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(split.subject == "Grüße")
+
+    let bytes = Data("Grüße".utf8)
+    let one = bytes.prefix(3).base64EncodedString()
+    let two = bytes.dropFirst(3).base64EncodedString()
+    let b64 = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?B?\(one)?=
+     =?UTF-8?B?\(two)?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(b64.subject == "Grüße")
+
+    let mixedCharsets = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?Q?a?= =?ISO-8859-1?Q?=FC?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(mixedCharsets.subject == "aü")
+  }
+
+  @Test func base64ToleratesMissingPaddingAndStrayBytes() {
+    let body = MIMEDecoder.decode(mail("""
+    Content-Type: text/plain; charset=utf-8
+    Content-Transfer-Encoding: base64
+
+    SGVsbG8s
+    IHdvcmxk
+    IQ
+    """))
+    #expect(body.body.contains("Hello, world!"))
+
+    let word = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?B?SGFsbG8?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(word.subject == "Hallo")
+  }
+
+  @Test func htmlEntitiesNumericAndNamed() {
+    let decoded = MIMEDecoder.decode(mail("""
+    Content-Type: text/html; charset=utf-8
+
+    <p>Gr&uuml;&szlig;e &#252; &#xFC; &Uuml;ber M&Ouml;bel &ndash; &laquo;x&raquo; &euro;5 &amp;lt; caf&eacute; &copy;</p>
+    """))
+    #expect(decoded.body == "Grüße ü ü Über MÖbel – «x» €5 &lt; café ©")
+  }
+
   @Test func mixedKeepsAllTextPartsInOrder() {
     let decoded = MIMEDecoder.decode(mail("""
     From: Ann <ann@example.com>
