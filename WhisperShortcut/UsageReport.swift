@@ -147,6 +147,13 @@ enum UsageReport {
       )
     }
 
+    let glossaryEchoes = signals.filter { entry in
+      entry.kind == "glossaryEchoRemoved" && isInWindow(entry, since: start)
+    }.count
+    if glossaryEchoes > 0 {
+      body.append("  \(glossaryEchoes) glossary echoes removed")
+    }
+
     // `transcriptionModel` is the stable rawValue and the one worth comparing; `model` is the
     // display name kept as a fallback for rows written before that field existed.
     let models = dictations.compactMap { $0.transcriptionModel ?? $0.model }

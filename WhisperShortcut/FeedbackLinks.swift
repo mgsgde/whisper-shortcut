@@ -83,6 +83,28 @@ enum FeedbackLinks {
     }
   }
 
+  /// Most percent-encoded characters an issue body may take. GitHub rejects a /issues/new URL much
+  /// past 8 KB, and encoding inflates text unevenly (a space is 3 bytes, "ä" is 6), so the cap is on
+  /// the encoded form, not on characters.
+  static let maxEncodedIssueBody = 6_500
+
+  /// Prefills a GitHub issue for a problem an AI app reported. The user still submits it.
+  static func issueURL(title: String, body: String) -> URL? {
+    guard let encodedTitle = encode(String(title.prefix(200))) else { return nil }
+    var text = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard var encodedBody = encode(text) else { return nil }
+    if encodedBody.count > maxEncodedIssueBody {
+      // Shrink by the overshoot ratio until it fits; converges in a step or two.
+      while encodedBody.count > maxEncodedIssueBody, !text.isEmpty {
+        let keep = max(0, text.count * maxEncodedIssueBody / encodedBody.count - 20)
+        text = String(text.prefix(keep))
+        guard let encoded = encode(text + "\n…(truncated)") else { return nil }
+        encodedBody = encoded
+      }
+    }
+    return URL(string: "\(AppConstants.githubRepositoryURL)/issues/new?title=\(encodedTitle)&body=\(encodedBody)&labels=ai-report")
+  }
+
   /// The message every channel starts from: a greeting, the caller's context, and the environment
   /// facts a report is useless without.
   static func messageBody(context: String? = nil) -> String {
@@ -106,7 +128,7 @@ enum FeedbackLinks {
     return String(trimmed.prefix(limit)) + "…"
   }
 
-  private static var environmentBlock: String {
+  static var environmentBlock: String {
     let os = ProcessInfo.processInfo.operatingSystemVersion
     return """
       ---
@@ -115,7 +137,15 @@ enum FeedbackLinks {
       """
   }
 
+  /// `.urlQueryAllowed` keeps `&`, `=`, `+` and `?` literal, which is right for a whole query but
+  /// wrong for one value: "Anamnese & Befund" would end the body at the `&`, and `+` arrives as a space.
+  private static let queryValueAllowed: CharacterSet = {
+    var set = CharacterSet.urlQueryAllowed
+    set.remove(charactersIn: "&=+?#")
+    return set
+  }()
+
   private static func encode(_ text: String) -> String? {
-    text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+    text.addingPercentEncoding(withAllowedCharacters: queryValueAllowed)
   }
 }

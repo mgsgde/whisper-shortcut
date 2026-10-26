@@ -459,10 +459,14 @@ class SpeechService {
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
       // return through this one call. Both the trailing glossary-echo strip and the
       // rejected-spelling correction run on that result.
-      return self.correctingRejectedSpellings(in: TextProcessingUtility.strippingTrailingGlossaryEcho(
+      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
         transcript,
         glossaryTerms: self.glossaryTermsForEchoCheck(),
-        mode: "TRANSCRIPTION"))
+        mode: "TRANSCRIPTION")
+      if stripped != transcript {
+        ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
+      }
+      return self.correctingRejectedSpellings(in: stripped)
     }
 
     if cancellable {
@@ -1659,10 +1663,15 @@ class SpeechService {
       // dictation path applies (`transcribe`), so a glossary list tacked on after the
       // instruction, or a term the user struck from the Glossary, cannot come back through
       // Dictate Prompt.
-      let transcript = correctingRejectedSpellings(in: TextProcessingUtility.strippingTrailingGlossaryEcho(
-        try await performTranscription(audioURL: audioURL),
+      let spoken = try await performTranscription(audioURL: audioURL)
+      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
+        spoken,
         glossaryTerms: glossaryTermsForEchoCheck(),
-        mode: "DICTATE-PROMPT"))
+        mode: "DICTATE-PROMPT")
+      if stripped != spoken {
+        ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
+      }
+      let transcript = correctingRejectedSpellings(in: stripped)
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
       spokenOffline = TranscriptionModel.loadSelected().isOffline
@@ -2989,6 +2998,7 @@ class SpeechService {
 
     var text = result.text
     if result.discardedAsGlossaryEcho {
+      ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       DebugLogger.logWarning(
         "GEMINI-TRANSCRIPTION: Glossary echo discarded — retrying once without the glossary")
       text = try await transcribeWithGeminiInline(

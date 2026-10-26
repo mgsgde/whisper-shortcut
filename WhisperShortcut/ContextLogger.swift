@@ -111,6 +111,9 @@ enum OutcomeSignal: String {
   /// is counted apart from `noSpeechDetected` (queue #11). `detail`: `peakDb`, `durationMs`,
   /// `logPrefix`.
   case noInputSignal
+  /// A transcript lost an appended glossary list, or was discarded as a pure glossary echo.
+  /// Text-free count: the signal carries no transcript text.
+  case glossaryEchoRemoved
 }
 
 /// Who asked for the transcription whose result came back empty (instrumentation gap #9 /
