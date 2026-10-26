@@ -433,7 +433,7 @@ class ChatSessionStore {
       let data = try JSONEncoder().encode(file)
       try data.write(to: fileURL, options: .atomic)
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: \(label) failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: \(label) failed: \(error.logDescription)")
     }
   }
 

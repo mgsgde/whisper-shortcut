@@ -208,7 +208,7 @@ struct PermissionsOverview: View {
     do {
       try process.run()
     } catch {
-      DebugLogger.logError("PERMISSIONS: relaunch helper failed: \(error.localizedDescription)")
+      DebugLogger.logError("PERMISSIONS: relaunch helper failed: \(error.logDescription)")
       return
     }
 

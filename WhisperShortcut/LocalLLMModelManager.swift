@@ -161,7 +161,7 @@ enum MLXModelPaths {
         try FileManager.default.removeItem(at: dir)
         DebugLogger.log("MLX: removed weights of retired model \(id)")
       } catch {
-        DebugLogger.logWarning("MLX: could not remove retired model \(id): \(error.localizedDescription)")
+        DebugLogger.logWarning("MLX: could not remove retired model \(id): \(error.logDescription)")
       }
     }
   }
@@ -318,7 +318,7 @@ actor MLXModelLoader {
         throw CancellationError()
       } catch {
         // Corrupt weights, memory pressure: typed so the recording is kept and Retry offered.
-        DebugLogger.logError("MLX: load of \(type.huggingFaceID) failed: \(error.localizedDescription)")
+        DebugLogger.logError("MLX: load of \(type.huggingFaceID) failed: \(error.logDescription)")
         throw TranscriptionError.localModelFailed("Failed to load \(type.displayName): \(error.localizedDescription). The model may be incomplete or corrupted. Please try downloading it again in Settings.")
       }
       DebugLogger.log("MLX: ready \(type.huggingFaceID)")

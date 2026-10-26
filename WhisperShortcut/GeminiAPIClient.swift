@@ -419,7 +419,7 @@ class GeminiAPIClient {
           }
           throw decodingError
         } catch {
-          DebugLogger.logError("\(mode): Unexpected parsing error: \(error.localizedDescription)")
+          DebugLogger.logError("\(mode): Unexpected parsing error: \(error.logDescription)")
           throw error
         }
         
@@ -446,12 +446,12 @@ class GeminiAPIClient {
         }
         // Log detailed network error information. Redact the API key from the failing
         // URL so it never reaches the on-disk error log or the unified log.
-        DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.localizedDescription)")
+        DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.logDescription)")
         if let failingURL = error.userInfo["NSErrorFailingURLStringKey"] as? String {
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Failing URL: \(Self.redactingAPIKey(failingURL))")
         }
         if let underlyingError = error.userInfo["NSUnderlyingErrorKey"] as? Error {
-          DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.localizedDescription)")
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.logDescription)")
         }
 
         if error.code == .timedOut {
@@ -470,7 +470,7 @@ class GeminiAPIClient {
           }
           throw TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
         } else {
-          DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.localizedDescription)")
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.logDescription)")
           lastError = TranscriptionError.networkError(error.localizedDescription)
           if attempt < maxAttempts {
             DebugLogger.log("\(mode)-RETRY: Network error, retrying in \(Constants.retryDelaySeconds)s...")
@@ -533,7 +533,7 @@ class GeminiAPIClient {
           let delay = RetryBackoff.delay(
             attempt: attempt, retryAfter: nil,
             base: isServerError ? 2.0 : Constants.retryDelaySeconds, exponential: isServerError)
-          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.logDescription)")
           await RetryBackoff.sleep(delay)
         }
       }
@@ -886,7 +886,7 @@ class GeminiAPIClient {
               attempt: attempt, retryAfter: te?.retryAfter,
               base: isServerError ? 2.0 : Constants.retryDelaySeconds,
               exponential: isServerError, buffer: 2.0)
-            DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+            DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.logDescription)")
             await RetryBackoff.sleep(delay)
             continue
           }

@@ -445,7 +445,7 @@ final class LiveMeetingSession: NSObject {
           }
         }
       } catch {
-        DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
+        DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.logDescription)")
         // Don't lose the summary silently: the transcript is saved, so tell the user it can be
         // regenerated from the meeting library (the recovery path handles a transient outage).
         let offline = OfflineMode.isEnabled
@@ -683,7 +683,7 @@ final class LiveMeetingSession: NSObject {
       }
       DebugLogger.log("LIVE-MEETING: Renamed transcript to \(newStem).txt")
     } catch {
-      DebugLogger.logError("LIVE-MEETING: Failed to rename transcript: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING: Failed to rename transcript: \(error.logDescription)")
     }
   }
 
@@ -840,7 +840,7 @@ final class LiveMeetingSession: NSObject {
         DebugLogger.log("LIVE-MEETING-NOTES: Appended note with \(bullets.count) bullet(s)")
       }
     } catch {
-      DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.logDescription)")
       await MainActor.run {
         guard generation == self.sessionGeneration else { return }
         // Roll back so the next attempt covers the same segment.

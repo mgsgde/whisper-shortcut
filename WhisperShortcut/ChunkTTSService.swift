@@ -245,7 +245,7 @@ class ChunkTTSService {
         do {
             chunks = try chunker.splitText(text)
         } catch {
-            DebugLogger.logError("TTS-CHUNK-SERVICE: Failed to split text: \(error.localizedDescription)")
+            DebugLogger.logError("TTS-CHUNK-SERVICE: Failed to split text: \(error.logDescription)")
             throw ChunkedTTSError.chunkingFailed(error)
         }
 
@@ -365,7 +365,7 @@ class ChunkTTSService {
                         await accumulator.addError(index: chunkError.index, error: chunkError.error)
                         await gate?.fail(index: chunkError.index)
 
-                        DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.localizedDescription)")
+                        DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.logDescription)")
 
                         // Notify delegate that chunk failed (no retry at this level - retries happen in processChunk)
                         await MainActor.run {

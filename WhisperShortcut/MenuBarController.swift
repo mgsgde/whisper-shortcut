@@ -2182,7 +2182,7 @@ class MenuBarController: NSObject {
       if isStale { return }
 
       if duringMeeting {
-        DebugLogger.logError("MEETING-SEGMENT: \(spec.logLabel) failed: \(error.localizedDescription)")
+        DebugLogger.logError("MEETING-SEGMENT: \(spec.logLabel) failed: \(error.logDescription)")
         await MainActor.run {
           self.clearMeetingSegment()
           self.processedAudioURLs.remove(audioURL)
@@ -2522,7 +2522,7 @@ class MenuBarController: NSObject {
       try FileManager.default.removeItem(at: url)
       DebugLogger.logDebug("Cleaned up audio file: \(url.lastPathComponent)")
     } catch {
-      DebugLogger.logWarning("Failed to clean up audio file \(url.lastPathComponent): \(error.localizedDescription)")
+      DebugLogger.logWarning("Failed to clean up audio file \(url.lastPathComponent): \(error.logDescription)")
     }
   }
   
@@ -2641,7 +2641,7 @@ class MenuBarController: NSObject {
           }
           return
         }
-        DebugLogger.logError("READ-ALOUD-ERROR: \(error.localizedDescription)")
+        DebugLogger.logError("READ-ALOUD-ERROR: \(error.logDescription)")
         TelemetryService.shared.failed(.readAloud, error: error)
         let userMessage: String
         let shortTitle: String
@@ -3312,7 +3312,7 @@ extension MenuBarController: AudioRecorderDelegate {
     dismissQuickActions()
     let errorCode = (error as NSError).code
     let errorDomain = (error as NSError).domain
-    DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.localizedDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
+    DebugLogger.logDebug("audioRecorderDidFailWithError called - errorCode: \(errorCode), errorDomain: \(errorDomain), errorDescription: \(error.logDescription), appState: \(appState), isEmptyFileError: \(errorCode == 1004)")
     discardStreamingSession()
     if activeMeetingSegment != nil {
       DebugLogger.logWarning("MEETING-SEGMENT: Recording failed during meeting segment, clearing segment")
@@ -3831,10 +3831,10 @@ extension MenuBarController: ChunkProgressDelegate {
     }
 
     guard applyChunkStatus(.failed, at: index) else {
-      DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed during playback: \(error.localizedDescription)")
+      DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed during playback: \(error.logDescription)")
       return
     }
-    DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.localizedDescription)")
+    DebugLogger.logError("CHUNK-PROGRESS: Chunk \(index) failed: \(error.logDescription)")
     // Log to file (replaces CrashLogger)
     DebugLogger.logError(error, context: "Chunk \(index) transcription failed", state: appState)
   }

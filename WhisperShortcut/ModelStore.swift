@@ -212,7 +212,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       // not a corrupt folder; purging 1.6 GB on a slow Mac would be the prewarmer's "far
       // too destructive" case on the dictation path.
       DebugLogger.logWarning(
-        "\(logPrefix): \(model.displayName) failed to load (\(error.localizedDescription)); treating as corrupt and re-downloading once")
+        "\(logPrefix): \(model.displayName) failed to load (\(error.logDescription)); treating as corrupt and re-downloading once")
       try? removeFiles(of: model)
       await unload(model)
       try await download(model, isRetry: true)
@@ -312,7 +312,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       if let error = error as? ModelStoreError {
         throw error
       }
-      DebugLogger.logError("\(logPrefix): Download failed: \(error.localizedDescription)")
+      DebugLogger.logError("\(logPrefix): Download failed: \(error.logDescription)")
       throw ModelStoreError.downloadFailed(error.localizedDescription)
     }
   }

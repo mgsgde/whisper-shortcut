@@ -1209,7 +1209,7 @@ class ChatViewModel: ObservableObject {
         let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
         // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
-        DebugLogger.logError("CHAT: \(error.localizedDescription)")
+        DebugLogger.logError("CHAT: \(error.logDescription)")
         TelemetryService.shared.failed(.chat, error: error)
       }
     }
@@ -1464,7 +1464,7 @@ class ChatViewModel: ObservableObject {
       if !narration.isEmpty { response["image_model_note"] = String(narration.prefix(300)) }
       return (response, markers)
     } catch {
-      DebugLogger.logError("CHAT-TOOL: generate_image failed: \(error.localizedDescription)")
+      DebugLogger.logError("CHAT-TOOL: generate_image failed: \(error.logDescription)")
       return (["error": error.localizedDescription], [])
     }
   }
@@ -2104,7 +2104,7 @@ class ChatViewModel: ObservableObject {
       refreshRecentSessions()
       DebugLogger.log("GEMINI-CHAT: \(logLabel) title generated for \(targetId): \(title)")
     } catch {
-      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.localizedDescription)")
+      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.logDescription)")
     }
   }
 
@@ -2889,7 +2889,7 @@ class ChatViewModel: ObservableObject {
       return ["ok": true,
               "detail": "The meeting summary has been updated and is now shown in the Summary tab. Briefly confirm what changed in one sentence — do NOT paste the full summary back."]
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Refine summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Refine summary failed: \(error.logDescription)")
       return ["error": "Failed to refine summary: \(error.localizedDescription)"]
     }
   }
@@ -2949,7 +2949,7 @@ class ChatViewModel: ObservableObject {
     do {
       try updated.write(to: url, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Write corrected transcript failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Write corrected transcript failed: \(error.logDescription)")
       return ["error": "Failed to write the corrected transcript: \(error.localizedDescription)"]
     }
     MeetingListService.shared.invalidateCache(for: url)
@@ -5501,7 +5501,7 @@ private struct DownloadImageButtonView: View {
       try image.data.write(to: url)
       UserDefaults.standard.set(url.deletingLastPathComponent().path, forKey: UserDefaultsKeys.lastAttachDirectoryPath)
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Failed to save generated image: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Failed to save generated image: \(error.logDescription)")
     }
   }
 

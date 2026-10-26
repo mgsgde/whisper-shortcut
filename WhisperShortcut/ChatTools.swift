@@ -1469,7 +1469,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar list returned \(events.count) events")
         return ["events": events, "count": events.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1494,7 +1494,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar create ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1517,7 +1517,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1530,7 +1530,7 @@ enum ChatToolRegistry {
         let result = try await GoogleCalendarAPIClient.shared.deleteEvent(eventId: eventId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1540,7 +1540,7 @@ enum ChatToolRegistry {
         let lists = try await GoogleTasksAPIClient.shared.listTaskLists()
         return ["task_lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1554,7 +1554,7 @@ enum ChatToolRegistry {
           taskListId: taskListId, maxResults: maxResults, showCompleted: showCompleted)
         return ["tasks": tasks, "count": tasks.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1571,7 +1571,7 @@ enum ChatToolRegistry {
           title: title, notes: notes, due: due, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1591,7 +1591,7 @@ enum ChatToolRegistry {
           status: args["status"] as? String)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1606,7 +1606,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1621,7 +1621,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1634,7 +1634,7 @@ enum ChatToolRegistry {
           query: query, maxResults: maxResults)
         return ["emails": messages, "count": messages.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1647,7 +1647,7 @@ enum ChatToolRegistry {
         let message = try await GmailAPIClient.shared.readMessage(messageId: messageId)
         return message
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1657,7 +1657,7 @@ enum ChatToolRegistry {
         let boards = try await TrelloAPIClient.shared.listBoards()
         return ["boards": boards, "count": boards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1670,7 +1670,7 @@ enum ChatToolRegistry {
         let lists = try await TrelloAPIClient.shared.listLists(boardId: boardId)
         return ["lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1687,7 +1687,7 @@ enum ChatToolRegistry {
           listId: listId, boardId: boardId, maxResults: maxResults)
         return ["cards": cards, "count": cards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1705,7 +1705,7 @@ enum ChatToolRegistry {
           listId: listId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1720,7 +1720,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.moveCard(cardId: cardId, listId: listId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1740,7 +1740,7 @@ enum ChatToolRegistry {
           cardId: cardId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1753,7 +1753,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.archiveCard(cardId: cardId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 

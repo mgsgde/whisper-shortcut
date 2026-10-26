@@ -424,7 +424,7 @@ class SettingsViewModel: ObservableObject {
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
       
     } catch {
-      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.localizedDescription)")
+      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.logDescription)")
       // Revert state on error
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
       showError("Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))")
@@ -571,7 +571,7 @@ class SettingsViewModel: ObservableObject {
       SystemPromptsStore.shared.resetSystemPromptsToDefaults()
       DebugLogger.log("RESET: Deleted context data and reset system prompts to defaults")
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
   }
 
@@ -581,7 +581,7 @@ class SettingsViewModel: ObservableObject {
     do {
       try ContextLogger.shared.deleteAllContextData()
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
 
     ChatSessionStore.shared.deleteAllSessions()

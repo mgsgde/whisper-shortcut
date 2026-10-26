@@ -1072,7 +1072,7 @@ class ContextDerivation {
       try suggestionText.write(to: fileURL, atomically: true, encoding: .utf8)
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(suggestionText.count) chars)")
     } catch {
-      DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.logDescription)")
     }
   }
 }

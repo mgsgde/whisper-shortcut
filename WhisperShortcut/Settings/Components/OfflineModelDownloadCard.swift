@@ -124,7 +124,7 @@ struct OfflineModelDownloadCard: View {
         await MainActor.run {
           downloadError = SpeechErrorFormatter.formatForUser(error)
         }
-        DebugLogger.logError("ONBOARDING: \(modelType.displayName) download failed: \(error.localizedDescription)")
+        DebugLogger.logError("ONBOARDING: \(modelType.displayName) download failed: \(error.logDescription)")
       }
     }
   }

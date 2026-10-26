@@ -515,7 +515,7 @@ final class ModelManager: ModelStore<OfflineModelType> {
       }
     } catch {
       if Self.isCancellation(error) { throw CancellationError() }
-      DebugLogger.logError("MODEL-MANAGER: Parakeet download failed: \(error.localizedDescription)")
+      DebugLogger.logError("MODEL-MANAGER: Parakeet download failed: \(error.logDescription)")
       logDirectoryContents(ParakeetBackend.modelsRoot)
       throw ModelStoreError.downloadFailed("Failed to download Parakeet Ultra: \(error.localizedDescription)")
     }

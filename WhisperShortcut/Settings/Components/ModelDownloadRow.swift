@@ -129,7 +129,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
       } catch is CancellationError {
         // Cancelled from the Cancel button.
       } catch {
-        DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.localizedDescription)")
+        DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.logDescription)")
         onError("Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
       }
     }
@@ -139,7 +139,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     do {
       try store.deleteModel(model)
     } catch {
-      DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.localizedDescription)")
+      DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.logDescription)")
       onError("Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
     }
   }

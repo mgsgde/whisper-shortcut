@@ -162,7 +162,7 @@ enum APIKeyValidator {
         return .unverified
       }
     } catch {
-      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.localizedDescription))")
+      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.logDescription))")
       return .unverified
     }
   }

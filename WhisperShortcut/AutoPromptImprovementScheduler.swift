@@ -221,7 +221,7 @@ class AutoPromptImprovementScheduler {
     var pendingKinds: [GenerationKind] = []
     for (focus, error) in results {
       if let error = error {
-        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.localizedDescription)")
+        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.logDescription)")
         continue
       }
       if hasSuggestion(for: focus) {

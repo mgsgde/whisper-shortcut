@@ -351,7 +351,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       return signedIn
     } catch {
       lastError = error.localizedDescription
-      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.localizedDescription)")
+      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.logDescription)")
       throw error
     }
   }

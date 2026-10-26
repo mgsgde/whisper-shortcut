@@ -262,7 +262,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
           userInfo: [NSLocalizedDescriptionKey: "Failed to start recording"])
-        DebugLogger.logError("AUDIO: Chunk recorder failed to start: \(error.localizedDescription)")
+        DebugLogger.logError("AUDIO: Chunk recorder failed to start: \(error.logDescription)")
         self.meteringTimer?.invalidate()
         self.meteringTimer = nil
         self.isSessionActive = false
@@ -315,7 +315,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       try startChunkRecorder(isRecorderA: !wasRecorderAActive)
     } catch {
       // Keep recording on the current chunk; rotation is an optimization, not a requirement.
-      DebugLogger.logError("AUDIO: Chunk rotation failed, continuing current chunk: \(error.localizedDescription)")
+      DebugLogger.logError("AUDIO: Chunk rotation failed, continuing current chunk: \(error.logDescription)")
       consecutiveSilenceSamples = 0
       return
     }
@@ -410,7 +410,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
           self.delegate?.audioRecorderDidFinishRecording(audioURL: deliveredURL)
         }
       } catch {
-        DebugLogger.logError("AUDIO: Finalizing dictate recording failed: \(error.localizedDescription)")
+        DebugLogger.logError("AUDIO: Finalizing dictate recording failed: \(error.logDescription)")
         DispatchQueue.main.async {
           self.delegate?.audioRecorderDidFailWithError(error)
         }

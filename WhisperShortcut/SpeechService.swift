@@ -1232,7 +1232,7 @@ class SpeechService {
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
       } catch {
-        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")
+        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.logDescription)")
         return Self.voiceInstructionPlaceholder
       }
     }
@@ -2001,7 +2001,7 @@ class SpeechService {
       // error type bubbled up (URLSession surfaces cancellation as `URLError(.cancelled)`,
       // not `CancellationError`).
       try Task.checkCancellation()
-      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
+      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.logDescription)); falling back to original text")
       return text
     }
   }
@@ -3066,7 +3066,7 @@ class SpeechService {
       DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
       return duration
     } catch {
-      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.localizedDescription)")
+      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.logDescription)")
       return nil
     }
   }
