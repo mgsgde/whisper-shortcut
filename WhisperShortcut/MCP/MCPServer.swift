@@ -126,7 +126,16 @@ final class MCPServer: ObservableObject {
         configTools: MCPConfigTools(env: .live))
       let requested = port
       do {
-        let s = try LoopbackHTTPServer(port: requested) { [weak self] request in
+        let s = try LoopbackHTTPServer(
+          port: requested,
+          onFailure: { [weak self] reason in
+            DispatchQueue.main.async {
+              guard let self else { return }
+              self.status = .failed("The local server stopped: \(reason). Turn it off and on again.")
+              DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
+            }
+          }
+        ) { [weak self] request in
           guard let self else { return .empty(503) }
           // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
           // them to its provider. Checked per request so turning the mode on takes effect at once.

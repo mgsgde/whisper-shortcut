@@ -65,6 +65,9 @@ final class LoopbackHTTPServer {
 
   private let socketFD: Int32
   private let handler: (HTTPRequest) -> HTTPResponse
+  /// Called once, off the accept thread's loop, when the server gives up accepting new
+  /// connections after an unexpected error (anything other than EINTR/ECONNABORTED/EMFILE/ENFILE).
+  private let onFailure: (String) -> Void
   private let lock = NSLock()
   private var isStopped = false
   private let workQueue = DispatchQueue(label: "mcp.loopback.http.work", qos: .userInitiated, attributes: .concurrent)
@@ -72,7 +75,10 @@ final class LoopbackHTTPServer {
   /// piling up worker threads behind a slow or stalled client.
   private let connectionSemaphore = DispatchSemaphore(value: 6)
 
-  init(port requestedPort: UInt16, handler: @escaping (HTTPRequest) -> HTTPResponse) throws {
+  init(
+    port requestedPort: UInt16, onFailure: @escaping (String) -> Void = { _ in },
+    handler: @escaping (HTTPRequest) -> HTTPResponse
+  ) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw ServerError.socketFailed(errno) }
 
@@ -112,6 +118,7 @@ final class LoopbackHTTPServer {
     socketFD = fd
     port = UInt16(bigEndian: bound.sin_port)
     self.handler = handler
+    self.onFailure = onFailure
 
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.acceptLoop() }
   }
@@ -143,6 +150,12 @@ final class LoopbackHTTPServer {
       if client < 0 {
         if stopped { return }
         if errno == EINTR || errno == ECONNABORTED { continue }
+        if errno == EMFILE || errno == ENFILE {
+          // Too many open files system-wide: wait for some to close rather than spin or give up.
+          usleep(100_000)
+          continue
+        }
+        onFailure("accept failed (errno \(errno): \(String(cString: strerror(errno))))")
         return
       }
       guard connectionSemaphore.wait(timeout: .now()) == .success else {
