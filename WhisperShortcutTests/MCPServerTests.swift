@@ -162,6 +162,31 @@ struct MCPServerTests {
     #expect(arr.count == 2)
   }
 
+  // MARK: R84 fixture pin
+  //
+  // Pins tools/list byte-for-byte (content and order) against a snapshot taken from the code
+  // before R84's MCPTool consolidation, so that refactor cannot silently change what a client
+  // sees. The fixtures were captured by a temporary generator test (same request shape as below,
+  // output sorted-keys/pretty-printed and printed to the test log — the sandboxed test host can't
+  // write into the repo checkout or even /tmp) and committed alongside this test.
+
+  @Test("tools/list for the read and write tokens matches the pinned fixture")
+  func toolsListMatchesFixture() throws {
+    let env = MCPTestEnv(level: .apply)
+    let d = env.dispatcher()
+    func canonicalTools(_ auth: String) throws -> Data {
+      let r = handle(req(auth: auth, body: #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#), d)
+      let tools = try #require((try json(r)["result"] as? [String: Any])?["tools"] as? [[String: Any]])
+      return try JSONSerialization.data(withJSONObject: ["tools": tools], options: [.sortedKeys, .prettyPrinted])
+    }
+    func fixture(_ name: String) throws -> Data {
+      let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/\(name)")
+      return try Data(contentsOf: url)
+    }
+    #expect(try canonicalTools("Bearer secret-token") == fixture("mcp-tools-list-read.json"))
+    #expect(try canonicalTools("Bearer write-token") == fixture("mcp-tools-list-write.json"))
+  }
+
   // MARK: integration
 
   @Test("Real socket round trip")
