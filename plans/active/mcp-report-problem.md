@@ -1,6 +1,11 @@
 # MCP: let the AI app tell a config fix from an app bug
 
-Status: proposed 2026-10-26, not built. Builds on `mcp-config-access.md` (v2, shipped in 8.57).
+Status: built 2026-10-26 on `feat/mcp-report-problem` (plumbing Grok 4.7, review window Opus,
+rendered dark + light in a throwaway test). Deviation: step 3 (queue row on the owner's Mac) is not
+built. The issue carries `labels=ai-report` instead, so grooming can pick reports up from GitHub.
+Added with it: `default_length` per section in `get_configuration` and a `prompts` focus in the
+tune recipe, for setups whose instructions grew long. Telemetry `schema.json` lists
+`glossaryEchoRemoved`; until the server is redeployed it drops that count silently. Builds on `mcp-config-access.md` (v2, shipped in 8.57).
 
 ## Why
 

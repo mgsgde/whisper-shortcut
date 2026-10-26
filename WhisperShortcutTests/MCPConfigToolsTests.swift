@@ -339,10 +339,21 @@ struct MCPConfigToolsTests {
     #expect((o["models"] as? [String: String])?["transcription_model"] == "whisper-base")
     let prompts = o["system_prompts"] as? [String: Any]
     #expect((prompts?["dictate_prompt"] as? [String: Any])?["customized"] as? Bool == true)
+    #expect(
+      (prompts?["dictate_prompt"] as? [String: Any])?["default_length"] as? Int
+        == AppConstants.defaultPromptModeSystemPrompt.count)
     #expect((o["ai_app_access"] as? [String: Any])?["level"] as? String == "propose")
     #expect((o["tune_recipe"] as? String)?.contains("get_configuration") == true)
     #expect((o["system_prompt_texts"] as? [String: String])?["dictate_prompt"] == "Custom rule.")
     #expect(((o["command_texts"] as? [[String: Any]])?.first?["name"]) as? String == "a-cmd")
+  }
+
+  @Test("The prompts focus points the AI app at default_length and one section per proposal")
+  func promptsFocus() {
+    #expect(MCPTuneRecipe.focuses.contains("prompts"))
+    let text = MCPTuneRecipe.text(focus: "prompts")
+    #expect(text.contains("default_length"))
+    #expect(text.contains("One section per proposal"))
   }
 
   @Test("No token leaks through any read output")

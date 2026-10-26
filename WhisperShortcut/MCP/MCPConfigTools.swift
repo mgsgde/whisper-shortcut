@@ -292,8 +292,11 @@ struct MCPConfigTools {
     for (name, section) in Self.sections {
       let body = env.targets.systemPrompts.loadSection(section)
       let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      // The default's length lets an AI app see at a glance which customized section grew far
+      // past what the app ships, the usual sign of rules piling up.
       info[name] = [
         "customized": SystemPromptsStore.isCustomized(trimmed, for: section), "length": trimmed.count,
+        "default_length": MCPProposalWindows.defaultText(for: section).count,
       ]
     }
     return info

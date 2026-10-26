@@ -5,7 +5,7 @@ import Foundation
 /// instructions, so clients without prompt support get it too.
 enum MCPTuneRecipe {
   static let promptName = "tune_whisper_shortcut"
-  static let focuses = ["dictation", "names", "emails", "messages", "commands", "all"]
+  static let focuses = ["dictation", "names", "emails", "messages", "commands", "prompts", "all"]
 
   static let base = """
     Tune WhisperShortcut to the user.
@@ -27,6 +27,7 @@ enum MCPTuneRecipe {
     case "names": line = "Focus: names and terms. Fill the glossary with people, companies, products and domain terms the user dictates."
     case "emails": line = "Focus: emails. Look at the Dictate Prompt section and the writing style profile for how the user writes emails (greeting, tone, length, language)."
     case "messages": line = "Focus: chat messages. Look at the Dictate Prompt section and the writing style profile for how the user writes short messages per app."
+    case "prompts": line = "Focus: tidy the instructions. Compare each customized section's length with default_length in get_configuration and start with the one that grew most. Read it in full, then propose a shorter version: drop rules the default already covers, say each rule once, cut examples that repeat a rule, keep every rule the user's recent dictations show they need. Name what you removed and why in the rationale. One section per proposal."
     case "commands": line = "Focus: commands. Look at the existing commands and suggest or save ones the user would use."
     default: line = "Focus: everything. Start with names and terms, then the writing style, then commands."
     }
