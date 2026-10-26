@@ -21,6 +21,75 @@ enum MailProviderLookup: Equatable {
   case unknown(suggestedHost: String)
 }
 
+/// One row per mail provider: the single source for domain presets, MX detection and the picker
+/// on the credential card. The card looks the note up by IMAP host, so a custom domain detected
+/// via MX gets the same note as the provider's own addresses.
+struct MailProvider: Sendable {
+  enum Security: Sendable { case ssl }
+
+  let name: String
+  let host: String
+  let port: Int
+  let security: Security
+  /// Shown on the credential card for this provider's server.
+  let note: String?
+  /// Addresses at these domains belong to the provider itself (server fixed on the card).
+  let domains: [String]
+  /// MX host suffixes that mean a custom domain is hosted here.
+  let mxSuffixes: [String]
+
+  private static let icloudNote = "Use an app-specific password from account.apple.com."
+  private static let tOnlineNote = "Use your T-Online e-mail password, not the login password."
+  private static let yahooNote = "Use an app password from Yahoo account security."
+
+  private static func make(
+    _ name: String, _ host: String, note: String? = nil,
+    domains: [String] = [], mx: [String] = []
+  ) -> MailProvider {
+    MailProvider(name: name, host: host, port: 993, security: .ssl, note: note, domains: domains, mxSuffixes: mx)
+  }
+
+  /// Order is the picker order on the card.
+  static let all: [MailProvider] = [
+    make("IONOS", "imap.ionos.de",
+         domains: ["ionos.de", "ionos.com", "1und1.de", "online.de"],
+         mx: ["ionos.de", "ionos.com", "ionos.co.uk", "kundenserver.de", "1and1.com"]),
+    make("Strato", "imap.strato.de", domains: ["strato.de"], mx: ["rzone.de"]),
+    make("GMX", "imap.gmx.net", domains: ["gmx.de", "gmx.net", "gmx.at", "gmx.ch"], mx: ["gmx.net"]),
+    make("WEB.DE", "imap.web.de", domains: ["web.de"], mx: ["web.de"]),
+    make("Hetzner", "mail.your-server.de", mx: ["your-server.de"]),
+    make("iCloud+ custom domain", "imap.mail.me.com", note: icloudNote,
+         domains: ["icloud.com", "me.com", "mac.com"], mx: ["mail.icloud.com"]),
+    make("mailbox.org", "imap.mailbox.org", domains: ["mailbox.org"], mx: ["mailbox.org"]),
+    make("Fastmail", "imap.fastmail.com", mx: ["messagingengine.com"]),
+    make("Zoho Mail (EU)", "imap.zoho.eu", mx: ["zoho.eu"]),
+    make("Zoho Mail", "imap.zoho.com", mx: ["zoho.com"]),
+    make("Hostinger", "imap.hostinger.com", mx: ["hostinger.com"]),
+    make("Posteo", "posteo.de", domains: ["posteo.de", "posteo.net"], mx: ["posteo.de"]),
+    make("T-Online", "secureimap.t-online.de", note: tOnlineNote,
+         domains: ["t-online.de"], mx: ["t-online.de"]),
+    make("Yahoo", "imap.mail.yahoo.com", note: yahooNote,
+         domains: ["yahoo.com", "yahoo.de"], mx: ["yahoodns.net"]),
+    // TODO(verify MX): freenet.de's MX host names are not confirmed, so no MX suffix yet.
+    make("freenet", "mx.freenet.de", domains: ["freenet.de"]),
+  ]
+
+  static func provider(forDomain domain: String) -> MailProvider? {
+    all.first { $0.domains.contains(domain) }
+  }
+
+  static func provider(forHost host: String) -> MailProvider? {
+    let host = host.lowercased()
+    return all.first { $0.host == host }
+  }
+
+  static func provider(forMXHost host: String) -> MailProvider? {
+    all.first { provider in
+      provider.mxSuffixes.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+  }
+}
+
 enum MailProviderPresets {
   static func lookup(email: String) -> MailProviderLookup {
     guard let domain = domain(of: email) else {
@@ -32,38 +101,11 @@ enum MailProviderPresets {
     if domain == "gmail.com" || domain == "googlemail.com" {
       return .unsupported(reason: "Gmail is read through the Google connection: Settings → Accounts → Google Account.")
     }
-    if let preset = presets[domain] {
-      return .preset(MailServerPreset(host: preset.host, port: 993, note: preset.note))
+    if let provider = MailProvider.provider(forDomain: domain) {
+      return .preset(MailServerPreset(host: provider.host, port: provider.port, note: provider.note))
     }
     return .unknown(suggestedHost: "imap.\(domain)")
   }
-
-  private static let icloudNote = "Use an app-specific password from account.apple.com."
-  private static let tOnlineNote = "Use your T-Online e-mail password, not the login password."
-  private static let yahooNote = "Use an app password from Yahoo account security."
-
-  private static let presets: [String: (host: String, note: String?)] = [
-    "ionos.de": ("imap.ionos.de", nil),
-    "ionos.com": ("imap.ionos.de", nil),
-    "1und1.de": ("imap.ionos.de", nil),
-    "online.de": ("imap.ionos.de", nil),
-    "gmx.de": ("imap.gmx.net", nil),
-    "gmx.net": ("imap.gmx.net", nil),
-    "gmx.at": ("imap.gmx.net", nil),
-    "gmx.ch": ("imap.gmx.net", nil),
-    "web.de": ("imap.web.de", nil),
-    "icloud.com": ("imap.mail.me.com", icloudNote),
-    "me.com": ("imap.mail.me.com", icloudNote),
-    "mac.com": ("imap.mail.me.com", icloudNote),
-    "posteo.de": ("posteo.de", nil),
-    "posteo.net": ("posteo.de", nil),
-    "mailbox.org": ("imap.mailbox.org", nil),
-    "strato.de": ("imap.strato.de", nil),
-    "t-online.de": ("secureimap.t-online.de", tOnlineNote),
-    "yahoo.com": ("imap.mail.yahoo.com", yahooNote),
-    "yahoo.de": ("imap.mail.yahoo.com", yahooNote),
-    "freenet.de": ("mx.freenet.de", nil),
-  ]
 
   private static func domain(of email: String) -> String? {
     let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
