@@ -15,9 +15,7 @@ struct LiveMeetingChunk: Identifiable, Sendable {
 
   /// Display timestamp string, e.g. "[02:15]"
   var timestampString: String {
-    let minutes = Int(startTime) / 60
-    let seconds = Int(startTime) % 60
-    return String(format: "[%02d:%02d]", minutes, seconds)
+    MeetingTranscriptFormat.timestamp(startTime)
   }
 }
 
@@ -40,9 +38,7 @@ struct LiveMeetingNote: Identifiable, Sendable {
   }
 
   var timestampString: String {
-    let minutes = Int(startTime) / 60
-    let seconds = Int(startTime) % 60
-    return String(format: "[%02d:%02d]", minutes, seconds)
+    MeetingTranscriptFormat.timestamp(startTime)
   }
 
   /// Plain-text rendering used for chat context and for the clipboard.
@@ -50,6 +46,9 @@ struct LiveMeetingNote: Identifiable, Sendable {
     bullets.map { "\(timestampString) \($0)" }.joined(separator: "\n")
   }
 }
+
+/// Published lifecycle of the live meeting, mirrored from `LiveMeetingSession.phase`.
+enum MeetingPhase: Equatable { case idle, recording, finishing }
 
 /// In-memory store for live meeting transcript chunks and live notes. Used by the meeting view and
 /// for building chat context (live notes + full transcript). Cleared when a new meeting starts.
@@ -67,13 +66,18 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// used to defeat the "regenerate when the summary file is missing" recovery path.
   @Published private(set) var summary: String = ""
 
-  /// True while a meeting is recording; false after session ends or before any meeting.
-  @Published private(set) var isSessionActive: Bool = false
+  /// `.recording` while a meeting is recording; `.finishing` between "stop this meeting" and the
+  /// session actually being finished; `.idle` after the session ends or before any meeting.
+  /// Stopping has to drain the last chunk through a transcription round trip, so it is not instant —
+  /// a UI that only knows the meeting is still active shows "Recording" for those seconds and the
+  /// stop looks like it did nothing.
+  @Published private(set) var phase: MeetingPhase = .idle
 
-  /// True between "stop this meeting" and the session actually being finished. Stopping has to drain
-  /// the last chunk through a transcription round trip, so it is not instant; a UI that only knows
-  /// `isSessionActive` shows "Recording" for those seconds and the stop looks like it did nothing.
-  @Published private(set) var isFinishing: Bool = false
+  /// True while a meeting is recording or finishing; false when `phase` is `.idle`.
+  var isSessionActive: Bool { phase != .idle }
+
+  /// True between "stop this meeting" and the session actually being finished.
+  var isFinishing: Bool { phase == .finishing }
 
   /// Cuts the audio still sitting in the recorder and waits briefly for its transcript. Installed by
   /// `MenuBarController`, which owns the session; nil in previews and tests. The meeting chat calls it
@@ -93,14 +97,12 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   private init() {}
 
-  /// Generates a timestamp-based filename stem (e.g. "Meeting-2026-03-04-201119").
-  /// Used as the meeting's unique ID for both transcript files and chat store scope.
-  static func generateStem() -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-    return "Meeting-\(formatter.string(from: Date()))"
+  private func setPhase(_ p: MeetingPhase) {
+    if Thread.isMainThread {
+      phase = p
+    } else {
+      DispatchQueue.main.async { [weak self] in self?.phase = p }
+    }
   }
 
   /// Call when a new meeting session starts. Clears previous data.
@@ -110,13 +112,12 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   func startSession() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.startSession must be called on main thread")
     if self.currentMeetingFilenameStem == nil {
-      self.currentMeetingFilenameStem = Self.generateStem()
+      self.currentMeetingFilenameStem = MeetingTranscriptFormat.newStem()
     }
     self.chunks = []
     self.liveNotes = []
     self.summary = ""
-    self.isSessionActive = true
-    self.isFinishing = false
+    self.phase = .recording
     DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
   }
 
@@ -125,8 +126,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// read `currentMeetingFilenameStem` immediately after).
   func resumeSession() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.resumeSession must be called on main thread")
-    self.isSessionActive = true
-    self.isFinishing = false
+    self.phase = .recording
     DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
   }
 
@@ -144,32 +144,6 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.liveNotes = notes
     DebugLogger.log(
       "LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count), notes: \(notes.count))")
-  }
-
-  /// Matches a "[mm:ss]" timestamp marker at the start of a line (minutes may exceed two digits for
-  /// long meetings). Anchored so a "[1:23]" inside a chunk's text does not split the chunk.
-  private static let timestampRegex = try! NSRegularExpression(
-    pattern: #"^\[(\d+):(\d{2})\]"#, options: [.anchorsMatchLines])
-
-  /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
-  /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.
-  static func parseTranscript(_ text: String) -> [LiveMeetingChunk] {
-    let ns = text as NSString
-    let matches = timestampRegex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-    var result: [LiveMeetingChunk] = []
-    for (i, m) in matches.enumerated() {
-      let minutes = Int(ns.substring(with: m.range(at: 1))) ?? 0
-      let seconds = Int(ns.substring(with: m.range(at: 2))) ?? 0
-      let start = TimeInterval(minutes * 60 + seconds)
-      let bodyStart = m.range.location + m.range.length
-      let bodyEnd = (i + 1 < matches.count) ? matches[i + 1].range.location : ns.length
-      let body = ns.substring(with: NSRange(location: bodyStart, length: bodyEnd - bodyStart))
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      if !body.isEmpty {
-        result.append(LiveMeetingChunk(startTime: start, text: body))
-      }
-    }
-    return result
   }
 
   /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
@@ -198,27 +172,14 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// chunk. `isSessionActive` stays true — the meeting is not over yet — so the UI can say
   /// "finishing" instead of either lying about recording or claiming the meeting has ended.
   func beginFinishing() {
-    if Thread.isMainThread {
-      self.isFinishing = true
-    } else {
-      DispatchQueue.main.async { [weak self] in self?.isFinishing = true }
-    }
+    setPhase(.finishing)
     DebugLogger.log("LIVE-MEETING-STORE: Finishing (draining last chunk)")
   }
 
   /// Call when the meeting session ends. Keeps chunks, summary, and name so the meeting window can keep showing them.
   func endSession() {
-    if Thread.isMainThread {
-      self.isSessionActive = false
-      self.isFinishing = false
-      DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
-    } else {
-      DispatchQueue.main.async { [weak self] in
-        self?.isSessionActive = false
-        self?.isFinishing = false
-        DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
-      }
-    }
+    setPhase(.idle)
+    DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
   }
 
   /// Bridges the meeting chat to the running session's audio flush. No-op when nothing is recording.
@@ -233,12 +194,11 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// `startSession` / `createTranscriptFile` call synchronously (avoids stem races).
   func clearForNewMeeting() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.clearForNewMeeting must be called on main thread")
-    let stem = Self.generateStem()
+    let stem = MeetingTranscriptFormat.newStem()
     self.chunks = []
     self.liveNotes = []
     self.summary = ""
-    self.isSessionActive = false
-    self.isFinishing = false
+    self.phase = .idle
     self.currentMeetingFilenameStem = stem
     self.preferredMeetingName = nil
     DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")

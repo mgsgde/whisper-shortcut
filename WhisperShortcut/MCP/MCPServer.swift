@@ -176,7 +176,9 @@ final class MCPServer: ObservableObject {
     let store = LiveMeetingTranscriptStore.shared
     updateLive(active: store.isSessionActive, stem: store.currentMeetingFilenameStem)
     // @Published emits in willSet, so use the emitted value rather than reading the store back.
-    store.$isSessionActive
+    store.$phase
+      .map { $0 != .idle }
+      .removeDuplicates()
       .sink { [weak self] active in
         guard let self else { return }
         self.stateLock.lock(); self.liveActive = active; self.stateLock.unlock()

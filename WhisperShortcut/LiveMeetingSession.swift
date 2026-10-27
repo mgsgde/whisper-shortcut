@@ -75,6 +75,8 @@ final class LiveMeetingSession: NSObject {
     }
   }
 
+  var isDraining: Bool { if case .draining = phase { return true }; return false }
+
   private func isCurrent(_ run: MeetingRun) -> Bool { currentRun === run }
 
   // MARK: - Collaborators
@@ -87,9 +89,8 @@ final class LiveMeetingSession: NSObject {
   /// True while `appState` is `.recording(.liveMeeting)`. The session cannot read `appState`
   /// itself — see the note above.
   private let appStateIsRecordingMeeting: () -> Bool
-  /// The user asked to stop and the session is now draining the last chunk(s). Reported separately
-  /// from `onFinished` because that drain takes a network round trip: without it the owner keeps
-  /// showing "recording" for seconds after the stop, which reads as the stop not having worked.
+  /// The user asked to stop and the session is now draining the last chunk(s). The owner refreshes
+  /// its UI; it reads `isDraining` instead of keeping a flag.
   private let onStopping: () -> Void
   /// The session has fully finished (saved or discarded); the owner returns `appState` to idle.
   private let onFinished: () -> Void
@@ -286,11 +287,10 @@ final class LiveMeetingSession: NSObject {
 
     run.safeguardTimer?.invalidate()
     run.safeguardTimer = nil
-    // Tell the UI *now*: the drain below needs a transcription round trip, and until it lands both
-    // the menu bar and the meeting bar would otherwise keep claiming the meeting is recording.
+    // The owner reads `isDraining` in `onStopping`.
     LiveMeetingTranscriptStore.shared.beginFinishing()
-    onStopping()
     enterDraining(run)
+    onStopping()
   }
 
   /// Switches `run` to draining, asks the recorder for its final chunk and arms the safety net.
@@ -390,10 +390,7 @@ final class LiveMeetingSession: NSObject {
 
     if shouldDiscard {
       if let url = run.transcriptURL {
-        try? FileManager.default.removeItem(at: url)
-        let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
-        try? FileManager.default.removeItem(at: summaryURL)
-        try? FileManager.default.removeItem(at: MeetingListService.notesURL(transcriptFileURL: url))
+        MeetingFiles(transcript: url).removeAll()
         MeetingAudioBacklog.remove(stem: url.deletingPathExtension().lastPathComponent)
         DebugLogger.log("LIVE-MEETING: Discarded transcript, notes, summary and kept audio")
       }
@@ -468,7 +465,7 @@ final class LiveMeetingSession: NSObject {
       // so a long meeting would otherwise be summarised (and overwritten) as a fragment.
       var sourceChunks = chunksSnapshot
       if let fileText = try? String(contentsOf: transcriptURL, encoding: .utf8) {
-        let parsed = LiveMeetingTranscriptStore.parseTranscript(fileText)
+        let parsed = MeetingTranscriptFormat.parse(fileText)
         if !parsed.isEmpty { sourceChunks = parsed }
       }
       let transcriptText = sourceChunks.map { "\($0.timestampString) \($0.text)" }.joined(
@@ -675,9 +672,7 @@ final class LiveMeetingSession: NSObject {
   /// deleted, so a failed write never costs audio.
   @MainActor
   private func retryBacklog(stem: String) async -> (recovered: Int, error: Error?) {
-    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let transcriptURL = MeetingFiles(stem: stem).transcript
     var recoveredChunks: [LiveMeetingChunk] = []
     var consumed: [URL] = []
     var failure: Error?
@@ -708,11 +703,11 @@ final class LiveMeetingSession: NSObject {
     if !recoveredChunks.isEmpty {
       let existingText = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
       merged = MeetingAudioBacklog.merge(
-        recoveredChunks, into: LiveMeetingTranscriptStore.parseTranscript(existingText))
+        recoveredChunks, into: MeetingTranscriptFormat.parse(existingText))
       do {
         try FileManager.default.createDirectory(
           at: transcriptURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try MeetingAudioBacklog.transcriptText(merged).write(
+        try MeetingTranscriptFormat.text(merged).write(
           to: transcriptURL, atomically: true, encoding: .utf8)
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(stem): \(error)")
@@ -730,7 +725,7 @@ final class LiveMeetingSession: NSObject {
     if failure == nil {
       if merged.isEmpty {
         let text = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
-        merged = LiveMeetingTranscriptStore.parseTranscript(text)
+        merged = MeetingTranscriptFormat.parse(text)
       }
       if !merged.isEmpty {
         runPostProcessing(
@@ -753,23 +748,12 @@ final class LiveMeetingSession: NSObject {
       .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !sanitized.isEmpty else { return }
     let newStem = "\(currentStem)-\(sanitized)"
-    let dir = url.deletingLastPathComponent()
-    let newURL = dir.appendingPathComponent("\(newStem).txt")
     do {
-      if FileManager.default.fileExists(atPath: newURL.path) {
-        try FileManager.default.removeItem(at: newURL)
-      }
-      try FileManager.default.moveItem(at: url, to: newURL)
-      // The live notes were written under the old stem while the meeting ran; without moving them
-      // too, naming a meeting on the way out would orphan every note it collected.
-      let oldNotes = MeetingListService.notesURL(transcriptFileURL: url)
-      let newNotes = MeetingListService.notesURL(transcriptFileURL: newURL)
-      if FileManager.default.fileExists(atPath: oldNotes.path) {
-        try? FileManager.default.removeItem(at: newNotes)
-        try? FileManager.default.moveItem(at: oldNotes, to: newNotes)
-      }
+      // Notes and the summary were written under the old stem while the meeting ran; without
+      // moving them too, naming a meeting on the way out would orphan them.
+      let moved = try MeetingFiles(transcript: url).move(toStem: newStem)
       MeetingAudioBacklog.rename(stem: currentStem, to: newStem)
-      run.transcriptURL = newURL
+      run.transcriptURL = moved.transcript
       MeetingListService.shared.invalidateCache(for: nil)
       DispatchQueue.main.async {
         LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem = newStem
@@ -782,8 +766,7 @@ final class LiveMeetingSession: NSObject {
   }
 
   private func createTranscriptFile() throws -> URL {
-    let meetingsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let meetingsDir = MeetingFiles.directory
 
     if !FileManager.default.fileExists(atPath: meetingsDir.path) {
       try FileManager.default.createDirectory(at: meetingsDir, withIntermediateDirectories: true)
@@ -795,12 +778,11 @@ final class LiveMeetingSession: NSObject {
     if let existing = LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem {
       stem = existing
     } else {
-      stem = LiveMeetingTranscriptStore.generateStem()
+      stem = MeetingTranscriptFormat.newStem()
       LiveMeetingTranscriptStore.shared.currentMeetingFilenameStem = stem
     }
-    let filename = "\(stem).txt"
 
-    let fileURL = meetingsDir.appendingPathComponent(filename)
+    let fileURL = MeetingFiles(stem: stem).transcript
 
     // Only create (and thereby truncate) when no file exists yet. On resume the stem is
     // unchanged, so an unconditional createFile(contents: nil) would WIPE the existing
@@ -821,10 +803,8 @@ final class LiveMeetingSession: NSObject {
   func appendToTranscript(run: MeetingRun, _ text: String, chunkStartTime: TimeInterval) {
     guard let url = run.transcriptURL else { return }
 
-    var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let timestamp = Self.formatTimestamp(elapsedSeconds: chunkStartTime)
-    finalText = "\(timestamp) \(finalText)"
-    finalText = "\(finalText)\n\n"
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let finalText = MeetingTranscriptFormat.block(startTime: chunkStartTime, text: trimmed)
 
     do {
       let handle = try FileHandle(forWritingTo: url)
@@ -838,23 +818,16 @@ final class LiveMeetingSession: NSObject {
       DebugLogger.logError("LIVE-MEETING: Failed to append to transcript: \(error)")
     }
 
-    let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard isCurrent(run) else {
       DebugLogger.log("LIVE-MEETING: Late chunk for finished run \(run.id) written to its own transcript only")
       return
     }
-    if !trimmedText.isEmpty {
-      LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
+    if !trimmed.isEmpty {
+      LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmed)
       // `appendChunk` hops to the main queue, so the new chunk isn't visible yet — evaluate the
       // note threshold after it lands.
       DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
     }
-  }
-
-  static func formatTimestamp(elapsedSeconds: TimeInterval) -> String {
-    let minutes = Int(elapsedSeconds) / 60
-    let seconds = Int(elapsedSeconds) % 60
-    return String(format: "[%02d:%02d]", minutes, seconds)
   }
 
   // MARK: - Live notes
@@ -1070,7 +1043,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     isFinal: Bool
   ) {
     DebugLogger.log(
-      "LIVE-MEETING: Received chunk \(chunkIndex) at \(Self.formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")\(isFinal ? " (final)" : "")"
+      "LIVE-MEETING: Received chunk \(chunkIndex) at \(MeetingTranscriptFormat.timestamp(startTime))\(isSilent ? " (silent)" : "")\(isFinal ? " (final)" : "")"
     )
 
     // Heartbeat for the recording marker: tells the next launch when the app was last alive.

@@ -37,7 +37,7 @@ struct MeetingTranscriptIntegrityTests {
   @Test("A timestamp inside a chunk body does not split the chunk")
   func midLineTimestamp() {
     let text = "[00:00] He said see [1:23] in the recording\n\n[01:05] Next"
-    let chunks = LiveMeetingTranscriptStore.parseTranscript(text)
+    let chunks = MeetingTranscriptFormat.parse(text)
     #expect(chunks.count == 2)
     #expect(chunks.first?.text == "He said see [1:23] in the recording")
     #expect(chunks.last?.startTime == 65)
@@ -50,7 +50,7 @@ struct MeetingTranscriptIntegrityTests {
       LiveMeetingChunk(startTime: 3725, text: "two\nlines"),
     ]
     let text = chunks.map { "\($0.timestampString) \($0.text)" }.joined(separator: "\n\n")
-    let parsed = LiveMeetingTranscriptStore.parseTranscript(text)
+    let parsed = MeetingTranscriptFormat.parse(text)
     #expect(parsed.map(\.text) == ["one", "two\nlines"])
     #expect(parsed.map(\.startTime) == [0, 3725])
   }

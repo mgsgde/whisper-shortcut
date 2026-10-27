@@ -258,14 +258,9 @@ class MenuBarController: NSObject {
     },
     cleanUpAudioFile: { [weak self] url in self?.cleanupAudioFile(at: url) },
     appStateIsRecordingMeeting: { [weak self] in self?.appState.recordingMode == .liveMeeting },
-    onStopping: { [weak self] in
-      guard let self else { return }
-      self.meetingIsFinishing = true
-      self.updateUI()
-    },
+    onStopping: { [weak self] in self?.updateUI() },
     onFinished: { [weak self] in
       guard let self else { return }
-      self.meetingIsFinishing = false
       self.appState = self.appState.finish()
     },
     onBacklogChanged: { [weak self] in
@@ -277,11 +272,6 @@ class MenuBarController: NSObject {
   private var isLiveMeetingActive: Bool {
     appState.recordingMode == .liveMeeting || liveMeeting.isRecording
   }
-
-  /// True between the stop request and the session actually finishing: the recorder has stopped but
-  /// the last chunk is still being transcribed. `appState` is still `.recording(.liveMeeting)` in that
-  /// window (the session owns when the meeting is over), so this is what keeps the menu bar honest.
-  private var meetingIsFinishing = false
 
   // MARK: - Meeting Segment (parallel action during live meeting)
   /// When non-nil, an action is running in parallel with the live meeting.
@@ -335,7 +325,8 @@ class MenuBarController: NSObject {
       case (.prompt, true): return .processing(.prompting)
       }
     }
-    if meetingIsFinishing { return .processing(.transcribing) }
+    // `appState` is still `.recording(.liveMeeting)` while draining, so this keeps the menu bar honest.
+    if liveMeeting.isDraining { return .processing(.transcribing) }
     return appState
   }
 
@@ -348,7 +339,7 @@ class MenuBarController: NSObject {
         ? "⏳ Processing — meeting still recording"
         : "\(presentedState.icon) \(what) — meeting still recording"
     }
-    if meetingIsFinishing { return "⏳ Finishing meeting — saving the last seconds…" }
+    if liveMeeting.isDraining { return "⏳ Finishing meeting — saving the last seconds…" }
     return appState.statusText
   }
 
@@ -1019,7 +1010,7 @@ class MenuBarController: NSObject {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
       button.toolTip = "Transcribing [\(done)/\(statuses.count)] - \(active) active"
-    } else if activeMeetingSegment != nil || meetingIsFinishing {
+    } else if activeMeetingSegment != nil || liveMeeting.isDraining {
       button.toolTip = presentedStatusText
     } else {
       button.toolTip = appState.tooltip
@@ -1775,7 +1766,7 @@ class MenuBarController: NSObject {
       encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     LiveMeetingTranscriptStore.shared.rehydrateForResume(
       stem: stem,
-      chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
+      chunks: MeetingTranscriptFormat.parse(transcript),
       summary: summary,
       notes: MeetingListService.shared.loadNotes(forStem: stem))
     startLiveMeeting(resuming: true)
@@ -1787,8 +1778,7 @@ class MenuBarController: NSObject {
   }
 
   @objc func openTranscriptsFolder() {
-    let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let transcriptsDir = MeetingFiles.directory
     
     if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
       do {

@@ -28,21 +28,7 @@ final class MeetingListService: ObservableObject {
     return f
   }()
 
-  private static let timestampFilenameFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.dateFormat = "yyyy-MM-dd-HHmmss"
-    return f
-  }()
-
   private init() {}
-
-  /// Parses the meeting date from a session's `meetingStem` / `meetingId`
-  /// (e.g. "Meeting-2025-03-04-143000"). Returns nil if the stem isn't in the expected format.
-  static func date(fromStem stem: String) -> Date? {
-    guard stem.hasPrefix("Meeting-") else { return nil }
-    let timestamp = String(stem.dropFirst("Meeting-".count))
-    return timestampFilenameFormatter.date(from: timestamp)
-  }
 
   /// Hard cap on transcript characters sent to the summary model. The full transcript is still
   /// scrollable in the UI; this just bounds the LLM request size.
@@ -52,8 +38,7 @@ final class MeetingListService: ObservableObject {
 
   /// Scans the Meetings/ directory and updates the published `meetings` list.
   func refresh() {
-    let dir = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let dir = MeetingFiles.directory
 
     guard FileManager.default.fileExists(atPath: dir.path) else {
       meetings = []
@@ -103,7 +88,7 @@ final class MeetingListService: ObservableObject {
 
   /// URL for the Markdown summary file next to a transcript file (same stem, `.summary.md` extension).
   static func summaryURL(transcriptFileURL: URL) -> URL {
-    transcriptFileURL.deletingPathExtension().appendingPathExtension("summary.md")
+    MeetingFiles(transcript: transcriptFileURL).summary
   }
 
   /// Saves summary to the .summary.md file next to the given transcript URL.
@@ -121,13 +106,11 @@ final class MeetingListService: ObservableObject {
 
   /// URL for the append-only live-notes file next to a transcript file (`.notes.md`).
   static func notesURL(transcriptFileURL: URL) -> URL {
-    transcriptFileURL.deletingPathExtension().appendingPathExtension("notes.md")
+    MeetingFiles(transcript: transcriptFileURL).notes
   }
 
   static func transcriptURL(forStem stem: String) -> URL {
-    AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    MeetingFiles(stem: stem).transcript
   }
 
   /// Persists the full note list for a meeting. Rewrites the whole (small) file — notes are
@@ -247,9 +230,7 @@ final class MeetingListService: ObservableObject {
   /// transcript URL from the stem, parses it, and regenerates. Returns "" if the transcript is
   /// missing/unparseable or generation fails.
   func generateAndSaveSummary(forStem stem: String) async -> String {
-    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let transcriptURL = MeetingFiles(stem: stem).transcript
     guard let info = Self.parseMeetingFilename(transcriptURL) else {
       DebugLogger.logWarning("MEETING-LIBRARY: Cannot recover summary — unparseable stem \(stem)")
       return ""
@@ -326,6 +307,6 @@ final class MeetingListService: ObservableObject {
 
   static func parseTranscriptFile(at url: URL) -> [LiveMeetingChunk] {
     guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-    return LiveMeetingTranscriptStore.parseTranscript(content)
+    return MeetingTranscriptFormat.parse(content)
   }
 }
