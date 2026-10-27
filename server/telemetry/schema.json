@@ -33,7 +33,8 @@
     "promptNoSelection",
     "requestTimedOut",
     "noSpeechDetected",
-    "noInputSignal"
+    "noInputSignal",
+    "glossaryEchoRemoved"
   ],
   "errorClasses": [
     "noAPIKey",

@@ -92,6 +92,14 @@ struct UsageReportTests {
     """
   }
 
+  private func glossaryEcho(
+    ts: String, refTs: String = "2026-08-01T10:00:00.000Z"
+  ) -> String {
+    """
+    {"ts":"\(ts)","kind":"glossaryEchoRemoved","mode":"transcription","refTs":"\(refTs)"}
+    """
+  }
+
   private func chatStopped(reason: String, refTs: String = "2026-08-01T12:00:00.000Z") -> String {
     """
     {"ts":"2026-08-01T12:06:00.000Z","kind":"chatStopped","mode":"geminiChat","refTs":"\(refTs)","detail":{"reason":"\(reason)","partialChars":"180","dropped":"0"}}
@@ -233,6 +241,23 @@ struct UsageReportTests {
   }
 
   // MARK: - Shape
+
+  @Test("Glossary echoes removed inside the window are counted")
+  func glossaryEchoesRemoved() throws {
+    let text = try report(
+      interactions: [dictation()],
+      signals: [
+        glossaryEcho(ts: "2026-08-01T10:00:10.000Z"),
+        glossaryEcho(ts: "2026-08-01T10:00:20.000Z"),
+      ])
+    #expect(text.contains("2 glossary echoes removed"))
+  }
+
+  @Test("No glossary-echo line when none were removed")
+  func noGlossaryEchoes() throws {
+    let text = try report(interactions: [dictation()], signals: [pasted()])
+    #expect(!text.contains("glossary echo"))
+  }
 
   @Test("Sections with no data are omitted rather than rendered empty")
   func emptySectionsAreOmitted() throws {

@@ -1,24 +1,13 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Claude & other AI apps can now tune your setup
-Claude Code, Claude Desktop and other MCP apps on this Mac could already read your meetings. Now, if you allow it, they can also improve your setup from what they know about you:
-- add names and terms to your glossary
-- rewrite your Dictate Prompt instructions and your writing style profile
-- create or edit commands
-- with "Save usage data" on and a second switch, look at your recent dictations to find out why one went wrong
+## Claude & other AI apps
+- **Problem reports.** When an AI app tuning your setup finds a mistake no setting can fix (the instructions already forbid it, or the bug is in the app), it now saves a problem report instead of adding yet another rule. It opens in a window where you can remove anything private, then open it as a GitHub issue or discard it. Nothing is sent unless you submit the issue yourself.
+- **Tidy long instructions.** The "tune my setup" recipe has a new `prompts` focus: the AI app compares each instruction section with the built-in default's length, starts with the one that grew most, and proposes a shorter version, one section at a time, for you to approve.
 
-In Settings → Meetings, the section is now called **Claude & Other AI Apps**. Choose how much an AI app may do:
-- **Only read**
-- **Suggest changes for me to approve** (default): each change opens in a review window that does not steal focus. Return never accepts it.
-- **Make changes directly**: every change is listed under "Changed by AI apps", with Undo.
+## Fixes
+- Feedback links (WhatsApp, email, GitHub) keep `&` and `+` in your text. Before, "Anamnese & Befund" cut the message off at the `&`.
 
-Dictation and Chat instructions always wait for your approval. New glossary terms apply directly, because they only add. Pending changes show in the menu bar as "Review N Changes from AI Apps…".
+## Installation
+Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-In Claude Code, `/whisper-shortcut:tune_whisper_shortcut` runs the built-in "tune my setup" recipe.
-
-Existing connections keep reading and change nothing until you copy the new setup, which carries a separate key for changes. Everything stays local to this Mac and is switched off while Offline Mode is on.
-
-## Also
-- The Smart Improvement review collapses unchanged passages, so the actual change is easier to spot.
-
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.56...v8.57
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.58...v8.59

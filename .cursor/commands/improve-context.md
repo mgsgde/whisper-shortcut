@@ -39,21 +39,22 @@ For each friction point, decide **where** the fix belongs. Use the table below �
 | Repo-wide convention, architecture invariant, "always do X" | `.cursor/rules/index.mdc` **(last resort — see budget rule below)**                   |
 | Cursor-specific rule (glob-scoped, not every session)       | `.cursor/rules/*.mdc` (new file only if `index.mdc` is wrong scope)                   |
 | Repeatable workflow / procedure (multi-step, run on demand) | new or existing `.agents/skills/*/SKILL.md`                                           |
-| User-facing entrypoint that maps to a skill                 | `.cursor/commands/*.md` (see [README.md](README.md) for `{verb}-{topic}` naming)      |
+| Slash command with no reusable procedure (no same-named skill) | `.cursor/commands/*.md` (naming and one-name-one-file: `.cursor/CONTEXT-CONVENTIONS.md`) |
 | Multi-step implementation specs (not prompt context)        | `plans/` — only when the gap is "where does the plan live?", not for session friction |
 | Public-facing or contributor docs                           | root `README.md` (only if the gap is broad enough)                                    |
+| Topic → file pointer                                        | `.cursor/CODEMAP.md`                                                                  |
 
-**The root `CLAUDE.md` only `@`-includes `.cursor/rules/index.mdc` (plus a couple of critical rules) — don't put session learnings there.** The always-applied project rule is `.cursor/rules/index.mdc` (`alwaysApply: true`) — every line there loads in every session. Default destination for a new fact is an on-demand skill or a glob-scoped rule. Only add to `index.mdc` if the rule is needed in _every_ conversation and can't live as a skill.
+**`CLAUDE.md` is a symlink to `AGENTS.md` (repo facts, model tiering, git/release rules, and the `@`-include of `index.mdc`) — don't put session learnings there unless they are owner rulings of that kind.** The always-applied project rule is `.cursor/rules/index.mdc` (`alwaysApply: true`) — every line there loads in every session. Default destination for a new fact is an on-demand skill or a glob-scoped rule. Only add to `index.mdc` if the rule is needed in _every_ conversation and can't live as a skill.
 
 Heuristics:
 
 - If it's "one fact" → add a line to `index.mdc` or an existing skill/rule. Don't create a new top-level file.
-- If it's "a multi-step playbook" → it's a skill, not a rule. Pair with a thin `.cursor/commands/*.md` entrypoint if users will invoke it often (see `.cursor/CONTEXT-CONVENTIONS.md`).
+- If it's "a multi-step playbook" → it's a skill (`.agents/skills/<name>/SKILL.md`), with no same-named command file (see `.cursor/CONTEXT-CONVENTIONS.md`).
 - If two existing files both kind of cover it but neither nails it → update the better-fitting one rather than splitting further.
 - Avoid creating new context files. Prefer editing existing skills, rules, or `index.mdc`.
 - Prefer replacing or tightening existing wording over appending new bullets. If a new note only makes sense with the details of today's task, skip it.
 - Keep proposed additions short: usually 1–3 bullets or a short paragraph. A longer edit must replace existing verbosity or describe a genuinely repeatable workflow.
-- Edit only under `.cursor/` — `.claude/skills` and `.claude/commands` are symlinks to `.cursor/`; one edit propagates to both.
+- Edit the real files under `.cursor/` and `.agents/skills/`, never through `.claude/` — `.claude/{commands,rules}` → `../.cursor/…` and `.claude/skills` → `../.agents/skills` are symlinks; one edit propagates to both.
 
 ### Step 2.5 — Apply the context budget
 

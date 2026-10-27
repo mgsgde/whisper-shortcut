@@ -36,7 +36,32 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       return
     }
     let id = proposal.id
-    let view = SmartImprovementReviewView(
+    let window = NSWindow(
+      contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
+      styleMask: [.titled, .closable, .resizable, .miniaturizable],
+      backing: .buffered, defer: false)
+    if proposal.kind == .problemReport {
+      window.title = "Problem Report from an AI App"
+      window.setContentSize(NSSize(width: 720, height: 640))
+      window.contentView = NSHostingView(rootView: ProblemReportReviewView(
+        title: proposal.title ?? "Problem report",
+        report: proposal.proposedContent ?? "",
+        onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
+        onDiscard: { [weak self] in self?.decline(id) }))
+    } else {
+      window.title = "Suggested by an AI app"
+      window.contentView = NSHostingView(rootView: reviewView(for: proposal))
+    }
+    window.isReleasedWhenClosed = false
+    window.delegate = self
+    window.center()
+    windows[id] = window
+    bringForward(window, activate: activate)
+  }
+
+  private func reviewView(for proposal: MCPProposal) -> SmartImprovementReviewView {
+    let id = proposal.id
+    return SmartImprovementReviewView(
       focusDisplayName: Self.title(for: proposal),
       originalText: Self.baseline(for: proposal),
       suggestedText: proposal.proposedContent ?? "",
@@ -50,17 +75,6 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       acceptOnReturn: false,
       onAccept: { [weak self] edited in self?.accept(id, edited: edited) },
       onCancel: { [weak self] in self?.decline(id) })
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 860, height: 680),
-      styleMask: [.titled, .closable, .resizable, .miniaturizable],
-      backing: .buffered, defer: false)
-    window.title = "Suggested by an AI app"
-    window.contentView = NSHostingView(rootView: view)
-    window.isReleasedWhenClosed = false
-    window.delegate = self
-    window.center()
-    windows[id] = window
-    bringForward(window, activate: activate)
   }
 
   private func bringForward(_ window: NSWindow, activate: Bool) {
@@ -103,6 +117,24 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     }
   }
 
+  /// Marks the report sent and opens it as a prefilled GitHub issue. The browser is the last
+  /// stop before anything is public: the user submits it there, or not.
+  private func sendReport(_ id: String, title: String, report: String) {
+    guard let url = FeedbackLinks.issueURL(title: title, body: report) else {
+      DebugLogger.logError("MCP-CONFIG: could not build issue URL for problem report")
+      return
+    }
+    guard NSWorkspace.shared.open(url) else {
+      let alert = NSAlert()
+      alert.messageText = "Couldn't open your browser"
+      alert.informativeText = "The report is still here. Try again, or copy the text into a new issue on GitHub."
+      alert.runModal()
+      return
+    }
+    _ = MCPProposalStore.shared.accept(id, editedContent: report)
+    windows[id]?.close()
+  }
+
   private func decline(_ id: String) {
     MCPProposalStore.shared.decline(id)
     windows[id]?.close()
@@ -117,6 +149,11 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     guard proposal.kind == .systemPrompt,
       let section = proposal.section.flatMap(SystemPromptSection.init(rawValue:))
     else { return "" }
+    return defaultText(for: section)
+  }
+
+  /// The built-in text a section runs on until the user customizes it.
+  static func defaultText(for section: SystemPromptSection) -> String {
     switch section {
     case .dictation: return AppConstants.defaultTranscriptionSystemPrompt
     case .whisperGlossary: return AppConstants.defaultWhisperGlossary
@@ -145,6 +182,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .systemPrompt: return "instructions"
     case .writingStyle: return "profile"
     case .saveCommand, .deleteCommand: return "command"
+    case .problemReport: return "report"
     }
   }
 
@@ -157,6 +195,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       return proposal.previousContent == nil
         ? "New command /\(proposal.commandName ?? "")" : "Command /\(proposal.commandName ?? "")"
     case .deleteCommand: return "Delete command /\(proposal.commandName ?? "")"
+    case .problemReport: return "Problem report: \(proposal.title ?? "untitled")"
     }
   }
 
