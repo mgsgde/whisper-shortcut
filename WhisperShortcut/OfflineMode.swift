@@ -21,8 +21,23 @@ enum OfflineMode {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.offlineModeEnabled)
   }
 
+  /// Writes the flag alone. Tests flip the mode with this so they do not reconcile selections
+  /// or wipe Dictate Prompt history; `switchTo` is what the UI calls.
   static func setEnabled(_ enabled: Bool) {
     UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.offlineModeEnabled)
+  }
+
+  /// Turns Offline Mode on or off and applies the side effects each switch used to spell out
+  /// itself: move model selections, then drop Dictate Prompt history.
+  ///
+  /// Privacy settings and the onboarding toggle both did that. Choosing Cloud during onboarding
+  /// reconciled and left the history, so an earlier prompt turn survived the switch.
+  @MainActor
+  static func switchTo(_ enabled: Bool, reason: String) {
+    setEnabled(enabled)
+    ModelSelectionReconciler.reconcileAll()
+    PromptConversationHistory.shared.clearAll()
+    DebugLogger.log("OFFLINE-MODE: \(enabled ? "enabled" : "disabled") (\(reason))")
   }
 
   /// Message shown when a request was stopped because Offline Mode is on.

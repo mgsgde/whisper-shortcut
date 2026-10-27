@@ -3835,12 +3835,13 @@ struct ChatView: View {
 
   private var emptyStateCommandHints: some View {
     let config = ShortcutConfigManager.shared.loadConfiguration()
-    let shortcuts: [(shortcut: String, description: LocalizedStringKey)] = [
-      (config.startRecording.displayStringWithSeparator, "Dictate"),
-      (config.startPrompting.displayStringWithSeparator, "Dictate Prompt"),
-      (config.openChat.displayStringWithSeparator, "Chat"),
-      (config.openSettings.displayStringWithSeparator, "Settings"),
-    ]
+    // Screenshot is a starter chip below, not a hint. Read Aloud is not hinted here.
+    // Titles and key paths still come from `ShortcutAction`, in this page's order.
+    let shortcuts: [(shortcut: String, description: LocalizedStringResource)] = [
+      ShortcutAction.dictate, .dictatePrompt, .chat, .settings,
+    ].filter(\.isInThisBuild).map { action in
+      (config[keyPath: action.keyPath].displayStringWithSeparator, action.localizedTitle)
+    }
     var starters: [(command: String, title: LocalizedStringKey, icon: String)] = [
       ("/screenshot", "Screenshot", "camera.viewfinder"),
       ("/folder", "Share folder", "folder"),

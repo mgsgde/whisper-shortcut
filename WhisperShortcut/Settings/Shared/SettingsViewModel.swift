@@ -84,17 +84,29 @@ class SettingsViewModel: ObservableObject {
     // Models. These route through migrating loaders, which forward a renamed or superseded
     // model id to its replacement and persist the rewrite, so a stale selection still appears
     // in the pickers instead of silently falling back to the default.
+    //
+    // The notice is the one the picker used to post by hand, with the same object and no
+    // userInfo. Read Aloud, Smart Improvement and both meeting models never posted one.
     .custom(\.selectedTranscriptionModel,
             load: { TranscriptionModel.loadSelected() },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+            }),
     .custom(\.selectedPromptModel,
             load: { PromptModel.loadPromptModel(forKey: UserDefaultsKeys.selectedPromptModel,
                                                 default: SettingsDefaults.selectedPromptModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedPromptModel)
+            }),
     .custom(\.selectedChatModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedChatModel,
                                                   default: SettingsDefaults.selectedChatModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedChatModel)
+            }),
     .custom(\.selectedImprovementModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedImprovementModel,
                                                   default: SettingsDefaults.selectedImprovementModel) },
@@ -377,7 +389,10 @@ class SettingsViewModel: ObservableObject {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
-    for slot in SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted) {
+    // Captured before `persisted` is replaced: after that assignment every slot compares equal
+    // and a notice for the change just written would be dropped.
+    let changedSlots = SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted)
+    for slot in changedSlots {
       slot.save(data)
     }
 
@@ -386,14 +401,11 @@ class SettingsViewModel: ObservableObject {
       ShortcutConfigManager.shared.saveConfiguration(newShortcuts)
     }
 
-    // Notify about model change only when the Dictate model actually changed: the notice makes
-    // the menu bar re-check (and re-download) the selected local model.
-    let transcriptionModelChanged = data.selectedTranscriptionModel != persisted.selectedTranscriptionModel
     let previousGoogleKey = persisted.googleAPIKey
     persisted = data
     if !googleKeySaved { persisted.googleAPIKey = previousGoogleKey }
-    if transcriptionModelChanged {
-      NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+    for slot in changedSlots {
+      slot.onDidChange?(data)
     }
 
     data.isLoading = false

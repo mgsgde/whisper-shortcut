@@ -201,12 +201,12 @@ struct ChatGPTPlanAccountStatusRow: View {
 
       if let email = service.accountEmail, service.planEnabled, !service.needsSignIn {
         Label("\(email) · signed in under Settings → Accounts", systemImage: "checkmark.circle.fill")
-          .labelStyle(StatusIconLabelStyle(tint: .green))
+          .labelStyle(TintedIconLabelStyle(tint: .green))
           .lineLimit(1)
           .truncationMode(.middle)
       } else {
         Label(statusText, systemImage: "exclamationmark.circle.fill")
-          .labelStyle(StatusIconLabelStyle(tint: .orange))
+          .labelStyle(TintedIconLabelStyle(tint: .orange))
 
         Button("Sign In in Accounts…") {
           SettingsManager.shared.showSettings(tab: .accounts)
@@ -223,18 +223,5 @@ struct ChatGPTPlanAccountStatusRow: View {
     if service.needsSignIn { return "Sign-in expired" }
     if service.accountEmail != nil { return "Plan use not allowed" }
     return "Not signed in"
-  }
-}
-
-/// Icon tinted, text secondary — same look as the OpenRouter status row.
-private struct StatusIconLabelStyle: LabelStyle {
-  let tint: Color
-
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: 6) {
-      configuration.icon.foregroundColor(tint)
-      configuration.title.foregroundColor(.secondary)
-    }
-    .font(.callout)
   }
 }

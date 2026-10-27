@@ -369,6 +369,9 @@
         }
       }
     },
+    "%@:" : {
+      "shouldTranslate" : false
+    },
     "%lld" : {
       "shouldTranslate" : false
     },
@@ -14420,6 +14423,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird gesichert …"
+          }
+        }
+      }
+    },
+    "Say a sentence." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechen Sie einen Satz."
           }
         }
       }

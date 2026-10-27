@@ -235,6 +235,24 @@ struct ModelPickerCurationTests {
     #expect(disjointTTSModel)
   }
 
+  @Test("Transcription stand-in ranks follow providerPreference, then OpenRouter")
+  func transcriptionStandInRanksMatchToday() {
+    #expect(TranscriptionModel.gemini31FlashLite.pickerStandInRank == 0)
+    #expect(TranscriptionModel.openAIGPTTranscribe.pickerStandInRank == 1)
+    #expect(TranscriptionModel.xaiTranscribe.pickerStandInRank == 2)
+    #expect(TranscriptionModel.openRouterTranscription.pickerStandInRank == 3)
+    let ranked = TranscriptionModel.allCases.compactMap { model -> (TranscriptionModel, Int)? in
+      guard let rank = model.pickerStandInRank else { return nil }
+      return (model, rank)
+    }
+    #expect(ranked.map(\.0) == [
+      .gemini31FlashLite, .openAIGPTTranscribe, .xaiTranscribe, .openRouterTranscription,
+    ])
+    #expect(ranked.map(\.1) == [0, 1, 2, 3])
+    #expect(TranscriptionModel.gemini38Flash.pickerStandInRank == nil)
+    #expect(TranscriptionModel.parakeetUltra.pickerStandInRank == nil)
+  }
+
   @Test("More models marks each provider's own pick where that provider has a choice")
   func providerPicks() {
     let models = TranscriptionModel.selectableForDictation(offlineMode: false)
