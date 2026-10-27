@@ -70,7 +70,7 @@ final class MLXChatProvider: LLMChatProvider {
       return AsyncThrowingStream { continuation in
         continuation.finish(
           throwing: TranscriptionError.networkError(
-            "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings."))
+            String(localized: "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings.")))
       }
     }
 
@@ -158,7 +158,7 @@ final class MLXChatProvider: LLMChatProvider {
   ) async throws -> [String: Any] {
     guard let mlxType = PromptModel(rawValue: model)?.localMLXModelType else {
       throw TranscriptionError.networkError(
-        "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings.")
+        String(localized: "Unknown MLX model \"\(model)\". Pick an offline MLX model in Settings."))
     }
     // Offline Mode must never start a multi-GB download unattended (the Hub session is not
     // covered by the offline URL guard): a model that is not on disk fails here, and the meeting

@@ -179,6 +179,24 @@ struct WritingStyleTests {
     #expect(WritingStyleStore.profileSection(in: profile, for: .defaultContext) == "")
   }
 
+  @Test("Re-derive keeps hand-written sections of contexts without samples")
+  func mergeKeepsUnsampledSection() {
+    let current = "=== Default ===\nhand-written\n\n=== Email ===\nold email\n"
+    let merged = WritingStyleImporter.mergedProfile(
+      derived: [.email: " new email \n", .defaultContext: "filler"],
+      current: current, contextsWithSamples: [.email])
+    #expect(WritingStyleStore.profileSection(in: merged, for: .defaultContext) == "hand-written")
+    #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "new email")
+  }
+
+  @Test("Re-derive without samples and without an existing section stays empty")
+  func mergeUnsampledEmptyStaysEmpty() {
+    let merged = WritingStyleImporter.mergedProfile(
+      derived: [.messenger: "No examples."], current: "=== Email ===\nold\n", contextsWithSamples: [])
+    #expect(WritingStyleStore.profileSection(in: merged, for: .messenger) == "")
+    #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "old")
+  }
+
   @Test("Duplicates by id and by text are skipped")
   func dedupe() {
     let store = makeStore()

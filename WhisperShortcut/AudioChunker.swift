@@ -48,15 +48,15 @@ enum AudioChunkerError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidAudioFile:
-            return "The audio file is invalid or cannot be read"
+            return String(localized: "The audio file is invalid or cannot be read")
         case .failedToLoadDuration:
-            return "Failed to determine audio duration"
+            return String(localized: "Failed to determine audio duration")
         case .exportFailed(let reason):
-            return "Failed to export audio chunk: \(reason)"
+            return String(localized: "Failed to export audio chunk: \(reason)")
         case .noAudioTrack:
-            return "No audio track found in the file"
+            return String(localized: "No audio track found in the file")
         case .fileCreationFailed:
-            return "Failed to create chunk file"
+            return String(localized: "Failed to create chunk file")
         }
     }
 }

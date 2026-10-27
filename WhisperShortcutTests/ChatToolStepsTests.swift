@@ -82,7 +82,7 @@ struct ChatToolStepsTests {
     #expect(ChatToolRegistry.resultCount(["error": "nope", "results": [1]]) == nil)
     #expect(ChatToolRegistry.resultSummary(name: "gmail_search", response: ["messages": [1, 2]]) == "2 results")
     #expect(ChatToolRegistry.resultSummary(name: "mail_search", response: ["emails": [1, 2, 3]]) == "3 emails")
-    #expect(ChatToolRegistry.resultSummary(name: "mail_list_accounts", response: ["accounts": [1]]) == "1 accounts")
+    #expect(ChatToolRegistry.resultSummary(name: "mail_list_accounts", response: ["accounts": [1]]) == "1 account")
     #expect(ChatToolRegistry.resultSummary(name: "read_text_file", response: ["lines": [1]]) == nil)
   }
 

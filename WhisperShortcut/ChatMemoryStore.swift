@@ -119,7 +119,7 @@ final class ChatMemoryStore {
       try body.write(to: fileURL, atomically: true, encoding: .utf8)
       NotificationCenter.default.post(name: .chatMemoryDidUpdate, object: nil)
     } catch {
-      DebugLogger.logError("CHAT-MEMORY: Failed to write \(Self.fileName): \(error.localizedDescription)")
+      DebugLogger.logError("CHAT-MEMORY: Failed to write \(Self.fileName): \(error.logDescription)")
     }
   }
 }

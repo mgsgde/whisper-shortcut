@@ -116,7 +116,7 @@ enum ConnectionPrewarmer {
         DebugLogger.log(
           "PREWARM: local model \(model) ready in \(String(format: "%.0f", elapsedMs))ms (primed \(systemPrompt.count)-char system prompt, \(tools.count) tool(s))")
       } onFailure: { error in
-        DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.localizedDescription)")
+        DebugLogger.logWarning("PREWARM: local model \(model) warm-up failed: \(error.logDescription)")
       }
     }
   }

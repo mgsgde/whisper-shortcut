@@ -44,7 +44,7 @@ final class GrokChatProvider: LLMChatProvider {
     guard !unsupported.isEmpty else { return nil }
     let types = unsupported.sorted().joined(separator: ", ")
     return TranscriptionError.fileError(
-      "Grok only supports image attachments — \(types) isn't supported. Switch to a Gemini model to chat about PDFs and documents."
+      String(localized: "Grok only supports image attachments — \(types) isn't supported. Switch to a Gemini model to chat about PDFs and documents.")
     )
   }
 

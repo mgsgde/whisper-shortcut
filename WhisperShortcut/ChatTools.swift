@@ -110,62 +110,68 @@ enum ChatToolRegistry {
     switch name {
     case "open_url":
       let url = arg("url")
-      return url.isEmpty ? "Open a URL in your browser." : "Open \(url) in your browser."
+      return url.isEmpty ? String(localized: "Open a URL in your browser.") : String(localized: "Open \(url) in your browser.")
     case "google_calendar_create_event":
       let summary = arg("summary")
-      return summary.isEmpty ? "Create a calendar event." : "Create calendar event: \(summary)"
+      return summary.isEmpty ? String(localized: "Create a calendar event.") : String(localized: "Create calendar event: \(summary)")
     case "google_calendar_update_event":
-      return "Update calendar event \(arg("event_id"))."
+      return String(localized: "Update calendar event \(arg("event_id")).")
     case "google_calendar_delete_event":
-      return "Delete calendar event \(arg("event_id"))."
+      return String(localized: "Delete calendar event \(arg("event_id")).")
     case "google_tasks_create":
       let title = arg("title")
-      return title.isEmpty ? "Create a task." : "Create task: \(title)"
+      return title.isEmpty ? String(localized: "Create a task.") : String(localized: "Create task: \(title)")
     case "google_tasks_update":
-      return "Update task \(arg("task_id"))."
+      return String(localized: "Update task \(arg("task_id")).")
     case "google_tasks_complete":
-      return "Mark task \(arg("task_id")) complete."
+      return String(localized: "Mark task \(arg("task_id")) complete.")
     case "google_tasks_delete":
-      return "Delete task \(arg("task_id"))."
+      return String(localized: "Delete task \(arg("task_id")).")
     case "trello_create_card":
       let cardName = arg("name")
-      return cardName.isEmpty ? "Create a Trello card." : "Create Trello card: \(cardName)"
+      return cardName.isEmpty ? String(localized: "Create a Trello card.") : String(localized: "Create Trello card: \(cardName)")
     case "trello_move_card":
-      return "Move Trello card \(arg("card_id"))."
+      return String(localized: "Move Trello card \(arg("card_id")).")
     case "trello_update_card":
-      return "Update Trello card \(arg("card_id"))."
+      return String(localized: "Update Trello card \(arg("card_id")).")
     case "trello_archive_card":
-      return "Archive Trello card \(arg("card_id"))."
+      return String(localized: "Archive Trello card \(arg("card_id")).")
     case rememberAboutUserToolName:
-      return "Remember about you (added to every future chat):\n\(preview(arg("fact")))"
+      return String(localized: "Remember about you (added to every future chat):\n\(preview(arg("fact")))")
     case "remember_file_location":
       let note = arg("note")
-      let line = "Remember folder: \(preview(arg("path"), limit: 300))"
-      return note.isEmpty ? line : line + " — " + preview(note, limit: 300)
+      let folder = preview(arg("path"), limit: 300)
+      return note.isEmpty
+        ? String(localized: "Remember folder: \(folder)")
+        : String(localized: "Remember folder: \(folder) — \(preview(note, limit: 300))")
     case "remember_dictation_term":
-      return "Add to dictation glossary: \(preview(arg("term"), limit: 100))"
+      return String(localized: "Add to dictation glossary: \(preview(arg("term"), limit: 100))")
     case updateInstructionsToolName:
       let action = arg("action")
       let text = arg("text")
-      let verb: String
+      let line: String
       switch action {
-      case "append": verb = "Add a rule to"
-      case "replace": verb = "Replace"
-      case "remove": verb = "Remove rules from"
-      default: verb = "Change"
+      case "append": line = String(localized: "Add a rule to the Dictate Prompt instructions.")
+      case "replace": line = String(localized: "Replace the Dictate Prompt instructions.")
+      case "remove": line = String(localized: "Remove rules from the Dictate Prompt instructions.")
+      default: line = String(localized: "Change the Dictate Prompt instructions.")
       }
-      let line = "\(verb) the Dictate Prompt instructions."
       return text.isEmpty ? line : line + "\n\n" + preview(text)
     case "write_text_file":
       let overwrite = boolArgument(args, "overwrite", default: false)
-      return (overwrite ? "Overwrite file " : "Create file ") + "\(arg("path"))\n\n" + preview(arg("content"))
+      let path = arg("path")
+      let head = overwrite ? String(localized: "Overwrite file \(path)") : String(localized: "Create file \(path)")
+      return head + "\n\n" + preview(arg("content"))
     case "append_to_file":
-      return "Append to file \(arg("path")):\n\n" + preview(arg("content"))
+      return String(localized: "Append to file \(arg("path")):") + "\n\n" + preview(arg("content"))
     case "edit_text_file":
-      let scope = boolArgument(args, "replace_all", default: false) ? " (all occurrences)" : ""
-      return "Edit file \(arg("path"))\(scope):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
+      let path = arg("path")
+      let head = boolArgument(args, "replace_all", default: false)
+        ? String(localized: "Edit file \(path) (all occurrences):")
+        : String(localized: "Edit file \(path):")
+      return head + "\n\n" + String(localized: "Replace:") + "\n\(preview(arg("find"), limit: 300))\n\n" + String(localized: "With:") + "\n\(preview(arg("replace"), limit: 300))"
     default:
-      return "Allow the chat to run \(name)?"
+      return String(localized: "Allow the chat to run \(name)?")
     }
   }
 
@@ -1469,7 +1475,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar list returned \(events.count) events")
         return ["events": events, "count": events.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1494,7 +1500,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar create ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1517,7 +1523,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1530,7 +1536,7 @@ enum ChatToolRegistry {
         let result = try await GoogleCalendarAPIClient.shared.deleteEvent(eventId: eventId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1540,7 +1546,7 @@ enum ChatToolRegistry {
         let lists = try await GoogleTasksAPIClient.shared.listTaskLists()
         return ["task_lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1554,7 +1560,7 @@ enum ChatToolRegistry {
           taskListId: taskListId, maxResults: maxResults, showCompleted: showCompleted)
         return ["tasks": tasks, "count": tasks.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1571,7 +1577,7 @@ enum ChatToolRegistry {
           title: title, notes: notes, due: due, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1591,7 +1597,7 @@ enum ChatToolRegistry {
           status: args["status"] as? String)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1606,7 +1612,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1621,7 +1627,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1634,7 +1640,7 @@ enum ChatToolRegistry {
           query: query, maxResults: maxResults)
         return ["emails": messages, "count": messages.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1647,7 +1653,7 @@ enum ChatToolRegistry {
         let message = try await GmailAPIClient.shared.readMessage(messageId: messageId)
         return message
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1657,7 +1663,7 @@ enum ChatToolRegistry {
         let boards = try await TrelloAPIClient.shared.listBoards()
         return ["boards": boards, "count": boards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1670,7 +1676,7 @@ enum ChatToolRegistry {
         let lists = try await TrelloAPIClient.shared.listLists(boardId: boardId)
         return ["lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1687,7 +1693,7 @@ enum ChatToolRegistry {
           listId: listId, boardId: boardId, maxResults: maxResults)
         return ["cards": cards, "count": cards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1705,7 +1711,7 @@ enum ChatToolRegistry {
           listId: listId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1720,7 +1726,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.moveCard(cardId: cardId, listId: listId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1740,7 +1746,7 @@ enum ChatToolRegistry {
           cardId: cardId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1753,7 +1759,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.archiveCard(cardId: cardId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1800,7 +1806,7 @@ enum ChatToolRegistry {
       }
       DebugLogger.logSuccess(
         "GEMINI-CHAT-TOOL: returned doc '\(docName)' (\(content.utf8.count) bytes)")
-      return ["name": doc.name, "title": doc.title, "content": content]
+      return ["name": doc.name, "title": doc.title, "content": content + UILabelGlossary.appendix()]
 
     // Workspace file tools run detached: a directory walk over a large tree on the main
     // thread would block the UI and trip the hang watchdog.

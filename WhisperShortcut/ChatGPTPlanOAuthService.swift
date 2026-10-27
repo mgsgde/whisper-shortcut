@@ -50,22 +50,22 @@ enum ChatGPTPlanSignInError: LocalizedError, Equatable {
 
   var errorDescription: String? {
     switch self {
-    case .invalidURL: return "Failed to build the ChatGPT sign-in URL."
-    case .authorizationInProgress: return "A ChatGPT sign-in is already in progress."
-    case .authorizationStartFailed: return "Failed to open the ChatGPT sign-in window."
-    case .noCallbackURL: return "ChatGPT did not return a callback."
+    case .invalidURL: return String(localized: "Failed to build the ChatGPT sign-in URL.")
+    case .authorizationInProgress: return String(localized: "A ChatGPT sign-in is already in progress.")
+    case .authorizationStartFailed: return String(localized: "Failed to open the ChatGPT sign-in window.")
+    case .noCallbackURL: return String(localized: "ChatGPT did not return a callback.")
     case .stateMismatch:
-      return "ChatGPT sign-in was refused because the callback did not match this attempt. Try again."
-    case .noAuthorizationCode: return "No authorization code in ChatGPT's callback."
+      return String(localized: "ChatGPT sign-in was refused because the callback did not match this attempt. Try again.")
+    case .noAuthorizationCode: return String(localized: "No authorization code in ChatGPT's callback.")
     case .registrationIncomplete:
-      return "ChatGPT did not finish registering WhisperShortcut. Try signing in again."
+      return String(localized: "ChatGPT did not finish registering WhisperShortcut. Try signing in again.")
     case .clientIDMismatch:
-      return "ChatGPT answered for a different registration than the saved one. Sign-in was refused."
-    case .oauthError(let message): return "ChatGPT sign-in failed: \(message)"
-    case .tokenExchangeFailed(let message): return "ChatGPT rejected the sign-in: \(message)"
-    case .invalidResponse: return "Invalid response from ChatGPT."
-    case .missingIDToken: return "ChatGPT's response contained no ID token."
-    case .keychainWriteFailed: return "Could not save your ChatGPT sign-in to the Keychain."
+      return String(localized: "ChatGPT answered for a different registration than the saved one. Sign-in was refused.")
+    case .oauthError(let message): return String(localized: "ChatGPT sign-in failed: \(message)")
+    case .tokenExchangeFailed(let message): return String(localized: "ChatGPT rejected the sign-in: \(message)")
+    case .invalidResponse: return String(localized: "Invalid response from ChatGPT.")
+    case .missingIDToken: return String(localized: "ChatGPT's response contained no ID token.")
+    case .keychainWriteFailed: return String(localized: "Could not save your ChatGPT sign-in to the Keychain.")
     }
   }
 }
@@ -351,7 +351,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       return signedIn
     } catch {
       lastError = error.localizedDescription
-      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.localizedDescription)")
+      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.logDescription)")
       throw error
     }
   }

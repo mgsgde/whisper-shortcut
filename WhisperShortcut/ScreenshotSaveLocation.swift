@@ -119,7 +119,7 @@ enum ScreenshotSaveLocation {
       DebugLogger.log("SCREENSHOT: Saved \(pngData.count) bytes to \(target.path)")
       return target
     } catch {
-      DebugLogger.logError("SCREENSHOT: Failed to write \(target.path): \(error.localizedDescription)")
+      DebugLogger.logError("SCREENSHOT: Failed to write \(target.path): \(error.logDescription)")
       return nil
     }
   }

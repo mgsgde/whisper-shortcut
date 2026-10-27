@@ -232,16 +232,16 @@ class OpenRouterOAuthService: NSObject, ObservableObject {
 
     var errorDescription: String? {
       switch self {
-      case .invalidURL: return "Failed to build the OpenRouter authorization URL."
-      case .noCallbackURL: return "OpenRouter did not return a callback."
-      case .noAuthorizationCode: return "No authorization code in OpenRouter's callback."
-      case .stateMismatch: return "OpenRouter sign-in was refused because the callback did not match this attempt. Try connecting again."
-      case .keyExchangeFailed(let msg): return "OpenRouter rejected the authorization: \(msg)"
-      case .missingKey: return "OpenRouter's response contained no API key."
-      case .keychainWriteFailed: return "Could not save the OpenRouter key to your Keychain."
-      case .invalidResponse: return "Invalid response from OpenRouter."
-      case .authorizationInProgress: return "An OpenRouter authorization is already in progress."
-      case .authorizationStartFailed: return "Failed to open the OpenRouter authorization window."
+      case .invalidURL: return String(localized: "Failed to build the OpenRouter authorization URL.")
+      case .noCallbackURL: return String(localized: "OpenRouter did not return a callback.")
+      case .noAuthorizationCode: return String(localized: "No authorization code in OpenRouter's callback.")
+      case .stateMismatch: return String(localized: "OpenRouter sign-in was refused because the callback did not match this attempt. Try connecting again.")
+      case .keyExchangeFailed(let msg): return String(localized: "OpenRouter rejected the authorization: \(msg)")
+      case .missingKey: return String(localized: "OpenRouter's response contained no API key.")
+      case .keychainWriteFailed: return String(localized: "Could not save the OpenRouter key to your Keychain.")
+      case .invalidResponse: return String(localized: "Invalid response from OpenRouter.")
+      case .authorizationInProgress: return String(localized: "An OpenRouter authorization is already in progress.")
+      case .authorizationStartFailed: return String(localized: "Failed to open the OpenRouter authorization window.")
       }
     }
   }
