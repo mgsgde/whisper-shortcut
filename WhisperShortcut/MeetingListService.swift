@@ -24,7 +24,7 @@ final class MeetingListService: ObservableObject {
 
   private static let displayDateFormatter: DateFormatter = {
     let f = DateFormatter()
-    f.dateFormat = "EEEE, d MMM yyyy, HH:mm"
+    f.setLocalizedDateFormatFromTemplate("EEEE d MMM yyyy HH:mm")
     return f
   }()
 
@@ -65,7 +65,7 @@ final class MeetingListService: ObservableObject {
       files = try FileManager.default.contentsOfDirectory(
         at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.logDescription)")
       meetings = []
       return
     }
@@ -113,7 +113,7 @@ final class MeetingListService: ObservableObject {
       try text.write(to: url, atomically: true, encoding: .utf8)
       DebugLogger.log("MEETING-LIBRARY: Saved summary to \(url.lastPathComponent)")
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.logDescription)")
     }
   }
 
@@ -139,7 +139,7 @@ final class MeetingListService: ObservableObject {
       try LiveMeetingTranscriptStore.notesMarkdown(notes)
         .write(to: url, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Save notes failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Save notes failed: \(error.logDescription)")
     }
   }
 
@@ -172,7 +172,7 @@ final class MeetingListService: ObservableObject {
         return trimmed
       }
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.logDescription)")
     }
     return ""
   }

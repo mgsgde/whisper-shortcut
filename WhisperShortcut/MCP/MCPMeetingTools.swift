@@ -6,6 +6,17 @@ struct MCPMeetingTools {
   let meetingsDirectory: URL
   /// Filename stem of the meeting being recorded right now, nil if none.
   let liveStem: () -> String?
+  /// Meeting titles from the chat sessions, keyed by meeting stem. Empty if unavailable.
+  let meetingTitles: () -> [String: String]
+
+  init(
+    meetingsDirectory: URL, liveStem: @escaping () -> String?,
+    meetingTitles: @escaping () -> [String: String] = { [:] }
+  ) {
+    self.meetingsDirectory = meetingsDirectory
+    self.liveStem = liveStem
+    self.meetingTitles = meetingTitles
+  }
 
   static let maxResultCharacters = 60_000
 
@@ -221,6 +232,7 @@ struct MCPMeetingTools {
   private func listMeetings(_ arguments: [String: Any]) -> (text: String, isError: Bool) {
     let limit = intArg(arguments, "limit", default: 20, max: 200)
     let live = liveStem()
+    let sessionTitles = meetingTitles()
     let meetings = allMeetings()
     if meetings.isEmpty { return ("No meetings found.", false) }
     let fm = FileManager.default
@@ -228,7 +240,9 @@ struct MCPMeetingTools {
       let duration = chunks(for: m.id)?.last.map { Self.format($0.startTime) } ?? "00:00"
       let notes = fm.fileExists(atPath: url(m.id, ext: "notes.md").path)
       let summary = fm.fileExists(atPath: url(m.id, ext: "summary.md").path)
-      return "- id: \(m.id) | date: \(m.date) | title: \(m.title ?? "-") | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
+      let sessionTitle = sessionTitles[m.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let title = (sessionTitle?.isEmpty == false ? sessionTitle : nil) ?? m.title ?? "-"
+      return "- id: \(m.id) | date: \(m.date) | title: \(title) | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
     }
     var out = lines.joined(separator: "\n")
     if meetings.count > limit { out += "\n\n(\(meetings.count - limit) older meetings not shown; raise limit.)" }

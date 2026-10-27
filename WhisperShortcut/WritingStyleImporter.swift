@@ -39,8 +39,8 @@ enum WritingStyleImporter {
 
     var summary: String {
       failedThreads == 0
-        ? "Imported \(added) new messages."
-        : "Imported \(added) new messages; \(failedThreads) threads could not be read, try again later for the rest."
+        ? String(localized: "Imported \(added) new messages.")
+        : String(localized: "Imported \(added) new messages; \(failedThreads) threads could not be read, try again later for the rest.")
     }
   }
 
@@ -325,17 +325,13 @@ enum WritingStyleImporter {
       schemaName: "writing_style_profile",
       thinkingLevel: .low)
 
-    // A context without samples stays empty even if the model wrote filler ("No examples."), so
-    // the Default fallback in `promptBlock` still applies to it.
-    let contextsWithSamples = Set(samples.map(\.context))
-    let suggested = WritingContext.allCases.map { context in
-      let lines = contextsWithSamples.contains(context)
-        ? (result[context.rawValue] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        : ""
-      return "\(context.profileHeader)\n\(lines)\n"
-    }.joined(separator: "\n")
-
     let current = store.loadProfile()
+    var derived: [WritingContext: String] = [:]
+    for context in WritingContext.allCases {
+      derived[context] = result[context.rawValue] as? String ?? ""
+    }
+    let suggested = mergedProfile(
+      derived: derived, current: current, contextsWithSamples: Set(samples.map(\.context)))
     guard let accepted = await SmartImprovementReviewPanel.present(
       focusDisplayName: "Writing Style",
       originalText: current,
@@ -353,6 +349,21 @@ enum WritingStyleImporter {
     store.resetSamplesSinceProfile()
     DebugLogger.logSuccess("WRITING-STYLE-PROFILE: saved")
     return accepted
+  }
+
+  /// A context with samples takes the derived lines (even if the model wrote filler for the rest).
+  /// A context without samples keeps its existing section, so hand-written text (the Default
+  /// context never gets samples) survives a re-derive. Empty stays empty, so the Default fallback
+  /// in `promptBlock` still applies when nothing was written.
+  static func mergedProfile(
+    derived: [WritingContext: String], current: String, contextsWithSamples: Set<WritingContext>
+  ) -> String {
+    WritingContext.allCases.map { context in
+      let lines = contextsWithSamples.contains(context)
+        ? (derived[context] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        : WritingStyleStore.profileSection(in: current, for: context)
+      return "\(context.profileHeader)\n\(lines)\n"
+    }.joined(separator: "\n")
   }
 
   private static func evenSample<T>(_ items: [T], max count: Int) -> [T] {

@@ -38,7 +38,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
                   .font(.caption)
                 // A gigabyte-scale download with no number reads as a hang; show how far it is.
                 let fraction = store.downloadProgress[model]
-                Text(fraction.map { "Downloading… \(Int($0 * 100))%" } ?? "Downloading…")
+                Text(fraction.map { String(localized: "Downloading… \(Int($0 * 100))%") } ?? String(localized: "Downloading…"))
                   .font(.caption)
                   .foregroundColor(.secondary)
                   .monospacedDigit()
@@ -46,7 +46,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
                 Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
                   .foregroundColor(isAvailable ? .green : .secondary)
                   .font(.caption)
-                Text(isAvailable ? "Downloaded" : "Not downloaded")
+                Text(isAvailable ? ("Downloaded" as LocalizedStringKey) : "Not downloaded")
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
@@ -122,14 +122,14 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
         // sits above the Settings window regardless of focus. 10 s — longer than the 1 s info
         // default — because this is a rare event with first-run information worth reading.
         PopupNotificationWindow.showInfo(
-          downloadedMessage,
+          verbatim: downloadedMessage,
           title: "Model Downloaded",
           customDisplayDuration: 10
         )
       } catch is CancellationError {
         // Cancelled from the Cancel button.
       } catch {
-        DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.localizedDescription)")
+        DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.logDescription)")
         onError("Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
       }
     }
@@ -139,7 +139,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
     do {
       try store.deleteModel(model)
     } catch {
-      DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.localizedDescription)")
+      DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.logDescription)")
       onError("Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
     }
   }

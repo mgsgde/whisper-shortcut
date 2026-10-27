@@ -182,7 +182,7 @@ final class SystemTTSService: NSObject {
       return input
     }
     if let error {
-      DebugLogger.logWarning("SYSTEM-TTS: convert failed (\(error.localizedDescription))")
+      DebugLogger.logWarning("SYSTEM-TTS: convert failed (\(error.logDescription))")
       return nil
     }
     guard output.frameLength > 0, let channel = output.int16ChannelData else { return nil }

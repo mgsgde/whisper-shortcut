@@ -5,16 +5,16 @@ import SwiftUI
 /// missing keeps its tiles selectable with a "Needs key" badge, like every other picker.
 struct TTSModelSelectionView: View {
   @Binding var selectedModel: TTSModel
-  let title: String
+  let title: LocalizedStringResource
   let systemImage: String?
-  let subtitle: String
+  let subtitle: LocalizedStringResource
   let models: [TTSModel]
   let onModelChanged: (() -> Void)?
 
   init(
-    title: String = "Voice Model",
+    title: LocalizedStringResource = "Voice Model",
     systemImage: String? = "speaker.wave.2.fill",
-    subtitle: String = "Which provider generates the spoken audio. Pick the specific voice below.",
+    subtitle: LocalizedStringResource = "Which provider generates the spoken audio. Pick the specific voice below.",
     selectedModel: Binding<TTSModel>,
     models: [TTSModel] = TTSModel.readAloudModels,
     onModelChanged: (() -> Void)? = nil
@@ -49,7 +49,7 @@ struct TTSModelSelectionView: View {
             .font(.callout)
             .fontWeight(.medium)
             .foregroundColor(.secondary)
-          Text(selectedModel.costLevel)
+          Text(selectedModel.costLevel.title)
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedModel.costLevel))

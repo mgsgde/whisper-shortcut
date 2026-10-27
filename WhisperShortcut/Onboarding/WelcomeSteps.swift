@@ -197,7 +197,7 @@ struct WelcomeDictationSetupStep: View {
   // MARK: - Choice cards
 
   private func choiceCard(
-    _ value: DictationChoice, icon: String, title: String, tagline: String, facts: [String]
+    _ value: DictationChoice, icon: String, title: LocalizedStringKey, tagline: LocalizedStringKey, facts: [LocalizedStringKey]
   ) -> some View {
     let selected = choice == value
     return Button {
@@ -223,7 +223,7 @@ struct WelcomeDictationSetupStep: View {
             .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.5))
         }
         VStack(alignment: .leading, spacing: 4) {
-          ForEach(facts, id: \.self) { fact in
+          ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
             HStack(alignment: .firstTextBaseline, spacing: 6) {
               Text("•").foregroundStyle(.secondary)
               Text(fact)
@@ -406,7 +406,7 @@ struct WelcomeDictationSetupStep: View {
     }
   }
 
-  private var pendingHint: String {
+  private var pendingHint: LocalizedStringKey {
     switch choice {
     case nil: return "Pick Offline or Cloud to continue."
     case .offline: return "Download the offline model to continue."
@@ -422,7 +422,7 @@ struct WelcomePrivacyDetails: View {
       Text(PrivacyCopy.promiseTitle)
         .font(.headline)
       VStack(alignment: .leading, spacing: 10) {
-        ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
+        ForEach(Array(PrivacyCopy.promiseBullets.enumerated()), id: \.offset) { _, bullet in
           HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
               .foregroundStyle(.green)
@@ -659,9 +659,9 @@ struct OnboardingOpenRouterRow: View {
 struct OnboardingAPIKeyRow: View {
   let providerName: String
   let placeholder: String
-  let linkTitle: String
+  let linkTitle: LocalizedStringKey
   let linkURL: URL
-  var description: String? = nil
+  var description: LocalizedStringKey? = nil
   @Binding var isConfigured: Bool
   let load: () -> String
   let save: (String) -> Bool
@@ -721,8 +721,8 @@ struct OnboardingAPIKeyRow: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isVisible ? "Hide key" : "Show key")
-        .help(isVisible ? "Hide key" : "Show key")
+        .accessibilityLabel(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
+        .help(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
 
         Button("Save") {
           let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -737,7 +737,7 @@ struct OnboardingAPIKeyRow: View {
             }
           } else {
             savedConfirmation = false
-            saveError = "Couldn't save to Keychain. Try again."
+            saveError = String(localized: "Couldn't save to Keychain. Try again.")
           }
         }
         .buttonStyle(.bordered)
@@ -776,7 +776,7 @@ struct OnboardingAPIKeyRow: View {
       Image(systemName: "circle.fill")
         .font(.system(size: 7))
         .foregroundStyle(isConfigured ? .green : .gray)
-      Text(isConfigured ? "Configured" : "Not set")
+      Text(isConfigured ? ("Configured" as LocalizedStringKey) : "Not set")
         .font(.caption2)
         .foregroundStyle(.secondary)
     }
@@ -912,7 +912,7 @@ struct OnboardingAutoPasteCard: View {
         HStack(spacing: 8) {
           WelcomePermissionBadge(status: axStatus)
           Text(axStatus == .granted
-            ? "Accessibility granted — auto-paste is ready."
+            ? ("Accessibility granted — auto-paste is ready." as LocalizedStringKey)
             : "Enable WhisperShortcut in System Settings, then return here.")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -947,12 +947,12 @@ struct WelcomeDoneStep: View {
   /// `requirements` is "all must be granted" — a single missing one makes the row red.
   private struct ShortcutFeature: Identifiable {
     let shortcut: String
-    let name: String
-    let detail: String
+    let name: LocalizedStringKey
+    let detail: LocalizedStringKey
     let requirements: [PermissionKind]
     /// Dictate also needs a transcription model that can run (a key or a downloaded model).
     var needsTranscriptionModel = false
-    var id: String { name }
+    var id: String { shortcut }
   }
 
   /// Read from the recorders' model, so a shortcut re-recorded on this step shows up in the list
@@ -991,10 +991,10 @@ struct WelcomeDoneStep: View {
       let selectionRequirement: PermissionKind =
         AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
       #if APP_STORE
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
       #else
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place"
       #endif
       list.append(
@@ -1042,7 +1042,7 @@ struct WelcomeDoneStep: View {
         .font(.system(size: 40))
         .foregroundStyle(dictationReady ? .green : .orange)
       VStack(spacing: 8) {
-        Text(dictationReady ? "You're ready" : "Almost ready")
+        Text(dictationReady ? ("You're ready" as LocalizedStringKey) : "Almost ready")
           .font(.largeTitle)
           .fontWeight(.semibold)
         // The app has no Dock icon or main window, so say where it lives — and describe the icon
@@ -1212,7 +1212,7 @@ struct WelcomeDoneStep: View {
     }
   }
 
-  private func badgeContent(icon: String, color: Color, text: String) -> some View {
+  private func badgeContent(icon: String, color: Color, text: LocalizedStringKey) -> some View {
     HStack(spacing: 4) {
       Image(systemName: icon)
         .foregroundStyle(color)
@@ -1240,9 +1240,9 @@ struct WelcomeDoneStep: View {
 
   private func permissionName(_ kind: PermissionKind) -> String {
     switch kind {
-    case .microphone: return "Microphone"
-    case .accessibility: return "Accessibility"
-    case .screenRecording: return "Screen Recording"
+    case .microphone: return String(localized: "Microphone")
+    case .accessibility: return String(localized: "Accessibility")
+    case .screenRecording: return String(localized: "Screen Recording")
     }
   }
 
@@ -1296,7 +1296,7 @@ struct WelcomePermissionBadge: View {
     }
   }
 
-  private var label: String {
+  private var label: LocalizedStringKey {
     switch status {
     case .granted: return "Granted"
     case .denied: return "Denied"

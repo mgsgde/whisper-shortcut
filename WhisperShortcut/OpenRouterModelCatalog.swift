@@ -69,7 +69,7 @@ final class OpenRouterModelCatalog: ObservableObject {
       DebugLogger.log("OPENROUTER-CATALOG: Loaded \(audioModels.count) audio-capable and \(chatModels.count) chat models")
     } catch {
       loadError = error.localizedDescription
-      DebugLogger.logError("OPENROUTER-CATALOG: Load failed: \(error.localizedDescription)")
+      DebugLogger.logError("OPENROUTER-CATALOG: Load failed: \(error.logDescription)")
     }
   }
 

@@ -176,16 +176,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   private static func showSystemPromptsUnreadableAlert(reason: String) {
     let alert = NSAlert()
     alert.alertStyle = .warning
-    alert.messageText = "WhisperShortcut can’t read your saved prompts"
-    alert.informativeText = """
+    alert.messageText = String(localized: "WhisperShortcut can’t read your saved prompts")
+    alert.informativeText = String(localized: """
       macOS blocked access to system-prompts.md (\(reason)). Until that is fixed, dictation uses the \
       default prompts instead of yours. Your file has not been changed.
 
       To fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit \
       and reopen the app.
-      """
-    alert.addButton(withTitle: "Open Privacy & Security")
-    alert.addButton(withTitle: "Later")
+      """)
+    alert.addButton(withTitle: String(localized: "Open Privacy & Security"))
+    alert.addButton(withTitle: String(localized: "Later"))
     NSApp.activate(ignoringOtherApps: true)
     if alert.runModal() == .alertFirstButtonReturn,
       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
@@ -474,42 +474,42 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   private func setupEditMenu() {
     // Create Edit menu with standard text editing commands
-    let editMenu = NSMenu(title: "Edit")
+    let editMenu = NSMenu(title: String(localized: "Edit"))
 
     // Undo
     let undoItem = NSMenuItem(
-      title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+      title: String(localized: "Undo"), action: NSSelectorFromString("undo:"), keyEquivalent: "z")
     undoItem.target = nil  // Will be handled by first responder
     editMenu.addItem(undoItem)
 
     // Redo
     let redoItem = NSMenuItem(
-      title: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
+      title: String(localized: "Redo"), action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
     redoItem.target = nil  // Will be handled by first responder
     editMenu.addItem(redoItem)
 
     editMenu.addItem(NSMenuItem.separator())
 
     // Cut
-    let cutItem = NSMenuItem(title: "Cut", action: NSSelectorFromString("cut:"), keyEquivalent: "x")
+    let cutItem = NSMenuItem(title: String(localized: "Cut"), action: NSSelectorFromString("cut:"), keyEquivalent: "x")
     cutItem.target = nil  // Will be handled by first responder
     editMenu.addItem(cutItem)
 
     // Copy
     let copyItem = NSMenuItem(
-      title: "Copy", action: NSSelectorFromString("copy:"), keyEquivalent: "c")
+      title: String(localized: "Copy"), action: NSSelectorFromString("copy:"), keyEquivalent: "c")
     copyItem.target = nil  // Will be handled by first responder
     editMenu.addItem(copyItem)
 
     // Paste
     let pasteItem = NSMenuItem(
-      title: "Paste", action: NSSelectorFromString("paste:"), keyEquivalent: "v")
+      title: String(localized: "Paste"), action: NSSelectorFromString("paste:"), keyEquivalent: "v")
     pasteItem.target = nil  // Will be handled by first responder
     editMenu.addItem(pasteItem)
 
     // Delete
     let deleteItem = NSMenuItem(
-      title: "Delete", action: NSSelectorFromString("delete:"), keyEquivalent: "")
+      title: String(localized: "Delete"), action: NSSelectorFromString("delete:"), keyEquivalent: "")
     deleteItem.target = nil  // Will be handled by first responder
     editMenu.addItem(deleteItem)
 
@@ -517,18 +517,18 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Select All
     let selectAllItem = NSMenuItem(
-      title: "Select All", action: NSSelectorFromString("selectAll:"), keyEquivalent: "a")
+      title: String(localized: "Select All"), action: NSSelectorFromString("selectAll:"), keyEquivalent: "a")
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
     // Add Edit and Chat menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
-    mainMenu.addItem(NSMenuItem(title: "Edit", action: nil, keyEquivalent: ""))
+    mainMenu.addItem(NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: ""))
     mainMenu.item(withTitle: "Edit")?.submenu = editMenu
 
-    let chatMenu = NSMenu(title: "Chat")
+    let chatMenu = NSMenu(title: String(localized: "Chat"))
     let newChatItem = NSMenuItem(
-      title: "New Chat",
+      title: String(localized: "New Chat"),
       action: #selector(FullAppDelegate.chatNewChat(_:)),
       keyEquivalent: "n"
     )
@@ -537,7 +537,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     chatMenu.addItem(newChatItem)
 
     let screenshotItem = NSMenuItem(
-      title: "Capture Screenshot",
+      title: String(localized: "Capture Screenshot"),
       action: #selector(FullAppDelegate.chatCaptureScreenshot(_:)),
       keyEquivalent: "s"
     )
@@ -546,7 +546,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     chatMenu.addItem(screenshotItem)
 
     let clearChatItem = NSMenuItem(
-      title: "Clear Chat",
+      title: String(localized: "Clear Chat"),
       action: #selector(FullAppDelegate.chatClearChat(_:)),
       keyEquivalent: "k"
     )
@@ -554,7 +554,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     clearChatItem.target = self
     chatMenu.addItem(clearChatItem)
 
-    mainMenu.addItem(NSMenuItem(title: "Chat", action: nil, keyEquivalent: ""))
+    mainMenu.addItem(NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: ""))
     mainMenu.item(withTitle: "Chat")?.submenu = chatMenu
 
     NSApp.mainMenu = mainMenu

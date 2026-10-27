@@ -21,7 +21,7 @@ final class GeminiChatProvider: LLMChatProvider {
       let task = Task {
         do {
           guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-            throw TranscriptionError.networkError("No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
+            throw TranscriptionError.networkError(String(localized: "No Gemini credential available. Add your Google API key in Settings or sign in with Google."))
           }
           // Native image-generation models ("Nano Banana") don't stream and ignore
           // tools/grounding/thinking — route them through a single :generateContent call with
@@ -84,7 +84,7 @@ final class GeminiChatProvider: LLMChatProvider {
   func generateImage(contents: [[String: Any]]) async throws -> String {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
       throw TranscriptionError.networkError(
-        "No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
+        String(localized: "No Gemini credential available. Add your Google API key in Settings or sign in with Google."))
     }
     return try await apiClient.generateImageContent(
       model: PromptModel.geminiImage.rawValue, contents: contents, credential: credential)
@@ -99,7 +99,7 @@ final class GeminiChatProvider: LLMChatProvider {
     thinkingLevel: ThinkingLevel
   ) async throws -> [String: Any] {
     guard let credential = await GeminiCredentialProvider.shared.getCredential() else {
-      throw TranscriptionError.networkError("No Gemini credential available. Add your Google API key in Settings or sign in with Google.")
+      throw TranscriptionError.networkError(String(localized: "No Gemini credential available. Add your Google API key in Settings or sign in with Google."))
     }
     return try await apiClient.generateStructured(
       model: model,

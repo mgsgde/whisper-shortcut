@@ -46,7 +46,7 @@ struct KeyboardShortcutsSection: View {
   }
 
   private func row(
-    _ label: String, _ shortcut: Binding<ShortcutDefinition?>, _ field: SettingsFocusField
+    _ label: LocalizedStringKey, _ shortcut: Binding<ShortcutDefinition?>, _ field: SettingsFocusField
   ) -> some View {
     ShortcutRecorderRow(
       label: label,
@@ -89,7 +89,7 @@ struct KeyboardShortcutsSection: View {
 /// One line at the bottom of a feature tab (or inside the section the shortcut belongs to):
 /// the current binding, and a way to the one place it is edited.
 struct ShortcutHintRow: View {
-  let label: String
+  let label: LocalizedStringKey
   let shortcut: ShortcutDefinition?
 
   var body: some View {

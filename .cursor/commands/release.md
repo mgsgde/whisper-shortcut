@@ -5,6 +5,8 @@ description: Cut a new App Store / GitHub release — bump version, write releas
 
 # Release
 
+Run only from the **`whisper Deployments`** session with Magnus's go (`AGENTS.md` → "Releasing is somebody else's job"); anywhere else, stop and hand over.
+
 Cut a new App Store / GitHub release: bump version, write App Store + GitHub release notes, rebuild, commit, push, tag.
 
 The full procedure is the numbered list under [Steps](#steps) — that is the only list; follow it in

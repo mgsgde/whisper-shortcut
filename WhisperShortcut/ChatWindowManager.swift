@@ -188,7 +188,7 @@ class ChatWindowManager {
       cachedShareableContent = content
       cachedShareableContentDate = Date()
     } catch {
-      DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.localizedDescription)")
+      DebugLogger.log("GEMINI-SCREENSHOT: SCShareableContent failed: \(error.logDescription)")
       return nil
     }
 
@@ -221,7 +221,7 @@ class ChatWindowManager {
     let cgImage: CGImage? = await withCheckedContinuation { continuation in
       SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) { image, error in
         if let error = error {
-          DebugLogger.log("GEMINI-SCREENSHOT: captureImage error: \(error.localizedDescription)")
+          DebugLogger.log("GEMINI-SCREENSHOT: captureImage error: \(error.logDescription)")
         }
         continuation.resume(returning: image)
       }

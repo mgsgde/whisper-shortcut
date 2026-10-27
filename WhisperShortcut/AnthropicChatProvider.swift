@@ -324,8 +324,8 @@ final class AnthropicChatProvider: LLMChatProvider {
               DebugLogger.logError("ANTHROPIC-CHAT-STREAM: error event \(kind): \(message)")
               throw TranscriptionError.networkError(
                 kind == "overloaded_error"
-                  ? "Claude is overloaded right now. Try again in a moment."
-                  : "Claude stopped mid-reply: \(message)")
+                  ? String(localized: "Claude is overloaded right now. Try again in a moment.")
+                  : String(localized: "Claude stopped mid-reply: \(message)"))
 
             default:
               break

@@ -209,7 +209,7 @@ enum WorkspaceWriteTools {
       pruneBackups()
       return destination.path
     } catch {
-      DebugLogger.logError("WORKSPACE-WRITE: Backup of \(target.path) failed: \(error.localizedDescription)")
+      DebugLogger.logError("WORKSPACE-WRITE: Backup of \(target.path) failed: \(error.logDescription)")
       return nil
     }
   }
