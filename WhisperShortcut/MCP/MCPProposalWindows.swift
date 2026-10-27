@@ -48,6 +48,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         report: proposal.proposedContent ?? "",
         onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
         onDiscard: { [weak self] in self?.decline(id) }))
+    } else if proposal.kind == .settings {
+      window.title = "Settings change suggested by an AI app"
+      window.setContentSize(NSSize(width: 520, height: 360))
+      window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
+        items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
+        onAccept: { [weak self] in self?.acceptSettings(id) },
+        onCancel: { [weak self] in self?.decline(id) }))
     } else {
       window.title = "Suggested by an AI app"
       window.contentView = NSHostingView(rootView: reviewView(for: proposal))
@@ -135,6 +142,18 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     windows[id]?.close()
   }
 
+  private func acceptSettings(_ id: String) {
+    switch MCPProposalStore.shared.accept(id) {
+    case .success:
+      windows[id]?.close()
+    case .failure(let error):
+      let alert = NSAlert()
+      alert.messageText = "Couldn't apply the change"
+      alert.informativeText = error.localizedDescription
+      alert.runModal()
+    }
+  }
+
   private func decline(_ id: String) {
     MCPProposalStore.shared.decline(id)
     windows[id]?.close()
@@ -183,6 +202,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return "profile"
     case .saveCommand, .deleteCommand: return "command"
     case .problemReport: return "report"
+    case .settings: return "settings"
     }
   }
 
@@ -196,6 +216,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         ? "New command /\(proposal.commandName ?? "")" : "Command /\(proposal.commandName ?? "")"
     case .deleteCommand: return "Delete command /\(proposal.commandName ?? "")"
     case .problemReport: return "Problem report: \(proposal.title ?? "untitled")"
+    case .settings:
+      let count = proposal.settingsChanges?.count ?? 0
+      return count == 1 ? "1 setting" : "\(count) settings"
     }
   }
 
@@ -206,6 +229,9 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return "Writing style profile"
     case .saveCommand: return change.previousContent == nil ? "New command /\(change.target)" : "Command /\(change.target)"
     case .deleteCommand: return "Deleted command /\(change.target)"
+    case .settings:
+      let count = change.settingsChanges?.count ?? 0
+      return count == 1 ? "1 setting" : "\(count) settings"
     }
   }
 

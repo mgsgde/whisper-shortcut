@@ -62,7 +62,21 @@ struct KeyboardShortcutsSection: View {
   #if !APP_STORE
   /// Alternative trigger for Dictate. Last, so it does not break the scannable list of combinations.
   private var fnKeyToggle: some View {
-    Toggle(isOn: $viewModel.data.fnKeyDictation) {
+    // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also fires
+    // when `data` is reloaded programmatically, which must never trigger a system prompt. The
+    // setter only runs when the user flips this toggle.
+    Toggle(isOn: Binding(
+      get: { viewModel.data.fnKeyDictation },
+      set: { newValue in
+        DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
+        if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
+          // Request now (native prompt + pre-registration), not deferred to the first fn press.
+          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+        }
+        viewModel.data.fnKeyDictation = newValue
+        Task { await viewModel.saveSettings() }
+      }
+    )) {
       VStack(alignment: .leading, spacing: 2) {
         Text("Also dictate with 🌐 Fn")
           .font(.callout)
@@ -74,14 +88,6 @@ struct KeyboardShortcutsSection: View {
     }
     .toggleStyle(.switch)
     .padding(.top, 4)
-    .onChange(of: viewModel.data.fnKeyDictation) { _, newValue in
-      DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
-      if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
-        // Request now (native prompt + pre-registration), not deferred to the first fn press.
-        AccessibilityPermissionManager.requestAccessibilityAtOptIn()
-      }
-      Task { await viewModel.saveSettings() }
-    }
   }
   #endif
 }

@@ -76,6 +76,10 @@ struct OpenRouterChatModelSection: View {
       catalog.loadIfNeeded()
       modelID = OpenRouterChatPreferences.modelID
     }
+    // An AI app may have changed this through MCP while the window was open.
+    .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in
+      modelID = OpenRouterChatPreferences.modelID
+    }
   }
 
   // MARK: - Model selection

@@ -35,20 +35,27 @@ struct ClipboardBehaviorSection: View {
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        Toggle("", isOn: $viewModel.data.autoPasteAfterDictation)
-          .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Auto-paste")
-          .onChange(of: viewModel.data.autoPasteAfterDictation) { _, newValue in
+        // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also
+        // fires when `data` is reloaded programmatically (e.g. `settingsChangedExternally`),
+        // which must never trigger a system prompt. The setter only runs when the user flips
+        // this toggle.
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.autoPasteAfterDictation },
+          set: { newValue in
             DebugLogger.log("AUTO-PASTE SETTINGS: Toggle changed to \(newValue), hasAccessibility=\(AccessibilityPermissionManager.hasAccessibilityPermission())")
             if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
               DebugLogger.log("AUTO-PASTE SETTINGS: Requesting Accessibility at opt-in")
               // Request now (native prompt + pre-registration), not deferred to first auto-paste.
               AccessibilityPermissionManager.requestAccessibilityAtOptIn()
             }
+            viewModel.data.autoPasteAfterDictation = newValue
             Task {
               await viewModel.saveSettings()
             }
           }
+        ))
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Auto-paste")
 
         Spacer()
       }

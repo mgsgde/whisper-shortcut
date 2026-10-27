@@ -251,6 +251,8 @@ struct MeetingsInAIAppsSection: View {
       undoMessage = "This change is no longer on record."
     case .failed(let message):
       undoMessage = "Couldn't undo: \(message)"
+    case .undonePartial(let skipped):
+      undoMessage = "Restored, except: \(skipped.joined(separator: ", ")) — no longer valid."
     }
   }
 

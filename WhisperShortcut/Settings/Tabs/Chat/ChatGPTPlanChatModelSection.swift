@@ -62,6 +62,10 @@ struct ChatGPTPlanChatModelSection: View {
       reload()
     }
     .onChange(of: service.accountEmail) { _, _ in reload() }
+    // An AI app may have changed this through MCP while the window was open.
+    .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in
+      modelID = ChatGPTPlanPreferences.modelID
+    }
   }
 
   private var currentModelLabel: String {

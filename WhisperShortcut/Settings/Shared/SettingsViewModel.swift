@@ -19,6 +19,12 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Initialization
   private var reconcileObserver: NSObjectProtocol?
   private var keyWindowObserver: NSObjectProtocol?
+  private var settingsChangedExternallyObserver: NSObjectProtocol?
+  private var shortcutRecordingStartedObserver: NSObjectProtocol?
+  private var shortcutRecordingStoppedObserver: NSObjectProtocol?
+  /// True while a `ShortcutRecorderRow` is mid-capture. A reload from
+  /// `.settingsChangedExternally` must not replace its pending value.
+  private var isRecordingShortcut = false
 
   init() {
     loadCurrentSettings()
@@ -50,11 +56,39 @@ class SettingsViewModel: ObservableObject {
         self?.reloadFromDisk()
       }
     }
+    shortcutRecordingStartedObserver = NotificationCenter.default.addObserver(
+      forName: .shortcutRecordingStarted, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.isRecordingShortcut = true } }
+    shortcutRecordingStoppedObserver = NotificationCenter.default.addObserver(
+      forName: .shortcutRecordingStopped, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.isRecordingShortcut = false } }
+    // An AI app changed a setting through MCP while this window was open. Reload everything the
+    // slots cover, plus shortcuts (not covered by `reloadFromDisk()`, since a mid-recording
+    // shortcut must not be clobbered — not a risk here because the recorder posts
+    // `.shortcutRecordingStarted` first).
+    settingsChangedExternallyObserver = NotificationCenter.default.addObserver(
+      forName: .settingsChangedExternally, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.reloadFromDisk()
+        if !self.isRecordingShortcut { self.reloadShortcutsFromDisk() }
+      }
+    }
   }
 
   deinit {
     if let reconcileObserver { NotificationCenter.default.removeObserver(reconcileObserver) }
     if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+    if let settingsChangedExternallyObserver {
+      NotificationCenter.default.removeObserver(settingsChangedExternallyObserver)
+    }
+    if let shortcutRecordingStartedObserver {
+      NotificationCenter.default.removeObserver(shortcutRecordingStartedObserver)
+    }
+    if let shortcutRecordingStoppedObserver {
+      NotificationCenter.default.removeObserver(shortcutRecordingStoppedObserver)
+    }
   }
 
   /// Re-reads the slots and the Google key from disk into both `data` and `persisted`.
@@ -69,7 +103,26 @@ class SettingsViewModel: ObservableObject {
     for slot in Self.slots { slot.load(&persisted) }
     persisted.googleAPIKey = reloaded.googleAPIKey
   }
-  
+
+  /// Re-reads the shortcut half of `data` and `persisted` from `ShortcutConfigManager`. Separate
+  /// from `reloadFromDisk()` because most callers of that method must not touch shortcuts (see
+  /// its doc comment); only the `.settingsChangedExternally` path wants this, and only when no
+  /// recorder is mid-capture.
+  private func reloadShortcutsFromDisk() {
+    let currentConfig = ShortcutConfigManager.shared.loadConfiguration()
+    func apply(to target: inout SettingsData) {
+      target.toggleDictation = currentConfig.startRecording.isEnabled ? currentConfig.startRecording : nil
+      target.togglePrompting = currentConfig.startPrompting.isEnabled ? currentConfig.startPrompting : nil
+      target.openSettings = currentConfig.openSettings.isEnabled ? currentConfig.openSettings : nil
+      target.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
+      target.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
+      target.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
+      target.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
+    }
+    apply(to: &data)
+    apply(to: &persisted)
+  }
+
 
   // MARK: - Persisted settings
 
@@ -294,30 +347,46 @@ class SettingsViewModel: ObservableObject {
     let label: String
     let read: (SettingsData) -> ShortcutDefinition?
     let write: (inout SettingsData, ShortcutDefinition?) -> Void
+    /// Writes this slot's value into a `ShortcutConfig`, so `saveSettings()` can update one
+    /// slot of an on-disk config without rebuilding (and overwriting) the other six.
+    let applyToConfig: (inout ShortcutConfig, ShortcutDefinition?) -> Void
+  }
+
+  /// `nil` persists as a disabled placeholder using the matching factory default's keycode, so
+  /// the stored shape stays stable (shared by `shortcutConfig(from:)` and `applyToConfig`).
+  private static func resolvedOrDisabled(_ value: ShortcutDefinition?, factoryDefault: ShortcutDefinition) -> ShortcutDefinition {
+    value ?? ShortcutDefinition(key: factoryDefault.key, modifiers: factoryDefault.modifiers, isEnabled: false)
   }
 
   private static let configurableShortcutSlots: [ConfigurableShortcutSlot] = [
     ConfigurableShortcutSlot(
       field: .toggleDictation, label: "Toggle Dictation",
-      read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 }),
+      read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 },
+      applyToConfig: { $0.startRecording = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.startRecording) }),
     ConfigurableShortcutSlot(
       field: .togglePrompting, label: "Toggle Dictate Prompt",
-      read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 }),
+      read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 },
+      applyToConfig: { $0.startPrompting = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.startPrompting) }),
     ConfigurableShortcutSlot(
       field: .toggleSettings, label: "Toggle Settings",
-      read: { $0.openSettings }, write: { $0.openSettings = $1 }),
+      read: { $0.openSettings }, write: { $0.openSettings = $1 },
+      applyToConfig: { $0.openSettings = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.openSettings) }),
     ConfigurableShortcutSlot(
       field: .toggleChat, label: "Chat",
-      read: { $0.openChat }, write: { $0.openChat = $1 }),
+      read: { $0.openChat }, write: { $0.openChat = $1 },
+      applyToConfig: { $0.openChat = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.openChat) }),
     ConfigurableShortcutSlot(
       field: .screenshotCapture, label: "Screenshot to Clipboard",
-      read: { $0.screenshotCapture }, write: { $0.screenshotCapture = $1 }),
+      read: { $0.screenshotCapture }, write: { $0.screenshotCapture = $1 },
+      applyToConfig: { $0.screenshotCapture = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.screenshotCapture) }),
     ConfigurableShortcutSlot(
       field: .readAloudShortcut, label: "Read Aloud",
-      read: { $0.readAloud }, write: { $0.readAloud = $1 }),
+      read: { $0.readAloud }, write: { $0.readAloud = $1 },
+      applyToConfig: { $0.readAloud = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.readAloud) }),
     ConfigurableShortcutSlot(
       field: .addToGlossaryShortcut, label: "Add Selection to Glossary",
-      read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
+      read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 },
+      applyToConfig: { $0.addToGlossary = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.addToGlossary) }),
   ]
 
   /// The shortcut half of `data` as a `ShortcutConfig`. Also used by the onboarding Done step,
@@ -381,9 +450,15 @@ class SettingsViewModel: ObservableObject {
       slot.save(data)
     }
 
-    let newShortcuts = Self.shortcutConfig(from: data)
-    if newShortcuts != Self.shortcutConfig(from: persisted) {
-      ShortcutConfigManager.shared.saveConfiguration(newShortcuts)
+    // Per-slot: load the on-disk config fresh and override only the slots this window actually
+    // changed. Rebuilding the whole `ShortcutConfig` from `data` (as before) would silently
+    // revert any slot changed on disk since this window loaded — e.g. by an AI app through MCP
+    // while this window sat open.
+    let changedShortcutSlots = Self.configurableShortcutSlots.filter { $0.read(data) != $0.read(persisted) }
+    if !changedShortcutSlots.isEmpty {
+      var onDisk = ShortcutConfigManager.shared.loadConfiguration()
+      for slot in changedShortcutSlots { slot.applyToConfig(&onDisk, slot.read(data)) }
+      ShortcutConfigManager.shared.saveConfiguration(onDisk)
     }
 
     // Notify about model change only when the Dictate model actually changed: the notice makes

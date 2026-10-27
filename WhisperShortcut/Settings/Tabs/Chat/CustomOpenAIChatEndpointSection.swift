@@ -82,6 +82,10 @@ struct CustomOpenAIChatEndpointSection: View {
             .onAppear {
               modelID = UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? ""
             }
+            // An AI app may have changed this through MCP while the window was open.
+            .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in
+              modelID = UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatModelID) ?? ""
+            }
             .onChange(of: modelID) { _, newValue in
               UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customOpenAIChatModelID)
             }
