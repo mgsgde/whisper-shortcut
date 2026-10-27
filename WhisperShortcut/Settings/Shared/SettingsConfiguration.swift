@@ -1484,6 +1484,7 @@ enum SettingsTab: String, CaseIterable {
   case chat = "Chat"
   case meetings = "Meetings"
   case improvement = "Smart Improvement"
+  case aiApps = "Claude & AI Apps"
   // The raw value is both the sidebar label and the persisted selection; a stored "Permissions"
   // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
   case permissions = "Privacy & Permissions"
@@ -1501,6 +1502,7 @@ enum SettingsTab: String, CaseIterable {
     case .chat: return "Chat"
     case .meetings: return "Meetings"
     case .improvement: return "Smart Improvement"
+    case .aiApps: return "Claude & AI Apps"
     case .permissions: return "Privacy & Permissions"
     case .about: return "About"
     }

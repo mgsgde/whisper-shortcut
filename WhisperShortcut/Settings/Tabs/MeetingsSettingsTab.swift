@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Meetings Settings Tab — live meeting recording: which models transcribe and summarize, the
-/// flag-a-moment shortcut, access for other AI apps, and the rarely touched timing knobs.
+/// flag-a-moment shortcut, and the rarely touched timing knobs. Access for Claude and other AI
+/// apps lives in its own tab (`AIAppsSettingsTab`); this tab only points there.
 ///
 /// Split out of Chat, where these sat under "Advanced" between the chat's own settings and were
 /// hard to find for anyone who records meetings and never opens the chat otherwise.
@@ -23,7 +24,7 @@ struct MeetingsSettingsTab: View {
 
       SpacedSectionDivider()
 
-      MeetingsInAIAppsSection()
+      aiAppsPointer
 
       SpacedSectionDivider()
 
@@ -50,6 +51,25 @@ struct MeetingsSettingsTab: View {
       }
       .buttonStyle(.bordered)
       .help("Open transcripts folder in Finder")
+      .pointerCursorOnHover()
+    }
+  }
+
+  // MARK: - Claude & AI Apps Pointer
+  /// Kept here because "can Claude read my meetings?" is still asked from this tab.
+  private var aiAppsPointer: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Meetings in Claude",
+        systemImage: "point.3.connected.trianglepath.dotted",
+        subtitle: "Claude and other AI apps on this Mac can read your meetings, including the one recording right now. Connect them in Claude & AI Apps."
+      )
+
+      Button(action: { SettingsManager.shared.showSettings(tab: .aiApps) }) {
+        Label("Open Claude & AI Apps", systemImage: "arrow.right.circle")
+          .font(.callout)
+      }
+      .buttonStyle(.bordered)
       .pointerCursorOnHover()
     }
   }

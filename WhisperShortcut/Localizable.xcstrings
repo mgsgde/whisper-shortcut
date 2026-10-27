@@ -3106,16 +3106,6 @@
         }
       }
     },
-    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Kopieren Sie die Einrichtung unten noch einmal, damit Ihre KI-App den neuen Zugriff bekommt."
-          }
-        }
-      }
-    },
     "Changes are saved automatically" : {
       "localizations" : {
         "de" : {
@@ -6235,16 +6225,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Niederländisch"
-          }
-        }
-      }
-    },
-    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Kopieren Sie die Einrichtung unten noch einmal, damit Ihre KI-App den neuen Zugriff bekommt."
           }
         }
       }
@@ -19725,6 +19705,326 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔴 Dictate Prompt wird aufgenommen …"
+          }
+        }
+      }
+    },
+    "Claude & AI Apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude & KI-Apps"
+          }
+        }
+      }
+    },
+    "Connect Claude and other AI apps on this Mac to WhisperShortcut. They can set it up for you from what they already know about you: names for the glossary, how your messages should sound, your commands. And they can read your meetings, including the one recording right now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie Claude und andere KI-Apps auf diesem Mac mit WhisperShortcut. Sie können es für Sie einrichten, mit dem, was sie schon über Sie wissen: Namen fürs Glossar, wie Ihre Nachrichten klingen sollen, Ihre Befehle. Und sie können Ihre Meetings lesen, auch das, das gerade aufgenommen wird."
+          }
+        }
+      }
+    },
+    "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere KI-Apps verbinden, um WhisperShortcut einzurichten und Meetings zu lesen"
+          }
+        }
+      }
+    },
+    "Meeting transcription and summaries" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription und Zusammenfassungen"
+          }
+        }
+      }
+    },
+    "Meetings in Claude" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings in Claude"
+          }
+        }
+      }
+    },
+    "Claude and other AI apps on this Mac can read your meetings, including the one recording right now. Connect them in Claude & AI Apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere KI-Apps auf diesem Mac können Ihre Meetings lesen, auch das, das gerade aufgenommen wird. Verbinden Sie sie unter Claude & KI-Apps."
+          }
+        }
+      }
+    },
+    "Open Claude & AI Apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude & KI-Apps öffnen"
+          }
+        }
+      }
+    },
+    "Run in Terminal, then start a new Claude Code session:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Terminal ausführen, dann eine neue Claude-Code-Sitzung starten:"
+          }
+        }
+      }
+    },
+    "Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Node.js."
+          }
+        }
+      }
+    },
+    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit bereits vorhandenen Servern) und starten Sie Claude neu."
+          }
+        }
+      }
+    },
+    "OpenAI's agent. ChatGPT itself can't reach apps on your Mac, Codex can." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Agent von OpenAI. ChatGPT selbst erreicht keine Apps auf Ihrem Mac, Codex schon."
+          }
+        }
+      }
+    },
+    "Add this to ~/.codex/config.toml, then start a new Codex session:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie dies in ~/.codex/config.toml ein und starten Sie dann eine neue Codex-Sitzung:"
+          }
+        }
+      }
+    },
+    "Apps you already connected stop working until you connect them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits verbundene Apps funktionieren erst wieder, wenn Sie sie neu verbinden."
+          }
+        }
+      }
+    },
+    "Claude and other apps connected with the current key lose access until you connect them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere Apps mit dem aktuellen Schlüssel verlieren den Zugriff, bis Sie sie neu verbinden."
+          }
+        }
+      }
+    },
+    "Connected. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden. %@"
+          }
+        }
+      }
+    },
+    "Set up by hand" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von Hand einrichten"
+          }
+        }
+      }
+    },
+    "Connect Again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut verbinden"
+          }
+        }
+      }
+    },
+    "Adds WhisperShortcut to %@'s settings. macOS asks once for access to the folder they live in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trägt WhisperShortcut in die Einstellungen von %@ ein. macOS fragt einmal nach Zugriff auf den Ordner, in dem sie liegen."
+          }
+        }
+      }
+    },
+    "Cancelled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochen."
+          }
+        }
+      }
+    },
+    "Please choose the folder %@ and click Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte wählen Sie den Ordner %@ und klicken Sie auf „Erlauben“."
+          }
+        }
+      }
+    },
+    "%@ is not valid JSON, so it was left untouched. Fix or remove the file and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist kein gültiges JSON und wurde nicht verändert. Korrigieren oder entfernen Sie die Datei und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Start a new Claude Code session." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten Sie eine neue Claude-Code-Sitzung."
+          }
+        }
+      }
+    },
+    "Quit and reopen Claude." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden und öffnen Sie Claude neu."
+          }
+        }
+      }
+    },
+    "Start a new Codex session." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten Sie eine neue Codex-Sitzung."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs access to this folder once to add itself to %@'s settings. Click Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich in die Einstellungen von %@ einzutragen. Klicken Sie auf „Erlauben“."
+          }
+        }
+      }
+    },
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Added to %@'s settings. %@ Waiting for it to connect…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Einstellungen von %@ eingetragen. %@ Warte auf die Verbindung…"
+          }
+        }
+      }
+    },
+    "Connected, read only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden, nur Lesen"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        }
+      }
+    },
+    "%@ holds the read-only key, so it can't suggest or make changes. Click Connect Again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nutzt den Schlüssel nur zum Lesen und kann deshalb nichts vorschlagen oder ändern. Klicken Sie auf „Erneut verbinden“."
+          }
+        }
+      }
+    },
+    "Test build: Connect is off here, so it can't overwrite the setup of the WhisperShortcut you use every day." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test-Build: „Verbinden“ ist hier aus, damit es die Einrichtung Ihres alltäglichen WhisperShortcut nicht überschreibt."
           }
         }
       }

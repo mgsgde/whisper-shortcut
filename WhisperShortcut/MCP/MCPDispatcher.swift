@@ -10,6 +10,11 @@ struct MCPDispatcher {
 
   let meetingTools: MCPMeetingTools
   let configTools: MCPConfigTools
+  /// Called on `initialize` with the client's name, version, and the access level it was
+  /// dispatched with. Injected so tests can observe it without touching `MCPClientRegistry.shared`.
+  var onInitialize: (String, String, MCPAccess) -> Void = { name, version, access in
+    MCPClientRegistry.shared.record(name: name, version: version, access: access)
+  }
 
   static let instructions =
     "Access to the user's WhisperShortcut on this Mac: meeting transcripts, notes and summaries, and its configuration. "
@@ -47,6 +52,12 @@ struct MCPDispatcher {
       let requested = params?["protocolVersion"] as? String
       let version = requested.flatMap { Self.supportedVersions.contains($0) ? $0 : nil } ?? "2025-06-18"
       let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+      if let clientInfo = params?["clientInfo"] as? [String: Any],
+        let clientName = clientInfo["name"] as? String
+      {
+        let clientVersion = clientInfo["version"] as? String ?? ""
+        onInitialize(clientName, clientVersion, access)
+      }
       return ok([
         "protocolVersion": version,
         "capabilities": [

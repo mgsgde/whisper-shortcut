@@ -291,4 +291,6 @@ enum UserDefaultsKeys {
   static let mcpConfigAccessLevel = "mcpConfigAccessLevel"
   /// Whether AI apps may read recent dictations (needs `contextLoggingEnabled` as well). Default false.
   static let mcpShareRecentInteractions = "mcpShareRecentInteractions"
+  /// MCP clients that have connected to the local server, as JSON. See `MCPClientRegistry`.
+  static let mcpConnectedClients = "mcpConnectedClients"
 }
