@@ -143,6 +143,14 @@ enum MCPSettingsCatalog {
     var postNotification: (Notification.Name, Any?) -> Void = { name, object in
       NotificationCenter.default.post(name: name, object: object)
     }
+    /// After a model selection is written. Tests replace this; the live default is
+    /// `ModelSelectionReconciler.postSelectionsChanged` (posts `.modelSelectionsReconciled`
+    /// and `.modelChanged` for the dictation slot). Routed through `deps` so a test suite
+    /// never posts those notifications into the user's running app.
+    var postSelectionsChanged: () -> Void = {
+      let post = { MainActor.assumeIsolated { ModelSelectionReconciler.postSelectionsChanged() } }
+      if Thread.isMainThread { post() } else { DispatchQueue.main.sync(execute: post) }
+    }
 
     static let live = Dependencies()
   }
@@ -175,6 +183,8 @@ enum MCPSettingsCatalog {
       let s = (value as? String) ?? ""
       return s.isEmpty ? "(empty)" : s
     case .enumeration(let options):
+      // `meetings.transcription_model` accepts JSON null for "same as dictation".
+      if value is NSNull { return "Same as dictation" }
       guard let raw = value as? String else { return "\(value)" }
       return options().first { $0.value == raw }?.label ?? raw
     case .shortcut:
@@ -264,6 +274,110 @@ enum MCPSettingsCatalog {
         })
     }
 
+    /// Same shape as the typed helper, for enumerations whose stored value is not a `String` raw
+    /// value (`ReadAloudSpeed` is a Double; voice ids are free-form, including `""` for the
+    /// provider default). The catalog value is still the option string.
+    func enumSetting(
+      id: String, title: String, category: String, allOptions: @escaping () -> [MCPSetting.Option],
+      current: @escaping () -> String, applyValue: @escaping (String) throws -> Void
+    ) -> MCPSetting {
+      MCPSetting(
+        id: id, title: title, category: category, kind: .enumeration(options: allOptions),
+        read: current,
+        validate: { value in
+          guard let raw = value as? String, let option = allOptions().first(where: { $0.value == raw }) else {
+            return "\(title) must be one of: \(allOptions().map(\.value).joined(separator: ", "))."
+          }
+          if !option.available {
+            return "\(option.label)\(option.reason.map { " (\($0))" } ?? "") is not available yet."
+          }
+          return nil
+        },
+        apply: { value in
+          guard let raw = value as? String else { throw MCPConfigError(message: "Unknown value for \(title).") }
+          try applyValue(raw)
+        })
+    }
+
+    func readAloudSpeedToken(_ speed: ReadAloudSpeed) -> String {
+      switch speed {
+      case .x075: return "0.75"
+      case .x100: return "1.0"
+      case .x125: return "1.25"
+      case .x150: return "1.5"
+      case .x175: return "1.75"
+      case .x200: return "2.0"
+      }
+    }
+
+    func promptModelSetting(
+      id: String, title: String, key: String, fallback: PromptModel,
+      models: @escaping () -> [PromptModel],
+      hasCredential: @escaping (PromptModel) -> Bool
+    ) -> MCPSetting {
+      MCPSetting(
+        id: id, title: title, category: "models",
+        kind: .enumeration(options: {
+          let selected = defaults.string(forKey: key)
+            .flatMap { PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue($0)) } ?? fallback
+          return ModelPickerCuration.visibleModels(models(), selected: selected).map { model in
+            MCPSetting.Option(
+              model.rawValue, model.displayName,
+              available: hasCredential(model), reason: model.pickerSetupBadge)
+          }
+        }),
+        read: {
+          if let raw = defaults.string(forKey: key),
+            let model = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)),
+            models().contains(model)
+          {
+            return model.rawValue
+          }
+          return fallback.rawValue
+        },
+        validate: { value in
+          guard let raw = value as? String, let model = PromptModel(rawValue: raw), models().contains(model) else {
+            return "Unknown \(title)."
+          }
+          return hasCredential(model) ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
+        },
+        apply: { value in
+          guard let raw = value as? String, let model = PromptModel(rawValue: raw) else {
+            throw MCPConfigError(message: "Unknown \(title).")
+          }
+          defaults.set(model.rawValue, forKey: key)
+          deps.postNotification(.promptModelChanged, model)
+          deps.postSelectionsChanged()
+        })
+    }
+
+    /// Provider model slug. Same validation as `chat.openrouter_model_id`. `write` is the setter
+    /// the Settings section uses (or the same UserDefaults key, when the section writes the key itself).
+    func modelIDSetting(
+      id: String, title: String, unavailableReason: @escaping () -> String? = { nil },
+      read: @escaping () -> String, write: @escaping (String) -> Void
+    ) -> MCPSetting {
+      MCPSetting(
+        id: id, title: title, category: "models", kind: .string(maxLength: 200),
+        unavailableReason: unavailableReason,
+        read: read,
+        validate: { value in
+          guard let s = value as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.count <= 200 else {
+            return "\(title) must be 1–200 characters."
+          }
+          return nil
+        },
+        apply: { value in
+          guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
+          write(s)
+        })
+    }
+
+    func storedOrDefault(_ key: String, default fallback: String) -> String {
+      let v = (defaults.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      return v.isEmpty ? fallback : v
+    }
+
     var settings: [MCPSetting] = []
 
     // MARK: dictation.transcription_model
@@ -290,6 +404,7 @@ enum MCPSettingsCatalog {
         }
         defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
         deps.postNotification(.modelChanged, model)
+        deps.postSelectionsChanged()
       }))
 
     // MARK: chat.model
@@ -314,8 +429,9 @@ enum MCPSettingsCatalog {
         guard let raw = value as? String, let model = PromptModel(rawValue: raw) else {
           throw MCPConfigError(message: "Unknown chat model.")
         }
-        defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+        ChatViewModel.persistChatModelSelection(model, defaults: defaults)
         deps.postNotification(.promptModelChanged, model)
+        deps.postSelectionsChanged()
       }))
 
     // MARK: chat.openrouter_model_id
@@ -333,6 +449,136 @@ enum MCPSettingsCatalog {
         OpenRouterChatPreferences.setModelID(s)
       }))
 
+    // MARK: meetings.transcription_model
+    // JSON null clears the key. `TranscriptionModel.loadSelectedForMeeting()` treats a missing key
+    // as "same as dictation" — that is the fallback the Settings loader already uses.
+    settings.append(MCPSetting(
+      id: "meetings.transcription_model", title: "Meeting transcription model", category: "models",
+      kind: .enumeration(options: {
+        let selected = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+          .flatMap { TranscriptionModel(rawValue: TranscriptionModel.migrateLegacyTranscriptionRawValue($0)) }
+          ?? SettingsDefaults.selectedTranscriptionModel
+        return ModelPickerCuration.visibleModels(TranscriptionModel.selectableForDictation, selected: selected).map {
+          MCPSetting.Option(
+            $0.rawValue, $0.displayName, available: $0.hasRequiredCredential,
+            reason: $0.pickerSetupBadge)
+        }
+      }),
+      read: {
+        guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
+          return NSNull()
+        }
+        let migrated = TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)
+        guard let model = TranscriptionModel(rawValue: migrated) else { return NSNull() }
+        return model.rawValue
+      },
+      validate: { value in
+        if value is NSNull { return nil }
+        guard let raw = value as? String, let model = TranscriptionModel(rawValue: raw),
+          TranscriptionModel.selectableForDictation.contains(model)
+        else { return "Unknown transcription model." }
+        return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
+      },
+      apply: { value in
+        if value is NSNull {
+          defaults.removeObject(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+          deps.postSelectionsChanged()
+          return
+        }
+        guard let raw = value as? String, let model = TranscriptionModel(rawValue: raw) else {
+          throw MCPConfigError(message: "Unknown transcription model.")
+        }
+        defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings)
+        deps.postSelectionsChanged()
+      }))
+
+    // MARK: dictate_prompt.model
+    settings.append(promptModelSetting(
+      id: "dictate_prompt.model", title: "Dictate Prompt model",
+      key: UserDefaultsKeys.selectedPromptModel, fallback: SettingsDefaults.selectedPromptModel,
+      models: { PromptModel.dictatePromptCapableModels },
+      hasCredential: { $0.hasRequiredCredentialForDictatePrompt }))
+
+    // MARK: meetings.summary_model
+    settings.append(promptModelSetting(
+      id: "meetings.summary_model", title: "Meeting summary model",
+      key: UserDefaultsKeys.selectedMeetingSummaryModel, fallback: SettingsDefaults.selectedMeetingSummaryModel,
+      models: { PromptModel.textChatModels },
+      hasCredential: { $0.hasRequiredCredential }))
+
+    // MARK: improvement.model
+    settings.append(promptModelSetting(
+      id: "improvement.model", title: "Smart Improvement model",
+      key: UserDefaultsKeys.selectedImprovementModel, fallback: SettingsDefaults.selectedImprovementModel,
+      models: { PromptModel.textChatModels },
+      hasCredential: { $0.hasRequiredCredential }))
+
+    // MARK: read_aloud.model
+    settings.append(MCPSetting(
+      id: "read_aloud.model", title: "Read Aloud model", category: "models",
+      kind: .enumeration(options: {
+        let selected = defaults.string(forKey: UserDefaultsKeys.selectedReadAloudModel)
+          .flatMap { TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue($0)) }
+          ?? SettingsDefaults.readAloudModel
+        return ModelPickerCuration.visibleModels(TTSModel.readAloudModels, selected: selected).map {
+          MCPSetting.Option(
+            $0.rawValue, $0.displayName, available: $0.hasRequiredCredential,
+            reason: $0.pickerSetupBadge)
+        }
+      }),
+      read: {
+        let raw = defaults.string(forKey: UserDefaultsKeys.selectedReadAloudModel)
+        let migrated = raw.map { TTSModel.migrateLegacyReadAloudRawValue($0) }
+        if let migrated, let model = TTSModel(rawValue: migrated), TTSModel.readAloudModels.contains(model) {
+          return model.rawValue
+        }
+        return SettingsDefaults.readAloudModel.rawValue
+      },
+      validate: { value in
+        guard let raw = value as? String, let model = TTSModel(rawValue: raw), TTSModel.readAloudModels.contains(model) else {
+          return "Unknown Read Aloud model."
+        }
+        return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
+      },
+      apply: { value in
+        guard let raw = value as? String, let model = TTSModel(rawValue: raw) else {
+          throw MCPConfigError(message: "Unknown Read Aloud model.")
+        }
+        defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedReadAloudModel)
+        deps.postSelectionsChanged()
+      }))
+
+    // MARK: chat.chatgpt_plan_model_id
+    settings.append(modelIDSetting(
+      id: "chat.chatgpt_plan_model_id", title: "ChatGPT plan model id",
+      unavailableReason: {
+        #if APP_STORE
+          return "direct-download build only"
+        #else
+          return ChatGPTPlanPreferences.isConfigured ? nil : "needs ChatGPT sign-in"
+        #endif
+      },
+      read: { ChatGPTPlanPreferences.modelID },
+      write: { ChatGPTPlanPreferences.setModelID($0) }))
+
+    // MARK: chat.custom_endpoint_model_id
+    settings.append(modelIDSetting(
+      id: "chat.custom_endpoint_model_id", title: "Custom endpoint model id",
+      read: { storedOrDefault(UserDefaultsKeys.customOpenAIChatModelID, default: SettingsDefaults.customOpenAIChatModelID) },
+      write: { defaults.set($0, forKey: UserDefaultsKeys.customOpenAIChatModelID) }))
+
+    // MARK: dictation.openrouter_model_id
+    settings.append(modelIDSetting(
+      id: "dictation.openrouter_model_id", title: "OpenRouter dictation model id",
+      read: { TranscriptionTuning.resolveOpenRouterModelID(defaults.string(forKey: UserDefaultsKeys.openRouterTranscriptionModelID)) },
+      write: { defaults.set($0, forKey: UserDefaultsKeys.openRouterTranscriptionModelID) }))
+
+    // MARK: dictate_prompt.local_model_id
+    settings.append(modelIDSetting(
+      id: "dictate_prompt.local_model_id", title: "Local Dictate Prompt model id",
+      read: { storedOrDefault(UserDefaultsKeys.localPromptModelID, default: SettingsDefaults.localModelID) },
+      write: { defaults.set($0, forKey: UserDefaultsKeys.localPromptModelID) }))
+
     // MARK: dictation.language
     settings.append(enumSetting(
       id: "dictation.language", title: "Dictation language", category: "dictation",
@@ -342,6 +588,30 @@ enum MCPSettingsCatalog {
           ?? SettingsDefaults.whisperLanguage
       },
       applyValue: { (lang: WhisperLanguage) in defaults.set(lang.rawValue, forKey: UserDefaultsKeys.whisperLanguage) }))
+
+    // MARK: dictation.temperature
+    settings.append(enumSetting(
+      id: "dictation.temperature", title: "Temperature", category: "dictation",
+      allOptions: { TranscriptionTemperature.allCases.map { MCPSetting.Option($0.rawValue, $0.displayName) } },
+      current: {
+        defaults.string(forKey: UserDefaultsKeys.transcriptionTemperature)
+          .flatMap(TranscriptionTemperature.init(rawValue:)) ?? SettingsDefaults.transcriptionTemperature
+      },
+      applyValue: { (temperature: TranscriptionTemperature) in
+        defaults.set(temperature.rawValue, forKey: UserDefaultsKeys.transcriptionTemperature)
+      }))
+
+    // MARK: dictation.thinking_effort
+    settings.append(enumSetting(
+      id: "dictation.thinking_effort", title: "Thinking effort", category: "dictation",
+      allOptions: { TranscriptionThinkingEffort.allCases.map { MCPSetting.Option($0.rawValue, $0.displayName) } },
+      current: {
+        defaults.string(forKey: UserDefaultsKeys.transcriptionThinkingEffort)
+          .flatMap(TranscriptionThinkingEffort.init(rawValue:)) ?? SettingsDefaults.transcriptionThinkingEffort
+      },
+      applyValue: { (effort: TranscriptionThinkingEffort) in
+        defaults.set(effort.rawValue, forKey: UserDefaultsKeys.transcriptionThinkingEffort)
+      }))
 
     // MARK: shortcuts.dictate
     settings.append(MCPSetting(
@@ -419,6 +689,42 @@ enum MCPSettingsCatalog {
     settings.append(boolSetting(
       id: "read_aloud.smart_rewrite", title: "Read Aloud smart rewrite", category: "read_aloud",
       key: UserDefaultsKeys.readAloudSmartRewriteEnabled, defaultValue: SettingsDefaults.readAloudSmartRewriteEnabled))
+
+    // MARK: read_aloud.speed
+    // The picker stores `ReadAloudSpeed.rawValue` (a Double). The catalog speaks the string token.
+    settings.append(enumSetting(
+      id: "read_aloud.speed", title: "Playback speed", category: "read_aloud",
+      allOptions: { ReadAloudSpeed.allCases.map { MCPSetting.Option(readAloudSpeedToken($0), $0.displayName) } },
+      current: {
+        guard defaults.object(forKey: UserDefaultsKeys.readAloudSpeed) != nil,
+          let speed = ReadAloudSpeed(rawValue: defaults.double(forKey: UserDefaultsKeys.readAloudSpeed))
+        else { return readAloudSpeedToken(SettingsDefaults.readAloudSpeed) }
+        return readAloudSpeedToken(speed)
+      },
+      applyValue: { token in
+        guard let speed = ReadAloudSpeed.allCases.first(where: { readAloudSpeedToken($0) == token }) else {
+          throw MCPConfigError(message: "Unknown playback speed.")
+        }
+        defaults.set(speed.rawValue, forKey: UserDefaultsKeys.readAloudSpeed)
+      }))
+
+    // MARK: read_aloud.voice.*
+    // `""` is the provider default, the same sentinel `SettingsSlot.string` persists.
+    func voiceSetting(id: String, title: String, provider: TTSProvider) {
+      let key = provider.voiceUserDefaultsKey
+      settings.append(enumSetting(
+        id: id, title: title, category: "read_aloud",
+        allOptions: {
+          [MCPSetting.Option("", "Provider default")]
+            + provider.voices.map { MCPSetting.Option($0.id, $0.displayName) }
+        },
+        current: { defaults.string(forKey: key) ?? "" },
+        applyValue: { raw in defaults.set(raw, forKey: key) }))
+    }
+    voiceSetting(id: "read_aloud.voice.gemini", title: "Gemini voice", provider: .gemini)
+    voiceSetting(id: "read_aloud.voice.openai", title: "OpenAI voice", provider: .openai)
+    voiceSetting(id: "read_aloud.voice.xai", title: "xAI voice", provider: .xai)
+    voiceSetting(id: "read_aloud.voice.system", title: "macOS voice", provider: .system)
 
     // MARK: screenshot.save_enabled — refused without a folder chosen; MCP never opens the picker.
     settings.append(boolSetting(

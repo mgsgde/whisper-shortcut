@@ -213,6 +213,70 @@ struct MCPSettingsCatalogTests {
     #expect(env.box.shortcutConfig.startRecording.isEnabled == false)
   }
 
+  // MARK: - Models, provider ids, parameters
+
+  @Test("Model, provider-id and parameter entries are present and unique")
+  func modelEntriesPresent() {
+    let env = MCPTestEnv()
+    let ids = env.settingsCatalog.map(\.id)
+    #expect(Set(ids).count == ids.count)
+    let expected = [
+      "meetings.transcription_model",
+      "dictate_prompt.model",
+      "meetings.summary_model",
+      "improvement.model",
+      "read_aloud.model",
+      "chat.chatgpt_plan_model_id",
+      "chat.custom_endpoint_model_id",
+      "dictation.openrouter_model_id",
+      "dictate_prompt.local_model_id",
+      "dictation.temperature",
+      "dictation.thinking_effort",
+      "read_aloud.speed",
+      "read_aloud.voice.gemini",
+      "read_aloud.voice.openai",
+      "read_aloud.voice.xai",
+      "read_aloud.voice.system",
+    ]
+    for id in expected {
+      #expect(ids.contains(id), "missing \(id)")
+    }
+  }
+
+  @Test("A chat model write calls the reconciler and posts promptModelChanged")
+  func modelWritePostsReconcilerAndPromptChanged() throws {
+    let env = MCPTestEnv(level: .apply)
+    let setting = try #require(env.settingsCatalog.first { $0.id == "chat.model" })
+    try setting.apply(SettingsDefaults.selectedChatModel.rawValue)
+    #expect(env.box.notifications.contains { $0.0 == .promptModelChanged })
+    #expect(env.box.notifications.contains { $0.0 == .modelSelectionsReconciled })
+    #expect(
+      env.testDefaults.string(forKey: UserDefaultsKeys.selectedChatModel)
+        == SettingsDefaults.selectedChatModel.rawValue)
+  }
+
+  @Test("meetings.transcription_model null clears the key and reads back as null")
+  func meetingsTranscriptionNullRoundTrip() throws {
+    let env = MCPTestEnv(level: .apply)
+    let setting = try #require(env.settingsCatalog.first { $0.id == "meetings.transcription_model" })
+    #expect(setting.read() is NSNull)
+
+    let model = TranscriptionModel.parakeetUltra
+    try setting.apply(model.rawValue)
+    #expect(setting.read() as? String == model.rawValue)
+    #expect(
+      env.testDefaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == model.rawValue)
+
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["meetings.transcription_model": NSNull()], "rationale": "r"],
+      access: .write)
+    #expect(!r.isError)
+    #expect(obj(r)["status"] as? String == "applied")
+    #expect(setting.read() is NSNull)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == nil)
+  }
+
   private static func jsonObject(of definition: ShortcutDefinition) -> [String: Any] {
     guard let data = try? JSONEncoder().encode(definition),
       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]

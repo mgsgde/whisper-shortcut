@@ -50,7 +50,10 @@ final class MCPTestEnv: @unchecked Sendable {
       setLaunchAtLogin: { box.launchAtLogin = $0 },
       loadShortcutConfig: { box.shortcutConfig },
       saveShortcutConfig: { box.shortcutConfig = $0 },
-      postNotification: { name, object in box.notifications.append((name, object)) })
+      postNotification: { name, object in box.notifications.append((name, object)) },
+      // The live hook posts into the user's app. Record the call on the same notification list
+      // the catalog tests already read.
+      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) })
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
     var recorder: ((String) -> Void)?
     changeLog = MCPChangeLog(

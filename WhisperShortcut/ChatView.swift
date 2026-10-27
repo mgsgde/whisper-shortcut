@@ -2204,8 +2204,7 @@ class ChatViewModel: ObservableObject {
       DebugLogger.log("GEMINI-CHAT: switchToModel refused \(model.rawValue) (not offered in chat)")
       return
     }
-    UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
-    Self.recordModelUse(model)
+    Self.persistChatModelSelection(model)
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
     // Say it now rather than on the next send, which would fail with the same message.
     let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
@@ -2380,17 +2379,25 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: /workspace matched=\(matches.count) session=\(session.id)")
   }
 
+  /// Writes the chat model and records it as most recently used. Shared by `/model`
+  /// (`switchToModel`) and MCP `chat.model`, so both paths keep autocomplete recency in step.
+  /// `defaults` is `.standard` for the in-app path; the catalog passes its injected suite.
+  nonisolated static func persistChatModelSelection(_ model: PromptModel, defaults: UserDefaults = .standard) {
+    defaults.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    recordModelUse(model, defaults: defaults)
+  }
+
   /// Recently-used chat models, most recent first (PromptModel rawValues). See `chatModelRecency`.
-  static func loadModelRecency() -> [String] {
-    UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.chatModelRecency) ?? []
+  nonisolated static func loadModelRecency(defaults: UserDefaults = .standard) -> [String] {
+    defaults.stringArray(forKey: UserDefaultsKeys.chatModelRecency) ?? []
   }
 
   /// Records `model` as the most recently used chat model, moving it to the front of the recency
   /// list. Capped at the number of chat models so the list can't grow unbounded.
-  static func recordModelUse(_ model: PromptModel) {
-    var recency = loadModelRecency().filter { $0 != model.rawValue }
+  nonisolated static func recordModelUse(_ model: PromptModel, defaults: UserDefaults = .standard) {
+    var recency = loadModelRecency(defaults: defaults).filter { $0 != model.rawValue }
     recency.insert(model.rawValue, at: 0)
-    UserDefaults.standard.set(Array(recency.prefix(PromptModel.chatModels.count)), forKey: UserDefaultsKeys.chatModelRecency)
+    defaults.set(Array(recency.prefix(PromptModel.chatModels.count)), forKey: UserDefaultsKeys.chatModelRecency)
   }
 
   // MARK: - Scroll Position Persistence
