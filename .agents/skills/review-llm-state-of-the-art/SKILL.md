@@ -101,4 +101,4 @@ Default scope covers:
 1. Implement the selected `Now` recommendation(s).
 2. Keep scope tight; do not batch unrelated refactors.
 3. Rebuild and restart: `bash scripts/rebuild-and-restart.sh`.
-4. Do not commit unless explicitly requested.
+4. Commit only the files you touched, per `AGENTS.md` → Git; never tag or release.

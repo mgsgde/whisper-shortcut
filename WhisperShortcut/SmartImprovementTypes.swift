@@ -10,10 +10,10 @@ enum GenerationKind: Equatable, Codable {
   /// Display name for the review window title and summary messages.
   var improvementDisplayName: String {
     switch self {
-    case .dictation: return "Dictation Prompt"
-    case .whisperGlossary: return "Glossary"
-    case .promptMode: return "Dictate Prompt System Prompt"
-    case .chat: return "Chat System Prompt"
+    case .dictation: return String(localized: "Dictation Prompt")
+    case .whisperGlossary: return String(localized: "Glossary")
+    case .promptMode: return String(localized: "Dictate Prompt System Prompt")
+    case .chat: return String(localized: "Chat System Prompt")
     }
   }
 }

@@ -3,11 +3,11 @@ import SwiftUI
 /// Reusable component for section headers. Pass `systemImage` for a native SF Symbol icon
 /// next to the title (preferred over emoji in the title string).
 struct SectionHeader: View {
-  let title: String
-  let subtitle: String?
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringResource?
   let systemImage: String?
 
-  init(title: String, systemImage: String? = nil, subtitle: String? = nil) {
+  init(title: LocalizedStringResource, systemImage: String? = nil, subtitle: LocalizedStringResource? = nil) {
     self.title = title
     self.subtitle = subtitle
     self.systemImage = systemImage

@@ -26,7 +26,7 @@ struct OfflineModelDownloadCard: View {
       }
 
       Text(modelType.engine == .parakeet
-        ? "No key required — audio never leaves your Mac. \(modelType.displayName) transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate."
+        ? ("No key required — audio never leaves your Mac. \(modelType.displayName) transcribes 25 European languages, German and English included, in a fraction of a second. For other languages, pick a Whisper model later in Settings → Dictate." as LocalizedStringKey)
         : "No key required — audio never leaves your Mac. \(modelType.displayName) runs on this Mac; other offline models are in Settings → Dictate.")
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -124,7 +124,7 @@ struct OfflineModelDownloadCard: View {
         await MainActor.run {
           downloadError = SpeechErrorFormatter.formatForUser(error)
         }
-        DebugLogger.logError("ONBOARDING: \(modelType.displayName) download failed: \(error.localizedDescription)")
+        DebugLogger.logError("ONBOARDING: \(modelType.displayName) download failed: \(error.logDescription)")
       }
     }
   }

@@ -269,7 +269,7 @@ class ContextLogger {
         try fm.createDirectory(at: contextDirectoryURL, withIntermediateDirectories: true)
         DebugLogger.log("USER-CONTEXT: Created context directory at \(contextDirectoryURL.path)")
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to create context directory: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Failed to create context directory: \(error.logDescription)")
       }
     }
   }
@@ -617,7 +617,7 @@ class ContextLogger {
       DebugLogger.logAudio("AUDIO-VERIFY: capture(done) ref=\(filename) backend=\(backend) transcriptionModel=\(transcriptionModel) sizeBytes=\(size)")
       return filename
     } catch {
-      DebugLogger.logError("AUDIO-VERIFY: capture(error) reason=\(error.localizedDescription)")
+      DebugLogger.logError("AUDIO-VERIFY: capture(error) reason=\(error.logDescription)")
       return nil
     }
   }
@@ -718,7 +718,7 @@ class ContextLogger {
         }
         DebugLogger.log("USER-CONTEXT: Deleted all context data")
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to delete context data: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Failed to delete context data: \(error.logDescription)")
       }
     }
   }
@@ -751,7 +751,7 @@ class ContextLogger {
           }
         }
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.logDescription)")
       }
     }
   }
@@ -767,7 +767,7 @@ class ContextLogger {
       try trimmed.write(to: url, atomically: true, encoding: .utf8)
       DebugLogger.log("USER-CONTEXT: Trimmed \(url.lastPathComponent) to \(maxLines) lines (was \(lines.count))")
     } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.logDescription)")
     }
   }
 
@@ -815,7 +815,7 @@ class ContextLogger {
         }
         DebugLogger.log("USER-CONTEXT: Appended system prompts history (\(section.rawValue))")
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.logDescription)")
       }
     }
   }
@@ -901,7 +901,7 @@ class ContextLogger {
         }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to list log files: \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT: Failed to list log files: \(error.logDescription)")
       return []
     }
   }
@@ -988,7 +988,7 @@ class ContextLogger {
 
         DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.logDescription)")
       }
     }
   }
@@ -1027,7 +1027,7 @@ class ContextLogger {
 
         DebugLogger.log("USER-CONTEXT: Appended user context history")
       } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.localizedDescription)")
+        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.logDescription)")
       }
     }
   }
@@ -1089,7 +1089,7 @@ class ContextLogger {
 
       DebugLogger.log("USER-CONTEXT: Logged \(logDescription)")
     } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to write log entry: \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT: Failed to write log entry: \(error.logDescription)")
     }
   }
 }

@@ -248,7 +248,7 @@ final class TTSPlaybackSession {
         DebugLogger.logDebug("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
       }
     } catch {
-      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
+      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.logDescription)")
       onFailure(error)
     }
   }

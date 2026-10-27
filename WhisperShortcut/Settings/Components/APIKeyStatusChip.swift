@@ -46,7 +46,7 @@ struct APIKeyStatusChip: View {
     }
   }
 
-  private var label: String {
+  private var label: LocalizedStringKey {
     switch status {
     case .notSet: return "Not set"
     case .checking: return "Checking…"
@@ -64,7 +64,7 @@ struct APIKeyStatusChip: View {
     }
   }
 
-  private var helpText: String {
+  private var helpText: LocalizedStringKey {
     switch status {
     case .notSet: return "No API key entered"
     case .checking: return "Checking the key with the provider…"

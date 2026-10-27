@@ -97,7 +97,7 @@ final class WritingStyleStore {
     do {
       try text.write(to: profileURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("WRITING-STYLE: Could not save profile: \(error.localizedDescription)")
+      DebugLogger.logError("WRITING-STYLE: Could not save profile: \(error.logDescription)")
     }
   }
 
@@ -209,7 +209,7 @@ final class WritingStyleStore {
     do {
       try (lines.joined(separator: "\n") + "\n").write(to: samplesURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("WRITING-STYLE: Could not save samples: \(error.localizedDescription)")
+      DebugLogger.logError("WRITING-STYLE: Could not save samples: \(error.logDescription)")
     }
   }
 

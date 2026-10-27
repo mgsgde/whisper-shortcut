@@ -95,7 +95,7 @@ enum LiveMeetingRecordingMarker {
       let data = try JSONEncoder().encode(payload)
       try data.write(to: fileURL, options: .atomic)
     } catch {
-      DebugLogger.logError("LIVE-MEETING-MARKER: Failed to write marker: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING-MARKER: Failed to write marker: \(error.logDescription)")
     }
   }
 }

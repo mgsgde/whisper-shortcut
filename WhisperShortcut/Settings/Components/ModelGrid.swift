@@ -113,9 +113,9 @@ struct CuratedModelPicker<Model: PickerCuratedModel, Cell: View, More: View>: Vi
 /// Distinct from `SectionHeader`, which titles a whole settings section.
 struct ModelGroupHeader: View {
   let symbol: String
-  let title: String
+  let title: LocalizedStringResource
   /// Omitted by the prompt picker for groups whose name already says everything.
-  var subtitle: String?
+  var subtitle: LocalizedStringResource?
 
   var body: some View {
     HStack(spacing: 6) {
@@ -126,9 +126,12 @@ struct ModelGroupHeader: View {
         .font(.callout)
         .fontWeight(.semibold)
       if let subtitle {
-        Text("· \(subtitle)")
-          .font(.caption)
-          .foregroundColor(.secondary)
+        HStack(spacing: 4) {
+          Text(verbatim: "·")
+          Text(subtitle)
+        }
+        .font(.caption)
+        .foregroundColor(.secondary)
       }
     }
     .padding(.horizontal, 4)

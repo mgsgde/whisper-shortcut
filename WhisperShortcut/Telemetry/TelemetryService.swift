@@ -434,7 +434,7 @@ final class TelemetryService: @unchecked Sendable {
         at: env.storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
       try data.write(to: env.storeURL, options: .atomic)
     } catch {
-      DebugLogger.logWarning("TELEMETRY: could not save pending counts: \(error.localizedDescription)")
+      DebugLogger.logWarning("TELEMETRY: could not save pending counts: \(error.logDescription)")
     }
   }
 }

@@ -36,8 +36,8 @@ enum CloudModelOffer {
     var result: [Upgrade] = []
 
     let transcriptionSlots: [(String, String)] = [
-      (UserDefaultsKeys.selectedTranscriptionModel, "Dictation"),
-      (UserDefaultsKeys.selectedTranscriptionModelForMeetings, "Meeting transcription"),
+      (UserDefaultsKeys.selectedTranscriptionModel, String(localized: "Dictation")),
+      (UserDefaultsKeys.selectedTranscriptionModelForMeetings, String(localized: "Meeting transcription")),
     ]
     if let provider = ModelSelectionReconciler.providerPreference.first(where: hasKey),
       let target = ModelSelectionReconciler.transcriptionReplacement(for: provider) {
@@ -54,10 +54,10 @@ enum CloudModelOffer {
     }
 
     let promptSlots: [(String, String, [PromptModel])] = [
-      (UserDefaultsKeys.selectedPromptModel, "Dictate Prompt", PromptModel.dictatePromptCapableModels),
-      (UserDefaultsKeys.selectedChatModel, "Chat", PromptModel.chatModels),
-      (UserDefaultsKeys.selectedMeetingSummaryModel, "Meeting summary", PromptModel.chatModels),
-      (UserDefaultsKeys.selectedImprovementModel, "Smart Improvement", PromptModel.chatModels),
+      (UserDefaultsKeys.selectedPromptModel, String(localized: "Dictate Prompt"), PromptModel.dictatePromptCapableModels),
+      (UserDefaultsKeys.selectedChatModel, String(localized: "Chat"), PromptModel.chatModels),
+      (UserDefaultsKeys.selectedMeetingSummaryModel, String(localized: "Meeting summary"), PromptModel.chatModels),
+      (UserDefaultsKeys.selectedImprovementModel, String(localized: "Smart Improvement"), PromptModel.chatModels),
     ]
     for (key, feature, candidates) in promptSlots {
       guard let raw = selections[key],
@@ -122,24 +122,24 @@ enum CloudModelOffer {
     let alert = NSAlert()
     alert.alertStyle = .informational
     if providers.count == 1, let only = providers.first {
-      alert.messageText = "Use \(familyName(only)) instead of the on-device models?"
-      alert.addButton(withTitle: "Switch to \(familyName(only))")
+      alert.messageText = String(localized: "Use \(familyName(only)) instead of the on-device models?")
+      alert.addButton(withTitle: String(localized: "Switch to \(familyName(only))"))
     } else {
-      alert.messageText = "Use your cloud models instead of the on-device ones?"
-      alert.addButton(withTitle: "Switch")
+      alert.messageText = String(localized: "Use your cloud models instead of the on-device ones?")
+      alert.addButton(withTitle: String(localized: "Switch"))
     }
-    alert.addButton(withTitle: "Keep On-Device")
+    alert.addButton(withTitle: String(localized: "Keep On-Device"))
 
     let lines = upgrades.map { "\($0.feature): \($0.fromName) → \($0.toName)" }.joined(separator: "\n")
     let companies = providers.map(companyName).joined(separator: " and ")
-    alert.informativeText = """
+    alert.informativeText = String(localized: """
       These features still run on this Mac:
 
       \(lines)
 
       The cloud models are more accurate and faster. Recordings and text for these features are \
       then sent to \(companies). You can change each one later in Settings.
-      """
+      """)
 
     isShowing = true
     let finish: (NSApplication.ModalResponse) -> Void = { response in
