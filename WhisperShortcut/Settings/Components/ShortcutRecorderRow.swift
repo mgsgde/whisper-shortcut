@@ -303,7 +303,7 @@ struct ShortcutRecorderRow: View {
     // ">"), so Carbon never fires those bindings, and accepting them here would silently produce
     // shortcuts that never trigger.
     if let violation = ShortcutValidation.modifierRuleViolation(key: resolvedKey, modifiers: mods) {
-      transientMessage = violation
+      transientMessage = LocalizedStringKey(violation)
       return
     }
 

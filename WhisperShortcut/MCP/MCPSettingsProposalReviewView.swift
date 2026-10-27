@@ -58,7 +58,7 @@ struct MCPSettingsProposalReviewView: View {
 
         Spacer()
 
-        Text("You can undo it in Settings → Meetings.")
+        Text("You can undo it in Settings → Claude & AI Apps.")
           .font(.caption)
           .foregroundColor(.secondary)
 
