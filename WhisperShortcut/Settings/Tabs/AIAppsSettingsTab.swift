@@ -180,7 +180,7 @@ struct AIAppsSettingsTab: View {
   private var privacyNote: String {
     let what = accessLevel == .read
       ? String(localized: "AI apps can read transcripts, notes, summaries and your setup, never change or delete them.")
-      : String(localized: "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared.")
+      : String(localized: "AI apps can read your meetings and setup and change the glossary, instructions, writing style, commands and app settings such as models and shortcuts. API keys are never shared.")
     return what + " " + String(localized: "Only apps set up with your access key get in, and nothing is reachable from other devices. What you read in an AI app is sent to that app's provider.")
   }
 

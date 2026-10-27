@@ -1849,12 +1849,12 @@
         }
       }
     },
-    "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared." : {
+    "AI apps can read your meetings and setup and change the glossary, instructions, writing style, commands and app settings such as models and shortcuts. API keys are never shared." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Apps können Ihre Meetings und Ihre Einrichtung lesen und Glossar, Anweisungen, Schreibstil und Befehle ändern. API-Schlüssel werden nie weitergegeben."
+            "value" : "KI-Apps können Ihre Meetings und Ihre Einrichtung lesen und Glossar, Anweisungen, Schreibstil, Befehle sowie App-Einstellungen wie Modelle und Tastenkürzel ändern. API-Schlüssel werden nie weitergegeben."
           }
         }
       }
