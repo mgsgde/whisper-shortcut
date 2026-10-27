@@ -3790,7 +3790,8 @@ extension MenuBarController: ChunkProgressDelegate {
     let context = currentChunkContext
     let isTTS = context == .tts
 
-    appState = .processing(.splitting(context: context))
+    // A live meeting owns `appState`; a chunked segment inside it must not overwrite it (R107).
+    guard setChunkProcessingState(.processing(.splitting(context: context))) else { return }
     updateMenuBarIcon()
 
     // The bottom-center pill already shows processing for pill-driven flows — chunk
