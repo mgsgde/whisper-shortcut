@@ -38,6 +38,33 @@ class SpeechService {
 
   // MARK: - Task Tracking for Cancellation
   private let transcriptionTaskLock = NSLock()
+
+  /// Recent glossary-echo strips, so a dictation report can say what was removed from the text
+  /// the user actually saw. Capped; guarded by `echoStripsLock`.
+  private var recentEchoStrips: [(date: Date, tail: String)] = []
+  private let echoStripsLock = NSLock()
+
+  /// The strip only ever removes a suffix, so the removed tail is what `original` has beyond
+  /// `stripped`'s length.
+  private func noteEchoStrip(original: String, stripped: String) {
+    let tail = String(original.dropFirst(stripped.count))
+      .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    guard !tail.isEmpty else { return }
+    echoStripsLock.lock()
+    recentEchoStrips.append((Date(), tail))
+    if recentEchoStrips.count > 20 { recentEchoStrips.removeFirst(recentEchoStrips.count - 20) }
+    echoStripsLock.unlock()
+  }
+
+  /// Tails removed at or after `since`, oldest first.
+  func glossaryEchoStrips(since: Date) -> [String] {
+    echoStripsLock.lock()
+    defer { echoStripsLock.unlock() }
+    return recentEchoStrips.filter { $0.date >= since }.map(\.tail)
+  }
+
+  /// Glossary terms for the problem report.
+  func glossaryTermsForReport() -> [String] { parsedGlossary().terms }
   private var currentTranscriptionTask: Task<String, Error>?
   private var currentPromptTask: Task<String, Error>?
 
@@ -424,6 +451,7 @@ class SpeechService {
         glossaryTerms: self.glossaryTermsForEchoCheck(),
         mode: "TRANSCRIPTION")
       if stripped != transcript {
+        self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       }
       return self.correctingRejectedSpellings(in: stripped)
@@ -1631,6 +1659,7 @@ class SpeechService {
         glossaryTerms: glossaryTermsForEchoCheck(),
         mode: "DICTATE-PROMPT")
       if stripped != spoken {
+        noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
       let transcript = correctingRejectedSpellings(in: stripped)
