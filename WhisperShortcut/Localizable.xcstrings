@@ -369,6 +369,9 @@
         }
       }
     },
+    "%@:" : {
+      "shouldTranslate" : false
+    },
     "%lld" : {
       "shouldTranslate" : false
     },
@@ -1802,6 +1805,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erweitert"
+          }
+        }
+      }
+    },
+    "AI app (MCP)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-App (MCP)"
+          }
+        }
+      }
+    },
+    "AI app (MCP) undo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-App (MCP) rückgängig gemacht"
           }
         }
       }
@@ -14380,6 +14403,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird gesichert …"
+          }
+        }
+      }
+    },
+    "Say a sentence." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechen Sie einen Satz."
           }
         }
       }

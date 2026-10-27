@@ -89,14 +89,7 @@ struct OfflineModelDownloadCard: View {
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
+    .cardChrome()
     .onAppear(perform: notifyIfReady)
     .onChange(of: isAvailable) { _, available in
       if available { notifyIfReady() }

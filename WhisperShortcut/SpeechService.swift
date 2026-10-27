@@ -181,8 +181,8 @@ class SpeechService {
   /// The Whisper Glossary split into the two things a cloud model needs separately: a flat
   /// reference vocabulary, and the correction pairs the user annotated.
   private struct ParsedGlossary {
-    /// Terms fit for the reference list — annotations removed, phrase-style entries (more than
-    /// 3 words, e.g. "einen Crawler am Laufen") dropped, rejected spellings filtered out.
+    /// Terms fit for the reference list — annotations removed, phrases over
+    /// `GlossaryDocument.maxTermWords` dropped, rejected spellings filtered out.
     let terms: [String]
     /// The annotated pairs, in glossary order.
     let corrections: [GlossaryCorrection]
@@ -190,51 +190,38 @@ class SpeechService {
 
   /// Parses the Whisper Glossary once for both consumers.
   ///
-  /// Phrase-style entries and the raw `(not "…")` syntax are offline-Whisper priming forms; fed
-  /// verbatim into an instruction prompt they invite echo (Flash-Lite reproduced a 4-word glossary
-  /// phrase instead of the actual audio in every test run), which is why the reference list keeps
-  /// them out. The annotation itself is *not* discarded any more, though: it is the only signal
-  /// that distinguishes a near-homophone pair, and `tieBreakerBlock` renders it in a shape that
-  /// cannot be echoed as content.
+  /// Phrases over `GlossaryDocument.maxTermWords` and the raw `(not "…")` syntax are
+  /// offline-Whisper priming forms; fed verbatim into an instruction prompt they invite echo,
+  /// which is why the reference list keeps them out. The cap here used to be a hard-coded 3
+  /// while adding a term allowed 5, so a 4- or 5-word term the user stored never arrived.
+  /// The annotation itself is *not* discarded: it is the only signal that distinguishes a
+  /// near-homophone pair, and `tieBreakerBlock` renders it in a shape that cannot be echoed
+  /// as content. What a line means comes from `GlossaryDocument`; this function only decides
+  /// which of those entries the prompt is allowed to see.
   private func parsedGlossary() -> ParsedGlossary {
-    let lines = SystemPromptsStore.shared.loadWhisperGlossary()
-      .components(separatedBy: .newlines)
+    let raw = SystemPromptsStore.shared.loadWhisperGlossary()
+    let document = GlossaryDocument.parse(raw)
 
     // Spellings the user explicitly marked as WRONG (`Kimi (not "Kimmi")`) must never be offered
     // as reference vocabulary. `GlossaryFastLearner` writes bare terms one per line, so a form it
     // auto-learned before the user corrected it otherwise sits in the list right next to its own
     // correction — the model is told both spellings are right and the correction cancels out.
     // Stripping the annotation is not enough; the rejected form has to be filtered out by name.
+    // Collected per line, not per entry, so an annotation with no term beside it still bans
+    // that spelling.
     var rejected = Set<String>()
     var corrections: [GlossaryCorrection] = []
-    for line in lines {
-      var cursor = Substring(line)
-      var lineRejects: [String] = []
-      while let range = cursor.range(
-        of: #"\((?:not|nicht)\s+[^)]*\)"#, options: [.regularExpression, .caseInsensitive])
-      {
-        let inner = cursor[range]
-          .replacingOccurrences(
-            of: #"^\((?:not|nicht)\s+"#, with: "",
-            options: [.regularExpression, .caseInsensitive])
-          .replacingOccurrences(of: ")", with: "")
-        for form in inner.components(separatedBy: ",") {
-          let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-          if !cleaned.isEmpty {
-            rejected.insert(Self.foldGlossaryTerm(cleaned))
-            lineRejects.append(cleaned)
-          }
-        }
-        cursor = cursor[range.upperBound...]
+    for line in raw.components(separatedBy: .newlines) {
+      let lineRejects = GlossaryDocument.rejectedSpellings(on: line)
+      for form in lineRejects {
+        let folded = GlossaryDocument.fold(form)
+        if !folded.isEmpty { rejected.insert(folded) }
       }
       guard !lineRejects.isEmpty else { continue }
-      let correct = Self.strippingAnnotations(from: line)
-        .replacingOccurrences(
-          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        .trimmingCharacters(in: .whitespaces)
+      let correct = GlossaryDocument.lineTermText(line)
       // An annotated entry only earns a tie-breaker if its correct form is itself a term rather
       // than a phrase — same bar the reference list applies.
-      guard !correct.isEmpty, correct.split(separator: " ").count <= 3 else { continue }
+      guard GlossaryDocument.withinWordCap(correct) else { continue }
       corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
@@ -242,7 +229,7 @@ class SpeechService {
     // before that correction must not win the fold dedupe just because it appears first.
     var correctionSpellingByFold: [String: String] = [:]
     for correction in corrections {
-      let folded = Self.foldGlossaryTerm(correction.correct)
+      let folded = GlossaryDocument.fold(correction.correct)
       if correctionSpellingByFold[folded] == nil {
         correctionSpellingByFold[folded] = correction.correct
       }
@@ -250,45 +237,23 @@ class SpeechService {
 
     var seenFolds = Set<String>()
     var terms: [String] = []
-    for line in lines {
-      // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
-      // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-      let pieces = Self.strippingAnnotations(from: line)
-        .components(separatedBy: ",")
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-      for term in pieces {
-        // The built-in list is written as `Terms: A, B, C`, so the first element carries the
-        // label — compare without it, or a rejected form in first position slips through.
-        let bare = term.replacingOccurrences(
-          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        guard !bare.isEmpty, bare.split(separator: " ").count <= 3 else { continue }
-        let folded = Self.foldGlossaryTerm(bare)
-        guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
-        terms.append(correctionSpellingByFold[folded] ?? term)
-      }
+    for entry in document.entries {
+      guard GlossaryDocument.withinWordCap(entry.term) else { continue }
+      let folded = GlossaryDocument.fold(entry.term)
+      guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
+      terms.append(correctionSpellingByFold[folded] ?? entry.term)
     }
 
     return ParsedGlossary(terms: terms, corrections: corrections)
   }
 
-  private static func strippingAnnotations(from line: String) -> String {
-    line.replacingOccurrences(
-      of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
-      with: "",
-      options: [.regularExpression, .caseInsensitive])
-  }
-
   /// The same sanitized glossary the prompt gets, as individual terms — the input to
   /// `TextProcessingUtility.discardingGlossaryEchoTranscript`, which needs to recognise a
   /// transcript that is nothing but vocabulary we ourselves put in the prompt.
+  /// `GlossaryDocument.parse` already removed a leading `Terms:` label; a second strip here
+  /// used a different prefix regex than the reference list.
   private func glossaryTermsForEchoCheck() -> [String] {
     parsedGlossary().terms
-      .map {
-        $0.replacingOccurrences(
-          of: #"^\s*Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive]
-        ).trimmingCharacters(in: .whitespaces)
-      }
-      .filter { !$0.isEmpty }
   }
 
   /// The Whisper Glossary as literal terms for `gpt-transcribe`'s `keywords` field: the same
@@ -305,16 +270,11 @@ class SpeechService {
     var keywords: [String] = []
     // Corrections first so the annotated spelling wins the fold dedupe over a bare line.
     for term in parsed.corrections.map(\.correct) + glossaryTermsForEchoCheck() {
-      let folded = Self.foldGlossaryTerm(term)
+      let folded = GlossaryDocument.fold(term)
       guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
       keywords.append(term)
     }
     return keywords
-  }
-
-  /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
-  private static func foldGlossaryTerm(_ word: String) -> String {
-    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
   // MARK: - Rejected-Spelling Correction
@@ -754,7 +714,7 @@ class SpeechService {
     if Self.isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
       DebugLogger.log("PROMPT-MODE: No selection captured for this recording — compose turn, no history")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt",
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
         detail: ["reason": "composeTurn", "model": selectedPromptModel.rawValue])
     }
 
@@ -1183,7 +1143,7 @@ class SpeechService {
       DebugLogger.logWarning(
         "\(logPrefix): Edit command with nothing selected — not pasting invented text")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue, detail: ["reason": "bareEditCommandBlocked"])
       throw TranscriptionError.noSelectedText
     }
 
@@ -2518,9 +2478,9 @@ class SpeechService {
       throw TranscriptionError.invalidRequest
     }
 
-    // Same AAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
+    // Same FLAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
     // body is JSON with the audio base64'd inside it.
-    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, aacLabel: "m4a") { ext in
+    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, compressedLabel: "flac") { ext in
       Self.openRouterAudioFormat(forExtension: ext)
     }
 
@@ -2927,7 +2887,7 @@ class SpeechService {
 
     // Only validate format, not size: anything over the chunking threshold is split, and a
     // recording under it is far below Gemini's 20 MB inline limit (24 kHz mono 16-bit is
-    // 48 KB/s — 45 s is ~2 MB, and it ships as AAC anyway). There used to be a Files-API
+    // 48 KB/s — 45 s is ~2 MB, and it ships as FLAC anyway). There used to be a Files-API
     // branch for "≤45 s but >20 MB"; no audio the app records can reach it.
     try validateAudioFileFormat(at: audioURL)
 

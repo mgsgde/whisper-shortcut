@@ -20,7 +20,7 @@ struct GeminiTranscriptionResult {
 }
 
 extension GeminiAPIClient {
-  /// Sends `audioURL` inline (AAC when the transcoder can, raw bytes otherwise) with
+  /// Sends `audioURL` inline (lossless FLAC when the transcoder can, raw bytes otherwise) with
   /// `instruction` and returns the normalized transcript after both confabulation gates —
   /// possibly empty, which is the caller's signal to retry or fall back.
   ///
@@ -43,7 +43,7 @@ extension GeminiAPIClient {
     withRetry: Bool,
     timeoutInterval: TimeInterval? = nil
   ) async throws -> GeminiTranscriptionResult {
-    // Read audio (as compact AAC when possible) and convert to base64
+    // Read audio (as lossless FLAC when possible) and convert to base64
     let encodeStartTime = CFAbsoluteTimeGetCurrent()
     let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
       getMimeType(for: ext)

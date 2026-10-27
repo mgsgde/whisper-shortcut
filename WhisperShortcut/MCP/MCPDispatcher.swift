@@ -13,8 +13,10 @@ struct MCPDispatcher {
 
   static let instructions =
     "Access to the user's WhisperShortcut on this Mac: meeting transcripts, notes and summaries, and its configuration. "
-    + "During a live meeting, call get_live_transcript before answering any question about the meeting, "
+    + "While a meeting is live, treat every user message as related to it: call get_live_transcript before each reply, "
+    + "even when the question sounds general (a product, pricing or legal question asked during the call), "
     + "passing next_since from your previous call so you only fetch what is new. "
+    + "Stop once it reports that no meeting is being recorded. "
     + "Use list_meetings, get_meeting and search_meetings for past meetings. "
     + "To improve how WhisperShortcut dictates for the user (names, writing style, commands), call get_configuration "
     + "and follow its tune_recipe (also the MCP prompt \(MCPTuneRecipe.promptName)). "
