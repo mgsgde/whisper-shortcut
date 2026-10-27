@@ -75,6 +75,8 @@ final class LiveMeetingSession: NSObject {
     }
   }
 
+  var isDraining: Bool { if case .draining = phase { return true }; return false }
+
   private func isCurrent(_ run: MeetingRun) -> Bool { currentRun === run }
 
   // MARK: - Collaborators
@@ -87,9 +89,8 @@ final class LiveMeetingSession: NSObject {
   /// True while `appState` is `.recording(.liveMeeting)`. The session cannot read `appState`
   /// itself — see the note above.
   private let appStateIsRecordingMeeting: () -> Bool
-  /// The user asked to stop and the session is now draining the last chunk(s). Reported separately
-  /// from `onFinished` because that drain takes a network round trip: without it the owner keeps
-  /// showing "recording" for seconds after the stop, which reads as the stop not having worked.
+  /// The user asked to stop and the session is now draining the last chunk(s). The owner refreshes
+  /// its UI; it reads `isDraining` instead of keeping a flag.
   private let onStopping: () -> Void
   /// The session has fully finished (saved or discarded); the owner returns `appState` to idle.
   private let onFinished: () -> Void
@@ -286,11 +287,10 @@ final class LiveMeetingSession: NSObject {
 
     run.safeguardTimer?.invalidate()
     run.safeguardTimer = nil
-    // Tell the UI *now*: the drain below needs a transcription round trip, and until it lands both
-    // the menu bar and the meeting bar would otherwise keep claiming the meeting is recording.
+    // The owner reads `isDraining` in `onStopping`.
     LiveMeetingTranscriptStore.shared.beginFinishing()
-    onStopping()
     enterDraining(run)
+    onStopping()
   }
 
   /// Switches `run` to draining, asks the recorder for its final chunk and arms the safety net.

@@ -204,17 +204,17 @@ class ChatViewModel: ObservableObject {
   @Published private(set) var recentSessions: [ChatSession] = []
   @Published private(set) var allSessionsList: [ChatSession] = []
   @Published private(set) var currentSessionId: UUID = UUID()
-  @Published private(set) var isMeetingActive: Bool = false
+  @Published private(set) var meetingPhase: MeetingPhase = .idle
+  var isMeetingActive: Bool { meetingPhase != .idle }
   /// True between the stop request and the meeting actually being finished (its last chunk still has
   /// to be transcribed). The bar says "Finishing…" for those seconds instead of "Recording".
-  @Published private(set) var isMeetingFinishing: Bool = false
+  var isMeetingFinishing: Bool { meetingPhase == .finishing }
   @Published private(set) var meetingSessionId: UUID? = nil
   var isCurrentSessionMeeting: Bool { session.isMeeting }
   var isCurrentSessionTheActiveMeeting: Bool { isMeetingActive && meetingSessionId == session.id }
   /// True when the meeting this tab is showing is the one currently being wrapped up.
   var isCurrentSessionFinishingMeeting: Bool { isMeetingFinishing && isCurrentSessionTheActiveMeeting }
   private var meetingCancellable: AnyCancellable?
-  private var meetingFinishingCancellable: AnyCancellable?
   private var summaryCancellable: AnyCancellable?
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
@@ -473,16 +473,13 @@ class ChatViewModel: ObservableObject {
     allSessionsList = store.allSessions()
     loadScrollAnchors()
     UserCommandStore.shared.reload()
-    isMeetingActive = LiveMeetingTranscriptStore.shared.isSessionActive
-    isMeetingFinishing = LiveMeetingTranscriptStore.shared.isFinishing
-    meetingFinishingCancellable = LiveMeetingTranscriptStore.shared.$isFinishing
+    meetingPhase = LiveMeetingTranscriptStore.shared.phase
+    meetingCancellable = LiveMeetingTranscriptStore.shared.$phase
       .receive(on: DispatchQueue.main)
-      .sink { [weak self] in self?.isMeetingFinishing = $0 }
-    meetingCancellable = LiveMeetingTranscriptStore.shared.$isSessionActive
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] active in
+      .sink { [weak self] phase in
         guard let self else { return }
-        self.isMeetingActive = active
+        self.meetingPhase = phase
+        let active = phase != .idle
         if active && self.meetingSessionId == nil {
           // Prefer reattaching to an existing ChatSession already associated with the
           // current meeting's stem (e.g. on resume), so we don't repurpose whichever

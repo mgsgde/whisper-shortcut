@@ -51,6 +51,9 @@ struct LiveMeetingNote: Identifiable, Sendable {
   }
 }
 
+/// Published lifecycle of the live meeting, mirrored from `LiveMeetingSession.phase`.
+enum MeetingPhase: Equatable { case idle, recording, finishing }
+
 /// In-memory store for live meeting transcript chunks and live notes. Used by the meeting view and
 /// for building chat context (live notes + full transcript). Cleared when a new meeting starts.
 final class LiveMeetingTranscriptStore: ObservableObject {
@@ -67,13 +70,18 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// used to defeat the "regenerate when the summary file is missing" recovery path.
   @Published private(set) var summary: String = ""
 
-  /// True while a meeting is recording; false after session ends or before any meeting.
-  @Published private(set) var isSessionActive: Bool = false
+  /// `.recording` while a meeting is recording; `.finishing` between "stop this meeting" and the
+  /// session actually being finished; `.idle` after the session ends or before any meeting.
+  /// Stopping has to drain the last chunk through a transcription round trip, so it is not instant —
+  /// a UI that only knows the meeting is still active shows "Recording" for those seconds and the
+  /// stop looks like it did nothing.
+  @Published private(set) var phase: MeetingPhase = .idle
 
-  /// True between "stop this meeting" and the session actually being finished. Stopping has to drain
-  /// the last chunk through a transcription round trip, so it is not instant; a UI that only knows
-  /// `isSessionActive` shows "Recording" for those seconds and the stop looks like it did nothing.
-  @Published private(set) var isFinishing: Bool = false
+  /// True while a meeting is recording or finishing; false when `phase` is `.idle`.
+  var isSessionActive: Bool { phase != .idle }
+
+  /// True between "stop this meeting" and the session actually being finished.
+  var isFinishing: Bool { phase == .finishing }
 
   /// Cuts the audio still sitting in the recorder and waits briefly for its transcript. Installed by
   /// `MenuBarController`, which owns the session; nil in previews and tests. The meeting chat calls it
@@ -92,6 +100,14 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   private let queue = DispatchQueue(label: "com.magnusgoedde.whispershortcut.liveMeetingStore", qos: .userInitiated)
 
   private init() {}
+
+  private func setPhase(_ p: MeetingPhase) {
+    if Thread.isMainThread {
+      phase = p
+    } else {
+      DispatchQueue.main.async { [weak self] in self?.phase = p }
+    }
+  }
 
   /// Generates a timestamp-based filename stem (e.g. "Meeting-2026-03-04-201119").
   /// Used as the meeting's unique ID for both transcript files and chat store scope.
@@ -115,8 +131,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.chunks = []
     self.liveNotes = []
     self.summary = ""
-    self.isSessionActive = true
-    self.isFinishing = false
+    self.phase = .recording
     DebugLogger.log("LIVE-MEETING-STORE: Session started, store cleared (stem: \(self.currentMeetingFilenameStem ?? "nil"))")
   }
 
@@ -125,8 +140,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// read `currentMeetingFilenameStem` immediately after).
   func resumeSession() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.resumeSession must be called on main thread")
-    self.isSessionActive = true
-    self.isFinishing = false
+    self.phase = .recording
     DebugLogger.log("LIVE-MEETING-STORE: Session resumed, data retained (stem: \(self.currentMeetingFilenameStem ?? "nil"), chunks: \(self.chunks.count))")
   }
 
@@ -198,27 +212,14 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// chunk. `isSessionActive` stays true — the meeting is not over yet — so the UI can say
   /// "finishing" instead of either lying about recording or claiming the meeting has ended.
   func beginFinishing() {
-    if Thread.isMainThread {
-      self.isFinishing = true
-    } else {
-      DispatchQueue.main.async { [weak self] in self?.isFinishing = true }
-    }
+    setPhase(.finishing)
     DebugLogger.log("LIVE-MEETING-STORE: Finishing (draining last chunk)")
   }
 
   /// Call when the meeting session ends. Keeps chunks, summary, and name so the meeting window can keep showing them.
   func endSession() {
-    if Thread.isMainThread {
-      self.isSessionActive = false
-      self.isFinishing = false
-      DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
-    } else {
-      DispatchQueue.main.async { [weak self] in
-        self?.isSessionActive = false
-        self?.isFinishing = false
-        DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
-      }
-    }
+    setPhase(.idle)
+    DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
   }
 
   /// Bridges the meeting chat to the running session's audio flush. No-op when nothing is recording.
@@ -237,8 +238,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.chunks = []
     self.liveNotes = []
     self.summary = ""
-    self.isSessionActive = false
-    self.isFinishing = false
+    self.phase = .idle
     self.currentMeetingFilenameStem = stem
     self.preferredMeetingName = nil
     DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
