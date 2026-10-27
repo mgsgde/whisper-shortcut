@@ -21,6 +21,25 @@ struct QuickActionStoreTests {
     #expect(actions[0].text == "Korrigiere")
   }
 
+  @Test("Only built-in defaults count as edit actions, not user prompts that match a keyword")
+  func onlyBuiltInDefaultsAreEdits() {
+    let custom = QuickActionStore.combined(
+      custom: ["Write a short reply", "Draft a todo list"], learned: [],
+      forceFallback: false, includeLearned: true)
+    #expect(custom.count == 2)
+    let customKeywordNonEdits = custom.allSatisfy { $0.kind != .other && !$0.isEdit }
+    #expect(customKeywordNonEdits)
+
+    let builtIn = QuickActionStore.ranked(from: [], forceFallback: true)
+    #expect(builtIn.map(\.text) == QuickActionStore.fallbackTexts)
+    let builtInAreEdits = builtIn.allSatisfy { $0.isEdit }
+    #expect(builtInAreEdits)
+
+    let bareVerb = QuickActionStore.combined(
+      custom: ["Korrigiere"], learned: [], forceFallback: false, includeLearned: true)
+    #expect(bareVerb.first?.isEdit == true)
+  }
+
   @Test("Display text keeps the most common original spelling")
   func displayUsesMostFrequentSpelling() {
     let actions = QuickActionStore.ranked(

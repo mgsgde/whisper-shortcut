@@ -389,7 +389,7 @@ private struct QuickActionCardView: View {
 
   /// Editing actions mean little without text to edit; they stay clickable but step back.
   private func isMuted(_ action: QuickAction) -> Bool {
-    isTyping || (context == .nothingSelected && action.kind != .other)
+    isTyping || (context == .nothingSelected && action.isEdit)
   }
 
   private func actionRow(index: Int, action: QuickAction) -> some View {

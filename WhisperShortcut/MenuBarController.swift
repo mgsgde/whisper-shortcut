@@ -838,7 +838,7 @@ class MenuBarController: NSObject {
     guard actions.indices.contains(index) else { return }
     runPromptInstruction(
       actions[index].text, source: "entry \(index + 1)",
-      isEdit: actions[index].kind != .other)
+      isEdit: actions[index].isEdit)
   }
 
   /// Shared by list entries and the "Type a prompt…" field: the text replaces the audio
