@@ -2478,9 +2478,9 @@ class SpeechService {
       throw TranscriptionError.invalidRequest
     }
 
-    // Same AAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
+    // Same FLAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
     // body is JSON with the audio base64'd inside it.
-    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, aacLabel: "m4a") { ext in
+    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, compressedLabel: "flac") { ext in
       Self.openRouterAudioFormat(forExtension: ext)
     }
 
@@ -2887,7 +2887,7 @@ class SpeechService {
 
     // Only validate format, not size: anything over the chunking threshold is split, and a
     // recording under it is far below Gemini's 20 MB inline limit (24 kHz mono 16-bit is
-    // 48 KB/s — 45 s is ~2 MB, and it ships as AAC anyway). There used to be a Files-API
+    // 48 KB/s — 45 s is ~2 MB, and it ships as FLAC anyway). There used to be a Files-API
     // branch for "≤45 s but >20 MB"; no audio the app records can reach it.
     try validateAudioFileFormat(at: audioURL)
 

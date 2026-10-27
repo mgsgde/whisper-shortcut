@@ -8,7 +8,7 @@ import Foundation
 /// (`makeIfEligible`). It consumes
 /// `ChunkedDictateRecorder`'s chunk callbacks and transcribes each rotated-out chunk
 /// immediately through the regular `SpeechService.transcribe` pipeline, which routes per
-/// provider and brings AAC transcoding (Gemini), retries, and SPEED logging for free.
+/// provider and brings FLAC transcoding (Gemini), retries, and SPEED logging for free.
 /// `finalTranscript()` joins the per-chunk transcripts in order.
 ///
 /// Streaming is an optimization, never a correctness dependency: if anything goes wrong —
