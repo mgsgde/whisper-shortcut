@@ -104,7 +104,7 @@ private let scorecardMinimumSample = 10
 extension SystemPromptSection {
   var scorecardDisplayName: String {
     switch self {
-    case .dictation: return "Dictation"
+    case .dictation: return String(localized: "Dictation")
     case .whisperGlossary: return String(localized: "Glossary")
     case .promptMode: return String(localized: "Dictate Prompt")
     case .chat: return String(localized: "Chat")
@@ -115,9 +115,9 @@ extension SystemPromptSection {
 
 private func scorecardSourceName(_ source: String) -> String {
   switch source {
-  case String(localized: "auto"): return String(localized: "Smart Improvement")
-  case String(localized: "voice-feedback"): return String(localized: "Spoken feedback")  // legacy history rows
-  case String(localized: "chat"): return String(localized: "Chat")
+  case "auto": return String(localized: "Smart Improvement")
+  case "voice-feedback": return String(localized: "Spoken feedback")  // legacy history rows
+  case "chat": return String(localized: "Chat")
   default: return source
   }
 }

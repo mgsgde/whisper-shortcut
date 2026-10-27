@@ -10,6 +10,12 @@
             "state" : "new",
             "value" : "WhisperShortcut"
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut"
+          }
         }
       },
       "shouldTranslate" : false
@@ -21,6 +27,12 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
+            "value" : "WhisperShortcut"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
             "value" : "WhisperShortcut"
           }
         }
@@ -35,6 +47,12 @@
             "state" : "translated",
             "value" : "This app needs keychain access to securely store your Google API key."
           }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese App braucht Zugriff auf den Schlüsselbund, um Ihre API-Schlüssel sicher zu speichern."
+          }
         }
       }
     },
@@ -45,6 +63,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "This app needs microphone access to record audio for transcription."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese App braucht Zugriff auf das Mikrofon, um Ihre Sprache für die Transkription aufzunehmen."
           }
         }
       }
