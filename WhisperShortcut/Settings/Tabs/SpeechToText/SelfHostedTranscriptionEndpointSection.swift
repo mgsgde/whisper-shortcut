@@ -86,8 +86,8 @@ struct SelfHostedTranscriptionEndpointSection: View {
             .foregroundColor(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isTokenVisible ? "Hide token" : "Show token")
-        .accessibilityLabel(isTokenVisible ? "Hide token" : "Show token")
+        .help(isTokenVisible ? ("Hide token" as LocalizedStringKey) : "Show token")
+        .accessibilityLabel(isTokenVisible ? ("Hide token" as LocalizedStringKey) : "Show token")
 
         Spacer()
       }
@@ -143,8 +143,8 @@ struct SelfHostedTranscriptionEndpointSection: View {
               .foregroundColor(.secondary)
           }
           .buttonStyle(.plain)
-          .help(header.isValueVisible ? "Hide value" : "Show value")
-          .accessibilityLabel(header.isValueVisible ? "Hide value" : "Show value")
+          .help(header.isValueVisible ? ("Hide value" as LocalizedStringKey) : "Show value")
+          .accessibilityLabel(header.isValueVisible ? ("Hide value" as LocalizedStringKey) : "Show value")
 
           Button(action: { removeHeader(id: header.id) }) {
             Image(systemName: "minus.circle")

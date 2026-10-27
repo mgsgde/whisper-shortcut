@@ -52,10 +52,10 @@ moderate price — not the top of the ladder. Name this reasoning in every lineu
 
 Domination is an **AND across all axes** — quality, speed, price (input *and* output rates), context window. A model is dominated only when a sibling wins or ties on all of them and wins on at least one. Consequences that are easy to get wrong:
 
-- **A higher version number is NOT domination.** Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite ($1.50 vs $2.50 per 1M) and 3.5 Flash-Lite is cheaper on *audio* input — they cross, so both stay. Google positions 3.5 Flash as "most intelligent" while 3.6 Flash is cheaper on output — they cross too.
+- **A higher version number is NOT domination.** Gemini 3.1 Flash-Lite has a 40% cheaper output rate than 3.5 Flash-Lite ($1.50 vs $2.50 per 1M) and 3.5 Flash-Lite is cheaper on *audio* input — they cross, so both stay.
 - **A price ladder is not redundancy.** Flagship / mid / mini tiers of one generation are all frontier points. Deleting the cheap tiers leaves single-key users of that provider with only the most expensive option — the opposite of what the rule is for.
-- **Same price + newer generation IS domination.** This is the pattern that actually justifies pruning: gpt-5.6-sol is priced exactly like gpt-5.5 ($5/$30) and gpt-5.6-terra exactly like gpt-5.4 ($2.50/$15), so 5.5 and 5.4 are dominated. Likewise grok-4.20-* cost exactly what grok-4.3 costs at the same 1M context.
-- **A model missing from our lineup is also a violation** — a frontier point we simply never added (grok-4.5, claude-fable-5, the gpt-5.6 family were all found this way).
+- **Same price + newer generation IS domination.** This is the pattern that actually justifies pruning: gpt-5.6-sol is priced exactly like gpt-5.5 ($5/$30) and gpt-5.6-terra exactly like gpt-5.4 ($2.50/$15), so 5.5 and 5.4 are dominated. Likewise grok-4.20-* cost exactly what grok-4.3 costs at the same 1M context. (as of 2026-09; illustrative)
+- **A model missing from our lineup is also a violation** — a frontier point we simply never added (grok-4.5, claude-fable-5, the gpt-5.6 family were all found this way). (as of 2026-09; illustrative)
 
 Mechanically: set `chatReplacement` on the dominated case in `PromptModel` (SettingsConfiguration.swift). That one property removes it from every chat-facing list — chat-window picker, Settings → Chat, meeting summary, Smart Improvement — and forwards persisted selections to the replacement, same provider. Keep the enum case if a non-chat role still uses it (Dictate Prompt audio, `speakerConsolidationModel`); delete it only when nothing references it.
 
@@ -130,11 +130,11 @@ This is the canonical Gemini reference for the repo, covering chat, transcriptio
 - **Models overview** (IDs, GA vs Preview, capabilities): <https://ai.google.dev/gemini-api/docs/models>
 - **Deprecations / shutdown schedule**: <https://ai.google.dev/gemini-api/docs/deprecations>
 - **API reference**: <https://ai.google.dev/api/models>
-- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-3.1-flash-tts-preview` style IDs live here.
+- **Speech generation (TTS)**: <https://ai.google.dev/gemini-api/docs/speech-generation> — the TTS voice catalogue and the `gemini-3.8-flash-tts` style IDs live here.
 - **Programmatic model list**: `GET https://generativelanguage.googleapis.com/v1beta/models` — verify IDs/capabilities at runtime when docs feel ambiguous.
 - **Forum** (deprecation notices, outages): <https://discuss.ai.google.dev/c/gemini-api/4>
 
-Pick stable/GA IDs over dated preview IDs (e.g. prefer `gemini-3.5-flash` over a dated `gemini-3.5-flash-preview-*` variant) when both are listed. Endpoints in code: `TranscriptionModel.apiEndpoint`, `TTSModel.apiEndpoint`; base is `https://generativelanguage.googleapis.com/v1beta/models/{model-id}:generateContent`.
+Pick stable/GA IDs over dated preview IDs (e.g. prefer `gemini-3.8-flash` over a dated `gemini-3.8-flash-preview-*` variant) when both are listed. Endpoints in code: `TranscriptionModel.apiEndpoint`, `TTSModel.apiEndpoint`; base is `https://generativelanguage.googleapis.com/v1beta/models/{model-id}:generateContent`.
 
 The app uses the **Gemini API** (`generativelanguage.googleapis.com`), **not** Vertex AI — when reading Google docs, make sure you're on the `ai.google.dev` site, not `cloud.google.com/vertex-ai`. Cloud Text-to-Speech (`cloud.google.com/text-to-speech/docs/gemini-tts`) documents the same/similar TTS models for Cloud/Vertex; use it only as a cross-check.
 
@@ -179,7 +179,7 @@ Verify by hand before changing them:
 curl -s -o /dev/null -w '%{http_code}\n' https://api.anthropic.com/v1/messages \
   -H "x-api-key: $ANTHROPIC_API_KEY" -H 'anthropic-version: 2023-06-01' \
   -H 'content-type: application/json' \
-  -d '{"model":"claude-sonnet-5","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-5-5","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}' # (use the raw value from `PromptModel`)
 ```
 
 ### OpenRouter (chat + transcription proxy)

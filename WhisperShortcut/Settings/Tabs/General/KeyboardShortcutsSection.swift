@@ -23,15 +23,18 @@ struct KeyboardShortcutsSection: View {
         subtitle: "Global shortcuts — they work from any app. Press a shortcut once to start, again to stop."
       )
 
-      row("Dictate:", $viewModel.data.toggleDictation, .toggleDictation)
-      row("Dictate Prompt:", $viewModel.data.togglePrompting, .togglePrompting)
-      row("Screenshot:", $viewModel.data.screenshotCapture, .screenshotCapture)
+      // Labels keep the trailing colon, and Chat/Settings keep the "Open " the form has
+      // always used. The binding is a `SettingsData` field, not the `ShortcutConfig` key path.
+      row("\(ShortcutAction.dictate.title):", $viewModel.data.toggleDictation, .toggleDictation)
+      row("\(ShortcutAction.dictatePrompt.title):", $viewModel.data.togglePrompting, .togglePrompting)
+      row("\(ShortcutAction.screenshot.title):", $viewModel.data.screenshotCapture, .screenshotCapture)
 
       // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
-      #if !APP_STORE
-      row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
-      #endif
+      if ShortcutAction.readAloud.isInThisBuild {
+        row("\(ShortcutAction.readAloud.title):", $viewModel.data.readAloud, .readAloudShortcut)
+      }
 
+      // Glossary is not a `ShortcutAction` (see that enum). Same App Store exclusion as Read Aloud.
       #if !APP_STORE
       row("Add to Glossary:", $viewModel.data.addToGlossary, .addToGlossaryShortcut)
       #endif
@@ -46,7 +49,7 @@ struct KeyboardShortcutsSection: View {
   }
 
   private func row(
-    _ label: String, _ shortcut: Binding<ShortcutDefinition?>, _ field: SettingsFocusField
+    _ label: LocalizedStringKey, _ shortcut: Binding<ShortcutDefinition?>, _ field: SettingsFocusField
   ) -> some View {
     ShortcutRecorderRow(
       label: label,
@@ -95,7 +98,7 @@ struct KeyboardShortcutsSection: View {
 /// One line at the bottom of a feature tab (or inside the section the shortcut belongs to):
 /// the current binding, and a way to the one place it is edited.
 struct ShortcutHintRow: View {
-  let label: String
+  let label: LocalizedStringKey
   let shortcut: ShortcutDefinition?
 
   var body: some View {

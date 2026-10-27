@@ -76,8 +76,8 @@ struct ScreenshotSettingsTab: View {
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
-    panel.prompt = "Choose"
-    panel.message = "Choose a folder to save screenshots into"
+    panel.prompt = String(localized: "Choose")
+    panel.message = String(localized: "Choose a folder to save screenshots into")
     guard panel.runModal() == .OK, let url = panel.url else { return }
     if ScreenshotSaveLocation.setFolder(url) {
       viewModel.data.screenshotSaveFolderDisplayPath = url.path

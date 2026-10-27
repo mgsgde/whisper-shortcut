@@ -50,22 +50,22 @@ enum ChatGPTPlanSignInError: LocalizedError, Equatable {
 
   var errorDescription: String? {
     switch self {
-    case .invalidURL: return "Failed to build the ChatGPT sign-in URL."
-    case .authorizationInProgress: return "A ChatGPT sign-in is already in progress."
-    case .authorizationStartFailed: return "Failed to open the ChatGPT sign-in window."
-    case .noCallbackURL: return "ChatGPT did not return a callback."
+    case .invalidURL: return String(localized: "Failed to build the ChatGPT sign-in URL.")
+    case .authorizationInProgress: return String(localized: "A ChatGPT sign-in is already in progress.")
+    case .authorizationStartFailed: return String(localized: "Failed to open the ChatGPT sign-in window.")
+    case .noCallbackURL: return String(localized: "ChatGPT did not return a callback.")
     case .stateMismatch:
-      return "ChatGPT sign-in was refused because the callback did not match this attempt. Try again."
-    case .noAuthorizationCode: return "No authorization code in ChatGPT's callback."
+      return String(localized: "ChatGPT sign-in was refused because the callback did not match this attempt. Try again.")
+    case .noAuthorizationCode: return String(localized: "No authorization code in ChatGPT's callback.")
     case .registrationIncomplete:
-      return "ChatGPT did not finish registering WhisperShortcut. Try signing in again."
+      return String(localized: "ChatGPT did not finish registering WhisperShortcut. Try signing in again.")
     case .clientIDMismatch:
-      return "ChatGPT answered for a different registration than the saved one. Sign-in was refused."
-    case .oauthError(let message): return "ChatGPT sign-in failed: \(message)"
-    case .tokenExchangeFailed(let message): return "ChatGPT rejected the sign-in: \(message)"
-    case .invalidResponse: return "Invalid response from ChatGPT."
-    case .missingIDToken: return "ChatGPT's response contained no ID token."
-    case .keychainWriteFailed: return "Could not save your ChatGPT sign-in to the Keychain."
+      return String(localized: "ChatGPT answered for a different registration than the saved one. Sign-in was refused.")
+    case .oauthError(let message): return String(localized: "ChatGPT sign-in failed: \(message)")
+    case .tokenExchangeFailed(let message): return String(localized: "ChatGPT rejected the sign-in: \(message)")
+    case .invalidResponse: return String(localized: "Invalid response from ChatGPT.")
+    case .missingIDToken: return String(localized: "ChatGPT's response contained no ID token.")
+    case .keychainWriteFailed: return String(localized: "Could not save your ChatGPT sign-in to the Keychain.")
     }
   }
 }
@@ -312,12 +312,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
 
   // MARK: - PKCE
 
-  private static func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return base64URLEncode(Data(bytes))
-  }
-
   private static func codeChallengeS256(verifier: String) -> String {
     base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
   }
@@ -351,7 +345,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
       return signedIn
     } catch {
       lastError = error.localizedDescription
-      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.localizedDescription)")
+      DebugLogger.logError("CHATGPT-PLAN: Sign-in failed: \(error.logDescription)")
       throw error
     }
   }
@@ -360,7 +354,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     let saved = useDifferentAccount ? nil : store.load()
     let hostID = saved?.extAgentHostID.isEmpty == false ? saved!.extAgentHostID : ChatGPTPlanCredentials.hostID(defaults: defaults)
 
-    let verifier = Self.generateCodeVerifier()
+    let verifier = OAuthCSRF.makeState()
     let challenge = Self.codeChallengeS256(verifier: verifier)
     let state = OAuthCSRF.makeState()
     let nonce = OAuthCSRF.makeState()
@@ -670,10 +664,18 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     return json
   }
 
+  /// True only for genuine `openai.com` hosts over HTTPS — exactly `openai.com` or any subdomain
+  /// ending in `.openai.com`. A plain `hasSuffix("openai.com")` check also accepts look-alike
+  /// hosts such as `evilopenai.com`, so every discovery-document URL must go through this.
+  static func isOpenAIHost(_ url: URL) -> Bool {
+    guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
+    return host == "openai.com" || host.hasSuffix(".openai.com")
+  }
+
   private func revocationEndpoint() async throws -> URL {
     let document = try await discoveryDocument()
     guard let text = document["revocation_endpoint"] as? String, let url = URL(string: text),
-      url.scheme == "https", url.host?.hasSuffix("openai.com") == true
+      Self.isOpenAIHost(url)
     else { throw ChatGPTPlanSignInError.invalidResponse }
     return url
   }
@@ -682,7 +684,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     if !reload, let cachedKeys { return cachedKeys }
     let uri = (try? await discoveryDocument())?["jwks_uri"] as? String
     let url = uri.flatMap(URL.init(string:)) ?? ChatGPTPlanOAuthConfig.fallbackJWKSURL
-    guard url.scheme == "https", url.host?.hasSuffix("openai.com") == true else {
+    guard Self.isOpenAIHost(url) else {
       throw ChatGPTPlanIDTokenValidator.ValidationError.jwksUnavailable
     }
     var request = URLRequest(url: url)

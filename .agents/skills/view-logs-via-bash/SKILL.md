@@ -18,7 +18,7 @@ bash scripts/logs.sh [options]
 | Filter by text | `bash scripts/logs.sh -f 'PROMPT-MODE'` or `-f 'Error'` |
 | Last hour | `bash scripts/logs.sh -t 1h` |
 
-When debugging, check logs first (`-t 5m` / `-t 2m`) and use `-f` to filter by mode or errors (`PROMPT-MODE`, `Speech-to-Text`, `Error`).
+When debugging, check logs first (`-t 5m` / `-t 2m`) and use `-f` to filter by mode or errors (`PROMPT-MODE`, `TRANSCRIPTION`, `Error`).
 
 ## Two gotchas that will silently mislead you
 

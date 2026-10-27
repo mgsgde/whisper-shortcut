@@ -31,9 +31,9 @@ enum FeedbackLinks {
 
     var helpText: String {
       switch self {
-      case .whatsApp: return "Message the developer on WhatsApp"
-      case .email: return "Email the developer"
-      case .gitHub: return "Open a GitHub issue"
+      case .whatsApp: return String(localized: "Message the developer on WhatsApp")
+      case .email: return String(localized: "Email the developer")
+      case .gitHub: return String(localized: "Open a GitHub issue")
       }
     }
   }

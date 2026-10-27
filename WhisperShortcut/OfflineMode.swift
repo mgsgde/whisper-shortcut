@@ -21,24 +21,35 @@ enum OfflineMode {
     UserDefaults.standard.bool(forKey: UserDefaultsKeys.offlineModeEnabled)
   }
 
+  /// Writes the flag alone. Tests flip the mode with this so they do not reconcile selections
+  /// or wipe Dictate Prompt history; `switchTo` is what the UI calls.
   static func setEnabled(_ enabled: Bool) {
     UserDefaults.standard.set(enabled, forKey: UserDefaultsKeys.offlineModeEnabled)
   }
 
+  /// Turns Offline Mode on or off and applies the side effects each switch used to spell out
+  /// itself: move model selections, then drop Dictate Prompt history.
+  ///
+  /// Privacy settings and the onboarding toggle both did that. Choosing Cloud during onboarding
+  /// reconciled and left the history, so an earlier prompt turn survived the switch.
+  @MainActor
+  static func switchTo(_ enabled: Bool, reason: String) {
+    setEnabled(enabled)
+    ModelSelectionReconciler.reconcileAll()
+    PromptConversationHistory.shared.clearAll()
+    DebugLogger.log("OFFLINE-MODE: \(enabled ? "enabled" : "disabled") (\(reason))")
+  }
+
   /// Message shown when a request was stopped because Offline Mode is on.
   static func blockedMessage(for url: URL?) -> String {
-    let host = url?.host ?? "a remote server"
-    return
-      "Offline Mode is on, so nothing may leave this Mac — the request to \(host) was blocked. "
-      + "Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions."
+    let host = url?.host ?? String(localized: "a remote server")
+    return String(localized: "Offline Mode is on, so nothing may leave this Mac — the request to \(host) was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions.")
   }
 
   /// Read Aloud–specific copy. Cloud TTS is blocked while Offline Mode is on; the on-device
   /// macOS voice is the replacement (see `TTSModel.systemMacOS`).
   static var blockedMessageForReadAloud: String {
-    "Offline Mode is on, so cloud Read Aloud voices cannot be used. "
-      + "Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off "
-      + "in Settings → Privacy & Permissions."
+    String(localized: "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions.")
   }
 
   // MARK: - What counts as "does not leave this Mac"

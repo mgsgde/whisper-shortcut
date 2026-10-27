@@ -135,7 +135,8 @@ final class MCPServer: ObservableObject {
       let dispatcher = MCPDispatcher(
         meetingTools: MCPMeetingTools(
           meetingsDirectory: Self.meetingsDirectory(),
-          liveStem: { [weak self] in self?.currentLiveStem() }),
+          liveStem: { [weak self] in self?.currentLiveStem() },
+          meetingTitles: { Self.meetingTitlesFromSessions() }),
         configTools: MCPConfigTools(env: .live))
       let requested = port
       do {
@@ -223,6 +224,24 @@ final class MCPServer: ObservableObject {
   private func currentLiveStem() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     return liveActive ? liveStem : nil
+  }
+
+  /// Session titles by meeting stem; ChatSessionStore is @MainActor but requests arrive off-main, so hop to main.
+  private static func meetingTitlesFromSessions() -> [String: String] {
+    func build() -> [String: String] {
+      MainActor.assumeIsolated {
+        var map: [String: String] = [:]
+        // allSessions() is newest first, so the first title per stem wins.
+        for s in ChatSessionStore.shared.allSessions() {
+          guard let stem = s.meetingStem, map[stem] == nil else { continue }
+          let t = (s.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+          if !t.isEmpty { map[stem] = t }
+        }
+        return map
+      }
+    }
+    if Thread.isMainThread { return build() }
+    return DispatchQueue.main.sync { build() }
   }
 
   static func meetingsDirectory() -> URL {

@@ -125,7 +125,7 @@ struct MeetingsInAIAppsSection: View {
           .disabled(!contextLoggingEnabled)
           .padding(.top, 4)
         Text(contextLoggingEnabled
-          ? "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days."
+          ? ("So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days." as LocalizedStringKey)
           : "Needs \"Save usage data\" in Smart Improvement. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations.")
           .font(.caption)
           .foregroundColor(.secondary)
@@ -137,19 +137,19 @@ struct MeetingsInAIAppsSection: View {
   private var accessCaption: String {
     switch accessLevel {
     case .read:
-      return "AI apps can read meetings and your setup, never change anything."
+      return String(localized: "AI apps can read meetings and your setup, never change anything.")
     case .propose:
-      return "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access."
+      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access.")
     case .apply:
-      return "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access."
+      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access.")
     }
   }
 
   private var privacyNote: String {
     let what = accessLevel == .read
-      ? "AI apps can read transcripts, notes, summaries and your setup, never change or delete them."
-      : "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared."
-    return what + " Only apps set up with your access key get in, and nothing is reachable from other devices. What you read in an AI app is sent to that app's provider."
+      ? String(localized: "AI apps can read transcripts, notes, summaries and your setup, never change or delete them.")
+      : String(localized: "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared.")
+    return what + " " + String(localized: "Only apps set up with your access key get in, and nothing is reachable from other devices. What you read in an AI app is sent to that app's provider.")
   }
 
   // MARK: - Proposals and changes
@@ -225,7 +225,7 @@ struct MeetingsInAIAppsSection: View {
           }
         }
         if all.count > Self.visibleChanges {
-          Button(showAllChanges ? "Show fewer" : "Show all \(all.count)") { showAllChanges.toggle() }
+          Button(showAllChanges ? ("Show fewer" as LocalizedStringKey) : "Show all \(all.count)") { showAllChanges.toggle() }
             .buttonStyle(.link)
             .font(.caption)
         }
@@ -246,13 +246,14 @@ struct MeetingsInAIAppsSection: View {
     case .undone:
       undoMessage = nil
     case .conflict:
-      undoMessage = "\(MCPProposalWindows.title(for: change)) was changed again after this, so it was left as it is. Edit it in Settings instead."
+      undoMessage = String(localized: "\(MCPProposalWindows.title(for: change)) was changed again after this, so it was left as it is. Edit it in Settings instead.")
     case .notFound:
-      undoMessage = "This change is no longer on record."
+      undoMessage = String(localized: "This change is no longer on record.")
     case .failed(let message):
-      undoMessage = "Couldn't undo: \(message)"
+      undoMessage = String(localized: "Couldn't undo: \(message)")
     case .undonePartial(let skipped):
-      undoMessage = "Restored, except: \(skipped.joined(separator: ", ")) — no longer valid."
+      let list = skipped.joined(separator: ", ")
+      undoMessage = String(localized: "Restored, except: \(list). They are no longer valid.")
     }
   }
 
@@ -274,7 +275,7 @@ struct MeetingsInAIAppsSection: View {
           .fixedSize(horizontal: false, vertical: true)
       case .stopped:
         Image(systemName: "circle").foregroundColor(.secondary).font(.system(size: 8))
-        Text(server.isEnabled ? "Starting…" : "Off")
+        Text(server.isEnabled ? ("Starting…" as LocalizedStringKey) : "Off")
           .font(.callout)
           .foregroundColor(.secondary)
       }
@@ -283,7 +284,7 @@ struct MeetingsInAIAppsSection: View {
 
   // MARK: - Setup cards
 
-  private func setupCard(id: String, title: String, instruction: String, code: String) -> some View {
+  private func setupCard(id: String, title: LocalizedStringKey, instruction: LocalizedStringKey, code: String) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
         Text(title)
@@ -293,7 +294,7 @@ struct MeetingsInAIAppsSection: View {
         Button {
           copy(code, id: id)
         } label: {
-          Label(copiedItem == id ? "Copied" : "Copy", systemImage: copiedItem == id ? "checkmark" : "doc.on.doc")
+          Label(copiedItem == id ? ("Copied" as LocalizedStringKey) : "Copy", systemImage: copiedItem == id ? "checkmark" : "doc.on.doc")
         }
         .controlSize(.small)
       }

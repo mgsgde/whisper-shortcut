@@ -6,6 +6,17 @@ struct MCPMeetingTools {
   let meetingsDirectory: URL
   /// Filename stem of the meeting being recorded right now, nil if none.
   let liveStem: () -> String?
+  /// Meeting titles from the chat sessions, keyed by meeting stem. Empty if unavailable.
+  let meetingTitles: () -> [String: String]
+
+  init(
+    meetingsDirectory: URL, liveStem: @escaping () -> String?,
+    meetingTitles: @escaping () -> [String: String] = { [:] }
+  ) {
+    self.meetingsDirectory = meetingsDirectory
+    self.liveStem = liveStem
+    self.meetingTitles = meetingTitles
+  }
 
   static let maxResultCharacters = 60_000
 
@@ -19,7 +30,9 @@ struct MCPMeetingTools {
       "name": "get_live_transcript",
       "description":
         "Returns the transcript of the meeting that is being recorded right now in WhisperShortcut. "
-        + "During a live meeting, call this before answering any question about the meeting, passing next_since from your previous call to get only what is new. Omit since on the first call.",
+        + "While a meeting is live, call this before every reply, not only for questions that sound like they are about the meeting, "
+        + "passing next_since from your previous call to get only what is new. Omit since on the first call. "
+        + "Once it reports that no meeting is being recorded, stop calling it.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -233,9 +246,9 @@ struct MCPMeetingTools {
 
     guard let stem = liveStem(), let all = chunks(for: stem) else {
       if let latest = allMeetings().first {
-        return ("No meeting is being recorded right now. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
+        return ("No meeting is being recorded right now; stop calling get_live_transcript. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
       }
-      return ("No meeting is being recorded right now, and there are no saved meetings.", false)
+      return ("No meeting is being recorded right now; stop calling get_live_transcript. There are no saved meetings.", false)
     }
 
     let elapsed = all.last.map { Self.format($0.startTime) } ?? "00:00"
@@ -278,6 +291,7 @@ struct MCPMeetingTools {
   private func listMeetings(_ arguments: [String: Any]) -> (text: String, isError: Bool) {
     let limit = intArg(arguments, "limit", default: 20, max: 200)
     let live = liveStem()
+    let sessionTitles = meetingTitles()
     let meetings = allMeetings()
     if meetings.isEmpty { return ("No meetings found.", false) }
     let fm = FileManager.default
@@ -285,7 +299,9 @@ struct MCPMeetingTools {
       let duration = chunks(for: m.id)?.last.map { Self.format($0.startTime) } ?? "00:00"
       let notes = fm.fileExists(atPath: url(m.id, ext: "notes.md").path)
       let summary = fm.fileExists(atPath: url(m.id, ext: "summary.md").path)
-      return "- id: \(m.id) | date: \(m.date) | title: \(m.title ?? "-") | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
+      let sessionTitle = sessionTitles[m.id]?.trimmingCharacters(in: .whitespacesAndNewlines)
+      let title = (sessionTitle?.isEmpty == false ? sessionTitle : nil) ?? m.title ?? "-"
+      return "- id: \(m.id) | date: \(m.date) | title: \(title) | duration: \(duration) | has_notes: \(notes) | has_summary: \(summary) | is_live: \(m.id == live)"
     }
     var out = lines.joined(separator: "\n")
     if meetings.count > limit { out += "\n\n(\(meetings.count - limit) older meetings not shown; raise limit.)" }

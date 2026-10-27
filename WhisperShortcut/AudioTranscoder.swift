@@ -1,36 +1,34 @@
 import AVFoundation
 import Foundation
 
-/// Transcodes recorded PCM WAV audio to AAC for cloud upload. Recording stays uncompressed
-/// WAV (local Whisper, AudioChunker, and Smart Improvement audio verification all expect
-/// PCM); only the bytes sent over the network are compressed. A 24 kHz mono 16-bit WAV
-/// shrinks roughly 10× (48 KB/s → ~4 KB/s at 32 kbps AAC), cutting upload time accordingly.
+/// Transcodes recorded PCM WAV audio to lossless FLAC for cloud upload. Recording stays
+/// uncompressed WAV (local Whisper, AudioChunker, and Smart Improvement audio verification
+/// all expect PCM); only the bytes sent over the network are compressed. A 24 kHz mono
+/// 16-bit WAV shrinks to roughly half its size as FLAC.
+/// AAC 32 kbps was used until 2026-10 and was dropped because an A/B test on real
+/// dictations showed it changed words on Gemini (WAV vs FLAC was word-identical).
 enum AudioTranscoder {
 
-  /// MIME type for the transcoded payload. Gemini accepts the m4a container under
-  /// `audio/aac` (verified against the live API).
-  static let aacMimeType = "audio/aac"
+  /// MIME type for the transcoded payload.
+  static let flacMimeType = "audio/flac"
 
-  /// 32 kbps is transparent for mono speech and keeps a 45s chunk under ~200 KB.
-  private static let aacBitRate = 32_000
-
-  /// Returns the audio at `sourceURL` re-encoded as AAC (m4a) bytes for inline upload,
+  /// Returns the audio at `sourceURL` re-encoded as FLAC bytes for inline upload,
   /// or nil when the source isn't WAV or transcoding fails — callers then upload the
   /// original bytes unchanged.
-  static func aacData(for sourceURL: URL) -> Data? {
+  static func flacData(for sourceURL: URL) -> Data? {
     guard sourceURL.pathExtension.lowercased() == "wav" else { return nil }
     let startTime = CFAbsoluteTimeGetCurrent()
     let outputURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("upload_\(UUID().uuidString).m4a")
+      .appendingPathComponent("upload_\(UUID().uuidString).flac")
     defer { try? FileManager.default.removeItem(at: outputURL) }
 
     do {
       let source = try AVAudioFile(forReading: sourceURL)
       let settings: [String: Any] = [
-        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+        AVFormatIDKey: Int(kAudioFormatFLAC),
         AVSampleRateKey: source.fileFormat.sampleRate,
         AVNumberOfChannelsKey: 1,
-        AVEncoderBitRateKey: aacBitRate,
+        AVLinearPCMBitDepthKey: 16,
       ]
       let output = try AVAudioFile(
         forWriting: outputURL,
@@ -42,7 +40,7 @@ enum AudioTranscoder {
         let buffer = AVAudioPCMBuffer(
           pcmFormat: source.processingFormat, frameCapacity: 65_536)
       else {
-        DebugLogger.logWarning("AUDIO: AAC transcode failed — could not allocate PCM buffer")
+        DebugLogger.logWarning("AUDIO: FLAC transcode failed — could not allocate PCM buffer")
         return nil
       }
       while source.framePosition < source.length {
@@ -57,34 +55,34 @@ enum AudioTranscoder {
 
       let data = try Data(contentsOf: outputURL)
       guard !data.isEmpty else {
-        DebugLogger.logWarning("AUDIO: AAC transcode produced empty file, uploading original WAV")
+        DebugLogger.logWarning("AUDIO: FLAC transcode produced empty file, uploading original WAV")
         return nil
       }
       let sourceSize =
         (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? Int64) ?? 0
       let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
       DebugLogger.logSpeech(
-        "SPEED: AAC transcode \(sourceSize) → \(data.count) bytes in \(String(format: "%.0f", elapsedMs))ms"
+        "SPEED: FLAC transcode \(sourceSize) → \(data.count) bytes in \(String(format: "%.0f", elapsedMs))ms"
       )
       return data
     } catch {
       DebugLogger.logWarning(
-        "AUDIO: AAC transcode failed, uploading original WAV — \(error.localizedDescription)")
+        "AUDIO: FLAC transcode failed, uploading original WAV — \(error.localizedDescription)")
       return nil
     }
   }
 
-  /// AAC bytes labelled `aacLabel` when transcoding succeeds, otherwise the file's own
+  /// FLAC bytes labelled `compressedLabel` when transcoding succeeds, otherwise the file's own
   /// bytes labelled by `mimeForExtension` of the lowercased path extension.
-  /// Gemini passes `aacMimeType` (the default) and its MIME table; OpenRouter passes
-  /// `"m4a"` and `openRouterAudioFormat` — those vocabularies stay separate.
+  /// Gemini passes `flacMimeType` (the default) and its MIME table; OpenRouter passes
+  /// `"flac"` and `openRouterAudioFormat` — those vocabularies stay separate.
   static func payload(
     for url: URL,
-    aacLabel: String = aacMimeType,
+    compressedLabel: String = flacMimeType,
     mimeForExtension: (String) -> String
   ) throws -> (data: Data, mime: String) {
-    if let aacData = aacData(for: url) {
-      return (aacData, aacLabel)
+    if let flacData = flacData(for: url) {
+      return (flacData, compressedLabel)
     }
     let data = try Data(contentsOf: url)
     return (data, mimeForExtension(url.pathExtension.lowercased()))

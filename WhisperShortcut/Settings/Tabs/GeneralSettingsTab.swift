@@ -17,6 +17,10 @@ struct GeneralSettingsTab: View {
 
       SpacedSectionDivider()
 
+      LanguageSection()
+
+      SpacedSectionDivider()
+
       PopupNotificationsSection(viewModel: viewModel, includePlacement: false)
 
       SpacedSectionDivider()

@@ -41,10 +41,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       styleMask: [.titled, .closable, .resizable, .miniaturizable],
       backing: .buffered, defer: false)
     if proposal.kind == .problemReport {
-      window.title = "Problem Report from an AI App"
+      window.title = String(localized: "Problem Report from an AI App")
       window.setContentSize(NSSize(width: 720, height: 640))
       window.contentView = NSHostingView(rootView: ProblemReportReviewView(
-        title: proposal.title ?? "Problem report",
+        title: proposal.title ?? String(localized: "Problem report"),
         report: proposal.proposedContent ?? "",
         onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
         onDiscard: { [weak self] in self?.decline(id) }))
@@ -56,7 +56,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         onAccept: { [weak self] in self?.acceptSettings(id) },
         onCancel: { [weak self] in self?.decline(id) }))
     } else {
-      window.title = "Suggested by an AI app"
+      window.title = String(localized: "Suggested by an AI app")
       window.contentView = NSHostingView(rootView: reviewView(for: proposal))
     }
     window.isReleasedWhenClosed = false
@@ -76,7 +76,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       section: proposal.section.flatMap(SystemPromptSection.init(rawValue:)),
       titlePrefix: "Suggested by an AI app",
       cancelTitle: "Decline",
-      acceptTitle: proposal.kind == .deleteCommand ? "Delete Command" : "Accept",
+      acceptTitle: proposal.kind == .deleteCommand ? ("Delete Command" as LocalizedStringResource) : "Accept",
       textNoun: Self.noun(for: proposal),
       allowsEditing: proposal.kind != .deleteCommand,
       acceptOnReturn: false,
@@ -118,7 +118,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       windows[id]?.close()
     case .failure(let error):
       let alert = NSAlert()
-      alert.messageText = "Couldn't apply the change"
+      alert.messageText = String(localized: "Couldn't apply the change")
       alert.informativeText = error.localizedDescription
       alert.runModal()
     }
@@ -133,8 +133,8 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     }
     guard NSWorkspace.shared.open(url) else {
       let alert = NSAlert()
-      alert.messageText = "Couldn't open your browser"
-      alert.informativeText = "The report is still here. Try again, or copy the text into a new issue on GitHub."
+      alert.messageText = String(localized: "Couldn't open your browser")
+      alert.informativeText = String(localized: "The report is still here. Try again, or copy the text into a new issue on GitHub.")
       alert.runModal()
       return
     }
@@ -187,35 +187,36 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   static func rationale(for proposal: MCPProposal) -> String {
     guard proposal.kind == .saveCommand else { return proposal.rationale }
     var details: [String] = []
-    if let scope = proposal.commandScope, !scope.isEmpty { details.append("Appears in: \(scope)") }
-    if let label = proposal.commandLabel, !label.isEmpty { details.append("Button: \(label)") }
+    if let scope = proposal.commandScope, !scope.isEmpty { details.append(String(localized: "Appears in: \(scope)")) }
+    if let label = proposal.commandLabel, !label.isEmpty { details.append(String(localized: "Button: \(label)")) }
     if let description = proposal.commandDescription, !description.isEmpty {
-      details.append("Description: \(description)")
+      details.append(String(localized: "Description: \(description)"))
     }
     guard !details.isEmpty else { return proposal.rationale }
     return proposal.rationale + "\n\n" + details.joined(separator: "\n")
   }
 
-  static func noun(for proposal: MCPProposal) -> String {
+  static func noun(for proposal: MCPProposal) -> ReviewNoun {
     switch proposal.kind {
-    case .systemPrompt: return "instructions"
-    case .writingStyle: return "profile"
-    case .saveCommand, .deleteCommand: return "command"
-    case .problemReport: return "report"
-    case .settings: return "settings"
+    case .systemPrompt: return .instructions
+    case .writingStyle: return .profile
+    case .saveCommand, .deleteCommand: return .command
+    case .problemReport: return .report
+    case .settings: return .settings
     }
   }
 
   static func title(for proposal: MCPProposal) -> String {
     switch proposal.kind {
     case .systemPrompt:
-      return proposal.section.flatMap(SystemPromptSection.init(rawValue:)).map(displayName) ?? "Instructions"
-    case .writingStyle: return "Writing style profile"
+      return proposal.section.flatMap(SystemPromptSection.init(rawValue:)).map(displayName) ?? String(localized: "Instructions")
+    case .writingStyle: return String(localized: "Writing style profile")
     case .saveCommand:
       return proposal.previousContent == nil
-        ? "New command /\(proposal.commandName ?? "")" : "Command /\(proposal.commandName ?? "")"
-    case .deleteCommand: return "Delete command /\(proposal.commandName ?? "")"
-    case .problemReport: return "Problem report: \(proposal.title ?? "untitled")"
+        ? String(localized: "New command /\(proposal.commandName ?? "")") : String(localized: "Command /\(proposal.commandName ?? "")")
+    case .deleteCommand: return String(localized: "Delete command /\(proposal.commandName ?? "")")
+    case .problemReport: let reportTitle = proposal.title ?? String(localized: "untitled")
+      return String(localized: "Problem report: \(reportTitle)")
     case .settings: return settingsSummary(proposal.settingsChanges ?? [])
     }
   }
@@ -224,10 +225,10 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   /// GPT Transcribe → Gemini Flash"), else the first two titles and how many more.
   static func settingsSummary(_ items: [MCPSettingsChangeItem]) -> String {
     switch items.count {
-    case 0: return "Settings"
+    case 0: return String(localized: "Settings")
     case 1: return "\(items[0].title): \(items[0].fromLabel) → \(items[0].toLabel)"
     case 2: return "\(items[0].title), \(items[1].title)"
-    default: return "\(items[0].title), \(items[1].title) and \(items.count - 2) more"
+    default: return String(localized: "\(items[0].title), \(items[1].title) and \(items.count - 2) more")
     }
   }
 
@@ -235,20 +236,20 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     switch change.kind {
     case .glossaryAdd: return "Glossary"
     case .systemPrompt: return SystemPromptSection(rawValue: change.target).map(displayName) ?? change.target
-    case .writingStyle: return "Writing style profile"
-    case .saveCommand: return change.previousContent == nil ? "New command /\(change.target)" : "Command /\(change.target)"
-    case .deleteCommand: return "Deleted command /\(change.target)"
+    case .writingStyle: return String(localized: "Writing style profile")
+    case .saveCommand: return change.previousContent == nil ? String(localized: "New command /\(change.target)") : String(localized: "Command /\(change.target)")
+    case .deleteCommand: return String(localized: "Deleted command /\(change.target)")
     case .settings: return settingsSummary(change.settingsChanges ?? [])
     }
   }
 
   static func displayName(_ section: SystemPromptSection) -> String {
     switch section {
-    case .dictation: return "Dictation instructions"
-    case .whisperGlossary: return "Glossary"
-    case .promptMode: return "Dictate Prompt instructions"
-    case .chat: return "Chat instructions"
-    case .readAloudRewrite: return "Read Aloud instructions"
+    case .dictation: return String(localized: "Dictation instructions")
+    case .whisperGlossary: return String(localized: "Glossary")
+    case .promptMode: return String(localized: "Dictate Prompt instructions")
+    case .chat: return String(localized: "Chat instructions")
+    case .readAloudRewrite: return String(localized: "Read Aloud instructions")
     }
   }
 }

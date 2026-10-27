@@ -94,7 +94,7 @@ final class MCPChangeLog: ObservableObject {
       AppSupportPaths.ensureDirectoryExists(fileURL.deletingLastPathComponent())
       try (lines.joined(separator: "\n") + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("MCP-CONFIG: could not write change log: \(error.localizedDescription)")
+      DebugLogger.logError("MCP-CONFIG: could not write change log: \(error.logDescription)")
     }
   }
 
@@ -163,7 +163,7 @@ final class MCPChangeLog: ObservableObject {
       do {
         try restore(change)
       } catch {
-        DebugLogger.logError("MCP-CONFIG: undo \(change.kind.rawValue) \(change.target) failed: \(error.localizedDescription)")
+        DebugLogger.logError("MCP-CONFIG: undo \(change.kind.rawValue) \(change.target) failed: \(error.logDescription)")
         return .failed(error.localizedDescription)
       }
       changes[index].undoneAt = Date()

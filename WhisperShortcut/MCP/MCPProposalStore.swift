@@ -84,7 +84,7 @@ final class MCPProposalStore: ObservableObject {
       AppSupportPaths.ensureDirectoryExists(fileURL.deletingLastPathComponent())
       try (lines.joined(separator: "\n") + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("MCP-CONFIG: could not write proposals: \(error.localizedDescription)")
+      DebugLogger.logError("MCP-CONFIG: could not write proposals: \(error.logDescription)")
     }
     NotificationCenter.default.post(name: .mcpProposalsDidChange, object: nil)
   }

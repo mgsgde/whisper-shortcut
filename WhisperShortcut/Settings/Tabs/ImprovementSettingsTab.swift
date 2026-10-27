@@ -170,9 +170,6 @@ struct ImprovementSettingsTab: View {
           recommendedModel: SettingsDefaults.selectedImprovementModel,
           subscriptionMode: improvementSubscriptionMode,
           onModelChanged: {
-            UserDefaults.standard.set(
-              viewModel.data.selectedImprovementModel.rawValue,
-              forKey: UserDefaultsKeys.selectedImprovementModel)
             Task {
               await viewModel.saveSettings()
             }
