@@ -1303,7 +1303,8 @@ class MenuBarController: NSObject {
     // The list and its text field leave with the decision to stop, handing keyboard focus
     // back during the tail. A quick action sets its instruction before calling this.
     dismissQuickActions()
-    if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
+    // A pending meeting segment is cancelled even though the meeting itself is recording.
+    if pendingMeetingSegment != nil || (pendingRecordingMode != nil && !appState.isRecording) {
       cancelPendingRecordingStart()
       return
     }
@@ -3162,7 +3163,9 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
-      guard case .recording(let recordingMode) = self.appState else {
+      // During a meeting `appState` belongs to the meeting, so unclaimed audio must not run the
+      // standard finish path.
+      guard case .recording(let recordingMode) = self.appState, recordingMode != .liveMeeting else {
         // The audio is the only copy of what the user said. Never drop it: a dictation is kept as
         // the recoverable cancelled recording ("Transcribe Cancelled Recording" in the status
         // menu); an instruction recording (prompt) would be pasted as dictation,
