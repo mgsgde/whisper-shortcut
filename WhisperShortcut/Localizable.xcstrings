@@ -1806,6 +1806,26 @@
         }
       }
     },
+    "AI app (MCP)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-App (MCP)"
+          }
+        }
+      }
+    },
+    "AI app (MCP) undo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-App (MCP) rückgängig gemacht"
+          }
+        }
+      }
+    },
     "AI apps can read meetings and your setup, never change anything." : {
       "localizations" : {
         "de" : {

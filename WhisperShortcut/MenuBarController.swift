@@ -1555,7 +1555,7 @@ class MenuBarController: NSObject {
 
   private func cancelInFlightTranscription() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "transcription", detail: cancelSignalDetail())
+      .cancelledWhileProcessing, mode: InteractionMode.transcription.rawValue, detail: cancelSignalDetail())
     let job = currentJob
     discardStreamingSession()
     speechService.cancelTranscription()
@@ -1626,7 +1626,7 @@ class MenuBarController: NSObject {
   /// recording.
   private func cancelInFlightPrompt() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "prompt", detail: cancelSignalDetail())
+      .cancelledWhileProcessing, mode: InteractionMode.prompt.rawValue, detail: cancelSignalDetail())
     let job = currentJob
     speechService.cancelPrompt()
     job?.cancel()
@@ -2037,8 +2037,8 @@ class MenuBarController: NSObject {
     /// row. Nil for modes that log no interaction (live meeting).
     var interactionLogMode: String? {
       switch mode {
-      case .transcription: return "transcription"
-      case .prompt: return "prompt"
+      case .transcription: return InteractionMode.transcription.rawValue
+      case .prompt: return InteractionMode.prompt.rawValue
       case .liveMeeting: return nil
       }
     }
