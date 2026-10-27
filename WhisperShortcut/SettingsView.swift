@@ -102,6 +102,8 @@ struct SettingsView: View {
             ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .improvement:
             ImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .aiApps:
+            AIAppsSettingsTab()
           case .permissions:
             PermissionsTab()
           case .about:
@@ -152,6 +154,8 @@ struct SettingsView: View {
       return "speaker.wave.2.fill"
     case .improvement:
       return "wand.and.stars"
+    case .aiApps:
+      return "point.3.connected.trianglepath.dotted"
     case .permissions:
       return "checkmark.shield"
     case .about:
@@ -174,11 +178,13 @@ struct SettingsView: View {
     case .chat:
       return "Model, system prompt, commands, and memory"
     case .meetings:
-      return "Meeting transcription, summaries, and sharing with AI apps"
+      return "Meeting transcription and summaries"
     case .readAloud:
       return "Shortcut and smart-rewrite settings"
     case .improvement:
       return "Improve prompts from your usage and manage context data"
+    case .aiApps:
+      return "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings"
     case .permissions:
       return "Offline Mode and macOS permissions"
     case .about:

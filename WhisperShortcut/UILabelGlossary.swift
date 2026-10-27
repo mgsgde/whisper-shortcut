@@ -18,6 +18,7 @@ enum UILabelGlossary {
       ("Chat", String(localized: "Chat", comment: "Settings tab and feature")),
       ("Meetings", String(localized: "Meetings", comment: "Settings tab")),
       ("Smart Improvement", String(localized: "Smart Improvement", comment: "Settings tab")),
+      ("Claude & AI Apps", String(localized: "Claude & AI Apps", comment: "Settings tab")),
       ("Privacy & Permissions", String(localized: "Privacy & Permissions", comment: "Settings tab")),
       ("About", String(localized: "About", comment: "Settings tab")),
       ("Offline Mode", String(localized: "Offline Mode")),

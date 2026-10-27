@@ -1,14 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// Settings UI for the local MCP server (`MCPServer`): lets Claude Code, Claude Desktop and other
-/// MCP clients on this Mac read meeting transcripts, including the one recording right now, and,
-/// if the user allows it, improve the setup (glossary, instructions, writing style, commands).
+/// Claude & AI Apps Settings Tab — the local MCP server (`MCPServer`): lets Claude Code, Claude
+/// Desktop and other MCP clients on this Mac read meeting transcripts, including the one recording
+/// right now, and, if the user allows it, set up WhisperShortcut for them (glossary, instructions,
+/// writing style, commands).
+///
+/// Its own tab rather than a section under Meetings: half of what it does is setting up dictation,
+/// which nobody looked for under Meetings.
 ///
 /// Off by default. When on, it shows a ready-to-paste setup for the two clients we test against,
 /// both carrying the access key, so connecting is one copy and one paste. The key in the setup
 /// follows the access level: the read key while AI apps may only read, the write key otherwise.
-struct MeetingsInAIAppsSection: View {
+struct AIAppsSettingsTab: View {
   @ObservedObject private var server = MCPServer.shared
   @ObservedObject private var proposals = MCPProposalStore.shared
   @ObservedObject private var changeLog = MCPChangeLog.shared
@@ -28,6 +32,13 @@ struct MeetingsInAIAppsSection: View {
   @State private var showRegenerateConfirm = false
   @State private var undoMessage: String?
   @State private var showAllChanges = false
+  @State private var connectOutcome: [MCPClient: ConnectOutcome] = [:]
+  @State private var connecting: MCPClient?
+
+  private enum ConnectOutcome: Equatable {
+    case connected
+    case failed(String)
+  }
 
   private var accessLevel: MCPConfigAccessLevel {
     MCPConfigAccessLevel(rawValue: accessLevelRaw) ?? .read
@@ -43,9 +54,9 @@ struct MeetingsInAIAppsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Claude & Other AI Apps",
+        title: "Claude & AI Apps",
         systemImage: "point.3.connected.trianglepath.dotted",
-        subtitle: "Let Claude and other MCP apps on this Mac read your meetings, including the one recording right now. If you allow it, they can also improve your setup from what they already know about you: names for the glossary, how your messages should sound, your commands."
+        subtitle: "Connect Claude and other AI apps on this Mac to WhisperShortcut. They can set it up for you from what they already know about you: names for the glossary, how your messages should sound, your commands. And they can read your meetings, including the one recording right now."
       )
 
       Toggle("Allow AI apps on this Mac to connect", isOn: Binding(
@@ -59,24 +70,32 @@ struct MeetingsInAIAppsSection: View {
       if server.isEnabled {
         accessPicker
 
+        VStack(alignment: .leading, spacing: 10) {
+          setupCard(
+            .claudeCode,
+            manualInstruction: "Run in Terminal, then start a new Claude Code session:",
+            code: claudeCodeCommand
+          )
+
+          setupCard(
+            .claudeDesktop,
+            note: "Needs Node.js.",
+            manualInstruction: "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude.",
+            code: claudeDesktopConfig
+          )
+
+          setupCard(
+            .codex,
+            note: "OpenAI's agent. ChatGPT itself can't reach apps on your Mac, Codex can.",
+            manualInstruction: "Add this to ~/.codex/config.toml, then start a new Codex session:",
+            code: codexConfig
+          )
+        }
+
         if accessLevel != .read {
           pendingProposals
           recentChanges
         }
-
-        setupCard(
-          id: "claude-code",
-          title: "Claude Code",
-          instruction: "Run in Terminal, then start a new Claude Code session. Run it again after a new access key:",
-          code: claudeCodeCommand
-        )
-
-        setupCard(
-          id: "claude-desktop",
-          title: "Claude Desktop",
-          instruction: "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js.",
-          code: claudeDesktopConfig
-        )
 
         Text(privacyNote)
           .font(.caption)
@@ -85,7 +104,7 @@ struct MeetingsInAIAppsSection: View {
 
         HStack {
           Button("New access key…") { showRegenerateConfirm = true }
-          Text("Apps you already set up stop working until you paste the new setup.")
+          Text("Apps you already connected stop working until you connect them again.")
             .font(.caption)
             .foregroundColor(.secondary)
         }
@@ -98,7 +117,7 @@ struct MeetingsInAIAppsSection: View {
             server.regenerateWriteToken()
           }
         } message: {
-          Text("Claude and other apps set up with the current key lose access until you copy the new setup into them.")
+          Text("Claude and other apps connected with the current key lose access until you connect them again.")
         }
       }
     }
@@ -281,48 +300,124 @@ struct MeetingsInAIAppsSection: View {
 
   // MARK: - Setup cards
 
-  private func setupCard(id: String, title: LocalizedStringKey, instruction: LocalizedStringKey, code: String) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack {
-        Text(title)
-          .font(.callout)
-          .fontWeight(.semibold)
-        Spacer()
-        Button {
-          copy(code, id: id)
-        } label: {
-          Label(copiedItem == id ? ("Copied" as LocalizedStringKey) : "Copy", systemImage: copiedItem == id ? "checkmark" : "doc.on.doc")
+  /// One click writes the client's config itself (`MCPClientInstaller`); the copy-paste setup stays
+  /// behind "Set up by hand" for people who keep their configs elsewhere or prefer to paste.
+  private func setupCard(_ client: MCPClient, note: LocalizedStringKey? = nil, manualInstruction: LocalizedStringKey, code: String) -> some View {
+    let id = client.rawValue
+    return VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text(client.displayName)
+            .font(.callout)
+            .fontWeight(.semibold)
+          if let note {
+            Text(note)
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
-        .controlSize(.small)
+        Spacer()
+        connectButton(client)
       }
 
-      Text(instruction)
-        .font(.caption)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      switch connectOutcome[client] {
+      case .connected:
+        Label("Connected. \(client.restartHint)", systemImage: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundColor(.green)
+          .fixedSize(horizontal: false, vertical: true)
+      case .failed(let message):
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption)
+          .foregroundColor(.orange)
+          .fixedSize(horizontal: false, vertical: true)
+          .textSelection(.enabled)
+      case nil:
+        EmptyView()
+      }
 
-      // Shown masked: the setup holds the access key, and Settings may be on a shared screen.
-      Text(masked(code))
-        .font(.system(.caption, design: .monospaced))
-        .foregroundColor(.secondary)
-        .lineLimit(nil)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(Color(nsColor: .textBackgroundColor))
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
+      DisclosureGroup("Set up by hand") {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .top) {
+            Text(manualInstruction)
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button {
+              copy(code, id: id)
+            } label: {
+              Label(copiedItem == id ? ("Copied" as LocalizedStringKey) : "Copy", systemImage: copiedItem == id ? "checkmark" : "doc.on.doc")
+            }
+            .controlSize(.small)
+          }
+
+          // Shown masked: the setup holds the access key, and Settings may be on a shared screen.
+          Text(masked(code))
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.secondary)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+              RoundedRectangle(cornerRadius: 6)
+                .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .overlay(
+              RoundedRectangle(cornerRadius: 6)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+        }
+        .padding(.top, 6)
+      }
+      .font(.caption)
     }
     .padding(12)
     .background(
       RoundedRectangle(cornerRadius: 8)
         .fill(Color(nsColor: .controlBackgroundColor))
     )
+  }
+
+  private func connectButton(_ client: MCPClient) -> some View {
+    Button {
+      connect(client)
+    } label: {
+      if connecting == client {
+        ProgressView().controlSize(.small)
+      } else {
+        Text(connectOutcome[client] == .connected ? ("Connect Again" as LocalizedStringKey) : "Connect")
+      }
+    }
+    .buttonStyle(.borderedProminent)
+    .controlSize(.small)
+    .disabled(connecting != nil || setupToken.isEmpty || !isRunning)
+    .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
+    .pointerCursorOnHover()
+  }
+
+  private var isRunning: Bool {
+    if case .running = server.status { return true }
+    return false
+  }
+
+  private func connect(_ client: MCPClient) {
+    connecting = client
+    Task { @MainActor in
+      let result = await MCPClientInstaller.connect(
+        client, url: server.endpointURL, token: setupToken,
+        mcpRemotePackage: Self.mcpRemotePackage, serverName: Self.serverName)
+      connecting = nil
+      switch result {
+      case .success:
+        connectOutcome[client] = .connected
+      case .failure(let error):
+        if case .cancelled? = error as? MCPClientInstallerError { return }
+        connectOutcome[client] = .failed(error.localizedDescription)
+      }
+    }
   }
 
   // MARK: - Setup text
@@ -348,6 +443,14 @@ struct MeetingsInAIAppsSection: View {
         }
       }
     }
+    """
+  }
+
+  private var codexConfig: String {
+    """
+    [mcp_servers.\(Self.serverName)]
+    url = "\(server.endpointURL)"
+    http_headers = { Authorization = "Bearer \(setupToken)" }
     """
   }
 
