@@ -10,16 +10,10 @@ struct LocalLLMModelsSection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Available Models",
+        title: "Offline Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Download and manage offline MLX models for Dictate Prompt and Chat. They run in the app itself — no server to install."
+        subtitle: "Run Dictate Prompt and Chat on this Mac, inside the app, with no server to install. Each model downloads once from Hugging Face and stays cached locally."
       )
-
-      Text("Offline MLX models run on your Mac with no server. They download from Hugging Face and stay cached locally.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
 
       VStack(spacing: 12) {
         ForEach(models, id: \.self) { modelType in

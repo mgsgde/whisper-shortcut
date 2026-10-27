@@ -109,27 +109,7 @@ struct PromptModelSelectionView: View {
         cell: { model, badges in modelCell(model, badges: badges) },
         more: { groupedGrids($0) })
 
-      if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
-        HStack {
-          let fraction = mlxManager.downloadProgress[downloading] ?? 0
-          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
-            .font(.callout)
-            .foregroundColor(.secondary)
-          Spacer()
-          Button("Cancel") {
-            mlxManager.cancelDownload(downloading)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .pointerCursorOnHover()
-        }
-      }
-
-      if models.contains(where: { $0.localMLXModelType != nil }) {
-        LocalLLMModelsSection(models: models.compactMap(\.localMLXModelType))
-      }
-
-      // Model Details (use displayModel so subscription shows the fixed model's description and cost)
+      // Model Details right under the picker they describe (use displayModel so subscription shows the fixed model's description and cost)
       VStack(alignment: .leading, spacing: 8) {
         Text(displayModel.description)
           .font(.callout)
@@ -159,6 +139,26 @@ struct PromptModelSelectionView: View {
               .pointerCursorOnHover()
           }
         }
+      }
+
+      if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
+        HStack {
+          let fraction = mlxManager.downloadProgress[downloading] ?? 0
+          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
+            .font(.callout)
+            .foregroundColor(.secondary)
+          Spacer()
+          Button("Cancel") {
+            mlxManager.cancelDownload(downloading)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .pointerCursorOnHover()
+        }
+      }
+
+      if models.contains(where: { $0.localMLXModelType != nil }) {
+        LocalLLMModelsSection(models: models.compactMap(\.localMLXModelType))
       }
     }
   }
