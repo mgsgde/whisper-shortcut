@@ -313,6 +313,9 @@ final class LiveMeetingSession: NSObject {
     }
     finalized = true
     LiveMeetingRecordingMarker.clear()
+    #if !APP_STORE && canImport(Sparkle)
+    Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() }
+    #endif
 
     let shouldDiscard = discard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(shouldDiscard))")
@@ -376,11 +379,36 @@ final class LiveMeetingSession: NSObject {
   /// End-of-meeting pass: consolidate speaker labels across the full transcript, then generate the
   /// final summary from it. Runs detached from the session's own state — everything it needs was
   /// captured before `finish()` cleared the fields.
+  /// True only when `consolidated` is non-empty and carries exactly the same sequence of "[m:ss]"
+  /// timestamps as `original` (same count, same order). Guards the transcript file against an LLM
+  /// that dropped, merged or reordered blocks.
+  nonisolated static func acceptsConsolidation(original: String, consolidated: String) -> Bool {
+    guard !consolidated.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+    return timestampSequence(original) == timestampSequence(consolidated)
+  }
+
+  nonisolated private static func timestampSequence(_ text: String) -> [String] {
+    guard let regex = try? NSRegularExpression(
+      pattern: #"^\[(\d+):(\d{2})\]"#, options: [.anchorsMatchLines])
+    else { return [] }
+    let ns = text as NSString
+    return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map {
+      ns.substring(with: $0.range)
+    }
+  }
+
   private func runPostProcessing(
     transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk]
   ) {
     Task {
-      let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(
+      // Build the input from the file on disk: the in-memory store keeps only the newest chunks,
+      // so a long meeting would otherwise be summarised (and overwritten) as a fragment.
+      var sourceChunks = chunksSnapshot
+      if let fileText = try? String(contentsOf: transcriptURL, encoding: .utf8) {
+        let parsed = LiveMeetingTranscriptStore.parseTranscript(fileText)
+        if !parsed.isEmpty { sourceChunks = parsed }
+      }
+      let transcriptText = sourceChunks.map { "\($0.timestampString) \($0.text)" }.joined(
         separator: "\n\n")
       guard !transcriptText.isEmpty else { return }
       let model = PromptModel.loadSelectedMeetingSummary()
@@ -403,7 +431,10 @@ final class LiveMeetingSession: NSObject {
           let consolidated = try await MeetingListService.consolidateSpeakerLabels(
             transcript: transcriptText, model: model.speakerConsolidationModel)
           let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
-          if !trimmed.isEmpty {
+          if !Self.acceptsConsolidation(original: transcriptText, consolidated: trimmed) {
+            DebugLogger.logWarning(
+              "LIVE-MEETING: Speaker consolidation rejected (timestamps differ or empty) — keeping original transcript")
+          } else {
             finalTranscript = trimmed
             if let data = trimmed.data(using: .utf8) {
               try data.write(to: transcriptURL, options: .atomic)
@@ -1077,6 +1108,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     guard pendingChunks == 0 else { return }
     guard !awaitingFinalChunk else { return }
     finish()
+  }
+
+  func liveMeetingRecorderDidEndWithoutFinalChunk() {
+    DebugLogger.log("LIVE-MEETING: Recorder ended without a final chunk")
+    awaitingFinalChunk = false
+    maybeFinishAfterChunkCompletion()
   }
 
   func liveMeetingRecorder(didFailWithError error: Error) {

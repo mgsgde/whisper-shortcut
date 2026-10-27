@@ -11,6 +11,10 @@ protocol LiveMeetingRecorderDelegate: AnyObject {
 
   /// Called when recording fails
   func liveMeetingRecorder(didFailWithError error: Error)
+
+  /// Called when `stopSession()` finished but there is no final chunk to deliver (empty or failed
+  /// file). Lets the delegate stop waiting for a final chunk instead of timing out.
+  func liveMeetingRecorderDidEndWithoutFinalChunk()
 }
 
 /// Double-buffer audio recorder for seamless live meeting transcription.
@@ -82,6 +86,13 @@ class LiveMeetingRecorder: NSObject {
   /// Seconds already elapsed before this recorder started (set when resuming a meeting).
   private var resumeTimeOffset: TimeInterval = 0
 
+  /// The recorder `stopSession()` stopped, with the chunk metadata captured at that moment. Only this
+  /// instance (by identity) may be delivered as the final chunk; a recorder stopped by rotation is
+  /// delivered by `rotateAndDeliver` as a normal chunk. Main thread only.
+  private var finalRecorder: (
+    recorder: AVAudioRecorder, index: Int, startTime: TimeInterval, isSilent: Bool
+  )?
+
   /// Flag indicating if session is active
   private(set) var isSessionActive: Bool = false
 
@@ -139,14 +150,6 @@ class LiveMeetingRecorder: NSObject {
         self.delegate?.liveMeetingRecorder(didFailWithError: error)
       }
     }
-  }
-
-  /// Seconds elapsed in the meeting right now, continuing across a resume. Unlike the last chunk's
-  /// start time this is accurate to the moment, which is what a marker needs — a marker placed on
-  /// the previous chunk boundary can point up to a whole chunk before what the user reacted to.
-  var currentElapsedTime: TimeInterval {
-    guard let sessionStartTime else { return currentChunkStartTime }
-    return resumeTimeOffset + Date().timeIntervalSince(sessionStartTime)
   }
 
   /// Changes the rotation cadence mid-session (see `AppConstants.liveMeetingFastChunkInterval`).
@@ -214,7 +217,13 @@ class LiveMeetingRecorder: NSObject {
     // `record()` has flipped that flag must still end the session. Queued behind any in-flight
     // record()/stop(), so it can never overtake a rotation.
     if let activeRecorder {
+      finalRecorder = (
+        activeRecorder, chunkIndex, max(0, currentChunkStartTime),
+        peakPowerDuringChunk < silenceThresholdDB
+      )
       audioQueue.async { activeRecorder.stop() }
+    } else {
+      delegate?.liveMeetingRecorderDidEndWithoutFinalChunk()
     }
   }
 
@@ -283,6 +292,7 @@ class LiveMeetingRecorder: NSObject {
       self.consecutiveSilenceSamples = 0
       self.isSessionActive = true
       self.isRecorderAActive = true
+      self.finalRecorder = nil
 
       do {
         try self.startRecording(isRecorderA: true)
@@ -471,11 +481,6 @@ class LiveMeetingRecorder: NSObject {
       }
     }
   }
-
-  private func cleanupRecorder(_ recorder: AVAudioRecorder?) {
-    guard let recorder else { return }
-    audioQueue.async { recorder.stop() }
-  }
 }
 
 // MARK: - AVAudioRecorderDelegate
@@ -493,38 +498,35 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
       }
     }
 
-    if !isSessionActive {
+    // All state is read on main, where it is owned. AVAudioRecorderDelegate may call off-main.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, !self.isSessionActive, let final = self.finalRecorder,
+        final.recorder === recorder
+      else {
+        // A recorder stopped by rotation: `rotateAndDeliver` delivers it with its own metadata.
+        return
+      }
+      self.finalRecorder = nil
+      var deliver = false
       if flag {
-        do {
-          let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-          let fileSize = attributes[.size] as? Int64 ?? 0
-
-          if fileSize > 0 {
-            DebugLogger.log("LIVE-MEETING: Final chunk recorded successfully (\(fileSize) bytes)")
-            // AVAudioRecorderDelegate may call this off the main thread; the non-final path
-            // (above) hops to main before touching the delegate, so do the same here — the
-            // handler mutates main-thread-only live-meeting state.
-            let finalChunkIndex = chunkIndex
-            let finalStartTime = max(0, currentChunkStartTime)
-            let finalIsSilent = peakPowerDuringChunk < silenceThresholdDB
-            DispatchQueue.main.async { [weak self] in
-              self?.delegate?.liveMeetingRecorder(
-                didFinishChunk: url,
-                chunkIndex: finalChunkIndex,
-                startTime: finalStartTime,
-                isSilent: finalIsSilent,
-                isFinal: true
-              )
-            }
-          } else {
-            DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")
-            try? FileManager.default.removeItem(at: url)
-          }
-        } catch {
-          DebugLogger.logError("LIVE-MEETING: Failed to check final chunk: \(error)")
+        let fileSize =
+          ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64) ?? 0
+        if fileSize > 0 {
+          DebugLogger.log("LIVE-MEETING: Final chunk recorded successfully (\(fileSize) bytes)")
+          deliver = true
+        } else {
+          DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")
+          try? FileManager.default.removeItem(at: url)
         }
       } else {
         DebugLogger.logError("LIVE-MEETING: Final chunk recording failed")
+      }
+      if deliver {
+        self.delegate?.liveMeetingRecorder(
+          didFinishChunk: url, chunkIndex: final.index, startTime: final.startTime,
+          isSilent: final.isSilent, isFinal: true)
+      } else {
+        self.delegate?.liveMeetingRecorderDidEndWithoutFinalChunk()
       }
     }
   }
