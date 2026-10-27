@@ -20028,6 +20028,86 @@
           }
         }
       }
+    },
+    "%@, %@ and %lld more" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ und %3$lld weitere"
+          }
+        }
+      }
+    },
+    "Settings Change from an AI App" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungsänderung von einer KI-App"
+          }
+        }
+      }
+    },
+    "Nothing has changed yet. Accepted changes apply together." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch wurde nichts geändert. Angenommene Änderungen werden zusammen übernommen."
+          }
+        }
+      }
+    },
+    "You can undo it in Settings → Claude & AI Apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können das unter Einstellungen → Claude & KI-Apps rückgängig machen."
+          }
+        }
+      }
+    },
+    "Restored, except: %@. They are no longer valid." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederhergestellt, außer: %@. Diese sind nicht mehr gültig."
+          }
+        }
+      }
+    },
+    "When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. Off by default." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn eingeschaltet, werden Nutzungsprotokolle (Diktat, Dictate Prompt, Chat) gespeichert, damit „Aus Nutzung verbessern“ bessere Prompts vorschlagen kann. Standardmäßig aus."
+          }
+        }
+      }
+    },
+    "Current settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Einstellungen"
+          }
+        }
+      }
+    },
+    "Suggested settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorgeschlagene Einstellungen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

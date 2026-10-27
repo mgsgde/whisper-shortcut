@@ -98,7 +98,7 @@ struct ImprovementSettingsTab: View {
         VStack(alignment: .leading, spacing: 8) {
           Toggle("Save usage data", isOn: $saveUsageData)
             .toggleStyle(.switch)
-            .help("When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. On by default.")
+            .help("When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. Off by default.")
 
           Button(action: {
               guard !isImprovementRunning else { return }

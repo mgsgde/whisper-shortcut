@@ -90,6 +90,9 @@ struct MCPConfigTargets {
       return FileManager.default.fileExists(atPath: writingStyle.profileURL.path) ? text : nil
     case .saveCommand, .deleteCommand:
       return try? String(contentsOf: commands.fileURL(forName: target), encoding: .utf8)
+    case .settings:
+      // `.settings` batches are compared per-item in `MCPChangeLog.undoSettings`, not here.
+      return nil
     }
   }
 

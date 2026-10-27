@@ -391,7 +391,7 @@ enum SmartImprovementReviewPanel {
 /// What the reviewed text is, so the "Current …" / "Suggested …" labels are whole sentences a
 /// translation can inflect, not a noun glued into an English template.
 enum ReviewNoun {
-  case prompt, instructions, profile, command, report
+  case prompt, instructions, profile, command, report, settings
 
   var currentLabel: LocalizedStringKey {
     switch self {
@@ -400,6 +400,7 @@ enum ReviewNoun {
     case .profile: return "Current profile"
     case .command: return "Current command"
     case .report: return "Current report"
+    case .settings: return "Current settings"
     }
   }
 
@@ -410,6 +411,7 @@ enum ReviewNoun {
     case .profile: return "Suggested profile (editable)"
     case .command: return "Suggested command (editable)"
     case .report: return "Suggested report (editable)"
+    case .settings: return "Suggested settings"
     }
   }
 }

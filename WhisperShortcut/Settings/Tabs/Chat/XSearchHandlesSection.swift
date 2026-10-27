@@ -32,6 +32,10 @@ struct XSearchHandlesSection: View {
             .onAppear {
               handleText = UserDefaults.standard.string(forKey: UserDefaultsKeys.grokXSearchHandles) ?? ""
             }
+            // An AI app may have changed this through MCP while the window was open.
+            .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in
+              handleText = UserDefaults.standard.string(forKey: UserDefaultsKeys.grokXSearchHandles) ?? ""
+            }
             .onChange(of: handleText) { _, newValue in
               UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.grokXSearchHandles)
             }

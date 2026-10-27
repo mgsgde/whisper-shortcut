@@ -48,6 +48,13 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         report: proposal.proposedContent ?? "",
         onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
         onDiscard: { [weak self] in self?.decline(id) }))
+    } else if proposal.kind == .settings {
+      window.title = "Settings Change from an AI App"
+      window.setContentSize(NSSize(width: 560, height: 420))
+      window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
+        items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
+        onAccept: { [weak self] in self?.acceptSettings(id) },
+        onCancel: { [weak self] in self?.decline(id) }))
     } else {
       window.title = String(localized: "Suggested by an AI app")
       window.contentView = NSHostingView(rootView: reviewView(for: proposal))
@@ -135,6 +142,18 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     windows[id]?.close()
   }
 
+  private func acceptSettings(_ id: String) {
+    switch MCPProposalStore.shared.accept(id) {
+    case .success:
+      windows[id]?.close()
+    case .failure(let error):
+      let alert = NSAlert()
+      alert.messageText = "Couldn't apply the change"
+      alert.informativeText = error.localizedDescription
+      alert.runModal()
+    }
+  }
+
   private func decline(_ id: String) {
     MCPProposalStore.shared.decline(id)
     windows[id]?.close()
@@ -183,6 +202,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return .profile
     case .saveCommand, .deleteCommand: return .command
     case .problemReport: return .report
+    case .settings: return .settings
     }
   }
 
@@ -197,6 +217,18 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .deleteCommand: return String(localized: "Delete command /\(proposal.commandName ?? "")")
     case .problemReport: let reportTitle = proposal.title ?? String(localized: "untitled")
       return String(localized: "Problem report: \(reportTitle)")
+    case .settings: return settingsSummary(proposal.settingsChanges ?? [])
+    }
+  }
+
+  /// One line for a settings batch: the change itself when there is one ("Dictation model:
+  /// GPT Transcribe → Gemini Flash"), else the first two titles and how many more.
+  static func settingsSummary(_ items: [MCPSettingsChangeItem]) -> String {
+    switch items.count {
+    case 0: return String(localized: "Settings")
+    case 1: return "\(items[0].title): \(items[0].fromLabel) → \(items[0].toLabel)"
+    case 2: return "\(items[0].title), \(items[1].title)"
+    default: return String(localized: "\(items[0].title), \(items[1].title) and \(items.count - 2) more")
     }
   }
 
@@ -207,6 +239,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return String(localized: "Writing style profile")
     case .saveCommand: return change.previousContent == nil ? String(localized: "New command /\(change.target)") : String(localized: "Command /\(change.target)")
     case .deleteCommand: return String(localized: "Deleted command /\(change.target)")
+    case .settings: return settingsSummary(change.settingsChanges ?? [])
     }
   }
 

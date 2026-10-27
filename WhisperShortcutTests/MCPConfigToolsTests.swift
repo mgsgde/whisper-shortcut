@@ -18,6 +18,21 @@ final class MCPTestEnv: @unchecked Sendable {
   var settings: [String: String] = ["transcription_model": "whisper-base", "chat_model": "gemini-x"]
   var history: [String] = []
 
+  // MARK: - Settings catalog fakes (never touch the real UserDefaults, Keychain or SMAppService)
+  let testDefaults: UserDefaults
+  let settingsCatalog: [MCPSetting]
+  /// Mutable backing for the fakes above, boxed so closures built in `init` (before `self` fully
+  /// exists) and the test's later assertions share the same state.
+  final class Box {
+    var hasAccessibility = true
+    var hasScreenRecording = true
+    var hasScreenshotFolder = true
+    var launchAtLogin = false
+    var shortcutConfig: ShortcutConfig = .default
+    var notifications: [(Notification.Name, Any?)] = []
+  }
+  let box: Box
+
   init(level: MCPConfigAccessLevel = .apply) {
     dir = FileManager.default.temporaryDirectory.appendingPathComponent("mcp-cfg-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -25,11 +40,33 @@ final class MCPTestEnv: @unchecked Sendable {
     writingStyle = WritingStyleStore(directory: dir.appendingPathComponent("ws"), isEnabled: { true })
     commands = UserCommandStore(directoryURL: dir.appendingPathComponent("commands"), reservedNames: { ["help"] })
     let targets = MCPConfigTargets(systemPrompts: systemPrompts, writingStyle: writingStyle, commands: commands)
+    testDefaults = UserDefaults(suiteName: "mcp-settings-test-\(UUID().uuidString)")!
+    let box = Box()
+    self.box = box
+    let deps = MCPSettingsCatalog.Dependencies(
+      defaults: testDefaults,
+      hasAccessibilityPermission: { box.hasAccessibility },
+      hasScreenRecordingPermission: { box.hasScreenRecording },
+      hasScreenshotFolder: { box.hasScreenshotFolder },
+      isLaunchAtLoginEnabled: { box.launchAtLogin },
+      setLaunchAtLogin: { box.launchAtLogin = $0 },
+      loadShortcutConfig: { box.shortcutConfig },
+      saveShortcutConfig: { box.shortcutConfig = $0 },
+      postNotification: { name, object in box.notifications.append((name, object)) },
+      // The live hook posts into the user's app. Record the call on the same notification list
+      // the catalog tests already read.
+      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) },
+      checkImprovementAutoRun: {})
+    self.settingsCatalog = MCPSettingsCatalog.build(deps)
     var recorder: ((String) -> Void)?
-    changeLog = MCPChangeLog(directory: dir, targets: targets, recordHistory: { section, _, new, _, source in
-      recorder?("\(section.rawValue)|\(new)|\(source)")
-    })
-    proposals = MCPProposalStore(directory: dir, applier: MCPConfigApplier(targets: targets, changeLog: changeLog))
+    changeLog = MCPChangeLog(
+      directory: dir, targets: targets, settingsCatalog: settingsCatalog,
+      recordHistory: { section, _, new, _, source in
+        recorder?("\(section.rawValue)|\(new)|\(source)")
+      })
+    proposals = MCPProposalStore(
+      directory: dir, applier: MCPConfigApplier(targets: targets, changeLog: changeLog),
+      settingsCatalog: settingsCatalog)
     self.level = level
     recorder = { self.history.append($0) }
   }
@@ -46,7 +83,7 @@ final class MCPTestEnv: @unchecked Sendable {
       settings: { self.settings },
       shortcuts: { [["action": "Dictate", "shortcut": "F5", "enabled": true]] },
       writingStyleEnabled: { true },
-      appVersion: "9.9"))
+      appVersion: "9.9", settingsCatalog: settingsCatalog))
   }
 
   func dispatcher() -> MCPDispatcher {

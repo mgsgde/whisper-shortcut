@@ -82,10 +82,12 @@ struct SpeechToPromptSettingsTab: View {
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        Toggle("", isOn: $viewModel.data.screenshotInPromptMode)
-          .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Screenshot context")
-          .onChange(of: viewModel.data.screenshotInPromptMode) { _, newValue in
+        // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also
+        // fires when `data` is reloaded programmatically, which must never trigger a system
+        // prompt. The setter only runs when the user flips this toggle.
+        Toggle("", isOn: Binding(
+          get: { viewModel.data.screenshotInPromptMode },
+          set: { newValue in
             if newValue {
               Task {
                 do {
@@ -95,10 +97,14 @@ struct SpeechToPromptSettingsTab: View {
                 }
               }
             }
+            viewModel.data.screenshotInPromptMode = newValue
             Task {
               await viewModel.saveSettings()
             }
           }
+        ))
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Screenshot context")
 
         Spacer()
       }

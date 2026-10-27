@@ -293,31 +293,17 @@ struct ShortcutRecorderRow: View {
       return
     }
 
-    // Modifier rule for global Carbon hotkeys:
-    // - F1–F20 are free of modifier requirements (not used in text input). F13–F20 in
-    //   particular are the keycodes programmable keyboards send for a dedicated key.
-    // - Everything else needs at least one of ⌘/⌥/⌃. Shift alone is rejected:
-    //   macOS routes Shift+<printable> to text input instead of the hotkey
-    //   handler (Shift+a = "A", Shift+< = ">"), so Carbon never fires those
-    //   bindings. Accepting them in the recorder would silently produce
-    //   shortcuts that never trigger.
-    let isFunctionKey: Bool = {
-      switch resolvedKey {
-      case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10, .f11, .f12,
-        .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
-        return true
-      default:
-        return false
-      }
-    }()
-    let commandModifiers = mods.intersection([.command, .option, .control])
-    if !isFunctionKey, commandModifiers.isEmpty {
-      if mods.isEmpty {
-        transientMessage = "Add ⌘/⌥/⌃ — or use an F-key (F1–F20) on its own"
-      } else {
-        // Shift only — macOS won't route this to a global hotkey.
-        transientMessage = "Shift alone won't fire — add ⌘/⌥/⌃"
-      }
+    // Modifier rule for global Carbon hotkeys — shared with `get_settings`/`update_settings`'s
+    // shortcut entries via `ShortcutValidation.modifierRuleViolation`, so an AI app cannot
+    // propose a combination the recorder itself would reject (and vice versa, there is only one
+    // rule to keep in sync). F1–F20 are free of modifier requirements (not used in text input;
+    // F13–F20 in particular are the keycodes programmable keyboards send for a dedicated key).
+    // Everything else needs at least one of ⌘/⌥/⌃ — Shift alone is rejected: macOS routes
+    // Shift+<printable> to text input instead of the hotkey handler (Shift+a = "A", Shift+< =
+    // ">"), so Carbon never fires those bindings, and accepting them here would silently produce
+    // shortcuts that never trigger.
+    if let violation = ShortcutValidation.modifierRuleViolation(key: resolvedKey, modifiers: mods) {
+      transientMessage = LocalizedStringKey(violation)
       return
     }
 

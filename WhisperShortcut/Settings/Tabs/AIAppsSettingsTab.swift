@@ -283,6 +283,9 @@ struct AIAppsSettingsTab: View {
       undoMessage = String(localized: "This change is no longer on record.")
     case .failed(let message):
       undoMessage = String(localized: "Couldn't undo: \(message)")
+    case .undonePartial(let skipped):
+      let list = skipped.joined(separator: ", ")
+      undoMessage = String(localized: "Restored, except: \(list). They are no longer valid.")
     }
   }
 

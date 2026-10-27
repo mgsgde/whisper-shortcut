@@ -5,6 +5,8 @@ over its daily cap), UI by Opus, checked in the sidecar build with screenshots. 
 a live client (Claude Code) against the server, because the sidecar runs no MCP server; that
 needs a release install or `--replace`. See "As built" below.
 Builds on `mcp-meeting-server.md` (v1, read-only meetings, shipped).
+Slice 2 (below) is superseded by `plans/active/mcp-settings.md` (`get_settings`/`update_settings`,
+built on `feat/mcp-settings`) — do not build it from here.
 
 ## Problem
 

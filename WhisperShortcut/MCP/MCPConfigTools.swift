@@ -18,6 +18,9 @@ struct MCPConfigEnvironment {
   var shortcuts: () -> [[String: Any]]
   var writingStyleEnabled: () -> Bool
   var appVersion: String
+  /// The `get_settings` / `update_settings` catalog. Built once per environment; tests pass a
+  /// catalog built from fake `MCPSettingsCatalog.Dependencies`.
+  var settingsCatalog: [MCPSetting] = []
 
   var applier: MCPConfigApplier { MCPConfigApplier(targets: targets, changeLog: changeLog) }
 
@@ -61,7 +64,8 @@ struct MCPConfigEnvironment {
         }
       },
       writingStyleEnabled: { defaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) },
-      appVersion: AppConstants.appVersion)
+      appVersion: AppConstants.appVersion,
+      settingsCatalog: MCPSettingsCatalog.build(.live))
   }
 }
 
@@ -92,10 +96,10 @@ struct MCPConfigTools {
     "meeting_summary_model": UserDefaultsKeys.selectedMeetingSummaryModel,
   ]
 
-  static let readToolNames: Set<String> = ["get_configuration", "get_recent_interactions"]
+  static let readToolNames: Set<String> = ["get_configuration", "get_recent_interactions", "get_settings"]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status", "report_problem",
+    "delete_command", "get_proposal_status", "report_problem", "update_settings",
   ]
 
   func handles(_ name: String) -> Bool {
@@ -138,6 +142,16 @@ struct MCPConfigTools {
         ],
       ] as [String: Any],
       "annotations": ["title": "Get Recent Interactions", "readOnlyHint": true, "openWorldHint": false],
+    ],
+    [
+      "name": "get_settings",
+      "description":
+        "Lists WhisperShortcut settings an AI app can read and, within the user's access level, change with update_settings: current value, type, and for enums the same options the user sees in the picker. Optionally filter by category (e.g. \"models\", \"shortcuts\").",
+      "inputSchema": [
+        "type": "object",
+        "properties": ["category": ["type": "string", "description": "Only settings in this category."]],
+      ] as [String: Any],
+      "annotations": ["title": "Get Settings", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 
@@ -225,6 +239,16 @@ struct MCPConfigTools {
       // Read-only: unlike the other write-set tools, it needs no "_meta" requiresUserInteraction hint.
       "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
     ],
+    write(
+      "update_settings", "Update Settings",
+      "Changes one or more settings from get_settings. All changes are validated together against the state the whole call would leave (not just today's values) first; if any one is invalid, nothing is written. Settings that always wait for approval (e.g. Launch at login) turn the whole call into one proposal, even at access level \"apply\". A \"shortcut\"-type setting's value is {\"key\": <name, e.g. \"a\"/\"1\"/\"f5\"/\"space\"/\"return\">, \"modifiers\": [subset of \"command\",\"option\",\"control\",\"shift\"]}, or null to disable it.",
+      [
+        "changes": [
+          "type": "object",
+          "description": "Setting id (from get_settings) → new value. Max 20 per call.",
+        ]
+      ], required: ["changes"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
   ]
 
   /// Tool definitions visible to a client: gated only by token type, not by the user's configured
@@ -256,28 +280,30 @@ struct MCPConfigTools {
     case "delete_command": return deleteCommand(arguments)
     case "report_problem": return reportProblem(arguments)
     case "get_proposal_status": return getProposalStatus(arguments)
+    case "get_settings": return getSettings(arguments)
+    case "update_settings": return updateSettings(arguments)
     default: return ("Unknown tool: \(name)", true)
     }
   }
 
   // MARK: - Helpers
 
-  private func log(_ tool: String, _ outcome: String, _ reason: String? = nil, len: Int = 0) {
+  func log(_ tool: String, _ outcome: String, _ reason: String? = nil, len: Int = 0) {
     DebugLogger.log("MCP-CONFIG: \(tool) \(outcome)\(reason.map { " (\($0))" } ?? "") len=\(len)")
   }
 
-  private func reject(_ tool: String, _ reason: String, _ message: String) -> MCPToolResult {
+  func reject(_ tool: String, _ reason: String, _ message: String) -> MCPToolResult {
     log(tool, "rejected", reason)
     return (message, true)
   }
 
-  private func json(_ object: Any) -> String {
+  func json(_ object: Any) -> String {
     let data = try? JSONSerialization.data(
       withJSONObject: object, options: [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes])
     return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
   }
 
-  private func rationale(_ args: [String: Any], tool: String) -> (value: String?, error: MCPToolResult?) {
+  func rationale(_ args: [String: Any], tool: String) -> (value: String?, error: MCPToolResult?) {
     guard let raw = (args["rationale"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
       return (nil, reject(tool, "missing rationale", "rationale is required: one line on why this helps the user."))
     }
@@ -287,7 +313,7 @@ struct MCPConfigTools {
     return (raw, nil)
   }
 
-  private func pendingResult(_ id: String) -> MCPToolResult {
+  func pendingResult(_ id: String) -> MCPToolResult {
     (json(["status": "pending_review", "id": id, "message": "Waiting for the user to accept it in WhisperShortcut."]), false)
   }
 
@@ -335,6 +361,7 @@ struct MCPConfigTools {
     var out: [String: Any] = [
       "app_version": env.appVersion,
       "models": models,
+      "settings": "call get_settings",
       "shortcuts": env.shortcuts(),
       "system_prompts": sectionInfo(),
       "writing_style": ["enabled": env.writingStyleEnabled(), "profile_length": profile.count],

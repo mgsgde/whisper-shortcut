@@ -8,7 +8,7 @@ extension Notification.Name {
 
 /// A change an AI app asked for that waits for the user's decision.
 struct MCPProposal: Codable, Identifiable {
-  enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand, problemReport }
+  enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand, problemReport, settings }
   enum Status: String, Codable { case pending, accepted, declined }
 
   let id: String
@@ -31,13 +31,16 @@ struct MCPProposal: Codable, Identifiable {
   var status: Status
   /// True when the user changed the text before accepting.
   var edited: Bool
+  /// The batch, for `.settings` only. Optional so older JSONL lines without this field still decode.
+  var settingsChanges: [MCPSettingsChangeItem]? = nil
 }
 
 /// Pending AI-app proposals in `UserContext/mcp-proposals.jsonl`, so a quit does not lose them.
 final class MCPProposalStore: ObservableObject {
   static let shared = MCPProposalStore(
     directory: AppSupportPaths.userContextURL(),
-    applier: MCPConfigApplier(targets: .live, changeLog: .shared))
+    applier: MCPConfigApplier(targets: .live, changeLog: .shared),
+    settingsCatalog: MCPSettingsCatalog.build(.live))
 
   static let fileName = "mcp-proposals.jsonl"
   /// Resolved proposals kept so `get_proposal_status` can still answer.
@@ -51,10 +54,13 @@ final class MCPProposalStore: ObservableObject {
   private var all: [MCPProposal] = []
   private let fileURL: URL
   var applier: MCPConfigApplier?
+  /// Used only to accept/apply a `.settings` proposal. Empty in tests that don't need it.
+  var settingsCatalog: [MCPSetting]
 
-  init(directory: URL, applier: MCPConfigApplier? = nil) {
+  init(directory: URL, applier: MCPConfigApplier? = nil, settingsCatalog: [MCPSetting] = []) {
     self.fileURL = directory.appendingPathComponent(Self.fileName)
     self.applier = applier
+    self.settingsCatalog = settingsCatalog
     let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
     if let text = try? String(contentsOf: fileURL, encoding: .utf8) {
       all = text.components(separatedBy: .newlines).compactMap { line in
@@ -87,7 +93,8 @@ final class MCPProposalStore: ObservableObject {
   func create(
     kind: MCPProposal.Kind, title: String? = nil, section: String? = nil, commandName: String? = nil,
     commandScope: String? = nil, commandLabel: String? = nil, commandDescription: String? = nil,
-    previousContent: String?, proposedContent: String?, rationale: String
+    previousContent: String? = nil, proposedContent: String? = nil, rationale: String,
+    settingsChanges: [MCPSettingsChangeItem]? = nil
   ) throws -> MCPProposal {
     try MCPMain.run {
       // A newer proposal for the same target replaces the older one.
@@ -99,6 +106,8 @@ final class MCPProposalStore: ObservableObject {
         case .writingStyle: return true
         case .saveCommand, .deleteCommand: return q.commandName == commandName
         case .problemReport: return false
+        // One pending settings proposal at a time: a later one supersedes it wholesale.
+        case .settings: return true
         }
       }
       if sameTarget.isEmpty, pending.count >= Self.maxPending {
@@ -110,7 +119,8 @@ final class MCPProposalStore: ObservableObject {
         id: UUID().uuidString, createdAt: Date(), kind: kind, title: title, section: section,
         commandName: commandName, commandScope: commandScope, commandLabel: commandLabel,
         commandDescription: commandDescription, previousContent: previousContent,
-        proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false)
+        proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false,
+        settingsChanges: settingsChanges)
       all.append(proposal)
       commit()
       return proposal
@@ -134,7 +144,8 @@ final class MCPProposalStore: ObservableObject {
     case .saveCommand, .deleteCommand:
       applier.targets.commands.reload()
       return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
-    case .problemReport:
+    case .problemReport, .settings:
+      // `.settings` is compared per-item in `accept()`, not here.
       return nil
     }
   }
@@ -148,6 +159,22 @@ final class MCPProposalStore: ObservableObject {
         return .failure(MCPConfigError(message: "No pending proposal with that id."))
       }
       var proposal = all[index]
+      // No editing for `.settings`: the proposal window for settings has no text field to edit.
+      if proposal.kind == .settings {
+        guard let items = proposal.settingsChanges else {
+          return .failure(MCPConfigError(message: "This proposal has no settings."))
+        }
+        guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
+        let result = applier.applySettingsBatch(
+          catalog: settingsCatalog, items: items, rationale: proposal.rationale, viaProposal: true)
+        if case .success = result {
+          proposal.status = .accepted
+          all[index] = proposal
+          commit()
+          DebugLogger.log("MCP-CONFIG: proposal settings accepted count=\(items.count)")
+        }
+        return result
+      }
       if proposal.kind != .deleteCommand, let editedContent, editedContent != proposal.proposedContent {
         proposal.proposedContent = editedContent
         proposal.edited = true
@@ -187,8 +214,9 @@ final class MCPProposalStore: ObservableObject {
       case .deleteCommand:
         result = applier.applyDeleteCommand(
           name: proposal.commandName ?? "", rationale: proposal.rationale, viaProposal: true)
-      case .problemReport:
-        // Accepted above, before any applier call. This arm keeps the switch exhaustive.
+      case .problemReport, .settings:
+        // problemReport is accepted above, before any applier call; settings returns early at the
+        // top of this function. Both arms are unreachable here and only keep the switch exhaustive.
         result = .success(proposal.id)
       }
       if case .success = result {
