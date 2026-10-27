@@ -30,7 +30,9 @@ struct MCPMeetingTools {
       "name": "get_live_transcript",
       "description":
         "Returns the transcript of the meeting that is being recorded right now in WhisperShortcut. "
-        + "During a live meeting, call this before answering any question about the meeting, passing next_since from your previous call to get only what is new. Omit since on the first call.",
+        + "While a meeting is live, call this before every reply, not only for questions that sound like they are about the meeting, "
+        + "passing next_since from your previous call to get only what is new. Omit since on the first call. "
+        + "Once it reports that no meeting is being recorded, stop calling it.",
       "inputSchema": [
         "type": "object",
         "properties": [
@@ -222,9 +224,9 @@ struct MCPMeetingTools {
     }
 
     if let latest = allMeetings().first {
-      return ("No meeting is being recorded right now. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
+      return ("No meeting is being recorded right now; stop calling get_live_transcript. The most recent meeting is \"\(latest.id)\"; use get_meeting with that id.", false)
     }
-    return ("No meeting is being recorded right now, and there are no saved meetings.", false)
+    return ("No meeting is being recorded right now; stop calling get_live_transcript. There are no saved meetings.", false)
   }
 
   // MARK: - list_meetings
