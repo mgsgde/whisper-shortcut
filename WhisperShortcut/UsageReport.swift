@@ -78,8 +78,8 @@ enum UsageReport {
     lastDays: Int = defaultDays,
     environment: Environment = .current
   ) -> String {
-    let interactions = decode(InteractionMetaEntry.self, from: interactionFiles)
-    let signals = decode(SignalLogEntry.self, from: signalFiles)
+    let interactions = UserContextLog.decodeLines(interactionFiles, as: InteractionMetaEntry.self)
+    let signals = UserContextLog.decodeLines(signalFiles, as: SignalLogEntry.self)
 
     let buildLabel = environment.isAppStoreBuild ? "App Store build" : "direct build"
     var lines = [
@@ -109,24 +109,24 @@ enum UsageReport {
   private static func dictationSection(
     interactions: [InteractionMetaEntry], signals: [SignalLogEntry], environment: Environment
   ) -> [String] {
-    let dictations = interactions.filter { $0.mode == "transcription" }
+    let dictations = interactions.filter { $0.interactionMode == .transcription }
     guard !dictations.isEmpty else { return [] }
     let total = dictations.count
 
     var body: [String] = []
-    let start = windowStart(signals, mode: "transcription")
+    let start = windowStart(signals, mode: InteractionMode.transcription.rawValue)
     // Restarts are only meaningful where auto-paste exists to prove the opposite case. See the
     // App Store caveat in `ContextLogger.noteDictationStart`.
     let restarts = signals.filter { entry in
-      guard entry.kind == "dictationRestart", isInWindow(entry, since: start) else { return false }
+      guard OutcomeSignal(rawValue: entry.kind) == .dictationRestart, isInWindow(entry, since: start) else { return false }
       return detail(entry, "autoPasteAvailable") == "true"
     }
     let pasted = signals.filter { entry in
-      guard entry.kind == "pasted", entry.mode == "transcription" else { return false }
+      guard OutcomeSignal(rawValue: entry.kind) == .pasted, entry.interactionMode == .transcription else { return false }
       return isInWindow(entry, since: start)
     }.count
 
-    let measurable = measurableCount(interactions, since: start, mode: "transcription")
+    let measurable = measurableCount(interactions, since: start, mode: InteractionMode.transcription.rawValue)
 
     if pasted > 0 || !restarts.isEmpty, measurable > 0 {
       let rates =
@@ -165,12 +165,14 @@ enum UsageReport {
   private static func promptSection(
     interactions: [InteractionMetaEntry], signals: [SignalLogEntry]
   ) -> [String] {
-    let runs = interactions.filter { $0.mode == "prompt" }
+    let runs = interactions.filter { $0.interactionMode == .prompt }
     guard !runs.isEmpty else { return [] }
     let total = runs.count
 
     var parts = ["\(total) runs"]
-    let cancels = signals.filter { $0.kind == "cancelledWhileProcessing" && $0.mode == "prompt" }
+    let cancels = signals.filter {
+      OutcomeSignal(rawValue: $0.kind) == .cancelledWhileProcessing && $0.interactionMode == .prompt
+    }
       .count
     if cancels > 0 {
       parts.append("\(cancels) cancelled while processing (\(pct(cancels, of: total)))")
@@ -184,26 +186,26 @@ enum UsageReport {
   private static func chatSection(
     interactions: [InteractionMetaEntry], signals: [SignalLogEntry]
   ) -> [String] {
-    let turns = interactions.filter { $0.mode == "geminiChat" }
+    let turns = interactions.filter { $0.interactionMode == .chat }
     guard !turns.isEmpty else { return [] }
 
     var body = ["  \(turns.count) turns"]
 
-    let start = windowStart(signals, mode: "geminiChat")
+    let start = windowStart(signals, mode: InteractionMode.chat.rawValue)
     let retries = signals.filter { entry in
-      guard entry.kind == "chatRetry" else { return false }
+      guard OutcomeSignal(rawValue: entry.kind) == .chatRetry else { return false }
       return start == nil || isInWindow(entry, since: start)
     }.count
     // Only the user's Stop is a verdict. A watchdog cancellation says the main thread stalled,
     // which is a bug report about us, not about the answer — see `OutcomeSignal.chatStopped`.
     let stops = signals.filter { entry in
-      guard entry.kind == "chatStopped", start == nil || isInWindow(entry, since: start) else {
+      guard OutcomeSignal(rawValue: entry.kind) == .chatStopped, start == nil || isInWindow(entry, since: start) else {
         return false
       }
       return detail(entry, "reason") == "user"
     }.count
 
-    let measurable = measurableCount(interactions, since: start, mode: "geminiChat")
+    let measurable = measurableCount(interactions, since: start, mode: InteractionMode.chat.rawValue)
     if retries > 0 || stops > 0 {
       // Retries get a rate when there is a denominator they belong to: a retried turn was logged
       // when its answer completed. Stops never do — a send killed mid-stream never reaches
@@ -268,7 +270,7 @@ enum UsageReport {
   /// about the user's environment, so dropping it stays a one-line change.
   private static func pasteTargetSection(signals: [SignalLogEntry]) -> [String] {
     let targets = signals
-      .filter { $0.kind == "pasted" }
+      .filter { OutcomeSignal(rawValue: $0.kind) == .pasted }
       .compactMap { detail($0, "targetBundleId") }
       .filter { $0 != "unknown" }
     guard let line = histogram(targets) else { return [] }
@@ -276,21 +278,6 @@ enum UsageReport {
   }
 
   // MARK: - Helpers
-
-  private static func decode<T: Decodable>(_ type: T.Type, from files: [URL]) -> [T] {
-    let decoder = JSONDecoder()
-    var entries: [T] = []
-    for url in files {
-      guard let content = try? String(contentsOf: url, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-          let entry = try? decoder.decode(T.self, from: data)
-        else { continue }
-        entries.append(entry)
-      }
-    }
-    return entries
-  }
 
   private static func detail(_ entry: SignalLogEntry, _ key: String) -> String? {
     guard allowedDetailKeys.contains(key) else { return nil }
@@ -355,4 +342,6 @@ private struct InteractionMetaEntry: Decodable {
   let model: String?
   let transcriptionModel: String?
   let hadScreenshot: Bool?
+
+  var interactionMode: InteractionMode? { InteractionMode(rawValue: mode) }
 }

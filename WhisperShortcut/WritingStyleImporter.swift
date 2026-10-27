@@ -39,8 +39,8 @@ enum WritingStyleImporter {
 
     var summary: String {
       failedThreads == 0
-        ? "Imported \(added) new messages."
-        : "Imported \(added) new messages; \(failedThreads) threads could not be read, try again later for the rest."
+        ? String(localized: "Imported \(added) new messages.")
+        : String(localized: "Imported \(added) new messages; \(failedThreads) threads could not be read, try again later for the rest.")
     }
   }
 

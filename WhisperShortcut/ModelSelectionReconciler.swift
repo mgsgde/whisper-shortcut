@@ -21,35 +21,24 @@ enum ModelSelectionReconciler {
 
   // MARK: - Key availability
 
+  /// Forwards to `ChatModelProvider.hasCredential`. This switch called `hasNonEmpty`, which does
+  /// not trim, so the reconciler kept a whitespace-only key that `verifyConfigured` then rejected.
+  /// Local and MLX stay "always available" because their requirement is `.none`.
   static func hasKey(_ provider: ChatModelProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .openRouter: return OpenRouterChatPreferences.isConfigured
-    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
-    // selection is never reconciled away.
-    case .local, .localMLX: return true
-    }
+    provider.hasCredential
   }
 
   private static func hasKey(_ provider: TTSProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .system: return true
-    }
+    provider.hasCredential
   }
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no
   /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI, then OpenRouter —
   /// last because it is the one account that can stand in for all of them, so someone who connected
   /// only OpenRouter during onboarding gets a working Chat instead of a Gemini slot with no key.
-  /// OpenRouter has no transcription stand-in here (`transcriptionReplacement` returns nil).
+  /// `reconcileAll` still has no transcription stand-in for OpenRouter (`transcriptionReplacement`
+  /// returns nil). Onboarding's explicit Cloud pick uses `preferredCloudTranscription`, which adds
+  /// that stand-in only as a last resort — `reconcileAll` must not start moving dictation there.
   nonisolated static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
@@ -494,9 +483,35 @@ enum ModelSelectionReconciler {
     replaceTranscriptionSelection(key: key, current: current)
   }
 
+  /// Cloud transcription model onboarding should select: the first provider in
+  /// `providerPreference` that has a credential and a `transcriptionReplacement`.
+  ///
+  /// OpenRouter is in that list but `transcriptionReplacement` returns nil — `reconcileAll`
+  /// must not silently move dictation onto an account the user connected for Chat. Onboarding
+  /// still has to point Dictate at something when that account is the only one that can
+  /// transcribe, so `.openRouterTranscription` is appended here, and only as that last resort.
+  /// A chat-only credential (Anthropic) does not count as a stand-in and does not block this
+  /// fallback. `hasKey` is passed in so the order can be tested without the Keychain.
+  nonisolated static func preferredCloudTranscription(
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> TranscriptionModel? {
+    for provider in providerPreference {
+      if hasKeyForProvider(provider), let model = transcriptionReplacement(for: provider) {
+        return model
+      }
+    }
+    if hasKeyForProvider(.openRouter) { return .openRouterTranscription }
+    return nil
+  }
+
+  /// `preferredCloudTranscription(hasKey:)` against the credentials actually stored.
+  static func preferredCloudTranscription() -> TranscriptionModel? {
+    preferredCloudTranscription(hasKey: { hasKey($0) })
+  }
+
   /// Which transcription model stands in for a given chat provider, or `nil` when that provider
   /// has none. Split out of `replaceTranscriptionSelection` so the table can be tested directly.
-  static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
+  nonisolated static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
     switch provider {
     // Each provider's best-measured tier (plans/model-audits/2026-09-03-audit.md). Gemini is named
     // explicitly: the app-wide default is now an OpenAI model and would dead-end a Gemini-only user.

@@ -84,6 +84,28 @@ struct SmartImprovementScorecardTests {
     #expect(windowed.promptFollowUps == 1)
   }
 
+  /// 7 of the previous output's 10 words. Jaccard is 0.7, over `PromptFollowUp`'s 0.6, so the
+  /// logged signal counts it. Word-Levenshtein is also 0.7, under the scorecard's old 0.8
+  /// cutoff, which is why this pair used to be missed. `followUpRate` above is unchanged:
+  /// its pairs are a near-copy (both rules agree) and an out-of-window prompt.
+  @Test("A shortened selection of the previous output counts, matching the logged signal")
+  func followUpMatchesTheLoggedSignal() {
+    let response = "alpha beta gamma delta epsilon zeta eta theta iota kappa"
+    let shortened = "alpha beta gamma delta epsilon zeta eta"
+    let interactions = [
+      interaction(ts: "2026-10-19T10:00:00Z", mode: "prompt", modelResponse: response),
+      interaction(
+        ts: "2026-10-19T10:01:00Z", mode: "prompt",
+        selectedText: shortened, modelResponse: "ok"),
+    ]
+    let metrics = SmartImprovementScorecard.metrics(
+      interactions: interactions, signals: [], rejected: [],
+      from: .distantPast, to: .distantFuture)
+    #expect(metrics.prompts == 2)
+    #expect(metrics.promptFollowUps == 1)
+    #expect(PromptFollowUp.isFollowUp(selection: shortened, previousResponse: response, gap: 60))
+  }
+
   @Test("Dashes inserted only from a dash-free, non-empty selection")
   func dashInsertion() {
     let interactions = [

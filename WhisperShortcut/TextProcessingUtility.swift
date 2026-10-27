@@ -456,9 +456,10 @@ enum TextProcessingUtility {
     return kept
   }
 
-  /// Case- and diacritic-insensitive comparison form, matching `SpeechService.foldGlossaryTerm`.
+  /// Case- and diacritic-insensitive comparison form. Same POSIX fold as the glossary
+  /// parse — `.current` made the echo check disagree with it under a Turkish locale.
   private static func foldForEchoCheck(_ word: String) -> String {
-    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    GlossaryDocument.fold(word)
   }
 
   // MARK: - Mojibake Repair

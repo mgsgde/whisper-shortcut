@@ -111,6 +111,34 @@ struct ModelSelectionReconcilerTests {
         previous: .gemini31Pro, among: candidates, hasKey: { $0 == .local || $0 == .localMLX }) == nil)
   }
 
+  @Test("Preferred cloud transcription follows the reconciler, OpenRouter only as last resort")
+  func preferredCloudTranscriptionOrder() {
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .gemini })
+        == .gemini31FlashLite)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .openai })
+        == .openAIGPTTranscribe)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .grok })
+        == .xaiTranscribe)
+    #expect(ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .anthropic }) == nil)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .openRouter })
+        == .openRouterTranscription)
+    // Gemini wins when both keys are present — the reconciler's first, not allCases order.
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .gemini || $0 == .openai })
+        == .gemini31FlashLite)
+    // A chat-only key does not block the only account that can transcribe.
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .anthropic || $0 == .openRouter })
+        == .openRouterTranscription)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .grok || $0 == .openRouter })
+        == .xaiTranscribe)
+  }
+
   @Test("Transcription replacement maps each cloud provider and rejects the rest")
   func transcriptionReplacementTable() {
     #expect(

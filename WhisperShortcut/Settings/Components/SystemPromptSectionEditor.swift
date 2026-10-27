@@ -8,16 +8,16 @@ import SwiftUI
 /// closing Settings after editing silently threw the prompt away and the runtime used the default.
 /// Revert restores the text as it was when this page was opened.
 struct SystemPromptSectionEditor: View {
-  let title: String
+  let title: LocalizedStringResource
   let systemImage: String?
-  let subtitle: String
+  let subtitle: LocalizedStringResource
   let section: SystemPromptSection
   let defaultContent: String
 
   init(
-    title: String,
+    title: LocalizedStringResource,
     systemImage: String? = nil,
-    subtitle: String,
+    subtitle: LocalizedStringResource,
     section: SystemPromptSection,
     defaultContent: String
   ) {

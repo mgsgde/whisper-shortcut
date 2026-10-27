@@ -84,6 +84,10 @@ windowless `ss` capture the full screen. **Always actually read the PNG** with t
 tool — a blank or error frame means a permission is missing or the window didn't open in
 time.
 
+Run in German: `bash driver.sh quit; WS_LANG=de bash driver.sh ensure`. Menu items and window
+titles are then German ("Einstellungen…"), so use `driver.sh items` for the live names. Check
+every Settings tab for clipped labels; German runs about 30 % longer than English.
+
 ## Onboarding & first-run (user-perspective testing)
 
 The Welcome window appears on launch when `hasCompletedOnboarding` is false

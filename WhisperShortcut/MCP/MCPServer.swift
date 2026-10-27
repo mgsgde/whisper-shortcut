@@ -49,16 +49,23 @@ final class MCPServer: ObservableObject {
   /// failed Keychain write must not mint a different key on each call.
   private var cachedToken: String?
 
-  func token() -> String {
+  /// nil only on a transient Keychain failure (`.failed`) — never mint/cache a replacement then,
+  /// or a momentary glitch would silently invalidate the token every configured MCP client holds.
+  func token() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     if let cachedToken { return cachedToken }
-    if let existing = KeychainManager.shared.secret(account: Self.tokenAccount), !existing.isEmpty {
+    switch KeychainManager.shared.secretLookup(account: Self.tokenAccount) {
+    case .found(let existing) where !existing.isEmpty:
       cachedToken = existing
       return existing
+    case .found, .notFound:
+      let fresh = makeAndStoreToken()
+      cachedToken = fresh
+      return fresh
+    case .failed(let status):
+      DebugLogger.logError("MCP-SERVER: Keychain read failed for the read token: status=\(status)")
+      return nil
     }
-    let fresh = makeAndStoreToken()
-    cachedToken = fresh
-    return fresh
   }
 
   func regenerateToken() {
@@ -70,17 +77,23 @@ final class MCPServer: ObservableObject {
 
   private var cachedWriteToken: String?
 
-  /// Grants read and write. Created on first use, cached like the read token.
-  func writeToken() -> String {
+  /// Grants read and write. Created on first use, cached like the read token. nil only on a
+  /// transient Keychain failure — see `token()`.
+  func writeToken() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     if let cachedWriteToken { return cachedWriteToken }
-    if let existing = KeychainManager.shared.secret(account: Self.writeTokenAccount), !existing.isEmpty {
+    switch KeychainManager.shared.secretLookup(account: Self.writeTokenAccount) {
+    case .found(let existing) where !existing.isEmpty:
       cachedWriteToken = existing
       return existing
+    case .found, .notFound:
+      let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
+      cachedWriteToken = fresh
+      return fresh
+    case .failed(let status):
+      DebugLogger.logError("MCP-SERVER: Keychain read failed for the write token: status=\(status)")
+      return nil
     }
-    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
-    cachedWriteToken = fresh
-    return fresh
   }
 
   func regenerateWriteToken() {
@@ -127,13 +140,26 @@ final class MCPServer: ObservableObject {
         configTools: MCPConfigTools(env: .live))
       let requested = port
       do {
-        let s = try LoopbackHTTPServer(port: requested) { [weak self] request in
+        let s = try LoopbackHTTPServer(
+          port: requested,
+          onFailure: { [weak self] reason in
+            DispatchQueue.main.async {
+              guard let self else { return }
+              self.status = .failed("The local server stopped: \(reason). Turn it off and on again.")
+              DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
+            }
+          }
+        ) { [weak self] request in
           guard let self else { return .empty(503) }
           // Offline Mode promises nothing leaves this Mac; an AI app reading transcripts would send
           // them to its provider. Checked per request so turning the mode on takes effect at once.
           if OfflineMode.isEnabled { return .empty(503) }
+          guard let readToken = self.token(), let writeToken = self.writeToken() else {
+            DebugLogger.logError("MCP-SERVER: Keychain unavailable, refusing request")
+            return HTTPResponse.json(["error": "keychain unavailable"], status: 503)
+          }
           return Self.handle(
-            request, readToken: self.token(), writeToken: self.writeToken(), dispatcher: dispatcher)
+            request, readToken: readToken, writeToken: writeToken, dispatcher: dispatcher)
         }
         server = s
         status = .running(port: s.port)

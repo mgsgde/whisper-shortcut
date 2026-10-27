@@ -90,8 +90,8 @@ struct WorkspaceFoldersSection: View {
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = true
-    panel.prompt = "Share"
-    panel.message = "Choose folders the chat may read"
+    panel.prompt = String(localized: "Share")
+    panel.message = String(localized: "Choose folders the chat may read")
     guard panel.runModal() == .OK else { return }
     for url in panel.urls {
       WorkspaceFolders.addFolder(url)

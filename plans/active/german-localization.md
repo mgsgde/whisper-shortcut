@@ -1,6 +1,6 @@
 # German Localization — App Half
 
-**Status:** Spec only (2026-10-26). Nothing built yet. The website half (routing under `/de`,
+**Status:** Built 2026-10-27 on branch `feat/german-app-catalog` (A0–A4): every catalog key has German, the coverage test is strict. Waiting for merge and release. The website half (routing under `/de`,
 `hreflang`, the language switcher) is specified in the private workspace repo, because `web/` lives
 there; the two halves share the glossary below and should ship close together.
 
@@ -245,7 +245,7 @@ in any order, A4 last. The website half can run in parallel from day one; its Ge
 | **A1 German: everyday surfaces** | Opus | Menu bar menu, pill and Dictate Prompt card, popups and alerts, onboarding, errors | ~350 strings |
 | **A2 German: Settings** | Opus | All Settings tabs and components, model descriptions | ~550 strings, two sittings |
 | **A3 German: Chat and the rest** | Opus (UI) + Sonnet (`UILabelGlossary` plumbing) | Chat window, sidebar, tool steps, command popup descriptions, meetings, MCP proposal windows, mail card, telemetry sheet; README label map (2.6); the "Language follows macOS" line | ~300 strings |
-| **A4 Gate** | Sonnet | Flip coverage test to failing, update `.cursor/rules/user-facing-text-english.mdc` in the workspace repo and the submodule rule index, add German to the `run-whisper-shortcut` skill and to release notes | small |
+| **A4 Gate** | Sonnet | Flip coverage test to failing, update `.cursor/rules/user-facing-text-language.mdc` in the workspace repo and the submodule rule index, add German to the `run-whisper-shortcut` skill and to release notes | small |
 
 Rough total: two plumbing sessions, four Opus copy sessions, and about three to four hours of
 Magnus reading German screens.

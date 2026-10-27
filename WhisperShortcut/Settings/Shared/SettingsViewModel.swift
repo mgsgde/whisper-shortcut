@@ -84,17 +84,29 @@ class SettingsViewModel: ObservableObject {
     // Models. These route through migrating loaders, which forward a renamed or superseded
     // model id to its replacement and persist the rewrite, so a stale selection still appears
     // in the pickers instead of silently falling back to the default.
+    //
+    // The notice is the one the picker used to post by hand, with the same object and no
+    // userInfo. Read Aloud, Smart Improvement and both meeting models never posted one.
     .custom(\.selectedTranscriptionModel,
             load: { TranscriptionModel.loadSelected() },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+            }),
     .custom(\.selectedPromptModel,
             load: { PromptModel.loadPromptModel(forKey: UserDefaultsKeys.selectedPromptModel,
                                                 default: SettingsDefaults.selectedPromptModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedPromptModel)
+            }),
     .custom(\.selectedChatModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedChatModel,
                                                   default: SettingsDefaults.selectedChatModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedChatModel)
+            }),
     .custom(\.selectedImprovementModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedImprovementModel,
                                                   default: SettingsDefaults.selectedImprovementModel) },
@@ -248,12 +260,12 @@ class SettingsViewModel: ObservableObject {
       let duplicatedShortcuts = shortcutCounts.filter { $0.value.count > 1 }
       if let firstDuplicate = duplicatedShortcuts.first {
         let shortcutDisplay = firstDuplicate.key.displayString
-        let conflictingActions = firstDuplicate.value.joined(separator: " and ")
+        let conflictingActions = ListFormatter.localizedString(byJoining: firstDuplicate.value)
         return
-          "Shortcut '\(shortcutDisplay)' is used by both \(conflictingActions). Please use unique shortcuts."
+          String(localized: "Shortcut '\(shortcutDisplay)' is used by both \(conflictingActions). Please use unique shortcuts.")
       }
 
-      return "All enabled shortcuts must be different. Please use unique shortcuts."
+      return String(localized: "All enabled shortcuts must be different. Please use unique shortcuts.")
     }
 
     return nil
@@ -298,25 +310,25 @@ class SettingsViewModel: ObservableObject {
 
   private static let configurableShortcutSlots: [ConfigurableShortcutSlot] = [
     ConfigurableShortcutSlot(
-      field: .toggleDictation, label: "Toggle Dictation",
+      field: .toggleDictation, label: String(localized: "Toggle Dictation"),
       read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 }),
     ConfigurableShortcutSlot(
-      field: .togglePrompting, label: "Toggle Dictate Prompt",
+      field: .togglePrompting, label: String(localized: "Toggle Dictate Prompt"),
       read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 }),
     ConfigurableShortcutSlot(
-      field: .toggleSettings, label: "Toggle Settings",
+      field: .toggleSettings, label: String(localized: "Toggle Settings"),
       read: { $0.openSettings }, write: { $0.openSettings = $1 }),
     ConfigurableShortcutSlot(
-      field: .toggleChat, label: "Chat",
+      field: .toggleChat, label: String(localized: "Chat"),
       read: { $0.openChat }, write: { $0.openChat = $1 }),
     ConfigurableShortcutSlot(
-      field: .screenshotCapture, label: "Screenshot to Clipboard",
+      field: .screenshotCapture, label: String(localized: "Screenshot to Clipboard"),
       read: { $0.screenshotCapture }, write: { $0.screenshotCapture = $1 }),
     ConfigurableShortcutSlot(
-      field: .readAloudShortcut, label: "Read Aloud",
+      field: .readAloudShortcut, label: String(localized: "Read Aloud"),
       read: { $0.readAloud }, write: { $0.readAloud = $1 }),
     ConfigurableShortcutSlot(
-      field: .addToGlossaryShortcut, label: "Add Selection to Glossary",
+      field: .addToGlossaryShortcut, label: String(localized: "Add Selection to Glossary"),
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
   ]
 
@@ -377,7 +389,10 @@ class SettingsViewModel: ObservableObject {
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
-    for slot in SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted) {
+    // Captured before `persisted` is replaced: after that assignment every slot compares equal
+    // and a notice for the change just written would be dropped.
+    let changedSlots = SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted)
+    for slot in changedSlots {
       slot.save(data)
     }
 
@@ -386,14 +401,11 @@ class SettingsViewModel: ObservableObject {
       ShortcutConfigManager.shared.saveConfiguration(newShortcuts)
     }
 
-    // Notify about model change only when the Dictate model actually changed: the notice makes
-    // the menu bar re-check (and re-download) the selected local model.
-    let transcriptionModelChanged = data.selectedTranscriptionModel != persisted.selectedTranscriptionModel
     let previousGoogleKey = persisted.googleAPIKey
     persisted = data
     if !googleKeySaved { persisted.googleAPIKey = previousGoogleKey }
-    if transcriptionModelChanged {
-      NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+    for slot in changedSlots {
+      slot.onDidChange?(data)
     }
 
     data.isLoading = false
@@ -424,10 +436,10 @@ class SettingsViewModel: ObservableObject {
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
       
     } catch {
-      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.localizedDescription)")
+      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.logDescription)")
       // Revert state on error
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
-      showError("Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))")
+      showError(String(localized: "Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))"))
     }
   }
 
@@ -571,7 +583,7 @@ class SettingsViewModel: ObservableObject {
       SystemPromptsStore.shared.resetSystemPromptsToDefaults()
       DebugLogger.log("RESET: Deleted context data and reset system prompts to defaults")
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
   }
 
@@ -581,7 +593,7 @@ class SettingsViewModel: ObservableObject {
     do {
       try ContextLogger.shared.deleteAllContextData()
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
 
     ChatSessionStore.shared.deleteAllSessions()

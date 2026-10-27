@@ -65,11 +65,20 @@ final class LoopbackHTTPServer {
 
   private let socketFD: Int32
   private let handler: (HTTPRequest) -> HTTPResponse
+  /// Called once, off the accept thread's loop, when the server gives up accepting new
+  /// connections after an unexpected error (anything other than EINTR/ECONNABORTED/EMFILE/ENFILE).
+  private let onFailure: (String) -> Void
   private let lock = NSLock()
   private var isStopped = false
   private let workQueue = DispatchQueue(label: "mcp.loopback.http.work", qos: .userInitiated, attributes: .concurrent)
+  /// Caps connections actually being served; beyond this, new connections get a fast 503 instead of
+  /// piling up worker threads behind a slow or stalled client.
+  private let connectionSemaphore = DispatchSemaphore(value: 6)
 
-  init(port requestedPort: UInt16, handler: @escaping (HTTPRequest) -> HTTPResponse) throws {
+  init(
+    port requestedPort: UInt16, onFailure: @escaping (String) -> Void = { _ in },
+    handler: @escaping (HTTPRequest) -> HTTPResponse
+  ) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw ServerError.socketFailed(errno) }
 
@@ -109,6 +118,7 @@ final class LoopbackHTTPServer {
     socketFD = fd
     port = UInt16(bigEndian: bound.sin_port)
     self.handler = handler
+    self.onFailure = onFailure
 
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.acceptLoop() }
   }
@@ -140,9 +150,22 @@ final class LoopbackHTTPServer {
       if client < 0 {
         if stopped { return }
         if errno == EINTR || errno == ECONNABORTED { continue }
+        if errno == EMFILE || errno == ENFILE {
+          // Too many open files system-wide: wait for some to close rather than spin or give up.
+          usleep(100_000)
+          continue
+        }
+        onFailure("accept failed (errno \(errno): \(String(cString: strerror(errno))))")
         return
       }
+      guard connectionSemaphore.wait(timeout: .now()) == .success else {
+        // At the concurrency cap: reject fast instead of queuing behind in-flight connections.
+        write(client, HTTPResponse.json(["error": "busy"], status: 503))
+        close(client)
+        continue
+      }
       workQueue.async { [weak self] in
+        defer { self?.connectionSemaphore.signal() }
         self?.serve(client)
         close(client)
       }
@@ -156,6 +179,10 @@ final class LoopbackHTTPServer {
     var noSigPipe: Int32 = 1
     setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
+    // SO_RCVTIMEO only bounds a single recv(); a client that trickles bytes slowly (one byte every
+    // 4s) would otherwise hold this thread indefinitely. This caps the whole read phase instead.
+    // Monotonic clock so a wall-clock jump (sleep/wake, NTP) can't extend or cut it short.
+    let deadline = DispatchTime.now() + .seconds(10)
     var buffer = Data()
     var chunk = [UInt8](repeating: 0, count: 16 * 1024)
     var request: HTTPRequest?
@@ -170,6 +197,7 @@ final class LoopbackHTTPServer {
         write(client, HTTPResponse.json(["error": "bad request"], status: 400))
         return
       case .incomplete:
+        if DispatchTime.now() >= deadline { return }  // too slow — drop without a response
         let n = recv(client, &chunk, chunk.count, 0)
         if n <= 0 { return }  // closed or timed out
         buffer.append(chunk, count: n)

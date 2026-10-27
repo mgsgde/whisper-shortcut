@@ -34,17 +34,17 @@ enum AppState: Equatable {
 
     var statusText: String {
       switch self {
-      case .transcription: return "🔴 Dictating..."
-      case .prompt: return "🔴 Recording Dictate Prompt..."
-      case .liveMeeting: return "📝 Live transcription..."
+      case .transcription: return String(localized: "🔴 Dictating...")
+      case .prompt: return String(localized: "🔴 Recording Dictate Prompt...")
+      case .liveMeeting: return String(localized: "📝 Live transcription...")
       }
     }
 
     var tooltip: String {
       switch self {
-      case .transcription: return "Dictating... Click to stop"
-      case .prompt: return "Recording Dictate Prompt... Click to stop"
-      case .liveMeeting: return "Live meeting transcription... Click menu to stop"
+      case .transcription: return String(localized: "Dictating... Click to stop")
+      case .prompt: return String(localized: "Recording Dictate Prompt... Click to stop")
+      case .liveMeeting: return String(localized: "Live meeting transcription... Click menu to stop")
       }
     }
   }
@@ -118,33 +118,33 @@ enum AppState: Equatable {
 
     var statusText: String {
       switch self {
-      case .transcribing: return "⏳ Transcribing audio..."
-      case .prompting: return "⏳ Processing AI prompt..."
-      case .ttsProcessing: return "⏳ Processing text-to-speech..."
-      case .splitting: return "✂️ Splitting audio into chunks..."
+      case .transcribing: return String(localized: "⏳ Transcribing audio...")
+      case .prompting: return String(localized: "⏳ Processing AI prompt...")
+      case .ttsProcessing: return String(localized: "⏳ Processing text-to-speech...")
+      case .splitting: return String(localized: "✂️ Splitting audio into chunks...")
       case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
-        return "⏳ \(active) processing, \(done)/\(statuses.count) done"
+        return String(localized: "⏳ \(active) processing, \(done)/\(statuses.count) done")
       case .merging(let context):
-        return context == .tts ? "🔗 Merging audio..." : "🔗 Merging transcription..."
+        return context == .tts ? String(localized: "🔗 Merging audio...") : String(localized: "🔗 Merging transcription...")
       }
     }
 
     var tooltip: String {
       switch self {
-      case .transcribing: return "Transcribing audio... Please wait"
-      case .prompting: return "Processing AI prompt... Please wait"
-      case .ttsProcessing: return "Processing text-to-speech... Please wait"
-      case .splitting: return "Audio is long - splitting into chunks for processing..."
+      case .transcribing: return String(localized: "Transcribing audio... Please wait")
+      case .prompting: return String(localized: "Processing AI prompt... Please wait")
+      case .ttsProcessing: return String(localized: "Processing text-to-speech... Please wait")
+      case .splitting: return String(localized: "Audio is long - splitting into chunks for processing...")
       case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
-        return "Transcribing [\(done)/\(statuses.count)] - \(active) active"
+        return String(localized: "Transcribing [\(done)/\(statuses.count)] - \(active) active")
       case .merging(let context):
         return context == .tts
-          ? "All chunks complete - merging audio..."
-          : "All chunks complete - merging results..."
+          ? String(localized: "All chunks complete - merging audio...")
+          : String(localized: "All chunks complete - merging results...")
       }
     }
   }
@@ -170,8 +170,8 @@ enum AppState: Equatable {
 
     var tooltip: String {
       switch self {
-      case .success(let message): return "Success: \(message)"
-      case .error(let message): return "Error: \(message)"
+      case .success(let message): return String(localized: "Success: \(message)")
+      case .error(let message): return String(localized: "Error: \(message)")
       }
     }
 
@@ -210,10 +210,10 @@ extension AppState {
   /// Current status text for menu
   var statusText: String {
     switch self {
-    case .idle: return "Ready to record"
+    case .idle: return String(localized: "Ready to record")
     case .recording(let mode): return mode.statusText
     case .processing(let mode): return mode.statusText
-    case .speaking: return "🔊 Speaking..."
+    case .speaking: return String(localized: "🔊 Speaking...")
     case .feedback(let mode): return mode.statusText
     }
   }
@@ -221,10 +221,10 @@ extension AppState {
   /// Current tooltip text
   var tooltip: String {
     switch self {
-    case .idle: return "WhisperShortcut - Click to record"
+    case .idle: return String(localized: "WhisperShortcut - Click to record")
     case .recording(let mode): return mode.tooltip
     case .processing(let mode): return mode.tooltip
-    case .speaking: return "Reading aloud... Click menu to stop"
+    case .speaking: return String(localized: "Reading aloud... Click menu to stop")
     case .feedback(let mode): return mode.tooltip
     }
   }

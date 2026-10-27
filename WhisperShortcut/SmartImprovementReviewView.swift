@@ -84,7 +84,7 @@ func collapseUnchangedDiffLines(_ lines: [SmartImprovementDiffLine], context: In
     let hidden = (end - start) - keepBefore - keepAfter
     if hidden > 1 {
       result.append(contentsOf: lines[start..<(start + keepBefore)])
-      result.append(.init(kind: .skipped, text: "⋯ \(hidden) unchanged lines"))
+      result.append(.init(kind: .skipped, text: String(localized: "⋯ \(hidden) unchanged lines")))
       result.append(contentsOf: lines[(end - keepAfter)..<end])
     } else {
       result.append(contentsOf: lines[start..<end])
@@ -103,11 +103,11 @@ struct SmartImprovementReviewView: View {
   /// The prompt section under review, when there is one; it picks which scorecard numbers to show.
   let section: SystemPromptSection?
   /// "Smart Improvement" for the app's own runs; the AI-app inbox passes "Suggested by an AI app".
-  let titlePrefix: String
-  let cancelTitle: String
-  let acceptTitle: String
+  let titlePrefix: LocalizedStringResource
+  let cancelTitle: LocalizedStringResource
+  let acceptTitle: LocalizedStringResource
   /// Word in the "Current …" / "Suggested …" labels ("prompt", "command", "profile").
-  let textNoun: String
+  let textNoun: ReviewNoun
   /// Off for a deletion: there is no new text to edit.
   let allowsEditing: Bool
   /// Off for changes from AI apps: their window can open while the user types elsewhere, and a
@@ -125,10 +125,10 @@ struct SmartImprovementReviewView: View {
     suggestedText: String,
     rationale: String? = nil,
     section: SystemPromptSection? = nil,
-    titlePrefix: String = "Smart Improvement",
-    cancelTitle: String = "Cancel",
-    acceptTitle: String = "Accept",
-    textNoun: String = "prompt",
+    titlePrefix: LocalizedStringResource = "Smart Improvement",
+    cancelTitle: LocalizedStringResource = "Cancel",
+    acceptTitle: LocalizedStringResource = "Accept",
+    textNoun: ReviewNoun = .prompt,
     allowsEditing: Bool = true,
     acceptOnReturn: Bool = true,
     onAccept: @escaping (String) -> Void,
@@ -154,9 +154,9 @@ struct SmartImprovementReviewView: View {
   /// Title for the review window (used by the panel).
   var windowTitle: String {
     if let index = index, let total = total, total > 1 {
-      return "\(titlePrefix) – \(focusDisplayName) (\(index) of \(total))"
+      return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName) (\(index) of \(total))")
     }
-    return "\(titlePrefix) – \(focusDisplayName)"
+    return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName)")
   }
 
   private var diffLines: [SmartImprovementDiffLine] {
@@ -231,7 +231,7 @@ struct SmartImprovementReviewView: View {
       }
 
       VStack(alignment: .leading, spacing: 6) {
-        Text("Current \(textNoun)")
+        Text(textNoun.currentLabel)
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
@@ -249,7 +249,7 @@ struct SmartImprovementReviewView: View {
 
       if allowsEditing {
       VStack(alignment: .leading, spacing: 6) {
-        Text("Suggested \(textNoun) (editable)")
+        Text(textNoun.suggestedLabel)
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
@@ -266,7 +266,7 @@ struct SmartImprovementReviewView: View {
       }
 
       HStack(spacing: 12) {
-        Button(cancelTitle) {
+        Button(String(localized: cancelTitle)) {
           onCancel()
         }
         .keyboardShortcut(.cancelAction)
@@ -274,7 +274,7 @@ struct SmartImprovementReviewView: View {
 
         Spacer()
 
-        Button(acceptTitle) {
+        Button(String(localized: acceptTitle)) {
           onAccept(editedSuggestedText)
         }
         .keyboardShortcut(acceptOnReturn ? .defaultAction : nil)
@@ -384,6 +384,32 @@ enum SmartImprovementReviewPanel {
         // an awaiting caller would hang forever. Resuming twice is a no-op by construction.
         resumeOnce(returning: nil)
       }
+    }
+  }
+}
+
+/// What the reviewed text is, so the "Current …" / "Suggested …" labels are whole sentences a
+/// translation can inflect, not a noun glued into an English template.
+enum ReviewNoun {
+  case prompt, instructions, profile, command, report
+
+  var currentLabel: LocalizedStringKey {
+    switch self {
+    case .prompt: return "Current prompt"
+    case .instructions: return "Current instructions"
+    case .profile: return "Current profile"
+    case .command: return "Current command"
+    case .report: return "Current report"
+    }
+  }
+
+  var suggestedLabel: LocalizedStringKey {
+    switch self {
+    case .prompt: return "Suggested prompt (editable)"
+    case .instructions: return "Suggested instructions (editable)"
+    case .profile: return "Suggested profile (editable)"
+    case .command: return "Suggested command (editable)"
+    case .report: return "Suggested report (editable)"
     }
   }
 }

@@ -58,7 +58,7 @@ extension Key: @retroactive Codable {
     case .eight: return "8"
     case .nine: return "9"
     case .escape: return "⎋"
-    case .space: return "Space"
+    case .space: return String(localized: "Space", comment: "Name of the space bar key in a shortcut")
     case .comma: return ","
     case .period: return "."
     case .f1: return "F1"
@@ -148,19 +148,86 @@ struct ShortcutConfig: Codable, Equatable {
   )
 }
 
+/// One shortcut-bound feature, and whether this build ships it.
+///
+/// The menu, Settings, onboarding and Chat each kept their own copy of this list. They had
+/// already drifted: `assistantFacingRows` still told the App Store Chat that Read Aloud has a
+/// shortcut, while the menu, the keyboard section and the onboarding Done step all hide it
+/// there. Add to Glossary is not a case — the assistant list, the onboarding feature list,
+/// the empty-state hints and the three onboarding recorders never included it, in any build.
+/// The menu title "Add Selection to Glossary" and the Settings label "Add to Glossary:" stay
+/// on those two surfaces, behind the same App Store exclusion.
+enum ShortcutAction: CaseIterable {
+  case dictate
+  case dictatePrompt
+  case screenshot
+  case readAloud
+  case chat
+  case settings
+
+  /// The name the assistant-facing list uses. A surface whose label differs on purpose
+  /// (the menu's "Settings…", Settings' "Open Chat:") keeps that string locally.
+  var title: String {
+    switch self {
+    case .dictate: return "Dictate"
+    case .dictatePrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .settings: return "Settings"
+    }
+  }
+
+  /// `title` for on-screen labels. `title` itself stays English because the assistant-facing
+  /// list is model input, not UI.
+  var localizedTitle: LocalizedStringResource {
+    switch self {
+    case .dictate: return "Dictate"
+    case .dictatePrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .settings: return "Settings"
+    }
+  }
+
+  var keyPath: KeyPath<ShortcutConfig, ShortcutDefinition> {
+    switch self {
+    case .dictate: return \.startRecording
+    case .dictatePrompt: return \.startPrompting
+    case .screenshot: return \.screenshotCapture
+    case .readAloud: return \.readAloud
+    case .chat: return \.openChat
+    case .settings: return \.openSettings
+    }
+  }
+
+  /// Read Aloud copies the selection with ⌘C, which needs Accessibility. The App Store build
+  /// has no menu item and no hotkey for it, so nothing in that build may advertise the shortcut.
+  var isInThisBuild: Bool {
+    switch self {
+    case .readAloud:
+      #if APP_STORE
+      return false
+      #else
+      return true
+      #endif
+    case .dictate, .dictatePrompt, .screenshot, .chat, .settings:
+      return true
+    }
+  }
+}
+
 extension ShortcutConfig {
-  /// The shortcuts both the online and the offline Chat tell the model about, kept in one place so
-  /// the two lists cannot drift. A disabled definition renders as "Disabled" via
-  /// `displayStringWithSeparator`.
+  /// The shortcuts both the online and the offline Chat tell the model about.
+  ///
+  /// `ShortcutAction.allCases` filtered to this build, in that order — the order this list
+  /// had when it was written out by hand, minus Read Aloud in the App Store build. A disabled
+  /// definition still renders as "Disabled" via `displayStringWithSeparator`.
   var assistantFacingRows: [(action: String, definition: ShortcutDefinition)] {
-    [
-      ("Dictate", startRecording),
-      ("Dictate Prompt", startPrompting),
-      ("Screenshot", screenshotCapture),
-      ("Read Aloud", readAloud),
-      ("Chat", openChat),
-      ("Settings", openSettings),
-    ]
+    ShortcutAction.allCases.filter(\.isInThisBuild).map { action in
+      (action.title, self[keyPath: action.keyPath])
+    }
   }
 }
 

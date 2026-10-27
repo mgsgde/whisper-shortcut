@@ -33,17 +33,3 @@ struct OpenRouterAccountStatusRow: View {
     }
   }
 }
-
-/// Icon tinted, text in the secondary colour — a status reads at a glance without the whole line
-/// shouting.
-private struct TintedIconLabelStyle: LabelStyle {
-  let tint: Color
-
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(spacing: 6) {
-      configuration.icon.foregroundColor(tint)
-      configuration.title.foregroundColor(.secondary)
-    }
-    .font(.callout)
-  }
-}

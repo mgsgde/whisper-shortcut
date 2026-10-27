@@ -48,22 +48,26 @@ enum TranscriptionProvider: String, CaseIterable {
     case .openAI: return "OpenAI"
     case .xai: return "xAI (Grok)"
     case .openRouter: return "OpenRouter"
-    case .selfHosted: return "Self-hosted"
-    case .offline: return "On-device"
+    case .selfHosted: return String(localized: "Self-hosted")
+    case .offline: return String(localized: "On-device")
     }
   }
 
   /// Whether the user currently has what this provider needs.
+  ///
+  /// OpenAI, xAI and OpenRouter go through `ProviderCredentials.hasKey` so a whitespace-only key
+  /// is missing here as well as in `verifyConfigured`. Gemini stays on `GeminiCredentialProvider`;
+  /// self-hosted is a non-empty endpoint URL; offline availability is per downloaded file.
   var hasCredential: Bool {
     switch self {
     case .google:
       return GeminiCredentialProvider.shared.hasCredential()
     case .openAI:
-      return KeychainManager.shared.hasNonEmpty(.openAI)
+      return ProviderCredentials.hasKey(.openAI)
     case .xai:
-      return KeychainManager.shared.hasNonEmpty(.xai)
+      return ProviderCredentials.hasKey(.xAI)
     case .openRouter:
-      return KeychainManager.shared.hasNonEmpty(.openRouter)
+      return ProviderCredentials.hasKey(.openRouter)
     case .selfHosted:
       let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -80,9 +84,9 @@ enum TranscriptionProvider: String, CaseIterable {
   /// contradict its own body and sent users hunting for a key that would not have helped.
   var credentialRequiredTitle: String {
     switch self {
-    case .offline: return "Model Not Downloaded"
-    case .selfHosted: return "Endpoint Not Configured"
-    case .google, .openAI, .xai, .openRouter: return "API Key Required"
+    case .offline: return String(localized: "Model Not Downloaded")
+    case .selfHosted: return String(localized: "Endpoint Not Configured")
+    case .google, .openAI, .xai, .openRouter: return String(localized: "API Key Required")
     }
   }
 
@@ -105,17 +109,17 @@ enum TranscriptionProvider: String, CaseIterable {
   var credentialRequiredMessage: String {
     switch self {
     case .google:
-      return "Add your Gemini API key in Settings → Accounts to use dictation. For offline use, download an offline model in Settings → Dictate."
+      return String(localized: "Add your Gemini API key in Settings → Accounts to use dictation. For offline use, download an offline model in Settings → Dictate.")
     case .openAI:
-      return "Add your OpenAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate."
+      return String(localized: "Add your OpenAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate.")
     case .xai:
-      return "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate."
+      return String(localized: "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate.")
     case .openRouter:
-      return "Connect your OpenRouter account in Settings → Accounts to transcribe through OpenRouter, or pick a different model."
+      return String(localized: "Connect your OpenRouter account in Settings → Accounts to transcribe through OpenRouter, or pick a different model.")
     case .selfHosted:
-      return "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model."
+      return String(localized: "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model.")
     case .offline:
-      return "Download the selected offline model in Settings → Dictate, or pick a different transcription model."
+      return String(localized: "Download the selected offline model in Settings → Dictate, or pick a different transcription model.")
     }
   }
 }

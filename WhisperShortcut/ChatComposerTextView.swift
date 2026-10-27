@@ -42,23 +42,29 @@ final class ComposerAttachmentCell: NSTextAttachmentCell {
     switch kind {
     case .screenshot(let data):
       self.thumbnail = NSImage(data: data)
-      self.label = "Screenshot"
+      self.label = String(localized: "Screenshot")
     case .pastedBlock(_, let content, let bkind):
       self.thumbnail = nil
       let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
       switch bkind {
-      case .largePaste: self.label = "Pasted · \(lines) lines"
-      case .shortcutSelection: self.label = "Selection · \(lines) lines"
+      case .largePaste: self.label = String(localized: "Pasted · \(lines) lines")
+      case .shortcutSelection: self.label = String(localized: "Selection · \(lines) lines")
       // The quote is one short line, so show it instead of a line count — the whole point is
       // that the user can see which moment they are asking about before they hit send.
       case .meetingQuote:
         let oneLine = content.replacingOccurrences(of: "\n", with: " ")
-        self.label = "Quote · \(oneLine.count > 48 ? String(oneLine.prefix(48)) + "…" : oneLine)"
+        let quoted = oneLine.count > 48 ? String(oneLine.prefix(48)) + "…" : oneLine
+        self.label = String(localized: "Quote · \(quoted)")
       }
     case .file(_, let mime, let filename):
       self.thumbnail = nil
-      let prefix = mime == "application/pdf" ? "PDF" : (mime.hasPrefix("image/") ? "Image" : "File")
-      self.label = "\(prefix) · \(filename)"
+      if mime == "application/pdf" {
+        self.label = String(localized: "PDF · \(filename)")
+      } else if mime.hasPrefix("image/") {
+        self.label = String(localized: "Image · \(filename)")
+      } else {
+        self.label = String(localized: "File · \(filename)")
+      }
     }
     super.init(textCell: "")
   }
@@ -142,7 +148,7 @@ final class ChatComposerNSTextView: NSTextView {
   /// lets the paste fall through (e.g. the file path is inserted as text).
   var onFilePaste: (([URL]) -> Bool)?
   var onAttachmentClicked: ((ComposerTextAttachment) -> Void)?
-  var placeholder: String = "Message Gemini…"
+  var placeholder: String = String(localized: "Message Gemini…")
 
   override var acceptsFirstResponder: Bool { true }
 
@@ -589,7 +595,7 @@ final class GeminiComposerController: ObservableObject {
 struct ChatComposerTextView: NSViewRepresentable {
   @ObservedObject var controller: GeminiComposerController
   /// Shown while the composer is empty; reflects the currently selected model.
-  var placeholder: String = "Message Gemini…"
+  var placeholder: String = String(localized: "Message Gemini…")
   var onSubmit: () -> Void
   var onCancel: () -> Void
   /// Return true if tab was consumed for slash-command completion.

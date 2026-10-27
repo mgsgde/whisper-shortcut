@@ -70,6 +70,25 @@ struct IMAPSessionTests {
     #expect(names == ["Entwürfe", "INBOX"])
   }
 
+  @Test func listResolvesLiteralFolderName() async throws {
+    let transport = ScriptedTransport(chunks: [
+      "* LIST (\\HasNoChildren) \"/\" {9}\r\nMy Folder\r\n* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\nA001 OK LIST completed\r\n",
+    ])
+    let session = IMAPSession(transport: transport)
+    let names = try await session.listMailboxes()
+    #expect(names == ["My Folder", "INBOX"])
+  }
+
+  @Test func slowButSteadyLiteralCompletes() async throws {
+    var chunks: [String] = ["* 1 FETCH (UID 7 BODY[] {12}\r\n"]
+    for part in ["Hello ", "World!"] { chunks.append(part) }
+    chunks.append(")\r\nA001 OK FETCH completed\r\n")
+    let transport = ScriptedTransport(chunks: chunks)
+    let session = IMAPSession(transport: transport)
+    let body = try await session.fetchBody(uid: 7)
+    #expect(String(decoding: body, as: UTF8.self) == "Hello World!")
+  }
+
   @Test func examineReadsExists() async throws {
     let transport = ScriptedTransport(chunks: [
       "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n* 1212 EXISTS\r\n* 0 RECENT\r\nA001 OK [READ-ONLY] EXAMINE completed\r\n",

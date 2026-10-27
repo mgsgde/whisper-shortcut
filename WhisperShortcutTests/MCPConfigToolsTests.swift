@@ -93,29 +93,59 @@ struct MCPConfigToolsTests {
     #expect(env.changeLog.changes.isEmpty)
   }
 
-  @Test("Write token at level read: not listed, calls rejected")
+  @Test("Write token at level read: list is still stable (write tools listed), but the call is rejected")
   func writeTokenLevelRead() {
     let env = MCPTestEnv(level: .read)
     let t = env.tools()
+    // tools/list must not vary with the configured access level — clients cache it per session.
     let names = Set(t.toolDefinitions(access: .write).compactMap { $0["name"] as? String })
-    #expect(names.isDisjoint(with: writeTools))
+    #expect(names.isSuperset(of: writeTools))
+    // Enforcement still happens at call time.
     let r = t.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "x"], access: .write)
     #expect(r.isError)
     #expect(r.text.contains("is off"))
     #expect(!glossary(env).contains("Wianco"))
   }
 
-  @Test("Write token at propose/apply: write tools listed with requiresUserInteraction")
+  @Test("Write token at every access level: write tools listed the same way, with requiresUserInteraction except get_proposal_status")
   func writeToolsListed() {
-    for level in [MCPConfigAccessLevel.propose, .apply] {
+    for level in [MCPConfigAccessLevel.read, .propose, .apply] {
       let env = MCPTestEnv(level: level)
       let defs = env.tools().toolDefinitions(access: .write)
       let write = defs.filter { writeTools.contains($0["name"] as? String ?? "") }
       #expect(Set(write.compactMap { $0["name"] as? String }) == writeTools)
       for d in write {
         let meta = d["_meta"] as? [String: Any]
-        #expect(meta?["anthropic/requiresUserInteraction"] as? Bool == true)
+        let requiresInteraction = meta?["anthropic/requiresUserInteraction"] as? Bool == true
+        if d["name"] as? String == "get_proposal_status" {
+          #expect(!requiresInteraction)  // read-only: no _meta hint needed
+        } else {
+          #expect(requiresInteraction)
+        }
       }
+    }
+  }
+
+  @Test("Read token: write tools are never listed, at any configured access level")
+  func readTokenNeverListsWriteTools() {
+    for level in [MCPConfigAccessLevel.read, .propose, .apply] {
+      let env = MCPTestEnv(level: level)
+      let names = Set(env.tools().toolDefinitions(access: .read).compactMap { $0["name"] as? String })
+      #expect(names.isDisjoint(with: writeTools))
+    }
+  }
+
+  @Test("Every listed tool has an annotations object with a title")
+  func everyToolHasAnnotationsTitle() {
+    let env = MCPTestEnv(level: .apply)
+    let d = env.dispatcher()
+    let all = MCPMeetingTools.toolDefinitions + d.configTools.toolDefinitions(access: .write)
+    #expect(!all.isEmpty)
+    for tool in all {
+      let annotations = tool["annotations"] as? [String: Any]
+      let name = tool["name"] as? String ?? "?"
+      #expect(annotations != nil, "\(name) has no annotations")
+      #expect(((annotations?["title"] as? String)?.isEmpty == false), "\(name) has no annotations.title")
     }
   }
 
@@ -220,6 +250,26 @@ struct MCPConfigToolsTests {
 
     let again = t.call(name: "add_glossary_terms", arguments: ["terms": ["sabaki.dance"], "rationale": "r"], access: .write)
     #expect(obj(again)["status"] as? String == "no_change")
+  }
+
+  @Test("add_glossary_terms at level propose creates a reviewable proposal instead of writing; apply still writes directly")
+  func glossaryProposeVsApply() {
+    let proposeEnv = MCPTestEnv(level: .propose)
+    let pt = proposeEnv.tools()
+    let p = pt.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "names"], access: .write)
+    #expect(!p.isError)
+    #expect(obj(p)["status"] as? String == "pending_review")
+    #expect(!glossary(proposeEnv).contains("Wianco"))
+    #expect(proposeEnv.proposals.pending.count == 1)
+    #expect(proposeEnv.proposals.pending[0].section == SystemPromptSection.whisperGlossary.rawValue)
+
+    let applyEnv = MCPTestEnv(level: .apply)
+    let at = applyEnv.tools()
+    let a = at.call(name: "add_glossary_terms", arguments: ["terms": ["Wianco"], "rationale": "names"], access: .write)
+    #expect(!a.isError)
+    #expect(obj(a)["status"] as? String == "applied")
+    #expect(glossary(applyEnv).contains("Wianco"))
+    #expect(applyEnv.proposals.pending.isEmpty)
   }
 
   @Test("add_glossary_terms rejects over budget with nothing written")
