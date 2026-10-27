@@ -39,16 +39,16 @@
     },
     "%@\nBefore: %lld %@ · since: %lld %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@\nBefore: %2$lld %3$@ · since: %4$lld %5$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@\nVorher: %2$lld %3$@ · seitdem: %4$lld %5$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@\nBefore: %2$lld %3$@ · since: %4$lld %5$@"
           }
         }
       }
@@ -138,16 +138,16 @@
     },
     "%@ of the meeting couldn't be transcribed yet: %@\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ of the meeting couldn't be transcribed yet: %2$@\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ des Meetings konnten noch nicht transkribiert werden: %2$@\n\nDie Aufnahme bleibt auf diesem Mac. Versuchen Sie es erneut, sobald Sie wieder online sind – hier oder mit „Meeting-Transkription wiederholen“ im Menüleisten-Menü."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of the meeting couldn't be transcribed yet: %2$@\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu."
           }
         }
       }
@@ -195,24 +195,6 @@
     "%@ · profile follows after %lld more messages" : {
       "comment" : "Plural variation on the number of messages",
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@ · profile follows after %lld more message"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%@ · profile follows after %lld more messages"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -226,6 +208,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%1$@ · Profil folgt nach %2$lld weiteren Nachrichten"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@ · profile follows after %lld more message"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%@ · profile follows after %lld more messages"
                 }
               }
             }
@@ -245,16 +245,16 @@
     },
     "%@ · profile updated %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · profile updated %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ · Profil aktualisiert %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · profile updated %2$@"
           }
         }
       }
@@ -271,16 +271,16 @@
     },
     "%@ · SSL, port %lld" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · SSL, port %2$lld"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ · SSL, Port %2$lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · SSL, port %2$lld"
           }
         }
       }
@@ -298,16 +298,16 @@
     },
     "%@ – %@ (%lld of %lld)" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ – %2$@ (%3$lld of %4$lld)"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ – %2$@ (%3$lld von %4$lld)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@ (%3$lld of %4$lld)"
           }
         }
       }
@@ -325,16 +325,16 @@
     },
     "%@ — %lld%% of %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ — %2$lld%% of %3$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ – %2$lld %% von %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$lld%% of %3$@"
           }
         }
       }
@@ -385,24 +385,6 @@
     },
     "%lld accounts" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld account"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld accounts"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -420,29 +402,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld boards" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld board"
+                  "value" : "%lld account"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld boards"
+                  "value" : "%lld accounts"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld boards" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -460,29 +442,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld cards" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld card"
+                  "value" : "%lld board"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld cards"
+                  "value" : "%lld boards"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld cards" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -500,29 +482,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld denied" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld denied"
+                  "value" : "%lld card"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld denied"
+                  "value" : "%lld cards"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld denied" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -540,30 +522,30 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld emails" : {
-      "comment" : "Plural variation on the number",
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld email"
+                  "value" : "%lld denied"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld emails"
+                  "value" : "%lld denied"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld emails" : {
+      "comment" : "Plural variation on the number",
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -581,29 +563,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld entries" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld entry"
+                  "value" : "%lld email"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld entries"
+                  "value" : "%lld emails"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld entries" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -621,29 +603,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld events" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld event"
+                  "value" : "%lld entry"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld events"
+                  "value" : "%lld entries"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld events" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -657,6 +639,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld Termine"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld event"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld events"
                 }
               }
             }
@@ -676,24 +676,6 @@
     },
     "%lld lists" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld list"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld lists"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -711,11 +693,47 @@
               }
             }
           }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld list"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld lists"
+                }
+              }
+            }
+          }
         }
       }
     },
     "%lld matches" : {
       "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Treffer"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Treffer"
+                }
+              }
+            }
+          }
+        },
         "en" : {
           "variations" : {
             "plural" : {
@@ -733,48 +751,12 @@
               }
             }
           }
-        },
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Treffer"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Treffer"
-                }
-              }
-            }
-          }
         }
       }
     },
     "%lld messages" : {
       "comment" : "Plural variation on the number",
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld message"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld messages"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -792,29 +774,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld parts" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld part"
+                  "value" : "%lld message"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld parts"
+                  "value" : "%lld messages"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld parts" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -828,6 +810,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld Teile"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld part"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld parts"
                 }
               }
             }
@@ -847,24 +847,6 @@
     },
     "%lld results" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld result"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld results"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -882,29 +864,29 @@
               }
             }
           }
-        }
-      }
-    },
-    "%lld tasks" : {
-      "localizations" : {
+        },
         "en" : {
           "variations" : {
             "plural" : {
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld task"
+                  "value" : "%lld result"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld tasks"
+                  "value" : "%lld results"
                 }
               }
             }
           }
-        },
+        }
+      }
+    },
+    "%lld tasks" : {
+      "localizations" : {
         "de" : {
           "variations" : {
             "plural" : {
@@ -922,6 +904,24 @@
               }
             }
           }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld task"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tasks"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -930,16 +930,16 @@
     },
     "%lld%% of %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld%% of %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld %% von %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld%% of %2$@"
           }
         }
       }
@@ -966,16 +966,16 @@
     },
     "**%@** can't run on this Mac: it needs at least %lld GB of memory." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "**%1$@** can't run on this Mac: it needs at least %2$lld GB of memory."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "**%1$@** läuft nicht auf diesem Mac: Es braucht mindestens %2$lld GB Arbeitsspeicher."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "**%1$@** can't run on this Mac: it needs at least %2$lld GB of memory."
           }
         }
       }
@@ -1758,24 +1758,6 @@
     },
     "Added to queue. %lld improvements queued." : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added to queue. %lld improvement queued."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added to queue. %lld improvements queued."
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -1789,6 +1771,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "In die Warteschlange gestellt. %lld Verbesserungen warten."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added to queue. %lld improvement queued."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Added to queue. %lld improvements queued."
                 }
               }
             }
@@ -2276,6 +2276,16 @@
         }
       }
     },
+    "App language:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Sprache:"
+          }
+        }
+      }
+    },
     "App Store link copied to clipboard" : {
       "localizations" : {
         "de" : {
@@ -2638,16 +2648,16 @@
     },
     "Audio is too long for OpenAI Dictate Prompt (%@ MB > %@ MB limit). Switch to a Gemini Dictate Prompt model for longer recordings." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Audio is too long for OpenAI Dictate Prompt (%1$@ MB > %2$@ MB limit). Switch to a Gemini Dictate Prompt model for longer recordings."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme ist zu lang für Dictate Prompt mit OpenAI (%1$@ MB > Grenze %2$@ MB). Wechseln Sie für längere Aufnahmen zu einem Gemini-Modell für Dictate Prompt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Audio is too long for OpenAI Dictate Prompt (%1$@ MB > %2$@ MB limit). Switch to a Gemini Dictate Prompt model for longer recordings."
           }
         }
       }
@@ -3023,6 +3033,16 @@
         }
       }
     },
+    "Change in System Settings…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den Systemeinstellungen ändern …"
+          }
+        }
+      }
+    },
     "Change the Dictate Prompt instructions." : {
       "localizations" : {
         "de" : {
@@ -3116,24 +3136,6 @@
     },
     "Chat copied to clipboard (%lld messages)." : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Chat copied to clipboard (%lld message)."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Chat copied to clipboard (%lld messages)."
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -3147,6 +3149,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Chat in die Zwischenablage kopiert (%lld Nachrichten)."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Chat copied to clipboard (%lld message)."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Chat copied to clipboard (%lld messages)."
                 }
               }
             }
@@ -3276,16 +3296,16 @@
     },
     "Chat sees the full transcript · %lld min so far · %lld notes" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Chat sees the full transcript · %1$lld min so far · %2$lld notes"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Chat sieht das ganze Transkript · bisher %1$lld Min. · %2$lld Notizen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Chat sees the full transcript · %1$lld min so far · %2$lld notes"
           }
         }
       }
@@ -3432,16 +3452,16 @@
     },
     "ChatGPT returned an error (HTTP %lld): %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "ChatGPT returned an error (HTTP %1$lld): %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "ChatGPT hat einen Fehler gemeldet (HTTP %1$lld): %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "ChatGPT returned an error (HTTP %1$lld): %2$@"
           }
         }
       }
@@ -4698,32 +4718,32 @@
     },
     "Could not delete %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could not delete %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht gelöscht werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not delete %1$@: %2$@"
           }
         }
       }
     },
     "Could not download the tokenizer for %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could not download the tokenizer for %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Tokenizer für %1$@ konnte nicht geladen werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not download the tokenizer for %1$@: %2$@"
           }
         }
       }
@@ -4760,16 +4780,16 @@
     },
     "Could not restore %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Could not restore %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht wiederhergestellt werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Could not restore %1$@: %2$@"
           }
         }
       }
@@ -5346,16 +5366,16 @@
     },
     "Delete %@ (moves %@ to the Trash)" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Delete %1$@ (moves %2$@ to the Trash)"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ löschen (legt %2$@ in den Papierkorb)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete %1$@ (moves %2$@ to the Trash)"
           }
         }
       }
@@ -5724,16 +5744,16 @@
     },
     "Dictate Prompt runs offline too — downloading %@ (%@) in the background… %lld%%. You can continue." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Dictate Prompt runs offline too — downloading %1$@ (%2$@) in the background… %3$lld%%. You can continue."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dictate Prompt läuft auch offline – %1$@ (%2$@) wird im Hintergrund geladen … %3$lld %%. Sie können weitermachen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Dictate Prompt runs offline too — downloading %1$@ (%2$@) in the background… %3$lld%%. You can continue."
           }
         }
       }
@@ -5960,16 +5980,16 @@
     },
     "Download %@ (≈%lld MB)" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Download %1$@ (≈%2$lld MB)"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ laden (≈ %2$lld MB)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Download %1$@ (≈%2$lld MB)"
           }
         }
       }
@@ -6066,32 +6086,32 @@
     },
     "Downloading %@ — %lld%%" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Downloading %1$@ — %2$lld%%"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ wird geladen – %2$lld %%"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@ — %2$lld%%"
           }
         }
       }
     },
     "Downloading %@… %lld%%" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Downloading %1$@… %2$lld%%"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ wird geladen … %2$lld %%"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Downloading %1$@… %2$lld%%"
           }
         }
       }
@@ -6568,16 +6588,16 @@
     },
     "Failed to chunk %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Failed to chunk %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht in Teile zerlegt werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to chunk %1$@: %2$@"
           }
         }
       }
@@ -6674,16 +6694,16 @@
     },
     "Failed to load %@: %@. The model may be incomplete or corrupted. Please try downloading it again in Settings." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Failed to load %1$@: %2$@. The model may be incomplete or corrupted. Please try downloading it again in Settings."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht geladen werden: %2$@. Das Modell ist vielleicht unvollständig oder beschädigt. Bitte laden Sie es in den Einstellungen noch einmal."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to load %1$@: %2$@. The model may be incomplete or corrupted. Please try downloading it again in Settings."
           }
         }
       }
@@ -7653,16 +7673,16 @@
     },
     "Grok will read only these %lld account(s) on X: %@ — posts from anyone else stay invisible to it." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Grok will read only these %1$lld account(s) on X: %2$@ — posts from anyone else stay invisible to it."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok liest auf X nur diese %1$lld Konten: %2$@. Beiträge aller anderen sieht es nicht."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Grok will read only these %1$lld account(s) on X: %2$@ — posts from anyone else stay invisible to it."
           }
         }
       }
@@ -8009,24 +8029,6 @@
     },
     "Imported %lld new messages." : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Imported %lld new message."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Imported %lld new messages."
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -8044,21 +8046,39 @@
               }
             }
           }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Imported %lld new message."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Imported %lld new messages."
+                }
+              }
+            }
+          }
         }
       }
     },
     "Imported %lld new messages; %lld threads could not be read, try again later for the rest." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Imported %1$lld new messages; %2$lld threads could not be read, try again later for the rest."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld neue Nachrichten importiert; %2$lld Verläufe konnten nicht gelesen werden, versuchen Sie es für den Rest später noch einmal."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Imported %1$lld new messages; %2$lld threads could not be read, try again later for the rest."
           }
         }
       }
@@ -8265,16 +8285,16 @@
     },
     "Invalid format for chunk %lld: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Invalid format for chunk %1$lld: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungültiges Format bei Teil %1$lld: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid format for chunk %1$lld: %2$@"
           }
         }
       }
@@ -8561,16 +8581,16 @@
     },
     "Learned from %@ and %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Learned from %1$@ and %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gelernt aus %1$@ und %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Learned from %1$@ and %2$@"
           }
         }
       }
@@ -9117,16 +9137,16 @@
     },
     "Local server returned 404 for model \"%@\". Pull/select the model first (e.g. `ollama pull %@`) or fix the model id in Dictate Prompt settings." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Local server returned 404 for model \"%1$@\". Pull/select the model first (e.g. `ollama pull %2$@`) or fix the model id in Dictate Prompt settings."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der lokale Server meldet 404 für das Modell „%1$@“. Laden bzw. wählen Sie das Modell zuerst (z. B. `ollama pull %2$@`) oder korrigieren Sie die Modell-ID in den Einstellungen von Dictate Prompt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Local server returned 404 for model \"%1$@\". Pull/select the model first (e.g. `ollama pull %2$@`) or fix the model id in Dictate Prompt settings."
           }
         }
       }
@@ -10076,64 +10096,64 @@
     },
     "No %@ API key configured. Add your %@ API key in Settings → Accounts to use Claude models." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Claude models."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein API-Schlüssel für %1$@ eingerichtet. Tragen Sie Ihren %2$@-API-Schlüssel unter Einstellungen → Konten ein, um Claude-Modelle zu nutzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Claude models."
           }
         }
       }
     },
     "No %@ API key configured. Add your %@ API key in Settings → Accounts to use Grok models." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Grok models."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein API-Schlüssel für %1$@ eingerichtet. Tragen Sie Ihren %2$@-API-Schlüssel unter Einstellungen → Konten ein, um Grok-Modelle zu nutzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use Grok models."
           }
         }
       }
     },
     "No %@ API key configured. Add your %@ API key in Settings → Accounts to use OpenAI models." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenAI models."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein API-Schlüssel für %1$@ eingerichtet. Tragen Sie Ihren %2$@-API-Schlüssel unter Einstellungen → Konten ein, um OpenAI-Modelle zu nutzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenAI models."
           }
         }
       }
     },
     "No %@ API key configured. Add your %@ API key in Settings → Accounts to use OpenRouter models." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenRouter models."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein API-Schlüssel für %1$@ eingerichtet. Tragen Sie Ihren %2$@-API-Schlüssel unter Einstellungen → Konten ein, um OpenRouter-Modelle zu nutzen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No %1$@ API key configured. Add your %2$@ API key in Settings → Accounts to use OpenRouter models."
           }
         }
       }
@@ -10550,16 +10570,16 @@
     },
     "No usable X handles in \"%@\". %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No usable X handles in \"%1$@\". %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine brauchbaren X-Namen in „%1$@“. %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No usable X handles in \"%1$@\". %2$@"
           }
         }
       }
@@ -11127,16 +11147,16 @@
     },
     "Only %lld of %lld files attached (limit: %lld)." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Only %1$lld of %2$lld files attached (limit: %3$lld)."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur %1$lld von %2$lld Dateien angehängt (Grenze: %3$lld)."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Only %1$lld of %2$lld files attached (limit: %3$lld)."
           }
         }
       }
@@ -12083,24 +12103,6 @@
     },
     "Pasted · %lld lines" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Pasted · %lld line"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Pasted · %lld lines"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -12114,6 +12116,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Eingefügt · %lld Zeilen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pasted · %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pasted · %lld lines"
                 }
               }
             }
@@ -12635,16 +12655,16 @@
     },
     "Quick action %lld: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Quick action %1$lld: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schnellaktion %1$lld: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Quick action %1$lld: %2$@"
           }
         }
       }
@@ -13072,16 +13092,16 @@
     },
     "Reasoning depth for this chat: **%@**. Set with `/think <level>` — %@." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reasoning depth for this chat: **%1$@**. Set with `/think <level>` — %2$@."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Denktiefe für diesen Chat: **%1$@**. Einstellen mit `/think <Stufe>` – %2$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reasoning depth for this chat: **%1$@**. Set with `/think <level>` — %2$@."
           }
         }
       }
@@ -13349,16 +13369,16 @@
     },
     "Remember folder: %@ — %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Remember folder: %1$@ — %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordner merken: %1$@ – %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remember folder: %1$@ — %2$@"
           }
         }
       }
@@ -13816,24 +13836,6 @@
     "Retry Meeting Transcription (%lld parts)" : {
       "comment" : "Menu item; plural variation on the number of parts",
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Retry Meeting Transcription (%lld part)"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Retry Meeting Transcription (%lld parts)"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -13847,6 +13849,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Meeting-Transkription wiederholen (%lld Teile)"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Retry Meeting Transcription (%lld part)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Retry Meeting Transcription (%lld parts)"
                 }
               }
             }
@@ -14697,24 +14717,6 @@
     },
     "Selection · %lld lines" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Selection · %lld line"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Selection · %lld lines"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -14728,6 +14730,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Auswahl · %lld Zeilen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Selection · %lld line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Selection · %lld lines"
                 }
               }
             }
@@ -15078,16 +15098,16 @@
     },
     "Shortcut '%@' is used by both %@. Please use unique shortcuts." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Shortcut '%1$@' is used by both %2$@. Please use unique shortcuts."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Tastenkürzel „%1$@“ wird doppelt genutzt: %2$@. Bitte wählen Sie eindeutige Kürzel."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shortcut '%1$@' is used by both %2$@. Please use unique shortcuts."
           }
         }
       }
@@ -15765,16 +15785,16 @@
     },
     "Step %lld · %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Step %1$lld · %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schritt %1$lld · %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Step %1$lld · %2$@"
           }
         }
       }
@@ -16531,16 +16551,16 @@
     },
     "These features still run on this Mac:\n\n%@\n\nThe cloud models are more accurate and faster. Recordings and text for these features are then sent to %@. You can change each one later in Settings." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "These features still run on this Mac:\n\n%1$@\n\nThe cloud models are more accurate and faster. Recordings and text for these features are then sent to %2$@. You can change each one later in Settings."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Funktionen laufen noch auf diesem Mac:\n\n%1$@\n\nDie Cloud-Modelle sind genauer und schneller. Aufnahmen und Text dieser Funktionen gehen dann an %2$@. Sie können jede einzeln später in den Einstellungen ändern."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "These features still run on this Mac:\n\n%1$@\n\nThe cloud models are more accurate and faster. Recordings and text for these features are then sent to %2$@. You can change each one later in Settings."
           }
         }
       }
@@ -16745,6 +16765,16 @@
         }
       }
     },
+    "To use a different language for this app only, add WhisperShortcut under System Settings → General → Language & Region → Applications, then quit and reopen it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine eigene Sprache nur in dieser App fügen Sie WhisperShortcut unter Systemeinstellungen → Allgemein → Sprache & Region → Apps hinzu, beenden Sie die App und öffnen Sie sie wieder."
+          }
+        }
+      }
+    },
     "today" : {
       "localizations" : {
         "de" : {
@@ -16877,16 +16907,16 @@
     },
     "Transcribing [%lld/%lld] - %lld active" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkription [%lld/%lld] – %lld aktiv"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
           }
         }
       }
@@ -16923,24 +16953,6 @@
     },
     "Transcript + chat copied (%lld messages)" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Transcript + chat copied (%lld message)"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Transcript + chat copied (%lld messages)"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -16954,6 +16966,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "Transkript + Chat kopiert (%lld Nachrichten)"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Transcript + chat copied (%lld message)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Transcript + chat copied (%lld messages)"
                 }
               }
             }
@@ -17313,16 +17343,16 @@
     },
     "Unknown reasoning depth \"%@\". Use one of: %@." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Unknown reasoning depth \"%1$@\". Use one of: %2$@."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unbekannte Denktiefe „%1$@“. Möglich sind: %2$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Unknown reasoning depth \"%1$@\". Use one of: %2$@."
           }
         }
       }
@@ -17629,24 +17659,6 @@
     },
     "Used %lld tools" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Used %lld tool"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Used %lld tools"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -17660,6 +17672,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld Werkzeuge genutzt"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Used %lld tool"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Used %lld tools"
                 }
               }
             }
@@ -17757,7 +17787,6 @@
         }
       }
     },
-    "voice-feedback" : {},
     "Voice:" : {
       "localizations" : {
         "de" : {
@@ -18118,6 +18147,16 @@
         }
       }
     },
+    "WhisperShortcut follows the language of macOS" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut folgt der Sprache von macOS"
+          }
+        }
+      }
+    },
     "WhisperShortcut has your %@ connection. You can close this tab." : {
       "localizations" : {
         "de" : {
@@ -18420,32 +18459,32 @@
     },
     "xAI accepts at most %lld accounts — the last %lld will be ignored." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "xAI accepts at most %1$lld accounts — the last %2$lld will be ignored."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "xAI nimmt höchstens %1$lld Konten an – die letzten %2$lld werden ignoriert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "xAI accepts at most %1$lld accounts — the last %2$lld will be ignored."
           }
         }
       }
     },
     "xAI accepts at most %lld accounts, so the last %lld were dropped." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "xAI accepts at most %1$lld accounts, so the last %2$lld were dropped."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "xAI nimmt höchstens %1$lld Konten, deshalb wurden die letzten %2$lld weggelassen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "xAI accepts at most %1$lld accounts, so the last %2$lld were dropped."
           }
         }
       }
@@ -18777,24 +18816,6 @@
     },
     "⋯ %lld unchanged lines" : {
       "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "⋯ %lld unchanged line"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "⋯ %lld unchanged lines"
-                }
-              }
-            }
-          }
-        },
         "de" : {
           "variations" : {
             "plural" : {
@@ -18808,6 +18829,24 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "⋯ %lld unveränderte Zeilen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "⋯ %lld unchanged line"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "⋯ %lld unchanged lines"
                 }
               }
             }
@@ -18840,16 +18879,16 @@
     },
     "⏰ Local Model Timeout\n\nThe on-device model took too long to %@ (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange gebraucht, um %@ (über %lld Sekunden).\n\nMeist bedeutet das:\n• Der Mac ist stark ausgelastet oder hat wenig freien Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Ein kleineres Modell unter Einstellungen → Diktieren wählen\n• Eine kürzere Aufnahme versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
           }
         }
       }
@@ -18906,16 +18945,16 @@
     },
     "⏳ %lld processing, %lld/%lld done" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "⏳ %1$lld processing, %2$lld/%3$lld done"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "⏳ %1$lld in Arbeit, %2$lld/%3$lld fertig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "⏳ %1$lld processing, %2$lld/%3$lld done"
           }
         }
       }
@@ -19452,16 +19491,16 @@
     },
     "📥 Model Not Downloaded\n\nThe offline model \"%@\" is not yet downloaded.\n\nEstimated size: %@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "📥 Model Not Downloaded\n\nThe offline model \"%1$@\" is not yet downloaded.\n\nEstimated size: %2$@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %3$@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "📥 Modell nicht geladen\n\nDas Offline-Modell „%@“ ist noch nicht heruntergeladen.\n\nGeschätzte Größe: %@\n\nSo laden Sie das Modell herunter:\n1. Einstellungen öffnen (auf das Menüleistensymbol klicken und „Einstellungen“ wählen)\n2. Zum Bereich „Diktieren“ gehen, Abschnitt „Offline Models“\n3. Neben %@ auf „Download“ klicken\n4. Warten, bis der Download fertig ist (das kann einige Minuten dauern)\n5. Erneut transkribieren\n\nHinweis: Die Modelle kommen von Hugging Face und werden lokal auf Ihrem Mac gespeichert. Danach funktionieren sie komplett offline."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "📥 Model Not Downloaded\n\nThe offline model \"%1$@\" is not yet downloaded.\n\nEstimated size: %2$@\n\nTo download the model:\n1. Open Settings (click the menu bar icon and select \"Settings\")\n2. Go to the \"Dictate\" tab, section \"Offline Models\"\n3. Click \"Download\" next to %3$@\n4. Wait for the download to complete (this may take several minutes)\n5. Try transcribing again\n\nNote: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline."
           }
         }
       }

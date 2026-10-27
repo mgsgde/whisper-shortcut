@@ -1,9 +1,9 @@
 import XCTest
 
-/// Report-mode coverage check for the String Catalogs (see plans/active/german-localization.md 2.4).
-/// Flip `strict` to true (slice A4) to make missing/stale/format-mismatched keys fail.
+/// Coverage gate for the String Catalogs (see plans/active/german-localization.md 2.4): every key
+/// needs a German translation with the same format specifiers, and no key may be stale.
 final class LocalizationCoverageTests: XCTestCase {
-  static let strict = false
+  static let strict = true
 
   private func catalogURL(_ name: String) -> URL {
     URL(fileURLWithPath: #filePath)
