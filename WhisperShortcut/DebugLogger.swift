@@ -142,18 +142,18 @@ struct DebugLogger {
     let stateDescription = state?.description ?? "unknown"
     
     // Log to os_log
-    let osLogMessage = "❌ [\(fileName):\(line)] \(function): \(context) - \(error.localizedDescription)"
+    let osLogMessage = "❌ [\(fileName):\(line)] \(function): \(context) - \(error.logDescription)"
     os_log(.error, log: errorLog, "%{public}@", osLogMessage)
     
     // Log detailed error to file
     let fileMessage = """
-    Error: \(error.localizedDescription)
+    Error: \(error.logDescription)
     Context: \(context)
     App State: \(stateDescription)
     Full Error: \(String(describing: error))
     """
     fileLogger.log(message: fileMessage, level: .error, context: context, state: stateDescription)
-    let oneLine = "\(error.localizedDescription) | Context: \(context) | State: \(stateDescription)"
+    let oneLine = "\(error.logDescription) | Context: \(context) | State: \(stateDescription)"
     errorFileWriter.write(message: oneLine)
   }
   
@@ -178,7 +178,7 @@ struct DebugLogger {
     let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
     
     // Log to os_log
-    let osLogMessage = "❌ [\(fileName):\(line)] \(function): CRASH - \(context) - \(error.localizedDescription)"
+    let osLogMessage = "❌ [\(fileName):\(line)] \(function): CRASH - \(context) - \(error.logDescription)"
     os_log(.error, log: errorLog, "%{public}@", osLogMessage)
     
     // Log detailed crash info to file
@@ -188,7 +188,7 @@ struct DebugLogger {
     Context: \(context)
     App Version: \(appVersion)
     Build: \(build)
-    Error: \(error.localizedDescription)
+    Error: \(error.logDescription)
     Full Error: \(String(describing: error))
     """
     
@@ -200,7 +200,7 @@ struct DebugLogger {
     }
     
     fileLogger.log(message: fileMessage, level: .error, context: context, state: "crash")
-    let oneLine = "CRASH \(context) - \(error.localizedDescription)"
+    let oneLine = "CRASH \(context) - \(error.logDescription)"
     errorFileWriter.write(message: oneLine)
   }
   
@@ -482,7 +482,7 @@ private class FileLogger {
         do {
           try fileHandle.write(contentsOf: data)
         } catch {
-          os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to write log: %{public}@", error.localizedDescription)
+          os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to write log: %{public}@", error.logDescription)
         }
       }
     }
@@ -515,7 +515,7 @@ private class FileLogger {
       try fileHandle.seekToEnd()
     } catch {
       try? fileHandle.close()
-      os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to seek log file: %{public}@", error.localizedDescription)
+      os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to seek log file: %{public}@", error.logDescription)
       return nil
     }
     
@@ -566,7 +566,7 @@ private class FileLogger {
         }
       } catch {
         // Log error but don't crash - cleanup failures shouldn't break the app
-        os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to cleanup old logs: %{public}@", error.localizedDescription)
+        os_log(.error, log: OSLog(subsystem: "com.magnusgoedde.whispershortcut", category: "FileLogger"), "Failed to cleanup old logs: %{public}@", error.logDescription)
       }
     }
   }

@@ -427,7 +427,7 @@ final class SystemPromptsStore {
         do {
           try existing.write(to: backupFileURL, atomically: true, encoding: .utf8)
         } catch {
-          DebugLogger.logError("SYSTEM-PROMPTS: Backup before \(reason) failed, not writing: \(error.localizedDescription)")
+          DebugLogger.logError("SYSTEM-PROMPTS: Backup before \(reason) failed, not writing: \(error.logDescription)")
           return false
         }
       }
@@ -437,7 +437,7 @@ final class SystemPromptsStore {
       DebugLogger.log("SYSTEM-PROMPTS: Wrote \(Self.fileName) (\(reason))")
       return true
     } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Failed to write (\(reason)): \(error.localizedDescription)")
+      DebugLogger.logError("SYSTEM-PROMPTS: Failed to write (\(reason)): \(error.logDescription)")
       return false
     }
   }
@@ -518,7 +518,7 @@ final class SystemPromptsStore {
       try Data(content.utf8).write(to: fileURL, options: .withoutOverwriting)
       DebugLogger.log("SYSTEM-PROMPTS: Created \(Self.fileName) (migrated from UserDefaults / defaults)")
     } catch {
-      DebugLogger.logError("SYSTEM-PROMPTS: Creating \(Self.fileName) failed: \(error.localizedDescription)")
+      DebugLogger.logError("SYSTEM-PROMPTS: Creating \(Self.fileName) failed: \(error.logDescription)")
     }
   }
 }

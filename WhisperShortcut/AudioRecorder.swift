@@ -99,7 +99,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
         let error = NSError(
           domain: Constants.errorDomain, code: Constants.permissionDeniedCode,
           userInfo: [
-            NSLocalizedDescriptionKey: "Microphone permission denied"
+            NSLocalizedDescriptionKey: String(localized: "Microphone permission denied")
           ])
         self?.delegate?.audioRecorderDidFailWithError(error)
       }
@@ -173,7 +173,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
         throw NSError(
           domain: Constants.errorDomain, code: Constants.recordingFailedCode,
           userInfo: [
-            NSLocalizedDescriptionKey: "Failed to start recording"
+            NSLocalizedDescriptionKey: String(localized: "Failed to start recording")
           ])
       }
       delegate?.audioRecorderDidBeginRecording()
@@ -263,7 +263,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
           let error = NSError(
             domain: Constants.errorDomain, code: Constants.emptyFileCode,
             userInfo: [
-              NSLocalizedDescriptionKey: "Recording file is empty"
+              NSLocalizedDescriptionKey: String(localized: "Recording file is empty")
             ])
           delegate?.audioRecorderDidFailWithError(error)
         }
@@ -275,7 +275,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
       let error = NSError(
         domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
         userInfo: [
-          NSLocalizedDescriptionKey: "Recording finished unsuccessfully"
+          NSLocalizedDescriptionKey: String(localized: "Recording finished unsuccessfully")
         ])
       delegate?.audioRecorderDidFailWithError(error)
     }

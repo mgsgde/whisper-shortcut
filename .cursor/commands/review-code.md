@@ -148,8 +148,8 @@ After applying fixes:
 
 - Single pass: suggestions only — do not modify files until a "fix" follow-up.
 - Iteration mode: apply fixes per cycle, rebuild between cycles. If a rebuild fails, stop the loop.
-- Do **not** commit, push, or cut a release. Hold all changes in the working tree and summarise at the end.
-- Do NOT run Playwright. This command is code-focused, not UX.
+- Do not cut a release or tag. Once fixes are applied (iteration mode, or after "fix"), commit only the files this run changed, per `AGENTS.md` "Git".
+- Do not drive the app UI (`/run-whisper-shortcut`) — this command is code-focused.
 - Skip the test suite during review — it is out of scope for a code review. (If a test run is ever needed, it can be run with `bash scripts/run-tests.sh`.)
 
 ## Related commands

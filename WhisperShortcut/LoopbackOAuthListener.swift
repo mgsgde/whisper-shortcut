@@ -156,10 +156,10 @@ final class LoopbackOAuthListener {
   }
 
   static func httpResponse(success: Bool, providerName: String = defaultProviderName) -> Data {
-    let title = success ? "You're connected" : "Something went wrong"
+    let title = success ? String(localized: "You're connected") : String(localized: "Something went wrong")
     let message = success
-      ? "WhisperShortcut has your \(providerName) connection. You can close this tab."
-      : "WhisperShortcut didn't receive an authorization code. Close this tab and try again."
+      ? String(localized: "WhisperShortcut has your \(providerName) connection. You can close this tab.")
+      : String(localized: "WhisperShortcut didn't receive an authorization code. Close this tab and try again.")
 
     let body = """
       <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title><style>

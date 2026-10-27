@@ -56,7 +56,7 @@ enum MeetingAudioBacklog {
       DebugLogger.log("MEETING-BACKLOG: Kept untranscribed chunk \(target.lastPathComponent) for \(stem)")
       return true
     } catch {
-      DebugLogger.logError("MEETING-BACKLOG: Failed to keep chunk for \(stem): \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-BACKLOG: Failed to keep chunk for \(stem): \(error.logDescription)")
       return false
     }
   }
@@ -91,7 +91,7 @@ enum MeetingAudioBacklog {
     do {
       try FileManager.default.moveItem(at: old, to: new)
     } catch {
-      DebugLogger.logError("MEETING-BACKLOG: Failed to move backlog \(oldStem) → \(newStem): \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-BACKLOG: Failed to move backlog \(oldStem) → \(newStem): \(error.logDescription)")
     }
   }
 

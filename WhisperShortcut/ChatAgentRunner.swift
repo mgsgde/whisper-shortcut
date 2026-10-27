@@ -301,7 +301,7 @@ final class ChatAgentRunner {
       try Task.checkCancellation()
       guard declaredNames.contains(call.name) else {
         let stepId = steps.begin(name: call.name, args: call.args)
-        steps.finish(stepId, phase: .failed, summary: "Not available here")
+        steps.finish(stepId, phase: .failed, summary: String(localized: "Not available here"))
         DebugLogger.logWarning("CHAT-TOOL-UNDECLARED: refused \(call.name)")
         let response = ["error": "The tool \(call.name) is not available in this conversation."]
         responseParts.append([

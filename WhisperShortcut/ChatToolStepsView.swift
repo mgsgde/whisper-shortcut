@@ -71,24 +71,24 @@ struct ChatToolStepDisplay: Identifiable, Equatable {
 enum ChatToolStepsSummary {
   static func header(for steps: [ChatToolStepDisplay]) -> String {
     if let active = steps.last(where: \.isActive) {
-      return active.status == .awaitingApproval ? "Waiting for your approval…" : active.label
+      return active.status == .awaitingApproval ? String(localized: "Waiting for your approval…") : active.label
     }
     if steps.count == 1, let only = steps.first {
       return [only.label, statusSuffix(only)].compactMap { $0 }.joined(separator: " · ")
     }
-    var parts = ["Used \(steps.count) tools"]
+    var parts = [String(localized: "Used \(steps.count) tools")]
     let failed = steps.filter { $0.status == .failed }.count
     let denied = steps.filter { $0.status == .denied }.count
-    if failed > 0 { parts.append("\(failed) failed") }
-    if denied > 0 { parts.append("\(denied) denied") }
+    if failed > 0 { parts.append(String(localized: "\(failed) failed")) }
+    if denied > 0 { parts.append(String(localized: "\(denied) denied")) }
     return parts.joined(separator: " · ")
   }
 
   /// "3 results" / "Failed: ‹error›" / "Denied by you" for one step.
   static func statusSuffix(_ step: ChatToolStepDisplay) -> String? {
     switch step.status {
-    case .failed: return step.summary.map { "Failed: \($0)" } ?? "Failed"
-    case .denied: return "Denied by you"
+    case .failed: return step.summary.map { String(localized: "Failed: \($0)") } ?? String(localized: "Failed")
+    case .denied: return String(localized: "Denied by you")
     case .done: return step.summary
     case .running, .awaitingApproval: return nil
     }
@@ -122,7 +122,7 @@ struct ChatToolStepsView: View {
       .buttonStyle(.plain)
       .pointerCursorOnHover()
       .accessibilityLabel(ChatToolStepsSummary.header(for: steps))
-      .accessibilityHint(isExpanded ? "Hide tool steps" : "Show tool steps")
+      .accessibilityHint(isExpanded ? ("Hide tool steps" as LocalizedStringKey) : "Show tool steps")
 
       if isExpanded {
         VStack(alignment: .leading, spacing: 4) {
@@ -166,7 +166,7 @@ private struct ChatToolStepRow: View {
             .lineLimit(2)
         }
         if step.argsJSON != nil {
-          Button(showsDetails ? "Hide details" : "Details") { showsDetails.toggle() }
+          Button(showsDetails ? ("Hide details" as LocalizedStringKey) : "Details") { showsDetails.toggle() }
             .buttonStyle(.plain)
             .foregroundColor(ChatTheme.secondaryText)
             .underline()

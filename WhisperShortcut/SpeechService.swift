@@ -460,7 +460,7 @@ class SpeechService {
     if model.isOffline {
       // For offline models, use LocalSpeechService
       guard let offlineModelType = model.offlineModelType else {
-        throw TranscriptionError.networkError("Invalid offline model type")
+        throw TranscriptionError.networkError(String(localized: "Invalid offline model type"))
       }
 
       // Make the model usable rather than refusing the dictation: download it if it is missing,
@@ -487,7 +487,7 @@ class SpeechService {
         }
         try await ModelManager.shared.ensureReady(offlineModelType) { status in
           guard showsLoadingUI else { return }
-          PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictation")
+          PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Offline Dictation")
         }
         DebugLogger.logSpeech(
           "SPEED: LOCAL-SPEECH coldStart model=\(offlineModelType.rawValue) "
@@ -588,7 +588,7 @@ class SpeechService {
     }
 
     // Should never reach here
-    throw TranscriptionError.networkError("Unsupported transcription model")
+    throw TranscriptionError.networkError(String(localized: "Unsupported transcription model"))
   }
   
 
@@ -726,7 +726,7 @@ class SpeechService {
     }
 
     guard selectedPromptModel.supportsDictatePrompt else {
-      throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
+      throw TranscriptionError.networkError(String(localized: "Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio."))
     }
 
     let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -760,11 +760,11 @@ class SpeechService {
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
-      throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt."))
     case .anthropic:
-      throw TranscriptionError.networkError("Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
     case .customOpenAI:
-      throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
     case .openRouter:
       throw TranscriptionError.networkError("OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .chatGPTPlan:
@@ -826,7 +826,7 @@ class SpeechService {
   /// check existed — the OpenAI path used to send a screenshot-mode system prompt with no image,
   /// which is exactly the "edit the highlighted region" instruction with nothing to look at.
   private static let screenshotSelectionCaptureFailedMessage =
-    "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again."
+    String(localized: "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again.")
 
   /// One prior Dictate Prompt turn, flattened to text and stripped of any provider's message shape.
   struct PromptHistoryTurn {
@@ -880,7 +880,7 @@ class SpeechService {
     if screenshotSelectionMode && supportsScreenshot && !modelAcceptsImages {
       DebugLogger.logError("\(logPrefix): model can't accept images — incompatible with screenshot-selection Dictate Prompt")
       throw TranscriptionError.networkError(
-        "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead.")
+        String(localized: "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead."))
     }
 
     // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
@@ -1038,7 +1038,7 @@ class SpeechService {
     logPrefix: String
   ) async throws -> String {
     guard let transcriptionModel = model.asTranscriptionModel else {
-      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+      throw TranscriptionError.networkError(String(localized: "Selected model is not a Gemini model"))
     }
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("\(logPrefix): Using model: \(model.displayName) (\(model.rawValue))")
@@ -1070,7 +1070,7 @@ class SpeechService {
     )
 
     guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response")
+      throw TranscriptionError.networkError(String(localized: "No candidates in Gemini response"))
     }
 
     var textContent = ""
@@ -1192,7 +1192,7 @@ class SpeechService {
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
       } catch {
-        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")
+        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.logDescription)")
         return Self.voiceInstructionPlaceholder
       }
     }
@@ -1383,14 +1383,16 @@ class SpeechService {
         let sizeMB = Double(audioFileSize) / 1_048_576.0
         let limitMB = Double(AppConstants.maxFileSizeBytes) / 1_048_576.0
         DebugLogger.logError("PROMPT-MODE-OPENAI: Audio too large (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit)")
-        throw TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
+        let sizeText = String(format: "%.1f", sizeMB)
+        let limitText = String(format: "%.1f", limitMB)
+        throw TranscriptionError.fileError(String(localized: "Audio is too long for OpenAI Dictate Prompt (\(sizeText) MB > \(limitText) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings."))
       }
 
       let audioData: Data
       do {
         audioData = try Data(contentsOf: audioURL)
       } catch {
-        throw TranscriptionError.networkError("Could not read audio file: \(error.localizedDescription)")
+        throw TranscriptionError.networkError(String(localized: "Could not read audio file: \(error.localizedDescription)"))
       }
       let fileExtension = audioURL.pathExtension.lowercased()
       let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
@@ -1514,7 +1516,7 @@ class SpeechService {
     }
 
     guard let endpointURL = URL(string: "https://api.openai.com/v1/chat/completions") else {
-      throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid OpenAI endpoint URL"))
     }
     var request = URLRequest(url: endpointURL)
     request.httpMethod = "POST"
@@ -1553,7 +1555,7 @@ class SpeechService {
           let choices = json["choices"] as? [[String: Any]],
           let firstChoice = choices.first,
           let message = firstChoice["message"] as? [String: Any] else {
-      throw TranscriptionError.networkError("Unexpected OpenAI response shape")
+      throw TranscriptionError.networkError(String(localized: "Unexpected OpenAI response shape"))
     }
 
     // The audio-preview model returns plain string content for text-only output.
@@ -1857,7 +1859,7 @@ class SpeechService {
 
     guard let firstCandidate = result.candidates.first,
           let text = firstCandidate.content.parts.first?.text else {
-      throw TranscriptionError.networkError("No transcription in response")
+      throw TranscriptionError.networkError(String(localized: "No transcription in response"))
     }
 
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1894,7 +1896,7 @@ class SpeechService {
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
   ) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
+    guard !trimmed.isEmpty else { throw TranscriptionError.networkError(String(localized: "Text is empty")) }
 
     let task = Task<Data, Error> {
       let spoken = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
@@ -1961,7 +1963,7 @@ class SpeechService {
       // error type bubbled up (URLSession surfaces cancellation as `URLError(.cancelled)`,
       // not `CancellationError`).
       try Task.checkCancellation()
-      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
+      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.logDescription)); falling back to original text")
       return text
     }
   }
@@ -2055,18 +2057,18 @@ class SpeechService {
       }
       chunkSize = AppConstants.ttsGeminiChunkSizeChars
       synthesizeChunk = { [weak self] chunkText, onPartial in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeGeminiTTSChunk(
           text: chunkText, voice: voice, model: model, credential: credential, onPartial: onPartial)
       }
     case .openai:
       synthesizeChunk = { [weak self] chunkText, onPartial in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model, onPartial: onPartial)
       }
     case .xai:
       synthesizeChunk = { [weak self] chunkText, _ in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
       }
     case .system:
@@ -2195,7 +2197,7 @@ class SpeechService {
         let idle = Int(progress.state.idle)
         DebugLogger.logWarning(
           "\(logPrefix): stream stalled after \(idle)s (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
-        throw TranscriptionError.networkError("Gemini TTS stream stalled after \(idle)s")
+        throw TranscriptionError.networkError(String(localized: "Gemini TTS stream stalled after \(idle)s"))
       }
       throw error
     }
@@ -2205,7 +2207,7 @@ class SpeechService {
       "\(logPrefix): stream end after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count))")
     guard !audio.isEmpty else {
       DebugLogger.logError("\(logPrefix): 2xx response without any inlineData audio (objects=\(objectCount))")
-      throw TranscriptionError.networkError("Gemini TTS returned no audio")
+      throw TranscriptionError.networkError(String(localized: "Gemini TTS returned no audio"))
     }
     return audio
   }
@@ -2229,11 +2231,11 @@ class SpeechService {
     if json["error"] != nil {
       let mapped = try? GeminiAPIClient().parseErrorResponse(data: object, statusCode: 200)
       let text = String(data: object, encoding: .utf8)?.prefix(300) ?? ""
-      throw mapped ?? TranscriptionError.networkError("Gemini TTS stream error: \(text)")
+      throw mapped ?? TranscriptionError.networkError(String(localized: "Gemini TTS stream error: \(text)"))
     }
     if let feedback = json["promptFeedback"] as? [String: Any],
        let blockReason = feedback["blockReason"] as? String {
-      throw TranscriptionError.networkError("Gemini TTS blocked the request: \(blockReason)")
+      throw TranscriptionError.networkError(String(localized: "Gemini TTS blocked the request: \(blockReason)"))
     }
     let candidate = (json["candidates"] as? [[String: Any]])?.first
     let finishReason = candidate?["finishReason"] as? String
@@ -2431,7 +2433,7 @@ class SpeechService {
       attempts.append((baseURL, "audio_file"))
     }
 
-    var lastError: Error = TranscriptionError.networkError("All request attempts failed")
+    var lastError: Error = TranscriptionError.networkError(String(localized: "All request attempts failed"))
     let session = makeTranscriptionURLSession()
 
     for (attemptURL, fieldName) in attempts {
@@ -2718,7 +2720,7 @@ class SpeechService {
       throw TranscriptionError.requestTimeout
     }
     guard let httpResponse = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
 
     DebugLogger.log("\(logPrefix): HTTP \(httpResponse.statusCode)")
@@ -2795,7 +2797,7 @@ class SpeechService {
       if let onPartial {
         let (bytes, response) = try await session.bytes(for: request)
         guard let streamed = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response from server")
+          throw TranscriptionError.networkError(String(localized: "Invalid response from server"))
         }
         http = streamed
         var collected = Data()
@@ -2814,7 +2816,7 @@ class SpeechService {
       } else {
         let (responseData, response) = try await session.data(for: request)
         guard let whole = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response from server")
+          throw TranscriptionError.networkError(String(localized: "Invalid response from server"))
         }
         data = responseData
         http = whole
@@ -2839,7 +2841,7 @@ class SpeechService {
     }
     // Unreachable when `maxRetryAttempts >= 1` — the loop always returns or continues.
     if let lastResponse { return lastResponse }
-    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
+    throw TranscriptionError.networkError(String(localized: "Exhausted retry attempts without a response"))
   }
 
   private func loggableURL(_ url: URL) -> String {
@@ -3014,7 +3016,7 @@ class SpeechService {
     // Gemini supports: wav, mp3, aiff, aac, ogg, flac
     let supportedExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm", "aiff", "aac"]
     if !supportedExtensions.contains(fileExtension) {
-      throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
+      throw TranscriptionError.fileError(String(localized: "Unsupported audio format: \(fileExtension)"))
     }
   }
   
@@ -3026,7 +3028,7 @@ class SpeechService {
       DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
       return duration
     } catch {
-      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.localizedDescription)")
+      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.logDescription)")
       return nil
     }
   }

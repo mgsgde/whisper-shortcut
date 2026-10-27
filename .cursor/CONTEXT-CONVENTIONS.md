@@ -10,7 +10,7 @@ in `.cursor/`, never in `.cursor/commands/`, where every file becomes a command.
 | ------------------- | ----------------------------------------------- | ----------------------------- | ------------------------------------------------------------ |
 | Repo facts, always  | `AGENTS.md` (= `CLAUDE.md`)                     | Every session                 | that file                                                    |
 | Working rules       | `.cursor/rules/index.mdc` (`alwaysApply: true`) | Every session (via `AGENTS.md` `@`-reference in Claude Code) | `.cursor/rules/`                    |
-| Rules by glob       | `.cursor/rules/*.mdc` with `globs`/`paths`      | Matching files                | `.cursor/rules/`                                             |
+| Rules by glob       | `.cursor/rules/*.mdc` with `globs`                | Matching files                | `.cursor/rules/`                                             |
 | Playbook / routine  | `.agents/skills/<name>/SKILL.md`                | On `/name` or when relevant   | `.agents/skills/` (`.claude/skills` is a symlink **here**)   |
 | Workflow slash only | `.cursor/commands/*.md`                         | On `/name`                    | `.cursor/commands/` (`.claude/commands` → here)              |
 | Topic → file        | `.cursor/CODEMAP.md`                            | JIT, when orienting           | that file                                                    |
@@ -23,13 +23,16 @@ Symlinks (edit the **target**, never the link): `.claude/commands` → `.cursor/
 **A skill directory name is a public interface.** `scripts/*-job.sh` and
 `scripts/implementer/run-implementer.sh` resolve `.agents/skills/<name>/SKILL.md` by name and
 fail on a missing directory, so renaming one breaks its launchd job. Currently load-bearing:
-`review-agent-loops`, `review-growth`, `analyze-user-interactions`, `implement-proposal`,
-`analyze-chat-freeze`. Rename one → update the script, re-run its `install-*.sh`.
+skills `review-agent-loops`, `review-growth`, `implement-proposal` (loaded by path), and command
+`.cursor/commands/audit-llm-models.md` (`model-audit-job.sh`); `analyze-user-interactions` and
+`analyze-chat-freeze` are named in job prompts, so a rename leaves dangling pointers. Rename one
+→ update the script, re-install its launchd job.
 
-Keep portable frontmatter (`name`, `description`) only. Cursor-only extras (`paths`, `icon`) are
-ignored by Claude and fine; Claude-only extras (`when_to_use`, `argument-hint`,
+Keep portable frontmatter (`name`, `description`) only. Cursor-only extras (`globs`,
+`alwaysApply`) are ignored by Claude and fine; Claude-only extras (`when_to_use`, `argument-hint`,
 `disallowed-tools`, `context: fork`, `$ARGUMENTS`, bang-backtick injection) are **not** — the same
-file serves both tools. Spec: [agentskills.io/specification](https://agentskills.io/specification).
+file serves both tools. Note: `name` in command frontmatter is ignored by Claude Code (skills
+only). Spec: [agentskills.io/specification](https://agentskills.io/specification).
 
 # Slash Commands and Skills — Naming Convention
 

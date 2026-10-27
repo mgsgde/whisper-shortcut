@@ -121,7 +121,7 @@ enum RetryBackoff {
           base: (te?.isServerOrUnavailable ?? false) ? 2.0 : 1.0,
           exponential: te?.isServerOrUnavailable ?? false)
         DebugLogger.log(
-          "\(logTag)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delaySeconds))s: \(error.localizedDescription)")
+          "\(logTag)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delaySeconds))s: \(error.logDescription)")
         await sleep(delaySeconds)
       }
     }

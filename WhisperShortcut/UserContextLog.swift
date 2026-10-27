@@ -21,11 +21,11 @@ enum PromptHistorySource: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .auto: return "Smart Improvement"
-    case .voiceFeedback: return "Spoken feedback"
-    case .chat: return "Chat"
-    case .mcp: return "AI app (MCP)"
-    case .mcpUndo: return "AI app (MCP) undo"
+    case .auto: return String(localized: "Smart Improvement")
+    case .voiceFeedback: return String(localized: "Spoken feedback")
+    case .chat: return String(localized: "Chat")
+    case .mcp: return String(localized: "AI app (MCP)")
+    case .mcpUndo: return String(localized: "AI app (MCP) undo")
     }
   }
 
@@ -105,7 +105,7 @@ enum UserContextLog {
       }
       .sorted { $0.lastPathComponent < $1.lastPathComponent }
     } catch {
-      DebugLogger.logError("USER-CONTEXT: Failed to list log files: \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT: Failed to list log files: \(error.logDescription)")
       return []
     }
   }

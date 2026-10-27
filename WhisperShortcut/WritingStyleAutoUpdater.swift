@@ -132,9 +132,9 @@ final class WritingStyleAutoUpdater: ObservableObject {
       let saved = try await WritingStyleImporter.deriveProfile()
       DebugLogger.log("WRITING-STYLE-AUTO: derive saved=\(saved != nil)")
       if userTriggered {
-        lastMessage = saved != nil ? "Style profile updated." : "Profile update cancelled."
+        lastMessage = saved != nil ? String(localized: "Style profile updated.") : String(localized: "Profile update cancelled.")
       } else if saved != nil {
-        lastMessage = "Style profile updated."
+        lastMessage = String(localized: "Style profile updated.")
       }
     } catch {
       DebugLogger.logError("WRITING-STYLE-AUTO: derive failed")

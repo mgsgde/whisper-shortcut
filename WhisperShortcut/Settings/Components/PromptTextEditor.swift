@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Reusable component for prompt text editors.
 struct PromptTextEditor: View {
-  let title: String
-  let subtitle: String
-  let helpText: String
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringResource
+  let helpText: LocalizedStringResource
   let defaultValue: String
   @Binding var text: String
   let focusedField: SettingsFocusField
@@ -15,9 +15,9 @@ struct PromptTextEditor: View {
   let trailingContent: AnyView?
 
   init(
-    title: String,
-    subtitle: String,
-    helpText: String,
+    title: LocalizedStringResource,
+    subtitle: LocalizedStringResource,
+    helpText: LocalizedStringResource,
     defaultValue: String,
     text: Binding<String>,
     focusedField: SettingsFocusField,

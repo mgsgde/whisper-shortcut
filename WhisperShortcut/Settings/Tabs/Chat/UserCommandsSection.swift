@@ -147,7 +147,7 @@ struct UserCommandsSection: View {
   }
 
   private func scopeBadge(_ scope: UserCommandScope) -> some View {
-    let text: String
+    let text: LocalizedStringKey
     switch scope {
     case .meeting: text = "Meeting"
     case .chat: text = "Chat"
@@ -167,7 +167,7 @@ struct UserCommandsSection: View {
       store.reload()
       NSWorkspace.shared.open(url)
     } catch {
-      createError = "Could not create the file: \(error.localizedDescription)"
+      createError = String(localized: "Could not create the file: \(error.localizedDescription)")
     }
   }
 
@@ -180,7 +180,7 @@ struct UserCommandsSection: View {
       }
       createError = nil
     } catch {
-      createError = "Could not delete \(fileURL.lastPathComponent): \(error.localizedDescription)"
+      createError = String(localized: "Could not delete \(fileURL.lastPathComponent): \(error.localizedDescription)")
     }
   }
 
@@ -189,7 +189,7 @@ struct UserCommandsSection: View {
       try store.restore(from: item.trashed, to: item.original)
       createError = nil
     } catch {
-      createError = "Could not restore \(item.fileName): \(error.localizedDescription)"
+      createError = String(localized: "Could not restore \(item.fileName): \(error.localizedDescription)")
     }
     lastTrashed = nil
   }
