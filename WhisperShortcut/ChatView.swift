@@ -688,6 +688,9 @@ class ChatViewModel: ObservableObject {
     messages = target.messages
     errorMessage = nil
     lastSendError = nil
+    // The cut reply took its tool-call records with it, so the model no longer knows what already
+    // ran; mutating tools must ask again.
+    chatWideApprovals.removeValue(forKey: sessionId)
     DebugLogger.log(
       "CHAT: \(newText == nil ? "Retry" : "Edit") message (contentLen=\(content.count), attachments=\(original.attachedImageParts.count)) session=\(sessionId)")
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
