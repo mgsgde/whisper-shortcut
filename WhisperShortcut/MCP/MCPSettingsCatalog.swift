@@ -613,41 +613,82 @@ enum MCPSettingsCatalog {
         defaults.set(effort.rawValue, forKey: UserDefaultsKeys.transcriptionThinkingEffort)
       }))
 
-    // MARK: shortcuts.dictate
-    settings.append(MCPSetting(
-      id: "shortcuts.dictate", title: "Toggle Dictation shortcut", category: "shortcuts", kind: .shortcut,
-      read: {
-        let def = deps.loadShortcutConfig().startRecording
-        return def.isEnabled ? json(of: def) : NSNull()
-      },
-      validate: { value in
-        if value is NSNull { return nil }
-        guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else {
-          return "A shortcut needs a key, modifiers and enabled."
-        }
-        if let problem = ShortcutValidation.modifierRuleViolation(key: def.key, modifiers: def.modifiers) {
-          return problem
-        }
-        if let conflict = ShortcutValidation.conflictingSlot(
-          key: def.key, modifiers: def.modifiers, in: deps.loadShortcutConfig(), excluding: "Toggle Dictation")
-        {
-          return "That shortcut is already used by \(conflict)."
-        }
-        return nil
-      },
-      apply: { value in
-        var config = deps.loadShortcutConfig()
-        if value is NSNull {
-          config.startRecording = ShortcutDefinition(
-            key: config.startRecording.key, modifiers: config.startRecording.modifiers, isEnabled: false)
-        } else {
+    // MARK: shortcuts.* — one slot of ShortcutConfig. `slot` is the name
+    // `ShortcutValidation.conflictingSlot(excluding:)` uses, so a binding already taken by
+    // another row is refused with that row's name. null disables the slot without changing its key.
+    func directDownloadOnly() -> String? {
+      #if APP_STORE
+      return "Direct-download build only."
+      #else
+      return nil
+      #endif
+    }
+
+    func shortcutSetting(
+      id: String, title: String, slot: String,
+      keyPath: WritableKeyPath<ShortcutConfig, ShortcutDefinition>,
+      unavailableReason: @escaping () -> String? = { nil }
+    ) -> MCPSetting {
+      MCPSetting(
+        id: id, title: title, category: "shortcuts", kind: .shortcut,
+        unavailableReason: unavailableReason,
+        read: {
+          let def = deps.loadShortcutConfig()[keyPath: keyPath]
+          return def.isEnabled ? json(of: def) : NSNull()
+        },
+        validate: { value in
+          if value is NSNull { return nil }
           guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else {
-            throw MCPConfigError(message: "A shortcut needs a key, modifiers and enabled.")
+            return "A shortcut needs a key, modifiers and enabled."
           }
-          config.startRecording = def
-        }
-        deps.saveShortcutConfig(config)
-      }))
+          if let problem = ShortcutValidation.modifierRuleViolation(key: def.key, modifiers: def.modifiers) {
+            return problem
+          }
+          if let conflict = ShortcutValidation.conflictingSlot(
+            key: def.key, modifiers: def.modifiers, in: deps.loadShortcutConfig(), excluding: slot)
+          {
+            return "That shortcut is already used by \(conflict)."
+          }
+          return nil
+        },
+        apply: { value in
+          var config = deps.loadShortcutConfig()
+          if value is NSNull {
+            let current = config[keyPath: keyPath]
+            config[keyPath: keyPath] = ShortcutDefinition(
+              key: current.key, modifiers: current.modifiers, isEnabled: false)
+          } else {
+            guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else {
+              throw MCPConfigError(message: "A shortcut needs a key, modifiers and enabled.")
+            }
+            config[keyPath: keyPath] = def
+          }
+          deps.saveShortcutConfig(config)
+        })
+    }
+
+    settings.append(shortcutSetting(
+      id: "shortcuts.dictate", title: "Toggle Dictation shortcut", slot: "Toggle Dictation",
+      keyPath: \.startRecording))
+    settings.append(shortcutSetting(
+      id: "shortcuts.dictate_prompt", title: "Toggle Dictate Prompt shortcut", slot: "Toggle Dictate Prompt",
+      keyPath: \.startPrompting))
+    settings.append(shortcutSetting(
+      id: "shortcuts.screenshot", title: "Screenshot shortcut", slot: "Screenshot",
+      keyPath: \.screenshotCapture))
+    // Selection-based shortcuts (they copy via ⌘C). Hidden in Settings on the App Store build.
+    settings.append(shortcutSetting(
+      id: "shortcuts.read_aloud", title: "Read Aloud shortcut", slot: "Read Aloud",
+      keyPath: \.readAloud, unavailableReason: directDownloadOnly))
+    settings.append(shortcutSetting(
+      id: "shortcuts.add_to_glossary", title: "Add to Glossary shortcut", slot: "Add to Glossary",
+      keyPath: \.addToGlossary, unavailableReason: directDownloadOnly))
+    settings.append(shortcutSetting(
+      id: "shortcuts.open_chat", title: "Open Chat shortcut", slot: "Open Chat",
+      keyPath: \.openChat))
+    settings.append(shortcutSetting(
+      id: "shortcuts.open_settings", title: "Open Settings shortcut", slot: "Open Settings",
+      keyPath: \.openSettings))
 
     // MARK: notifications.enabled
     settings.append(boolSetting(
@@ -743,6 +784,25 @@ enum MCPSettingsCatalog {
         guard let b = value as? Bool else { throw MCPConfigError(message: "Launch at login needs true or false.") }
         try deps.setLaunchAtLogin(b)
       }))
+
+    // MARK: writing_style.enabled — always a proposal: turning it on imports sent mail.
+    settings.append(boolSetting(
+      id: "writing_style.enabled", title: "Use my writing style in Dictate Prompt",
+      category: "writing_style", key: UserDefaultsKeys.writingStyleEnabled, defaultValue: false,
+      proposalOnly: true,
+      afterApply: { WritingStyleSettingsSection.handleToggle(enabled: $0) }))
+
+    // MARK: dictate_prompt.tools_enabled — always a proposal: lookups are sent to the model.
+    settings.append(boolSetting(
+      id: "dictate_prompt.tools_enabled", title: "Let Dictate Prompt use read-only tools",
+      category: "dictate_prompt", key: UserDefaultsKeys.dictatePromptToolsEnabled, defaultValue: true,
+      proposalOnly: true))
+
+    // MARK: chat.claude_web_search — always a proposal: Anthropic bills each search.
+    settings.append(boolSetting(
+      id: "chat.claude_web_search", title: "Let Claude search the web",
+      category: "chat", key: UserDefaultsKeys.claudeWebSearchEnabled, defaultValue: true,
+      proposalOnly: true))
 
     return settings
   }

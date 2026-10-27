@@ -20,6 +20,13 @@ struct WritingStyleSettingsSection: View {
   private var messageCount: Int { counts.filter { $0.key != .email }.values.reduce(0, +) }
   private var hasData: Bool { emailCount + messageCount > 0 || profileUpdatedAt != nil }
 
+  /// Side effect of the "Use my writing style" toggle, shared with the settings catalog so an
+  /// accepted proposal starts the same Gmail import the switch does. The caller writes the bool.
+  static func handleToggle(enabled: Bool) {
+    guard enabled else { return }
+    Task { await WritingStyleAutoUpdater.shared.handleEnabled() }
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
@@ -61,8 +68,7 @@ struct WritingStyleSettingsSection: View {
       if !working { refresh() }
     }
     .onChange(of: isEnabled) { _, enabled in
-      guard enabled else { return }
-      Task { await updater.handleEnabled() }
+      Self.handleToggle(enabled: enabled)
     }
     .sheet(isPresented: $showAddExamples, onDismiss: refresh) {
       AddWritingExamplesSheet(isPresented: $showAddExamples)

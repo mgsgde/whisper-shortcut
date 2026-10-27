@@ -213,6 +213,61 @@ struct MCPSettingsCatalogTests {
     #expect(env.box.shortcutConfig.startRecording.isEnabled == false)
   }
 
+  @Test("All seven shortcut settings are in the catalog")
+  func allShortcutIdsPresent() {
+    let ids = MCPTestEnv().settingsCatalog.map(\.id)
+    let expected = [
+      "shortcuts.dictate",
+      "shortcuts.dictate_prompt",
+      "shortcuts.screenshot",
+      "shortcuts.read_aloud",
+      "shortcuts.add_to_glossary",
+      "shortcuts.open_chat",
+      "shortcuts.open_settings",
+    ]
+    for id in expected {
+      #expect(ids.contains(id), "missing \(id)")
+    }
+  }
+
+  @Test("Dictate Prompt refuses Screenshot's shortcut")
+  func shortcutConflictBetweenNewSlots() {
+    let env = MCPTestEnv(level: .apply)
+    let taken = env.box.shortcutConfig.screenshotCapture
+    let dict = Self.jsonObject(of: taken)
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["shortcuts.dictate_prompt": dict], "rationale": "r"], access: .write)
+    #expect(r.isError)
+    #expect(env.box.shortcutConfig.startPrompting == ShortcutConfig.default.startPrompting)
+  }
+
+  @Test("null disables Open Chat")
+  func shortcutNullDisablesOpenChat() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["shortcuts.open_chat": NSNull()], "rationale": "r"], access: .write)
+    #expect(!r.isError)
+    #expect(env.box.shortcutConfig.openChat.isEnabled == false)
+  }
+
+  @Test("Proposal-only toggles require approval and stay pending at apply level")
+  func proposalOnlyTogglesRequireApproval() {
+    let env = MCPTestEnv(level: .apply)
+    let ids = ["writing_style.enabled", "dictate_prompt.tools_enabled", "chat.claude_web_search"]
+    let listed = env.tools().call(name: "get_settings", arguments: [:], access: .write)
+    let settings = obj(listed)["settings"] as? [[String: Any]] ?? []
+    for id in ids {
+      let entry = settings.first { $0["id"] as? String == id }
+      #expect(entry?["requires_approval"] as? Bool == true, "\(id) requires_approval")
+    }
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["writing_style.enabled": true], "rationale": "r"], access: .write)
+    #expect(obj(r)["status"] as? String == "pending_review")
+    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.writingStyleEnabled) == false)
+  }
+
   // MARK: - Models, provider ids, parameters
 
   @Test("Model, provider-id and parameter entries are present and unique")
