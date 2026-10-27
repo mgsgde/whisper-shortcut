@@ -332,6 +332,57 @@ struct MCPSettingsCatalogTests {
     #expect(env.testDefaults.object(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == nil)
   }
 
+  // MARK: - Behaviour entries
+
+  @Test("Behaviour entries are in the catalog")
+  func behaviourEntriesPresent() {
+    let ids = MCPTestEnv().settingsCatalog.map(\.id)
+    let expected = [
+      "notifications.duration",
+      "clipboard.restore_after_paste",
+      "chat.close_on_focus_loss",
+      "recording.confirm_above_duration",
+      "meetings.chunk_interval",
+      "meetings.safeguard_duration",
+      "dictate_prompt.screenshot_context",
+      "chat.x_search_handles",
+      "improvement.auto_run_interval",
+    ]
+    for id in expected {
+      #expect(ids.contains(id), "missing \(id)")
+    }
+  }
+
+  @Test("Screenshot context is refused without Screen Recording permission")
+  func screenshotContextRefusedWithoutPermission() {
+    let env = MCPTestEnv(level: .apply)
+    env.box.hasScreenRecording = false
+    env.testDefaults.set(false, forKey: UserDefaultsKeys.screenshotInPromptMode)
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["dictate_prompt.screenshot_context": true], "rationale": "r"],
+      access: .write)
+    #expect(r.isError)
+    #expect(r.text.contains("Grant Screen Recording in Settings → Permissions first."))
+    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode) == false)
+  }
+
+  @Test("notifications.duration round-trips through update_settings and get_settings")
+  func notificationDurationRoundTrip() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["notifications.duration": "10"], "rationale": "r"],
+      access: .write)
+    #expect(!r.isError)
+    #expect(obj(r)["status"] as? String == "applied")
+    let after = env.tools().call(name: "get_settings", arguments: ["category": "notifications"], access: .write)
+    let settings = obj(after)["settings"] as? [[String: Any]] ?? []
+    let entry = settings.first { $0["id"] as? String == "notifications.duration" }
+    #expect(entry?["value"] as? String == "10")
+    #expect(env.testDefaults.double(forKey: UserDefaultsKeys.notificationDuration) == NotificationDuration.tenSeconds.rawValue)
+  }
+
   private static func jsonObject(of definition: ShortcutDefinition) -> [String: Any] {
     guard let data = try? JSONEncoder().encode(definition),
       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]

@@ -25,6 +25,7 @@ final class MCPTestEnv: @unchecked Sendable {
   /// exists) and the test's later assertions share the same state.
   final class Box {
     var hasAccessibility = true
+    var hasScreenRecording = true
     var hasScreenshotFolder = true
     var launchAtLogin = false
     var shortcutConfig: ShortcutConfig = .default
@@ -45,6 +46,7 @@ final class MCPTestEnv: @unchecked Sendable {
     let deps = MCPSettingsCatalog.Dependencies(
       defaults: testDefaults,
       hasAccessibilityPermission: { box.hasAccessibility },
+      hasScreenRecordingPermission: { box.hasScreenRecording },
       hasScreenshotFolder: { box.hasScreenshotFolder },
       isLaunchAtLoginEnabled: { box.launchAtLogin },
       setLaunchAtLogin: { box.launchAtLogin = $0 },
@@ -53,7 +55,8 @@ final class MCPTestEnv: @unchecked Sendable {
       postNotification: { name, object in box.notifications.append((name, object)) },
       // The live hook posts into the user's app. Record the call on the same notification list
       // the catalog tests already read.
-      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) })
+      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) },
+      checkImprovementAutoRun: {})
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
     var recorder: ((String) -> Void)?
     changeLog = MCPChangeLog(

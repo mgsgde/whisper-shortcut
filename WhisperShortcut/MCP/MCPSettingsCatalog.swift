@@ -129,6 +129,11 @@ enum MCPSettingsCatalog {
   struct Dependencies {
     var defaults: UserDefaults = .standard
     var hasAccessibilityPermission: () -> Bool = { AccessibilityPermissionManager.hasAccessibilityPermission() }
+    /// Read-only. `CGPreflightScreenCaptureAccess` does not prompt; MCP must never call
+    /// `SCShareableContent`, which is what the Settings toggle uses to prompt.
+    var hasScreenRecordingPermission: () -> Bool = {
+      PermissionStatusChecker.status(for: .screenRecording) == .granted
+    }
     var hasScreenshotFolder: () -> Bool = { ScreenshotSaveLocation.hasFolder }
     var isLaunchAtLoginEnabled: () -> Bool = { SMAppService.mainApp.status == .enabled }
     var setLaunchAtLogin: (Bool) throws -> Void = { enabled in
@@ -151,8 +156,21 @@ enum MCPSettingsCatalog {
       let post = { MainActor.assumeIsolated { ModelSelectionReconciler.postSelectionsChanged() } }
       if Thread.isMainThread { post() } else { DispatchQueue.main.sync(execute: post) }
     }
+    /// Settings → Improvement calls this after the auto-run picker changes. Tests replace it;
+    /// the live default is the same `checkAndRunIfDue()` the view runs.
+    var checkImprovementAutoRun: () -> Void = {
+      Task { @MainActor in
+        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+      }
+    }
 
     static let live = Dependencies()
+  }
+
+  /// Catalog token for a whole-number `Double` raw value the Settings picker stores as a number
+  /// (`"10"`, `"0"`). `apply` writes the `Double` back under the same key.
+  private static func wholeNumberToken(_ value: Double) -> String {
+    String(Int(value.rounded()))
   }
 
   // MARK: - Value coding
@@ -235,17 +253,50 @@ enum MCPSettingsCatalog {
     func boolSetting(
       id: String, title: String, category: String, key: String, defaultValue: Bool,
       proposalOnly: Bool = false, unavailableReason: @escaping () -> String? = { nil },
+      enablingRefused: @escaping () -> String? = { nil },
       afterApply: @escaping (Bool) -> Void = { _ in }
     ) -> MCPSetting {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
         unavailableReason: unavailableReason,
         read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue },
-        validate: { value in value is Bool ? nil : "\(title) needs true or false." },
+        validate: { value in
+          guard let b = value as? Bool else { return "\(title) needs true or false." }
+          if b, let reason = enablingRefused() { return reason }
+          return nil
+        },
         apply: { value in
           guard let b = value as? Bool else { throw MCPConfigError(message: "\(title) needs true or false.") }
+          if b, let reason = enablingRefused() { throw MCPConfigError(message: reason) }
           defaults.set(b, forKey: key)
           afterApply(b)
+        })
+    }
+
+    /// Picker whose stored value is a `Double` raw value (seconds). The catalog speaks the
+    /// whole-number token; `apply` writes `rawValue` under `key`, the same encoding as the UI.
+    func doubleEnumSetting<T: RawRepresentable & CaseIterable>(
+      id: String, title: String, category: String, key: String,
+      defaultValue: T, label: @escaping (T) -> String
+    ) -> MCPSetting where T.RawValue == Double {
+      let cases = Array(T.allCases)
+      return enumSetting(
+        id: id, title: title, category: category,
+        allOptions: { cases.map { MCPSetting.Option(Self.wholeNumberToken($0.rawValue), label($0)) } },
+        current: {
+          if defaults.object(forKey: key) != nil {
+            let raw = defaults.double(forKey: key)
+            if let match = cases.first(where: { $0.rawValue == raw }) {
+              return Self.wholeNumberToken(match.rawValue)
+            }
+          }
+          return Self.wholeNumberToken(defaultValue.rawValue)
+        },
+        applyValue: { token in
+          guard let match = cases.first(where: { Self.wholeNumberToken($0.rawValue) == token }) else {
+            throw MCPConfigError(message: "Unknown value for \(title).")
+          }
+          defaults.set(match.rawValue, forKey: key)
         })
     }
 
@@ -705,6 +756,12 @@ enum MCPSettingsCatalog {
       },
       applyValue: { (pos: NotificationPosition) in defaults.set(pos.rawValue, forKey: UserDefaultsKeys.notificationPosition) }))
 
+    // MARK: notifications.duration — picker stores the Double raw value (seconds).
+    settings.append(doubleEnumSetting(
+      id: "notifications.duration", title: "Notification duration", category: "notifications",
+      key: UserDefaultsKeys.notificationDuration, defaultValue: SettingsDefaults.notificationDuration,
+      label: { $0.isRecommended ? "\($0.displayName) (Recommended)" : $0.displayName }))
+
     // MARK: clipboard.auto_paste — never prompts; refused without Accessibility already granted.
     settings.append(boolSetting(
       id: "clipboard.auto_paste", title: "Auto-paste after dictation", category: "clipboard",
@@ -712,6 +769,11 @@ enum MCPSettingsCatalog {
       unavailableReason: {
         deps.hasAccessibilityPermission() ? nil : "Needs the Accessibility permission, which the user has to grant themselves."
       }))
+
+    // MARK: clipboard.restore_after_paste
+    settings.append(boolSetting(
+      id: "clipboard.restore_after_paste", title: "Restore clipboard after auto-paste", category: "clipboard",
+      key: UserDefaultsKeys.restoreClipboardAfterPaste, defaultValue: SettingsDefaults.restoreClipboardAfterPaste))
 
     // MARK: dictation.fn_key — same permission gate.
     settings.append(boolSetting(
@@ -725,6 +787,11 @@ enum MCPSettingsCatalog {
     settings.append(boolSetting(
       id: "window.settings_close_on_focus_loss", title: "Close Settings when it loses focus", category: "window",
       key: UserDefaultsKeys.settingsCloseOnFocusLoss, defaultValue: SettingsDefaults.settingsCloseOnFocusLoss))
+
+    // MARK: chat.close_on_focus_loss
+    settings.append(boolSetting(
+      id: "chat.close_on_focus_loss", title: "Close Chat when clicking outside", category: "chat",
+      key: UserDefaultsKeys.chatCloseOnFocusLoss, defaultValue: SettingsDefaults.chatCloseOnFocusLoss))
 
     // MARK: read_aloud.smart_rewrite
     settings.append(boolSetting(
@@ -773,6 +840,85 @@ enum MCPSettingsCatalog {
       key: UserDefaultsKeys.screenshotSaveEnabled, defaultValue: SettingsDefaults.screenshotSaveEnabled,
       unavailableReason: {
         deps.hasScreenshotFolder() ? nil : "No folder is chosen yet; the user has to pick one in WhisperShortcut Settings."
+      }))
+
+    // MARK: recording.confirm_above_duration — picker stores the Double raw value (seconds; 0 = never).
+    settings.append(doubleEnumSetting(
+      id: "recording.confirm_above_duration", title: "Ask when recording longer than", category: "recording",
+      key: UserDefaultsKeys.confirmAboveDurationSeconds, defaultValue: SettingsDefaults.confirmAboveDuration,
+      label: { $0.isRecommended ? "\($0.displayName) (Recommended)" : $0.displayName }))
+
+    // MARK: meetings.chunk_interval
+    settings.append(doubleEnumSetting(
+      id: "meetings.chunk_interval", title: "Meeting chunk interval", category: "meetings",
+      key: UserDefaultsKeys.liveMeetingChunkInterval, defaultValue: SettingsDefaults.liveMeetingChunkInterval,
+      label: { $0.displayName }))
+
+    // MARK: meetings.safeguard_duration
+    settings.append(doubleEnumSetting(
+      id: "meetings.safeguard_duration", title: "Ask when meeting longer than", category: "meetings",
+      key: UserDefaultsKeys.liveMeetingSafeguardDurationSeconds,
+      defaultValue: SettingsDefaults.liveMeetingSafeguardDuration,
+      label: { $0.displayName }))
+
+    // MARK: dictate_prompt.screenshot_context — on needs Screen Recording already granted.
+    // The Settings toggle prompts via SCShareableContent; MCP only reads the injected check.
+    settings.append(boolSetting(
+      id: "dictate_prompt.screenshot_context", title: "Screenshot context", category: "dictate_prompt",
+      key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
+      enablingRefused: {
+        deps.hasScreenRecordingPermission()
+          ? nil
+          : "Grant Screen Recording in Settings → Permissions first."
+      }))
+
+    // MARK: chat.x_search_handles — same bytes `XSearchHandles.defaultHandles`'s setter writes:
+    // normalized, lowercased, capped, space-joined. Empty means search all of X.
+    settings.append(MCPSetting(
+      id: "chat.x_search_handles", title: "X accounts for Grok", category: "chat",
+      kind: .string(maxLength: 2000),
+      read: {
+        XSearchHandles.normalize(defaults.string(forKey: UserDefaultsKeys.grokXSearchHandles) ?? "")
+          .joined(separator: " ")
+      },
+      validate: { value in
+        guard let s = value as? String, s.count <= 2000 else {
+          return "X accounts must be at most 2000 characters."
+        }
+        return nil
+      },
+      apply: { value in
+        guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
+        let stored = XSearchHandles.normalize(s).joined(separator: " ")
+        defaults.set(stored, forKey: UserDefaultsKeys.grokXSearchHandles)
+      }))
+
+    // MARK: improvement.auto_run_interval — picker stores the Int raw value (days; 0 = off).
+    settings.append(enumSetting(
+      id: "improvement.auto_run_interval", title: "Run Improve from usage automatically",
+      category: "improvement",
+      allOptions: {
+        ImproveFromUsageAutoRunInterval.allCases.map { MCPSetting.Option(String($0.rawValue), $0.displayName) }
+      },
+      current: {
+        let interval: ImproveFromUsageAutoRunInterval
+        if defaults.object(forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval) != nil,
+          let parsed = ImproveFromUsageAutoRunInterval(
+            rawValue: defaults.integer(forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval))
+        {
+          interval = parsed
+        } else {
+          // Same default as the Settings `@AppStorage` and `checkAndRunIfDue` when the key is unset.
+          interval = .every7Days
+        }
+        return String(interval.rawValue)
+      },
+      applyValue: { raw in
+        guard let value = Int(raw), let interval = ImproveFromUsageAutoRunInterval(rawValue: value) else {
+          throw MCPConfigError(message: "Unknown auto-run interval.")
+        }
+        defaults.set(interval.rawValue, forKey: UserDefaultsKeys.improveFromUsageAutoRunInterval)
+        deps.checkImprovementAutoRun()
       }))
 
     // MARK: general.launch_at_login — always a proposal: a background-login change the user should see coming.
