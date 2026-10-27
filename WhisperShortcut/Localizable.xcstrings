@@ -19978,6 +19978,46 @@
           }
         }
       }
+    },
+    "Added to %@'s settings. %@ Waiting for it to connect…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Einstellungen von %@ eingetragen. %@ Warte auf die Verbindung…"
+          }
+        }
+      }
+    },
+    "Connected, read only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden, nur Lesen"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        }
+      }
+    },
+    "%@ holds the read-only key, so it can't suggest or make changes. Click Connect Again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nutzt den Schlüssel nur zum Lesen und kann deshalb nichts vorschlagen oder ändern. Klicken Sie auf „Erneut verbinden“."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -16,6 +16,7 @@ struct AIAppsSettingsTab: View {
   @ObservedObject private var server = MCPServer.shared
   @ObservedObject private var proposals = MCPProposalStore.shared
   @ObservedObject private var changeLog = MCPChangeLog.shared
+  @ObservedObject private var clients = MCPClientRegistry.shared
 
   @AppStorage(UserDefaultsKeys.mcpConfigAccessLevel) private var accessLevelRaw = MCPConfigAccessLevel.read.rawValue
   @AppStorage(UserDefaultsKeys.mcpShareRecentInteractions) private var shareRecentInteractions = false
@@ -33,6 +34,9 @@ struct AIAppsSettingsTab: View {
   @State private var undoMessage: String?
   @State private var showAllChanges = false
   @State private var connectOutcome: [MCPClient: ConnectOutcome] = [:]
+  /// When Connect last wrote each client's config; until the client's next `initialize` the card
+  /// says it is waiting instead of showing a connection that still holds the old entry.
+  @State private var connectedAt: [MCPClient: Date] = [:]
   @State private var connecting: MCPClient?
 
   private enum ConnectOutcome: Equatable {
@@ -115,6 +119,8 @@ struct AIAppsSettingsTab: View {
           Button("Create New Key", role: .destructive) {
             server.regenerateToken()
             server.regenerateWriteToken()
+            // Every app connected so far holds the old key, so none of them counts as connected.
+            clients.forgetAll()
           }
         } message: {
           Text("Claude and other apps connected with the current key lose access until you connect them again.")
@@ -321,21 +327,7 @@ struct AIAppsSettingsTab: View {
         connectButton(client)
       }
 
-      switch connectOutcome[client] {
-      case .connected:
-        Label("Connected. \(client.restartHint)", systemImage: "checkmark.circle.fill")
-          .font(.caption)
-          .foregroundColor(.green)
-          .fixedSize(horizontal: false, vertical: true)
-      case .failed(let message):
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption)
-          .foregroundColor(.orange)
-          .fixedSize(horizontal: false, vertical: true)
-          .textSelection(.enabled)
-      case nil:
-        EmptyView()
-      }
+      connectionStatus(client)
 
       DisclosureGroup("Set up by hand") {
         VStack(alignment: .leading, spacing: 8) {
@@ -388,7 +380,8 @@ struct AIAppsSettingsTab: View {
       if connecting == client {
         ProgressView().controlSize(.small)
       } else {
-        Text(connectOutcome[client] == .connected ? ("Connect Again" as LocalizedStringKey) : "Connect")
+        Text(connectOutcome[client] == .connected || clients.client(matching: client.registryPrefix) != nil
+          ? ("Connect Again" as LocalizedStringKey) : "Connect")
       }
     }
     .buttonStyle(.borderedProminent)
@@ -398,6 +391,49 @@ struct AIAppsSettingsTab: View {
     .disabled(connecting != nil || setupToken.isEmpty)
     .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
     .pointerCursorOnHover()
+  }
+
+  /// One line under the client's name: the live connection from `MCPClientRegistry` once the app
+  /// has called in, "waiting" right after Connect wrote its config, or why Connect failed.
+  @ViewBuilder
+  private func connectionStatus(_ client: MCPClient) -> some View {
+    let seen = clients.client(matching: client.registryPrefix)
+    let waiting = connectedAt[client].map { started in seen.map { $0.lastConnected < started } ?? true } ?? false
+    if case .failed(let message) = connectOutcome[client] {
+      Label(message, systemImage: "exclamationmark.triangle.fill")
+        .font(.caption)
+        .foregroundColor(.orange)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
+    } else if waiting {
+      HStack(spacing: 6) {
+        ProgressView().controlSize(.mini)
+        Text("Added to \(client.displayName)'s settings. \(client.restartHint) Waiting for it to connect…")
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .font(.caption)
+    } else if let seen {
+      let readOnlyTrap = accessLevel != .read && seen.access == "read"
+      // Refreshes "2 min ago" while Settings stays open.
+      TimelineView(.periodic(from: .now, by: 30)) { _ in
+        VStack(alignment: .leading, spacing: 2) {
+          Label {
+            Text("\(seen.access == "write" ? String(localized: "Connected") : String(localized: "Connected, read only")) · \(seen.lastConnected.formatted(.relative(presentation: .named)))")
+              .foregroundColor(.secondary)
+          } icon: {
+            Image(systemName: readOnlyTrap ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+              .foregroundColor(readOnlyTrap ? .orange : .green)
+          }
+          if readOnlyTrap {
+            Text("\(client.displayName) holds the read-only key, so it can't suggest or make changes. Click Connect Again.")
+              .foregroundColor(.orange)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .font(.caption)
+      }
+    }
   }
 
   private func connect(_ client: MCPClient) {
@@ -410,6 +446,7 @@ struct AIAppsSettingsTab: View {
       switch result {
       case .success:
         connectOutcome[client] = .connected
+        connectedAt[client] = Date()
       case .failure(let error):
         if case .cancelled? = error as? MCPClientInstallerError { return }
         connectOutcome[client] = .failed(error.localizedDescription)

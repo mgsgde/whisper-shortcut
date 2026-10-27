@@ -15,6 +15,15 @@ enum MCPClient: String, CaseIterable {
     }
   }
 
+  /// Prefix of the `clientInfo.name` this client sends on `initialize`, for `MCPClientRegistry`.
+  var registryPrefix: String {
+    switch self {
+    case .claudeCode: return "claude-code"
+    case .claudeDesktop: return "claude-ai"
+    case .codex: return "codex"
+    }
+  }
+
   /// The real home directory. `NSHomeDirectory()` points into the sandbox container.
   static var realHome: URL {
     if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
