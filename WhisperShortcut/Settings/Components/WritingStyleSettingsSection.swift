@@ -90,44 +90,46 @@ struct WritingStyleSettingsSection: View {
         Image(systemName: emailCount + messageCount > 0 ? "checkmark.circle.fill" : "clock")
           .foregroundColor(emailCount + messageCount > 0 ? .green : .secondary)
       }
-      Text(updater.isWorking ? "Learning your writing style…" : statusText)
+      Text(verbatim: updater.isWorking ? String(localized: "Learning your writing style…") : statusText)
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
     if !updater.isWorking, let message = updater.lastMessage {
-      caption(message)
+      caption(verbatim: message)
     }
   }
 
   private var statusText: String {
     let total = emailCount + messageCount
     guard total > 0 else {
-      if !isEnabled { return "Nothing learned yet." }
+      if !isEnabled { return String(localized: "Nothing learned yet.") }
       return offlineMode || !google.isConnected
-        ? "Learning starts with your next dictation in Mail, Messages, WhatsApp or Slack."
-        : "Learning starts with your sent emails and your next dictations."
+        ? String(localized: "Learning starts with your next dictation in Mail, Messages, WhatsApp or Slack.")
+        : String(localized: "Learning starts with your sent emails and your next dictations.")
     }
-    var parts: [String] = []
-    if emailCount > 0 { parts.append(Self.plural(emailCount, "email", "emails")) }
-    if messageCount > 0 { parts.append(Self.plural(messageCount, "message", "messages")) }
-    let learned = "Learned from " + parts.joined(separator: " and ")
+    let emails = String(localized: "\(emailCount) emails", comment: "Plural variation on the number")
+    let messages = String(localized: "\(messageCount) messages", comment: "Plural variation on the number")
+    let learned: String
+    if emailCount > 0 && messageCount > 0 {
+      learned = String(localized: "Learned from \(emails) and \(messages)")
+    } else if emailCount > 0 {
+      learned = String(localized: "Learned from \(emails)")
+    } else {
+      learned = String(localized: "Learned from \(messages)")
+    }
     guard let profileUpdatedAt else {
       let missing = max(WritingStyleAutoUpdater.profileThreshold - total, 0)
       return missing > 0
-        ? learned + " · profile follows after \(Self.plural(missing, "more message", "more messages"))"
-        : learned + " · profile follows with the next update"
+        ? String(localized: "\(learned) · profile follows after \(missing) more messages", comment: "Plural variation on the number of messages")
+        : String(localized: "\(learned) · profile follows with the next update")
     }
-    return learned + " · profile updated " + Self.relative(profileUpdatedAt)
-  }
-
-  private static func plural(_ n: Int, _ one: String, _ many: String) -> String {
-    "\(n) \(n == 1 ? one : many)"
+    return String(localized: "\(learned) · profile updated \(Self.relative(profileUpdatedAt))")
   }
 
   private static func relative(_ date: Date) -> String {
-    if Calendar.current.isDateInToday(date) { return "today" }
-    if Calendar.current.isDateInYesterday(date) { return "yesterday" }
+    if Calendar.current.isDateInToday(date) { return String(localized: "today") }
+    if Calendar.current.isDateInYesterday(date) { return String(localized: "yesterday") }
     let formatter = RelativeDateTimeFormatter()
     formatter.unitsStyle = .full
     return formatter.localizedString(for: date, relativeTo: Date())
@@ -163,7 +165,7 @@ struct WritingStyleSettingsSection: View {
         if offlineMode {
           caption("Gmail import and profile updates are off in Offline Mode. A saved profile and examples keep working.")
         } else if !google.isConnected {
-          caption("Connect your Google account (Settings → Chat) and sent emails are imported automatically, or paste messages you wrote with Add examples.")
+          caption("Connect your Google account (Settings → Accounts) and sent emails are imported automatically, or paste messages you wrote with Add examples.")
         }
       }
       .padding(.top, 8)
@@ -173,11 +175,18 @@ struct WritingStyleSettingsSection: View {
     }
   }
 
-  private var privacyText: String {
+  private var privacyText: LocalizedStringKey {
     "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Smart Improvement model drafts an updated profile from a sample of them and shows it for your review before saving."
   }
 
-  private func caption(_ text: String) -> some View {
+  private func caption(verbatim text: String) -> some View {
+    Text(verbatim: text)
+      .font(.caption)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func caption(_ text: LocalizedStringKey) -> some View {
     Text(text)
       .font(.caption)
       .foregroundColor(.secondary)

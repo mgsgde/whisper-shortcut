@@ -331,7 +331,7 @@ enum OpenAICompatibleStructured {
     logTag: String
   ) async throws -> [String: Any] {
     guard let url = URL(string: endpoint) else {
-      throw TranscriptionError.networkError("Invalid \(logTag) endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid \(logTag) endpoint URL"))
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -365,7 +365,7 @@ enum OpenAICompatibleStructured {
     DebugLogger.logNetwork("\(logTag)-STRUCTURED: POST \(endpoint) model=\(model) schema=\(schemaName)")
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from \(logTag) API")
+      throw TranscriptionError.networkError(String(localized: "Invalid response from \(logTag) API"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       let text = String(data: data, encoding: .utf8) ?? ""
@@ -420,6 +420,13 @@ enum OpenAICompatibleStream {
     /// exists. Only the local provider needs this; the default rethrows unchanged.
     var mapTransportError: (Error) -> Error = { $0 }
     var session: URLSession = LLMHTTPSession.shared
+    /// Responses API only. When set, a stream counts as a success **only** if it ends with
+    /// `response.completed`: `response.failed`, `response.incomplete`, an `error` event, or a stream
+    /// that closes without a terminal event throw whatever this returns (arguments: the event type,
+    /// or `stream_ended`, and the event's payload). `nil` keeps the lenient behaviour OpenAI and
+    /// Grok have always had; the ChatGPT-plan route opts in because usage-limit errors arrive
+    /// mid-stream as `response.failed`.
+    var terminalFailure: ((_ eventType: String, _ payload: [String: Any]) -> Error)? = nil
   }
 
   /// POSTs `body` and returns the byte stream, or throws the provider-mapped error.
@@ -437,7 +444,7 @@ enum OpenAICompatibleStream {
     _ config: Config, body: [String: Any]
   ) async throws -> URLSession.AsyncBytes {
     guard let url = URL(string: config.endpoint) else {
-      throw TranscriptionError.networkError("Invalid \(config.logTag) endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid \(config.logTag) endpoint URL"))
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -458,7 +465,7 @@ enum OpenAICompatibleStream {
     }
 
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from \(config.logTag) API")
+      throw TranscriptionError.networkError(String(localized: "Invalid response from \(config.logTag) API"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       var errData = Data()
@@ -573,6 +580,7 @@ enum OpenAICompatibleStream {
           var seenCitationURLs: Set<String> = []
           var hasYieldedText = false
           var needsMessageSeparator = false
+          var sawCompleted = false
           // Diagnostics for truncated-reply reports.
           var eventTypeCounts: [String: Int] = [:]
           var messageItemCount = 0
@@ -658,14 +666,28 @@ enum OpenAICompatibleStream {
               }
 
             case "response.completed":
+              sawCompleted = true
               if let resp = obj["response"] as? [String: Any],
                  let status = resp["status"] as? String {
                 finishReason = status == "completed" ? "stop" : status
               }
 
+            case "response.failed", "response.incomplete":
+              // Strict mode only; the lenient providers keep ignoring these and end normally.
+              if let fail = config.terminalFailure {
+                throw fail(eventType, obj["response"] as? [String: Any] ?? obj)
+              }
+
+            case "error":
+              if let fail = config.terminalFailure { throw fail(eventType, obj) }
+
             default:
               break
             }
+          }
+
+          if let fail = config.terminalFailure, !sawCompleted {
+            throw fail("stream_ended", [:])
           }
 
           // Pass callId via thoughtSignature for round-trip.
@@ -721,8 +743,14 @@ enum LLMProviderFactory {
       return OpenAIChatProvider.shared
     case .anthropic:
       return AnthropicChatProvider.shared
-    case .customOpenAI:
+    case .customOpenAI, .openRouter:
       return OpenAIChatProvider.shared
+    case .chatGPTPlan:
+      #if APP_STORE
+        return ChatGPTPlanUnavailableProvider()
+      #else
+        return ChatGPTPlanChatProvider.shared
+      #endif
     case .local:
       return LocalLLMChatProvider.shared
     case .localMLX:

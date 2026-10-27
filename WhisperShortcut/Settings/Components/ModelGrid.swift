@@ -13,9 +13,9 @@ import SwiftUI
 /// the empty rows. These lists are a handful of models each, so eager rows cost nothing.
 struct ModelGrid<Model: Hashable, Cell: View>: View {
   let models: [Model]
+  /// Two everywhere except the curated top row, which fits its three tiles on one line.
+  var columns: Int = 2
   @ViewBuilder let cell: (Model) -> Cell
-
-  private static var columns: Int { 2 }
 
   var body: some View {
     VStack(spacing: SettingsConstants.modelSpacing) {
@@ -28,8 +28,8 @@ struct ModelGrid<Model: Hashable, Cell: View>: View {
               .frame(maxWidth: .infinity, maxHeight: .infinity)
           }
           // Keeps a lone trailing tile at column width instead of spanning the whole row.
-          if row.count < Self.columns {
-            ForEach(0..<(Self.columns - row.count), id: \.self) { _ in
+          if row.count < columns {
+            ForEach(0..<(columns - row.count), id: \.self) { _ in
               Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
             }
           }
@@ -40,19 +40,82 @@ struct ModelGrid<Model: Hashable, Cell: View>: View {
   }
 
   private var rows: [[Model]] {
-    stride(from: 0, to: models.count, by: Self.columns).map { start in
-      Array(models[start..<min(start + Self.columns, models.count)])
+    stride(from: 0, to: models.count, by: columns).map { start in
+      Array(models[start..<min(start + columns, models.count)])
     }
   }
+}
+
+/// The box every model picker draws: the curated top row (Recommended · Fastest · Offline, plus
+/// the current selection when it is none of those), then a "More models" disclosure holding the
+/// rest. Which models go where is `ModelPickerCuration`'s call, made from data on the model enums;
+/// the picker supplies the tile and how it groups the remainder (by provider, by direct vs routed).
+struct CuratedModelPicker<Model: PickerCuratedModel, Cell: View, More: View>: View {
+  let curation: ModelPickerCuration<Model>
+  @ViewBuilder let cell: (Model, [ModelPickerBadge]) -> Cell
+  @ViewBuilder let more: ([Model]) -> More
+
+  @State private var showsMore = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ModelGrid(models: curation.featured.map(\.model), columns: featuredColumns) { model in
+        cell(model, curation.featured.first { $0.model == model }?.badges ?? [])
+      }
+
+      if !curation.more.isEmpty {
+        Divider()
+        Button {
+          withAnimation(.easeInOut(duration: 0.15)) { showsMore.toggle() }
+        } label: {
+          HStack(spacing: 6) {
+            Image(systemName: "chevron.right")
+              .font(.caption.weight(.semibold))
+              .foregroundColor(.secondary)
+              .rotationEffect(.degrees(showsMore ? 90 : 0))
+            Text("More models")
+              .font(.callout)
+              .fontWeight(.medium)
+            Text("\(curation.more.count)")
+              .font(.caption)
+              .foregroundColor(.secondary)
+            Spacer()
+          }
+          .padding(.horizontal, 10)
+          .padding(.vertical, 8)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerCursorOnHover()
+        .accessibilityLabel("More models, \(curation.more.count)")
+        .accessibilityValue(showsMore ? "Expanded" : "Collapsed")
+
+        if showsMore {
+          Divider()
+          more(curation.more)
+            .padding(10)
+        }
+      }
+    }
+    .background(Color(.controlBackgroundColor))
+    .cornerRadius(8)
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(Color(.separatorColor), lineWidth: 1)
+    )
+  }
+
+  /// Three on one line; two or four as a 2-wide grid so no tile is stretched across the box.
+  private var featuredColumns: Int { curation.featured.count == 3 ? 3 : 2 }
 }
 
 /// Caption above a group of model tiles ("Cloud · needs an API key", "Offline · on-device").
 /// Distinct from `SectionHeader`, which titles a whole settings section.
 struct ModelGroupHeader: View {
   let symbol: String
-  let title: String
+  let title: LocalizedStringResource
   /// Omitted by the prompt picker for groups whose name already says everything.
-  var subtitle: String?
+  var subtitle: LocalizedStringResource?
 
   var body: some View {
     HStack(spacing: 6) {
@@ -63,9 +126,12 @@ struct ModelGroupHeader: View {
         .font(.callout)
         .fontWeight(.semibold)
       if let subtitle {
-        Text("· \(subtitle)")
-          .font(.caption)
-          .foregroundColor(.secondary)
+        HStack(spacing: 4) {
+          Text(verbatim: "·")
+          Text(subtitle)
+        }
+        .font(.caption)
+        .foregroundColor(.secondary)
       }
     }
     .padding(.horizontal, 4)

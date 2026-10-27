@@ -1,40 +1,66 @@
 import AppKit
 import SwiftUI
 
+/// Five steps, one decision. Raw values are the ones these steps had in the older eight-step tour
+/// (`onboardingCurrentStep` persists them), so a tour started before an update resumes on the step
+/// that matches; the gaps are the retired privacy, auto-paste and Smart Improvement steps.
 enum WelcomeStep: Int, CaseIterable {
-  case intro
-  case privacy
-  case apiKeys
-  case permissions
-  /// Right after the microphone permission: the first successful dictation comes before the
-  /// optional setup (auto-paste, Smart Improvement), not after it.
-  case tryIt
-  case autoPaste
-  case smartImprovement
-  case done
+  case intro = 0
+  /// "How should dictation run?" — offline model or one cloud account. Privacy lives here too.
+  case dictationSetup = 2
+  /// Microphone, Screen Recording, and (direct build) the auto-paste opt-in that needs Accessibility.
+  case permissions = 3
+  /// The first successful dictation, right after the microphone is granted.
+  case tryIt = 4
+  case done = 7
 
-  /// The steps this build actually shows. The App Store build has no auto-paste (a synthetic
-  /// ⌘V needs the Accessibility permission Apple rejects under Guideline 2.4.5), so its intro
-  /// step is omitted there — never advertise (or prompt for) a feature the build doesn't have.
-  static var activeSteps: [WelcomeStep] {
-    #if APP_STORE
-    return allCases.filter { $0 != .autoPaste }
-    #else
-    return allCases
-    #endif
-  }
+  /// Both builds show the same five steps; the App Store build only drops the auto-paste card
+  /// from the permissions step (Guideline 2.4.5).
+  static var activeSteps: [WelcomeStep] { allCases }
 
-  /// Nearest active step for a persisted raw value — tolerates a stored step that this
-  /// build skips (e.g. a tour started in the direct build, resumed in the App Store build).
+  /// Nearest active step for a persisted raw value — tolerates a stored step that no longer
+  /// exists (e.g. a retired step from an older build).
   static func resume(from rawValue: Int) -> WelcomeStep {
-    let stored = WelcomeStep(rawValue: rawValue) ?? .intro
-    return activeSteps.last(where: { $0.rawValue <= stored.rawValue }) ?? .intro
+    activeSteps.last(where: { $0.rawValue <= rawValue }) ?? .intro
   }
 
   var indexLabel: String {
     let steps = WelcomeStep.activeSteps
     let position = (steps.firstIndex(of: self) ?? 0) + 1
     return "\(position) of \(steps.count)"
+  }
+
+  /// Continue is enabled. Dictation setup used to OR five Keychain flags, plus any downloaded
+  /// offline model. That counted an Anthropic key and a ChatGPT-plan sign-in, missed a Gemini
+  /// credential once the key row had overwritten the flag with a raw Keychain read, and let the
+  /// user pass a step the Done page then called "Needs a model". Advance only when the selected
+  /// transcription model can run. Offline is already inside that check: `hasRequiredCredential`
+  /// for an offline model means its file is on disk.
+  func canAdvance(micStatus: PermissionStatus) -> Bool {
+    switch self {
+    case .dictationSetup:
+      return TranscriptionModel.loadSelected().hasRequiredCredential
+    case .permissions:
+      return micStatus == .granted || micStatus == .denied
+    case .intro, .tryIt, .done:
+      return true
+    }
+  }
+}
+
+/// Published copy of `WelcomeStep.dictationSetup.canAdvance` so Continue and the step's
+/// "Ready to continue." line update together. The per-provider `@State` booleans used to be
+/// that signal; they were written when a key was saved, OAuth finished, or a download completed.
+@MainActor
+final class OnboardingSetupState: ObservableObject {
+  @Published private(set) var dictationCanAdvance: Bool
+
+  init() {
+    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(micStatus: .notDetermined)
+  }
+
+  func refresh() {
+    dictationCanAdvance = WelcomeStep.dictationSetup.canAdvance(micStatus: .notDetermined)
   }
 }
 
@@ -49,26 +75,14 @@ struct WelcomeView: View {
   @State private var step: WelcomeStep =
     WelcomeStep.resume(from: UserDefaults.standard.integer(forKey: UserDefaultsKeys.onboardingCurrentStep))
   @State private var keyDownMonitor: Any?
-  @State private var hasGeminiKey: Bool = KeychainManager.shared.hasNonEmpty(.google)
-  @State private var hasOpenAIKey: Bool = KeychainManager.shared.hasNonEmpty(.openAI)
-  @State private var hasXAIKey: Bool = KeychainManager.shared.hasNonEmpty(.xai)
-  @State private var hasAnthropicKey: Bool = KeychainManager.shared.hasNonEmpty(.anthropic)
-  /// Set by the OpenRouter connect row. Counts as a configured provider like any pasted key —
-  /// the credential slot is the same one the manual field writes.
-  @State private var hasOpenRouterKey: Bool = KeychainManager.shared.hasNonEmpty(.openRouter)
-  /// True once an offline Whisper model is downloaded, which lets a user finish
-  /// setup and dictate with no provider key at all (the key step's other exit).
-  @State private var offlineReady: Bool = OfflineModelType.byAccuracy.contains {
-    ModelManager.shared.isModelAvailable($0)
-  }
+  /// Re-read of "can the selected transcription model run" after a key, OAuth, or download.
+  @StateObject private var setup = OnboardingSetupState()
   /// Gates the permissions step's Continue button. Updated by `PermissionsOverview`'s
   /// `onMicStatusChange` callback and the periodic refresh below.
   @State private var micStatus: PermissionStatus = PermissionStatusChecker.status(for: .microphone)
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
-  /// Auto-paste is opt-in (default off). Surfaced here so new users learn the feature exists and
-  /// that it needs Accessibility — the permission is requested only when they enable the toggle.
-  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
-    SettingsDefaults.autoPasteAfterDictation
+  /// The answer to "How should dictation run?". Kept here, not in the step, so Back/Continue
+  /// does not forget it. Pre-filled from what is already set up when the tour is revisited.
+  @State private var dictationChoice: DictationChoice? = DictationChoice.inferred()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -76,25 +90,12 @@ struct WelcomeView: View {
         switch step {
         case .intro:
           WelcomeIntroStep()
-        case .privacy:
-          WelcomePrivacyStep()
-        case .apiKeys:
-          WelcomeAPIKeysStep(
-            hasGeminiKey: $hasGeminiKey,
-            hasOpenAIKey: $hasOpenAIKey,
-            hasXAIKey: $hasXAIKey,
-            hasAnthropicKey: $hasAnthropicKey,
-            hasOpenRouterKey: $hasOpenRouterKey,
-            offlineReady: $offlineReady
-          )
+        case .dictationSetup:
+          WelcomeDictationSetupStep(choice: $dictationChoice, setup: setup)
         case .permissions:
           WelcomePermissionsStep(micStatus: $micStatus)
         case .tryIt:
           WelcomeTryItStep()
-        case .autoPaste:
-          WelcomeAutoPasteStep(autoPasteEnabled: $autoPasteEnabled)
-        case .smartImprovement:
-          WelcomeSmartImprovementStep(saveUsageData: $saveUsageData)
         case .done:
           WelcomeDoneStep()
         }
@@ -205,13 +206,10 @@ struct WelcomeView: View {
 
   private var canAdvance: Bool {
     switch step {
-    case .apiKeys:
-      return hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey
-        || offlineReady
-    case .permissions:
-      return micStatus == .granted || micStatus == .denied
+    case .dictationSetup:
+      return setup.dictationCanAdvance
     default:
-      return true
+      return step.canAdvance(micStatus: micStatus)
     }
   }
 
@@ -234,14 +232,7 @@ struct WelcomeView: View {
   }
 
   private func refreshState() {
-    hasGeminiKey = KeychainManager.shared.hasNonEmpty(.google)
-    hasOpenAIKey = KeychainManager.shared.hasNonEmpty(.openAI)
-    hasXAIKey = KeychainManager.shared.hasNonEmpty(.xai)
-    hasAnthropicKey = KeychainManager.shared.hasNonEmpty(.anthropic)
-    hasOpenRouterKey = KeychainManager.shared.hasNonEmpty(.openRouter)
-    // Any downloaded model unblocks the step — onboarding always offers Whisper Base,
-    // and a user who already has Small has nothing left to do here.
-    offlineReady = OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) }
+    setup.refresh()
     micStatus = PermissionStatusChecker.status(for: .microphone)
   }
 }

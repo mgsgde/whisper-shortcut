@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Speech to Text Settings Tab - Shortcuts, Prompt, Transcription Model
+/// Dictate Settings Tab — transcription model, prompt and glossary. The shortcut is set in General.
 struct SpeechToTextSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
@@ -11,11 +11,6 @@ struct SpeechToTextSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Shortcuts Section
-      shortcutsSection
-
-      SpacedSectionDivider()
-
       // Transcription Model Section
       modelSection
 
@@ -106,15 +101,7 @@ struct SpeechToTextSettingsTab: View {
 
     #if !APP_STORE
     VStack(alignment: .leading, spacing: 8) {
-      ShortcutRecorderRow(
-        label: "Add Selection to Glossary:",
-        shortcut: $viewModel.data.addToGlossary,
-        focusedField: .addToGlossaryShortcut,
-        currentFocus: $focusedField,
-        onChanged: { Task { await viewModel.saveSettings() } },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
+      ShortcutHintRow(label: "Add Selection to Glossary:", shortcut: viewModel.data.addToGlossary)
       Text("Select a correctly spelled term anywhere — in your practice software, a document, an email — and press the shortcut to append it here. No model is involved, so this is also the way to grow the Glossary while Offline Mode is on.")
         .font(.caption)
         .foregroundColor(.secondary)
@@ -122,56 +109,6 @@ struct SpeechToTextSettingsTab: View {
     }
     .padding(.top, SettingsConstants.internalSectionSpacing)
     #endif
-  }
-
-  // MARK: - Shortcuts Section
-  @ViewBuilder
-  private var shortcutsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Keyboard Shortcut",
-        systemImage: "keyboard",
-        subtitle: "Start/Stop Dictation with one shortcut"
-      )
-
-      ShortcutRecorderRow(
-        label: "Toggle Dictation:",
-        shortcut: $viewModel.data.toggleDictation,
-        focusedField: .toggleDictation,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
-
-      #if !APP_STORE
-      Toggle(isOn: $viewModel.data.fnKeyDictation) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Use 🌐 Fn to dictate")
-            .font(.callout)
-          Text("Press the Fn (Globe) key to start recording, press it again to stop and transcribe. Requires Accessibility permission. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\" so macOS doesn't also react to the key.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
-      .toggleStyle(.switch)
-      .onChange(of: viewModel.data.fnKeyDictation) { _, newValue in
-        DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
-        if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
-          // Request now (native prompt + pre-registration), not deferred to the first fn press.
-          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
-        }
-        Task {
-          await viewModel.saveSettings()
-        }
-      }
-      #endif
-    }
   }
 
   // MARK: - Language Section
@@ -220,31 +157,23 @@ struct SpeechToTextSettingsTab: View {
         title: "Transcription Model",
         systemImage: "waveform",
         selectedTranscriptionModel: $viewModel.data.selectedTranscriptionModel,
-        geminiDisabled: !GeminiCredentialProvider.shared.hasCredential(),
-        openAIDisabled: !KeychainManager.shared.hasNonEmpty(.openAI),
-        xaiDisabled: !KeychainManager.shared.hasNonEmpty(.xai),
-        subscriptionMode: false,
         onModelChanged: {
-          UserDefaults.standard.set(
-            viewModel.data.selectedTranscriptionModel.rawValue,
-            forKey: UserDefaultsKeys.selectedTranscriptionModel)
-          NotificationCenter.default.post(
-            name: .modelChanged,
-            object: viewModel.data.selectedTranscriptionModel)
           Task {
             await viewModel.saveSettings()
           }
         }
       )
       if viewModel.data.selectedTranscriptionModel.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
-        Text("Sign in with Google or add your API key in the General tab for Gemini models. You can also select an offline Whisper model to dictate without a key.")
+        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
       }
 
-      if viewModel.data.selectedTranscriptionModel.isOpenAI && !KeychainManager.shared.hasNonEmpty(.openAI) {
-        Text("Add your OpenAI API key in the General tab to use the OpenAI transcription models.")
+      if viewModel.data.selectedTranscriptionModel.isOpenAI
+        && !viewModel.data.selectedTranscriptionModel.hasRequiredCredential
+      {
+        Text("Add your OpenAI API key in Settings → Accounts to use the OpenAI transcription models.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)
@@ -379,6 +308,8 @@ struct SpeechToTextSettingsTab: View {
         systemImage: "questionmark.circle",
         subtitle: "Step-by-step instructions for using dictation mode"
       )
+
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.toggleDictation)
 
       VStack(alignment: .leading, spacing: 8) {
         Text("1. Press your configured shortcut")

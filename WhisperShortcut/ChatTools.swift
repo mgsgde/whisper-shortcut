@@ -60,7 +60,7 @@ enum ChatToolRegistry {
          "google_calendar_create_event", "google_calendar_update_event", "google_calendar_delete_event",
          "google_tasks_create", "google_tasks_update", "google_tasks_complete", "google_tasks_delete",
          "trello_create_card", "trello_move_card", "trello_update_card", "trello_archive_card",
-         rememberAboutUserToolName,
+         rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
          "write_text_file", "append_to_file", "edit_text_file":
       return true
     case updateInstructionsToolName:
@@ -77,13 +77,24 @@ enum ChatToolRegistry {
   /// where each call destroys something different.
   static func allowsChatWideApproval(_ name: String) -> Bool {
     switch name {
-    case rememberAboutUserToolName, updateInstructionsToolName, "open_url",
+    case rememberAboutUserToolName, "remember_file_location", "remember_dictation_term",
+         updateInstructionsToolName, "open_url",
          "write_text_file", "append_to_file", "edit_text_file",
          "google_calendar_delete_event", "google_tasks_delete", "trello_archive_card":
       return false
     default:
       return requiresUserApproval(name, args: ["action": "write"])
     }
+  }
+
+  /// Text the model wants stored for good (a folder path, a glossary term): newlines become spaces
+  /// so a value cannot smuggle extra lines into a prompt block, it is trimmed and capped, and an
+  /// empty result is nil.
+  static func sanitizedStoredText(_ raw: String, limit: Int) -> String? {
+    let flat = raw.components(separatedBy: .newlines).joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !flat.isEmpty else { return nil }
+    return flat.count > limit ? String(flat.prefix(limit)) : flat
   }
 
   /// One-line summary for the approval card.
@@ -99,55 +110,68 @@ enum ChatToolRegistry {
     switch name {
     case "open_url":
       let url = arg("url")
-      return url.isEmpty ? "Open a URL in your browser." : "Open \(url) in your browser."
+      return url.isEmpty ? String(localized: "Open a URL in your browser.") : String(localized: "Open \(url) in your browser.")
     case "google_calendar_create_event":
       let summary = arg("summary")
-      return summary.isEmpty ? "Create a calendar event." : "Create calendar event: \(summary)"
+      return summary.isEmpty ? String(localized: "Create a calendar event.") : String(localized: "Create calendar event: \(summary)")
     case "google_calendar_update_event":
-      return "Update calendar event \(arg("event_id"))."
+      return String(localized: "Update calendar event \(arg("event_id")).")
     case "google_calendar_delete_event":
-      return "Delete calendar event \(arg("event_id"))."
+      return String(localized: "Delete calendar event \(arg("event_id")).")
     case "google_tasks_create":
       let title = arg("title")
-      return title.isEmpty ? "Create a task." : "Create task: \(title)"
+      return title.isEmpty ? String(localized: "Create a task.") : String(localized: "Create task: \(title)")
     case "google_tasks_update":
-      return "Update task \(arg("task_id"))."
+      return String(localized: "Update task \(arg("task_id")).")
     case "google_tasks_complete":
-      return "Mark task \(arg("task_id")) complete."
+      return String(localized: "Mark task \(arg("task_id")) complete.")
     case "google_tasks_delete":
-      return "Delete task \(arg("task_id"))."
+      return String(localized: "Delete task \(arg("task_id")).")
     case "trello_create_card":
       let cardName = arg("name")
-      return cardName.isEmpty ? "Create a Trello card." : "Create Trello card: \(cardName)"
+      return cardName.isEmpty ? String(localized: "Create a Trello card.") : String(localized: "Create Trello card: \(cardName)")
     case "trello_move_card":
-      return "Move Trello card \(arg("card_id"))."
+      return String(localized: "Move Trello card \(arg("card_id")).")
     case "trello_update_card":
-      return "Update Trello card \(arg("card_id"))."
+      return String(localized: "Update Trello card \(arg("card_id")).")
     case "trello_archive_card":
-      return "Archive Trello card \(arg("card_id"))."
+      return String(localized: "Archive Trello card \(arg("card_id")).")
     case rememberAboutUserToolName:
-      return "Remember about you (added to every future chat):\n\(preview(arg("fact")))"
+      return String(localized: "Remember about you (added to every future chat):\n\(preview(arg("fact")))")
+    case "remember_file_location":
+      let note = arg("note")
+      let folder = preview(arg("path"), limit: 300)
+      return note.isEmpty
+        ? String(localized: "Remember folder: \(folder)")
+        : String(localized: "Remember folder: \(folder) — \(preview(note, limit: 300))")
+    case "remember_dictation_term":
+      return String(localized: "Add to dictation glossary: \(preview(arg("term"), limit: 100))")
     case updateInstructionsToolName:
       let action = arg("action")
       let text = arg("text")
-      let verb: String
+      let line: String
       switch action {
-      case "append": verb = "Add a rule to"
-      case "replace": verb = "Replace"
-      case "remove": verb = "Remove rules from"
-      default: verb = "Change"
+      case "append": line = String(localized: "Add a rule to the Dictate Prompt instructions.")
+      case "replace": line = String(localized: "Replace the Dictate Prompt instructions.")
+      case "remove": line = String(localized: "Remove rules from the Dictate Prompt instructions.")
+      default: line = String(localized: "Change the Dictate Prompt instructions.")
       }
-      let line = "\(verb) the Dictate Prompt instructions."
       return text.isEmpty ? line : line + "\n\n" + preview(text)
     case "write_text_file":
-      let overwrite = (args["overwrite"] as? Bool) == true
-      return (overwrite ? "Overwrite file " : "Create file ") + "\(arg("path"))\n\n" + preview(arg("content"))
+      let overwrite = boolArgument(args, "overwrite", default: false)
+      let path = arg("path")
+      let head = overwrite ? String(localized: "Overwrite file \(path)") : String(localized: "Create file \(path)")
+      return head + "\n\n" + preview(arg("content"))
     case "append_to_file":
-      return "Append to file \(arg("path")):\n\n" + preview(arg("content"))
+      return String(localized: "Append to file \(arg("path")):") + "\n\n" + preview(arg("content"))
     case "edit_text_file":
-      return "Edit file \(arg("path")):\n\nReplace:\n\(preview(arg("find"), limit: 300))\n\nWith:\n\(preview(arg("replace"), limit: 300))"
+      let path = arg("path")
+      let head = boolArgument(args, "replace_all", default: false)
+        ? String(localized: "Edit file \(path) (all occurrences):")
+        : String(localized: "Edit file \(path):")
+      return head + "\n\n" + String(localized: "Replace:") + "\n\(preview(arg("find"), limit: 300))\n\n" + String(localized: "With:") + "\n\(preview(arg("replace"), limit: 300))"
     default:
-      return "Allow the chat to run \(name)?"
+      return String(localized: "Allow the chat to run \(name)?")
     }
   }
 
@@ -1208,11 +1232,20 @@ enum ChatToolRegistry {
     return PromptModel(rawValue: migrated)?.provider ?? SettingsDefaults.selectedChatModel.provider
   }
 
-  private static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
-    if let value = args[key] as? Int { return value }
-    if let value = args[key] as? Double { return Int(value) }
-    if let value = args[key] as? NSNumber { return value.intValue }
-    if let value = args[key] as? String, let parsed = Int(value) { return parsed }
+  /// Model-supplied numbers can be anything (1e20, NaN); `Int(Double)` traps on those. Values are
+  /// truncated toward zero and clamped to ±1_000_000_000; non-finite values fall back to the default.
+  static func intArgument(_ args: [String: Any], _ key: String, default defaultValue: Int) -> Int {
+    let limit = 1_000_000_000
+    func clamped(_ value: Double) -> Int {
+      guard value.isFinite else { return defaultValue }
+      return max(-limit, min(limit, Int(exactly: value.rounded(.towardZero)) ?? (value < 0 ? -limit : limit)))
+    }
+    if let value = args[key] as? Int { return max(-limit, min(limit, value)) }
+    if let value = args[key] as? Double { return clamped(value) }
+    if let value = args[key] as? NSNumber { return clamped(value.doubleValue) }
+    if let value = args[key] as? String, let parsed = Int(value.trimmingCharacters(in: .whitespaces)) {
+      return max(-limit, min(limit, parsed))
+    }
     return defaultValue
   }
 
@@ -1242,11 +1275,11 @@ enum ChatToolRegistry {
   }
 
   private static let googleNotConnectedError: [String: Any] = [
-    "error": "Google is not connected. Open Settings → Chat to connect."
+    "error": "Google is not connected. Open Settings → Accounts to connect."
   ]
 
   private static let trelloNotConnectedError: [String: Any] = [
-    "error": "Trello is not connected. Open Settings → Chat to connect."
+    "error": "Trello is not connected. Open Settings → Accounts to connect."
   ]
 
   /// Wraps a Google Tasks error with an actionable retry hint. When the failure looks like an
@@ -1293,7 +1326,9 @@ enum ChatToolRegistry {
   }
 
   private static func mailString(_ args: [String: Any], _ key: String) -> String? {
-    let raw = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let raw = (args[key] as? String)?
+      .components(separatedBy: .controlCharacters).joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     return raw.isEmpty ? nil : raw
   }
 
@@ -1353,13 +1388,11 @@ enum ChatToolRegistry {
 
     case "remember_dictation_term":
       guard let rawTerm = args["term"] as? String,
-            case let term = rawTerm.trimmingCharacters(in: .whitespacesAndNewlines),
-            !term.isEmpty
+            let term = sanitizedStoredText(rawTerm, limit: 100)
       else {
         return ["error": "Missing required argument: term"]
       }
-      let misheardAs = (args["misheard_as"] as? String)?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+      let misheardAs = (args["misheard_as"] as? String).flatMap { sanitizedStoredText($0, limit: 100) }
       return GlossaryFastLearner.shared.rememberTerm(
         term, misheardAs: (misheardAs?.isEmpty ?? true) ? nil : misheardAs)
 
@@ -1422,7 +1455,7 @@ enum ChatToolRegistry {
       // without this the app's behavior could drift with no trace of who changed what.
       ContextLogger.shared.appendSystemPromptsHistory(
         section: section, previousLength: current.count, newLength: updated.count,
-        content: updated, model: nil, source: "chat")
+        content: updated, model: nil, source: PromptHistorySource.chat.rawValue)
       DebugLogger.log(
         "INSTRUCTIONS-EDIT: chat \(action) on \(sectionKey) (\(current.count) → \(updated.count) chars)")
       return [
@@ -1434,15 +1467,15 @@ enum ChatToolRegistry {
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }
       let maxResults = intArgument(args, "max_results", default: 10)
-      let hoursAhead = intArgument(args, "hours_ahead", default: 168)
-      let hoursBack = intArgument(args, "hours_back", default: 0)
+      let hoursAhead = min(max(intArgument(args, "hours_ahead", default: 168), 0), 24 * 366)
+      let hoursBack = min(max(intArgument(args, "hours_back", default: 0), 0), 24 * 366)
       do {
         let events = try await GoogleCalendarAPIClient.shared.listEvents(
           maxResults: maxResults, hoursAhead: hoursAhead, hoursBack: hoursBack)
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar list returned \(events.count) events")
         return ["events": events, "count": events.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1467,7 +1500,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar create ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar create failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1490,7 +1523,7 @@ enum ChatToolRegistry {
         DebugLogger.logSuccess("GEMINI-CHAT-TOOL: calendar update ok, id=\(result["event_id"] ?? "?")")
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar update failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1503,7 +1536,7 @@ enum ChatToolRegistry {
         let result = try await GoogleCalendarAPIClient.shared.deleteEvent(eventId: eventId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: calendar delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1513,7 +1546,7 @@ enum ChatToolRegistry {
         let lists = try await GoogleTasksAPIClient.shared.listTaskLists()
         return ["task_lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list_tasklists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1527,7 +1560,7 @@ enum ChatToolRegistry {
           taskListId: taskListId, maxResults: maxResults, showCompleted: showCompleted)
         return ["tasks": tasks, "count": tasks.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks list failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1544,7 +1577,7 @@ enum ChatToolRegistry {
           title: title, notes: notes, due: due, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks create failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1564,7 +1597,7 @@ enum ChatToolRegistry {
           status: args["status"] as? String)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks update failed: \(error.logDescription)")
         return ["error": tasksErrorWithHint(error, taskListId: taskListId)]
       }
 
@@ -1579,7 +1612,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks complete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1594,7 +1627,7 @@ enum ChatToolRegistry {
           taskId: taskId, taskListId: taskListId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: tasks delete failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1607,7 +1640,7 @@ enum ChatToolRegistry {
           query: query, maxResults: maxResults)
         return ["emails": messages, "count": messages.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail search failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1620,7 +1653,7 @@ enum ChatToolRegistry {
         let message = try await GmailAPIClient.shared.readMessage(messageId: messageId)
         return message
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: gmail read failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1630,7 +1663,7 @@ enum ChatToolRegistry {
         let boards = try await TrelloAPIClient.shared.listBoards()
         return ["boards": boards, "count": boards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_boards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1643,7 +1676,7 @@ enum ChatToolRegistry {
         let lists = try await TrelloAPIClient.shared.listLists(boardId: boardId)
         return ["lists": lists, "count": lists.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_lists failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1660,7 +1693,7 @@ enum ChatToolRegistry {
           listId: listId, boardId: boardId, maxResults: maxResults)
         return ["cards": cards, "count": cards.count]
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello list_cards failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1678,7 +1711,7 @@ enum ChatToolRegistry {
           listId: listId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello create_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1693,7 +1726,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.moveCard(cardId: cardId, listId: listId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello move_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1713,7 +1746,7 @@ enum ChatToolRegistry {
           cardId: cardId, name: cardName, description: description, due: due)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello update_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1726,7 +1759,7 @@ enum ChatToolRegistry {
         let result = try await TrelloAPIClient.shared.archiveCard(cardId: cardId)
         return result
       } catch {
-        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.localizedDescription)")
+        DebugLogger.logError("GEMINI-CHAT-TOOL: trello archive_card failed: \(error.logDescription)")
         return ["error": error.localizedDescription]
       }
 
@@ -1773,7 +1806,7 @@ enum ChatToolRegistry {
       }
       DebugLogger.logSuccess(
         "GEMINI-CHAT-TOOL: returned doc '\(docName)' (\(content.utf8.count) bytes)")
-      return ["name": doc.name, "title": doc.title, "content": content]
+      return ["name": doc.name, "title": doc.title, "content": content + UILabelGlossary.appendix()]
 
     // Workspace file tools run detached: a directory walk over a large tree on the main
     // thread would block the UI and trip the hang watchdog.
@@ -1844,10 +1877,12 @@ enum ChatToolRegistry {
       guard let path = args["path"] as? String, let note = args["note"] as? String else {
         return ["error": "Missing required arguments: path and note"]
       }
-      guard WorkspaceMapStore.shared.remember(path: path, note: note) else {
+      guard let cleanPath = sanitizedStoredText(path, limit: 300),
+            WorkspaceMapStore.shared.remember(path: cleanPath, note: note)
+      else {
         return ["error": "Both path and note must be non-empty."]
       }
-      return ["ok": true, "path": path]
+      return ["ok": true, "path": cleanPath]
 
     case "forget_file_location":
       guard let matching = args["matching"] as? String else {

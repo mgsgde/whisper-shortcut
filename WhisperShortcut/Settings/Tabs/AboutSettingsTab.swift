@@ -23,10 +23,6 @@ struct AboutSettingsTab: View {
 
       SpacedSectionDivider()
 
-      ShortcutsOverviewSection(viewModel: viewModel)
-
-      SpacedSectionDivider()
-
       ResetSection(viewModel: viewModel, showResetToDefaultsConfirmation: $showResetToDefaultsConfirmation)
 
       SpacedSectionDivider()

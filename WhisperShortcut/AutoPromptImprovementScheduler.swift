@@ -39,7 +39,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log("SMART-IMPROVEMENT: No credential for \(improvementModel.displayName), skipping run")
       if !fromAutoRun {
         PopupNotificationWindow.showError(
-          improvementModel.provider.credentialRequiredMessage, title: "Smart Improvement")
+          verbatim: improvementModel.provider.credentialRequiredMessage, title: "Smart Improvement")
       }
       return
     }
@@ -107,10 +107,7 @@ class AutoPromptImprovementScheduler {
 
   private func showQueuedMessage() {
     let n = improvementQueue.count
-    let message = n == 1
-      ? "Added to queue. 1 improvement queued."
-      : "Added to queue. \(n) improvements queued."
-    PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+    PopupNotificationWindow.showInfo("Added to queue. \(n) improvements queued.", title: "Smart Improvement")
   }
 
   /// Runs the next job in the queue if any. Call after the current run finishes. Does not set isImprovementRunning; caller must set/clear it for the job being run.
@@ -139,18 +136,6 @@ class AutoPromptImprovementScheduler {
       default: SettingsDefaults.selectedImprovementModel).displayName
   }
 
-  /// Maps each focus to the interaction `mode` field that counts as its primary signal. Mirrors ContextDerivation.primaryMode.
-  /// Note: `.chat` returns `"geminiChat"` because all chat turns — Gemini, Grok, OpenAI — are
-  /// currently logged under that single mode key (see ContextLogger.logChat). If chat-mode
-  /// logging is ever split by provider, this mapping needs to sum the per-provider keys.
-  private func primaryModeKey(for focus: GenerationKind) -> String {
-    switch focus {
-    case .dictation, .whisperGlossary: return "transcription"
-    case .promptMode: return "prompt"
-    case .chat: return "geminiChat"
-    }
-  }
-
   private func runImprovement(fromAutoRun: Bool) async {
     // Discard any stale suggestion files from a previously crashed/aborted run before generating new ones.
     ContextLogger.shared.deleteAllSuggestedFiles()
@@ -168,7 +153,7 @@ class AutoPromptImprovementScheduler {
     let counts = ContextLogger.shared.interactionCountsByMode(lastDays: AppConstants.smartImprovementEligibilityDays)
     let minPerFocus = AppConstants.smartImprovementMinPerFocusInteractions
     let focuses: [GenerationKind] = allFocuses.filter { focus in
-      let mode = primaryModeKey(for: focus)
+      let mode = focus.primaryMode.rawValue
       let n = counts[mode] ?? 0
       if n < minPerFocus {
         DebugLogger.log("AUTO-IMPROVEMENT: Skipping \(focus) — only \(n) entries for mode \(mode) (need \(minPerFocus))")
@@ -221,7 +206,7 @@ class AutoPromptImprovementScheduler {
     var pendingKinds: [GenerationKind] = []
     for (focus, error) in results {
       if let error = error {
-        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.localizedDescription)")
+        DebugLogger.logError("AUTO-IMPROVEMENT: Failed to generate suggestion for \(focus): \(error.logDescription)")
         continue
       }
       if hasSuggestion(for: focus) {
@@ -257,7 +242,7 @@ class AutoPromptImprovementScheduler {
           section: kind.systemPromptSection
         )
         if let accepted = result, !accepted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          applySuggestion(accepted, for: kind)
+          applySuggestion(accepted, for: kind, panelOriginal: original)
           appliedKinds.append(kind)
           DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied \(kind) from review")
         } else {
@@ -268,9 +253,9 @@ class AutoPromptImprovementScheduler {
       if !appliedKinds.isEmpty {
         let kindNames = appliedKinds.map(\.improvementDisplayName)
         DebugLogger.logSuccess("AUTO-IMPROVEMENT: Applied: \(kindNames.joined(separator: ", "))")
-        let message = "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert."
+        let message = String(localized: "System prompts updated: \(kindNames.joined(separator: ", ")). Check Settings to review or revert.")
         await MainActor.run {
-          PopupNotificationWindow.showInfo(message, title: "Smart Improvement")
+          PopupNotificationWindow.showInfo(verbatim: message, title: "Smart Improvement")
         }
       } else {
         await MainActor.run {
@@ -285,7 +270,7 @@ class AutoPromptImprovementScheduler {
       await MainActor.run {
         if let firstError = failedErrors.first {
           PopupNotificationWindow.showError(
-            SpeechErrorFormatter.formatForUser(firstError),
+            verbatim: SpeechErrorFormatter.formatForUser(firstError),
             title: "Smart Improvement"
           )
         } else {
@@ -407,16 +392,28 @@ class AutoPromptImprovementScheduler {
     try? FileManager.default.removeItem(at: url)
   }
 
-  private func applySuggestion(_ suggested: String, for kind: GenerationKind) {
+  /// What to write for the glossary after the review panel. If nothing changed on disk since the
+  /// panel opened, the accepted text (which may have user deletions) is written as is. Otherwise
+  /// only the lines appended meanwhile (by the Glossary shortcut or chat) are kept and the accepted text is merged
+  /// in, so deletions the user made in the panel stay deleted.
+  nonisolated static func glossaryToApply(current: String, panelOriginal: String, accepted: String) -> String {
+    if current == panelOriginal { return accepted }
+    let originalLines = Set(panelOriginal.components(separatedBy: "\n"))
+    let added = current.components(separatedBy: "\n").filter { !originalLines.contains($0) }
+    return GlossaryLearning.mergeAdditively(
+      current: added.joined(separator: "\n"), suggestion: accepted)
+  }
+
+  private func applySuggestion(_ suggested: String, for kind: GenerationKind, panelOriginal: String) {
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
-    // Voice feedback may have appended glossary lines since this suggestion was written.
-    // Merging additively keeps those; replacing the section with the file would delete them.
+    // The Glossary shortcut or chat may have appended glossary lines since this suggestion was written.
+    // Lines added since the panel opened are kept; lines the user deleted in the panel stay deleted.
     let currentContent: String
     let applied: String
     if kind == .whisperGlossary {
       currentContent = SystemPromptsStore.shared.loadWhisperGlossary()
-      applied = GlossaryLearning.mergeAdditively(current: currentContent, suggestion: suggested)
+      applied = Self.glossaryToApply(current: currentContent, panelOriginal: panelOriginal, accepted: suggested)
     } else {
       currentContent = SystemPromptsStore.shared.loadSection(section) ?? ""
       applied = suggested
@@ -431,17 +428,6 @@ class AutoPromptImprovementScheduler {
 
   private func logSystemPromptChange(kind: String, previous: String, applied: String) {
     DebugLogger.log("SYSTEM-PROMPT-CHANGE: \(kind) (source=auto) — previous \(previous.count) chars, new \(applied.count) chars")
-  }
-}
-
-private extension GenerationKind {
-  var systemPromptSection: SystemPromptSection {
-    switch self {
-    case .dictation: return .dictation
-    case .whisperGlossary: return .whisperGlossary
-    case .promptMode: return .promptMode
-    case .chat: return .chat
-    }
   }
 }
 

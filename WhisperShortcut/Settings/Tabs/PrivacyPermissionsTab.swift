@@ -58,12 +58,9 @@ struct OfflineModeSection: View {
         .toggleStyle(.switch)
         .font(.headline)
         .onChange(of: offlineMode) { _, isOn in
-          // Model selections are moved on the spot, so turning the switch on cannot leave a cloud
-          // model selected behind a mode that then refuses it.
-          ModelSelectionReconciler.reconcileAll()
-          // Earlier Dictate Prompt turns (selections, replies) must not carry across the switch.
-          PromptConversationHistory.shared.clearAll()
-          DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled")")
+          // Model selections move on the spot, and earlier Dictate Prompt turns do not carry
+          // across the switch. `switchTo` is that pair plus the flag.
+          OfflineMode.switchTo(isOn, reason: "settings")
         }
 
       Text(
@@ -105,7 +102,7 @@ struct OfflineModeSection: View {
 
   @ViewBuilder
   private func offlineModeBullet(
-    _ text: String, systemImage: String = "checkmark.circle.fill", color: Color = .green
+    _ text: LocalizedStringKey, systemImage: String = "checkmark.circle.fill", color: Color = .green
   ) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: systemImage)
@@ -148,7 +145,7 @@ struct PrivacySection: View {
           .font(.headline)
       }
       OpenSourceBanner()
-      ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
+      ForEach(Array(PrivacyCopy.promiseBullets.enumerated()), id: \.offset) { _, bullet in
         promiseBullet(bullet)
       }
       HStack(spacing: 12) {
@@ -178,7 +175,7 @@ struct PrivacySection: View {
   }
 
   @ViewBuilder
-  private func promiseBullet(_ text: String) -> some View {
+  private func promiseBullet(_ text: LocalizedStringResource) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: "checkmark.circle.fill")
         .font(.caption)

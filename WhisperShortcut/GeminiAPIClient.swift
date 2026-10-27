@@ -215,7 +215,7 @@ class GeminiAPIClient {
   }
 
   /// `:generateContent` URL shared by title generation, structured output, and image generation.
-  private static func generateContentEndpoint(model: String) -> String {
+  static func generateContentEndpoint(model: String) -> String {
     "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
   }
   
@@ -255,7 +255,7 @@ class GeminiAPIClient {
     DebugLogger.logNetwork("\(logPrefix): POST \(endpoint)\(logDetail)")
     let (bytes, response) = try await session.bytes(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       onNon2xx?(http.statusCode)
@@ -353,7 +353,7 @@ class GeminiAPIClient {
         DebugLogger.log("\(mode): Received response")
         
         guard let httpResponse = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response")
+          throw TranscriptionError.networkError(String(localized: "Invalid response"))
         }
         
         if httpResponse.statusCode != 200 {
@@ -419,7 +419,7 @@ class GeminiAPIClient {
           }
           throw decodingError
         } catch {
-          DebugLogger.logError("\(mode): Unexpected parsing error: \(error.localizedDescription)")
+          DebugLogger.logError("\(mode): Unexpected parsing error: \(error.logDescription)")
           throw error
         }
         
@@ -446,12 +446,12 @@ class GeminiAPIClient {
         }
         // Log detailed network error information. Redact the API key from the failing
         // URL so it never reaches the on-disk error log or the unified log.
-        DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.localizedDescription)")
+        DebugLogger.logError("\(mode)-NETWORK-ERROR: URLError code: \(error.code.rawValue), description: \(error.logDescription)")
         if let failingURL = error.userInfo["NSErrorFailingURLStringKey"] as? String {
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Failing URL: \(Self.redactingAPIKey(failingURL))")
         }
         if let underlyingError = error.userInfo["NSUnderlyingErrorKey"] as? Error {
-          DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.localizedDescription)")
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Underlying error: \(underlyingError.logDescription)")
         }
 
         if error.code == .timedOut {
@@ -462,15 +462,15 @@ class GeminiAPIClient {
         } else if error.code.rawValue == -1005 || error.localizedDescription.contains("connection was lost") || error.localizedDescription.contains("network connection") {
           // Network connection lost (code -1005)
           DebugLogger.logError("\(mode)-NETWORK-ERROR: Connection lost (URLError code: \(error.code.rawValue)) - will retry if attempts remaining")
-          lastError = TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
+          lastError = TranscriptionError.networkError(String(localized: "Network connection lost: \(error.localizedDescription)"))
           if attempt < maxAttempts {
             DebugLogger.log("\(mode)-RETRY: Connection lost, retrying in \(Constants.retryDelaySeconds)s...")
             try? await Task.sleep(nanoseconds: UInt64(Constants.retryDelaySeconds * 1_000_000_000))
             continue
           }
-          throw TranscriptionError.networkError("Network connection lost: \(error.localizedDescription)")
+          throw TranscriptionError.networkError(String(localized: "Network connection lost: \(error.localizedDescription)"))
         } else {
-          DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.localizedDescription)")
+          DebugLogger.logError("\(mode)-NETWORK-ERROR: Other network error: \(error.logDescription)")
           lastError = TranscriptionError.networkError(error.localizedDescription)
           if attempt < maxAttempts {
             DebugLogger.log("\(mode)-RETRY: Network error, retrying in \(Constants.retryDelaySeconds)s...")
@@ -533,14 +533,14 @@ class GeminiAPIClient {
           let delay = RetryBackoff.delay(
             attempt: attempt, retryAfter: nil,
             base: isServerError ? 2.0 : Constants.retryDelaySeconds, exponential: isServerError)
-          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+          DebugLogger.log("\(mode)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.logDescription)")
           await RetryBackoff.sleep(delay)
         }
       }
     }
 
     DebugLogger.log("\(mode)-RETRY: All \(maxAttempts) attempts failed")
-    throw lastError ?? TranscriptionError.networkError("Gemini request failed after retries")
+    throw lastError ?? TranscriptionError.networkError(String(localized: "Gemini request failed after retries"))
   }
   
   /// Box so `openSSEStream`'s escaping `onNon2xx` callback can record the HTTP status.
@@ -886,7 +886,7 @@ class GeminiAPIClient {
               attempt: attempt, retryAfter: te?.retryAfter,
               base: isServerError ? 2.0 : Constants.retryDelaySeconds,
               exponential: isServerError, buffer: 2.0)
-            DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.localizedDescription)")
+            DebugLogger.log("GEMINI-CHAT-STREAM-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delay))s: \(error.logDescription)")
             await RetryBackoff.sleep(delay)
             continue
           }
@@ -943,7 +943,7 @@ class GeminiAPIClient {
     var thinkingConfig = promptModel?.geminiThinkingConfig
     if thinkingLevel != .default, var cfg = thinkingConfig {
       if cfg["thinkingLevel"] != nil, let level = thinkingLevel.geminiThinkingLevel {
-        // 3.1 Pro and 3.7 Flash reject MINIMAL (HTTP 400). Clamp to the model's floor.
+        // 4 Argon, 3.1 Pro, and 3.8 Flash reject MINIMAL (HTTP 400). Clamp to the model's floor.
         if promptModel?.geminiRejectsMinimalThinking == true && level == "minimal" {
           cfg["thinkingLevel"] = "low"
         } else {
@@ -961,17 +961,49 @@ class GeminiAPIClient {
   /// `generationConfig.responseSchema` + `responseMimeType:"application/json"` and returns the
   /// parsed top-level JSON object. `schema` is the canonical JSON Schema (Gemini accepts the
   /// OpenAPI-3.0 subset directly; it must NOT contain `additionalProperties`). Used by
-  /// `GeminiChatProvider.generateStructured` and the chat/meeting title path.
+  /// `GeminiChatProvider.generateStructured`, the chat/meeting title path, and Smart Improvement.
+  ///
+  /// `origin` and `withRetry` were hardcoded off here, so the derivation path kept a private
+  /// copy of this body (no `thinkingConfig`, and its own retry/origin). Defaults match the
+  /// previous call.
   func generateStructured(
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     schema: [String: Any],
     credential: GeminiCredential,
-    thinkingLevel: ThinkingLevel = .default
+    thinkingLevel: ThinkingLevel = .default,
+    origin: RequestOrigin? = nil,
+    withRetry: Bool = false
   ) async throws -> [String: Any] {
     let endpoint = Self.generateContentEndpoint(model: model)
     var request = try createRequest(endpoint: endpoint, credential: credential)
+    request.httpBody = try JSONSerialization.data(withJSONObject: structuredRequestBody(
+      model: model,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      schema: schema,
+      thinkingLevel: thinkingLevel))
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-STRUCTURED",
+      origin: origin, withRetry: withRetry)
+    let text = extractText(from: response)
+    guard let data = text.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw TranscriptionError.networkError("Gemini structured response was not valid JSON: \(text.prefix(200))")
+    }
+    return obj
+  }
+
+  /// JSON body `generateStructured` posts. Visible so a test can diff it against the old
+  /// hand-built Smart Improvement request, which was this shape without `thinkingConfig`.
+  func structuredRequestBody(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    thinkingLevel: ThinkingLevel
+  ) -> [String: Any] {
     var generationConfig: [String: Any] = [
       "responseMimeType": "application/json",
       "responseSchema": schema,
@@ -985,18 +1017,10 @@ class GeminiAPIClient {
       "contents": contents,
       "generationConfig": generationConfig,
     ]
-    if let systemInstruction = systemInstruction {
+    if let systemInstruction {
       body["system_instruction"] = systemInstruction
     }
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    let response: GeminiResponse = try await performRequest(
-      request, responseType: GeminiResponse.self, mode: "GEMINI-STRUCTURED", withRetry: false)
-    let text = extractText(from: response)
-    guard let data = text.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw TranscriptionError.networkError("Gemini structured response was not valid JSON: \(text.prefix(200))")
-    }
-    return obj
+    return body
   }
 
   /// Native image generation/editing ("Nano Banana") via a single non-streaming `:generateContent`
@@ -1101,7 +1125,7 @@ class GeminiAPIClient {
   ) throws -> HTTPURLResponse {
     guard let httpResponse = response as? HTTPURLResponse else {
       DebugLogger.log(invalidTypeLog)
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
     guard httpResponse.statusCode == 200 else {
       let errorBody = String(data: data, encoding: .utf8) ?? "Unable to decode error response"
@@ -1159,7 +1183,7 @@ class GeminiAPIClient {
     guard let uploadURLString = uploadURLString,
           let uploadURL = URL(string: uploadURLString) else {
       DebugLogger.log("GEMINI-FILES-API: ERROR - Failed to get upload URL from headers")
-      throw TranscriptionError.networkError("Failed to get upload URL")
+      throw TranscriptionError.networkError(String(localized: "Failed to get upload URL"))
     }
     
     // Step 2: Upload file data

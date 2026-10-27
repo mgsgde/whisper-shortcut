@@ -181,8 +181,8 @@ class SpeechService {
   /// The Whisper Glossary split into the two things a cloud model needs separately: a flat
   /// reference vocabulary, and the correction pairs the user annotated.
   private struct ParsedGlossary {
-    /// Terms fit for the reference list — annotations removed, phrase-style entries (more than
-    /// 3 words, e.g. "einen Crawler am Laufen") dropped, rejected spellings filtered out.
+    /// Terms fit for the reference list — annotations removed, phrases over
+    /// `GlossaryDocument.maxTermWords` dropped, rejected spellings filtered out.
     let terms: [String]
     /// The annotated pairs, in glossary order.
     let corrections: [GlossaryCorrection]
@@ -190,51 +190,38 @@ class SpeechService {
 
   /// Parses the Whisper Glossary once for both consumers.
   ///
-  /// Phrase-style entries and the raw `(not "…")` syntax are offline-Whisper priming forms; fed
-  /// verbatim into an instruction prompt they invite echo (Flash-Lite reproduced a 4-word glossary
-  /// phrase instead of the actual audio in every test run), which is why the reference list keeps
-  /// them out. The annotation itself is *not* discarded any more, though: it is the only signal
-  /// that distinguishes a near-homophone pair, and `tieBreakerBlock` renders it in a shape that
-  /// cannot be echoed as content.
+  /// Phrases over `GlossaryDocument.maxTermWords` and the raw `(not "…")` syntax are
+  /// offline-Whisper priming forms; fed verbatim into an instruction prompt they invite echo,
+  /// which is why the reference list keeps them out. The cap here used to be a hard-coded 3
+  /// while adding a term allowed 5, so a 4- or 5-word term the user stored never arrived.
+  /// The annotation itself is *not* discarded: it is the only signal that distinguishes a
+  /// near-homophone pair, and `tieBreakerBlock` renders it in a shape that cannot be echoed
+  /// as content. What a line means comes from `GlossaryDocument`; this function only decides
+  /// which of those entries the prompt is allowed to see.
   private func parsedGlossary() -> ParsedGlossary {
-    let lines = SystemPromptsStore.shared.loadWhisperGlossary()
-      .components(separatedBy: .newlines)
+    let raw = SystemPromptsStore.shared.loadWhisperGlossary()
+    let document = GlossaryDocument.parse(raw)
 
     // Spellings the user explicitly marked as WRONG (`Kimi (not "Kimmi")`) must never be offered
     // as reference vocabulary. `GlossaryFastLearner` writes bare terms one per line, so a form it
     // auto-learned before the user corrected it otherwise sits in the list right next to its own
     // correction — the model is told both spellings are right and the correction cancels out.
     // Stripping the annotation is not enough; the rejected form has to be filtered out by name.
+    // Collected per line, not per entry, so an annotation with no term beside it still bans
+    // that spelling.
     var rejected = Set<String>()
     var corrections: [GlossaryCorrection] = []
-    for line in lines {
-      var cursor = Substring(line)
-      var lineRejects: [String] = []
-      while let range = cursor.range(
-        of: #"\((?:not|nicht)\s+[^)]*\)"#, options: [.regularExpression, .caseInsensitive])
-      {
-        let inner = cursor[range]
-          .replacingOccurrences(
-            of: #"^\((?:not|nicht)\s+"#, with: "",
-            options: [.regularExpression, .caseInsensitive])
-          .replacingOccurrences(of: ")", with: "")
-        for form in inner.components(separatedBy: ",") {
-          let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-          if !cleaned.isEmpty {
-            rejected.insert(Self.foldGlossaryTerm(cleaned))
-            lineRejects.append(cleaned)
-          }
-        }
-        cursor = cursor[range.upperBound...]
+    for line in raw.components(separatedBy: .newlines) {
+      let lineRejects = GlossaryDocument.rejectedSpellings(on: line)
+      for form in lineRejects {
+        let folded = GlossaryDocument.fold(form)
+        if !folded.isEmpty { rejected.insert(folded) }
       }
       guard !lineRejects.isEmpty else { continue }
-      let correct = Self.strippingAnnotations(from: line)
-        .replacingOccurrences(
-          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        .trimmingCharacters(in: .whitespaces)
+      let correct = GlossaryDocument.lineTermText(line)
       // An annotated entry only earns a tie-breaker if its correct form is itself a term rather
       // than a phrase — same bar the reference list applies.
-      guard !correct.isEmpty, correct.split(separator: " ").count <= 3 else { continue }
+      guard GlossaryDocument.withinWordCap(correct) else { continue }
       corrections.append(GlossaryCorrection(correct: correct, rejected: lineRejects))
     }
 
@@ -242,7 +229,7 @@ class SpeechService {
     // before that correction must not win the fold dedupe just because it appears first.
     var correctionSpellingByFold: [String: String] = [:]
     for correction in corrections {
-      let folded = Self.foldGlossaryTerm(correction.correct)
+      let folded = GlossaryDocument.fold(correction.correct)
       if correctionSpellingByFold[folded] == nil {
         correctionSpellingByFold[folded] = correction.correct
       }
@@ -250,45 +237,23 @@ class SpeechService {
 
     var seenFolds = Set<String>()
     var terms: [String] = []
-    for line in lines {
-      // Strip the `(not "…")` annotation BEFORE splitting on commas, so a comma inside the
-      // parenthetical (e.g. `Gödde (not "Godde, Goedde")`) can't shear it into leaking fragments.
-      let pieces = Self.strippingAnnotations(from: line)
-        .components(separatedBy: ",")
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-      for term in pieces {
-        // The built-in list is written as `Terms: A, B, C`, so the first element carries the
-        // label — compare without it, or a rejected form in first position slips through.
-        let bare = term.replacingOccurrences(
-          of: #"^Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
-        guard !bare.isEmpty, bare.split(separator: " ").count <= 3 else { continue }
-        let folded = Self.foldGlossaryTerm(bare)
-        guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
-        terms.append(correctionSpellingByFold[folded] ?? term)
-      }
+    for entry in document.entries {
+      guard GlossaryDocument.withinWordCap(entry.term) else { continue }
+      let folded = GlossaryDocument.fold(entry.term)
+      guard !rejected.contains(folded), seenFolds.insert(folded).inserted else { continue }
+      terms.append(correctionSpellingByFold[folded] ?? entry.term)
     }
 
     return ParsedGlossary(terms: terms, corrections: corrections)
   }
 
-  private static func strippingAnnotations(from line: String) -> String {
-    line.replacingOccurrences(
-      of: #"\s*\((?:not|nicht)\s+[^)]*\)"#,
-      with: "",
-      options: [.regularExpression, .caseInsensitive])
-  }
-
   /// The same sanitized glossary the prompt gets, as individual terms — the input to
   /// `TextProcessingUtility.discardingGlossaryEchoTranscript`, which needs to recognise a
   /// transcript that is nothing but vocabulary we ourselves put in the prompt.
+  /// `GlossaryDocument.parse` already removed a leading `Terms:` label; a second strip here
+  /// used a different prefix regex than the reference list.
   private func glossaryTermsForEchoCheck() -> [String] {
     parsedGlossary().terms
-      .map {
-        $0.replacingOccurrences(
-          of: #"^\s*Terms:\s*"#, with: "", options: [.regularExpression, .caseInsensitive]
-        ).trimmingCharacters(in: .whitespaces)
-      }
-      .filter { !$0.isEmpty }
   }
 
   /// The Whisper Glossary as literal terms for `gpt-transcribe`'s `keywords` field: the same
@@ -305,16 +270,11 @@ class SpeechService {
     var keywords: [String] = []
     // Corrections first so the annotated spelling wins the fold dedupe over a bare line.
     for term in parsed.corrections.map(\.correct) + glossaryTermsForEchoCheck() {
-      let folded = Self.foldGlossaryTerm(term)
+      let folded = GlossaryDocument.fold(term)
       guard !folded.isEmpty, seen.insert(folded).inserted else { continue }
       keywords.append(term)
     }
     return keywords
-  }
-
-  /// Case- and diacritic-insensitive comparison form, matching `GlossaryFastLearner.fold`.
-  private static func foldGlossaryTerm(_ word: String) -> String {
-    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
   }
 
   // MARK: - Rejected-Spelling Correction
@@ -457,8 +417,16 @@ class SpeechService {
       let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
       // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
-      // return through this one call.
-      return self.correctingRejectedSpellings(in: transcript)
+      // return through this one call. Both the trailing glossary-echo strip and the
+      // rejected-spelling correction run on that result.
+      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
+        transcript,
+        glossaryTerms: self.glossaryTermsForEchoCheck(),
+        mode: "TRANSCRIPTION")
+      if stripped != transcript {
+        ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
+      }
+      return self.correctingRejectedSpellings(in: stripped)
     }
 
     if cancellable {
@@ -492,7 +460,7 @@ class SpeechService {
     if model.isOffline {
       // For offline models, use LocalSpeechService
       guard let offlineModelType = model.offlineModelType else {
-        throw TranscriptionError.networkError("Invalid offline model type")
+        throw TranscriptionError.networkError(String(localized: "Invalid offline model type"))
       }
 
       // Make the model usable rather than refusing the dictation: download it if it is missing,
@@ -519,7 +487,7 @@ class SpeechService {
         }
         try await ModelManager.shared.ensureReady(offlineModelType) { status in
           guard showsLoadingUI else { return }
-          PopupNotificationWindow.showOrUpdateProcessing(status, title: "Offline Dictation")
+          PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Offline Dictation")
         }
         DebugLogger.logSpeech(
           "SPEED: LOCAL-SPEECH coldStart model=\(offlineModelType.rawValue) "
@@ -620,7 +588,7 @@ class SpeechService {
     }
 
     // Should never reach here
-    throw TranscriptionError.networkError("Unsupported transcription model")
+    throw TranscriptionError.networkError(String(localized: "Unsupported transcription model"))
   }
   
 
@@ -701,6 +669,8 @@ class SpeechService {
     case .grok: return "grok"
     case .anthropic: return "anthropic"
     case .customOpenAI: return "customOpenAI"
+    case .openRouter: return "openRouter"
+    case .chatGPTPlan: return "chatGPTPlan"
     }
   }
 
@@ -744,7 +714,7 @@ class SpeechService {
     if Self.isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
       DebugLogger.log("PROMPT-MODE: No selection captured for this recording — compose turn, no history")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt",
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue,
         detail: ["reason": "composeTurn", "model": selectedPromptModel.rawValue])
     }
 
@@ -756,7 +726,7 @@ class SpeechService {
     }
 
     guard selectedPromptModel.supportsDictatePrompt else {
-      throw TranscriptionError.networkError("Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio.")
+      throw TranscriptionError.networkError(String(localized: "Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio."))
     }
 
     let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -790,12 +760,30 @@ class SpeechService {
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
-      throw TranscriptionError.networkError("Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt."))
     case .anthropic:
-      throw TranscriptionError.networkError("Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
     case .customOpenAI:
-      throw TranscriptionError.networkError("Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+      throw TranscriptionError.networkError(String(localized: "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
+    case .openRouter:
+      throw TranscriptionError.networkError("OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .chatGPTPlan:
+      throw TranscriptionError.networkError("ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     }
+  }
+
+  /// A local model sometimes copies a spoken "Doppelpunkt" into its reply even though the instruction
+  /// it received already had ":" — from the system prompt's own example ("Befund Doppelpunkt …"), or
+  /// because the engine wrote the command in a form the transcript pass missed (pilot report
+  /// 2026-10-19). The same deterministic pass on the reply removes it. Only when the instruction was
+  /// spoken to an offline engine: a typed quick action or a cloud transcript never carried the word.
+  static func applyingSpokenLayout(_ reply: String, when spokenOffline: Bool) -> String {
+    guard spokenOffline else { return reply }
+    let fixed = SpokenPunctuation.apply(to: reply)
+    if fixed != reply {
+      DebugLogger.log("PROMPT-MODE-LOCAL: Converted spoken layout command(s) left in the reply")
+    }
+    return fixed
   }
 
   // MARK: - Gemini Dictate Prompt Helpers
@@ -838,7 +826,7 @@ class SpeechService {
   /// check existed — the OpenAI path used to send a screenshot-mode system prompt with no image,
   /// which is exactly the "edit the highlighted region" instruction with nothing to look at.
   private static let screenshotSelectionCaptureFailedMessage =
-    "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again."
+    String(localized: "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again.")
 
   /// One prior Dictate Prompt turn, flattened to text and stripped of any provider's message shape.
   struct PromptHistoryTurn {
@@ -892,7 +880,7 @@ class SpeechService {
     if screenshotSelectionMode && supportsScreenshot && !modelAcceptsImages {
       DebugLogger.logError("\(logPrefix): model can't accept images — incompatible with screenshot-selection Dictate Prompt")
       throw TranscriptionError.networkError(
-        "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead.")
+        String(localized: "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead."))
     }
 
     // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
@@ -1050,7 +1038,7 @@ class SpeechService {
     logPrefix: String
   ) async throws -> String {
     guard let transcriptionModel = model.asTranscriptionModel else {
-      throw TranscriptionError.networkError("Selected model is not a Gemini model")
+      throw TranscriptionError.networkError(String(localized: "Selected model is not a Gemini model"))
     }
     let endpoint = transcriptionModel.apiEndpoint
     DebugLogger.log("\(logPrefix): Using model: \(model.displayName) (\(model.rawValue))")
@@ -1082,7 +1070,7 @@ class SpeechService {
     )
 
     guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response")
+      throw TranscriptionError.networkError(String(localized: "No candidates in Gemini response"))
     }
 
     var textContent = ""
@@ -1155,7 +1143,7 @@ class SpeechService {
       DebugLogger.logWarning(
         "\(logPrefix): Edit command with nothing selected — not pasting invented text")
       ContextLogger.shared.logSignal(
-        .promptNoSelection, mode: "prompt", detail: ["reason": "bareEditCommandBlocked"])
+        .promptNoSelection, mode: InteractionMode.prompt.rawValue, detail: ["reason": "bareEditCommandBlocked"])
       throw TranscriptionError.noSelectedText
     }
 
@@ -1204,7 +1192,7 @@ class SpeechService {
         DebugLogger.log("\(logPrefix): Transcribed voice instruction for history \(DebugLogger.redacted(text))")
         return text
       } catch {
-        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.localizedDescription)")
+        DebugLogger.logWarning("\(logPrefix): Failed to transcribe instruction for history: \(error.logDescription)")
         return Self.voiceInstructionPlaceholder
       }
     }
@@ -1395,14 +1383,16 @@ class SpeechService {
         let sizeMB = Double(audioFileSize) / 1_048_576.0
         let limitMB = Double(AppConstants.maxFileSizeBytes) / 1_048_576.0
         DebugLogger.logError("PROMPT-MODE-OPENAI: Audio too large (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit)")
-        throw TranscriptionError.fileError("Audio is too long for OpenAI Dictate Prompt (\(String(format: "%.1f", sizeMB)) MB > \(String(format: "%.1f", limitMB)) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings.")
+        let sizeText = String(format: "%.1f", sizeMB)
+        let limitText = String(format: "%.1f", limitMB)
+        throw TranscriptionError.fileError(String(localized: "Audio is too long for OpenAI Dictate Prompt (\(sizeText) MB > \(limitText) MB limit). Switch to a Gemini Dictate Prompt model for longer recordings."))
       }
 
       let audioData: Data
       do {
         audioData = try Data(contentsOf: audioURL)
       } catch {
-        throw TranscriptionError.networkError("Could not read audio file: \(error.localizedDescription)")
+        throw TranscriptionError.networkError(String(localized: "Could not read audio file: \(error.localizedDescription)"))
       }
       let fileExtension = audioURL.pathExtension.lowercased()
       let audioFormat = OpenAIChatProvider.openAIAudioFormat(forExtension: fileExtension)
@@ -1526,7 +1516,7 @@ class SpeechService {
     }
 
     guard let endpointURL = URL(string: "https://api.openai.com/v1/chat/completions") else {
-      throw TranscriptionError.networkError("Invalid OpenAI endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid OpenAI endpoint URL"))
     }
     var request = URLRequest(url: endpointURL)
     request.httpMethod = "POST"
@@ -1565,7 +1555,7 @@ class SpeechService {
           let choices = json["choices"] as? [[String: Any]],
           let firstChoice = choices.first,
           let message = firstChoice["message"] as? [String: Any] else {
-      throw TranscriptionError.networkError("Unexpected OpenAI response shape")
+      throw TranscriptionError.networkError(String(localized: "Unexpected OpenAI response shape"))
     }
 
     // The audio-preview model returns plain string content for text-only output.
@@ -1623,18 +1613,31 @@ class SpeechService {
     // point manages.
     let instruction: String
     let transcriptionTime: CFAbsoluteTime
+    // Set when the instruction came from an offline engine; the reply then gets the same layout
+    // pass (see `applyingSpokenLayout`).
+    var spokenOffline = false
     if let textInstruction {
       instruction = textInstruction
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
     } else {
-      // The same rejected-spelling correction the normal dictation path applies (`transcribe`),
-      // so a term the user struck from the Glossary cannot come back through Dictate Prompt.
-      let transcript = correctingRejectedSpellings(in: try await performTranscription(audioURL: audioURL))
+      // The same trailing glossary-echo strip and rejected-spelling correction the normal
+      // dictation path applies (`transcribe`), so a glossary list tacked on after the
+      // instruction, or a term the user struck from the Glossary, cannot come back through
+      // Dictate Prompt.
+      let spoken = try await performTranscription(audioURL: audioURL)
+      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
+        spoken,
+        glossaryTerms: glossaryTermsForEchoCheck(),
+        mode: "DICTATE-PROMPT")
+      if stripped != spoken {
+        ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
+      }
+      let transcript = correctingRejectedSpellings(in: stripped)
       // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
       // feeds the local model should arrive with the layout the user spoke.
-      instruction = (TranscriptionModel.loadSelected().isOffline
-        ? SpokenPunctuation.apply(to: transcript) : transcript)
+      spokenOffline = TranscriptionModel.loadSelected().isOffline
+      instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
       guard !instruction.isEmpty else {
@@ -1702,7 +1705,8 @@ class SpeechService {
       DebugLogger.logSpeech(
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
-      let agentText = TextProcessingUtility.normalizeTranscriptionText(agentReply)
+      let agentText = Self.applyingSpokenLayout(
+        TextProcessingUtility.normalizeTranscriptionText(agentReply), when: spokenOffline)
       try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
       if offlineMode {
         flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
@@ -1772,7 +1776,8 @@ class SpeechService {
       DebugLogger.log("PROMPT-MODE-LOCAL: Stripped reasoning block(s) (\(combined.count - reply.count) chars)")
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(reply)
+    let normalizedText = Self.applyingSpokenLayout(
+      TextProcessingUtility.normalizeTranscriptionText(reply), when: spokenOffline)
     try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
     if offlineMode {
       flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)
@@ -1854,7 +1859,7 @@ class SpeechService {
 
     guard let firstCandidate = result.candidates.first,
           let text = firstCandidate.content.parts.first?.text else {
-      throw TranscriptionError.networkError("No transcription in response")
+      throw TranscriptionError.networkError(String(localized: "No transcription in response"))
     }
 
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1891,7 +1896,7 @@ class SpeechService {
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
   ) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { throw TranscriptionError.networkError("Text is empty") }
+    guard !trimmed.isEmpty else { throw TranscriptionError.networkError(String(localized: "Text is empty")) }
 
     let task = Task<Data, Error> {
       let spoken = applySmartRewrite ? try await self.maybeRewriteForSpeech(trimmed) : trimmed
@@ -1958,7 +1963,7 @@ class SpeechService {
       // error type bubbled up (URLSession surfaces cancellation as `URLError(.cancelled)`,
       // not `CancellationError`).
       try Task.checkCancellation()
-      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.localizedDescription)); falling back to original text")
+      DebugLogger.logWarning("READ-ALOUD-REWRITE: Rewrite failed (\(error.logDescription)); falling back to original text")
       return text
     }
   }
@@ -2052,18 +2057,18 @@ class SpeechService {
       }
       chunkSize = AppConstants.ttsGeminiChunkSizeChars
       synthesizeChunk = { [weak self] chunkText, onPartial in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeGeminiTTSChunk(
           text: chunkText, voice: voice, model: model, credential: credential, onPartial: onPartial)
       }
     case .openai:
       synthesizeChunk = { [weak self] chunkText, onPartial in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeOpenAITTS(text: chunkText, voice: voice, model: model, onPartial: onPartial)
       }
     case .xai:
       synthesizeChunk = { [weak self] chunkText, _ in
-        guard let self else { throw TranscriptionError.networkError("Speech service was deallocated") }
+        guard let self else { throw TranscriptionError.networkError(String(localized: "Speech service was deallocated")) }
         return try await self.synthesizeXAITTS(text: chunkText, voice: voice, model: model)
       }
     case .system:
@@ -2192,7 +2197,7 @@ class SpeechService {
         let idle = Int(progress.state.idle)
         DebugLogger.logWarning(
           "\(logPrefix): stream stalled after \(idle)s (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count)) — handing the chunk to the retry policy")
-        throw TranscriptionError.networkError("Gemini TTS stream stalled after \(idle)s")
+        throw TranscriptionError.networkError(String(localized: "Gemini TTS stream stalled after \(idle)s"))
       }
       throw error
     }
@@ -2202,7 +2207,7 @@ class SpeechService {
       "\(logPrefix): stream end after \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms (objects=\(objectCount), audioObjects=\(audioObjectCount), bytes=\(audio.count))")
     guard !audio.isEmpty else {
       DebugLogger.logError("\(logPrefix): 2xx response without any inlineData audio (objects=\(objectCount))")
-      throw TranscriptionError.networkError("Gemini TTS returned no audio")
+      throw TranscriptionError.networkError(String(localized: "Gemini TTS returned no audio"))
     }
     return audio
   }
@@ -2226,11 +2231,11 @@ class SpeechService {
     if json["error"] != nil {
       let mapped = try? GeminiAPIClient().parseErrorResponse(data: object, statusCode: 200)
       let text = String(data: object, encoding: .utf8)?.prefix(300) ?? ""
-      throw mapped ?? TranscriptionError.networkError("Gemini TTS stream error: \(text)")
+      throw mapped ?? TranscriptionError.networkError(String(localized: "Gemini TTS stream error: \(text)"))
     }
     if let feedback = json["promptFeedback"] as? [String: Any],
        let blockReason = feedback["blockReason"] as? String {
-      throw TranscriptionError.networkError("Gemini TTS blocked the request: \(blockReason)")
+      throw TranscriptionError.networkError(String(localized: "Gemini TTS blocked the request: \(blockReason)"))
     }
     let candidate = (json["candidates"] as? [[String: Any]])?.first
     let finishReason = candidate?["finishReason"] as? String
@@ -2428,7 +2433,7 @@ class SpeechService {
       attempts.append((baseURL, "audio_file"))
     }
 
-    var lastError: Error = TranscriptionError.networkError("All request attempts failed")
+    var lastError: Error = TranscriptionError.networkError(String(localized: "All request attempts failed"))
     let session = makeTranscriptionURLSession()
 
     for (attemptURL, fieldName) in attempts {
@@ -2467,7 +2472,7 @@ class SpeechService {
   private func transcribeWithOpenRouter(audioURL: URL, promptOverride: String?) async throws -> String {
     let apiKey = (keychainManager.get(.openRouter) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     guard !apiKey.isEmpty else {
-      throw TranscriptionError.networkError("OpenRouter API key is not configured. Add it in Settings → Dictate.")
+      throw TranscriptionError.networkError("OpenRouter is not connected. Connect your account in Settings → Accounts.")
     }
     guard let url = URL(string: AppConstants.openRouterChatCompletionsEndpoint) else {
       throw TranscriptionError.invalidRequest
@@ -2715,7 +2720,7 @@ class SpeechService {
       throw TranscriptionError.requestTimeout
     }
     guard let httpResponse = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response")
+      throw TranscriptionError.networkError(String(localized: "Invalid response"))
     }
 
     DebugLogger.log("\(logPrefix): HTTP \(httpResponse.statusCode)")
@@ -2792,7 +2797,7 @@ class SpeechService {
       if let onPartial {
         let (bytes, response) = try await session.bytes(for: request)
         guard let streamed = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response from server")
+          throw TranscriptionError.networkError(String(localized: "Invalid response from server"))
         }
         http = streamed
         var collected = Data()
@@ -2811,7 +2816,7 @@ class SpeechService {
       } else {
         let (responseData, response) = try await session.data(for: request)
         guard let whole = response as? HTTPURLResponse else {
-          throw TranscriptionError.networkError("Invalid response from server")
+          throw TranscriptionError.networkError(String(localized: "Invalid response from server"))
         }
         data = responseData
         http = whole
@@ -2836,7 +2841,7 @@ class SpeechService {
     }
     // Unreachable when `maxRetryAttempts >= 1` — the loop always returns or continues.
     if let lastResponse { return lastResponse }
-    throw TranscriptionError.networkError("Exhausted retry attempts without a response")
+    throw TranscriptionError.networkError(String(localized: "Exhausted retry attempts without a response"))
   }
 
   private func loggableURL(_ url: URL) -> String {
@@ -2955,6 +2960,7 @@ class SpeechService {
 
     var text = result.text
     if result.discardedAsGlossaryEcho {
+      ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
       DebugLogger.logWarning(
         "GEMINI-TRANSCRIPTION: Glossary echo discarded — retrying once without the glossary")
       text = try await transcribeWithGeminiInline(
@@ -3010,7 +3016,7 @@ class SpeechService {
     // Gemini supports: wav, mp3, aiff, aac, ogg, flac
     let supportedExtensions = ["wav", "mp3", "m4a", "flac", "ogg", "webm", "aiff", "aac"]
     if !supportedExtensions.contains(fileExtension) {
-      throw TranscriptionError.fileError("Unsupported audio format: \(fileExtension)")
+      throw TranscriptionError.fileError(String(localized: "Unsupported audio format: \(fileExtension)"))
     }
   }
   
@@ -3022,7 +3028,7 @@ class SpeechService {
       DebugLogger.logDebug("AUDIO-CHECK: getAudioDuration \(String(format: "%.2f", duration))s at \(url.lastPathComponent)")
       return duration
     } catch {
-      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.localizedDescription)")
+      DebugLogger.logWarning("AUDIO-CHECK: Could not get audio duration: \(error.logDescription)")
       return nil
     }
   }

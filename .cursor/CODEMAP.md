@@ -15,11 +15,10 @@ tree disagree, the tree wins; fix the row.
 | Dictate / Dictate Prompt / Read Aloud   | `SpeechService.swift` (transcribe, executePrompt, readSelectionAloud) → `TranscriptionProvider.swift`               |
 | Recording & chunking                    | `AudioRecorder.swift`, `ChunkedDictateRecorder.swift`, `AudioChunker.swift`, `AudioMerger.swift`, `AudioTranscoder.swift`, `Chunk*.swift` |
 | Streaming dictation                     | `DictateStreamingSession.swift`, `TranscriptMerger.swift`, `SpeechTextSanitizer.swift`, `TextProcessingUtility.swift` |
-| Offline dictation (WhisperKit)          | `LocalSpeechService.swift` — read its actor doc comment before touching speed; `ModelManager.swift`                 |
+| Offline dictation (WhisperKit)          | `LocalSpeechService.swift` — read its actor doc comment before touching speed; `ModelManager.swift`; `ParakeetBackend.swift` (recommended model) |
 | Text-to-speech                          | `ChunkTTSService.swift`, `SystemTTSService.swift`, `TTSPlaybackSession.swift`, `TextChunker.swift`                  |
 | Clipboard / paste at cursor             | `ClipboardManager.swift`, `AccessibilityPermissionManager.swift`, `PermissionStatusChecker.swift`                   |
 | Live meeting transcription              | `LiveMeetingRecorder.swift`, `LiveMeetingSession.swift`, `LiveMeetingTranscriptStore.swift`, `MeetingListService.swift` |
-| Voice Feedback                          | `VoiceFeedbackService.swift`                                                                                        |
 | Screenshot                              | `ScreenshotSaveLocation.swift` (+ the screenshot path in `MenuBarController.swift`)                                 |
 | Feedback UI (pill / popups)             | `RecordingIndicatorWindow.swift`, `PopupNotificationWindow.swift`, `SpeechErrorFormatter.swift`, `AppErrors.swift`  |
 
@@ -27,9 +26,15 @@ tree disagree, the tree wins; fix the row.
 
 | Topic                                   | Start here                                                                                                          |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Provider abstraction + factory          | `LLMChatProvider.swift` (`ChatModelProvider` enum, `LLMProviderFactory`)                                            |
-| Providers                               | `GeminiChatProvider.swift`, `OpenAIChatProvider.swift`, `GrokChatProvider.swift`, `AnthropicChatProvider.swift`, `LocalLLMChatProvider.swift`, `MLXChatProvider.swift` |
+| Provider abstraction + factory          | `LLMChatProvider.swift` (`LLMProviderFactory`); `ChatModelProvider` enum in `Settings/Shared/SettingsConfiguration.swift` |
+| Providers                               | `GeminiChatProvider.swift`, `OpenAIChatProvider.swift`, `GrokChatProvider.swift`, `AnthropicChatProvider.swift`, `LocalLLMChatProvider.swift`, `MLXChatProvider.swift`, `ChatGPTPlanChatProvider.swift` |
+| ChatGPT plan sign-in                    | `ChatGPTPlanOAuthService.swift`, `ChatGPTPlanOAuthConfig.swift`, `ChatGPTPlanCredentials.swift`, `ChatGPTPlanModelCatalog.swift`, `Settings/Shared/ChatGPTPlanConnectionSection.swift` |
 | Slash commands, model switching         | `ChatViewModel` in `ChatView.swift` (`commandsBeforeModels` / `commandsAfterModels` / `modelCommandLookup`), `ChatModelCommandResolver.swift`, `ModelSelectionReconciler.swift` |
+| MCP server for AI apps                  | `MCP/`                                                                                                              |
+| Mail                                    | `Mail/`                                                                                                             |
+| Telemetry                               | `Telemetry/`                                                                                                        |
+| Writing Style                           | `WritingStyle*.swift`, `WritingContextResolver.swift`                                                               |
+| Updates (Sparkle)                       | `UpdaterService.swift`                                                                                              |
 | Chat UI                                 | `ChatRootView.swift`, `ChatView.swift`, `ChatSidebar.swift`, `ChatComposerTextView.swift`, `ChatTheme.swift`, `ChatWindowController.swift`, `ChatWindowManager.swift`, `MessageActionButton.swift`, `MarkdownParsing.swift` |
 | Sessions, memory, search                | `ChatSessionStore.swift`, `ChatMemoryStore.swift`, `ChatSearch.swift`, `PromptConversationHistory.swift`            |
 | Tools (local, Google, Trello, docs)     | `ChatTools.swift` (`ChatToolRegistry`), `ChatToolTurnMemo.swift`, `Workspace*.swift` (context files, file tools, folders, map) |

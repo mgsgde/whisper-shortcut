@@ -12,7 +12,7 @@ import SwiftUI
 
 /// One line of a unified line-based diff between current and suggested prompt.
 struct SmartImprovementDiffLine: Identifiable {
-  enum Kind { case unchanged, removed, added }
+  enum Kind { case unchanged, removed, added, skipped }
   let id = UUID()
   let kind: Kind
   let text: String
@@ -66,6 +66,34 @@ func computeSmartImprovementDiff(original: String, suggested: String) -> [SmartI
   return result
 }
 
+/// Folds long unchanged runs into one `.skipped` line, keeping `context` lines next to each
+/// change. A one-line edit at the end of a long prompt is otherwise buried under the whole prompt.
+func collapseUnchangedDiffLines(_ lines: [SmartImprovementDiffLine], context: Int = 2) -> [SmartImprovementDiffLine] {
+  var result: [SmartImprovementDiffLine] = []
+  var start = 0
+  while start < lines.count {
+    guard lines[start].kind == .unchanged else {
+      result.append(lines[start])
+      start += 1
+      continue
+    }
+    var end = start
+    while end < lines.count && lines[end].kind == .unchanged { end += 1 }
+    let keepBefore = start == 0 ? 0 : context
+    let keepAfter = end == lines.count ? 0 : context
+    let hidden = (end - start) - keepBefore - keepAfter
+    if hidden > 1 {
+      result.append(contentsOf: lines[start..<(start + keepBefore)])
+      result.append(.init(kind: .skipped, text: String(localized: "⋯ \(hidden) unchanged lines")))
+      result.append(contentsOf: lines[(end - keepAfter)..<end])
+    } else {
+      result.append(contentsOf: lines[start..<end])
+    }
+    start = end
+  }
+  return result
+}
+
 struct SmartImprovementReviewView: View {
   let focusDisplayName: String
   let index: Int?
@@ -74,6 +102,17 @@ struct SmartImprovementReviewView: View {
   let rationale: String?
   /// The prompt section under review, when there is one; it picks which scorecard numbers to show.
   let section: SystemPromptSection?
+  /// "Smart Improvement" for the app's own runs; the AI-app inbox passes "Suggested by an AI app".
+  let titlePrefix: LocalizedStringResource
+  let cancelTitle: LocalizedStringResource
+  let acceptTitle: LocalizedStringResource
+  /// Word in the "Current …" / "Suggested …" labels ("prompt", "command", "profile").
+  let textNoun: ReviewNoun
+  /// Off for a deletion: there is no new text to edit.
+  let allowsEditing: Bool
+  /// Off for changes from AI apps: their window can open while the user types elsewhere, and a
+  /// stray Return must never accept a change nobody read.
+  let acceptOnReturn: Bool
   @State private var editedSuggestedText: String
   let onAccept: (String) -> Void
   let onCancel: () -> Void
@@ -86,6 +125,12 @@ struct SmartImprovementReviewView: View {
     suggestedText: String,
     rationale: String? = nil,
     section: SystemPromptSection? = nil,
+    titlePrefix: LocalizedStringResource = "Smart Improvement",
+    cancelTitle: LocalizedStringResource = "Cancel",
+    acceptTitle: LocalizedStringResource = "Accept",
+    textNoun: ReviewNoun = .prompt,
+    allowsEditing: Bool = true,
+    acceptOnReturn: Bool = true,
     onAccept: @escaping (String) -> Void,
     onCancel: @escaping () -> Void
   ) {
@@ -96,6 +141,12 @@ struct SmartImprovementReviewView: View {
     self._editedSuggestedText = State(initialValue: suggestedText)
     self.rationale = rationale
     self.section = section
+    self.titlePrefix = titlePrefix
+    self.cancelTitle = cancelTitle
+    self.acceptTitle = acceptTitle
+    self.textNoun = textNoun
+    self.allowsEditing = allowsEditing
+    self.acceptOnReturn = acceptOnReturn
     self.onAccept = onAccept
     self.onCancel = onCancel
   }
@@ -103,13 +154,14 @@ struct SmartImprovementReviewView: View {
   /// Title for the review window (used by the panel).
   var windowTitle: String {
     if let index = index, let total = total, total > 1 {
-      return "Smart Improvement – \(focusDisplayName) (\(index) of \(total))"
+      return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName) (\(index) of \(total))")
     }
-    return "Smart Improvement – \(focusDisplayName)"
+    return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName)")
   }
 
   private var diffLines: [SmartImprovementDiffLine] {
-    computeSmartImprovementDiff(original: originalText, suggested: editedSuggestedText)
+    collapseUnchangedDiffLines(
+      computeSmartImprovementDiff(original: originalText, suggested: editedSuggestedText))
   }
 
   var body: some View {
@@ -142,6 +194,10 @@ struct SmartImprovementReviewView: View {
         SmartImprovementScorecardStrip(section: section)
       }
 
+      // Something new (an AI app's first command or profile) has nothing to compare against,
+      // and a deletion has no suggestion: it shows only the current text.
+      if !originalText.isEmpty {
+      if allowsEditing {
       VStack(alignment: .leading, spacing: 6) {
         Text("Diff (current → suggested)")
           .font(.subheadline)
@@ -155,7 +211,10 @@ struct SmartImprovementReviewView: View {
                   .foregroundColor(line.kind == .added ? .green : line.kind == .removed ? .red : .secondary)
                 Text(line.text.isEmpty ? " " : line.text)
                   .font(.system(.body, design: .monospaced))
-                  .foregroundColor(line.kind == .added ? .green : line.kind == .removed ? .red : .primary)
+                  .italic(line.kind == .skipped)
+                  .foregroundColor(
+                    line.kind == .added ? .green : line.kind == .removed ? .red
+                      : line.kind == .skipped ? .secondary : .primary)
                   .strikethrough(line.kind == .removed)
                   .frame(maxWidth: .infinity, alignment: .topLeading)
                   .fixedSize(horizontal: false, vertical: true)
@@ -169,9 +228,10 @@ struct SmartImprovementReviewView: View {
           .background(Color(nsColor: .textBackgroundColor))
           .cornerRadius(6)
       }
+      }
 
       VStack(alignment: .leading, spacing: 6) {
-        Text("Current prompt")
+        Text(textNoun.currentLabel)
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
@@ -185,8 +245,11 @@ struct SmartImprovementReviewView: View {
           .cornerRadius(6)
       }
 
+      }
+
+      if allowsEditing {
       VStack(alignment: .leading, spacing: 6) {
-        Text("Suggested prompt (editable)")
+        Text(textNoun.suggestedLabel)
           .font(.subheadline)
           .fontWeight(.medium)
           .foregroundColor(.secondary)
@@ -197,12 +260,13 @@ struct SmartImprovementReviewView: View {
           .cornerRadius(6)
           .frame(minHeight: 260)
       }
+      }
         }
         .padding(.trailing, 4)
       }
 
       HStack(spacing: 12) {
-        Button("Cancel") {
+        Button(String(localized: cancelTitle)) {
           onCancel()
         }
         .keyboardShortcut(.cancelAction)
@@ -210,10 +274,10 @@ struct SmartImprovementReviewView: View {
 
         Spacer()
 
-        Button("Accept") {
+        Button(String(localized: acceptTitle)) {
           onAccept(editedSuggestedText)
         }
-        .keyboardShortcut(.defaultAction)
+        .keyboardShortcut(acceptOnReturn ? .defaultAction : nil)
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
       }
@@ -320,6 +384,32 @@ enum SmartImprovementReviewPanel {
         // an awaiting caller would hang forever. Resuming twice is a no-op by construction.
         resumeOnce(returning: nil)
       }
+    }
+  }
+}
+
+/// What the reviewed text is, so the "Current …" / "Suggested …" labels are whole sentences a
+/// translation can inflect, not a noun glued into an English template.
+enum ReviewNoun {
+  case prompt, instructions, profile, command, report
+
+  var currentLabel: LocalizedStringKey {
+    switch self {
+    case .prompt: return "Current prompt"
+    case .instructions: return "Current instructions"
+    case .profile: return "Current profile"
+    case .command: return "Current command"
+    case .report: return "Current report"
+    }
+  }
+
+  var suggestedLabel: LocalizedStringKey {
+    switch self {
+    case .prompt: return "Suggested prompt (editable)"
+    case .instructions: return "Suggested instructions (editable)"
+    case .profile: return "Suggested profile (editable)"
+    case .command: return "Suggested command (editable)"
+    case .report: return "Suggested report (editable)"
     }
   }
 }

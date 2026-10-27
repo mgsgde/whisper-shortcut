@@ -19,7 +19,7 @@ This skill is the inspection procedure. It does **not** add logging — it assum
 
 Before drawing any conclusions from logs:
 
-1. The user has "Save usage data" enabled (`UserDefaultsKeys.contextLoggingEnabled` is on, or the key is unset — default is on).
+1. The user has "Save usage data" enabled (`UserDefaultsKeys.contextLoggingEnabled` is true — it defaults to **off** for new installs since 2026-10-19) and Offline Mode is off (it overrides the toggle; see `ContextLoggingPreference`).
 2. At least one dictation has happened, and ideally the candidate term you care about recurs in ≥2 distinct dictations whose **WAV files are still on disk** (within the retention window).
 3. The Smart Improvement run you are validating is recent — always pass `-t` to `bash scripts/logs.sh` (e.g. `-t 24h`). There is no default window: a bare invocation is a live stream that never exits.
 4. You know which dictation backend was used (Gemini cloud vs. offline Whisper) and which Smart Improvement model is selected (from settings).
@@ -52,6 +52,7 @@ Red flags:
 ```bash
 ls -la "$HOME/Library/Containers/com.magnusgoedde.whispershortcut/Data/Library/Application Support/WhisperShortcut/UserContext/audio-samples/" 2>/dev/null
 ```
+(Dev build: `com.magnusgoedde.whispershortcut.dev` — read that container for the operator's own Dev usage)
 
 - WAVs **accumulate across runs** now — expect more than one run's worth. Each `capture(done)` line should have a corresponding WAV with the `ref` name until it ages out.
 - File count should be ≤ `audioSampleMaxFiles` (safety cap, default 500).
@@ -78,10 +79,10 @@ Expected sequence for one Smart Improvement run (verified against `ContextDeriva
 3. For each of the two affected focuses (`dictation`, `whisperGlossary`), one block:
    - `focus=<focus> samplesOnDisk=<n>` — how many samples were available to that focus (marker `AUDIO-VERIFY: focus=… samplesOnDisk=` in `ContextDerivation.swift`).
    - Possibly `focus=<focus> skip reason=smart-model-unknown` (marker in `ContextDerivation.swift`) — then no further per-focus output (skip path).
-   - `focus=<focus> candidateTerms=<n> top=[term1, term2, …]` — the recurring candidate terms mined from the transcripts that drive selection (marker `AUDIO-VERIFY: focus=… candidateTerms=` in `ContextDerivation.swift`). `candidateTerms=0` means no recurring distinctive vocabulary was found; selection falls back to newest clips.
+   - `focus=<focus> candidateTerms=<n> suspects=<n>` — counts only; the terms themselves are not logged (marker `AUDIO-VERIFY: focus=… candidateTerms=` in `ContextDerivation.swift`). `candidateTerms=0` means no recurring distinctive vocabulary was found; selection falls back to newest clips.
    - For each clip considered/attached: `asymmetry ref=<ref> transcriptionModel=<m> smartModel=<sm> informative=<true|false>`; attached clips also carry `term=<candidate|—>` showing which candidate term the clip was selected to verify (`—` = recency top-up) and `clipBytes=<n>` (marker `AUDIO-VERIFY: focus=… asymmetry ref=` in `ContextDerivation.swift`).
    - Possibly `focus=<focus> skip ref=<ref> reason=size-budget clipBytes=<n> attachedBytes=<n> budget=<n>` — the clip passed the asymmetry rule but did not fit the per-request byte budget (marker in `ContextDerivation.swift`). These clips are dropped **silently from the summary counters**: they raise neither `skippedAsymmetry` nor `skippedUnknownModel`.
-   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> attachedBytes=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n> candidateTerms=<n>` (marker `AUDIO-VERIFY: focus=… attach selectedClips=` in `ContextDerivation.swift`). `selectedClips=0` means nothing was attached for that focus.
+   - End-of-focus summary: `focus=<focus> attach selectedClips=<n> attachedBytes=<n> skippedAsymmetry=<n> skippedUnknownModel=<n> capPerRun=<n> candidateTerms=<n> suspects=<n>` (marker `AUDIO-VERIFY: focus=… attach selectedClips=` in `ContextDerivation.swift`). `selectedClips=0` means nothing was attached for that focus.
 4. `run(end) retainedSamples=<n>` — end of run; audio is **kept** for future runs (marker `AUDIO-VERIFY: run(end)` in `AutoPromptImprovementScheduler.swift`).
 
 How to interpret common patterns:
@@ -119,7 +120,7 @@ When you want to actively verify (not just inspect a past run), follow this exac
 1. Confirm settings: "Save usage data" on; Smart Improvement model = something strictly stronger than the transcription model (e.g. transcription = Gemini 3.1 Flash Lite, Smart Improvement = Gemini 3.1 Pro Preview). Without asymmetry the test only validates the skip path.
 2. Ask the user to do **5+ dictations** that **repeat a tricky proper noun across at least 2 of them** (e.g. "Kubernetes", a product/tool name they actually use, or a term their STT mis-hears). Recurrence is what makes it a candidate term; a one-off won't be selected. Mixing in one Whisper-offline dictation is great for testing the different-family branch.
 3. Ask the user to trigger Smart Improvement manually.
-4. Run the five Q1–Q5 checks above in order. In Q4, confirm the term you seeded appears in `candidateTerms=… top=[…]` and that a clip was attached with `term=<that term>`.
+4. Run the five Q1–Q5 checks above in order. In Q4, confirm `candidateTerms>0` and that a clip was attached with `term=<that term>` (the `asymmetry … informative=true term=` line).
 5. Read the suggestion file in `…/UserContext/suggested-whisper-glossary.txt` (and the dictation focus equivalent) to confirm the *content* makes sense given what the logs say happened.
 
 ---

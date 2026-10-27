@@ -23,7 +23,7 @@ struct TranscriptionProviderTests {
     // set rather than a bare number.
     let hidden = Set(
       TranscriptionModel.allCases.filter { !$0.isSelectableForDictation })
-    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [.gemini31Pro])
+    #expect(hidden.subtracting([.whisperMedium, .whisperLarge]) == [.gemini4Argon, .gemini31Pro])
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperMedium))
     #expect(!TranscriptionModel.selectableForDictation.contains(.whisperLarge))
     // Turbo replaces them and is offered whether or not it is downloaded.
@@ -40,6 +40,9 @@ struct TranscriptionProviderTests {
     // through it for Dictate Prompt and Smart Improvement.
     #expect(PromptModel.gemini31Pro.asTranscriptionModel == .gemini31Pro)
     #expect(TranscriptionModel.gemini31Pro.apiEndpoint.contains("gemini-3.1-pro-preview"))
+    #expect(!TranscriptionModel.gemini4Argon.isSelectableForDictation)
+    #expect(PromptModel.gemini4Argon.asTranscriptionModel == .gemini4Argon)
+    #expect(TranscriptionModel.gemini4Argon.apiEndpoint.contains("gemini-4-argon"))
   }
 
   @Test("Routed contains exactly the entries that are not themselves models")
@@ -53,13 +56,13 @@ struct TranscriptionProviderTests {
 
   @Test("Direct models map to their own vendor")
   func directModelsMapToVendors() {
-    #expect(TranscriptionModel.gemini37Flash.provider == .google)
+    #expect(TranscriptionModel.gemini38Flash.provider == .google)
     #expect(TranscriptionModel.gemini31Pro.provider == .google)
     #expect(TranscriptionModel.openAIGPTTranscribe.provider == .openAI)
     #expect(TranscriptionModel.openAIGPT4oMiniTranscribe.provider == .openAI)
     #expect(TranscriptionModel.xaiTranscribe.provider == .xai)
 
-    for model in [TranscriptionModel.gemini37Flash, .openAIGPTTranscribe, .xaiTranscribe] {
+    for model in [TranscriptionModel.gemini38Flash, .openAIGPTTranscribe, .xaiTranscribe] {
       #expect(model.provider.group == .direct, "\(model.rawValue)")
     }
   }
@@ -125,7 +128,7 @@ struct TranscriptionProviderTests {
 
     // The instructable ones must keep honouring it — this is a two-model-family exception, not a
     // general disclaimer.
-    for instructable in [TranscriptionModel.gemini31FlashLite, .gemini35Flash, .gemini37Flash,
+    for instructable in [TranscriptionModel.gemini31FlashLite, .gemini38Flash,
                          .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
                          .openRouterTranscription, .selfHostedTranscription] {
       #expect(instructable.honorsSystemPrompt, "\(instructable.rawValue)")

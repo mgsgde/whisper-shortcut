@@ -101,15 +101,15 @@ class TrelloOAuthService: ObservableObject {
     var errorDescription: String? {
       switch self {
       case .missingAPIKey:
-        return "Trello API key is not configured. Enter your Power-Up API key in Settings → Chat first."
+        return String(localized: "Trello API key is not configured. Enter your Power-Up API key in Settings → Accounts first.")
       case .invalidURL:
-        return "Failed to build Trello authorization URL."
+        return String(localized: "Failed to build Trello authorization URL.")
       case .emptyToken:
-        return "Token is empty. Paste the token shown by Trello in the browser."
+        return String(localized: "Token is empty. Paste the token shown by Trello in the browser.")
       case .tokenStoreFailed:
-        return "Could not save the Trello token to the Keychain."
+        return String(localized: "Could not save the Trello token to the Keychain.")
       case .notConnected:
-        return "Trello is not connected. Open Settings → Chat to connect."
+        return String(localized: "Trello is not connected. Open Settings → Accounts to connect.")
       }
     }
   }

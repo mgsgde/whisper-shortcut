@@ -90,6 +90,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     migrateChatDefaultTo37Flash()
     migrateChatAndImprovementDefaultsTo38Flash()
 
+    // Once per launch, never from the reconciler: the custom-endpoint field triggers reconcileAll on
+    // every keystroke, which would migrate an openrouter.ai URL mid-edit.
+    OpenRouterChatPreferences.migrateCustomEndpointIfNeeded()
+
     // Adapt per-feature model selections to the API keys actually present, so a user with a single
     // provider's key gets that provider's models by default across every feature.
     ModelSelectionReconciler.reconcileAll()
@@ -110,15 +114,20 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     TelemetryService.shared.start()
 
     // Local read-only MCP server for meeting transcripts; does nothing unless the user enabled it.
-    MCPServer.shared.startIfEnabled()
+    // Skipped in a sidecar: the user's own instance owns the MCP port and the update checks.
+    if !AppConstants.isSidecarInstance {
+      MCPServer.shared.startIfEnabled()
+      MCPProposalWindows.shared.start()
 
-    #if !APP_STORE && canImport(Sparkle)
-    // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
-    UpdaterService.shared.start()
-    #endif
+      #if !APP_STORE && canImport(Sparkle)
+      // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
+      UpdaterService.shared.start()
+      #endif
+    }
 
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
+    menuBarController?.resumeInterruptedMeetingIfNeeded()
 
     // Accessibility permissions will be checked when user actually tries to use prompt features
 
@@ -135,25 +144,29 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()
           } else if !TranscriptionModel.loadSelected().hasRequiredCredential {
-            SettingsManager.shared.showSettings()
+            SettingsManager.shared.showSettings(tab: .accounts)
           }
         }
       }
     }
 
-    // Initialize interaction logging default if not set (default: enabled; user can disable in Settings)
+    // Usage logging for Smart Improvement is opt-in (owner decision 2026-10-19): new installs start
+    // with it off, matching the privacy promise "when on". Existing installs keep their stored value.
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
-      UserDefaults.standard.set(true, forKey: UserDefaultsKeys.contextLoggingEnabled)
+      UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
     }
 
     // Launch at Login is OFF by default and only enabled when the user explicitly
     // toggles it in Settings → General. The app must never register itself for
     // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
-    // Improve from usage auto-run: check if due and start daily timer
-    Task { @MainActor in
-      await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
-      ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
+    // Improve from usage auto-run: check if due and start daily timer. Not in a sidecar: it shares
+    // the user's data directory and must not run the daily job a second time.
+    if !AppConstants.isSidecarInstance {
+      Task { @MainActor in
+        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
+        ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
+      }
     }
 
   }
@@ -163,16 +176,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   private static func showSystemPromptsUnreadableAlert(reason: String) {
     let alert = NSAlert()
     alert.alertStyle = .warning
-    alert.messageText = "WhisperShortcut can’t read your saved prompts"
-    alert.informativeText = """
+    alert.messageText = String(localized: "WhisperShortcut can’t read your saved prompts")
+    alert.informativeText = String(localized: """
       macOS blocked access to system-prompts.md (\(reason)). Until that is fixed, dictation uses the \
       default prompts instead of yours. Your file has not been changed.
 
       To fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit \
       and reopen the app.
-      """
-    alert.addButton(withTitle: "Open Privacy & Security")
-    alert.addButton(withTitle: "Later")
+      """)
+    alert.addButton(withTitle: String(localized: "Open Privacy & Security"))
+    alert.addButton(withTitle: String(localized: "Later"))
     NSApp.activate(ignoringOtherApps: true)
     if alert.runModal() == .alertFirstButtonReturn,
       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
@@ -373,9 +386,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedImprovementModel),
           stored == "gemini-3.6-flash" else { return }
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
+    // 3.7 was removed 2026-10-21 (Google routes it to 3.8); this one-shot lands on 3.8 directly.
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: UserDefaultsKeys.selectedImprovementModel)
     DebugLogger.log(
-      "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+      "MIGRATION: \(UserDefaultsKeys.selectedImprovementModel) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
   }
 
   /// One-shot migration (2026-08): chat-window default moves 3.5 Flash-Lite → 3.7 Flash.
@@ -388,9 +402,10 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     guard let stored = defaults.string(forKey: UserDefaultsKeys.selectedChatModel),
           stored == PromptModel.gemini35FlashLite.rawValue else { return }
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
+    // 3.7 was removed 2026-10-21 (Google routes it to 3.8); this one-shot lands on 3.8 directly.
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     DebugLogger.log(
-      "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini37Flash.rawValue)")
+      "MIGRATION: \(UserDefaultsKeys.selectedChatModel) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
   }
 
   /// One-shot migration (2026-09): chat-window and Smart Improvement defaults move
@@ -398,13 +413,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   /// 2026-09-02 at the same introductory price as 3.7. Only slots still sitting on
   /// exactly `gemini-3.7-flash` move — a user who picked another model keeps it.
   ///
-  /// Matches on the model the slot is *effectively* on, not the literal stored string. A slot
-  /// left on 3.5 or 3.6 Flash is superseded to 3.7 by `chatReplacement` — but that happens when
-  /// the slot is first LOADED, which is after every launch migration has run. Comparing the raw
-  /// string to `gemini-3.7-flash` therefore misses exactly the installs the supersession is
-  /// about to move: found on 2026-09-06, on a machine sitting on 3.6 whose
-  /// `didMigrateImprovementTo37Flash` flag was long spent, so the 3.6 → 3.7 hop this migration
-  /// was assumed to follow never happened at launch at all.
+  /// Compares the raw stored string. `resolvedChatSlotModel` can no longer see 3.7:
+  /// `migrateLegacyPromptRawValue` already rewrites "gemini-3.7-flash" to 3.8, so an equality
+  /// against the removed case would never match. 3.5 and 3.6 take the same path on load
+  /// (`loadPromptModel` persists the rewrite), which is why this launch pass only has to
+  /// catch the literal 3.7 slug.
   ///
   /// Same `SettingsViewModel.save()` reason as the earlier Gemini migrations: changing
   /// `SettingsDefaults` alone would reach almost nobody.
@@ -418,7 +431,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ]
     for key in keys {
       guard let stored = defaults.string(forKey: key),
-            PromptModel.resolvedChatSlotModel(forRawValue: stored) == .gemini37Flash else { continue }
+            stored == "gemini-3.7-flash" else { continue }
       defaults.set(PromptModel.gemini38Flash.rawValue, forKey: key)
       DebugLogger.log("MIGRATION: \(key) \(stored) → \(PromptModel.gemini38Flash.rawValue)")
     }
@@ -461,42 +474,42 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
   private func setupEditMenu() {
     // Create Edit menu with standard text editing commands
-    let editMenu = NSMenu(title: "Edit")
+    let editMenu = NSMenu(title: String(localized: "Edit"))
 
     // Undo
     let undoItem = NSMenuItem(
-      title: "Undo", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+      title: String(localized: "Undo"), action: NSSelectorFromString("undo:"), keyEquivalent: "z")
     undoItem.target = nil  // Will be handled by first responder
     editMenu.addItem(undoItem)
 
     // Redo
     let redoItem = NSMenuItem(
-      title: "Redo", action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
+      title: String(localized: "Redo"), action: NSSelectorFromString("redo:"), keyEquivalent: "Z")
     redoItem.target = nil  // Will be handled by first responder
     editMenu.addItem(redoItem)
 
     editMenu.addItem(NSMenuItem.separator())
 
     // Cut
-    let cutItem = NSMenuItem(title: "Cut", action: NSSelectorFromString("cut:"), keyEquivalent: "x")
+    let cutItem = NSMenuItem(title: String(localized: "Cut"), action: NSSelectorFromString("cut:"), keyEquivalent: "x")
     cutItem.target = nil  // Will be handled by first responder
     editMenu.addItem(cutItem)
 
     // Copy
     let copyItem = NSMenuItem(
-      title: "Copy", action: NSSelectorFromString("copy:"), keyEquivalent: "c")
+      title: String(localized: "Copy"), action: NSSelectorFromString("copy:"), keyEquivalent: "c")
     copyItem.target = nil  // Will be handled by first responder
     editMenu.addItem(copyItem)
 
     // Paste
     let pasteItem = NSMenuItem(
-      title: "Paste", action: NSSelectorFromString("paste:"), keyEquivalent: "v")
+      title: String(localized: "Paste"), action: NSSelectorFromString("paste:"), keyEquivalent: "v")
     pasteItem.target = nil  // Will be handled by first responder
     editMenu.addItem(pasteItem)
 
     // Delete
     let deleteItem = NSMenuItem(
-      title: "Delete", action: NSSelectorFromString("delete:"), keyEquivalent: "")
+      title: String(localized: "Delete"), action: NSSelectorFromString("delete:"), keyEquivalent: "")
     deleteItem.target = nil  // Will be handled by first responder
     editMenu.addItem(deleteItem)
 
@@ -504,18 +517,18 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
     // Select All
     let selectAllItem = NSMenuItem(
-      title: "Select All", action: NSSelectorFromString("selectAll:"), keyEquivalent: "a")
+      title: String(localized: "Select All"), action: NSSelectorFromString("selectAll:"), keyEquivalent: "a")
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
     // Add Edit and Chat menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
-    mainMenu.addItem(NSMenuItem(title: "Edit", action: nil, keyEquivalent: ""))
+    mainMenu.addItem(NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: ""))
     mainMenu.item(withTitle: "Edit")?.submenu = editMenu
 
-    let chatMenu = NSMenu(title: "Chat")
+    let chatMenu = NSMenu(title: String(localized: "Chat"))
     let newChatItem = NSMenuItem(
-      title: "New Chat",
+      title: String(localized: "New Chat"),
       action: #selector(FullAppDelegate.chatNewChat(_:)),
       keyEquivalent: "n"
     )
@@ -524,7 +537,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     chatMenu.addItem(newChatItem)
 
     let screenshotItem = NSMenuItem(
-      title: "Capture Screenshot",
+      title: String(localized: "Capture Screenshot"),
       action: #selector(FullAppDelegate.chatCaptureScreenshot(_:)),
       keyEquivalent: "s"
     )
@@ -533,7 +546,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     chatMenu.addItem(screenshotItem)
 
     let clearChatItem = NSMenuItem(
-      title: "Clear Chat",
+      title: String(localized: "Clear Chat"),
       action: #selector(FullAppDelegate.chatClearChat(_:)),
       keyEquivalent: "k"
     )
@@ -541,7 +554,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     clearChatItem.target = self
     chatMenu.addItem(clearChatItem)
 
-    mainMenu.addItem(NSMenuItem(title: "Chat", action: nil, keyEquivalent: ""))
+    mainMenu.addItem(NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: ""))
     mainMenu.item(withTitle: "Chat")?.submenu = chatMenu
 
     NSApp.mainMenu = mainMenu
@@ -586,9 +599,21 @@ class FullWhisperShortcut {
     let bundleID = Bundle.main.bundleIdentifier ?? Constants.defaultBundleID
     let runningApps = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
 
-    if runningApps.count > 1 {
-      DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(runningApps.count)) — exiting pid=\(getpid())")
-      exit(0)
+    if AppConstants.isSidecarInstance {
+      // Sidecar and the user's instance share a bundle ID by design.
+      DebugLogger.log("APP-LIFECYCLE: sidecar instance (\(AppConstants.sidecarReason ?? "?")), skipping single-instance check")
+    } else {
+      // The user's instance must not exit because a sidecar is running. A sandboxed app cannot read
+      // other processes' arguments, so sidecars are recognised by location: they only ever run
+      // from a worktree's build.
+      let others = runningApps.filter {
+        $0.processIdentifier != getpid()
+          && !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
+      }
+      if !others.isEmpty {
+        DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(others.count + 1)) — exiting pid=\(getpid())")
+        exit(0)
+      }
     }
 
     // Create and run the full app

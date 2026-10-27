@@ -44,4 +44,17 @@ struct LoopbackOAuthListenerTests {
     #expect(LoopbackOAuthListener.parseRequestTarget(request("GET")) == nil)
     #expect(LoopbackOAuthListener.parseRequestTarget(Data()) == nil)
   }
+
+  @Test("A custom callback path and provider name reach the listener and the browser page")
+  func customPathAndProviderName() throws {
+    let listener = try LoopbackOAuthListener(callbackPath: "/auth/callback", providerName: "ChatGPT") { _ in }
+    defer { listener.stop() }
+    #expect(listener.callbackURL.hasPrefix("http://127.0.0.1:"))
+    #expect(listener.callbackURL.hasSuffix("/auth/callback"))
+
+    let page = String(decoding: LoopbackOAuthListener.httpResponse(success: true, providerName: "ChatGPT"), as: UTF8.self)
+    #expect(page.contains("WhisperShortcut has your ChatGPT connection"))
+    let defaultPage = String(decoding: LoopbackOAuthListener.httpResponse(success: true), as: UTF8.self)
+    #expect(defaultPage.contains("OpenRouter connection"))
+  }
 }

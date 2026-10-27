@@ -1,6 +1,6 @@
 ---
 name: debugging-workflow
-description: Debugging in WhisperShortcut: add DebugLogger instrumentation (with right categories), rebuild, give developer a manual repro plan, then fetch and analyze logs. Use when the user reports a bug, asks to debug, wants logging added to understand flow, or the app hangs / freezes / pins the CPU.
+description: "Debugging in WhisperShortcut: add DebugLogger instrumentation (with right categories), rebuild, give developer a manual repro plan, then fetch and analyze logs. Use when the user reports a bug, asks to debug, wants logging added to understand flow, or the app hangs / freezes / pins the CPU."
 ---
 
 # Debugging Workflow
@@ -43,7 +43,7 @@ DebugLogger.logError("API request failed: \(error.localizedDescription)")
 
 1. **Add instrumentation** (see above) so the relevant path is visible in logs.
 2. **Rebuild**: `bash scripts/rebuild-and-restart.sh`
-3. **Give the developer a short plan**: numbered steps to reproduce (e.g. "1. Start app, 2. Trigger Speech-to-Prompt with shortcut X, 3. Say Y, 4. Wait for processing"). Ask them to do it and say when done.
+3. **Give the developer a short plan**: numbered steps to reproduce (e.g. "1. Start app, 2. Trigger Dictate Prompt with shortcut X, 3. Say Y, 4. Wait for processing"). Ask them to do it and say when done.
 4. **After they reproduced**: use **view-logs-via-bash** (`bash scripts/logs.sh -t 5m` or `-f 'PROMPT-MODE'`), analyze logs, summarize findings and suggest fix or next step.
 
 ---

@@ -22,10 +22,8 @@ struct ProviderCredentialFactsTests {
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
     .gemini35FlashLite:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-    .gemini35Flash:
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
-    .gemini37Flash:
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent",
+    .gemini4Argon:
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:generateContent",
     .gemini38Flash:
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
   ]
@@ -72,7 +70,7 @@ struct ProviderCredentialFactsTests {
       // The whole point of unifying on the ProviderCredentials wording: the old ChatView copies
       // said "in Settings" without naming the tab, which is where the key field actually is.
       #expect(
-        message.contains("Settings → General") || message.contains("Settings → Chat"),
+        message.contains("Settings → Accounts") || message.contains("Settings → Chat"),
         "\(provider.rawValue) message does not name the Settings tab: \(message)")
     }
   }
@@ -91,7 +89,7 @@ struct ProviderCredentialFactsTests {
     #expect(!ChatModelProvider.local.requiresUserSuppliedCredential)
     #expect(!ChatModelProvider.customOpenAI.requiresUserSuppliedCredential)
     let keyed = ChatModelProvider.allCases.filter { $0.requiresUserSuppliedCredential }
-    #expect(Set(keyed) == Set([.gemini, .openai, .grok, .anthropic]))
+    #expect(Set(keyed) == Set([.gemini, .openai, .grok, .anthropic, .openRouter]))
   }
 
   /// `hasCredential` must agree with the Keychain check the request path itself performs, or the
@@ -99,12 +97,45 @@ struct ProviderCredentialFactsTests {
   @Test("Keyed providers report configured exactly when a non-empty key is stored")
   func keyedProvidersTrackTheKeychain() {
     let pairs: [(ChatModelProvider, KeychainCredential)] = [
-      (.openai, .openAI), (.grok, .xai), (.anthropic, .anthropic),
+      (.openai, .openAI), (.grok, .xai), (.anthropic, .anthropic), (.openRouter, .openRouter),
     ]
     for (provider, credential) in pairs {
       #expect(
         provider.hasCredential == KeychainManager.shared.hasNonEmpty(credential),
         "\(provider.rawValue) disagrees with the Keychain")
+    }
+  }
+
+  /// `ProviderCredentials.Kind.storedKey` reads `KeychainManager.shared`, so a test cannot plant a
+  /// whitespace-only key without touching the real keychain. Agreement still locks the mapping:
+  /// every feature presence check is the provider's `hasCredential` (which trims key kinds).
+  @MainActor
+  @Test("Prompt, TTS, transcription and the reconciler agree with hasCredential")
+  func featurePresenceAgreesWithProviderCredential() {
+    for model in PromptModel.allCases {
+      #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
+      if model.provider == .openai {
+        #expect(model.hasRequiredCredentialForDictatePrompt == ProviderCredentials.hasKey(.openAI))
+      } else {
+        #expect(
+          model.hasRequiredCredentialForDictatePrompt == model.hasRequiredCredential,
+          "\(model.rawValue)")
+      }
+    }
+    for model in TTSModel.allCases {
+      #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
+    }
+    #expect(TTSProvider.gemini.hasCredential == ChatModelProvider.gemini.hasCredential)
+    #expect(TTSProvider.openai.hasCredential == ChatModelProvider.openai.hasCredential)
+    #expect(TTSProvider.xai.hasCredential == ChatModelProvider.grok.hasCredential)
+    #expect(TTSProvider.system.hasCredential)
+    #expect(TranscriptionProvider.openAI.hasCredential == ChatModelProvider.openai.hasCredential)
+    #expect(TranscriptionProvider.xai.hasCredential == ChatModelProvider.grok.hasCredential)
+    #expect(TranscriptionProvider.openRouter.hasCredential == ChatModelProvider.openRouter.hasCredential)
+    #expect(TranscriptionProvider.google.hasCredential == ChatModelProvider.gemini.hasCredential)
+    #expect(!TranscriptionProvider.offline.hasCredential)
+    for provider in ChatModelProvider.allCases {
+      #expect(ModelSelectionReconciler.hasKey(provider) == provider.hasCredential, "\(provider.rawValue)")
     }
   }
 }

@@ -3,38 +3,22 @@ import SwiftUI
 /// Reusable component for transcription model selection.
 struct ModelSelectionView: View {
   @Binding var selectedTranscriptionModel: TranscriptionModel
-  let title: String
+  let title: LocalizedStringResource
   let systemImage: String?
   let models: [TranscriptionModel]
   let onModelChanged: (() -> Void)?
-  /// When true, Gemini models are shown as disabled and cannot be selected (e.g. when no API key is set).
-  let geminiDisabled: Bool
-  /// When true, OpenAI cloud transcription models are shown as disabled (e.g. when no OpenAI API key is set).
-  let openAIDisabled: Bool
-  /// When true, xAI (Grok) transcription models are shown as disabled (e.g. when no xAI API key is set).
-  let xaiDisabled: Bool
-  /// When true, user is on subscription (proxy); only Gemini models are fixed; offline Whisper models remain selectable.
-  let subscriptionMode: Bool
 
   init(
-    title: String = "Transcription Model",
+    title: LocalizedStringResource = "Transcription Model",
     systemImage: String? = nil,
     selectedTranscriptionModel: Binding<TranscriptionModel>,
     models: [TranscriptionModel] = TranscriptionModel.selectableForDictation,
-    geminiDisabled: Bool = false,
-    openAIDisabled: Bool = false,
-    xaiDisabled: Bool = false,
-    subscriptionMode: Bool = false,
     onModelChanged: (() -> Void)? = nil
   ) {
     self.title = title
     self.systemImage = systemImage
     self._selectedTranscriptionModel = selectedTranscriptionModel
     self.models = models
-    self.geminiDisabled = geminiDisabled
-    self.openAIDisabled = openAIDisabled
-    self.xaiDisabled = xaiDisabled
-    self.subscriptionMode = subscriptionMode
     self.onModelChanged = onModelChanged
   }
 
@@ -43,54 +27,16 @@ struct ModelSelectionView: View {
       SectionHeader(
         title: title,
         systemImage: systemImage,
-        subtitle: subscriptionMode
-          ? "With a subscription, cloud transcription uses Gemini 2.5 Flash. You can also choose an offline Whisper model for local transcription."
-          : "Choose the transcription model for speech recognition"
+        subtitle: "Choose the transcription model for speech recognition"
       )
 
-      if subscriptionMode {
-        Text("Cloud: Gemini 2.5 Flash (fixed). Offline: select any Whisper model above.")
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-          .padding(.vertical, 8)
-      }
-
-      // Grouped by `TranscriptionProvider.Group` rather than the old cloud/offline split.
-      //
-      // The split that mattered was never cloud vs. offline — it was **direct vs. routed**.
-      // "Gemini 3.5 Flash-Lite" is a tile here *and* an entry in OpenRouter's own model list below,
-      // and with one undifferentiated "Cloud" block nothing said that the tile bills your Google key
-      // while the router bills your OpenRouter balance. Naming the groups is what removes that.
-      let visibleGroups = Self.groupOrder.compactMap { group -> (TranscriptionProvider.Group, [TranscriptionModel])? in
-        let matching = models.filter { $0.provider.group == group }
-        return matching.isEmpty ? nil : (group, matching)
-      }
-      let grouped = visibleGroups.count > 1
-
-      VStack(alignment: .leading, spacing: 0) {
-        if grouped {
-          ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
-            if index > 0 {
-              Divider().padding(.vertical, 10)
-            }
-            groupHeader(
-              symbol: Self.symbol(for: entry.0),
-              title: Self.title(for: entry.0),
-              subtitle: Self.subtitle(for: entry.0))
-            modelGrid(entry.1)
-          }
-        } else {
-          modelGrid(models)
-        }
-      }
-      .padding(grouped ? 10 : 0)
-      .background(Color(.controlBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(Color(.separatorColor), lineWidth: 1)
-      )
+      CuratedModelPicker(
+        curation: ModelPickerCuration(
+          models: models,
+          recommended: SettingsDefaults.selectedTranscriptionModel,
+          selected: selectedTranscriptionModel),
+        cell: { model, badges in modelCell(model, badges: badges) },
+        more: { groupedGrids($0) })
 
       // Model Details
       VStack(alignment: .leading, spacing: 8) {
@@ -105,22 +51,10 @@ struct ModelSelectionView: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
 
-          Text(selectedTranscriptionModel.costLevel)
+          Text(selectedTranscriptionModel.costLevel.title)
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedTranscriptionModel.costLevel))
-        }
-
-        if selectedTranscriptionModel.isRecommended {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
         }
 
         if selectedTranscriptionModel.isDeprecated {
@@ -128,7 +62,7 @@ struct ModelSelectionView: View {
             Image(systemName: "exclamationmark.triangle.fill")
               .foregroundColor(.orange)
               .font(.caption)
-            Text("Deprecated – no longer available to new users. Consider switching to Gemini 2.5 Flash.")
+            Text("Deprecated – no longer available to new users. Consider switching to \(SettingsDefaults.selectedTranscriptionModel.displayName).")
               .font(.callout)
               .foregroundColor(.secondary)
           }
@@ -162,7 +96,7 @@ struct ModelSelectionView: View {
     }
   }
 
-  private static func title(for group: TranscriptionProvider.Group) -> String {
+  private static func title(for group: TranscriptionProvider.Group) -> LocalizedStringResource {
     switch group {
     case .direct: return "Direct"
     case .routed: return "Routed"
@@ -170,7 +104,7 @@ struct ModelSelectionView: View {
     }
   }
 
-  private static func subtitle(for group: TranscriptionProvider.Group) -> String {
+  private static func subtitle(for group: TranscriptionProvider.Group) -> LocalizedStringResource {
     switch group {
     case .direct: return "Billed to that provider's own API key"
     case .routed: return "One account or your own server · pick the model below"
@@ -200,23 +134,52 @@ struct ModelSelectionView: View {
   }
 
   @ViewBuilder
-  private func groupHeader(symbol: String, title: String, subtitle: String) -> some View {
+  private func groupHeader(symbol: String, title: LocalizedStringResource, subtitle: LocalizedStringResource) -> some View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 
-  private func modelGrid(_ models: [TranscriptionModel]) -> some View {
-    ModelGrid(models: models) { modelCell($0) }
+  // Grouped by `TranscriptionProvider.Group` rather than the old cloud/offline split.
+  //
+  // The split that mattered was never cloud vs. offline — it was **direct vs. routed**.
+  // "Gemini 3.5 Flash-Lite" is a tile here *and* an entry in OpenRouter's own model list below,
+  // and with one undifferentiated "Cloud" block nothing said that the tile bills your Google key
+  // while the router bills your OpenRouter balance. Naming the groups is what removes that.
+  @ViewBuilder
+  private func groupedGrids(_ models: [TranscriptionModel]) -> some View {
+    let visibleGroups = Self.groupOrder.compactMap { group -> (TranscriptionProvider.Group, [TranscriptionModel])? in
+      let matching = models.filter { $0.provider.group == group }
+      return matching.isEmpty ? nil : (group, matching)
+    }
+    let providerPicks = TranscriptionModel.providerPicks(among: models)
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(visibleGroups.enumerated()), id: \.offset) { index, entry in
+        if index > 0 {
+          Divider().padding(.vertical, 10)
+        }
+        groupHeader(
+          symbol: Self.symbol(for: entry.0),
+          title: Self.title(for: entry.0),
+          subtitle: Self.subtitle(for: entry.0))
+        ModelGrid(models: entry.1) { model in
+          modelCell(model, badges: [], providerPick: providerPicks.contains(model) ? model.providerPickName : nil)
+        }
+      }
+    }
   }
 
   @ViewBuilder
-  private func modelCell(_ model: TranscriptionModel) -> some View {
-    let isDisabled = (geminiDisabled && model.isGemini) || (openAIDisabled && model.isOpenAI) || (xaiDisabled && model.isXAI)
+  private func modelCell(
+    _ model: TranscriptionModel, badges: [ModelPickerBadge], providerPick: String? = nil
+  ) -> some View {
     ModelTile(
       title: model.displayName,
       subtitle: Self.routedSubtitle(for: model),
       isSelected: selectedTranscriptionModel == model,
-      isDisabled: isDisabled,
-      isRecommended: model.isRecommended,
+      isDisabled: false,
+      badges: badges,
+      providerPick: providerPick,
+      setupBadge: model.pickerSetupBadge,
+      setupHelp: model.apiKeyRequiredMessage,
       onTap: {
         selectedTranscriptionModel = model
         onModelChanged?()

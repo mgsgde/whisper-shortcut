@@ -25,6 +25,14 @@ enum ChatModelCommandResolver {
     while normalizedEarly.contains("  ") {
       normalizedEarly = normalizedEarly.replacingOccurrences(of: "  ", with: " ")
     }
+    if normalizedEarly == "openrouter" || normalizedEarly == "open router" {
+      return .applied(model: .openRouterChat)
+    }
+    // "chatgpt" contains "gpt", so without this it would be routed to the OpenAI API models below.
+    if ChatGPTPlanPreferences.isAvailableInThisBuild,
+      normalizedEarly == "chatgpt" || normalizedEarly == "chat gpt" || normalizedEarly == "chatgpt plan" {
+      return .applied(model: .chatGPTPlanChat)
+    }
     if normalizedEarly == "custom"
       || normalizedEarly.contains("openinference")
       || normalizedEarly.contains("open inference")
@@ -79,22 +87,21 @@ enum ChatModelCommandResolver {
       // and a bare "image"/"nano banana" defaults to the free Flash tier further down.
       candidates = [.geminiImage, .geminiImagePro]
     } else if hasGrok {
-      // 4.20 variants are Pareto-dominated by 4.3; 4.5 and 4.6 are dominated by 4.7. Offer 4.3
-      // (cheap/1M) and 4.7 (flagship).
+      // 4.20 variants (-> 4.3) and 4.5/4.6 (-> 4.7) were removed and forward via
+      // migrateLegacyPromptRawValue. Offer 4.3 (cheap/1M) and 4.7 (flagship).
       if normalized.contains("4.3") {
         candidates = [.grok43]
       } else if normalized.contains("4.7") {
         candidates = [.grok47]
-      } else if normalized.contains("4.6") {
-        // Persisted/legacy phrasing — migrateIfDeprecated forwards via chatReplacement.
-        candidates = [.grok46]
-      } else if normalized.contains("4.5") {
-        candidates = [.grok45]
+      } else if normalized.contains("4.6") || normalized.contains("4.5") {
+        // Removed 2026-10-19; resolve to the model that replaced them.
+        candidates = [.grok47]
       } else {
         candidates = [.grok43, .grok47]
       }
     } else if hasClaude {
-      // Older Opus/Sonnet and Fable are hidden via chatReplacement; "fable" resolves to Opus 5.5.
+      // Older Opus/Sonnet and Fable were removed (forwarded via migrateLegacyPromptRawValue);
+      // "fable" resolves to Opus 5.5.
       if normalized.contains("opus") || normalized.contains("fable") {
         candidates = [.claudeOpus55]
       } else if normalized.contains("haiku") {
@@ -119,14 +126,15 @@ enum ChatModelCommandResolver {
       } else {
         candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT6Sol]
       }
+    } else if normalized.contains("argon") || padded.contains(" 4 ") {
+      candidates = [.gemini4Argon]
     } else if normalized.contains("3.8") {
       candidates = [.gemini38Flash]
-    } else if normalized.contains("3.7") {
-      candidates = [.gemini37Flash]
-    } else if normalized.contains("3.6") {
-      candidates = [.gemini37Flash]  // 3.6 was removed; land on its replacement
+    } else if normalized.contains("3.7") || normalized.contains("3.6") {
+      // 3.7 and 3.6 were removed; Google routes 3.7 to 3.8.
+      candidates = [.gemini38Flash]
     } else if normalized.contains("3.5") {
-      candidates = [.gemini35FlashLite, .gemini35Flash]
+      candidates = [.gemini35FlashLite]
     } else if normalized.contains("3.1") {
       candidates = [.gemini31Pro, .gemini31FlashLite]
     } else if padded.contains(" 3 ") {
@@ -140,16 +148,12 @@ enum ChatModelCommandResolver {
     let hasFlash = normalized.contains("flash")
     let hasLite = normalized.contains("lite")
     let hasFast = normalized.contains("fast")
-    let hasReasoning = normalized.contains("reason")
     let hasPro = padded.contains(" pro") || normalized.hasPrefix("pro")
     let hasMini = normalized.contains("mini")
 
     if hasFast {
       let fasts = candidates.filter { isFast($0) }
       if !fasts.isEmpty { candidates = fasts }
-    } else if hasReasoning {
-      let reasonings = candidates.filter { isReasoning($0) }
-      if !reasonings.isEmpty { candidates = reasonings }
     } else if hasLite {
       // "lite" (with or without "flash") narrows to the FlashLite variant; must precede the
       // plain `hasFlash` branch so "flash lite" doesn't get coerced to non-lite Flash.
@@ -217,15 +221,15 @@ enum ChatModelCommandResolver {
 
   private static func isFlash(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
-         .gemini37Flash, .gemini38Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
+    case .gemini31FlashLite, .gemini35FlashLite,
+         .gemini38Flash, .geminiImage: return true  // "flash image" → the Flash-tier image model
     default: return false
     }
   }
 
   private static func isPro(_ m: PromptModel) -> Bool {
     switch m {
-    case .gemini31Pro, .geminiImagePro: return true
+    case .gemini4Argon, .gemini31Pro, .geminiImagePro: return true
     default: return false
     }
   }
@@ -234,13 +238,6 @@ enum ChatModelCommandResolver {
     switch m {
     case .grok47: return true  // xAI: current flagship; same "fastest" claim as former 4.5/4.6.
     case .claudeHaiku55: return true
-    default: return false
-    }
-  }
-
-  private static func isReasoning(_ m: PromptModel) -> Bool {
-    switch m {
-    case .grok4Reasoning: return true
     default: return false
     }
   }

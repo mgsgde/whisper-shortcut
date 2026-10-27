@@ -15,120 +15,13 @@ struct WelcomeIntroStep: View {
           .font(.title3)
           .foregroundStyle(.secondary)
       }
-      Text("A quick setup: privacy, a provider API key — or fully offline dictation, no key needed — and a couple of macOS permissions. Takes about a minute.")
+      Text("Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute.")
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.center)
         .frame(maxWidth: 540)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-  }
-}
-
-struct WelcomePrivacyStep: View {
-  /// Offered during onboarding, not only in Settings: someone setting the app up for a medical
-  /// practice or a law office has to make this decision *before* the next step asks them for a
-  /// cloud API key, and a switch they have to go looking for afterwards is one they may not find.
-  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "lock.shield")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text(PrivacyCopy.promiseTitle)
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("What this app does — and doesn't do — with your data.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-      }
-      OpenSourceBanner()
-
-      // Scrolls like the API-key step: four privacy bullets plus the Offline Mode card is more
-      // than the 640 pt window shows, and a clipped switch is a switch nobody finds.
-      ScrollView(showsIndicators: true) {
-        VStack(alignment: .leading, spacing: 20) {
-          VStack(alignment: .leading, spacing: 12) {
-            ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
-              HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "checkmark.circle.fill")
-                  .foregroundStyle(.green)
-                Text(bullet)
-                  .font(.callout)
-                  .textSelection(.enabled)
-                  .fixedSize(horizontal: false, vertical: true)
-              }
-            }
-          }
-          .padding(14)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(
-            RoundedRectangle(cornerRadius: 10)
-              .fill(Color(nsColor: .controlBackgroundColor))
-          )
-          .overlay(
-            RoundedRectangle(cornerRadius: 10)
-              .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-          )
-
-          offlineModeCard
-
-          // Asked here, before the API key step, on purpose: that step is where most setups stall,
-          // and a question asked at the end only ever hears from people who got through it.
-          UsageStatisticsSection()
-
-          Button {
-            if let url = URL(string: AppConstants.privacyPolicyURL) {
-              NSWorkspace.shared.open(url)
-            }
-          } label: {
-            Label("View full privacy policy", systemImage: "doc.text")
-              .font(.callout)
-          }
-          .buttonStyle(.bordered)
-          .pointerCursorOnHover()
-        }
-        .padding(.trailing, 4)
-      }
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-  }
-
-  @ViewBuilder
-  private var offlineModeCard: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Toggle("Offline Mode — nothing leaves this Mac", isOn: $offlineMode)
-        .toggleStyle(.switch)
-        .font(.callout)
-        .fontWeight(.semibold)
-        .onChange(of: offlineMode) { isOn in
-          ModelSelectionReconciler.reconcileAll()
-          PromptConversationHistory.shared.clearAll()
-          DebugLogger.log("OFFLINE-MODE: \(isOn ? "enabled" : "disabled") during onboarding")
-        }
-      Text(
-        offlineMode
-          ? "On-device models only. No cloud request, no usage log on disk — you can skip the API key step and download a model instead. Changeable later in Settings → Privacy & Permissions."
-          : "Turn this on for regulated dictation — patient findings, case notes — where the recording may not leave the device. You can also decide later in Settings → Privacy & Permissions."
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
-    }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(offlineMode ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: 1)
-    )
   }
 }
 
@@ -184,14 +77,7 @@ struct OpenSourceBanner: View {
       }
       .padding(14)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color.accentColor.opacity(0.10))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-      )
+      .cardChrome(fill: Color.accentColor.opacity(0.10), stroke: Color.accentColor.opacity(0.35))
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -200,162 +86,361 @@ struct OpenSourceBanner: View {
   }
 }
 
-struct WelcomeAPIKeysStep: View {
-  @Binding var hasGeminiKey: Bool
-  @Binding var hasOpenAIKey: Bool
-  @Binding var hasXAIKey: Bool
-  @Binding var hasAnthropicKey: Bool
-  @Binding var hasOpenRouterKey: Bool
-  @Binding var offlineReady: Bool
-  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
-  @State private var wantCloudFeatures = false
-
-  private var canContinue: Bool {
-    hasGeminiKey || hasOpenAIKey || hasXAIKey || hasAnthropicKey || hasOpenRouterKey || offlineReady
+/// Where onboarding points Dictate after the user picks Cloud or connects OpenRouter.
+///
+/// Those two sites used to choose independently: one walked `TranscriptionModel.allCases` (app
+/// default first), the other a four-provider "any other key" chain. Both disagreed with
+/// `ModelSelectionReconciler.providerPreference`. A cloud model that can already run stays. An
+/// offline selection, or a cloud one that cannot run (the factory default is OpenAI, which a
+/// Gemini-only user cannot reach), moves. The offline download card does not call this — that
+/// answer is "keep this on the Mac", and the reconciler's cloud pick would undo it.
+@MainActor
+enum OnboardingTranscriptionChoice {
+  /// `onlyIfCurrentCannotRun` is for a step that is already showing Cloud (a revisited tour).
+  /// Tapping Cloud still replaces a working offline model — that was the user's answer. Merely
+  /// opening the step must not, or a key they keep for Chat would move dictation off this Mac.
+  static func preferCloud(onlyIfCurrentCannotRun: Bool = false) {
+    guard let model = ModelSelectionReconciler.preferredCloudTranscription() else { return }
+    let current = TranscriptionModel.loadSelected()
+    if current == model { return }
+    if current.hasRequiredCredential && (onlyIfCurrentCannotRun || current.provider != .offline) {
+      return
+    }
+    UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel)
+    DebugLogger.log("ONBOARDING: chose Cloud; transcription model set to \(model.rawValue)")
   }
+}
+
+/// The one decision of the tour. Offline and Cloud are the two honest answers to "where does my
+/// audio go?", so the privacy promise is answered by the choice itself instead of a page of its own.
+enum DictationChoice {
+  case offline
+  case cloud
+
+  /// What a revisited tour should show as already chosen. Nil on a fresh install: nothing is
+  /// pre-selected, because either answer is a real trade-off the user should make.
+  static func inferred() -> DictationChoice? {
+    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.offlineModeEnabled) { return .offline }
+    if ProviderCredentials.anyChatCredentialConfigured { return .cloud }
+    if OfflineModelType.byAccuracy.contains(where: { ModelManager.shared.isModelAvailable($0) }) {
+      return .offline
+    }
+    return nil
+  }
+}
+
+struct WelcomeDictationSetupStep: View {
+  @Binding var choice: DictationChoice?
+  @ObservedObject var setup: OnboardingSetupState
+  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  @State private var showOtherProviders = false
+  @State private var showPrivacyDetails = false
+
+  /// Same bit Continue uses. `setup` is what re-publishes it after a key, OAuth, or download.
+  private var canContinue: Bool { setup.dictationCanAdvance }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "key")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Add a key — or start offline")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Any single provider key unlocks chat features and is stored in the macOS Keychain. Or connect OpenRouter with one click and skip keys entirely — or skip the cloud altogether and dictate offline with an on-device model.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
+    VStack(alignment: .leading, spacing: 18) {
+      WelcomeStepHeader(
+        systemImage: "waveform.badge.mic",
+        title: "How should dictation run?",
+        subtitle: "Pick one to start. You can add the other any time in Settings.")
+
+      HStack(alignment: .top, spacing: 12) {
+        choiceCard(
+          .offline,
+          icon: "lock.laptopcomputer",
+          title: "Offline",
+          tagline: "Private and free",
+          facts: [
+            "Audio never leaves this Mac",
+            "Works without internet, no account",
+            "One-time download, \(OfflineModelType.mostAccurate.estimatedSizeLabel)",
+          ])
+        choiceCard(
+          .cloud,
+          icon: "cloud",
+          title: "Cloud",
+          tagline: "Most accurate",
+          facts: [
+            "Best accuracy, in more languages",
+            "Also powers Chat and Read Aloud",
+            "Needs one account; you pay the provider",
+          ])
       }
 
-      ScrollView(showsIndicators: true) {
-        VStack(spacing: 14) {
-          if offlineMode && !wantCloudFeatures {
-            Button {
-              wantCloudFeatures = true
-            } label: {
-              Label("I also want cloud features", systemImage: "cloud")
-                .font(.callout)
+      if let choice {
+        ScrollView(showsIndicators: true) {
+          VStack(alignment: .leading, spacing: 12) {
+            switch choice {
+            case .offline: offlineDetails
+            case .cloud: cloudDetails
             }
-            .buttonStyle(.bordered)
-            .pointerCursorOnHover()
-            Text("Offline Mode is on — cloud providers are hidden so a key you paste here is not used until you turn the mode off. Expand only if you also want Chat, Read Aloud, or cloud dictation.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          } else {
-            // First because it is the only row a brand-new user can finish without leaving the app,
-            // opening a dashboard, or copying anything — including creating the account itself.
-            OnboardingOpenRouterRow(isConfigured: $hasOpenRouterKey)
-
-            OnboardingAPIKeyRow(
-              providerName: "Google Gemini",
-              placeholder: "AIza…",
-              linkTitle: "aistudio.google.com/api-keys",
-              linkURL: URL(string: "https://aistudio.google.com/api-keys")!,
-              isConfigured: $hasGeminiKey,
-              load: { KeychainManager.shared.get(.google) ?? "" },
-              save: { KeychainManager.shared.save($0, for: .google) },
-              recommended: true
-            )
-            OnboardingAPIKeyRow(
-              providerName: "OpenAI",
-              placeholder: "sk-…",
-              linkTitle: "platform.openai.com/api-keys",
-              linkURL: URL(string: "https://platform.openai.com/api-keys")!,
-              isConfigured: $hasOpenAIKey,
-              load: { KeychainManager.shared.get(.openAI) ?? "" },
-              save: { KeychainManager.shared.save($0, for: .openAI) },
-              recommended: false
-            )
-            OnboardingAPIKeyRow(
-              providerName: "Anthropic (Claude)",
-              placeholder: "sk-ant-…",
-              linkTitle: "console.anthropic.com",
-              linkURL: URL(string: "https://console.anthropic.com/settings/keys")!,
-              description: "Chat only — Dictate Prompt is not available with Claude.",
-              isConfigured: $hasAnthropicKey,
-              load: { KeychainManager.shared.get(.anthropic) ?? "" },
-              save: { KeychainManager.shared.save($0, for: .anthropic) },
-              recommended: false
-            )
-            OnboardingAPIKeyRow(
-              providerName: "xAI (Grok)",
-              placeholder: "xai-…",
-              linkTitle: "console.x.ai",
-              linkURL: URL(string: "https://console.x.ai")!,
-              description: "Dictate Prompt is not available with Grok.",
-              isConfigured: $hasXAIKey,
-              load: { KeychainManager.shared.get(.xai) ?? "" },
-              save: { KeychainManager.shared.save($0, for: .xai) },
-              recommended: false
-            )
           }
+          .padding(.bottom, 8)
+          .padding(.trailing, 4)
         }
-        .padding(.bottom, 8)
-      }
-
-      // The no-key path stays outside the scroll area so "or start offline" —
-      // promised in the headline — is always visible without scrolling.
-      HStack(spacing: 10) {
-        VStack { Divider() }
-        Text("or")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        VStack { Divider() }
-      }
-      .padding(.vertical, 2)
-
-      OnboardingOfflineRow(offlineReady: $offlineReady)
-
-      if canContinue {
-        Label("Ready to continue.", systemImage: "checkmark.circle.fill")
-          .font(.caption)
-          .foregroundStyle(.green)
       } else {
-        Label("Add a key or download the offline model to continue.", systemImage: "exclamationmark.circle")
-          .font(.caption)
-          .foregroundStyle(.orange)
+        Spacer(minLength: 0)
       }
+
+      privacyLine
+      statusLine
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    // A revisited tour can already be on Cloud with a key, without `select` running again.
+    // The factory default is a cloud model the user may not have a key for; move it now.
+    .onAppear {
+      if choice == .cloud { OnboardingTranscriptionChoice.preferCloud(onlyIfCurrentCannotRun: true) }
+      setup.refresh()
+    }
+  }
+
+  /// A key was saved or OpenRouter connected/disconnected. Cloud must re-pick a model that
+  /// can run before Continue re-reads `hasRequiredCredential`, or a Gemini key leaves the
+  /// OpenAI default selected and the step stays blocked.
+  private func credentialChanged() {
+    if choice == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    setup.refresh()
+  }
+
+  // MARK: - Choice cards
+
+  private func choiceCard(
+    _ value: DictationChoice, icon: String, title: LocalizedStringKey, tagline: LocalizedStringKey, facts: [LocalizedStringKey]
+  ) -> some View {
+    let selected = choice == value
+    return Button {
+      select(value)
+    } label: {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 10) {
+          Image(systemName: icon)
+            .font(.system(size: 22))
+            .foregroundStyle(.tint)
+            .frame(width: 28)
+          VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+              .font(.headline)
+              .foregroundStyle(.primary)
+            Text(tagline)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+          Spacer(minLength: 4)
+          Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 18))
+            .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.5))
+        }
+        VStack(alignment: .leading, spacing: 4) {
+          ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+              Text("•").foregroundStyle(.secondary)
+              Text(fact)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption)
+          }
+        }
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+      .cardChrome(
+        fill: selected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor),
+        stroke: selected ? Color.accentColor : Color(nsColor: .separatorColor),
+        lineWidth: selected ? 2 : 1)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .pointerCursorOnHover()
+    .accessibilityAddTraits(selected ? .isSelected : [])
+  }
+
+  private func select(_ value: DictationChoice) {
+    choice = value
+    // Offline Mode hides every cloud provider. Someone who just picked Cloud means it, so the
+    // switch goes off here rather than leaving them with key fields that do nothing.
+    if value == .cloud && offlineMode {
+      offlineMode = false
+      OfflineMode.switchTo(false, reason: "onboarding chose Cloud")
+    }
+    if value == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    setup.refresh()
+  }
+
+  // MARK: - Details per choice
+
+  @ViewBuilder
+  private var offlineDetails: some View {
+    OnboardingOfflineRow(onReady: { setup.refresh() })
+
+    // For regulated dictation (patient findings, case notes): the recording may not leave the
+    // device, and neither may Chat or anything else. Offered here, where the user just said
+    // "offline", rather than in Settings where they would have to know to look.
+    VStack(alignment: .leading, spacing: 4) {
+      Toggle("Block all cloud features (Offline Mode)", isOn: $offlineMode)
+        .toggleStyle(.switch)
+        .font(.callout)
+        .onChange(of: offlineMode) { isOn in
+          OfflineMode.switchTo(isOn, reason: "during onboarding")
+        }
+      Text("For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 4)
+  }
+
+  @ViewBuilder
+  private var cloudDetails: some View {
+    // First because it is the only row a brand-new user can finish without leaving the app,
+    // opening a dashboard, or copying anything — including creating the account itself.
+    OnboardingOpenRouterRow(onCredentialChanged: credentialChanged)
+
+    OnboardingAPIKeyRow(
+      provider: .google,
+      note: "Already have a Google AI Studio key? Paste it here.",
+      onStored: credentialChanged
+    )
+
+    DisclosureGroup(isExpanded: $showOtherProviders) {
+      VStack(spacing: 12) {
+        OnboardingAPIKeyRow(provider: .openai, onStored: credentialChanged)
+        OnboardingAPIKeyRow(
+          provider: .anthropic,
+          note: "Chat only — Dictate Prompt is not available with Claude.",
+          onStored: credentialChanged
+        )
+        OnboardingAPIKeyRow(
+          provider: .xai,
+          note: "Dictate Prompt is not available with Grok.",
+          onStored: credentialChanged
+        )
+      }
+      .padding(.top, 8)
+    } label: {
+      Text("Other providers — OpenAI, Anthropic, xAI")
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
+        .onTapGesture { withAnimation { showOtherProviders.toggle() } }
+    }
+    .padding(.horizontal, 4)
+  }
+
+  // MARK: - Privacy and status
+
+  /// The privacy promise in one line, with the full version one click away. It used to be a step of
+  /// its own; the choice above already answers its main question.
+  private var privacyLine: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "lock.shield")
+        .foregroundStyle(.secondary)
+      Text("Your audio goes only where you pick here — never to us. Keys stay in your Keychain.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 8)
+      Button("Privacy details") { showPrivacyDetails.toggle() }
+        .buttonStyle(.link)
+        .font(.caption)
+        .pointerCursorOnHover()
+        .popover(isPresented: $showPrivacyDetails, arrowEdge: .top) {
+          WelcomePrivacyDetails()
+        }
+    }
+  }
+
+  @ViewBuilder
+  private var statusLine: some View {
+    if canContinue {
+      Label("Ready to continue.", systemImage: "checkmark.circle.fill")
+        .font(.caption)
+        .foregroundStyle(.green)
+    } else {
+      Label(pendingHint, systemImage: "exclamationmark.circle")
+        .font(.caption)
+        .foregroundStyle(.orange)
+    }
+  }
+
+  private var pendingHint: LocalizedStringKey {
+    switch choice {
+    case nil: return "Pick Offline or Cloud to continue."
+    case .offline: return "Download the offline model to continue."
+    case .cloud: return "Connect OpenRouter or save a key to continue."
+    }
+  }
+}
+
+/// The full privacy promise, shown from the setup step's "Privacy details" link.
+struct WelcomePrivacyDetails: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Text(PrivacyCopy.promiseTitle)
+        .font(.headline)
+      VStack(alignment: .leading, spacing: 10) {
+        ForEach(Array(PrivacyCopy.promiseBullets.enumerated()), id: \.offset) { _, bullet in
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+            Text(bullet)
+              .font(.callout)
+              .textSelection(.enabled)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+      }
+      OpenSourceBanner()
+      Button {
+        if let url = URL(string: AppConstants.privacyPolicyURL) {
+          NSWorkspace.shared.open(url)
+        }
+      } label: {
+        Label("View full privacy policy", systemImage: "doc.text")
+          .font(.callout)
+      }
+      .buttonStyle(.bordered)
+      .pointerCursorOnHover()
+    }
+    .padding(18)
+    .frame(width: 480)
   }
 }
 
 /// Lets a new user finish setup with no provider key by downloading the recommended offline
 /// model (Parakeet Ultra, ≈700 MB — `plans/active/parakeet-offline.md` D1: new setups get it).
 struct OnboardingOfflineRow: View {
-  @Binding var offlineReady: Bool
+  /// Continue re-reads the selected model after the download (or an already-present file) has
+  /// been made the transcription backend.
+  var onReady: () -> Void = {}
   private let modelType = OfflineModelType.mostAccurate
+  @ObservedObject private var modelManager = ModelManager.shared
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       OfflineModelDownloadCard(modelType: modelType, onReady: syncReady)
-      if offlineReady { OnboardingOfflinePromptNote() }
+      if modelManager.isModelAvailable(modelType) { OnboardingOfflinePromptNote() }
     }
   }
 
-  /// Marks offline setup as ready and — only when no cloud key is configured —
-  /// makes the offline model the active transcription backend so the app works
-  /// immediately. A cloud user's higher-quality default is left untouched.
+  /// Marks offline setup as ready and makes an offline model the active transcription backend.
+  /// This row is shown only after the user answered "Offline" to "How should dictation run?", so
+  /// that answer wins over a cloud key they may also have. A user already on another offline
+  /// model (e.g. a Whisper model for a language Parakeet lacks) keeps it.
   private func syncReady() {
-    offlineReady = true
-    let hasCloudKey = KeychainManager.shared.hasNonEmpty(.google)
-      || KeychainManager.shared.hasNonEmpty(.openAI)
-      || KeychainManager.shared.hasNonEmpty(.xai)
-      || KeychainManager.shared.hasNonEmpty(.anthropic)
-      || KeychainManager.shared.hasNonEmpty(.openRouter)
-    if !hasCloudKey {
+    if TranscriptionModel.loadSelected().provider != .offline {
       UserDefaults.standard.set(
         TranscriptionModel.forOfflineModel(modelType).rawValue,
         forKey: UserDefaultsKeys.selectedTranscriptionModel)
       DebugLogger.log(
-        "ONBOARDING: offline \(modelType.displayName) ready; set as default transcription model")
+        "ONBOARDING: chose Offline; \(modelType.displayName) set as transcription model")
     }
     prepareOfflinePromptModel()
+    onReady()
   }
 
   /// Without a key Dictate Prompt and Chat would otherwise fail on their first use. The reconciler
@@ -426,7 +511,9 @@ struct OnboardingOfflinePromptNote: View {
 /// hands the app a key without the user ever seeing one — so it is the only row that can take
 /// somebody from "just installed this" to "dictation works" without leaving the window.
 struct OnboardingOpenRouterRow: View {
-  @Binding var isConfigured: Bool
+  /// Parent re-picks a transcription model and re-reads Continue. Replaces the `isConfigured`
+  /// binding that used to be one of five Keychain booleans.
+  var onCredentialChanged: () -> Void = {}
   @ObservedObject private var oauthService = OpenRouterOAuthService.shared
 
   @State private var isAuthorizing = false
@@ -466,7 +553,10 @@ struct OnboardingOpenRouterRow: View {
         if oauthService.isConnected {
           Button("Disconnect") {
             oauthService.disconnect()
-            isConfigured = false
+            // Chat may have been running on this key. Same re-check Settings does on Disconnect,
+            // so onboarding cannot keep a slot pointed at an account that is now gone.
+            ModelSelectionReconciler.reconcileAll()
+            onCredentialChanged()
           }
           Link("Add credits", destination: OpenRouterOAuthConfig.creditsURL)
             .font(.callout)
@@ -498,7 +588,6 @@ struct OnboardingOpenRouterRow: View {
     .clipShape(RoundedRectangle(cornerRadius: 8))
     .onAppear {
       oauthService.refreshConnectionState()
-      isConfigured = oauthService.isConnected
     }
   }
 
@@ -508,12 +597,12 @@ struct OnboardingOpenRouterRow: View {
     Task {
       do {
         if try await oauthService.connect() {
-          isConfigured = true
           // A brand-new user has no other credential, so leaving the default transcription model
-          // selected would send them to a provider they cannot reach. Point Dictate at what they
-          // just connected.
-          adoptOpenRouterAsTranscriptionModelIfNoOtherCredential()
+          // selected would send them to a provider they cannot reach. Same pick as the Cloud
+          // card: reconciler order, OpenRouter only when nothing else can transcribe.
+          OnboardingTranscriptionChoice.preferCloud()
           ModelSelectionReconciler.reconcileAll()
+          onCredentialChanged()
         }
       } catch {
         errorMessage = error.localizedDescription
@@ -522,60 +611,46 @@ struct OnboardingOpenRouterRow: View {
     }
   }
 
-  private func adoptOpenRouterAsTranscriptionModelIfNoOtherCredential() {
-    let hasOtherCloudKey = KeychainManager.shared.hasNonEmpty(.google)
-      || KeychainManager.shared.hasNonEmpty(.openAI)
-      || KeychainManager.shared.hasNonEmpty(.xai)
-      || KeychainManager.shared.hasNonEmpty(.anthropic)
-    guard !hasOtherCloudKey else { return }
-    UserDefaults.standard.set(
-      TranscriptionModel.openRouterTranscription.rawValue,
-      forKey: UserDefaultsKeys.selectedTranscriptionModel)
-    DebugLogger.log("ONBOARDING: OpenRouter connected; set as default transcription model")
-  }
 }
 
 struct OnboardingAPIKeyRow: View {
-  let providerName: String
-  let placeholder: String
-  let linkTitle: String
-  let linkURL: URL
-  var description: String? = nil
-  @Binding var isConfigured: Bool
-  let load: () -> String
-  let save: (String) -> Bool
-  let recommended: Bool
+  let provider: APIKeyProvider
+  /// Extra line under the title. The provider's own subtitle is the Settings paragraph;
+  /// onboarding keeps the shorter note it already showed.
+  var note: LocalizedStringKey? = nil
+  /// Runs after a successful save, once `store` has reconciled. The setup step re-picks a
+  /// transcription model and re-reads Continue from here.
+  var onStored: () -> Void = {}
 
   @State private var key: String = ""
+  /// Last value read or saved. The Save button used to call `load()` inside `.disabled`, which
+  /// hit the Keychain on every render.
+  @State private var storedKey: String = ""
   @State private var isVisible: Bool = false
+  @State private var isSaving: Bool = false
   @State private var savedConfirmation: Bool = false
-  @State private var saveError: String?
+  @State private var saveError: OSStatus?
+
+  private var link: APIKeyHelpLink? { provider.helpLinks.first }
+  private var isConfigured: Bool { !storedKey.isEmpty }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 8) {
-        Text(providerName)
+        Text(provider.sectionTitle)
           .font(.callout)
           .fontWeight(.semibold)
-        if recommended {
-          Text("Recommended")
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.accentColor.opacity(0.15))
-            .foregroundColor(.accentColor)
-            .clipShape(Capsule())
-        }
         statusBadge
         Spacer()
-        Link(linkTitle, destination: linkURL)
-          .font(.caption)
-          .pointerCursorOnHover()
+        if let link {
+          Link(link.label, destination: link.url)
+            .font(.caption)
+            .pointerCursorOnHover()
+        }
       }
 
-      if let description {
-        Text(description)
+      if let note {
+        Text(note)
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -584,11 +659,11 @@ struct OnboardingAPIKeyRow: View {
       HStack(spacing: 8) {
         ZStack {
           if isVisible {
-            TextField(placeholder, text: $key)
+            TextField(provider.keyPlaceholder, text: $key)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
           } else {
-            SecureField(placeholder, text: $key)
+            SecureField(provider.keyPlaceholder, text: $key)
               .textFieldStyle(.roundedBorder)
               .font(.system(.body, design: .monospaced))
           }
@@ -600,27 +675,32 @@ struct OnboardingAPIKeyRow: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isVisible ? "Hide key" : "Show key")
-        .help(isVisible ? "Hide key" : "Show key")
+        .accessibilityLabel(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
+        .help(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
 
         Button("Save") {
           let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard !trimmed.isEmpty else { return }
-          if save(trimmed) {
-            saveError = nil
-            isConfigured = true
-            CloudModelOffer.scheduleCheck()
+          guard !trimmed.isEmpty, !isSaving else { return }
+          isSaving = true
+          savedConfirmation = false
+          Task {
+            let status = await provider.store(trimmed)
+            isSaving = false
+            saveError = status
+            guard status == nil else { return }
+            storedKey = trimmed
+            key = trimmed
+            onStored()
             savedConfirmation = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
               savedConfirmation = false
             }
-          } else {
-            savedConfirmation = false
-            saveError = "Couldn't save to Keychain. Try again."
           }
         }
         .buttonStyle(.bordered)
-        .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || key == load())
+        .disabled(
+          isSaving || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || key == storedKey
+        )
         .pointerCursorOnHover()
       }
 
@@ -630,23 +710,15 @@ struct OnboardingAPIKeyRow: View {
           .foregroundStyle(.green)
       }
       if let saveError {
-        Label(saveError, systemImage: "exclamationmark.triangle.fill")
-          .font(.caption2)
-          .foregroundStyle(.red)
+        KeychainSaveWarning(status: saveError)
       }
     }
     .padding(14)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
+    .cardChrome()
     .onAppear {
-      key = load()
-      isConfigured = !key.isEmpty
+      let stored = KeychainManager.shared.get(provider.credential) ?? ""
+      storedKey = stored
+      key = stored
     }
   }
 
@@ -655,7 +727,7 @@ struct OnboardingAPIKeyRow: View {
       Image(systemName: "circle.fill")
         .font(.system(size: 7))
         .foregroundStyle(isConfigured ? .green : .gray)
-      Text(isConfigured ? "Configured" : "Not set")
+      Text(isConfigured ? ("Configured" as LocalizedStringKey) : "Not set")
         .font(.caption2)
         .foregroundStyle(.secondary)
     }
@@ -668,26 +740,21 @@ struct OnboardingAPIKeyRow: View {
 /// The first successful dictation, as early as the tour can offer it: a provider or offline model
 /// is set up (previous steps) and the microphone is granted. Everything after this is optional.
 struct WelcomeTryItStep: View {
-  private var dictateShortcut: String {
-    ShortcutConfigManager.shared.loadConfiguration().startRecording.displayStringWithSeparator
+  /// A disabled Dictate binding renders as "Disabled", which used to read
+  /// "Later, Disabled does the same…". There is no other wording for that case, so the
+  /// "Later, … does the same" clause is dropped and only the instruction to try it remains.
+  private var tryItDetail: LocalizedStringKey {
+    let shortcut = ShortcutConfigManager.shared.loadConfiguration()[keyPath: ShortcutAction.dictate.keyPath]
+    guard shortcut.isEnabled else { return "Say a sentence." }
+    return "Say a sentence. Later, \(shortcut.displayStringWithSeparator) does the same in any app and puts the text where your cursor is."
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "waveform")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Try it now")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Say a sentence. Later, \(dictateShortcut) does the same in any app and puts the text where your cursor is.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
+      WelcomeStepHeader(
+        systemImage: "waveform",
+        title: "Try it now",
+        subtitle: tryItDetail)
       OnboardingTryItPanel()
       Spacer(minLength: 0)
     }
@@ -699,27 +766,25 @@ struct WelcomePermissionsStep: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "checkmark.shield")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("macOS permissions")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Microphone is required for dictation. Screen Recording is optional — for screenshots in chat and Dictate Prompt. You can change these any time in Settings → Privacy & Permissions.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
+      WelcomeStepHeader(
+        systemImage: "checkmark.shield",
+        title: "macOS permissions",
+        subtitle: "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions.")
 
       ScrollView {
         // The same overview used in Settings → Privacy & Permissions and on permission errors —
         // one component, one behavior. Accessibility is omitted here on purpose
         // (App Store Guideline 2.4.5: don't imply the app needs it up front).
-        PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
-          .padding(.bottom, 8)
+        VStack(alignment: .leading, spacing: 14) {
+          PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
+          // Accessibility appears only as the auto-paste opt-in, and only in the direct build:
+          // the App Store build has no auto-paste (Guideline 2.4.5).
+          #if !APP_STORE
+          Divider()
+          OnboardingAutoPasteCard()
+          #endif
+        }
+        .padding(.bottom, 8)
       }
 
       if micStatus == .granted {
@@ -740,71 +805,56 @@ struct WelcomePermissionsStep: View {
   }
 }
 
-/// Optional onboarding step that introduces auto-paste and its Accessibility requirement.
-/// Default off — the toggle is the opt-in, and only flipping it on requests Accessibility
-/// (App Store Guideline 2.4.5: never imply the app needs Accessibility up front). Never gates
-/// Continue. Mirrors `WelcomeSmartImprovementStep`'s structure for visual consistency.
-struct WelcomeAutoPasteStep: View {
-  @Binding var autoPasteEnabled: Bool
+/// Auto-paste opt-in, shown on the permissions step of the direct build because it is the only
+/// thing Accessibility is for. Default off — only flipping the toggle requests Accessibility (App
+/// Store Guideline 2.4.5: never imply the app needs it up front). Never gates Continue.
+struct OnboardingAutoPasteCard: View {
+  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
+    SettingsDefaults.autoPasteAfterDictation
 
-  /// Live Accessibility status so the user sees, on this very page, whether the grant succeeded
-  /// after enabling the toggle. Refreshed on appear and whenever the app reactivates (e.g. after
-  /// returning from the System Settings prompt).
+  /// Live Accessibility status so the user sees here whether the grant succeeded. Refreshed on
+  /// appear and whenever the app reactivates (e.g. after returning from System Settings).
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "doc.on.clipboard")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Auto-paste")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Optional — insert dictated text right where you're typing.")
-            .font(.callout)
+    VStack(alignment: .leading, spacing: 10) {
+      Toggle(isOn: $autoPasteEnabled) {
+        VStack(alignment: .leading, spacing: 2) {
+          HStack(spacing: 8) {
+            Text("Accessibility — auto-paste")
+              .font(.callout)
+              .fontWeight(.semibold)
+            Text("Optional")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+          Text("Puts dictated text straight at your cursor (a simulated ⌘V). macOS asks for Accessibility when you turn this on. Without it, your text is copied and you paste it yourself.")
+            .font(.caption)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
-
-      Text("With auto-paste on, transcriptions and Dictate Prompt results appear at your cursor automatically (a simulated ⌘V) instead of just on the clipboard. macOS allows that only with Accessibility permission, so enabling it asks for that now. Dictation works fine without it — your text is always copied so you can paste manually.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      VStack(alignment: .leading, spacing: 12) {
-        Toggle(isOn: $autoPasteEnabled) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Enable auto-paste")
-              .font(.callout)
-              .fontWeight(.medium)
-            Text("You can change this any time in Settings → General.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
+      .toggleStyle(.switch)
+      .onChange(of: autoPasteEnabled) { newValue in
+        guard newValue else { return }
+        if !AccessibilityPermissionManager.hasAccessibilityPermission() {
+          // Request now (native prompt + pre-registration), matching the Settings opt-in path.
+          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
         }
-        .toggleStyle(.switch)
-        .onChange(of: autoPasteEnabled) { newValue in
-          guard newValue else { return }
-          if !AccessibilityPermissionManager.hasAccessibilityPermission() {
-            // Request now (native prompt + pre-registration), matching the Settings opt-in path.
-            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
-          }
-          refreshStatus()
-        }
+        refreshStatus()
+      }
 
-        if autoPasteEnabled {
-          Divider()
-          HStack(spacing: 8) {
-            WelcomePermissionBadge(status: axStatus)
-            Text(accessibilityHint)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            // Always offered (even when granted) so the user can review or change the grant
-            // in System Settings — consistent with the permissions step's per-row button.
+      if autoPasteEnabled {
+        HStack(spacing: 8) {
+          PermissionStatusBadge(status: axStatus)
+          Text(axStatus == .granted
+            ? ("Accessibility granted — auto-paste is ready." as LocalizedStringKey)
+            : "Enable WhisperShortcut in System Settings, then return here.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 8)
+          if axStatus != .granted {
             Button {
               PermissionStatusChecker.openSystemSettings(for: .accessibility)
             } label: {
@@ -816,30 +866,10 @@ struct WelcomeAutoPasteStep: View {
           }
         }
       }
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color(nsColor: .controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-      )
-
-      Spacer()
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .onAppear(perform: refreshStatus)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshStatus()
-    }
-  }
-
-  private var accessibilityHint: String {
-    switch axStatus {
-    case .granted: return "Accessibility granted — auto-paste is ready."
-    default: return "Accessibility needed. Enable WhisperShortcut in System Settings, then return here."
     }
   }
 
@@ -848,76 +878,32 @@ struct WelcomeAutoPasteStep: View {
   }
 }
 
-struct WelcomeSmartImprovementStep: View {
-  @Binding var saveUsageData: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      HStack(spacing: 12) {
-        Image(systemName: "sparkles")
-          .font(.system(size: 32))
-          .foregroundStyle(.tint)
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Smart Improvement")
-            .font(.title2)
-            .fontWeight(.semibold)
-          Text("Optional — refines your prompts over time.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-      }
-
-      Text("To do this, WhisperShortcut stores your interaction logs (dictation, Dictate Prompt, and chat) locally, and periodically sends them to your configured AI provider to suggest better prompts. Nothing goes to us or any third party — only to the provider you already use.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      Toggle(isOn: $saveUsageData) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Save usage data for Smart Improvement")
-            .font(.callout)
-            .fontWeight(.medium)
-          Text("You can change this any time in Settings → Smart Improvement.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-      }
-      .toggleStyle(.switch)
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color(nsColor: .controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-      )
-
-      Spacer()
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-  }
-}
-
 struct WelcomeDoneStep: View {
   /// One shortcut the user can trigger, plus the OS permissions it needs to actually work.
   /// `requirements` is "all must be granted" — a single missing one makes the row red.
   private struct ShortcutFeature: Identifiable {
     let shortcut: String
-    let name: String
-    let detail: String
+    let name: LocalizedStringResource
+    let detail: LocalizedStringKey
     let requirements: [PermissionKind]
-    var id: String { name }
+    /// Dictate also needs a transcription model that can run (a key or a downloaded model).
+    var needsTranscriptionModel = false
+    var id: String { shortcut }
   }
 
-  private let shortcuts = ShortcutConfigManager.shared.loadConfiguration()
+  /// Read from the recorders' model, so a shortcut re-recorded on this step shows up in the list
+  /// right away (a `let` here was read once when the step appeared).
+  private var shortcuts: ShortcutConfig { SettingsViewModel.shortcutConfig(from: settingsViewModel.data) }
 
   /// Live permission state so each row's green/red status is accurate, and flips the moment the
   /// user grants a permission and returns (didBecomeActive) without leaving onboarding.
   @State private var micStatus = PermissionStatusChecker.status(for: .microphone)
   @State private var axStatus = PermissionStatusChecker.status(for: .accessibility)
   @State private var screenStatus = PermissionStatusChecker.status(for: .screenRecording)
+  /// Mirrors the menu bar's rule (`MenuBarController.updateMenuItems`): the icon turns into ⚠️
+  /// when no provider key is set and the selected transcription model cannot run.
+  @State private var canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+  @State private var hasAnyCredential = ProviderCredentials.anyChatCredentialConfigured
   @StateObject private var settingsViewModel = SettingsViewModel()
   @FocusState private var focusedField: SettingsFocusField?
 
@@ -926,112 +912,124 @@ struct WelcomeDoneStep: View {
   /// are hidden rather than shown as "Disabled".
   private var features: [ShortcutFeature] {
     var list: [ShortcutFeature] = []
-    if shortcuts.startRecording.isEnabled {
+    func binding(_ action: ShortcutAction) -> ShortcutDefinition {
+      shortcuts[keyPath: action.keyPath]
+    }
+    let dictate = binding(.dictate)
+    if dictate.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.startRecording.displayString,
-          name: "Dictate",
+          shortcut: dictate.displayString,
+          name: ShortcutAction.dictate.localizedTitle,
           detail: "press and start speaking — your words land as text",
-          requirements: [.microphone]))
+          requirements: [.microphone],
+          needsTranscriptionModel: true))
     }
-    if shortcuts.startPrompting.isEnabled {
-      // The App Store build reads the selection from a screenshot (Screen Recording);
-      // the direct build copies it via a synthetic ⌘C (Accessibility).
-      let selectionRequirement: PermissionKind =
-        AppConstants.dictatePromptUsesScreenshotSelection ? .screenRecording : .accessibility
+    let prompting = binding(.dictatePrompt)
+    if prompting.isEnabled {
+      // Per selected model: screenshot → Screen Recording; App Store local → clipboard the user
+      // copied, so no extra permission; direct build → Accessibility for the synthetic ⌘C.
+      let promptModel = settingsViewModel.data.selectedPromptModel
+      var promptRequirements: [PermissionKind] = [.microphone]
+      if let selection = promptModel.dictatePromptSelectionPermission {
+        promptRequirements.append(selection)
+      }
       #if APP_STORE
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
       #else
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place"
       #endif
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.startPrompting.displayString,
-          name: "Dictate Prompt",
+          shortcut: prompting.displayString,
+          name: ShortcutAction.dictatePrompt.localizedTitle,
           detail: promptDetail,
-          requirements: [.microphone, selectionRequirement]))
+          requirements: promptRequirements))
     }
-    if shortcuts.screenshotCapture.isEnabled {
+    let screenshot = binding(.screenshot)
+    if screenshot.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.screenshotCapture.displayString,
-          name: "Screenshot",
+          shortcut: screenshot.displayString,
+          name: ShortcutAction.screenshot.localizedTitle,
           detail: "capture your screen straight to the clipboard or a folder",
           requirements: [.screenRecording]))
     }
-    if shortcuts.openChat.isEnabled {
+    // Chat stays ahead of Read Aloud. The menu and the assistant list put Read Aloud first;
+    // this page was already the other way, and Settings is not a row here at all.
+    let chat = binding(.chat)
+    if chat.isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.openChat.displayString,
-          name: "Chat",
+          shortcut: chat.displayString,
+          name: ShortcutAction.chat.localizedTitle,
           detail: "a full conversation window, with screenshots",
           requirements: []))
     }
     // Selection-based Read Aloud copies via ⌘C (Accessibility) — the feature is omitted
     // from the App Store build entirely (no menu item, no hotkey), so don't advertise it.
-    #if !APP_STORE
-    if shortcuts.readAloud.isEnabled {
+    // The Done step keeps `displayString` (compact), unlike the Try-it step.
+    if ShortcutAction.readAloud.isInThisBuild, binding(.readAloud).isEnabled {
       list.append(
         ShortcutFeature(
-          shortcut: shortcuts.readAloud.displayString,
-          name: "Read Aloud",
+          shortcut: binding(.readAloud).displayString,
+          name: ShortcutAction.readAloud.localizedTitle,
           detail: "select text anywhere and hear it spoken",
           requirements: [.accessibility]))
     }
-    #endif
     return list
   }
 
   var body: some View {
     ScrollView {
     VStack(spacing: 18) {
-      Image(systemName: "checkmark.seal.fill")
+      Image(systemName: dictationReady ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
         .font(.system(size: 40))
-        .foregroundStyle(.green)
+        .foregroundStyle(dictationReady ? .green : .orange)
       VStack(spacing: 8) {
-        Text("You're ready")
+        Text(dictationReady ? ("You're ready" as LocalizedStringKey) : "Almost ready")
           .font(.largeTitle)
           .fontWeight(.semibold)
-        Text("Here's everything you can do. Green is ready to use; red still needs a permission.")
-          .font(.title3)
+        // The app has no Dock icon or main window, so say where it lives — and describe the icon
+        // the user will actually see: ⚠️ while nothing can transcribe, the mic otherwise.
+        menuBarHint
+          .font(.callout)
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
       }
+      .frame(maxWidth: 560)
 
-      VStack(spacing: 0) {
-        ForEach(Array(features.enumerated()), id: \.element.id) { index, feature in
-          if index > 0 { Divider() }
-          shortcutRow(feature)
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Your shortcuts — green is ready, red still needs a permission.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+          ForEach(Array(features.enumerated()), id: \.element.id) { index, feature in
+            if index > 0 { Divider() }
+            shortcutRow(feature)
+          }
         }
+        .cardChrome()
       }
       .frame(maxWidth: 560, alignment: .leading)
-      .background(
-        RoundedRectangle(cornerRadius: 10)
-          .fill(Color(nsColor: .controlBackgroundColor))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 10)
-          .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-      )
+
+      // Asked last, once the user has seen what the app does: a yes here is an informed one.
+      UsageStatisticsToggle()
+        .padding(14)
+        .frame(maxWidth: 560, alignment: .leading)
+        .cardChrome()
 
       onboardingShortcutRecorder
         .frame(maxWidth: 560)
 
-      VStack(spacing: 6) {
-        // The app has no Dock icon or main window, so tell first-time users where it lives.
-        Text("WhisperShortcut lives in your menu bar — look for the \(Image(systemName: "mic.fill")) icon at the top of your screen.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-        Text("You can revisit this tour any time from Settings → About.")
-          .font(.caption)
-          .foregroundStyle(.tertiary)
-          .multilineTextAlignment(.center)
-      }
-      .frame(maxWidth: 560)
+      Text("You can revisit this tour any time from Settings → About.")
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: 560)
     }
     .frame(maxWidth: .infinity)
     .padding(.bottom, 8)
@@ -1041,6 +1039,15 @@ struct WelcomeDoneStep: View {
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshStatuses()
     }
+  }
+
+  /// Writes the shortcut bindings and leaves every other settings slot alone.
+  /// `saveSettings()` would persist the snapshot taken when this step appeared,
+  /// so a model picked in Settings meanwhile would be reverted.
+  /// `saveConfiguration` posts `.shortcutsChanged`, which re-registers hotkeys.
+  private func saveRecordedShortcuts() {
+    ShortcutConfigManager.shared.saveConfiguration(
+      SettingsViewModel.shortcutConfig(from: settingsViewModel.data))
   }
 
   @ViewBuilder
@@ -1059,7 +1066,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.toggleDictation,
         focusedField: .toggleDictation,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1068,7 +1075,7 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.togglePrompting,
         focusedField: .togglePrompting,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
@@ -1077,21 +1084,14 @@ struct WelcomeDoneStep: View {
         shortcut: $settingsViewModel.data.screenshotCapture,
         focusedField: .screenshotCapture,
         currentFocus: $focusedField,
-        onChanged: { Task { await settingsViewModel.saveSettings() } },
+        onChanged: { saveRecordedShortcuts() },
         findConflict: settingsViewModel.findShortcutConflict,
         clearShortcut: settingsViewModel.clearShortcut
       )
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(
-      RoundedRectangle(cornerRadius: 10)
-        .fill(Color(nsColor: .controlBackgroundColor))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: 10)
-        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-    )
+    .cardChrome()
   }
 
   @ViewBuilder
@@ -1121,22 +1121,24 @@ struct WelcomeDoneStep: View {
   /// naming the first missing permission and opening the right System Settings pane.
   @ViewBuilder
   private func statusBadge(for feature: ShortcutFeature) -> some View {
-    if let missing = missingRequirement(for: feature) {
+    if feature.needsTranscriptionModel && !canTranscribe {
+      badgeContent(icon: "exclamationmark.circle.fill", color: .orange, text: "Needs a model")
+    } else if let missing = missingRequirement(for: feature) {
       Button {
         PermissionStatusChecker.openSystemSettings(for: missing)
       } label: {
         badgeContent(
-          icon: "xmark.circle.fill", color: .red, text: "Needs \(permissionName(missing))")
+          icon: "xmark.circle.fill", color: .red, text: "Needs \(missing.displayName)")
       }
       .buttonStyle(.plain)
       .pointerCursorOnHover()
-      .help("Open System Settings to grant \(permissionName(missing)) access")
+      .help("Open System Settings to grant \(missing.displayName) access")
     } else {
       badgeContent(icon: "checkmark.circle.fill", color: .green, text: "Ready")
     }
   }
 
-  private func badgeContent(icon: String, color: Color, text: String) -> some View {
+  private func badgeContent(icon: String, color: Color, text: LocalizedStringKey) -> some View {
     HStack(spacing: 4) {
       Image(systemName: icon)
         .foregroundStyle(color)
@@ -1162,53 +1164,26 @@ struct WelcomeDoneStep: View {
     }
   }
 
-  private func permissionName(_ kind: PermissionKind) -> String {
-    switch kind {
-    case .microphone: return "Microphone"
-    case .accessibility: return "Accessibility"
-    case .screenRecording: return "Screen Recording"
+  private var dictationReady: Bool { canTranscribe && micStatus == .granted }
+
+  private var menuBarHint: Text {
+    if !canTranscribe && !hasAnyCredential {
+      return Text("WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and add a key or download the offline model.")
     }
+    if !canTranscribe {
+      return Text("WhisperShortcut lives in your menu bar — the \(Image(systemName: "mic.fill")) icon at the top of your screen. Dictation still needs a transcription model: pick one in Settings → Dictate.")
+    }
+    if micStatus != .granted {
+      return Text("WhisperShortcut lives in your menu bar — the \(Image(systemName: "mic.fill")) icon at the top of your screen. Dictation needs the microphone: allow it in System Settings → Privacy & Security → Microphone.")
+    }
+    return Text("WhisperShortcut lives in your menu bar — the \(Image(systemName: "mic.fill")) icon at the top of your screen.")
   }
 
   private func refreshStatuses() {
+    canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+    hasAnyCredential = ProviderCredentials.anyChatCredentialConfigured
     micStatus = PermissionStatusChecker.status(for: .microphone)
     axStatus = PermissionStatusChecker.status(for: .accessibility)
     screenStatus = PermissionStatusChecker.status(for: .screenRecording)
-  }
-}
-
-struct WelcomePermissionBadge: View {
-  let status: PermissionStatus
-
-  var body: some View {
-    HStack(spacing: 5) {
-      Image(systemName: "circle.fill")
-        .font(.system(size: 8))
-        .foregroundStyle(color)
-      Text(label)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 3)
-    .background(Capsule().fill(color.opacity(0.12)))
-  }
-
-  private var color: Color {
-    switch status {
-    case .granted: return .green
-    case .denied: return .red
-    case .notDetermined: return .yellow
-    case .notApplicable: return .gray
-    }
-  }
-
-  private var label: String {
-    switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
-    case .notApplicable: return "Not applicable"
-    }
   }
 }

@@ -1,48 +1,18 @@
 import AppKit
 import SwiftUI
 
-/// Screenshot Settings Tab — capture shortcut plus optional save-to-folder behavior.
+/// Screenshot Settings Tab — optional save-to-folder behavior. The shortcut is set in General.
 struct ScreenshotSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      keyboardShortcutSection
-
-      SpacedSectionDivider()
-
       saveSection
 
       SpacedSectionDivider()
 
       usageSection
-    }
-  }
-
-  // MARK: - Keyboard Shortcut Section
-  @ViewBuilder
-  private var keyboardShortcutSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Keyboard Shortcut",
-        systemImage: "keyboard",
-        subtitle: "Press the shortcut to capture a region of the screen to the clipboard (e.g. to paste into chat)"
-      )
-
-      ShortcutRecorderRow(
-        label: "Screenshot to Clipboard:",
-        shortcut: $viewModel.data.screenshotCapture,
-        focusedField: .screenshotCapture,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
     }
   }
 
@@ -106,8 +76,8 @@ struct ScreenshotSettingsTab: View {
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = false
-    panel.prompt = "Choose"
-    panel.message = "Choose a folder to save screenshots into"
+    panel.prompt = String(localized: "Choose")
+    panel.message = String(localized: "Choose a folder to save screenshots into")
     guard panel.runModal() == .OK, let url = panel.url else { return }
     if ScreenshotSaveLocation.setFolder(url) {
       viewModel.data.screenshotSaveFolderDisplayPath = url.path
@@ -123,6 +93,8 @@ struct ScreenshotSettingsTab: View {
         systemImage: "questionmark.circle",
         subtitle: "Capture a screenshot anywhere on your Mac"
       )
+
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.screenshotCapture)
 
       VStack(alignment: .leading, spacing: 8) {
         Text("Press the shortcut, then drag to select a region. The image is copied to the clipboard.")

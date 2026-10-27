@@ -6,6 +6,23 @@ import Testing
 @Suite("Writing Style")
 struct WritingStyleTests {
 
+  // MARK: - Profile due rule
+
+  @Test("Never offered with enough samples is due")
+  func neverOfferedIsDue() {
+    #expect(WritingStyleAutoUpdater.isProfileDue(since: 0, total: 25, hasProfile: false, dismissed: false))
+  }
+
+  @Test("Dismissed with fewer than 20 new samples is not due")
+  func dismissedFewNewNotDue() {
+    #expect(!WritingStyleAutoUpdater.isProfileDue(since: 5, total: 25, hasProfile: false, dismissed: true))
+  }
+
+  @Test("Dismissed with 20 new samples is due again")
+  func dismissedManyNewDue() {
+    #expect(WritingStyleAutoUpdater.isProfileDue(since: 20, total: 40, hasProfile: false, dismissed: true))
+  }
+
   // MARK: - Cleaning sent mail
 
   @Test("German reply header and quoted text are cut")
@@ -160,6 +177,24 @@ struct WritingStyleTests {
     #expect(WritingStyleStore.profileSection(in: profile, for: .messenger) == "lowercase, no greeting")
     #expect(WritingStyleStore.profileSection(in: profile, for: .workChat) == "")
     #expect(WritingStyleStore.profileSection(in: profile, for: .defaultContext) == "")
+  }
+
+  @Test("Re-derive keeps hand-written sections of contexts without samples")
+  func mergeKeepsUnsampledSection() {
+    let current = "=== Default ===\nhand-written\n\n=== Email ===\nold email\n"
+    let merged = WritingStyleImporter.mergedProfile(
+      derived: [.email: " new email \n", .defaultContext: "filler"],
+      current: current, contextsWithSamples: [.email])
+    #expect(WritingStyleStore.profileSection(in: merged, for: .defaultContext) == "hand-written")
+    #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "new email")
+  }
+
+  @Test("Re-derive without samples and without an existing section stays empty")
+  func mergeUnsampledEmptyStaysEmpty() {
+    let merged = WritingStyleImporter.mergedProfile(
+      derived: [.messenger: "No examples."], current: "=== Email ===\nold\n", contextsWithSamples: [])
+    #expect(WritingStyleStore.profileSection(in: merged, for: .messenger) == "")
+    #expect(WritingStyleStore.profileSection(in: merged, for: .email) == "old")
   }
 
   @Test("Duplicates by id and by text are skipped")

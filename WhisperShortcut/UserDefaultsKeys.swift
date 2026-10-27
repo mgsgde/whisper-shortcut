@@ -175,6 +175,8 @@ enum UserDefaultsKeys {
   static let writingStyleSamplesSinceProfile = "writingStyleSamplesSinceProfile"
   /// When the Writing Style profile was last derived and accepted.
   static let writingStyleProfileUpdatedAt = "writingStyleProfileUpdatedAt"
+  /// When the user last dismissed the Writing Style profile review (Cancel). Stops the first-profile offer from repeating.
+  static let writingStyleProfileDismissedAt = "writingStyleProfileDismissedAt"
   /// When the Writing Style Gmail import last finished without error.
   static let writingStyleLastGmailImportAt = "writingStyleLastGmailImportAt"
 
@@ -194,10 +196,24 @@ enum UserDefaultsKeys {
   /// `SpeechService.transcribeWithOpenRouter`.
   static let openRouterTranscriptionModelID = "openRouterTranscriptionModelID"
 
-  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenRouter, LiteLLM, self-hosted proxy, …)
+  // MARK: - OpenRouter chat
+  /// Model slug sent to OpenRouter for chat (e.g. `openai/gpt-4o`); read via `OpenRouterChatPreferences`.
+  static let openRouterChatModelID = "openRouterChatModelID"
+
+  // MARK: - ChatGPT plan (Sign in with ChatGPT)
+  /// Model slug sent to the Responses API for chat; read via `ChatGPTPlanPreferences`.
+  static let chatGPTPlanModelID = "chatGPTPlanModelID"
+  /// Cached `[slug, displayName]` list from `GET /v1/models` (JSON), see `ChatGPTPlanModelCatalog`.
+  static let chatGPTPlanModelCatalog = "chatGPTPlanModelCatalog"
+  /// Stable `urn:uuid:` host identifier sent as `ext_agent_host_id`. Opaque, not user-identifying.
+  static let chatGPTPlanHostID = "chatGPTPlanHostID"
+  /// Set once the "You're using your ChatGPT plan" notice was shown after the first sign-in.
+  static let chatGPTPlanFirstUseNoticeShown = "chatGPTPlanFirstUseNoticeShown"
+
+  // MARK: - Custom OpenAI-compatible Chat Endpoint (OpenInference, Azure, Vertex, LiteLLM, self-hosted)
   /// Base URL up to `/v1` (the app appends `/chat/completions`). Empty → official OpenAI API.
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"
-  /// Model tag for the Custom endpoint chat model (e.g. `openai/gpt-4o` on OpenRouter).
+  /// Model tag for the Custom endpoint chat model (e.g. `zai-org/GLM-5.2`).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
 
   // MARK: - Grok X search
@@ -248,6 +264,11 @@ enum UserDefaultsKeys {
   /// first used, entering a key moves the slot back. See `ModelSelectionReconciler.keylessUpgrade`.
   static let keylessOfflineFallbacks = "keylessOfflineFallbacks"
 
+  /// Raw `TTSModel` value the user had before the reconciler moved Read Aloud to the macOS voice
+  /// for lack of a key. Present only while the slot still holds that automatic fallback; adding a
+  /// cloud key moves the slot back. See `ModelSelectionReconciler.readAloudUpgrade`.
+  static let keylessReadAloudFallback = "keylessReadAloudFallback"
+
   /// Cloud providers (`ChatModelProvider` raw values) whose "use them instead of the on-device
   /// models?" offer the user declined. A key for a provider not in this list asks again.
   /// See `CloudModelOffer`.
@@ -260,4 +281,9 @@ enum UserDefaultsKeys {
   static let mcpServerEnabled = "mcpServerEnabled"
   /// Optional override of the MCP server's loopback port. Unset/0 → MCPServer.defaultPort.
   static let mcpServerPort = "mcpServerPort"
+  /// How far AI apps connected with the write token may change the configuration:
+  /// "read" (default) | "propose" | "apply". See MCPConfigAccessLevel.
+  static let mcpConfigAccessLevel = "mcpConfigAccessLevel"
+  /// Whether AI apps may read recent dictations (needs `contextLoggingEnabled` as well). Default false.
+  static let mcpShareRecentInteractions = "mcpShareRecentInteractions"
 }

@@ -18,13 +18,18 @@ enum TelemetryArea: String, CaseIterable, Codable {
   case other
 
   /// Maps `InteractionLogEntry.mode` / `SignalLogEntry.mode` strings onto an area.
+  /// `smartImprovement` is a `RequestOrigin`, not an interaction mode: timeouts on that
+  /// path are logged with it, and an unknown spelling stays `.other`.
   init(logMode: String?) {
-    switch logMode {
-    case "transcription": self = .dictation
-    case "prompt": self = .prompt
-    case "geminiChat": self = .chat
-    case "smartImprovement": self = .smartImprovement
-    default: self = .other
+    if logMode == RequestOrigin.smartImprovement.rawValue {
+      self = .smartImprovement
+      return
+    }
+    switch logMode.flatMap(InteractionMode.init(rawValue:)) {
+    case .transcription: self = .dictation
+    case .prompt: self = .prompt
+    case .chat: self = .chat
+    case nil: self = .other
     }
   }
 }
@@ -48,6 +53,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case requestTimedOut
   case noSpeechDetected
   case noInputSignal
+  case glossaryEchoRemoved
 
   init(signal: OutcomeSignal) {
     switch signal {
@@ -63,6 +69,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .requestTimedOut: self = .requestTimedOut
     case .noSpeechDetected: self = .noSpeechDetected
     case .noInputSignal: self = .noInputSignal
+    case .glossaryEchoRemoved: self = .glossaryEchoRemoved
     }
   }
 }
@@ -127,11 +134,15 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
   /// is the cohort denominator for retention.
   case telemetryEnabled = "telemetry.enabled"
   case onboardingIntro = "onboarding.step.intro"
+  /// Retired with the five-step tour (no longer sent). Kept so queues persisted by older builds
+  /// still decode and the case list still matches `server/telemetry/schema.json`.
   case onboardingPrivacy = "onboarding.step.privacy"
   case onboardingAPIKeys = "onboarding.step.apiKeys"
   case onboardingPermissions = "onboarding.step.permissions"
   case onboardingTryIt = "onboarding.step.tryIt"
+  /// Retired with the five-step tour, like `onboardingPrivacy`.
   case onboardingAutoPaste = "onboarding.step.autoPaste"
+  /// Retired with the five-step tour, like `onboardingPrivacy`.
   case onboardingSmartImprovement = "onboarding.step.smartImprovement"
   case onboardingDone = "onboarding.step.done"
   case onboardingCompleted = "onboarding.completed"
@@ -144,12 +155,10 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
   init(step: WelcomeStep) {
     switch step {
     case .intro: self = .onboardingIntro
-    case .privacy: self = .onboardingPrivacy
-    case .apiKeys: self = .onboardingAPIKeys
+    // Same milestone as the old API-key step, so the setup funnel stays comparable across versions.
+    case .dictationSetup: self = .onboardingAPIKeys
     case .permissions: self = .onboardingPermissions
     case .tryIt: self = .onboardingTryIt
-    case .autoPaste: self = .onboardingAutoPaste
-    case .smartImprovement: self = .onboardingSmartImprovement
     case .done: self = .onboardingDone
     }
   }

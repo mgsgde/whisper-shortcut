@@ -30,19 +30,9 @@ struct MailCredentialRequest: Identifiable {
   static let imapsPort = 993
 
   /// Where custom-domain mailboxes are commonly hosted. Offered on the card for own domains.
-  static let hostedProviders: [(name: String, host: String)] = [
-    ("IONOS", "imap.ionos.de"),
-    ("Strato", "imap.strato.de"),
-    ("GMX", "imap.gmx.net"),
-    ("WEB.DE", "imap.web.de"),
-    ("Hetzner", "mail.your-server.de"),
-    ("iCloud+ custom domain", "imap.mail.me.com"),
-    ("mailbox.org", "imap.mailbox.org"),
-    ("Fastmail", "imap.fastmail.com"),
-    ("Zoho Mail (EU)", "imap.zoho.eu"),
-    ("Zoho Mail", "imap.zoho.com"),
-    ("Hostinger", "imap.hostinger.com"),
-  ]
+  static var hostedProviders: [(name: String, host: String)] {
+    MailProvider.all.filter(\.hostsCustomDomains).map { ($0.name, $0.host) }
+  }
 
   /// The server the card preselects for an own domain. A host the model suggested is used only when
   /// it is a listed provider's server or lies under the address's own domain; anything else falls
@@ -112,13 +102,13 @@ struct MailCredentialCardView: View {
       Image(systemName: phase == .connected ? "checkmark.circle.fill" : "lock")
         .foregroundColor(phase == .connected ? .green : ChatTheme.secondaryText)
       VStack(alignment: .leading, spacing: 3) {
-        Text(phase == .connected ? "Connected \(request.email)" : "Connect \(request.email)")
+        Text(phase == .connected ? ("Connected \(request.email)" as LocalizedStringKey) : "Connect \(request.email)")
           .font(.system(size: 13, weight: .semibold))
           .foregroundColor(ChatTheme.primaryText)
           .lineLimit(1)
           .truncationMode(.middle)
         Text(phase == .connected
-             ? "Saved in your Keychain. Read-only access."
+             ? ("Saved in your Keychain. Read-only access." as LocalizedStringKey)
              : "Read-only. Your password stays in your Keychain and is never sent to the AI.")
           .font(.system(size: 12))
           .foregroundColor(ChatTheme.secondaryText)
@@ -225,7 +215,7 @@ struct MailCredentialCardView: View {
     }
   }
 
-  private func label(_ text: String) -> some View {
+  private func label(_ text: LocalizedStringKey) -> some View {
     Text(text)
       .font(.system(size: 12))
       .foregroundColor(ChatTheme.secondaryText)
@@ -236,7 +226,7 @@ struct MailCredentialCardView: View {
 
   private var providerNote: String? {
     if case .fixed(_, _, let note) = request.server { return note }
-    return nil
+    return MailProvider.provider(forHost: selectedHost)?.note
   }
 
   private var initialHost: String? {

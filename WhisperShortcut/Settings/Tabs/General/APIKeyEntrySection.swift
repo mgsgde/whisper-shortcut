@@ -57,15 +57,12 @@ struct APIKeyEntrySection: View {
           }
         }
         .onChange(of: key) { _, newValue in
-          // Off the main thread: `SecItemUpdate` is a synchronous IPC round-trip to securityd
-          // that has been observed to stall for seconds (see the cache note in KeychainManager).
+          // `onAppear` loading the stored key also fires this. Treat that as a load, not a save:
+          // otherwise merely opening Settings → Accounts rewrites every key and pops the
+          // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
+          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
           Task {
-            let saved = KeychainManager.shared.save(newValue, for: provider.credential)
-            await MainActor.run {
-              keychainSaveError = saved ? nil : KeychainManager.shared.lastWriteError(for: provider.credential)
-            }
-            ModelSelectionReconciler.reconcileAll()
-            if !newValue.isEmpty { CloudModelOffer.scheduleCheck() }
+            keychainSaveError = await provider.store(newValue)
           }
         }
 
@@ -74,8 +71,8 @@ struct APIKeyEntrySection: View {
             .foregroundColor(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isKeyVisible ? "Hide API key" : "Show API key")
-        .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
+        .help(isKeyVisible ? ("Hide API key" as LocalizedStringKey) : "Show API key")
+        .accessibilityLabel(isKeyVisible ? ("Hide API key" as LocalizedStringKey) : "Show API key")
 
         Spacer()
       }

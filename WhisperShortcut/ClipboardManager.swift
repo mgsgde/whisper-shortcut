@@ -89,6 +89,15 @@ class ClipboardManager {
     changeCountAfterLastWrite = 0
   }
 
+  /// Restore for a job whose pasteboard change was made by another app (the synthetic ⌘C of Read
+  /// Aloud), not by `copyToClipboard`. `changeCount` is the pasteboard state the job has just
+  /// consumed; if anything writes after that, the restore is skipped like in the paste flow.
+  @discardableResult
+  func restorePendingSnapshot(afterForeignWriteAt changeCount: Int) -> Bool {
+    changeCountAfterLastWrite = changeCount
+    return restorePendingSnapshot()
+  }
+
   /// Writes the remembered contents back and clears the restore point. No-op when nothing was
   /// captured, or when the pasteboard was empty to begin with (restoring "empty" would just
   /// throw away the dictated text for no gain).

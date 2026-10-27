@@ -24,7 +24,7 @@ final class MeetingListService: ObservableObject {
 
   private static let displayDateFormatter: DateFormatter = {
     let f = DateFormatter()
-    f.dateFormat = "EEEE, d MMM yyyy, HH:mm"
+    f.setLocalizedDateFormatFromTemplate("EEEE d MMM yyyy HH:mm")
     return f
   }()
 
@@ -65,7 +65,7 @@ final class MeetingListService: ObservableObject {
       files = try FileManager.default.contentsOfDirectory(
         at: dir, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles)
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Failed to read meetings directory: \(error.logDescription)")
       meetings = []
       return
     }
@@ -113,7 +113,7 @@ final class MeetingListService: ObservableObject {
       try text.write(to: url, atomically: true, encoding: .utf8)
       DebugLogger.log("MEETING-LIBRARY: Saved summary to \(url.lastPathComponent)")
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Save summary failed: \(error.logDescription)")
     }
   }
 
@@ -139,7 +139,7 @@ final class MeetingListService: ObservableObject {
       try LiveMeetingTranscriptStore.notesMarkdown(notes)
         .write(to: url, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Save notes failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Save notes failed: \(error.logDescription)")
     }
   }
 
@@ -172,7 +172,7 @@ final class MeetingListService: ObservableObject {
         return trimmed
       }
     } catch {
-      DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("MEETING-LIBRARY: Generate summary failed: \(error.logDescription)")
     }
     return ""
   }
@@ -186,9 +186,9 @@ final class MeetingListService: ObservableObject {
   /// Final post-meeting summary for the given transcript + model. `.low` thinking: summarizing
   /// benefits from some reasoning, but the model default (`medium` on 3.5/3.6 Flash) bills
   /// thinking tokens at the output rate for little visible gain on this task.
-  static func generateSummaryText(transcript: String, markers: [String] = [], model: PromptModel) async throws -> String {
+  static func generateSummaryText(transcript: String, model: PromptModel) async throws -> String {
     try await generate(
-      prompt: AppConstants.meetingSummaryPrompt(transcript: transcript, markers: markers),
+      prompt: AppConstants.meetingSummaryPrompt(transcript: transcript),
       model: model, label: "MEETING-SUMMARY", thinkingLevel: .low)
   }
 

@@ -28,6 +28,9 @@ enum ChatMemoryTools {
           !matching.isEmpty else {
       return ["error": "Missing required argument: matching"]
     }
+    guard matching.filter({ !$0.isWhitespace }).count >= 3 else {
+      return ["error": "Give at least 3 characters of the fact to forget."]
+    }
     let removed = ChatMemoryStore.shared.removeFacts(matching: matching)
     guard removed > 0 else {
       return ["ok": true, "removed": 0,

@@ -72,8 +72,8 @@ final class ToolStepsBuffer: ObservableObject {
   /// What the typing indicator says: the running step, numbered once the turn has several.
   var indicatorLabel: String? {
     guard let active = activeStep else { return nil }
-    let label = active.phase == .awaitingApproval ? "Waiting for your approval…" : active.runningLabel
-    return steps.count > 1 ? "Step \(steps.count) · \(label)" : label
+    let label = active.phase == .awaitingApproval ? String(localized: "Waiting for your approval…") : active.runningLabel
+    return steps.count > 1 ? String(localized: "Step \(steps.count) · \(label)") : label
   }
 }
 
@@ -108,14 +108,14 @@ extension ChatToolRegistry {
   }
 
   private struct StepWording {
-    let running: String
-    let done: String
+    let running: LocalizedStringResource
+    let done: LocalizedStringResource
     var object: StepObject? = nil
     /// Noun for the result count ("3 results"); nil = no count.
     var countNoun: String? = nil
     /// Wording when the object argument is missing, where `running`/`done` would dangle
     /// ("Searching Gmail for…"). Nil = `running`/`done` read fine on their own.
-    var bare: (running: String, done: String)? = nil
+    var bare: (running: LocalizedStringResource, done: LocalizedStringResource)? = nil
   }
 
   /// One entry per tool the chat declares. `ChatToolStepsTests` fails when a declared tool is
@@ -206,17 +206,18 @@ extension ChatToolRegistry {
   static func stepLabel(name: String, args: [String: Any], done: Bool) -> String {
     // Reading the rules is the harmless first step the model is told to take; don't call it an update.
     if name == updateInstructionsToolName, (args["action"] as? String) == "read" {
-      return done ? "Read app instructions" : "Reading app instructions…"
+      return done ? String(localized: "Read app instructions") : String(localized: "Reading app instructions…")
     }
     guard let wording = stepWordings[name] else {
       let readable = name.replacingOccurrences(of: "_", with: " ")
-      return done ? "Ran \(readable)" : "Running \(readable)…"
+      return done ? String(localized: "Ran \(readable)") : String(localized: "Running \(readable)…")
     }
-    var label = done ? wording.done : wording.running
+    // The object (a quoted query, a file name, a URL) is user data appended after the verb phrase.
+    var label = String(localized: done ? wording.done : wording.running)
     if let object = wording.object, let text = objectText(object, args: args) {
       label += " " + text
     } else if let bare = wording.bare {
-      label = done ? bare.done : bare.running
+      label = String(localized: done ? bare.done : bare.running)
     }
     return done ? label : label + "…"
   }
@@ -244,7 +245,19 @@ extension ChatToolRegistry {
   /// Short outcome for a finished call: "3 results" for list-type tools, nil otherwise.
   static func resultSummary(name: String, response: [String: Any]) -> String? {
     guard let noun = stepWordings[name]?.countNoun, let count = resultCount(response) else { return nil }
-    return "\(count) \(noun)"
+    switch noun {
+    case "events": return String(localized: "\(count) events")
+    case "lists": return String(localized: "\(count) lists")
+    case "tasks": return String(localized: "\(count) tasks")
+    case "results": return String(localized: "\(count) results")
+    case "accounts": return String(localized: "\(count) accounts")
+    case "emails": return String(localized: "\(count) emails")
+    case "boards": return String(localized: "\(count) boards")
+    case "cards": return String(localized: "\(count) cards")
+    case "entries": return String(localized: "\(count) entries")
+    case "matches": return String(localized: "\(count) matches")
+    default: return "\(count) \(noun)"
+    }
   }
 
   /// Error text of a tool response, if the call failed.

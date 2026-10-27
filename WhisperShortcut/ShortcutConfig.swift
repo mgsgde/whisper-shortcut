@@ -58,7 +58,7 @@ extension Key: @retroactive Codable {
     case .eight: return "8"
     case .nine: return "9"
     case .escape: return "⎋"
-    case .space: return "Space"
+    case .space: return String(localized: "Space", comment: "Name of the space bar key in a shortcut")
     case .comma: return ","
     case .period: return "."
     case .f1: return "F1"
@@ -111,17 +111,15 @@ extension NSEvent.ModifierFlags: @retroactive Codable {
 /// "stop" binding. Previously this struct had `stopRecording` / `stopPrompting` / `toggleMeeting`
 /// / `stopMeeting` siblings — they were never read after the toggle redesign and have been
 /// dropped. Existing UserDefaults entries for those keys are left in place (harmless).
-struct ShortcutConfig: Codable {
+struct ShortcutConfig: Codable, Equatable {
   var startRecording: ShortcutDefinition
   var startPrompting: ShortcutDefinition
   var openSettings: ShortcutDefinition
   var openChat: ShortcutDefinition
   var screenshotCapture: ShortcutDefinition
   var readAloud: ShortcutDefinition
-  var voiceFeedback: ShortcutDefinition
-  var meetingMarker: ShortcutDefinition
-  /// Appends the current selection to the Glossary. Continues the ⌘-digit run of the other
-  /// actions; ⌘7 was the first free one.
+  /// Appends the current selection to the Glossary. Ships disabled: the key and modifiers are only
+  /// the suggested binding, the user turns it on in Settings.
   var addToGlossary: ShortcutDefinition
 
   /// Defaults for new installs: ⌃⌥ + digit. ⌘1/⌘2/⌘3 switch tabs in every browser, Slack, VS Code
@@ -135,9 +133,7 @@ struct ShortcutConfig: Codable {
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.control, .option], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.control, .option], isEnabled: true),
-    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.control, .option], isEnabled: true),
-    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.control, .option], isEnabled: true),
-    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: true)
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.control, .option], isEnabled: false)
   )
 
   /// The ⌘-digit defaults every install before the ⌃⌥ switch was running on.
@@ -148,26 +144,90 @@ struct ShortcutConfig: Codable {
     openChat: ShortcutDefinition(key: .space, modifiers: [.option], isEnabled: true),
     screenshotCapture: ShortcutDefinition(key: .three, modifiers: [.command], isEnabled: true),
     readAloud: ShortcutDefinition(key: .four, modifiers: [.command], isEnabled: true),
-    voiceFeedback: ShortcutDefinition(key: .five, modifiers: [.command], isEnabled: true),
-    meetingMarker: ShortcutDefinition(key: .six, modifiers: [.command], isEnabled: true),
-    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: true)
+    addToGlossary: ShortcutDefinition(key: .seven, modifiers: [.command], isEnabled: false)
   )
 }
 
+/// One shortcut-bound feature, and whether this build ships it.
+///
+/// The menu, Settings, onboarding and Chat each kept their own copy of this list. They had
+/// already drifted: `assistantFacingRows` still told the App Store Chat that Read Aloud has a
+/// shortcut, while the menu, the keyboard section and the onboarding Done step all hide it
+/// there. Add to Glossary is not a case — the assistant list, the onboarding feature list,
+/// the empty-state hints and the three onboarding recorders never included it, in any build.
+/// The menu title "Add Selection to Glossary" and the Settings label "Add to Glossary:" stay
+/// on those two surfaces, behind the same App Store exclusion.
+enum ShortcutAction: CaseIterable {
+  case dictate
+  case dictatePrompt
+  case screenshot
+  case readAloud
+  case chat
+  case settings
+
+  /// The name the assistant-facing list uses. A surface whose label differs on purpose
+  /// (the menu's "Settings…", Settings' "Open Chat:") keeps that string locally.
+  var title: String {
+    switch self {
+    case .dictate: return "Dictate"
+    case .dictatePrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .settings: return "Settings"
+    }
+  }
+
+  /// `title` for on-screen labels. `title` itself stays English because the assistant-facing
+  /// list is model input, not UI.
+  var localizedTitle: LocalizedStringResource {
+    switch self {
+    case .dictate: return "Dictate"
+    case .dictatePrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .settings: return "Settings"
+    }
+  }
+
+  var keyPath: KeyPath<ShortcutConfig, ShortcutDefinition> {
+    switch self {
+    case .dictate: return \.startRecording
+    case .dictatePrompt: return \.startPrompting
+    case .screenshot: return \.screenshotCapture
+    case .readAloud: return \.readAloud
+    case .chat: return \.openChat
+    case .settings: return \.openSettings
+    }
+  }
+
+  /// Read Aloud copies the selection with ⌘C, which needs Accessibility. The App Store build
+  /// has no menu item and no hotkey for it, so nothing in that build may advertise the shortcut.
+  var isInThisBuild: Bool {
+    switch self {
+    case .readAloud:
+      #if APP_STORE
+      return false
+      #else
+      return true
+      #endif
+    case .dictate, .dictatePrompt, .screenshot, .chat, .settings:
+      return true
+    }
+  }
+}
+
 extension ShortcutConfig {
-  /// The shortcuts both the online and the offline Chat tell the model about, kept in one place so
-  /// the two lists cannot drift. A disabled definition renders as "Disabled" via
-  /// `displayStringWithSeparator`.
+  /// The shortcuts both the online and the offline Chat tell the model about.
+  ///
+  /// `ShortcutAction.allCases` filtered to this build, in that order — the order this list
+  /// had when it was written out by hand, minus Read Aloud in the App Store build. A disabled
+  /// definition still renders as "Disabled" via `displayStringWithSeparator`.
   var assistantFacingRows: [(action: String, definition: ShortcutDefinition)] {
-    [
-      ("Dictate", startRecording),
-      ("Dictate Prompt", startPrompting),
-      ("Screenshot", screenshotCapture),
-      ("Read Aloud", readAloud),
-      ("Voice Feedback", voiceFeedback),
-      ("Chat", openChat),
-      ("Settings", openSettings),
-    ]
+    ShortcutAction.allCases.filter(\.isInThisBuild).map { action in
+      (action.title, self[keyPath: action.keyPath])
+    }
   }
 }
 
@@ -412,8 +472,6 @@ class ShortcutConfigManager {
     static let openChatKey = "shortcut_open_gemini"
     static let screenshotCaptureKey = "shortcut_screenshot_capture"
     static let readAloudKey = "shortcut_read_aloud"
-    static let voiceFeedbackKey = "shortcut_voice_feedback"
-    static let meetingMarkerKey = "shortcut_meeting_marker"
     static let addToGlossaryKey = "shortcut_add_to_glossary"
   }
 
@@ -441,8 +499,6 @@ class ShortcutConfigManager {
           (Constants.openChatKey, legacy.openChat),
           (Constants.screenshotCaptureKey, legacy.screenshotCapture),
           (Constants.readAloudKey, legacy.readAloud),
-          (Constants.voiceFeedbackKey, legacy.voiceFeedback),
-          (Constants.meetingMarkerKey, legacy.meetingMarker),
           (Constants.addToGlossaryKey, legacy.addToGlossary),
         ]
         for (key, shortcut) in pins where loadShortcut(for: key) == nil {
@@ -495,10 +551,6 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.screenshotCaptureKey) ?? ShortcutConfig.default.screenshotCapture
     let readAloud =
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
-    let voiceFeedback =
-      loadShortcut(for: Constants.voiceFeedbackKey) ?? ShortcutConfig.default.voiceFeedback
-    let meetingMarker =
-      loadShortcut(for: Constants.meetingMarkerKey) ?? ShortcutConfig.default.meetingMarker
     let addToGlossary =
       loadShortcut(for: Constants.addToGlossaryKey) ?? ShortcutConfig.default.addToGlossary
     return ShortcutConfig(
@@ -508,8 +560,6 @@ class ShortcutConfigManager {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker,
       addToGlossary: addToGlossary
     )
   }
@@ -521,8 +571,6 @@ class ShortcutConfigManager {
     saveShortcut(config.openChat, for: Constants.openChatKey)
     saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
     saveShortcut(config.readAloud, for: Constants.readAloudKey)
-    saveShortcut(config.voiceFeedback, for: Constants.voiceFeedbackKey)
-    saveShortcut(config.meetingMarker, for: Constants.meetingMarkerKey)
     saveShortcut(config.addToGlossary, for: Constants.addToGlossaryKey)
 
     // Post notification for shortcut updates
@@ -616,8 +664,6 @@ extension Notification.Name {
   /// Posted by a consumer that wants the live notes brought up to date right now for the active
   /// meeting (the user just sent a chat message). MenuBarController forwards it to the session.
   static let liveMeetingNotesRefreshRequested = Notification.Name("liveMeetingNotesRefreshRequested")
-  /// Posted by the marker hotkey to flag the current moment of the running meeting.
-  static let liveMeetingMarkerRequested = Notification.Name("liveMeetingMarkerRequested")
   /// Posted when the chat window becomes visible or hidden. userInfo["visible"] = Bool. Drives the
   /// live meeting's chunk cadence — fast while someone is watching, configured otherwise.
   static let chatWindowVisibilityChanged = Notification.Name("chatWindowVisibilityChanged")

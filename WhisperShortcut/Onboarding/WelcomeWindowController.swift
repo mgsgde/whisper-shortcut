@@ -12,7 +12,7 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
       backing: .buffered,
       defer: false
     )
-    window.title = "Welcome to WhisperShortcut"
+    window.title = String(localized: "Welcome to WhisperShortcut")
     window.contentViewController = hosting
     window.isReleasedWhenClosed = false
     window.center()
@@ -32,10 +32,13 @@ final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
     // Rebuild the hosted view so `WelcomeView` re-reads the persisted step on each
     // presentation: a fresh launch (incl. macOS "Quit & Reopen") resumes mid-tour, while
     // a finished/dismissed tour has been reset to the intro.
-    window?.contentViewController = NSHostingController(rootView: WelcomeView())
+    // An already-visible window keeps its in-progress step; only bring it forward.
+    if window?.isVisible != true {
+      window?.contentViewController = NSHostingController(rootView: WelcomeView())
+      window?.center()
+    }
     NSApp.activate(ignoringOtherApps: true)
     window?.makeKeyAndOrderFront(nil)
-    window?.center()
   }
 
   /// True until the user finishes the last step. The menu bar observes this to keep a

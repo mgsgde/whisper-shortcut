@@ -83,6 +83,11 @@ final class LiveMeetingSession: NSObject {
   private var didShowTranscriptionFailureAlert: Bool = false
   /// True while `retryBacklog` runs, so a second click can't transcribe the same files twice.
   private(set) var isRetryingBacklog: Bool = false
+  /// Retry requests that arrived while a pass was running; one more pass handles them.
+  private var hasPendingRetry = false
+  private var pendingRetryStems: Set<String> = []
+  private var pendingRetryAll = false
+  private var pendingRetryAnnounce = false
   /// Consecutive live-note failures (e.g. sustained Gemini 503). Reset to 0 on any success.
   private var consecutiveNoteFailures: Int = 0
   /// True once the live-note circuit-breaker has tripped: we stop generating further notes for this
@@ -206,6 +211,10 @@ final class LiveMeetingSession: NSObject {
 
     warnIfTranscriptionUnreachable()
 
+    if let url = transcriptURL {
+      LiveMeetingRecordingMarker.write(stem: url.deletingPathExtension().lastPathComponent)
+    }
+
     DebugLogger.logSuccess("LIVE-MEETING: Session started")
     return true
   }
@@ -218,8 +227,30 @@ final class LiveMeetingSession: NSObject {
     stop()
   }
 
+  /// Called when the app is about to exit while a meeting is recording (system quit, update
+  /// script, logout). Keeps the chunk in progress in the audio backlog so it is transcribed when the
+  /// meeting is resumed or ended, instead of vanishing with the process. The recording marker is
+  /// left in place on purpose: the next launch reads it to resume or report the interruption.
+  func preserveForTermination() {
+    guard let recorder, !stopping, !finalized else { return }
+    let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    let chunk = recorder.stopForTermination()
+    self.recorder = nil
+    guard let chunk else {
+      DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
+      return
+    }
+    guard let stem else {
+      DebugLogger.logWarning("LIVE-MEETING: Terminating mid-meeting, no stem known; chunk left at \(chunk.url.lastPathComponent)")
+      return
+    }
+    let kept = MeetingAudioBacklog.retain(chunk.url, stem: stem, startTime: chunk.startTime)
+    DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, in-progress chunk kept in backlog: \(kept)")
+  }
+
   func stop() {
     DebugLogger.log("LIVE-MEETING: User requested stop")
+    LiveMeetingRecordingMarker.clear()
 
     safeguardTimer?.invalidate()
     safeguardTimer = nil
@@ -259,12 +290,12 @@ final class LiveMeetingSession: NSObject {
       DebugLogger.log(
         "LIVE-MEETING-SAFEGUARD: Showing duration prompt after \(thresholdMinutes) minutes")
       let alert = NSAlert()
-      alert.messageText = "Long meeting"
+      alert.messageText = String(localized: "Long meeting")
       alert.informativeText =
         "This meeting has been transcribing for over \(thresholdMinutes) minutes. Stop or continue?"
       alert.alertStyle = .informational
-      alert.addButton(withTitle: "Stop meeting")
-      alert.addButton(withTitle: "Continue")
+      alert.addButton(withTitle: String(localized: "Stop meeting"))
+      alert.addButton(withTitle: String(localized: "Continue"))
       let response = alert.runModal()
       if response == .alertFirstButtonReturn {
         DebugLogger.log("LIVE-MEETING-SAFEGUARD: User chose to stop meeting")
@@ -281,6 +312,10 @@ final class LiveMeetingSession: NSObject {
       return
     }
     finalized = true
+    LiveMeetingRecordingMarker.clear()
+    #if !APP_STORE && canImport(Sparkle)
+    Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() }
+    #endif
 
     let shouldDiscard = discard
     DebugLogger.log("LIVE-MEETING: Session finished (discard=\(shouldDiscard))")
@@ -329,8 +364,7 @@ final class LiveMeetingSession: NSObject {
       if MeetingAudioBacklog.items(stem: stem).isEmpty {
         runPostProcessing(
           transcriptURL: transcriptURL,
-          chunks: LiveMeetingTranscriptStore.shared.chunks,
-          markers: LiveMeetingTranscriptStore.shared.markerTexts)
+          chunks: LiveMeetingTranscriptStore.shared.chunks)
       } else {
         // Some audio failed during the meeting (typically: no connection). The network may well be
         // back by now, so try once more right away; the summary waits until the transcript is whole,
@@ -345,11 +379,36 @@ final class LiveMeetingSession: NSObject {
   /// End-of-meeting pass: consolidate speaker labels across the full transcript, then generate the
   /// final summary from it. Runs detached from the session's own state — everything it needs was
   /// captured before `finish()` cleared the fields.
+  /// True only when `consolidated` is non-empty and carries exactly the same sequence of "[m:ss]"
+  /// timestamps as `original` (same count, same order). Guards the transcript file against an LLM
+  /// that dropped, merged or reordered blocks.
+  nonisolated static func acceptsConsolidation(original: String, consolidated: String) -> Bool {
+    guard !consolidated.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+    return timestampSequence(original) == timestampSequence(consolidated)
+  }
+
+  nonisolated private static func timestampSequence(_ text: String) -> [String] {
+    guard let regex = try? NSRegularExpression(
+      pattern: #"^\[(\d+):(\d{2})\]"#, options: [.anchorsMatchLines])
+    else { return [] }
+    let ns = text as NSString
+    return regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map {
+      ns.substring(with: $0.range)
+    }
+  }
+
   private func runPostProcessing(
-    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], markers: [String]
+    transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk]
   ) {
     Task {
-      let transcriptText = chunksSnapshot.map { "\($0.timestampString) \($0.text)" }.joined(
+      // Build the input from the file on disk: the in-memory store keeps only the newest chunks,
+      // so a long meeting would otherwise be summarised (and overwritten) as a fragment.
+      var sourceChunks = chunksSnapshot
+      if let fileText = try? String(contentsOf: transcriptURL, encoding: .utf8) {
+        let parsed = LiveMeetingTranscriptStore.parseTranscript(fileText)
+        if !parsed.isEmpty { sourceChunks = parsed }
+      }
+      let transcriptText = sourceChunks.map { "\($0.timestampString) \($0.text)" }.joined(
         separator: "\n\n")
       guard !transcriptText.isEmpty else { return }
       let model = PromptModel.loadSelectedMeetingSummary()
@@ -372,7 +431,10 @@ final class LiveMeetingSession: NSObject {
           let consolidated = try await MeetingListService.consolidateSpeakerLabels(
             transcript: transcriptText, model: model.speakerConsolidationModel)
           let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
-          if !trimmed.isEmpty {
+          if !Self.acceptsConsolidation(original: transcriptText, consolidated: trimmed) {
+            DebugLogger.logWarning(
+              "LIVE-MEETING: Speaker consolidation rejected (timestamps differ or empty) — keeping original transcript")
+          } else {
             finalTranscript = trimmed
             if let data = trimmed.data(using: .utf8) {
               try data.write(to: transcriptURL, options: .atomic)
@@ -398,7 +460,7 @@ final class LiveMeetingSession: NSObject {
       }
       do {
         let summary = try await MeetingListService.generateSummaryText(
-          transcript: textForSummary, markers: markers, model: model)
+          transcript: textForSummary, model: model)
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
           MeetingListService.shared.saveSummary(trimmed, transcriptFileURL: transcriptURL)
@@ -414,14 +476,14 @@ final class LiveMeetingSession: NSObject {
           }
         }
       } catch {
-        DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.localizedDescription)")
+        DebugLogger.logError("LIVE-MEETING: Generate summary failed: \(error.logDescription)")
         // Don't lose the summary silently: the transcript is saved, so tell the user it can be
         // regenerated from the meeting library (the recovery path handles a transient outage).
         let offline = OfflineMode.isEnabled
         await MainActor.run {
           PopupNotificationWindow.showError(
-            offline
-              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Chat → Meeting Summary Model; you can then regenerate the summary from the meeting library."
+            verbatim: offline
+              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library."
               : "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
             title: "Live Meeting – Summary Failed"
           )
@@ -435,11 +497,9 @@ final class LiveMeetingSession: NSObject {
   static func chunkFailureMessage(error: Error, kept: Bool) -> String {
     let reason = SpeechErrorFormatter.formatForUser(error)
     guard kept else {
-      return "Part of this meeting couldn't be transcribed: \(reason)"
+      return String(localized: "Part of this meeting couldn't be transcribed: \(reason)")
     }
-    return "Part of this meeting couldn't be transcribed: \(reason)\n\n"
-      + "Recording continues and the audio is kept on this Mac. It is transcribed again when the "
-      + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu."
+    return String(localized: "Part of this meeting couldn't be transcribed: \(reason)\n\nRecording continues and the audio is kept on this Mac. It is transcribed again when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu.")
   }
 
   /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
@@ -461,9 +521,7 @@ final class LiveMeetingSession: NSObject {
         self.didShowTranscriptionFailureAlert = true
         DebugLogger.logWarning("LIVE-MEETING: Started without a network connection")
         PopupNotificationWindow.showError(
-          "There is no internet connection, so this meeting can't be transcribed right now.\n\n"
-            + "Recording continues and the audio is kept on this Mac. It is transcribed when the "
-            + "meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online.",
+          "There is no internet connection, so this meeting can't be transcribed right now.\n\nRecording continues and the audio is kept on this Mac. It is transcribed when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu once you're back online.",
           title: "Live Meeting – Offline"
         )
       }
@@ -480,9 +538,32 @@ final class LiveMeetingSession: NSObject {
   /// automatic retry at meeting end only speaks up when something is still missing.
   @MainActor
   func retryBacklog(stems: [String]? = nil, announce: Bool) async {
-    guard !isRetryingBacklog else { return }
+    guard !isRetryingBacklog else {
+      // Remember the request (ending meeting B while A's retry runs) and run it after this pass.
+      hasPendingRetry = true
+      if let stems { pendingRetryStems.formUnion(stems) } else { pendingRetryAll = true }
+      pendingRetryAnnounce = pendingRetryAnnounce || announce
+      DebugLogger.log("MEETING-BACKLOG: Retry already running, queued another pass")
+      return
+    }
     isRetryingBacklog = true
     onBacklogChanged()
+    await retryBacklogPass(stems: stems, announce: announce)
+    while hasPendingRetry {
+      let nextStems: [String]? = pendingRetryAll ? nil : Array(pendingRetryStems)
+      let nextAnnounce = pendingRetryAnnounce
+      hasPendingRetry = false
+      pendingRetryAll = false
+      pendingRetryStems = []
+      pendingRetryAnnounce = false
+      await retryBacklogPass(stems: nextStems, announce: nextAnnounce)
+    }
+    isRetryingBacklog = false
+    onBacklogChanged()
+  }
+
+  @MainActor
+  private func retryBacklogPass(stems: [String]?, announce: Bool) async {
     let activeStem = recorder != nil ? transcriptURL?.deletingPathExtension().lastPathComponent : nil
     let targets = (stems ?? MeetingAudioBacklog.stemsWithBacklog()).filter { $0 != activeStem }
     DebugLogger.log("MEETING-BACKLOG: Retrying \(targets.count) meeting(s)")
@@ -498,17 +579,14 @@ final class LiveMeetingSession: NSObject {
       }
     }
     let remaining = targets.reduce(0) { $0 + MeetingAudioBacklog.items(stem: $1).count }
-    isRetryingBacklog = false
     onBacklogChanged()
     DebugLogger.log("MEETING-BACKLOG: Retry done (recovered \(recovered), remaining \(remaining))")
 
     if remaining > 0 {
-      let reason = failure.map { SpeechErrorFormatter.formatForUser($0) } ?? "The transcription failed."
-      let parts = remaining == 1 ? "1 part" : "\(remaining) parts"
+      let reason = failure.map { SpeechErrorFormatter.formatForUser($0) } ?? String(localized: "The transcription failed.")
+      let parts = remaining == 1 ? String(localized: "1 part") : String(localized: "\(remaining) parts")
       PopupNotificationWindow.showError(
-        "\(parts) of the meeting couldn't be transcribed yet: \(reason)\n\n"
-          + "The audio is kept on this Mac. Retry once you're back online — here, or with Retry "
-          + "Meeting Transcription in the menu bar menu.",
+        "\(parts) of the meeting couldn't be transcribed yet: \(reason)\n\nThe audio is kept on this Mac. Retry once you're back online — here, or with Retry Meeting Transcription in the menu bar menu.",
         title: "Live Meeting – Transcription Incomplete",
         retryAction: { [weak self] in
           Task { @MainActor in await self?.retryBacklog(stems: targets, announce: true) }
@@ -517,7 +595,7 @@ final class LiveMeetingSession: NSObject {
       )
     } else if announce {
       PopupNotificationWindow.showInfo(
-        recovered == 0
+        verbatim: recovered == 0
           ? "The kept meeting audio contained no speech."
           : "The meeting transcript is complete again. The summary is being regenerated.",
         title: "Meeting Transcription Recovered")
@@ -544,6 +622,10 @@ final class LiveMeetingSession: NSObject {
         consumed.append(item.url)
       } catch TranscriptionError.noSpeechDetected {
         consumed.append(item.url)
+      } catch let error as TranscriptionError where error == .promptLeakDetected || error == .fileTooLarge {
+        // Breaking here would block every later chunk and meeting. The audio stays in the backlog:
+        // a prompt leak is model output and may pass on a later retry.
+        DebugLogger.logWarning("MEETING-BACKLOG: Skipping chunk \(item.url.lastPathComponent) for now: \(error)")
       } catch {
         DebugLogger.logError("MEETING-BACKLOG: Retry failed for \(item.url.lastPathComponent): \(error)")
         failure = error
@@ -583,8 +665,7 @@ final class LiveMeetingSession: NSObject {
       }
       if !merged.isEmpty {
         runPostProcessing(
-          transcriptURL: transcriptURL, chunks: merged,
-          markers: isShownMeeting ? store.markerTexts : [])
+          transcriptURL: transcriptURL, chunks: merged)
       }
     }
     return (recoveredChunks.count, failure)
@@ -627,7 +708,7 @@ final class LiveMeetingSession: NSObject {
       }
       DebugLogger.log("LIVE-MEETING: Renamed transcript to \(newStem).txt")
     } catch {
-      DebugLogger.logError("LIVE-MEETING: Failed to rename transcript: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING: Failed to rename transcript: \(error.logDescription)")
     }
   }
 
@@ -701,18 +782,6 @@ final class LiveMeetingSession: NSObject {
 
   // MARK: - Live notes
 
-  /// Marks the current moment with a user-written (or default) marker and persists it.
-  /// Called from the global marker hotkey while a meeting is recording.
-  @discardableResult
-  func addMarker(text: String) -> Bool {
-    guard appStateIsRecordingMeeting() else { return false }
-    let store = LiveMeetingTranscriptStore.shared
-    let marker = store.appendMarker(text: text, at: recorder?.currentElapsedTime)
-    persistNotes()
-    DebugLogger.log("LIVE-MEETING-NOTES: Marker set at \(marker.timestampString)")
-    return true
-  }
-
   /// Generates the next live note when enough new transcript has accumulated.
   ///
   /// Called after every transcript append — the note stream is what the user reads during the
@@ -742,9 +811,7 @@ final class LiveMeetingSession: NSObject {
       return
     }
 
-    // Only generated notes are context for the model — markers are the user's own words and
-    // repeating them back would just make the model echo them.
-    let recentNotes = store.liveNotes.filter { !$0.isMarker }.suffix(3).flatMap { $0.bullets }
+    let recentNotes = store.liveNotes.suffix(3).flatMap { $0.bullets }
     let previousLastID = lastNotedChunkID
     lastNotedChunkID = newLastID
     noteUpdateInFlight = true
@@ -798,7 +865,7 @@ final class LiveMeetingSession: NSObject {
         DebugLogger.log("LIVE-MEETING-NOTES: Appended note with \(bullets.count) bullet(s)")
       }
     } catch {
-      DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.localizedDescription)")
+      DebugLogger.logError("LIVE-MEETING-NOTES: Note generation failed: \(error.logDescription)")
       await MainActor.run {
         guard generation == self.sessionGeneration else { return }
         // Roll back so the next attempt covers the same segment.
@@ -926,6 +993,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       "LIVE-MEETING: Received chunk \(chunkIndex) at \(Self.formatTimestamp(elapsedSeconds: startTime))\(isSilent ? " (silent)" : "")\(isFinal ? " (final)" : "")"
     )
 
+    // Heartbeat for the recording marker: tells the next launch when the app was last alive.
+    if !finalized && recorder != nil && !stopping {
+      LiveMeetingRecordingMarker.touch()
+    }
+
     // Drop late deliveries that arrive after the session was finalized.
     if finalized {
       DebugLogger.logWarning(
@@ -997,7 +1069,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
               self.didShowRateLimitAlert = true
               self.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
-                SpeechErrorFormatter.formatForUser(error)
+                verbatim: SpeechErrorFormatter.formatForUser(error)
                   + (kept ? "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : ""),
                 title: "Live Meeting – Quota Reached"
               )
@@ -1005,7 +1077,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           } else if !self.didShowTranscriptionFailureAlert {
             self.didShowTranscriptionFailureAlert = true
             PopupNotificationWindow.showError(
-              Self.chunkFailureMessage(error: error, kept: kept),
+              verbatim: Self.chunkFailureMessage(error: error, kept: kept),
               title: "Live Meeting – Transcription Failed"
             )
           }
@@ -1032,6 +1104,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     finish()
   }
 
+  func liveMeetingRecorderDidEndWithoutFinalChunk() {
+    DebugLogger.log("LIVE-MEETING: Recorder ended without a final chunk")
+    awaitingFinalChunk = false
+    maybeFinishAfterChunkCompletion()
+  }
+
   func liveMeetingRecorder(didFailWithError error: Error) {
     DebugLogger.logError("LIVE-MEETING: Recorder error: \(error)")
 
@@ -1052,14 +1130,14 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
           title: "Microphone Access Needed",
           retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-          retryActionTitle: "Open Settings"
+          retryActionTitle: "Open System Settings"
         )
         return
       }
 
       // Show error but don't stop the session
       PopupNotificationWindow.showError(
-        SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
+        verbatim: SpeechErrorFormatter.formatForUser(error), title: "Live Meeting")
     }
   }
 }

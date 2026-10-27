@@ -5,9 +5,17 @@ import Security
 //
 // Every credential goes through the same four operations keyed by `KeychainCredential`, so a
 // newly added secret gets the full lifecycle (save/read/delete/presence) for free.
+extension KeychainManaging {
+  /// Default for implementations without a cache.
+  func getUncached(_ credential: KeychainCredential) -> String? { get(credential) }
+}
+
 protocol KeychainManaging {
   func save(_ value: String, for credential: KeychainCredential) -> Bool
   func get(_ credential: KeychainCredential) -> String?
+  /// Like `get`, but skips the in-memory cache and re-reads the Keychain item. For credentials a
+  /// second process may rotate (the ChatGPT plan refresh token).
+  func getUncached(_ credential: KeychainCredential) -> String?
   @discardableResult func delete(_ credential: KeychainCredential) -> Bool
   /// True when an item exists, without reading its data.
   func has(_ credential: KeychainCredential) -> Bool
@@ -269,16 +277,77 @@ class KeychainManager: KeychainManaging {
     return readSecret(account: credential.accountName)
   }
 
+  func getUncached(_ credential: KeychainCredential) -> String? {
+    if let injected = environmentOverride(for: credential) { return injected }
+    return readSecret(account: credential.accountName, bypassCache: true)
+  }
+
   func secret(account: String) -> String? {
     readSecret(account: account)
   }
 
-  private func readSecret(account accountName: String) -> String? {
+  /// Result of a Keychain lookup by raw account name, distinguishing "no such item" from a real
+  /// failure (e.g. `errSecInteractionNotAllowed` right after login, before the keychain unlocks).
+  /// `secret(account:)` collapses both to `nil`, which is wrong for a caller like the MCP server
+  /// token that must not treat a transient failure as "mint a new token" — that would silently
+  /// invalidate every already-configured client.
+  enum SecretLookup {
+    case found(String)
+    case notFound
+    case failed(OSStatus)
+  }
 
+  func secretLookup(account accountName: String) -> SecretLookup {
     lock.lock()
-    if let cached = valueCache[accountName] { lock.unlock(); return cached }
-    if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }
+    if let cached = valueCache[accountName] { lock.unlock(); return .found(cached) }
+    if knownAbsentAccounts.contains(accountName) { lock.unlock(); return .notFound }
     lock.unlock()
+
+    var query = itemQuery(account: accountName)
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+    var result: AnyObject?
+    let status = store.copyMatching(query, &result)
+
+    if status == errSecSuccess, let data = result as? Data,
+      let value = String(data: data, encoding: .utf8)
+    {
+      lock.lock()
+      valueCache[accountName] = value
+      knownPresentAccounts.insert(accountName)
+      knownAbsentAccounts.remove(accountName)
+      lock.unlock()
+      return .found(value)
+    } else if status == errSecItemNotFound {
+      if usesDataProtection, let migrated = migrateLegacyItem(account: accountName) {
+        lock.lock()
+        valueCache[accountName] = migrated
+        knownPresentAccounts.insert(accountName)
+        knownAbsentAccounts.remove(accountName)
+        lock.unlock()
+        return .found(migrated)
+      }
+      lock.lock()
+      knownAbsentAccounts.insert(accountName)
+      valueCache.removeValue(forKey: accountName)
+      knownPresentAccounts.remove(accountName)
+      lock.unlock()
+      return .notFound
+    } else {
+      DebugLogger.logError("KEYCHAIN: SecItemCopyMatching failed for account \(accountName): status=\(status)")
+      return .failed(status)
+    }
+  }
+
+  private func readSecret(account accountName: String, bypassCache: Bool = false) -> String? {
+
+    if !bypassCache {
+      lock.lock()
+      if let cached = valueCache[accountName] { lock.unlock(); return cached }
+      if knownAbsentAccounts.contains(accountName) { lock.unlock(); return nil }
+      lock.unlock()
+    }
 
     var query = itemQuery(account: accountName)
     query[kSecReturnData as String] = true

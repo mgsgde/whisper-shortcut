@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # When invoked from inside a worktree, the main checkout is the part before /.claude/worktrees/.
 MAIN_ROOT="${REPO_ROOT%%/.claude/worktrees/*}"
-MAIN_APP="${MAIN_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut.app"
+MAIN_APP="${MAIN_ROOT}/build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"
 
 RELAUNCH=0
 WT=""
@@ -42,6 +42,23 @@ WT="$(cd "$WT" && pwd -P)"
 # Anything whose command line lives under the worktree's DerivedData: the app (direct or
 # App Store variant), or an xcodebuild still writing there. Neither survives an rm -rf.
 live_pids() { pgrep -f "${WT}/build/DerivedData" 2>/dev/null || true; }
+
+# Sidecars (`--sidecar`) belong to no user: quit them and carry on, nothing to relaunch.
+SIDECAR_PIDS=""
+for pid in $(live_pids); do
+    [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == *"--sidecar"* ]] && SIDECAR_PIDS+="$pid "
+done
+if [[ -n "$SIDECAR_PIDS" ]]; then
+    echo "→ quitting sidecar instance(s) of this worktree: $SIDECAR_PIDS"
+    kill $SIDECAR_PIDS 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+        sleep 1
+        STILL=""
+        for pid in $SIDECAR_PIDS; do kill -0 "$pid" 2>/dev/null && STILL+="$pid "; done
+        [[ -z "$STILL" ]] && break
+    done
+    [[ -n "${STILL:-}" ]] && kill -9 $STILL 2>/dev/null || true
+fi
 
 PIDS=$(live_pids)
 if [[ -n "$PIDS" ]]; then
@@ -72,7 +89,7 @@ if [[ -n "$PIDS" ]]; then
         sleep 1
     fi
     if [[ -d "$MAIN_APP" ]]; then
-        open "$MAIN_APP" || echo "⚠️  could not relaunch ${MAIN_APP} — start it yourself"
+        open -n "$MAIN_APP" || echo "⚠️  could not relaunch ${MAIN_APP} — start it yourself"
     else
         echo "⚠️  no main-checkout build at ${MAIN_APP} — run scripts/rebuild-and-restart.sh from ${MAIN_ROOT}"
     fi

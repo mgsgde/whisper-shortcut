@@ -324,8 +324,8 @@ final class AnthropicChatProvider: LLMChatProvider {
               DebugLogger.logError("ANTHROPIC-CHAT-STREAM: error event \(kind): \(message)")
               throw TranscriptionError.networkError(
                 kind == "overloaded_error"
-                  ? "Claude is overloaded right now. Try again in a moment."
-                  : "Claude stopped mid-reply: \(message)")
+                  ? String(localized: "Claude is overloaded right now. Try again in a moment.")
+                  : String(localized: "Claude stopped mid-reply: \(message)"))
 
             default:
               break
@@ -465,7 +465,7 @@ final class AnthropicChatProvider: LLMChatProvider {
       status: status,
       body: body,
       invalidKey: TranscriptionError.networkError(
-        "Anthropic API key is invalid. Check the key in Settings → General."))
+        "Anthropic API key is invalid. Check the key in Settings → Accounts."))
   }
 
   /// Effort / adaptive thinking is supported on Sonnet, Opus, Fable, and Haiku 5.5 (default

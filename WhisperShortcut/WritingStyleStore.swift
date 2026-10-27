@@ -97,8 +97,16 @@ final class WritingStyleStore {
     do {
       try text.write(to: profileURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("WRITING-STYLE: Could not save profile: \(error.localizedDescription)")
+      DebugLogger.logError("WRITING-STYLE: Could not save profile: \(error.logDescription)")
     }
+  }
+
+  /// Removes the profile file (used when undoing the change that created it).
+  func removeProfile() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    guard FileManager.default.fileExists(atPath: profileURL.path) else { return }
+    try FileManager.default.removeItem(at: profileURL)
   }
 
   /// Creates the profile with empty section headers if it does not exist yet, so the user has
@@ -177,6 +185,7 @@ final class WritingStyleStore {
     try? FileManager.default.removeItem(at: directory)
     resetSamplesSinceProfile()
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileUpdatedAt)
+    defaults.removeObject(forKey: UserDefaultsKeys.writingStyleProfileDismissedAt)
     defaults.removeObject(forKey: UserDefaultsKeys.writingStyleLastGmailImportAt)
   }
 
@@ -200,7 +209,7 @@ final class WritingStyleStore {
     do {
       try (lines.joined(separator: "\n") + "\n").write(to: samplesURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("WRITING-STYLE: Could not save samples: \(error.localizedDescription)")
+      DebugLogger.logError("WRITING-STYLE: Could not save samples: \(error.logDescription)")
     }
   }
 

@@ -35,7 +35,7 @@ struct CloudModelOfferTests {
   @Test("Cloud selections and unset slots are left out")
   func cloudSlotsAreNotOffered() {
     var selections = keyless()
-    selections[UserDefaultsKeys.selectedChatModel] = PromptModel.gemini37Flash.rawValue
+    selections[UserDefaultsKeys.selectedChatModel] = PromptModel.gemini38Flash.rawValue
     selections[UserDefaultsKeys.selectedTranscriptionModelForMeetings] = nil
     let keys = CloudModelOffer.upgrades(selections: selections, hasKey: { $0 == .gemini }).map(\.key)
     #expect(!keys.contains(UserDefaultsKeys.selectedChatModel))

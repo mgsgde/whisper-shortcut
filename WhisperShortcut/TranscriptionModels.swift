@@ -43,21 +43,26 @@ enum TranscriptionTuning {
 
 // MARK: - Transcription Model Enum
 // Current Gemini model IDs: https://ai.google.dev/gemini-api/docs/models (Gemini API, not Vertex AI).
-// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite, gemini-3.5-flash,
-// gemini-3.7-flash, gemini-3.8-flash. Preview (keep -preview): gemini-3.1-pro-preview — present but **not offered for
-// dictation**, see `isSelectableForDictation`.
+// GA (stable IDs, no -preview): gemini-3.1-flash-lite, gemini-3.5-flash-lite,
+// gemini-3.8-flash, gemini-4-argon. Preview (keep -preview): gemini-3.1-pro-preview.
+// gemini-3.1-pro-preview and gemini-4-argon are present but **not offered for dictation**,
+// see `isSelectableForDictation`.
 // gemini-3.1-flash-lite is GA but *on the deprecation clock*: shutdown 2027-05-07, Google names
 // gemini-3.5-flash-lite as the replacement. We deliberately do not follow that pointer — see the
 // measurement note in `plans/model-audits/2026-09-03-audit.md`. Revisit by early 2027.
 // Removed and forwarded via migrateLegacyTranscriptionRawValue: both Pro slugs
 // (gemini-3-pro-preview, shut down by Google 2026-03-09, and gemini-3.1-pro-preview, withdrawn
 // 2026-08-03 because it never answers a short dictation) → gemini-3.1-flash-lite; the Gemini 2.5
-// family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.5-flash /
-// gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending, Google says use
-// gemini-3.5-flash) → gemini-3.5-flash; gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.7-flash.
+// family (gemini-2.5-flash / -flash-lite, shutdown 2026-10-16) → gemini-3.8-flash /
+// gemini-3.1-flash-lite; gemini-3-flash-preview (deprecated-pending) → gemini-3.8-flash;
+// gemini-3.5-flash and gemini-3.6-flash (removed 2026-10-19, dominated by 3.7) → gemini-3.8-flash;
+// gemini-3.7-flash (removed 2026-10-21 because Google routes it to 3.8) → gemini-3.8-flash.
 // Do not offer a Pro tier for dictation without benchmarking the 1.3 s case first.
 enum TranscriptionModel: String, CaseIterable {
   // Gemini models (online)
+  /// Not selectable for dictation — flagship reasoning is far too slow and expensive for it.
+  /// The case stays so `PromptModel.asTranscriptionModel` can resolve the Gemini endpoint.
+  case gemini4Argon = "gemini-4-argon"
   /// **Not selectable for dictation** — excluded from every picker via `isSelectableForDictation`,
   /// and persisted selections are migrated away. The case survives only because `PromptModel`
   /// borrows this enum to resolve its Gemini endpoint (`PromptModel.asTranscriptionModel`), which
@@ -65,8 +70,6 @@ enum TranscriptionModel: String, CaseIterable {
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
-  case gemini35Flash = "gemini-3.5-flash"
-  case gemini37Flash = "gemini-3.7-flash"
   case gemini38Flash = "gemini-3.8-flash"
 
   // Offline Whisper models
@@ -111,32 +114,30 @@ enum TranscriptionModel: String, CaseIterable {
 
   var displayName: String {
     switch self {
+    case .gemini4Argon:
+      return "Gemini 4 Argon"
     case .gemini31Pro:
       return "Gemini 3.1 Pro"
     case .gemini31FlashLite:
       return "Gemini 3.1 Flash-Lite"
     case .gemini35FlashLite:
       return "Gemini 3.5 Flash-Lite"
-    case .gemini35Flash:
-      return "Gemini 3.5 Flash"
-    case .gemini37Flash:
-      return "Gemini 3.7 Flash"
     case .gemini38Flash:
       return "Gemini 3.8 Flash"
     case .whisperTiny:
-      return "Whisper Tiny (Offline)"
+      return String(localized: "Whisper Tiny (Offline)")
     case .whisperBase:
-      return "Whisper Base (Offline)"
+      return String(localized: "Whisper Base (Offline)")
     case .whisperSmall:
-      return "Whisper Small (Offline)"
+      return String(localized: "Whisper Small (Offline)")
     case .whisperMedium:
-      return "Whisper Medium (Offline)"
+      return String(localized: "Whisper Medium (Offline)")
     case .whisperLarge:
-      return "Whisper Large (Offline)"
+      return String(localized: "Whisper Large (Offline)")
     case .whisperLargeTurbo:
-      return "Whisper Large v3 Turbo (Offline)"
+      return String(localized: "Whisper Large v3 Turbo (Offline)")
     case .parakeetUltra:
-      return "Parakeet Ultra (Offline)"
+      return String(localized: "Parakeet Ultra (Offline)")
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -146,7 +147,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .xaiTranscribe:
       return "Grok Speech-to-Text"
     case .selfHostedTranscription:
-      return "Self-hosted Transcription Endpoint"
+      return String(localized: "Self-hosted Transcription Endpoint")
     case .openRouterTranscription:
       return "OpenRouter"
     }
@@ -179,16 +180,18 @@ enum TranscriptionModel: String, CaseIterable {
   /// Mirrors `PromptModel.isSelectableInChat`: the case stays in the enum so persisted values and
   /// internal lookups keep resolving, but pickers never show it.
   ///
-  /// `gemini31Pro` is the only exclusion. Measured 2026-08-03 against the 1.3 s fixture, it returns
-  /// no response at all when sent any real transcription prompt — 4/4, including a 300 s attempt
-  /// that received zero bytes, while a trivial-prompt control answered in ~6 s between the
-  /// failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the same
-  /// way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
+  /// `gemini31Pro` and `gemini4Argon` are excluded. Measured 2026-08-03 against the 1.3 s fixture,
+  /// 3.1 Pro returns no response at all when sent any real transcription prompt — 4/4, including a
+  /// 300 s attempt that received zero bytes, while a trivial-prompt control answered in ~6 s between
+  /// the failures. Rewording the prompt does not help (an unrelated 436-char instruction fails the
+  /// same way) and neither does streaming. With `SpeechService.Constants.resourceTimeout` at 300 s,
   /// offering it meant a five-minute freeze for anyone who dictated a short phrase.
   /// Detail: plans/model-audits/2026-08-03-audit.md.
+  /// Gemini 4 Argon is flagship reasoning, far too slow and expensive for dictation, so it stays
+  /// out of the pickers the same way.
   var isSelectableForDictation: Bool {
     switch self {
-    case .gemini31Pro: return false
+    case .gemini4Argon, .gemini31Pro: return false
     // Whisper Medium and Large v3 are superseded by turbo (see `OfflineModelType.isSuperseded`).
     // Unlike the Gemini exclusions these are not broken, only dominated, so a user who already
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
@@ -241,8 +244,8 @@ enum TranscriptionModel: String, CaseIterable {
     // Language-dependent (Parakeet covers 25 languages); one source of truth for both pickers.
     case .parakeetUltra, .whisperLargeTurbo:
       return offlineModelType?.isRecommended ?? false
-    case .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash,
-         .gemini37Flash, .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
+    case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
+         .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
          .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
          .selfHostedTranscription, .openRouterTranscription:
       return false
@@ -252,71 +255,71 @@ enum TranscriptionModel: String, CaseIterable {
   /// Gemini 2.0 family was removed from this enum; no transcription option is deprecated in-app.
   var isDeprecated: Bool { false }
 
-  var costLevel: String {
+  var costLevel: CostLevel {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash,
+    case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash:
-      return "Low"
+      return .low
+    case .gemini4Argon:
+      return .high
     case .gemini31Pro:
-      return "Medium"
+      return .medium
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .whisperLargeTurbo, .parakeetUltra:
-      return "Free (Offline)"
+      return .freeOffline
     case .openAIGPTTranscribe:
-      return "Low"
+      return .low
     case .openAIGPT4oTranscribe:
-      return "Medium"
+      return .medium
     case .openAIGPT4oMiniTranscribe:
-      return "Low"
+      return .low
     case .xaiTranscribe:
-      return "Low"
+      return .low
     case .selfHostedTranscription:
-      return "Custom"
+      return .custom
     case .openRouterTranscription:
-      return "Varies"
+      return .varies
     }
   }
 
   var description: String {
     switch self {
+    case .gemini4Argon:
+      return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)")
     case .gemini31Pro:
-      return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
+      return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
-      return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
+      return String(localized: "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation")
     case .gemini35FlashLite:
-      return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
-    case .gemini35Flash:
-      return "Google's Gemini 3.5 Flash • Legacy Flash • Strong on agentic/coding tasks"
-    case .gemini37Flash:
-      return "Google's Gemini 3.7 Flash • Previous Flash workhorse • Capable on coding and agents"
+      return String(localized: "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput")
     case .gemini38Flash:
-      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents"
+      return String(localized: "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents")
     case .whisperTiny:
-      return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
+      return String(localized: "OpenAI Whisper Tiny • Fastest • ~75MB • Offline")
     case .whisperBase:
-      return "OpenAI Whisper Base • Smallest download • ~140MB • Offline"
+      return String(localized: "OpenAI Whisper Base • Smallest download • ~140MB • Offline")
     case .whisperSmall:
-      return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
+      return String(localized: "OpenAI Whisper Small • Better quality • ~460MB • Offline")
     case .whisperMedium:
-      return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
+      return String(localized: "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline")
     case .whisperLarge:
-      return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
+      return String(localized: "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline")
     case .whisperLargeTurbo:
-      return "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline"
+      return String(localized: "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline")
     case .parakeetUltra:
-      return "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline"
+      return String(localized: "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline")
     case .openAIGPTTranscribe:
-      return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
+      return String(localized: "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt")
     case .openAIGPT4oTranscribe:
-      return "OpenAI's flagship audio transcription model • High accuracy • Cloud"
+      return String(localized: "OpenAI's flagship audio transcription model • High accuracy • Cloud")
     case .openAIGPT4oMiniTranscribe:
-      return "OpenAI's faster, cheaper transcription model • Cloud"
+      return String(localized: "OpenAI's faster, cheaper transcription model • Cloud")
     case .xaiTranscribe:
-      return "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key"
+      return String(localized: "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key")
     case .selfHostedTranscription:
-      return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
+      return String(localized: "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint")
     case .openRouterTranscription:
-      return "Any audio-capable model on OpenRouter • Pick the model slug in Dictate settings • Requires an OpenRouter API key"
+      return String(localized: "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → Accounts")
     }
   }
   
@@ -337,15 +340,15 @@ enum TranscriptionModel: String, CaseIterable {
     temperature: Double, effort: TranscriptionThinkingEffort
   ) -> GeminiTranscriptionRequest.GeminiTranscriptionGenerationConfig {
     switch self {
-    case .gemini31FlashLite, .gemini35FlashLite, .gemini35Flash:
+    case .gemini31FlashLite, .gemini35FlashLite:
       return .init(
         thinkingConfig: .init(thinkingLevel: effort.geminiValue, thinkingBudget: nil),
         temperature: temperature)
-    case .gemini31Pro, .gemini37Flash, .gemini38Flash:
-      // Pro, 3.7 Flash, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
-      // `thinkingBudget: 0` — they only run in thinking mode. `minimal` therefore means
-      // "as little as this model allows", i.e. `low`. Verified live: 3.7 Flash 2026-08-23,
-      // 3.8 Flash 2026-09-06 (minimal → 400, low → 200).
+    case .gemini4Argon, .gemini31Pro, .gemini38Flash:
+      // Argon, 3.1 Pro, and 3.8 Flash reject `thinkingLevel: minimal` (HTTP 400) and
+      // `thinkingBudget: 0` — they only run in thinking mode. Argon documents low/medium/high
+      // only. `minimal` therefore means "as little as this model allows", i.e. `low`.
+      // Verified live: 3.8 Flash 2026-09-06 (minimal → 400, low → 200).
       let level = effort == .minimal ? TranscriptionThinkingEffort.low : effort
       return .init(
         thinkingConfig: .init(thinkingLevel: level.geminiValue, thinkingBudget: nil),
@@ -417,12 +420,12 @@ enum TranscriptionModel: String, CaseIterable {
   var systemPromptIgnoredReason: String? {
     switch self {
     case .openAIGPTTranscribe:
-      return "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured."
+      return String(localized: "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured.")
     // Provider-wide rather than case-by-case: this list was spelled out per model and
     // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
     // recommended — offline model was the one showing an inert prompt editor with no warning.
     case _ where provider == .offline:
-      return "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for."
+      return String(localized: "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for.")
     default:
       return nil
     }
@@ -511,17 +514,24 @@ enum TranscriptionModel: String, CaseIterable {
       // Detail: plans/model-audits/2026-08-03-audit.md.
       return TranscriptionModel.gemini31FlashLite.rawValue
     case "gemini-2.5-flash":
-      // Deprecated, shutdown 2026-10-16; Google's named replacement is gemini-3.5-flash.
-      return TranscriptionModel.gemini35Flash.rawValue
+      // Deprecated, shutdown 2026-10-16; 3.5 and 3.7 Flash were removed, so forward to 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
     case "gemini-2.5-flash-lite":
       // Deprecated, shutdown 2026-10-16; replacement is the current Flash-Lite.
       return TranscriptionModel.gemini31FlashLite.rawValue
     case "gemini-3.6-flash":
-      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed.
-      return TranscriptionModel.gemini37Flash.rawValue
+      // Removed 2026-10-19: dominated by 3.7 on price, tier and speed. 3.7 was removed
+      // 2026-10-21 (Google routes it to 3.8), so this lands on 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
+    case "gemini-3.7-flash":
+      // Removed 2026-10-21: Google routes every request to gemini-3.8-flash (dead alias, same price).
+      return TranscriptionModel.gemini38Flash.rawValue
     case "gemini-3-flash-preview":
-      // Deprecated-pending; Google says use gemini-3.5-flash.
-      return TranscriptionModel.gemini35Flash.rawValue
+      // Deprecated-pending; 3.5 and 3.7 Flash were removed, so forward to 3.8.
+      return TranscriptionModel.gemini38Flash.rawValue
+    case "gemini-3.5-flash":
+      // Removed 2026-10-19: dominated by 3.7 on price and tier. Forwards to 3.8 with 3.7.
+      return TranscriptionModel.gemini38Flash.rawValue
     default:
       return raw
     }
@@ -571,9 +581,9 @@ enum TranscriptionModel: String, CaseIterable {
       return .openRouterAudio
     case .gemini31FlashLite, .gemini35FlashLite:
       return .geminiFlashLite
-    case .gemini35Flash, .gemini37Flash, .gemini38Flash:
+    case .gemini38Flash:
       return .geminiFlash
-    case .gemini31Pro:
+    case .gemini4Argon, .gemini31Pro:
       return .geminiPro
     }
   }
@@ -1106,36 +1116,36 @@ enum TranscriptionError: Error, Equatable {
 
   var title: String {
     switch self {
-    case .noGoogleAPIKey: return "No Google API Key"
-    case .invalidAPIKey: return "Invalid Authentication"
-    case .incorrectAPIKey: return "Incorrect API Key"
-    case .countryNotSupported: return "Country Not Supported"
-    case .invalidRequest: return "Invalid Request"
-    case .permissionDenied: return "Permission Denied"
-    case .notFound: return "Not Found"
-    case .modelDeprecated: return "Model No Longer Available"
-    case .rateLimited: return "Rate Limited"
-    case .quotaExceeded: return "Quota Exceeded"
-    case .billingRequired: return "Billing Required"
-    case .serverError: return "Server Error"
-    case .serviceUnavailable: return "Service Unavailable"
-    case .slowDown: return "Slow Down"
-    case .networkError: return "Network Error"
-    case .requestTimeout: return "Request Timeout"
-    case .resourceTimeout: return "Resource Timeout"
-    case .fileError: return "File Error"
-    case .fileTooLarge: return "File Too Large"
-    case .emptyFile: return "Empty File"
-    case .noSpeechDetected: return "No Speech Detected"
-    case .textTooShort: return "Text Too Short"
-    case .promptLeakDetected: return "API Response Issue"
-    case .modelNotAvailable: return "Model Not Downloaded"
-    case .voiceRequiresAPIKey: return "Voice Requires API Key"
-    case .subscriptionRequired: return "Subscription Required"
-    case .noSelectedText: return "Nothing Selected"
-    case .localProcessingTimeout: return "Local Processing Timeout"
-    case .emptyModelReply: return "No Reply"
-    case .localModelFailed: return "Offline Model Error"
+    case .noGoogleAPIKey: return String(localized: "No Google API Key")
+    case .invalidAPIKey: return String(localized: "Invalid Authentication")
+    case .incorrectAPIKey: return String(localized: "Incorrect API Key")
+    case .countryNotSupported: return String(localized: "Country Not Supported")
+    case .invalidRequest: return String(localized: "Invalid Request")
+    case .permissionDenied: return String(localized: "Permission Denied")
+    case .notFound: return String(localized: "Not Found")
+    case .modelDeprecated: return String(localized: "Model No Longer Available")
+    case .rateLimited: return String(localized: "Rate Limited")
+    case .quotaExceeded: return String(localized: "Quota Exceeded")
+    case .billingRequired: return String(localized: "Billing Required")
+    case .serverError: return String(localized: "Server Error")
+    case .serviceUnavailable: return String(localized: "Service Unavailable")
+    case .slowDown: return String(localized: "Slow Down")
+    case .networkError: return String(localized: "Network Error")
+    case .requestTimeout: return String(localized: "Request Timeout")
+    case .resourceTimeout: return String(localized: "Resource Timeout")
+    case .fileError: return String(localized: "File Error")
+    case .fileTooLarge: return String(localized: "File Too Large")
+    case .emptyFile: return String(localized: "Empty File")
+    case .noSpeechDetected: return String(localized: "No Speech Detected")
+    case .textTooShort: return String(localized: "Text Too Short")
+    case .promptLeakDetected: return String(localized: "API Response Issue")
+    case .modelNotAvailable: return String(localized: "Model Not Downloaded")
+    case .voiceRequiresAPIKey: return String(localized: "Voice Requires API Key")
+    case .subscriptionRequired: return String(localized: "Subscription Required")
+    case .noSelectedText: return String(localized: "Nothing Selected")
+    case .localProcessingTimeout: return String(localized: "Local Processing Timeout")
+    case .emptyModelReply: return String(localized: "No Reply")
+    case .localModelFailed: return String(localized: "Offline Model Error")
     }
   }
 

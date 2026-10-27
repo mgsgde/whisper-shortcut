@@ -96,9 +96,9 @@ enum AudioMergerError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noChunks:
-            return "No audio chunks provided for merging"
+            return String(localized: "No audio chunks provided for merging")
         case .invalidChunkFormat(let index, let reason):
-            return "Invalid format for chunk \(index): \(reason)"
+            return String(localized: "Invalid format for chunk \(index): \(reason)")
         }
     }
 }

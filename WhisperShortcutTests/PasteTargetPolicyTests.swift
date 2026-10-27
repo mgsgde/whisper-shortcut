@@ -29,11 +29,22 @@ struct PasteTargetPolicyTests {
     #expect(PasteTargetPolicy.action(frontmost: own, recorded: notes, own: own) == .activateRecordedThenPaste)
   }
 
-  @Test("Never paste into WhisperShortcut itself")
+  @Test("Never paste into WhisperShortcut itself unless its text field still has focus")
   func neverPastesIntoSelf() {
     #expect(PasteTargetPolicy.action(frontmost: own, recorded: own, own: own) == .clipboardOnly)
     #expect(PasteTargetPolicy.action(frontmost: notes, recorded: own, own: own) == .clipboardOnly)
     #expect(PasteTargetPolicy.action(frontmost: own, recorded: nil, own: own) == .clipboardOnly)
+  }
+
+  @Test("Dictated into our own text field (Chat input) and it still has focus: paste")
+  func pastesIntoOwnFocusedTextField() {
+    #expect(
+      PasteTargetPolicy.action(frontmost: own, recorded: own, own: own, ownTextFieldStillFocused: true)
+        == .pasteNow)
+    // Focus left for another app: still no ⌘V, and no focus grab back into our window.
+    #expect(
+      PasteTargetPolicy.action(frontmost: notes, recorded: own, own: own, ownTextFieldStillFocused: true)
+        == .clipboardOnly)
   }
 
   @Test("Nothing recorded: paste into whatever is in front, unless that is us")

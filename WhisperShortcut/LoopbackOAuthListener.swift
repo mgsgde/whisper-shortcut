@@ -15,22 +15,32 @@ import Foundation
 /// Deliberately single-use: it stops after the first request, so a stale listener cannot linger and
 /// accept a replayed code. Requires `com.apple.security.network.server` in the sandbox entitlements.
 final class LoopbackOAuthListener {
-  /// Path OpenRouter is told to redirect to. Any path works; a fixed one keeps the logs readable.
-  private static let callbackPath = "/openrouter-callback"
+  /// Defaults keep OpenRouter's behaviour: any path works for it, a fixed one keeps the logs readable.
+  /// ChatGPT's sign-in requires exactly `/auth/callback` (see `ChatGPTPlanOAuthConfig`).
+  static let defaultCallbackPath = "/openrouter-callback"
+  static let defaultProviderName = "OpenRouter"
 
   private let socketFD: Int32
   private let lock = NSLock()
   private var onRequest: ((URLComponents?) -> Void)?
   private var isStopped = false
+  private let providerName: String
 
   /// The URL to hand the authorization server.
   let callbackURL: String
 
   /// Binds an OS-assigned free port on the loopback interface and begins accepting.
   ///
-  /// - Parameter onRequest: called at most once, on the main queue, with the redirect's query
-  ///   components (nil if the request could not be parsed). The listener is stopped when it fires.
-  init(onRequest: @escaping (URLComponents?) -> Void) throws {
+  /// - Parameters:
+  ///   - callbackPath: path of the redirect URI the authorization server is told about.
+  ///   - providerName: shown on the browser page ("WhisperShortcut has your … connection").
+  ///   - onRequest: called at most once, on the main queue, with the redirect's query
+  ///     components (nil if the request could not be parsed). The listener is stopped when it fires.
+  init(
+    callbackPath: String = LoopbackOAuthListener.defaultCallbackPath,
+    providerName: String = LoopbackOAuthListener.defaultProviderName,
+    onRequest: @escaping (URLComponents?) -> Void
+  ) throws {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw ListenerError.socketFailed(errno) }
 
@@ -69,7 +79,8 @@ final class LoopbackOAuthListener {
 
     socketFD = fd
     self.onRequest = onRequest
-    callbackURL = "http://127.0.0.1:\(port)\(Self.callbackPath)"
+    self.providerName = providerName
+    callbackURL = "http://127.0.0.1:\(port)\(callbackPath)"
 
     DebugLogger.log("OAUTH-LOOPBACK: Listening on \(callbackURL)")
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.acceptOnce() }
@@ -108,7 +119,7 @@ final class LoopbackOAuthListener {
       : nil
 
     let succeeded = components?.queryItems?.contains { $0.name == "code" } == true
-    let response = Self.httpResponse(success: succeeded)
+    let response = Self.httpResponse(success: succeeded, providerName: providerName)
     _ = response.withUnsafeBytes { send(client, $0.baseAddress, response.count, 0) }
 
     fireOnce(with: components)
@@ -144,11 +155,11 @@ final class LoopbackOAuthListener {
     return URLComponents(string: "http://127.0.0.1\(parts[1])")
   }
 
-  private static func httpResponse(success: Bool) -> Data {
-    let title = success ? "You're connected" : "Something went wrong"
+  static func httpResponse(success: Bool, providerName: String = defaultProviderName) -> Data {
+    let title = success ? String(localized: "You're connected") : String(localized: "Something went wrong")
     let message = success
-      ? "WhisperShortcut has your OpenRouter connection. You can close this tab."
-      : "WhisperShortcut didn't receive an authorization code. Close this tab and try again."
+      ? String(localized: "WhisperShortcut has your \(providerName) connection. You can close this tab.")
+      : String(localized: "WhisperShortcut didn't receive an authorization code. Close this tab and try again.")
 
     let body = """
       <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title><style>

@@ -22,18 +22,26 @@ enum IMAPError: LocalizedError, Equatable, Sendable {
   case server(String)
   case protocolError(String)
 
+  /// The connection itself is gone or unusable, so a LOGOUT would only wait for another timeout.
+  var isTransportFailure: Bool {
+    switch self {
+    case .timeout, .connectionFailed, .tlsFailed: return true
+    default: return false
+    }
+  }
+
   var errorDescription: String? {
     switch self {
     case .authenticationFailed:
-      return "The server rejected the email address or password."
+      return String(localized: "The server rejected the email address or password.")
     case .connectionFailed(let host):
       return "Couldn't reach \(host). Check the server name."
     case .tlsFailed:
-      return "The secure connection to the mail server failed."
+      return String(localized: "The secure connection to the mail server failed.")
     case .timeout:
-      return "The mail server did not respond in time."
+      return String(localized: "The mail server did not respond in time.")
     case .unsupportedPassword:
-      return "The password contains a line break."
+      return String(localized: "The password contains a line break.")
     case .server(let text):
       return text
     case .protocolError(let text):
@@ -128,7 +136,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
         let once = ResumeOnce()
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, _, error in
           guard let self else { return }
           if let error {
             if once.claim() { continuation.resume(throwing: self.map(error)) }
@@ -138,7 +146,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
             if once.claim() { continuation.resume(returning: data) }
             return
           }
-          if once.claim() { continuation.resume(returning: isComplete ? Data() : Data()) }
+          if once.claim() { continuation.resume(returning: Data()) }
         }
       }
     } onCancel: {
@@ -176,7 +184,22 @@ actor IMAPSession {
   /// Values that must never appear in a log line or an error string.
   private var secrets: [String] = []
 
-  private static let commandTimeout: Duration = .seconds(20)
+  /// A command fails when no byte moves (read or write) for this long. Resets on every transfer,
+  /// so a large literal on a slow but steady link keeps going.
+  private static let idleTimeout: Duration = .seconds(20)
+  /// Hard cap for one command however steadily bytes arrive.
+  private static let commandCap: Duration = .seconds(120)
+
+  /// Idle deadline that restarts per transfer, bounded by the overall cap of the command.
+  struct Deadline: Sendable {
+    let cap: ContinuousClock.Instant
+    let idle: Duration
+
+    /// The instant the next single read or write has to finish by.
+    func next() -> ContinuousClock.Instant {
+      min(ContinuousClock.now.advanced(by: idle), cap)
+    }
+  }
   private static let maxLiteralBytes = 2_000_000
 
   init(transport: IMAPTransport, host: String = "") {
@@ -197,7 +220,7 @@ actor IMAPSession {
       secrets.append(token)
       try await run([.text(" AUTHENTICATE PLAIN \(token)")], authenticating: true)
     } else {
-      try await run(Self.loginPieces(user: user, password: password), authenticating: true)
+      try await run(try Self.loginPieces(user: user, password: password), authenticating: true)
     }
   }
 
@@ -227,7 +250,7 @@ actor IMAPSession {
   }
 
   func uidSearch(from: String? = nil, subject: String? = nil, text: String? = nil, since: Date? = nil) async throws -> [Int] {
-    let pieces = searchPieces(from: from, subject: subject, text: text, since: since)
+    let pieces = try Self.searchPieces(from: from, subject: subject, text: text, since: since)
     let responses = try await run(pieces, authenticating: false)
     var uids: [Int] = []
     for response in responses {
@@ -264,7 +287,7 @@ actor IMAPSession {
       guard response.textJoined.uppercased().contains("FETCH"), let literal = response.literals.last else { continue }
       return literal
     }
-    throw IMAPError.protocolError("The mail server did not return the message.")
+    throw IMAPError.protocolError(String(localized: "The mail server did not return the message."))
   }
 
   func logout() async {
@@ -277,7 +300,7 @@ actor IMAPSession {
 
   // MARK: - Commands
 
-  private enum Piece: Sendable {
+  enum Piece: Sendable, Equatable {
     case text(String)
     case literal(Data)
   }
@@ -322,7 +345,7 @@ actor IMAPSession {
     return String(format: "A%03d", tagCounter)
   }
 
-  private func send(tag: String, pieces: [Piece], before deadline: ContinuousClock.Instant, authenticating: Bool) async throws {
+  private func send(tag: String, pieces: [Piece], before deadline: Deadline, authenticating: Bool) async throws {
     logCommand(tag: tag, pieces: pieces)
     var pending = Data(tag.utf8)
     for piece in pieces {
@@ -341,7 +364,7 @@ actor IMAPSession {
     try await writeChunk(pending, before: deadline)
   }
 
-  private func collect(tag: String, before deadline: ContinuousClock.Instant, authenticating: Bool) async throws -> [ServerResponse] {
+  private func collect(tag: String, before deadline: Deadline, authenticating: Bool) async throws -> [ServerResponse] {
     var items: [ServerResponse] = []
     while true {
       let response = try await readResponse(before: deadline)
@@ -349,7 +372,7 @@ actor IMAPSession {
       let opening = response.opening.trimmingCharacters(in: .whitespacesAndNewlines)
       if opening.isEmpty { continue }
       if opening.hasPrefix("+") {
-        throw IMAPError.protocolError("Unexpected continuation from the mail server.")
+        throw IMAPError.protocolError(String(localized: "Unexpected continuation from the mail server."))
       }
       if Self.hasTag(opening, tag: tag) {
         try finishTagged(opening, tag: tag, authenticating: authenticating)
@@ -359,7 +382,7 @@ actor IMAPSession {
     }
   }
 
-  private func readContinuation(tag: String, before deadline: ContinuousClock.Instant, authenticating: Bool) async throws {
+  private func readContinuation(tag: String, before deadline: Deadline, authenticating: Bool) async throws {
     while true {
       let response = try await readResponse(before: deadline)
       logResponse(response, tag: tag)
@@ -367,10 +390,10 @@ actor IMAPSession {
       if opening.hasPrefix("+") { return }
       if Self.hasTag(opening, tag: tag) {
         try finishTagged(opening, tag: tag, authenticating: authenticating)
-        throw IMAPError.protocolError("Expected a continuation from the mail server.")
+        throw IMAPError.protocolError(String(localized: "Expected a continuation from the mail server."))
       }
       if opening.uppercased().hasPrefix("* BYE") {
-        throw IMAPError.protocolError("The server closed the connection.")
+        throw IMAPError.protocolError(String(localized: "The server closed the connection."))
       }
     }
   }
@@ -383,19 +406,19 @@ actor IMAPSession {
       if authenticating { throw IMAPError.authenticationFailed }
       throw IMAPError.server(scrub(String(rest)))
     }
-    throw IMAPError.protocolError("Unexpected response from the mail server.")
+    throw IMAPError.protocolError(String(localized: "Unexpected response from the mail server."))
   }
 
   private func checkGreeting(_ response: ServerResponse) throws {
     let opening = response.opening.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     guard opening.hasPrefix("* OK") || opening.hasPrefix("* PREAUTH") else {
-      throw IMAPError.protocolError("Unexpected greeting from the mail server.")
+      throw IMAPError.protocolError(String(localized: "Unexpected greeting from the mail server."))
     }
   }
 
   // MARK: - Reader
 
-  private func readResponse(before deadline: ContinuousClock.Instant) async throws -> ServerResponse {
+  private func readResponse(before deadline: Deadline) async throws -> ServerResponse {
     var segments: [ServerResponse.Segment] = []
     var oversized = false
     while true {
@@ -418,20 +441,20 @@ actor IMAPSession {
     }
   }
 
-  private func readLine(before deadline: ContinuousClock.Instant) async throws -> String {
+  private func readLine(before deadline: Deadline) async throws -> String {
     let crlf = Data([13, 10])
     while buffer.range(of: crlf) == nil {
       try await fill(before: deadline)
     }
     guard let range = buffer.range(of: crlf) else {
-      throw IMAPError.protocolError("Expected a line from the mail server.")
+      throw IMAPError.protocolError(String(localized: "Expected a line from the mail server."))
     }
     let line = Data(buffer[..<range.lowerBound])
     buffer.removeSubrange(..<range.upperBound)
     return String(decoding: line, as: UTF8.self)
   }
 
-  private func readExact(_ count: Int, before deadline: ContinuousClock.Instant) async throws -> Data {
+  private func readExact(_ count: Int, before deadline: Deadline) async throws -> Data {
     while buffer.count < count {
       try await fill(before: deadline)
     }
@@ -440,7 +463,7 @@ actor IMAPSession {
     return data
   }
 
-  private func discard(_ count: Int, before deadline: ContinuousClock.Instant) async throws {
+  private func discard(_ count: Int, before deadline: Deadline) async throws {
     var left = count
     while left > 0 {
       if buffer.isEmpty { try await fill(before: deadline) }
@@ -451,22 +474,22 @@ actor IMAPSession {
     DebugLogger.log("IMAP: discarded literal bytes=\(count)")
   }
 
-  private func fill(before deadline: ContinuousClock.Instant) async throws {
+  private func fill(before deadline: Deadline) async throws {
     let chunk = try await readChunk(before: deadline)
     if chunk.isEmpty {
-      throw IMAPError.protocolError("The server closed the connection.")
+      throw IMAPError.protocolError(String(localized: "The server closed the connection."))
     }
     buffer.append(chunk)
   }
 
-  private func readChunk(before deadline: ContinuousClock.Instant) async throws -> Data {
+  private func readChunk(before deadline: Deadline) async throws -> Data {
     let transport = self.transport
     return try await race(before: deadline) {
       try await transport.read()
     }
   }
 
-  private func writeChunk(_ data: Data, before deadline: ContinuousClock.Instant) async throws {
+  private func writeChunk(_ data: Data, before deadline: Deadline) async throws {
     let transport = self.transport
     try await race(before: deadline) {
       try await transport.write(data)
@@ -481,10 +504,11 @@ actor IMAPSession {
   }
 
   private func race<T: Sendable>(
-    before deadline: ContinuousClock.Instant,
+    before deadline: Deadline,
     _ operation: @Sendable @escaping () async throws -> T
   ) async throws -> T {
-    if ContinuousClock.now >= deadline { throw IMAPError.timeout }
+    let limit = deadline.next()
+    if ContinuousClock.now >= limit { throw IMAPError.timeout }
     return try await withThrowingTaskGroup(of: RaceResult<T>.self) { group in
       group.addTask {
         do {
@@ -494,12 +518,12 @@ actor IMAPSession {
         } catch let error as IMAPError {
           return .failed(error)
         } catch {
-          return .failed(.protocolError("The mail server request failed."))
+          return .failed(.protocolError(String(localized: "The mail server request failed.")))
         }
       }
       group.addTask {
         do {
-          try await Task.sleep(until: deadline, clock: ContinuousClock())
+          try await Task.sleep(until: limit, clock: ContinuousClock())
           return .timedOut
         } catch is CancellationError {
           return .cancelled
@@ -532,7 +556,7 @@ actor IMAPSession {
 
   // MARK: - Encoding
 
-  private func searchPieces(from: String?, subject: String?, text: String?, since: Date?) -> [Piece] {
+  static func searchPieces(from: String?, subject: String?, text: String?, since: Date?) throws -> [Piece] {
     let terms: [(String, String)] = [
       ("FROM", from), ("SUBJECT", subject), ("TEXT", text),
     ].compactMap { pair in
@@ -547,7 +571,7 @@ actor IMAPSession {
     }
     for (key, value) in terms {
       pieces.append(.text(" \(key) "))
-      pieces.append(Self.argument(value))
+      pieces.append(try Self.argument(value))
     }
     if let since {
       pieces.append(.text(" SINCE \(Self.imapDate(since))"))
@@ -563,7 +587,15 @@ actor IMAPSession {
   }
 
   private func mailboxName(in response: ServerResponse) -> String? {
-    if case .literal(let data) = response.segments.last {
+    // readResponse appends the (usually empty) rest of the line after a literal, so the literal
+    // is the mailbox name when only whitespace text follows it.
+    if let index = response.segments.lastIndex(where: { if case .literal = $0 { return true } else { return false } }),
+      case .literal(let data) = response.segments[index],
+      response.segments[(index + 1)...].allSatisfy({
+        if case .text(let text) = $0 { return text.allSatisfy(\.isWhitespace) }
+        return false
+      })
+    {
       let name = String(decoding: data, as: UTF8.self)
       return Self.decodeModifiedUTF7(name)
     }
@@ -592,7 +624,7 @@ actor IMAPSession {
 
   private func rejectOversized(_ responses: [ServerResponse]) throws {
     if responses.contains(where: \.oversized) {
-      throw IMAPError.protocolError("The message is larger than 2 MB.")
+      throw IMAPError.protocolError(String(localized: "The message is larger than 2 MB."))
     }
   }
 
@@ -637,8 +669,8 @@ actor IMAPSession {
     return result
   }
 
-  private static func deadline() -> ContinuousClock.Instant {
-    ContinuousClock.now.advanced(by: commandTimeout)
+  private static func deadline() -> Deadline {
+    Deadline(cap: ContinuousClock.now.advanced(by: commandCap), idle: idleTimeout)
   }
 
   private static func rejectLineBreaks(user: String, password: String) throws {
@@ -655,15 +687,20 @@ actor IMAPSession {
     return data.base64EncodedString()
   }
 
-  private static func loginPieces(user: String, password: String) -> [Piece] {
+  private static func loginPieces(user: String, password: String) throws -> [Piece] {
     var pieces: [Piece] = [.text(" LOGIN ")]
-    pieces.append(argument(user))
+    pieces.append(try argument(user))
     pieces.append(.text(" "))
-    pieces.append(argument(password))
+    pieces.append(try argument(password))
     return pieces
   }
 
-  private static func argument(_ string: String) -> Piece {
+  static func argument(_ string: String) throws -> Piece {
+    // RFC 3501 quoted strings may not carry CR, LF or NUL; sent raw, a line break would end the
+    // command and let the rest run as a new one (a prompt-injected `mail_search` could EXPUNGE).
+    if string.utf8.contains(where: { $0 == 0x0D || $0 == 0x0A || $0 == 0x00 }) {
+      throw IMAPError.protocolError("A mail search or login value contains a line break.")
+    }
     if needsLiteral(string) { return .literal(Data(string.utf8)) }
     return .text(quote(string))
   }

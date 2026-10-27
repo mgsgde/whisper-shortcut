@@ -59,16 +59,16 @@ struct SettingsView: View {
             .foregroundColor(.accentColor)
             .frame(width: 20, height: 20)
 
-          Text(tab.rawValue)
+          Text(tab.displayName)
             .font(.body)
         }
         .padding(.vertical, 2)
       }
-      .help(description(for: tab))
+      .help(Text(description(for: tab)))
       .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
-    .frame(minWidth: 210, idealWidth: 220, maxWidth: 260)
+    .frame(minWidth: 270, idealWidth: 270, maxWidth: 300)
   }
 
   // MARK: - Detail View
@@ -86,6 +86,8 @@ struct SettingsView: View {
           switch selectedTab {
           case .general:
             GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .accounts:
+            AccountsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .speechToText:
             SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .speechToPrompt:
@@ -94,6 +96,8 @@ struct SettingsView: View {
             ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .chat:
             ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .meetings:
+            MeetingsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .readAloud:
             ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .improvement:
@@ -132,6 +136,8 @@ struct SettingsView: View {
     switch tab {
     case .general:
       return "gear"
+    case .accounts:
+      return "key"
     case .speechToText:
       return "mic"
     case .speechToPrompt:
@@ -140,6 +146,8 @@ struct SettingsView: View {
       return "camera.viewfinder"
     case .chat:
       return "sparkles"
+    case .meetings:
+      return "record.circle"
     case .readAloud:
       return "speaker.wave.2.fill"
     case .improvement:
@@ -151,10 +159,12 @@ struct SettingsView: View {
     }
   }
 
-  private func description(for tab: SettingsTab) -> String {
+  private func description(for tab: SettingsTab) -> LocalizedStringKey {
     switch tab {
     case .general:
-      return "API key, shortcuts, and preferences"
+      return "Shortcuts and app behavior"
+    case .accounts:
+      return "API keys, OpenRouter, and connected services"
     case .speechToText:
       return "Model, system prompt, and shortcut"
     case .speechToPrompt:
@@ -162,7 +172,9 @@ struct SettingsView: View {
     case .screenshot:
       return "Shortcut and save-to-folder settings"
     case .chat:
-      return "Model, system prompt, and live meeting settings"
+      return "Model, system prompt, commands, and memory"
+    case .meetings:
+      return "Meeting transcription, summaries, and sharing with AI apps"
     case .readAloud:
       return "Shortcut and smart-rewrite settings"
     case .improvement:
@@ -189,7 +201,9 @@ struct SettingsView: View {
     if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
       window.makeKeyAndOrderFront(nil)
     }
-    if !GeminiCredentialProvider.shared.hasCredential() {
+    // Focus the key field only where it is on screen: Accounts. Jumping to Accounts on every open
+    // would trap users who work offline or through OpenRouter.
+    if selectedTab == .accounts && !GeminiCredentialProvider.shared.hasCredential() {
       focusedField = .googleAPIKey
     }
   }

@@ -31,7 +31,7 @@ enum DictatePromptAgent {
   static func supportsAgent(_ model: PromptModel) -> Bool {
     switch model.provider {
     case .gemini, .openai, .local: return true
-    case .grok, .anthropic, .customOpenAI, .localMLX: return false
+    case .grok, .anthropic, .customOpenAI, .openRouter, .chatGPTPlan, .localMLX: return false
     }
   }
 

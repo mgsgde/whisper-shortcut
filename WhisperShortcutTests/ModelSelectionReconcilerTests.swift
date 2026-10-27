@@ -11,14 +11,14 @@ import Testing
 struct ModelSelectionReconcilerTests {
 
   private let chatCandidates: [PromptModel] = [
-    .gemini37Flash, .openaiGPT6Sol, .grok43,
+    .gemini38Flash, .openaiGPT6Sol, .grok43,
   ]
 
   @Test("Preferred prompt model follows Gemini → OpenAI → Grok")
   func preferredPromptFollowsProviderOrder() {
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .gemini })
-        == .gemini37Flash)
+        == .gemini38Flash)
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: chatCandidates, hasKey: { $0 == .openai })
         == .openaiGPT6Sol)
@@ -31,7 +31,19 @@ struct ModelSelectionReconcilerTests {
       ModelSelectionReconciler.preferredPromptModel(
         among: chatCandidates,
         hasKey: { $0 == .gemini || $0 == .openai }
-      ) == .gemini37Flash)
+      ) == .gemini38Flash)
+  }
+
+  @Test("An OpenRouter-only user is moved onto OpenRouter, but only as the last resort")
+  func preferredPromptFallsBackToOpenRouter() {
+    let withOpenRouter = chatCandidates + [.openRouterChat]
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(among: withOpenRouter, hasKey: { $0 == .openRouter })
+        == .openRouterChat)
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(
+        among: withOpenRouter, hasKey: { $0 == .openRouter || $0 == .grok }
+      ) == .grok43)
   }
 
   @Test("No key among the preferred providers yields no replacement")
@@ -99,6 +111,34 @@ struct ModelSelectionReconcilerTests {
         previous: .gemini31Pro, among: candidates, hasKey: { $0 == .local || $0 == .localMLX }) == nil)
   }
 
+  @Test("Preferred cloud transcription follows the reconciler, OpenRouter only as last resort")
+  func preferredCloudTranscriptionOrder() {
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .gemini })
+        == .gemini31FlashLite)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .openai })
+        == .openAIGPTTranscribe)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .grok })
+        == .xaiTranscribe)
+    #expect(ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .anthropic }) == nil)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .openRouter })
+        == .openRouterTranscription)
+    // Gemini wins when both keys are present — the reconciler's first, not allCases order.
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .gemini || $0 == .openai })
+        == .gemini31FlashLite)
+    // A chat-only key does not block the only account that can transcribe.
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .anthropic || $0 == .openRouter })
+        == .openRouterTranscription)
+    #expect(
+      ModelSelectionReconciler.preferredCloudTranscription(hasKey: { $0 == .grok || $0 == .openRouter })
+        == .xaiTranscribe)
+  }
+
   @Test("Transcription replacement maps each cloud provider and rejects the rest")
   func transcriptionReplacementTable() {
     #expect(
@@ -108,7 +148,7 @@ struct ModelSelectionReconcilerTests {
       ModelSelectionReconciler.transcriptionReplacement(for: .openai)
         == .openAIGPTTranscribe)
     #expect(ModelSelectionReconciler.transcriptionReplacement(for: .grok) == .xaiTranscribe)
-    for provider: ChatModelProvider in [.local, .localMLX, .customOpenAI, .anthropic] {
+    for provider: ChatModelProvider in [.local, .localMLX, .customOpenAI, .openRouter, .anthropic] {
       #expect(ModelSelectionReconciler.transcriptionReplacement(for: provider) == nil)
     }
   }
@@ -126,7 +166,7 @@ struct ModelSelectionReconcilerTests {
         == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
   }
 
-  @Test("Offline Mode moves the meeting summary and Voice Feedback slots onto the Dictate Prompt model and back")
+  @Test("Offline Mode moves the meeting summary and Smart Improvement slots onto the Dictate Prompt model and back")
   func meetingSummaryOfflineRoundTrip() {
     let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!
@@ -134,7 +174,7 @@ struct ModelSelectionReconcilerTests {
     let summaryKey = UserDefaultsKeys.selectedMeetingSummaryModel
     let improvementKey = UserDefaultsKeys.selectedImprovementModel
     let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: summaryKey)
     defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
     defaults.set(onDevice.rawValue, forKey: UserDefaultsKeys.selectedPromptModel)
 
@@ -150,7 +190,7 @@ struct ModelSelectionReconcilerTests {
 
     // Offline Mode off: the cloud choices come back.
     ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
-    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini38Flash.rawValue)
     #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
   }
 
@@ -164,10 +204,10 @@ struct ModelSelectionReconcilerTests {
     let promptKey = UserDefaultsKeys.selectedPromptModel
     let onDevice = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
     // Old build: snapshot only knows the prompt slot, which is already on-device.
-    defaults.set([promptKey: PromptModel.gemini37Flash.rawValue],
+    defaults.set([promptKey: PromptModel.gemini38Flash.rawValue],
                  forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
     defaults.set(onDevice.rawValue, forKey: promptKey)
-    defaults.set(PromptModel.gemini37Flash.rawValue, forKey: summaryKey)
+    defaults.set(PromptModel.gemini38Flash.rawValue, forKey: summaryKey)
     defaults.set(PromptModel.openaiGPT6Sol.rawValue, forKey: improvementKey)
 
     ModelSelectionReconciler.snapshotPreOfflineSelectionsIfNeeded(defaults: defaults)
@@ -176,9 +216,9 @@ struct ModelSelectionReconcilerTests {
     #expect(defaults.string(forKey: summaryKey) == onDevice.rawValue)
 
     ModelSelectionReconciler.restorePreOfflineSelectionsIfNeeded(defaults: defaults)
-    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: summaryKey) == PromptModel.gemini38Flash.rawValue)
     #expect(defaults.string(forKey: improvementKey) == PromptModel.openaiGPT6Sol.rawValue)
-    #expect(defaults.string(forKey: promptKey) == PromptModel.gemini37Flash.rawValue)
+    #expect(defaults.string(forKey: promptKey) == PromptModel.gemini38Flash.rawValue)
   }
 
   @Test("A key that was unset is removed on restore; toggling twice is stable")
@@ -205,5 +245,25 @@ struct ModelSelectionReconcilerTests {
     #expect(MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: false))
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: true, isDownloaded: true))
     #expect(!MLXChatProvider.blocksUnattendedDownload(offlineMode: false, isDownloaded: false))
+  }
+
+  @Test("Read Aloud leaves the macOS fallback voice once a cloud key exists")
+  func readAloudUpgradeOrder() {
+    func upgrade(_ previous: TTSModel?, keyed: Set<String>) -> TTSModel? {
+      ModelSelectionReconciler.readAloudUpgrade(previous: previous) { provider in
+        switch provider {
+        case .gemini: return keyed.contains("gemini")
+        case .openai: return keyed.contains("openai")
+        case .xai: return keyed.contains("xai")
+        case .system: return true
+        }
+      }
+    }
+    #expect(upgrade(.gemini38FlashTTS, keyed: ["gemini"]) == .gemini38FlashTTS)
+    #expect(upgrade(nil, keyed: ["gemini"]) == .gemini38FlashLiteTTS)
+    #expect(upgrade(.gemini38FlashTTS, keyed: ["openai"]) == .openAIGpt4oMiniTTS)
+    #expect(upgrade(nil, keyed: ["xai"]) == .grokVoiceTTS)
+    #expect(upgrade(.gemini38FlashTTS, keyed: []) == nil)
+    #expect(upgrade(.systemMacOS, keyed: ["gemini"]) == .gemini38FlashLiteTTS)
   }
 }

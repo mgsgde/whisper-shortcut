@@ -37,12 +37,18 @@ bash scripts/rebuild-and-restart.sh
 bash .agents/skills/run-whisper-shortcut/driver.sh build
 ```
 
-The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut.app`.
+The app bundle lands at `build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app`.
 If it's already built and you only need it running:
 
 ```bash
 bash .agents/skills/run-whisper-shortcut/driver.sh ensure   # launch if not already running
 ```
+
+**Worktree builds are sidecars.** `rebuild-and-restart.sh` run from a `.claude/worktrees/` checkout launches
+the build as a *sidecar* (`--sidecar`, badge TEST, no global hotkeys / Fn key / MCP / Sparkle) next to the
+user's own instance and never kills it; use `--replace` to take over instead. Both share the process name
+"WhisperShortcut Dev", so the driver targets the instance running from this checkout's bundle by pid and
+`quit` only kills that pid. Hotkey-driven features cannot be tested in a sidecar; the menu can.
 
 ## Run (agent path) — the driver
 
@@ -60,10 +66,12 @@ bash $D quit                       # quit the app
 
 Other commands: `open <MenuItem>` (click an item, no screenshot), `ss [name]`
 (screenshot the front window cropped, or full screen if none). Menu item names are
-exactly: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
-`Voice Feedback`, `Stop`, `Copy Last Transcription`, `Recent Transcriptions`, `Settings…`,
-`Send Feedback` (has a per-channel submenu), `Rate WhisperShortcut`, `Quit WhisperShortcut`.
-Two are conditional: `Stop` is hidden unless an operation is active, and `Read Aloud` is wrapped
+the main items are: `Dictate`, `Dictate Prompt`, `Screenshot`, `Read Aloud`, `Chat`,
+`Stop`, `Copy Last Transcription`, `Recent Transcriptions`, `Settings…`,
+`Send Feedback` (has a per-channel submenu), `Rate WhisperShortcut`, `Quit WhisperShortcut`,
+plus `Add Selection to Glossary` (`#if !APP_STORE`) and `Welcome Tour…`, plus conditional rows
+(`Finish setup…`, `Review Changes from AI Apps…`, meeting-retry rows). `Stop` is hidden unless an
+operation is active, and `Read Aloud` is wrapped
 in `#if !APP_STORE`, so it is **absent from the App Store build**. `Settings…` opens the window titled
 **Settings** — note the trailing **Unicode ellipsis (U+2026), not three periods**, and quote it
 in the shell. This menu has been renamed before (`Configure` → `Settings…`), so run
@@ -76,11 +84,15 @@ windowless `ss` capture the full screen. **Always actually read the PNG** with t
 tool — a blank or error frame means a permission is missing or the window didn't open in
 time.
 
+Run in German: `bash driver.sh quit; WS_LANG=de bash driver.sh ensure`. Menu items and window
+titles are then German ("Einstellungen…"), so use `driver.sh items` for the live names. Check
+every Settings tab for clipped labels; German runs about 30 % longer than English.
+
 ## Onboarding & first-run (user-perspective testing)
 
 The Welcome window appears on launch when `hasCompletedOnboarding` is false
-(`UserDefaultsKeys.hasCompletedOnboarding`, bundle `com.magnusgoedde.whispershortcut`).
-Re-open it from Settings ▸ Privacy & Permissions ▸ "Show welcome tour again".
+(`UserDefaultsKeys.hasCompletedOnboarding`, bundle `com.magnusgoedde.whispershortcut.dev` for the Debug build).
+Re-open it from the status menu ▸ "Welcome Tour…" (or "Finish setup…" while setup is incomplete), or Settings ▸ About ▸ Welcome Tour.
 
 ### Reset levels
 
@@ -111,8 +123,7 @@ bash $D ss welcome-apikeys
 Scroll inside the Welcome panel: focus the window (`activate`), move the mouse over it,
 then scroll — System Events scroll is flaky; prefer arrow keys for step navigation.
 
-Re-show without relaunch: Settings ▸ Privacy ▸ "Show welcome tour again", or
-`WelcomeWindowController.shared.show()` path via the `Settings…` menu item.
+Re-show without relaunch: `bash $D open "Welcome Tour…"`, or Settings ▸ About ▸ Welcome Tour.
 
 ### Cognitive walkthrough (activation audit)
 
@@ -138,7 +149,7 @@ Qualitative walkthrough beats aggregate metrics at low download volume. Pair wit
 
 ## Run (human path)
 
-`open build/DerivedData/Build/Products/Debug/WhisperShortcut.app` — a menu-bar icon
+`open "build/DerivedData/Build/Products/Debug/WhisperShortcut Dev.app"` — a menu-bar icon
 appears (no window). Click it to use the menu manually. Useless for an agent: nothing
 to observe programmatically without the driver.
 

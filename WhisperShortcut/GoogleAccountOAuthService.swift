@@ -279,18 +279,18 @@ class GoogleAccountOAuthService: NSObject, ObservableObject {
 
     var errorDescription: String? {
       switch self {
-      case .invalidURL: return "Failed to build authorization URL."
-      case .noCallbackURL: return "No callback URL received."
-      case .noAuthorizationCode: return "No authorization code in callback."
-      case .stateMismatch: return "Google sign-in was refused because the callback did not match this attempt. Try connecting again."
-      case .tokenExchangeFailed(let msg): return "Token exchange failed: \(msg)"
-      case .missingAccessToken: return "No access token in response."
-      case .missingRefreshToken: return "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut."
-      case .notConnected: return "Google is not connected. Open Settings → Chat to connect."
-      case .refreshTokenRevoked: return "Google access was revoked. Please connect again in Settings."
-      case .invalidResponse: return "Invalid response from Google."
-      case .authorizationInProgress: return "Google authorization is already in progress."
-      case .authorizationStartFailed: return "Failed to start Google authorization."
+      case .invalidURL: return String(localized: "Failed to build authorization URL.")
+      case .noCallbackURL: return String(localized: "No callback URL received.")
+      case .noAuthorizationCode: return String(localized: "No authorization code in callback.")
+      case .stateMismatch: return String(localized: "Google sign-in was refused because the callback did not match this attempt. Try connecting again.")
+      case .tokenExchangeFailed(let msg): return String(localized: "Token exchange failed: \(msg)")
+      case .missingAccessToken: return String(localized: "No access token in response.")
+      case .missingRefreshToken: return String(localized: "Google did not grant persistent access. Disconnect in your Google Account settings, then connect again in WhisperShortcut.")
+      case .notConnected: return String(localized: "Google is not connected. Open Settings → Accounts to connect.")
+      case .refreshTokenRevoked: return String(localized: "Google access was revoked. Please connect again in Settings.")
+      case .invalidResponse: return String(localized: "Invalid response from Google.")
+      case .authorizationInProgress: return String(localized: "Google authorization is already in progress.")
+      case .authorizationStartFailed: return String(localized: "Failed to start Google authorization.")
       }
     }
   }

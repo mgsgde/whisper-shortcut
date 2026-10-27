@@ -1,21 +1,20 @@
 import SwiftUI
 
 /// Reusable component for Read Aloud (TTS) model selection across providers.
-/// Mirrors `ModelSelectionView` (transcription) but for `TTSModel`, disabling a provider's
-/// models when its API key / credential is missing so the user can see — but not pick — a
-/// model they can't currently use.
+/// Mirrors `ModelSelectionView` (transcription) but for `TTSModel`. A provider whose key is
+/// missing keeps its tiles selectable with a "Needs key" badge, like every other picker.
 struct TTSModelSelectionView: View {
   @Binding var selectedModel: TTSModel
-  let title: String
+  let title: LocalizedStringResource
   let systemImage: String?
-  let subtitle: String
+  let subtitle: LocalizedStringResource
   let models: [TTSModel]
   let onModelChanged: (() -> Void)?
 
   init(
-    title: String = "Voice Model",
+    title: LocalizedStringResource = "Voice Model",
     systemImage: String? = "speaker.wave.2.fill",
-    subtitle: String = "Which provider generates the spoken audio. Pick the specific voice below.",
+    subtitle: LocalizedStringResource = "Which provider generates the spoken audio. Pick the specific voice below.",
     selectedModel: Binding<TTSModel>,
     models: [TTSModel] = TTSModel.readAloudModels,
     onModelChanged: (() -> Void)? = nil
@@ -28,42 +27,15 @@ struct TTSModelSelectionView: View {
     self.onModelChanged = onModelChanged
   }
 
-  /// A provider's models are disabled when its key/credential is missing.
-  private func isDisabled(_ model: TTSModel) -> Bool {
-    switch model.provider {
-    case .gemini:
-      return !GeminiCredentialProvider.shared.hasCredential()
-    case .openai:
-      return !KeychainManager.shared.hasNonEmpty(.openAI)
-    case .xai:
-      return !KeychainManager.shared.hasNonEmpty(.xai)
-    case .system:
-      return false
-    }
-  }
-
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(title: title, systemImage: systemImage, subtitle: subtitle)
 
-      ModelGrid(models: models) { model in
-        ModelTile(
-          title: model.displayName,
-          isSelected: selectedModel == model,
-          isDisabled: isDisabled(model),
-          isRecommended: model.isRecommended,
-          onTap: {
-            selectedModel = model
-            onModelChanged?()
-          }
-        )
-      }
-      .background(Color(.controlBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(Color(.separatorColor), lineWidth: 1)
-      )
+      CuratedModelPicker(
+        curation: ModelPickerCuration(
+          models: models, recommended: SettingsDefaults.readAloudModel, selected: selectedModel),
+        cell: { model, badges in modelCell(model, badges: badges) },
+        more: { ModelGrid(models: $0) { modelCell($0, badges: []) } })
 
       // Selected model details
       VStack(alignment: .leading, spacing: 8) {
@@ -77,35 +49,38 @@ struct TTSModelSelectionView: View {
             .font(.callout)
             .fontWeight(.medium)
             .foregroundColor(.secondary)
-          Text(selectedModel.costLevel)
+          Text(selectedModel.costLevel.title)
             .font(.callout)
             .fontWeight(.semibold)
             .foregroundColor(SettingsConstants.costLevelColor(for: selectedModel.costLevel))
         }
 
-        if selectedModel.isRecommended {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
-        }
-
-        if isDisabled(selectedModel) {
+        if !selectedModel.hasRequiredCredential {
           HStack(alignment: .firstTextBaseline, spacing: 4) {
             Image(systemName: "exclamationmark.triangle.fill")
               .foregroundColor(.orange)
               .font(.caption)
-            Text("Add the matching API key in Settings → General to use this model.")
+            Text("Add the matching API key in Settings → Accounts to use this model.")
               .font(.caption)
               .foregroundColor(.secondary)
           }
         }
       }
     }
+  }
+
+  private func modelCell(_ model: TTSModel, badges: [ModelPickerBadge]) -> some View {
+    ModelTile(
+      title: model.displayName,
+      isSelected: selectedModel == model,
+      isDisabled: false,
+      badges: badges,
+      setupBadge: model.pickerSetupBadge,
+      setupHelp: model.apiKeyRequiredMessage,
+      onTap: {
+        selectedModel = model
+        onModelChanged?()
+      }
+    )
   }
 }

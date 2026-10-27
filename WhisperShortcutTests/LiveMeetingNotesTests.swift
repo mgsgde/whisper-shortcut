@@ -9,12 +9,12 @@ import Foundation
 @Suite("Live meeting notes")
 struct LiveMeetingNotesTests {
 
-  @Test("Notes survive a write/read round-trip, markers included")
+  @Test("Notes survive a write/read round-trip")
   func notesRoundTrip() {
     let notes = [
       LiveMeetingNote(startTime: 0, bullets: ["Kickoff, everyone introduced themselves"]),
       LiveMeetingNote(startTime: 754, bullets: ["Pricing tiers debated", "No decision yet"]),
-      LiveMeetingNote(startTime: 900, bullets: ["Flagged by me"], isMarker: true),
+      LiveMeetingNote(startTime: 900, bullets: ["Budget owner agreed"]),
     ]
 
     let parsed = LiveMeetingTranscriptStore.parseNotes(
@@ -23,8 +23,18 @@ struct LiveMeetingNotesTests {
     #expect(parsed.count == 3)
     #expect(parsed.map(\.startTime) == [0, 754, 900])
     #expect(parsed[1].bullets == ["Pricing tiers debated", "No decision yet"])
-    #expect(parsed[2].isMarker)
-    #expect(parsed[0].isMarker == false)
+    #expect(parsed[2].bullets == ["Budget owner agreed"])
+  }
+
+  @Test("A legacy flagged-moment header (with the old ★) reads as an ordinary note")
+  func legacyStarHeaderParsesAsNote() {
+    let text = "## [00:10]\n- Intro\n\n## ★ [01:05]\n- Flagged by me\n"
+    let parsed = LiveMeetingTranscriptStore.parseNotes(text)
+    #expect(parsed.count == 2)
+    #expect(parsed[1].startTime == 65)
+    #expect(parsed[1].bullets == ["Flagged by me"])
+    // Writing never emits the ★ again.
+    #expect(!LiveMeetingTranscriptStore.notesMarkdown(parsed).contains("★"))
   }
 
   @Test("Timestamps past 99 minutes round-trip (long meetings)")

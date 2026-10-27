@@ -7,10 +7,6 @@ class ContextDerivation {
 
   /// Per-field character cap per log entry; smaller = less payload and faster derivation.
   private let maxFieldChars = 1000
-  /// API endpoint from the selected Smart Improvement / Generate with AI model; falls back to default (Gemini 3 Flash) if unset or invalid. Subscription uses stable Gemini 2.5 Flash.
-  private var analysisEndpoint: String {
-    analysisTranscriptionModel?.apiEndpoint ?? AppConstants.contextDerivationEndpoint
-  }
 
   /// The TranscriptionModel form of the currently selected Smart Improvement model, when it maps to one.
   /// Used to decide per-entry whether re-listening to audio can plausibly add information.
@@ -177,7 +173,7 @@ class ContextDerivation {
     }
 
     let glossaryText = prompts.whisperGlossary ?? ""
-    let transcripts = corpus.entries.filter { $0.mode == "transcription" }.compactMap(\.result)
+    let transcripts = corpus.entries.filter { $0.interactionMode == .transcription }.compactMap(\.result)
     // Strict near-misses are appended to the Whisper Glossary suggestion. Dictation does not
     // write glossary lines, so its list stays empty. Audio selection uses a looser distance
     // on both focuses so a suspected mishearing can still pick a clip.
@@ -237,7 +233,7 @@ class ContextDerivation {
         audioAttachments: audioAttachments,
         credential: credential
       )
-    case .openai, .grok, .anthropic, .local, .localMLX, .customOpenAI:
+    case .openai, .grok, .anthropic, .local, .localMLX, .customOpenAI, .openRouter, .chatGPTPlan:
       analysisResult = try await callTextModelForAnalysis(
         focus: focus,
         primaryText: loaded.primaryText,
@@ -483,21 +479,19 @@ class ContextDerivation {
   // MARK: - Log Loading & Sampling
 
   private func loadInteractionLogCorpus() -> InteractionLogCorpus {
-    let logFiles = ContextLogger.shared.interactionLogFiles(lastDays: AppConstants.contextTier3Days)
+    let logFiles = UserContextLog.files(
+      stream: .interactions,
+      in: ContextLogger.shared.directoryURL,
+      lastDays: AppConstants.contextTier3Days,
+      now: Date())
+    // Empty directory and a directory of undecodable lines are different: only the latter
+    // still feeds the current prompt in as secondary context.
     guard !logFiles.isEmpty else {
       return InteractionLogCorpus(hadFiles: false, entries: [])
     }
-    var entries: [InteractionLogEntry] = []
-    let decoder = JSONDecoder()
-    for fileURL in logFiles {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data) else { continue }
-        entries.append(entry)
-      }
-    }
-    return InteractionLogCorpus(hadFiles: true, entries: entries)
+    return InteractionLogCorpus(
+      hadFiles: true,
+      entries: UserContextLog.decodeLines(logFiles, as: InteractionLogEntry.self))
   }
 
   private func loadAndSampleLogs(
@@ -523,7 +517,7 @@ class ContextDerivation {
     let tier1Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier1Days, to: now) ?? now
     let tier2Cutoff = Calendar.current.date(byAdding: .day, value: -AppConstants.contextTier2Days, to: now) ?? now
 
-    let primaryMode = focus.primaryMode
+    let primaryMode = focus.primaryMode.rawValue
     let primaryEntries = entriesByMode[primaryMode] ?? []
     let sortedPrimary = primaryEntries.sorted { $0.ts < $1.ts }
     let tier1 = sortedPrimary.filter { parseDate($0.ts) >= tier1Cutoff }
@@ -639,23 +633,10 @@ class ContextDerivation {
     return (0..<count).map { entries[Int(Double($0) * step)] }
   }
 
-  /// Both option sets the old per-call formatter tried, kept immutable so sampling does not
-  /// allocate one `ISO8601DateFormatter` three times per entry. `date(from:)` is not thread-safe,
-  /// so the lock stands in for the old "fresh formatter per call" isolation.
-  private static let interactionDateParser: (fractional: ISO8601DateFormatter, internet: ISO8601DateFormatter) = {
-    let fractional = ISO8601DateFormatter()
-    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let internet = ISO8601DateFormatter()
-    internet.formatOptions = [.withInternetDateTime]
-    return (fractional, internet)
-  }()
-  private static let interactionDateParserLock = NSLock()
-
+  /// Unparsable timestamps sort as oldest. The scorecard drops those rows instead; that
+  /// difference stays at this call site so sampling does not start discarding history.
   private func parseDate(_ iso: String) -> Date {
-    Self.interactionDateParserLock.lock()
-    defer { Self.interactionDateParserLock.unlock() }
-    if let date = Self.interactionDateParser.fractional.date(from: iso) { return date }
-    return Self.interactionDateParser.internet.date(from: iso) ?? .distantPast
+    UserContextLog.timestamp(iso) ?? .distantPast
   }
 
   // MARK: - Gemini Analysis
@@ -872,9 +853,6 @@ class ContextDerivation {
     audioAttachments: [AudioAttachment],
     credential: GeminiCredential
   ) async throws -> [String: Any] {
-    let geminiClient = GeminiAPIClient()
-    var request = try geminiClient.createRequest(endpoint: analysisEndpoint, credential: credential)
-
     let systemPrompt = systemPromptForFocus(focus, audioAttached: !audioAttachments.isEmpty)
     let userMessage = buildAnalysisUserMessage(
       focus: focus,
@@ -885,48 +863,26 @@ class ContextDerivation {
       audioAttachments: audioAttachments
     )
 
-    // Build the request as a dict so we can attach a dynamic `responseSchema` (structured output).
     // Text part first, then one inline_data part per audio clip (verifier-only attachments).
     var userParts: [[String: Any]] = [["text": userMessage]]
     for attachment in audioAttachments {
       // Match the proven transcription path's request shape: part key `inline_data`, inner `mimeType`.
       userParts.append(["inline_data": ["mimeType": "audio/wav", "data": attachment.base64WAV]])
     }
-    let body: [String: Any] = [
-      "contents": [["role": "user", "parts": userParts]],
-      "system_instruction": ["parts": [["text": systemPrompt]]],
-      // Cost fuse (see AppConstants.llmMaxOutputTokens). This path matters more than most: it runs
-      // unattended on the 7-day auto-run timer, against a user-selectable model, with audio
-      // attached — the exact shape of the 2026-08-03 runaway, minus a human watching it.
-      "generationConfig": [
-        "responseMimeType": "application/json",
-        "responseSchema": Self.analysisSchema,
-        "maxOutputTokens": AppConstants.llmMaxOutputTokens,
-      ] as [String: Any],
-    ]
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-    let result = try await geminiClient.performRequest(
-      request,
-      responseType: GeminiChatResponse.self,
-      mode: "USER-CONTEXT-DERIVATION",
+    // The transcription twin's raw value is the model id the old hand-built URL embedded.
+    // A Gemini model with no twin (image models) keeps the id in `contextDerivationEndpoint`.
+    let modelID = analysisTranscriptionModel?.rawValue ?? PromptModel.gemini38Flash.rawValue
+    // `.low`: this run is unattended. The hand-built request sent no thinkingConfig, so Flash
+    // billed its medium default. Low is the approved level for this path.
+    return try await GeminiAPIClient().generateStructured(
+      model: modelID,
+      contents: [["role": "user", "parts": userParts]],
+      systemInstruction: ["parts": [["text": systemPrompt]]],
+      schema: Self.analysisSchema,
+      credential: credential,
+      thinkingLevel: .low,
       origin: .smartImprovement,
-      withRetry: true
-    )
-
-    guard let firstCandidate = result.candidates.first else {
-      throw TranscriptionError.networkError("No candidates in Gemini response for context derivation")
-    }
-
-    var textContent = ""
-    for part in firstCandidate.content.parts {
-      if let text = part.text { textContent += text }
-    }
-    guard let data = textContent.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw TranscriptionError.networkError("Gemini structured analysis response was not valid JSON: \(textContent.prefix(200))")
-    }
-    return obj
+      withRetry: true)
   }
 
   /// Builds the sectioned user message (current prompt + primary/secondary interactions + optional
@@ -949,7 +905,7 @@ class ContextDerivation {
       userMessageParts.append("## Current prompt\n\n(none — generate a fresh prompt based on the data below)")
     }
     if !primaryText.isEmpty {
-      let modeLabel = focus.primaryMode
+      let modeLabel = focus.primaryMode.rawValue
       userMessageParts.append("## Primary interactions – mode: \(modeLabel) (chronological, recent entries weighted)\n\n\(primaryText)")
     } else {
       userMessageParts.append("## Primary interactions\n\n(none for the target mode)")
@@ -1072,21 +1028,12 @@ class ContextDerivation {
       try suggestionText.write(to: fileURL, atomically: true, encoding: .utf8)
       DebugLogger.log("USER-CONTEXT-DERIVATION: Wrote suggested \(focus) (\(suggestionText.count) chars)")
     } catch {
-      DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.localizedDescription)")
+      DebugLogger.logError("USER-CONTEXT-DERIVATION: Failed to write suggestion for \(focus): \(error.logDescription)")
     }
   }
 }
 
 extension GenerationKind {
-  /// Interaction-log `mode` that counts as primary evidence for this focus.
-  fileprivate var primaryMode: String {
-    switch self {
-    case .dictation, .whisperGlossary: return "transcription"
-    case .promptMode: return "prompt"
-    case .chat: return "geminiChat"
-    }
-  }
-
   /// Suggestion filename without extension.
   fileprivate var suggestionBaseName: String {
     switch self {

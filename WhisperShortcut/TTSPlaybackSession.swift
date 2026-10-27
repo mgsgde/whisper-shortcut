@@ -61,6 +61,11 @@ final class TTSPlaybackSession {
   private var audioEngine: AVAudioEngine?
   private var audioPlayerNode: AVAudioPlayerNode?
   private var timePitchNode: AVAudioUnitTimePitch?
+  /// Observer for `.AVAudioEngineConfigurationChange` on the current engine. The engine stops
+  /// itself when the output device changes (AirPods connect, a display's speakers vanish) and no
+  /// buffer completion ever fires after that, so without this the session would hang in
+  /// `.speaking` forever. Added with the engine, removed with the graph.
+  private var configurationObserver: NSObjectProtocol?
 
   /// Token for the in-flight playback. Stale `scheduleBuffer` completions check this against their
   /// captured token and no-op when the user has started a new playback.
@@ -102,6 +107,14 @@ final class TTSPlaybackSession {
   /// a chunk whose synthesis landed after the user cancelled cannot spin up a fresh engine and
   /// start talking out of an idle state.
   private var acceptingChunks = false
+  /// True from `begin()` until the session ends by completion, failure or Stop. Lets
+  /// `closeStream` tell "the producer finished without ever delivering audio" (end the session)
+  /// from "the user already stopped this session" (nothing to do).
+  private var sessionActive = false
+  /// Bumped by every `begin()`. A producer captures the value it was started with and passes it to
+  /// `enqueue`, so a chunk from a cancelled Read Aloud whose synthesis landed late cannot be
+  /// accepted into the next one (`acceptingChunks` alone is true again by then).
+  private(set) var generation = 0
   /// Queue ran dry while the stream is still open. Set immediately so `enqueue` can re-anchor;
   /// the pill spinner waits on `bufferingDebounce`.
   private var isStarved = false
@@ -134,7 +147,11 @@ final class TTSPlaybackSession {
   /// Resets the per-session chunk bookkeeping. Called before the first chunk of a Read Aloud.
   /// - Parameter expectedCharacters: Length of the text about to be spoken, for the scrubber's
   ///   provisional total. 0 when unknown — the bar then grows with the received audio as before.
-  func begin(expectedCharacters: Int = 0) {
+  /// - Returns: The generation id of this session; pass it to `enqueue`.
+  @discardableResult
+  func begin(expectedCharacters: Int = 0) -> Int {
+    generation += 1
+    sessionActive = true
     receivedChunks = []
     totalFrames = 0
     estimatedDuration = Double(expectedCharacters) * AppConstants.ttsEstimatedSecondsPerCharacter
@@ -150,13 +167,14 @@ final class TTSPlaybackSession {
     isStarved = false
     starvedSince = nil
     bufferingReported = false
+    return generation
   }
 
   /// Plays one fully synthesized utterance. Kept as the non-streaming entry point: single-chunk
   /// syntheses and any future caller that already holds the complete audio land here.
   func play(audioData: Data) {
-    begin()
-    enqueue(audioData, index: 0, totalChunks: 1)
+    let id = begin()
+    enqueue(audioData, index: 0, totalChunks: 1, generation: id)
     closeStream()
   }
 
@@ -173,7 +191,11 @@ final class TTSPlaybackSession {
   /// (OpenAI, Gemini via `streamGenerateContent`) start emitting within ~1–3 s, so the opener
   /// itself lands early. If the queue drains anyway, the buffering spinner shows until the next
   /// chunk arrives (`onBufferingChanged`); a logged gap, not a broken playback.
-  func enqueue(_ pcm: Data, index: Int, totalChunks: Int) {
+  func enqueue(_ pcm: Data, index: Int, totalChunks: Int, generation chunkGeneration: Int) {
+    guard chunkGeneration == generation else {
+      DebugLogger.log("TTS-PLAYBACK: Dropping chunk \(index) — it belongs to an earlier Read Aloud (generation \(chunkGeneration), current \(generation))")
+      return
+    }
     guard acceptingChunks else {
       DebugLogger.log("TTS-PLAYBACK: Dropping chunk \(index) — Read Aloud session already ended")
       return
@@ -226,7 +248,7 @@ final class TTSPlaybackSession {
         DebugLogger.logDebug("TTS-PLAYBACK: Queued chunk \(index + 1)/\(totalChunks) (\(pcm.count) bytes)")
       }
     } catch {
-      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.localizedDescription)")
+      DebugLogger.logError("TTS-PLAYBACK: Failed to play audio: \(error.logDescription)")
       onFailure(error)
     }
   }
@@ -288,7 +310,17 @@ final class TTSPlaybackSession {
     clearStarvation()
     streamClosed = true
     acceptingChunks = false
-    guard let token = currentPlaybackToken else { return }
+    guard let token = currentPlaybackToken else {
+      // No engine was ever started: the producer finished without delivering any audio (an
+      // on-device voice with no converter, text with nothing speakable). No buffer completion
+      // will ever fire, so end the session here or the owner stays in `.processing` for good.
+      if sessionActive, receivedChunks.isEmpty {
+        sessionActive = false
+        DebugLogger.logWarning("TTS-PLAYBACK: Stream closed without any audio — ending the session")
+        onFailure(TTSPlaybackError.noAudioProduced)
+      }
+      return
+    }
     if estimatedDuration > 0 {
       DebugLogger.logDebug(
         "TTS-PLAYBACK: Stream closed — scrubber total \(formatSeconds(estimatedDuration)) estimated → \(formatSeconds(received)) exact")
@@ -401,10 +433,12 @@ final class TTSPlaybackSession {
     clearStarvation()
     currentPlaybackToken = nil
     acceptingChunks = false
+    sessionActive = false
     tearDownGraph()
   }
 
   private func tearDownGraph() {
+    removeConfigurationObserver()
     progressTimer?.invalidate()
     progressTimer = nil
     bufferingDebounce?.invalidate()
@@ -431,9 +465,32 @@ final class TTSPlaybackSession {
     else { return }
 
     DebugLogger.log("TTS-PLAYBACK: Playback completed (\(formatSeconds(duration)))")
+    endPlayback()
+  }
+
+  /// The one way a started playback ends on its own: drop the token, tear the graph down and tell
+  /// the owner. Shared by the normal "last buffer drained" path and the engine stopping itself.
+  private func endPlayback() {
     currentPlaybackToken = nil
+    acceptingChunks = false
+    sessionActive = false
     tearDownGraph()
     onPlaybackCompleted()
+  }
+
+  /// The engine stopped by itself because the audio hardware configuration changed. Restarting is
+  /// not attempted; the session ends through the completion path so every listener resets.
+  func handleEngineConfigurationChange() {
+    guard currentPlaybackToken != nil else { return }
+    DebugLogger.logWarning("TTS-PLAYBACK: Audio engine configuration changed (output device switch) — ending playback")
+    endPlayback()
+  }
+
+  private func removeConfigurationObserver() {
+    if let observer = configurationObserver {
+      NotificationCenter.default.removeObserver(observer)
+      configurationObserver = nil
+    }
   }
 
   // MARK: - Audio graph
@@ -508,7 +565,13 @@ final class TTSPlaybackSession {
       audioPlayerNode = nil
     }
 
+    removeConfigurationObserver()
     let engine = AVAudioEngine()
+    configurationObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+    ) { [weak self] _ in
+      self?.handleEngineConfigurationChange()
+    }
     let playerNode = AVAudioPlayerNode()
     engine.attach(playerNode)
 

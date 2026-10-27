@@ -293,15 +293,21 @@ class ChatViewModel: ObservableObject {
   /// Single source for autocomplete, tab-completion, `knownSlashCommands`, dispatch, and the
   /// system-prompt command list — so none can drift. `/openai` is NOT here: it's a silent,
   /// dispatch-only alias for `/gpt` (see `modelCommandLookup`).
-  static let modelCommands: [(command: String, model: PromptModel, description: String)] = {
-    var out: [(command: String, model: PromptModel, description: String)] = []
+  static let modelCommands: [(command: String, model: PromptModel, description: String, english: String)] = {
+    var out: [(command: String, model: PromptModel, description: String, english: String)] = []
     for provider in ChatModelProvider.allCases {
+      // The ChatGPT plan is not offered at all in the App Store build.
+      if provider == .chatGPTPlan && !ChatGPTPlanPreferences.isAvailableInThisBuild { continue }
       let def = provider.defaultChatModel
-      out.append(("/\(provider.commandAlias)", def, "Switch to \(def.displayName)"))
+      out.append((
+        "/\(provider.commandAlias)", def, String(localized: "Switch to \(def.displayName)"),
+        ("Switch to \(def.displayName)" as LocalizedStringResource).english))
       // Skip the per-model alias for the provider's default — the bare `/gemini` etc. already
       // targets it, so generating `/gemini35flash` too would be a redundant duplicate command.
       for model in PromptModel.chatModels where model.provider == provider && model != def {
-        out.append(("/\(model.shortAlias)", model, "Switch to \(model.displayName)"))
+        out.append((
+          "/\(model.shortAlias)", model, String(localized: "Switch to \(model.displayName)"),
+          ("Switch to \(model.displayName)" as LocalizedStringResource).english))
       }
     }
     return out
@@ -316,17 +322,17 @@ class ChatViewModel: ObservableObject {
     return dict
   }()
 
-  /// Non-model commands shown before / after the model-switch block. Kept separate so the model
-  /// block can be re-sorted by recency for display without disturbing these fixed slots.
-  static let commandsBeforeModels: [(command: String, description: String)] = [
+  /// Non-model commands; `commandSuggestions` puts the model-switch aliases between them for the
+  /// system prompt, while the on-screen menu lists only these (see `slashMenuCommands`).
+  private static let specsBeforeModels: [(command: String, description: LocalizedStringResource)] = [
     ("/new", "Start a new chat (previous chat stays in history)"),
     ("/screenshot", "Add a screenshot to your next message (can add multiple)"),
     ("/attach", "Open the file picker to attach files (PDF, images, text)"),
     ("/folder", "Share a folder so the chat can list, read, and search files in it"),
     ("/workspace", "Limit this chat to one shared folder, e.g. /workspace notes (`all` = every folder, `off` = none)"),
-    ("/model", "Switch chat model (e.g. /model 3.1 flash lite)"),
+    ("/model", "Switch model…"),
   ]
-  static let commandsAfterModels: [(command: String, description: String)] = [
+  private static let specsAfterModels: [(command: String, description: LocalizedStringResource)] = [
     ("/think", "Set reasoning depth for this chat: minimal | low | medium | high | default"),
     ("/x", "Grok only: limit X search to these accounts, e.g. /x @karpathy @simonw (`/x off` = all of X)"),
     ("/settings", "Open Settings"),
@@ -336,46 +342,136 @@ class ChatViewModel: ObservableObject {
     ("/copy", "Copy the entire chat history to clipboard as Markdown"),
     ("/feedback", "Message the developer, with the end of this chat attached"),
   ]
+  /// Menu text: descriptions in the app language.
+  static let commandsBeforeModels: [(command: String, description: String)] =
+    specsBeforeModels.map { ($0.command, String(localized: $0.description)) }
+  static let commandsAfterModels: [(command: String, description: String)] =
+    specsAfterModels.map { ($0.command, String(localized: $0.description)) }
 
-  /// All slash commands in canonical (provider-grouped) order. Used where order is irrelevant —
-  /// `knownSlashCommands` (a set) and the system-prompt command list. The on-screen autocomplete
-  /// uses `commandSuggestionsForDisplay`, which re-sorts the model block by recency.
+  /// All slash commands in canonical (provider-grouped) order, model aliases included. Used by
+  /// `knownSlashCommands` (a set) and the system-prompt command list. The on-screen menu uses
+  /// `slashSuggestions`, which lists models only behind `/model `.
   static let commandSuggestions: [(command: String, description: String)] =
     commandsBeforeModels + modelCommands.map { ($0.command, $0.description) } + commandsAfterModels
 
-  /// Model-switch commands for display, ordered most-recently-used first (see `recordModelUse`).
-  /// The currently active model is pulled out of the recency sort and appended last, labelled
-  /// "Current model" — so the top row is the most-recently-used *other* model (one Enter away
-  /// from toggling back), while the list still shows the complete lineup: a model missing from
-  /// the suggestions reads as "the app dropped it", which it never is. Never-used models keep
-  /// the canonical provider-grouped order at the bottom.
-  func recentlyOrderedModelCommands() -> [(command: String, description: String)] {
-    let recency = Self.loadModelRecency()
-    let current = PromptModel.loadSelectedChatModel()
-    let rank: (PromptModel) -> Int = { recency.firstIndex(of: $0.rawValue) ?? Int.max }
-    let others = Self.modelCommands
-      .filter { $0.model != current }
-      .enumerated()
-      .sorted { a, b in
-        let ra = rank(a.element.model), rb = rank(b.element.model)
-        return ra != rb ? ra < rb : a.offset < b.offset
-      }
-      .map { ($0.element.command, $0.element.description) }
-    guard let currentEntry = Self.modelCommands.first(where: { $0.model == current }) else {
-      return others
-    }
-    return others + [(currentEntry.command, "Current model — \(current.displayName)")]
+  /// The same list in English, for the system prompt: a model reads it, so it never follows the
+  /// app language.
+  static let commandSuggestionsForModel: [(command: String, description: String)] =
+    specsBeforeModels.map { ($0.command, $0.description.english) }
+    + modelCommands.map { ($0.command, $0.english) }
+    + specsAfterModels.map { ($0.command, $0.description.english) }
+
+  /// One row of the slash-command menu: a command (`/new`) or, after `/model `, a model.
+  struct SlashSuggestion: Equatable {
+    /// Row identity. For a command it is also what gets dispatched; for a model it is the
+    /// model's alias, used only as a stable id (selection switches via `model`).
+    let command: String
+    let title: String
+    let detail: String
+    var model: PromptModel? = nil
+    var isCurrent = false
   }
 
-  /// Commands to show in UI: fixed commands around a recency-sorted model block (and excludes
-  /// /new in single-chat mode).
-  var commandSuggestionsForDisplay: [(command: String, description: String)] {
-    var list = userCommandSuggestions + Self.commandsBeforeModels + recentlyOrderedModelCommands()
-      + Self.commandsAfterModels
-    if singleChatOnly {
-      list = list.filter { $0.command != "/new" }
+  /// Rows for the slash menu, given everything typed in the composer.
+  ///
+  /// - Bare `/` and command prefixes list commands only; models are reached through one
+  ///   `/model` row instead of ~15 aliases like `/gemini31flashlite` (recall, not recognition).
+  /// - `/model <query>` lists the chat models by display name, filtered as you type: every
+  ///   query word must appear in the name, alias, or provider.
+  /// - A slash word that matches no command but does match models (`/gem`, `/claude`) lists
+  ///   those models, so the old aliases still lead somewhere when typed. Aliases typed in full
+  ///   keep dispatching directly (`modelCommandLookup`); they are just never listed.
+  ///
+  /// Pure so the filtering is unit-testable: `models` are the chat models offered on this Mac
+  /// (`PromptModel.chatModels` — MLX only where it runs, cloud hidden in Offline Mode).
+  static func slashSuggestions(
+    composerText: String,
+    commands: [(command: String, description: String)],
+    models: [PromptModel],
+    current: PromptModel,
+    needsSetup: (ChatModelProvider) -> Bool = { _ in false }
+  ) -> [SlashSuggestion] {
+    func modelRows(_ query: String) -> [SlashSuggestion] {
+      let words = query.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+      // Grouped by provider in the same order as the composer's model picker.
+      let ordered = ChatModelProvider.allCases.flatMap { p in models.filter { $0.provider == p } }
+      return ordered
+        .filter { model in
+          let haystack = [
+            model.displayName, model.displayName.replacingOccurrences(of: "-", with: " "),
+            model.shortAlias, model.provider.commandAlias, model.provider.rawValue,
+            model.provider.pickerSectionTitle, model.rawValue,
+          ].joined(separator: " ").lowercased()
+          return words.allSatisfy { haystack.contains($0) }
+        }
+        .map { model in
+          SlashSuggestion(
+            command: "/\(model.shortAlias)",
+            title: model.displayName,
+            detail: needsSetup(model.provider)
+              ? String(localized: "\(model.provider.pickerSectionTitle) · needs setup")
+              : model.provider.pickerSectionTitle,
+            model: model,
+            isCurrent: model == current)
+        }
     }
-    return list
+
+    let line = String(composerText.drop(while: { $0.isWhitespace }))
+    if line.lowercased().hasPrefix(modelCommand + " "), !line.contains(where: \.isNewline) {
+      return modelRows(String(line.dropFirst(modelCommand.count + 1)))
+    }
+
+    let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lastWord = trimmed.split(whereSeparator: { $0.isWhitespace }).last.map(String.init) ?? ""
+    guard lastWord.hasPrefix("/") else { return [] }
+    let prefix = lastWord.lowercased()
+    let commandRows = commands
+      .filter { $0.command.lowercased().hasPrefix(prefix) }
+      .map { SlashSuggestion(command: $0.command, title: $0.command, detail: $0.description) }
+    // One letter after the slash is too little to guess a model from; let the commands speak.
+    guard commandRows.isEmpty, prefix.count >= 3 else { return commandRows }
+    // An alias typed in full whose model is not offered here (`/local`, `/mlx` on Intel) lists
+    // nothing, so Return reaches the alias and its explanation — not a look-alike row
+    // (`local` also matches the offline models' provider, `localMLX`).
+    if let target = modelCommandLookup[prefix], !models.contains(target) { return [] }
+    return modelRows(String(prefix.dropFirst()))
+  }
+
+  /// Row to highlight when the menu (re)appears: the command typed in full, the model an alias
+  /// typed in full points at (`/gemini` → the Gemini default, not the first Gemini row), the
+  /// current model in the `/model ` list (so ↑/↓ start from where you are), else the top row.
+  static func initialSlashHighlight(
+    in rows: [SlashSuggestion], composerText: String
+  ) -> Int {
+    let typed = (composerText.trimmingCharacters(in: .whitespacesAndNewlines)
+      .split(whereSeparator: { $0.isWhitespace }).last.map(String.init) ?? "").lowercased()
+    if let i = rows.firstIndex(where: { $0.model == nil && $0.command.lowercased() == typed }) { return i }
+    if let target = modelCommandLookup[typed], let i = rows.firstIndex(where: { $0.model == target }) { return i }
+    if let i = rows.firstIndex(where: \.isCurrent) { return i }
+    return 0
+  }
+
+  /// Commands listed in the slash menu: the user's own commands first, then the built-ins
+  /// (no `/new` in single-chat mode). Model aliases are deliberately absent — see `slashSuggestions`.
+  var slashMenuCommands: [(command: String, description: String)] {
+    let list = userCommandSuggestions + Self.commandsBeforeModels + Self.commandsAfterModels
+    return singleChatOnly ? list.filter { $0.command != "/new" } : list
+  }
+
+  /// Slash-menu rows for the current composer text (live app state: offered models, current
+  /// model, credentials).
+  func slashSuggestions(for composerText: String) -> [SlashSuggestion] {
+    Self.slashSuggestions(
+      composerText: composerText,
+      commands: slashMenuCommands,
+      models: PromptModel.chatModels,
+      current: Self.openChatModel,
+      needsSetup: { !$0.hasCredential })
+  }
+
+  /// Switches the chat model from the slash menu's `/model` list.
+  func selectChatModel(_ model: PromptModel) {
+    switchToModel(model)
   }
 
   /// When non-nil, this provider supplies extra context (e.g. meeting summary + recent transcript) appended to the system instruction. Used by the Meeting Chat window.
@@ -418,6 +514,11 @@ class ChatViewModel: ObservableObject {
             }
             self.refreshRecentSessions()
           } else {
+            // A chat with history (or another meeting) is never repurposed: the transcript would
+            // land in that conversation. Only an empty "New chat" becomes the meeting.
+            if !self.singleChatOnly && (!self.session.messages.isEmpty || self.session.isMeeting) {
+              self.createNewSession()
+            }
             self.meetingSessionId = self.session.id
             self.markCurrentSessionAsMeeting()
           }
@@ -559,6 +660,7 @@ class ChatViewModel: ObservableObject {
   }
 
   private func resend(id: UUID, replacingTypedText newText: String?) {
+    guard validateCredential(for: Self.openChatModel) else { return }
     guard !isSending else {
       showNotice("Wait for the current response to finish (or press Stop).")
       return
@@ -591,7 +693,7 @@ class ChatViewModel: ObservableObject {
     // Emitted before the re-send, while `refTs` still points at the answer being rejected: once
     // `performSend` logs the replacement turn, the marker moves on.
     ContextLogger.shared.logSignal(
-      .chatRetry, mode: "geminiChat", detail: ["model": Self.openChatModel.rawValue])
+      .chatRetry, mode: InteractionMode.chat.rawValue, detail: ["model": Self.openChatModel.rawValue])
     performSend(
       content: content, attachedParts: original.attachedImageParts,
       commandName: newText == nil ? original.commandName : nil)
@@ -601,7 +703,7 @@ class ChatViewModel: ObservableObject {
     guard !screenshotCaptureInProgress else { return }
     let totalCount = pendingScreenshots.count + composerScreenshotCountProvider()
     if totalCount >= Self.maxPendingScreenshots {
-      errorMessage = "Maximum number of screenshots reached (\(Self.maxPendingScreenshots))."
+      errorMessage = String(localized: "Maximum number of screenshots reached (\(Self.maxPendingScreenshots)).")
       return
     }
     screenshotCaptureInProgress = true
@@ -616,7 +718,7 @@ class ChatViewModel: ObservableObject {
         ScreenshotSaveLocation.save(data)
       }
     } else {
-      errorMessage = "Screen capture failed. Opening Privacy & Permissions..."
+      errorMessage = String(localized: "Screen capture failed. Opening Privacy & Permissions...")
       DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Privacy & Permissions")
       SettingsManager.shared.showPrivacyPermissions()
     }
@@ -652,7 +754,7 @@ class ChatViewModel: ObservableObject {
     panel.allowsMultipleSelection = true
     panel.canChooseDirectories = false
     panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
-    panel.message = "Select files to attach to your next message"
+    panel.message = String(localized: "Select files to attach to your next message")
     // C2: reopen wherever we last attached from; first time fall back to the screenshot folder.
     if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
       panel.directoryURL = URL(fileURLWithPath: lastPath)
@@ -668,13 +770,13 @@ class ChatViewModel: ObservableObject {
     let currentFileCount = pendingFileAttachments.count + composerFileCountProvider()
     let remaining = Self.maxFileAttachments - currentFileCount
     if remaining <= 0 {
-      errorMessage = "Maximum number of file attachments reached (\(Self.maxFileAttachments))."
+      errorMessage = String(localized: "Maximum number of file attachments reached (\(Self.maxFileAttachments)).")
       return
     }
 
     let urls = Array(panel.urls.prefix(remaining))
     if panel.urls.count > remaining {
-      errorMessage = "Only \(remaining) of \(panel.urls.count) files attached (limit: \(Self.maxFileAttachments))."
+      errorMessage = String(localized: "Only \(remaining) of \(panel.urls.count) files attached (limit: \(Self.maxFileAttachments)).")
     }
 
     var failedNames: [String] = []
@@ -701,7 +803,7 @@ class ChatViewModel: ObservableObject {
       errorMessage = Self.attachmentTooLargeMessage(filenames: oversizedNames)
     }
     if !failedNames.isEmpty {
-      errorMessage = "Could not read: \(failedNames.joined(separator: ", "))"
+      errorMessage = String(localized: "Could not read: \(failedNames.joined(separator: ", "))")
     }
   }
 
@@ -723,8 +825,8 @@ class ChatViewModel: ObservableObject {
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
     panel.allowsMultipleSelection = true
-    panel.prompt = "Share"
-    panel.message = "Choose folders the chat may read"
+    panel.prompt = String(localized: "Share")
+    panel.message = String(localized: "Choose folders the chat may read")
     guard panel.runModal() == .OK else { return }
     addWorkspaceFolders(panel.urls)
   }
@@ -749,16 +851,16 @@ class ChatViewModel: ObservableObject {
     }
 
     if !failed.isEmpty {
-      errorMessage = "Could not share: \(failed.joined(separator: ", "))"
+      errorMessage = String(localized: "Could not share: \(failed.joined(separator: ", "))")
     }
     guard !added.isEmpty else { return }
 
     let names = added.map { "`\($0)`" }.joined(separator: ", ")
     let all = WorkspaceFolders.displayPaths.map { ($0 as NSString).abbreviatingWithTildeInPath }
     appendModelMessage(
-      "Shared \(names) with this chat. I can now list, read, and search files in: "
+      verbatim: String(localized: "Shared \(names) with this chat. I can now list, read, and search files in: ")
         + all.map { "`\($0)`" }.joined(separator: ", ")
-        + "\n\nManage or remove folders in Settings → Chat → Workspace Folders.")
+        + "\n\n" + String(localized: "Manage or remove folders in Settings → Chat → Workspace Folders."))
   }
 
   private static func mimeType(for url: URL) -> String {
@@ -774,7 +876,7 @@ class ChatViewModel: ObservableObject {
     let nowPinned = !newValue
     DebugLogger.log("GEMINI-CHAT: /pin — window is now \(nowPinned ? "pinned (stays open)" : "unpinned (closes on focus loss)")")
     showNotice(nowPinned
-      ? "Window pinned — it stays open when it loses focus."
+      ? ("Window pinned — it stays open when it loses focus." as LocalizedStringResource)
       : "Window unpinned — it closes when it loses focus.")
   }
 
@@ -837,7 +939,7 @@ class ChatViewModel: ObservableObject {
     }
     showNotice(
       excerpt.isEmpty
-        ? "Opened WhatsApp. Edit the message before sending."
+        ? ("Opened WhatsApp. Edit the message before sending." as LocalizedStringResource)
         : "Opened WhatsApp with the end of this chat attached. Edit before sending.")
   }
 
@@ -846,7 +948,7 @@ class ChatViewModel: ObservableObject {
     let recent = messages.suffix(6)
     guard !recent.isEmpty else { return "" }
     let rendered = recent.map { message -> String in
-      let who = message.role == .user ? "Me" : "Assistant"
+      let who = message.role == .user ? "Me" : "Assistant" // sent to the developer in English
       // One line per turn: a pasted multi-line reply makes the WhatsApp draft unreadable.
       let body = message.content
         .replacingOccurrences(of: "\n", with: " ")
@@ -856,7 +958,11 @@ class ChatViewModel: ObservableObject {
     return FeedbackLinks.truncated(rendered, limit: 1200)
   }
 
-  private func showNotice(_ text: String) {
+  private func showNotice(_ text: LocalizedStringResource) {
+    showNotice(verbatim: String(localized: text))
+  }
+
+  private func showNotice(verbatim text: String) {
     noticeMessage = text
     noticeDismissTask?.cancel()
     noticeDismissTask = Task { [weak self] in
@@ -1109,7 +1215,7 @@ class ChatViewModel: ObservableObject {
         DebugLogger.log("CHAT: Send cancelled (partialChars=\(partialChars) toolCalls=\(runner?.records.count ?? 0))")
         ContextLogger.shared.logSignal(
           .chatStopped,
-          mode: "geminiChat",
+          mode: InteractionMode.chat.rawValue,
           detail: [
             "reason": droppedByUser != nil ? "user" : "stall",
             "partialChars": String(partialChars),
@@ -1125,7 +1231,7 @@ class ChatViewModel: ObservableObject {
         let friendly = ChatErrorFormatter.friendlyError(error, provider: selectedModel.provider)
         // Shown once, as the inline FailedTurnRow at the end of the transcript — not also as a banner.
         self.persistLastSendError(friendly, sessionId: sessionId)
-        DebugLogger.logError("CHAT: \(error.localizedDescription)")
+        DebugLogger.logError("CHAT: \(error.logDescription)")
         TelemetryService.shared.failed(.chat, error: error)
       }
     }
@@ -1135,7 +1241,7 @@ class ChatViewModel: ObservableObject {
     StallCancellationRegistry.shared.register(sessionId, task: task)
   }
 
-  private func validateCredential(for model: PromptModel) -> Bool {
+  func validateCredential(for model: PromptModel) -> Bool {
     guard model.provider.hasCredential else {
       errorMessage = model.provider.credentialRequiredMessage
       return false
@@ -1175,6 +1281,12 @@ class ChatViewModel: ObservableObject {
   private func confirmToolCall(
     name: String, summary: String, sessionId: UUID, requestId: UUID
   ) async -> Bool {
+    let stored = store.session(by: sessionId)
+    if stored == nil || stored?.archived == true {
+      let why = stored == nil ? "gone" : "archived"
+      DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) denied — chat \(sessionId) is \(why)")
+      return false
+    }
     if chatWideApprovals[sessionId]?.contains(name) == true {
       DebugLogger.log("CHAT-TOOL-APPROVAL: \(name) allowed for this chat")
       return true
@@ -1239,7 +1351,7 @@ class ChatViewModel: ObservableObject {
       let domain = String(email.split(separator: "@").last ?? "").lowercased()
       switch await MailHostDetector.detect(domain: domain) {
       case .google:
-        return ["error": "\(domain) receives its mail through Google Workspace. Gmail is read through the Google connection: Settings → Chat → Google Account."]
+        return ["error": "\(domain) receives its mail through Google Workspace. Gmail is read through the Google connection: Settings → Accounts → Google Account."]
       case .microsoft:
         return ["error": "\(domain) receives its mail through Microsoft 365. Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet."]
       case .imapHost(let host):
@@ -1308,11 +1420,13 @@ class ChatViewModel: ObservableObject {
       },
       ChatToolRegistry.refineMeetingSummaryToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeRefineMeetingSummaryTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeRefineMeetingSummaryTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.correctTranscriptTermToolName: { [weak self] args in
         guard let self else { return ChatToolOutcome(response: [:]) }
-        return ChatToolOutcome(response: await self.executeCorrectTranscriptTermTool(args: args))
+        return ChatToolOutcome(
+          response: await self.executeCorrectTranscriptTermTool(args: args, sessionId: sessionId))
       },
       ChatToolRegistry.rememberAboutUserToolName: { [weak self] args in
         guard self != nil else { return ChatToolOutcome(response: [:]) }
@@ -1372,7 +1486,7 @@ class ChatViewModel: ObservableObject {
       if !narration.isEmpty { response["image_model_note"] = String(narration.prefix(300)) }
       return (response, markers)
     } catch {
-      DebugLogger.logError("CHAT-TOOL: generate_image failed: \(error.localizedDescription)")
+      DebugLogger.logError("CHAT-TOOL: generate_image failed: \(error.logDescription)")
       return (["error": error.localizedDescription], [])
     }
   }
@@ -1394,12 +1508,45 @@ class ChatViewModel: ObservableObject {
     return (markers, text.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
+  /// Picks the earliest queued message whose session still exists and is not already sending,
+  /// and drops items whose session is gone. FIFO within one session is the queue order:
+  /// the first eligible item is taken and every other surviving item stays in place.
+  static func drainNextQueuedMessage(
+    _ queue: [QueuedChatMessage],
+    isSending: (UUID) -> Bool,
+    sessionExists: (UUID) -> Bool
+  ) -> (remaining: [QueuedChatMessage], next: QueuedChatMessage?) {
+    var remaining: [QueuedChatMessage] = []
+    remaining.reserveCapacity(queue.count)
+    var next: QueuedChatMessage?
+    for item in queue {
+      guard sessionExists(item.sessionId) else { continue }
+      if next == nil && !isSending(item.sessionId) {
+        next = item
+      } else {
+        remaining.append(item)
+      }
+    }
+    return (remaining, next)
+  }
+
   /// Auto-processes the next queued message once the current one finishes.
   /// Sends into the session the message was queued for — NOT the currently
   /// visible one, which may have changed while the previous send ran.
+  /// A busy session no longer blocks an idle one behind it in the global queue.
   private func processNextQueued() {
-    guard let next = messageQueue.first, !isSendingSession(next.sessionId) else { return }
-    messageQueue.removeFirst()
+    // Checked only with work waiting: `validateCredential` raises the banner as a side effect.
+    guard !messageQueue.isEmpty, validateCredential(for: Self.openChatModel) else { return }
+    let (remaining, next) = Self.drainNextQueuedMessage(
+      messageQueue,
+      isSending: { self.isSendingSession($0) },
+      sessionExists: { self.store.session(by: $0) != nil })
+    let dropped = messageQueue.count - remaining.count - (next == nil ? 0 : 1)
+    if dropped > 0 {
+      DebugLogger.log("GEMINI-CHAT: Dropped \(dropped) queued message(s) for chats that no longer exist")
+    }
+    messageQueue = remaining
+    guard let next else { return }
     DebugLogger.log("GEMINI-CHAT: Processing next queued message, \(messageQueue.count) remaining")
     performSend(
       content: next.content, attachedParts: next.attachedParts, toSessionId: next.sessionId,
@@ -1564,6 +1711,8 @@ class ChatViewModel: ObservableObject {
   func clearMessages() {
     messages = []
     session.messages = []
+    session.lastSendError = nil
+    lastSendError = nil
     session.lastUpdated = Date()
     store.save(session)
     refreshRecentSessions()
@@ -1624,9 +1773,9 @@ class ChatViewModel: ObservableObject {
     // Order matters for provider prompt caching (Anthropic cache_control, OpenAI/Gemini implicit
     // prefix caching): stable blocks first, blocks that change within a session last. Anything
     // that changes invalidates the cache for everything after it.
-    // Canonical order, not `commandSuggestionsForDisplay`: that one re-sorts by recency, so every
-    // `/model` switch would change the prompt prefix and miss the cache.
-    let commandsList = Self.commandSuggestions
+    // Canonical, fixed order: anything that changed with the selected model would change the
+    // prompt prefix and miss the cache.
+    let commandsList = Self.commandSuggestionsForModel
       .filter { !singleChatOnly || $0.command != "/new" }
       .map { "- `\($0.command)` — \($0.description)" }
       .joined(separator: "\n")
@@ -1717,7 +1866,7 @@ class ChatViewModel: ObservableObject {
         let live = LiveMeetingTranscriptStore.shared.meetingContextForChat()
         if !live.isEmpty { return live }
       }
-      return buildEndedMeetingContext()
+      return buildEndedMeetingContext(stem: stem)
     }()
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
@@ -1977,7 +2126,7 @@ class ChatViewModel: ObservableObject {
       refreshRecentSessions()
       DebugLogger.log("GEMINI-CHAT: \(logLabel) title generated for \(targetId): \(title)")
     } catch {
-      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.localizedDescription)")
+      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.logDescription)")
     }
   }
 
@@ -2032,7 +2181,11 @@ class ChatViewModel: ObservableObject {
   /// Appends a local command response. Rendered as a muted system line, not an assistant turn,
   /// and filtered out of the model's history (`ChatRequestBuilder`).
   @MainActor
-  private func appendModelMessage(_ content: String) {
+  private func appendModelMessage(_ content: LocalizedStringResource) {
+    appendModelMessage(verbatim: String(localized: content))
+  }
+
+  private func appendModelMessage(verbatim content: String) {
     let msg = ChatMessage(role: .model, content: content, isLocalNotice: true)
     messages.append(msg)
     session.messages = messages
@@ -2053,7 +2206,7 @@ class ChatViewModel: ObservableObject {
     switch outcome {
     case .usage(let cur):
       appendModelMessage(
-        "Current model: **\(cur.displayName)**. Example: `/model 3.1 flash lite` or `/model 3.8 flash`."
+        "Current model: **\(cur.displayName)**. Type `/model ` to pick another from the list."
       )
     case .applied(let model):
       switchToModel(model)
@@ -2070,13 +2223,41 @@ class ChatViewModel: ObservableObject {
   /// expected to be already migrated (callers come from `ChatModelCommandResolver` or
   /// `ChatModelProvider.X.defaultChatModel`, both of which yield current cases).
   private func switchToModel(_ model: PromptModel) {
+    // Aliases like `/local` and `/mlx` dispatch even where their model cannot run. Saying "Model
+    // set to …" there while the picker kept the old model (it only shows chat models) was a lie.
+    if let reason = Self.chatUnavailableReason(for: model) {
+      appendModelMessage(verbatim: reason)
+      DebugLogger.log("GEMINI-CHAT: switchToModel refused \(model.rawValue) (not offered in chat)")
+      return
+    }
     UserDefaults.standard.set(model.rawValue, forKey: UserDefaultsKeys.selectedChatModel)
     Self.recordModelUse(model)
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
     // Say it now rather than on the next send, which would fail with the same message.
     let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
-    appendModelMessage("Model set to **\(model.displayName)**.\(setupHint)")
+    appendModelMessage(verbatim: String(localized: "Model set to **\(model.displayName)**.") + setupHint)
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
+  }
+
+  /// Why `model` cannot be the chat model right now, or nil when it can (it is in
+  /// `PromptModel.chatModels`, the same list the composer's picker shows).
+  static func chatUnavailableReason(for model: PromptModel) -> String? {
+    guard !PromptModel.chatModels.contains(model) else { return nil }
+    let offlineHint = PromptModel.chatModels.contains { $0.provider == .localMLX }
+      ? " " + String(localized: "For a chat that stays on this Mac, pick an offline model: `/model offline`.")
+      : ""
+    if model.provider == .local {
+      return String(localized: "**\(model.displayName)** only powers Dictate Prompt for now, not Chat.") + offlineHint
+    }
+    if let mlx = model.localMLXModelType, !mlx.isOfferable {
+      return LocalLLMModelType.isSupportedOnThisMac
+        ? String(localized: "**\(model.displayName)** can't run on this Mac: it needs at least \(mlx.minimumPhysicalMemoryGB) GB of memory.")
+        : String(localized: "**\(model.displayName)** can't run on this Mac: it needs a Mac with Apple silicon.")
+    }
+    if !model.isSelectableUnderOfflineMode {
+      return String(localized: "Offline Mode is on, so Chat only uses models on this Mac. Turn it off in Settings to use **\(model.displayName)**.")
+    }
+    return String(localized: "**\(model.displayName)** isn't available in Chat.")
   }
 
   /// Handles the /think command. Sets this session's reasoning depth (persisted across restarts)
@@ -2097,9 +2278,9 @@ class ChatViewModel: ObservableObject {
     }
     session.thinkingLevel = level  // persisted by appendModelMessage's store.save(session)
     let note = level == .default
-      ? "Reasoning depth reset to the model's **default** for this chat."
-      : "Reasoning depth set to **\(level.rawValue)** for this chat. Higher = more thorough but slower and pricier."
-    appendModelMessage(note)
+      ? String(localized: "Reasoning depth reset to the model's **default** for this chat.")
+      : String(localized: "Reasoning depth set to **\(level.rawValue)** for this chat. Higher = more thorough but slower and pricier.")
+    appendModelMessage(verbatim: note)
     DebugLogger.log("GEMINI-CHAT: /think level=\(level.rawValue) session=\(session.id)")
   }
 
@@ -2112,13 +2293,13 @@ class ChatViewModel: ObservableObject {
   /// all of X even when a default is configured.
   @MainActor
   private func handleXHandlesCommand(argument: String) {
-    let usage = "Set with `/x @karpathy @simonw`, clear with `/x off`."
+    let usage = String(localized: "Set with `/x @karpathy @simonw`, clear with `/x off`.")
     guard !argument.isEmpty else {
       let effective = effectiveXHandles(for: session)
       let state = effective.isEmpty
-        ? "X search covers **all of X** in this chat."
-        : "X search in this chat is limited to **\(XSearchHandles.describe(effective))**."
-      appendModelMessage("\(state) \(usage)")
+        ? String(localized: "X search covers **all of X** in this chat.")
+        : String(localized: "X search in this chat is limited to **\(XSearchHandles.describe(effective))**.")
+      appendModelMessage(verbatim: "\(state) \(usage)")
       return
     }
     if ["off", "all", "clear", "none", "reset"].contains(argument) {
@@ -2134,11 +2315,11 @@ class ChatViewModel: ObservableObject {
     }
     session.xHandles = handles  // persisted by appendModelMessage's store.save(session)
     var note =
-      "Grok will now search **only** \(XSearchHandles.describe(handles)) on X in this chat — posts from anyone else stay invisible to it. \(usage)"
+      String(localized: "Grok will now search **only** \(XSearchHandles.describe(handles)) on X in this chat — posts from anyone else stay invisible to it.") + " " + usage
     if droppedOverCap > 0 {
-      note += "\n\nxAI accepts at most \(XSearchHandles.maxHandles) accounts, so the last \(droppedOverCap) were dropped."
+      note += "\n\n" + String(localized: "xAI accepts at most \(XSearchHandles.maxHandles) accounts, so the last \(droppedOverCap) were dropped.")
     }
-    appendModelMessage(note)
+    appendModelMessage(verbatim: note)
     DebugLogger.log("GEMINI-CHAT: /x handles=\(handles.count) dropped=\(droppedOverCap) session=\(session.id)")
   }
 
@@ -2173,21 +2354,22 @@ class ChatViewModel: ObservableObject {
     }
     let list = shared.map { "- `\(abbreviate($0))`" }.joined(separator: "\n")
     let usage =
-      "Narrow with `/workspace <name>`, restore every folder with `/workspace all`, or drop file access entirely with `/workspace off`.\n\nShared folders:\n\(list)"
+      String(localized: "Narrow with `/workspace <name>`, restore every folder with `/workspace all`, or drop file access entirely with `/workspace off`.")
+      + "\n\n" + String(localized: "Shared folders:") + "\n\(list)"
 
     guard !argument.isEmpty else {
       let active = WorkspaceFolders.displayPaths(scope: workspaceScope(for: session))
       let state: String
       if active.isEmpty {
         state = session.workspaceFolders?.isEmpty == false
-          ? "This chat is pinned to a folder that is no longer shared, so it currently has **no file access**."
-          : "File access is **off** in this chat."
+          ? String(localized: "This chat is pinned to a folder that is no longer shared, so it currently has **no file access**.")
+          : String(localized: "File access is **off** in this chat.")
       } else if active.count == shared.count {
-        state = "This chat can use **all \(shared.count) shared folders**."
+        state = String(localized: "This chat can use **all \(shared.count) shared folders**.")
       } else {
-        state = "This chat is limited to **\(active.map(abbreviate).joined(separator: ", "))**."
+        state = String(localized: "This chat is limited to **\(active.map(abbreviate).joined(separator: ", "))**.")
       }
-      appendModelMessage("\(state)\n\n\(usage)")
+      appendModelMessage(verbatim: "\(state)\n\n\(usage)")
       return
     }
 
@@ -2212,14 +2394,14 @@ class ChatViewModel: ObservableObject {
         || abbreviate(path).lowercased().contains(needle)
     }
     guard !matches.isEmpty else {
-      appendModelMessage("No shared folder matches \"\(argument)\".\n\n\(usage)")
+      appendModelMessage(verbatim: String(localized: "No shared folder matches \"\(argument)\".") + "\n\n" + usage)
       return
     }
     session.workspaceFolders = matches
     let named = matches.map { "**\(abbreviate($0))**" }.joined(separator: ", ")
     appendModelMessage(
       matches.count == shared.count
-        ? "That matches every shared folder, so this chat still uses all of them."
+        ? ("That matches every shared folder, so this chat still uses all of them." as LocalizedStringResource)
         : "This chat now uses \(named) only — its files and its context files. `/workspace all` restores the rest.")
     DebugLogger.log("GEMINI-CHAT: /workspace matched=\(matches.count) session=\(session.id)")
   }
@@ -2331,7 +2513,7 @@ class ChatViewModel: ObservableObject {
       leaving.messages.lazy.filter({ $0.role == .user }).count == 1
     else { return }
     ContextLogger.shared.logSignal(
-      .chatAbandoned, mode: "geminiChat", detail: ["reason": reason, "model": Self.openChatModel.rawValue])
+      .chatAbandoned, mode: InteractionMode.chat.rawValue, detail: ["reason": reason, "model": Self.openChatModel.rawValue])
   }
 
   /// Pushes a session onto the recently-closed ring buffer if it has any
@@ -2347,14 +2529,21 @@ class ChatViewModel: ObservableObject {
   /// Restores the most recently closed tab and switches to it. No-op if the
   /// undo buffer is empty.
   func reopenLastClosedTab() {
-    guard let s = recentlyClosedSessions.popLast() else {
+    guard let snapshot = recentlyClosedSessions.popLast() else {
       DebugLogger.log("GEMINI-CHAT: reopenLastClosedTab — buffer empty")
       return
     }
-    store.save(s)
-    store.switchToSession(id: s.id)
+    if store.session(by: snapshot.id) != nil {
+      // A later save may have updated the stored session after the tab was closed.
+      // Un-archive that copy; do not write the stale snapshot back over it.
+      store.restoreSession(id: snapshot.id)
+      store.switchToSession(id: snapshot.id)
+    } else {
+      store.save(snapshot)
+      store.switchToSession(id: snapshot.id)
+    }
     switchToCurrentStoreSession()
-    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(s.id)")
+    DebugLogger.log("GEMINI-CHAT: Reopened closed tab \(snapshot.id)")
   }
 
   // MARK: - Search
@@ -2375,20 +2564,20 @@ class ChatViewModel: ObservableObject {
     // Meetings stay "Meeting" until their summary-based title is generated, so the row never shows
     // whatever question the user happened to ask first — including legacy sessions still carrying a
     // stale first-message fallback title (which the backfill/summary path will replace shortly).
-    if meetingTitleNeedsGeneration(session) { return "Meeting" }
+    if meetingTitleNeedsGeneration(session) { return String(localized: "Meeting") }
     if let t = session.title, !t.isEmpty {
       let stripped = unwrapUserMessageTypedByUser(t)
       let base = stripped.isEmpty ? t : stripped
       return base.replacingOccurrences(of: "\n", with: " ")
     }
-    if session.isMeeting { return "Meeting" }
+    if session.isMeeting { return String(localized: "Meeting") }
     if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
       let cleaned = contentForSessionTitle(firstContent)
       if !cleaned.isEmpty {
         return String(cleaned.prefix(60)).replacingOccurrences(of: "\n", with: " ")
       }
     }
-    return "New chat"
+    return String(localized: "New chat")
   }
 
   /// Translates a meeting-button tap into the right intent based on current session state:
@@ -2439,14 +2628,24 @@ class ChatViewModel: ObservableObject {
 
   var currentMeetingStem: String? { session.meetingStem }
 
+  var currentSessionDisplayTitle: String { Self.displayTitle(for: session) }
+
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingTranscriptFromDisk(stem: stem)
+  }
+
+  func loadMeetingTranscriptFromDisk(stem: String) -> String? {
     let url = MeetingListService.transcriptURL(forStem: stem)
     return try? String(contentsOf: url, encoding: .utf8)
   }
 
   func loadMeetingSummaryFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
+    return loadMeetingSummaryFromDisk(stem: stem)
+  }
+
+  func loadMeetingSummaryFromDisk(stem: String) -> String? {
     let url = MeetingListService.summaryURL(
       transcriptFileURL: MeetingListService.transcriptURL(forStem: stem))
     return try? String(contentsOf: url, encoding: .utf8)
@@ -2460,13 +2659,13 @@ class ChatViewModel: ObservableObject {
     return disk
   }
 
-  /// Builds a chat-system meeting context string from the on-disk summary + transcript of the
-  /// current meeting tab. Used when the live store no longer owns this meeting's stem (e.g. user
-  /// reopens a past meeting, or a new live meeting started). Transcript is suffix-capped to
+  /// Builds a chat-system meeting context string from the on-disk summary + transcript of `stem`.
+  /// Used when the live store no longer owns that meeting (e.g. user reopens a past meeting, or a
+  /// new live meeting started). Transcript is suffix-capped to
   /// `MeetingListService.meetingContextMaxChars` to bound request size.
-  private func buildEndedMeetingContext() -> String? {
-    let summaryDisk = loadMeetingSummaryFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    let transcriptDisk = loadMeetingTranscriptFromDisk()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  private func buildEndedMeetingContext(stem: String) -> String? {
+    let summaryDisk = loadMeetingSummaryFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
     if !summaryDisk.isEmpty {
@@ -2508,17 +2707,16 @@ class ChatViewModel: ObservableObject {
     guard session.isMeeting else { return nil }
     if isCurrentSessionTheActiveMeeting {
       let store = LiveMeetingTranscriptStore.shared
-      guard !store.chunks.isEmpty else { return "Listening — nothing transcribed yet." }
+      guard !store.chunks.isEmpty else { return String(localized: "Listening — nothing transcribed yet.") }
       let minutes = max(1, Int(store.elapsedSeconds / 60))
       let noteCount = store.liveNotes.count
-      let notes = noteCount == 1 ? "1 note" : "\(noteCount) notes"
-      return "Chat sees the full transcript · \(minutes) min so far · \(notes)"
+      return String(localized: "Chat sees the full transcript · \(minutes) min so far · \(noteCount) notes")
     }
     let hasTranscript = !(loadMeetingTranscriptFromDisk() ?? "").isEmpty
     guard hasTranscript else { return nil }
     return endedMeetingSummary == nil
-      ? "Chat sees the full transcript of this meeting."
-      : "Chat sees the summary and full transcript of this meeting."
+      ? String(localized: "Chat sees the full transcript of this meeting.")
+      : String(localized: "Chat sees the summary and full transcript of this meeting.")
   }
 
   /// Puts a line from the notes or transcript into the composer as a quote chip, so the user can
@@ -2561,10 +2759,7 @@ class ChatViewModel: ObservableObject {
     parts.append("")
     if !notes.isEmpty {
       parts.append("# Live Notes")
-      // Markers are the moments the user flagged by hotkey — worth telling apart from generated notes.
-      parts.append(notes.map { note in
-        note.isMarker ? "\(note.timestampString) ⚑ " + note.bullets.joined(separator: " ") : note.plainText
-      }.joined(separator: "\n"))
+      parts.append(notes.map { $0.plainText }.joined(separator: "\n"))
       parts.append("")
     }
     if hasChat {
@@ -2575,7 +2770,7 @@ class ChatViewModel: ObservableObject {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(markdown, forType: .string)
     showNotice(hasChat
-      ? "Transcript + chat copied (\(session.messages.count) messages)"
+      ? ("Transcript + chat copied (\(session.messages.count) messages)" as LocalizedStringResource)
       : "Transcript copied — chat is empty")
     DebugLogger.log(
       "GEMINI-CHAT: Copied meeting transcript + chat (\(session.messages.count) messages, \(markdown.count) chars)")
@@ -2659,13 +2854,17 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Shared prologue for the meeting-edit tools. The two error strings stay at each call site.
+  /// `sessionId` is the chat that issued the tool call. The still-recording check is
+  /// `isCurrentSessionTheActiveMeeting` applied to that session.
   private func endedMeetingStem(
-    notMeeting: String, stillRecording: String
+    sessionId: UUID, notMeeting: String, stillRecording: String
   ) -> Result<String, EndedMeetingRejection> {
-    guard session.isMeeting, let stem = session.meetingStem else {
+    guard let resolved = resolveSession(sessionId),
+          resolved.session.isMeeting,
+          let stem = resolved.session.meetingStem else {
       return .failure(EndedMeetingRejection(body: ["error": notMeeting]))
     }
-    if isCurrentSessionTheActiveMeeting {
+    if isMeetingActive && meetingSessionId == resolved.session.id {
       return .failure(EndedMeetingRejection(body: ["error": stillRecording]))
     }
     return .success(stem)
@@ -2674,13 +2873,14 @@ class ChatViewModel: ObservableObject {
   /// Backs the `refine_meeting_summary` chat tool. Regenerates this meeting's summary from its full
   /// transcript with the user's instruction applied, saves it to disk, and refreshes the Summary tab.
   /// Only for ended meetings — editing while recording would race the rolling-summary updater.
-  func executeRefineMeetingSummaryTool(args: [String: Any]) async -> [String: Any] {
+  func executeRefineMeetingSummaryTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let instruction = (args["instruction"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
           !instruction.isEmpty else {
       return ["error": "Missing required argument: instruction"]
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no summary to refine.",
       stillRecording: "The summary can be refined after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2693,14 +2893,16 @@ class ChatViewModel: ObservableObject {
     guard model.hasRequiredCredential else {
       return ["error": "No API credential for the meeting-summary model (\(model.rawValue)). Add it in Settings."]
     }
-    var transcript = currentMeetingTranscriptText()
+    var transcript = (loadMeetingTranscriptFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     guard !transcript.isEmpty else {
       return ["error": "This meeting has no transcript to base a summary on."]
     }
     if transcript.count > MeetingListService.meetingContextMaxChars {
       transcript = String(transcript.suffix(MeetingListService.meetingContextMaxChars))
     }
-    let currentSummary = (loadMeetingSummaryFromDisk() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let currentSummary = (loadMeetingSummaryFromDisk(stem: stem) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     do {
       let refined = try await MeetingListService.refineSummaryText(
         currentSummary: currentSummary, transcript: transcript, instruction: instruction, model: model)
@@ -2714,16 +2916,37 @@ class ChatViewModel: ObservableObject {
       return ["ok": true,
               "detail": "The meeting summary has been updated and is now shown in the Summary tab. Briefly confirm what changed in one sentence — do NOT paste the full summary back."]
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Refine summary failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Refine summary failed: \(error.logDescription)")
       return ["error": "Failed to refine summary: \(error.localizedDescription)"]
     }
   }
 
+  /// Case-sensitive replacement of `from` by `to` that only matches whole words: when `from` starts
+  /// (ends) with a letter or digit, the character before (after) a match must not be one. Keeps
+  /// "Ana"→"Anna" from rewriting "Banana". Returns the new text and the number of replacements.
+  static func replacingWholeTerm(_ text: String, from: String, to: String) -> (String, Int) {
+    guard !from.isEmpty else { return (text, 0) }
+    func isWordChar(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+    var pattern = ""
+    if let first = from.first, isWordChar(first) { pattern += #"(?<![\p{L}\p{N}])"# }
+    pattern += NSRegularExpression.escapedPattern(for: from)
+    if let last = from.last, isWordChar(last) { pattern += #"(?![\p{L}\p{N}])"# }
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return (text, 0) }
+    let range = NSRange(text.startIndex..., in: text)
+    let count = regex.numberOfMatches(in: text, range: range)
+    guard count > 0 else { return (text, 0) }
+    let template = NSRegularExpression.escapedTemplate(for: to)
+    return (regex.stringByReplacingMatches(in: text, range: range, withTemplate: template), count)
+  }
+
   /// Backs the `correct_transcript_term` chat tool. Literal find-and-replace of `from`→`to` across the
   /// on-disk transcript (no LLM rewrite, so the record stays faithful). Only for ended meetings.
-  func executeCorrectTranscriptTermTool(args: [String: Any]) async -> [String: Any] {
+  func executeCorrectTranscriptTermTool(args: [String: Any], sessionId: UUID) async -> [String: Any] {
     guard let from = args["from"] as? String, !from.isEmpty else {
       return ["error": "Missing required argument: from"]
+    }
+    guard from.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
+      return ["error": "Give the full word or phrase to replace."]
     }
     guard let to = args["to"] as? String else {
       return ["error": "Missing required argument: to"]
@@ -2733,6 +2956,7 @@ class ChatViewModel: ObservableObject {
     }
     let stem: String
     switch endedMeetingStem(
+      sessionId: sessionId,
       notMeeting: "This chat is not a meeting, so there is no transcript to correct.",
       stillRecording: "The transcript can be corrected after the meeting has ended. Stop the recording first, then ask again."
     ) {
@@ -2745,15 +2969,14 @@ class ChatViewModel: ObservableObject {
     guard let diskText = try? String(contentsOf: url, encoding: .utf8) else {
       return ["error": "Could not read the meeting transcript file."]
     }
-    let occurrences = diskText.components(separatedBy: from).count - 1
+    let (updated, occurrences) = Self.replacingWholeTerm(diskText, from: from, to: to)
     guard occurrences > 0 else {
       return ["error": "The text \"\(from)\" was not found in the transcript. Check the exact spelling."]
     }
-    let updated = diskText.replacingOccurrences(of: from, with: to)
     do {
       try updated.write(to: url, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Write corrected transcript failed: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Write corrected transcript failed: \(error.logDescription)")
       return ["error": "Failed to write the corrected transcript: \(error.localizedDescription)"]
     }
     MeetingListService.shared.invalidateCache(for: url)
@@ -2769,7 +2992,7 @@ class ChatViewModel: ObservableObject {
       let summaryResult = await executeRefineMeetingSummaryTool(args: [
         "instruction":
           "The transcript term \"\(from)\" was corrected to \"\(to)\". Update the summary to use the corrected term consistently; keep everything else unchanged."
-      ])
+      ], sessionId: sessionId)
       result["summary_updated"] = summaryResult["ok"] != nil
     }
     return result
@@ -2821,6 +3044,17 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("SIDEBAR: restoreSession done. recentSessions=\(recentSessions.count)")
   }
 
+  /// Asks first, then deletes: the one path from the UI that removes a chat for good.
+  func confirmAndDeleteSessionPermanently(id: UUID) {
+    let isMeeting = store.session(by: id)?.isMeeting == true
+    guard ChatConfirm.destructive(
+      title: isMeeting ? "Delete this meeting permanently?" : "Delete this chat permanently?",
+      message: "It's removed from the archive and can't be restored.",
+      button: "Delete")
+    else { return }
+    deleteSessionPermanently(id: id)
+  }
+
   func deleteSessionPermanently(id: UUID) {
     // If the deleted session owns the active live meeting, stop the recording first
     // so we don't leave a zombie recorder writing to disk for a session that no
@@ -2834,6 +3068,8 @@ class ChatViewModel: ObservableObject {
     // gated call of the same turn wait on a card that can no longer be shown.
     sendTasks[id]?.cancel()
     chatWideApprovals.removeValue(forKey: id)
+    messageQueue.removeAll { $0.sessionId == id }
+    recentlyClosedSessions.removeAll { $0.id == id }
     store.deleteSession(id: id)
     if id == session.id { switchToCurrentStoreSession() }
     else { refreshRecentSessions() }
@@ -2859,10 +3095,11 @@ class ChatViewModel: ObservableObject {
     DebugLogger.log("GEMINI-CHAT: Renamed tab \(id) → \(target.title ?? "<nil>")")
   }
 
-  /// Close every tab except `keepId`. The kept tab becomes the active one.
+  /// Close every tab except `keepId`. The kept tab becomes the active one. Archives like
+  /// `closeTab` — closing a tab must never be the one place that deletes a chat.
   func closeOtherTabs(keep keepId: UUID) {
     let toClose = recentSessions.map { $0.id }.filter { $0 != keepId }
-    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.archiveSession(id: id) }
     let activeWillChange = session.id != keepId
     if activeWillChange {
       store.switchToSession(id: keepId)
@@ -2877,7 +3114,7 @@ class ChatViewModel: ObservableObject {
     let toClose = recentSessions.suffix(from: anchorIdx + 1).map { $0.id }
     if toClose.isEmpty { return }
     let activeWillBeClosed = toClose.contains(session.id)
-    for id in toClose { rememberClosed(id: id); store.deleteSession(id: id) }
+    for id in toClose { rememberClosed(id: id); store.archiveSession(id: id) }
     if activeWillBeClosed {
       store.switchToSession(id: anchorId)
     }
@@ -2968,6 +3205,13 @@ struct ChatView: View {
   private enum MeetingTab: String, CaseIterable {
     case chat = "Chat"
     case notes = "Notes"
+
+    var label: LocalizedStringKey {
+      switch self {
+      case .chat: return "Chat"
+      case .notes: return "Notes"
+      }
+    }
   }
 
   // MARK: - Folder drop
@@ -3080,7 +3324,7 @@ struct ChatView: View {
       if isFolderDropTargeted { folderDropOverlay }
     }
     .background(
-      Button(viewModel.isCurrentSessionMeeting ? "Archive current meeting" : "Archive current chat") {
+      Button(viewModel.isCurrentSessionMeeting ? ("Archive current meeting" as LocalizedStringKey) : "Archive current chat") {
         viewModel.archiveSession(id: viewModel.currentSessionId)
       }
       .keyboardShortcut(.delete, modifiers: .command)
@@ -3103,7 +3347,14 @@ struct ChatView: View {
       Task { await viewModel.captureScreenshot() }
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatClearChat)) { _ in
-      viewModel.clearMessages()
+      guard !viewModel.messages.isEmpty else { return }
+      if ChatConfirm.destructive(
+        title: "Clear this chat?",
+        message: "All messages in this chat are deleted. This can't be undone.",
+        button: "Clear Chat")
+      {
+        viewModel.clearMessages()
+      }
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatCloseTab)) { _ in
       viewModel.closeTab(id: viewModel.currentSessionId)
@@ -3348,7 +3599,11 @@ struct ChatView: View {
           LazyVStack(alignment: .leading, spacing: 20) {
             Color.clear.frame(height: 1).id("listTop")
             if viewModel.messages.isEmpty && !viewModel.isSending {
-              emptyStateCommandHints
+              if viewModel.isCurrentSessionMeeting {
+                meetingEmptyState
+              } else {
+                emptyStateCommandHints
+              }
             }
             ForEach(meetingStreamItems) { item in
               switch item {
@@ -3525,7 +3780,7 @@ struct ChatView: View {
   private func inlineNoteBlock(_ note: LiveMeetingNote) -> some View {
     HStack(alignment: .top, spacing: 10) {
       Rectangle()
-        .fill(note.isMarker ? Color.orange.opacity(0.7) : ChatTheme.secondaryText.opacity(0.25))
+        .fill(ChatTheme.secondaryText.opacity(0.25))
         .frame(width: 2)
       noteRow(note, hovered: hoveredNoteId == note.id)
     }
@@ -3534,15 +3789,60 @@ struct ChatView: View {
     .onHover { inside in hoveredNoteId = inside ? note.id : nil }
   }
 
+  /// A meeting's chat before the first question. The general empty state offered "Start meeting"
+  /// and the global shortcuts here, inside a meeting that was already running or over, and never
+  /// said which meeting this was. The live notes, if any, follow below it in the same column.
+  private var meetingEmptyState: some View {
+    let isActive = viewModel.isCurrentSessionTheActiveMeeting
+    let start = viewModel.currentMeetingStem.flatMap(MeetingListService.date(fromStem:))
+    return VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 6) {
+        Text(viewModel.currentSessionDisplayTitle)
+          .font(.title2)
+          .fontWeight(.semibold)
+          .foregroundColor(ChatTheme.primaryText)
+          .lineLimit(2)
+        if let start {
+          Text(start.formatted(date: .complete, time: .shortened))
+            .font(.callout)
+            .foregroundColor(ChatTheme.secondaryText)
+        }
+      }
+      Text(isActive
+           ? "Ask about anything said so far. Notes appear here as the meeting goes on."
+           : "Ask anything about this meeting. The summary is under Notes.")
+        .font(.callout)
+        .foregroundColor(ChatTheme.secondaryText)
+      if !isActive {
+        Button {
+          meetingTab = .notes
+        } label: {
+          Label("Open notes", systemImage: "list.bullet.rectangle")
+            .font(.callout)
+            .foregroundColor(ChatTheme.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(ChatTheme.controlBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .pointerCursorOnHover()
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.top, 24)
+  }
+
   private var emptyStateCommandHints: some View {
     let config = ShortcutConfigManager.shared.loadConfiguration()
-    let shortcuts: [(shortcut: String, description: String)] = [
-      (config.startRecording.displayStringWithSeparator, "Dictate"),
-      (config.startPrompting.displayStringWithSeparator, "Dictate Prompt"),
-      (config.openChat.displayStringWithSeparator, "Chat"),
-      (config.openSettings.displayStringWithSeparator, "Settings"),
-    ]
-    var starters: [(command: String, title: String, icon: String)] = [
+    // Screenshot is a starter chip below, not a hint. Read Aloud is not hinted here.
+    // Titles and key paths still come from `ShortcutAction`, in this page's order.
+    let shortcuts: [(shortcut: String, description: LocalizedStringResource)] = [
+      ShortcutAction.dictate, .dictatePrompt, .chat, .settings,
+    ].filter(\.isInThisBuild).map { action in
+      (config[keyPath: action.keyPath].displayStringWithSeparator, action.localizedTitle)
+    }
+    var starters: [(command: String, title: LocalizedStringKey, icon: String)] = [
       ("/screenshot", "Screenshot", "camera.viewfinder"),
       ("/folder", "Share folder", "folder"),
       ("/meeting", "Start meeting", "record.circle"),
@@ -3678,12 +3978,12 @@ struct ChatView: View {
               .fill(isRecording ? Color.red : ChatTheme.secondaryText.opacity(0.4))
               .frame(width: 7, height: 7)
           }
-          Text(isFinishing ? "Finishing…" : (isRecording ? "Recording" : "Ended"))
+          Text(isFinishing ? ("Finishing…" as LocalizedStringKey) : (isRecording ? "Recording" : "Ended"))
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(ChatTheme.secondaryText)
         }
         .frame(width: 90, alignment: .leading)
-        .help(isFinishing ? "Transcribing the last seconds of audio before saving the meeting" : "")
+        .help(isFinishing ? ("Transcribing the last seconds of audio before saving the meeting" as LocalizedStringKey) : "")
 
         // While the meeting runs, the notes stream inline in the chat, so a switcher to a second
         // surface holding the same notes is a choice between identical content. It comes back when
@@ -3692,7 +3992,7 @@ struct ChatView: View {
           HStack(spacing: 2) {
             ForEach(MeetingTab.allCases, id: \.self) { tab in
               Button(action: { meetingTab = tab }) {
-                Text(tab.rawValue)
+                Text(tab.label)
                   .font(.system(size: 12, weight: meetingTab == tab ? .semibold : .regular))
                   .foregroundColor(meetingTab == tab ? ChatTheme.primaryText : ChatTheme.secondaryText)
                   .padding(.horizontal, 12)
@@ -3709,40 +4009,30 @@ struct ChatView: View {
         Spacer()
 
         // The transcript is a thing you paste elsewhere, not a thing you read here — so it gets a
-        // button and a Finder escape hatch instead of a tab of its own.
-        Button(action: { viewModel.copyMeetingTranscript() }) {
+        // button instead of a tab of its own. One split control: a click copies the transcript, the
+        // arrow offers the Markdown export with notes and chat (the questions are part of the record
+        // too) and the Finder escape hatch. Two side-by-side "Copy transcript…" buttons read as one.
+        Menu {
+          Button("Copy Transcript + Notes + Chat (Markdown)") { viewModel.copyMeetingTranscriptAndChat() }
+          Divider()
+          Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
+        } label: {
           HStack(spacing: 4) {
             Image(systemName: "doc.on.doc").font(.system(size: 10))
             Text("Copy transcript").font(.system(size: 11))
           }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .contentShape(Rectangle())
+        } primaryAction: {
+          viewModel.copyMeetingTranscript()
         }
-        .buttonStyle(.plain)
-        .help("Copy the full transcript of this meeting to the clipboard")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .font(.system(size: 11))
+        .controlSize(.small)
+        .fixedSize()
+        .foregroundColor(ChatTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .help("Copy the full transcript of this meeting. The arrow also copies notes and chat as Markdown.")
         .accessibilityLabel("Copy transcript")
-        .pointerCursorOnHover()
-        .contextMenu {
-          Button("Copy Transcript + Chat") { viewModel.copyMeetingTranscriptAndChat() }
-          Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
-        }
-
-        // The questions asked during the meeting are part of the record too; this copies both.
-        Button(action: { viewModel.copyMeetingTranscriptAndChat() }) {
-          HStack(spacing: 4) {
-            Image(systemName: "doc.on.doc.fill").font(.system(size: 10))
-            Text("Copy transcript + chat").font(.system(size: 11))
-          }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Copy the transcript, the live notes, and the full chat history of this meeting as Markdown")
-        .accessibilityLabel("Copy transcript and chat")
         .pointerCursorOnHover()
 
         // Stopping is not instant, so the button reports the wait instead of inviting a second press:
@@ -3755,7 +4045,7 @@ struct ChatView: View {
             viewModel.requestResumeMeeting()
           }
         }) {
-          Text(isFinishing ? "Stopping…" : (isRecording ? "Stop" : "Resume"))
+          Text(isFinishing ? ("Stopping…" as LocalizedStringKey) : (isRecording ? "Stop" : "Resume"))
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(isRecording ? .white : ChatTheme.primaryText)
             .padding(.horizontal, 10)
@@ -3779,14 +4069,14 @@ struct ChatView: View {
     .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
-  /// One live note (or marker) as it appears both in the Notes tab and inline in the chat stream.
+  /// One live note as it appears both in the Notes tab and inline in the chat stream.
   /// Hovering reveals "Ask" — the shortest path from "that bullet is interesting" to a question
   /// about it, without retyping what was said.
   private func noteRow(_ note: LiveMeetingNote, hovered: Bool) -> some View {
     HStack(alignment: .top, spacing: 8) {
-      Text(note.isMarker ? "★" : note.timestampString)
+      Text(note.timestampString)
         .font(.system(size: 12, weight: .medium, design: .monospaced))
-        .foregroundColor(note.isMarker ? .orange : ChatTheme.secondaryText)
+        .foregroundColor(ChatTheme.secondaryText)
         .frame(minWidth: 46, alignment: .leading)
 
       VStack(alignment: .leading, spacing: 4) {
@@ -3866,7 +4156,7 @@ struct ChatView: View {
             }
           }
         } else if summary == nil && !viewModel.isRecoveringMeetingSummary {
-          Text(isLive ? "Listening — notes appear as the meeting goes on." : "No notes for this meeting.")
+          Text(isLive ? ("Listening — notes appear as the meeting goes on." as LocalizedStringKey) : "No notes for this meeting.")
             .font(.system(size: 14))
             .foregroundColor(ChatTheme.secondaryText)
             .padding(.top, 40)
@@ -3981,7 +4271,7 @@ struct ChatInputAreaView: View {
   private func composerToolbarButton(
     icon: String,
     label: String,
-    help: String,
+    help: LocalizedStringKey,
     tint: Color = ChatTheme.secondaryText,
     isDisabled: Bool = false,
     showsProgress: Bool = false,
@@ -4038,15 +4328,12 @@ struct ChatInputAreaView: View {
       commandSuggestionsOverlay
       inputBar
     }
-    // Re-home the highlight whenever the typed slash word changes, so filtering the
-    // suggestion list never leaves the selection pointing at a now-hidden row. Prefer an
-    // exact command match so typing a full command (e.g. "/gpt5", "/gpt") + Enter dispatches
-    // *that* command, not the recency-top prefix sibling. No exact match (e.g. bare "/") →
-    // top row, preserving the one-Enter recency toggle. ↑/↓ override this afterward.
-    .onChange(of: lastWord) {
-      let list = filteredCommandSuggestions
-      let typed = lastWord.lowercased()
-      selectedSuggestionIndex = list.firstIndex { $0.command.lowercased() == typed } ?? 0
+    // Re-home the highlight whenever the typed text changes (the `/model ` query includes
+    // spaces, so the last word alone is not enough), so filtering never leaves the selection on
+    // a now-hidden row. See `initialSlashHighlight`; ↑/↓ override this afterward.
+    .onChange(of: composer.plainText) {
+      selectedSuggestionIndex = ChatViewModel.initialSlashHighlight(
+        in: filteredCommandSuggestions, composerText: composer.plainText)
     }
     .onAppear {
       viewModel.composerScreenshotCountProvider = { [weak composer] in composer?.screenshotCount ?? 0 }
@@ -4097,30 +4384,19 @@ struct ChatInputAreaView: View {
     Set(ChatViewModel.commandSuggestions.map(\.command).filter { !ChatViewModel.argumentCommands.contains($0) })
       .union(ChatViewModel.modelCommandLookup.keys) // adds the silent /openai alias (not in commandSuggestions)
 
-  /// Slash-command suggestions matching the word the caret sits on (empty unless that
-  /// word starts with "/"). Single source for the overlay's rows and for ↑/↓ navigation,
-  /// Tab, and Enter selection, so the highlighted row and the dispatched command always agree.
-  private var filteredCommandSuggestions: [(command: String, description: String)] {
-    guard lastWord.hasPrefix("/") else { return [] }
-    let prefix = lastWord.lowercased()
-    let matches = viewModel.commandSuggestionsForDisplay.filter { $0.command.lowercased().hasPrefix(prefix) }
-    // Bare "/" used to dump every model slug. Keep actions + provider aliases
-    // (`/gemini`, `/gpt`, `/claude`…); require 3+ characters before listing per-model IDs.
-    guard prefix.count < 3 else { return matches }
-    let providerAliases = Set(ChatModelProvider.allCases.map { "/\($0.commandAlias)" })
-    let actionCommands = Set(
-      (ChatViewModel.commandsBeforeModels + ChatViewModel.commandsAfterModels).map(\.command)
-        + viewModel.userCommandsForCurrentChat.map(\.slash)
-    )
-    return matches.filter { actionCommands.contains($0.command) || providerAliases.contains($0.command) }
+  /// Slash-menu rows for what is typed (empty unless the last word starts with "/" or the line
+  /// is `/model …`). Single source for the overlay's rows and for ↑/↓ navigation, Tab, and
+  /// Enter selection, so the highlighted row and the dispatched command always agree.
+  private var filteredCommandSuggestions: [ChatViewModel.SlashSuggestion] {
+    viewModel.slashSuggestions(for: composer.plainText)
   }
 
-  /// The command for the currently highlighted suggestion row, or nil when the overlay isn't
-  /// showing. `selectedSuggestionIndex` is clamped here so a stale index can never crash.
-  private func highlightedSuggestionCommand() -> String? {
+  /// The currently highlighted suggestion row, or nil when the overlay isn't showing.
+  /// `selectedSuggestionIndex` is clamped here so a stale index can never crash.
+  private func highlightedSuggestion() -> ChatViewModel.SlashSuggestion? {
     let list = filteredCommandSuggestions
     guard !list.isEmpty else { return nil }
-    return list[max(0, min(selectedSuggestionIndex, list.count - 1))].command
+    return list[max(0, min(selectedSuggestionIndex, list.count - 1))]
   }
 
   /// Moves the suggestion highlight by `delta` (wrapping top↔bottom). Returns true only when the
@@ -4133,8 +4409,25 @@ struct ChatInputAreaView: View {
     return true
   }
 
-  /// Applies a chosen suggestion: argument-taking commands complete inline (so the user can type
-  /// the argument); every other command strips the slash token and dispatches. Shared by Tab and Enter.
+  /// Applies a chosen row. A model switches the chat model and removes what was typed to find it
+  /// (the whole `/model …` line, or the `/gem` word); argument-taking commands complete inline
+  /// (so the user can type the argument); every other command strips the slash token and
+  /// dispatches. Shared by Tab, Enter and click.
+  private func selectSuggestion(_ suggestion: ChatViewModel.SlashSuggestion) {
+    guard let model = suggestion.model else {
+      selectCommand(suggestion.command)
+      return
+    }
+    let typed = composer.serialize().typedText
+    if typed.lowercased().hasPrefix("/model ") {
+      composer.removeTrailingPlainText(suffix: typed)
+    } else {
+      composer.removeTrailingWord()
+    }
+    viewModel.selectChatModel(model)
+    selectedSuggestionIndex = 0
+  }
+
   private func selectCommand(_ command: String) {
     composer.removeTrailingWord()
     if ChatViewModel.argumentCommands.contains(command) {
@@ -4150,15 +4443,17 @@ struct ChatInputAreaView: View {
   /// token (preserving any other attachments / text) and dispatch through the legacy `sendMessage`;
   /// everything else is sent in document order.
   private func submitComposer() {
-    if let command = highlightedSuggestionCommand() {
+    if let suggestion = highlightedSuggestion() {
       // A command typed out in full dispatches on Enter even while the overlay still shows it.
       // Completing "/workspace" to "/workspace " appends a space and nothing else, which reads as
       // "the command is broken" — and every argument command's bare form is a real status query.
-      // Prefix matches still complete inline, so "/mo" ⏎ becomes "/model " as before.
-      let typedInFull =
-        ChatViewModel.argumentCommands.contains(command) && lastWord.lowercased() == command
+      // `/model` is the exception: its space opens the model list, which is visible progress.
+      // Prefix matches still complete inline, so "/mo" ⏎ becomes "/model ".
+      let command = suggestion.command
+      let typedInFull = suggestion.model == nil && command != "/model"
+        && ChatViewModel.argumentCommands.contains(command) && lastWord.lowercased() == command
       if !typedInFull {
-        selectCommand(command)
+        selectSuggestion(suggestion)
         return
       }
     }
@@ -4185,6 +4480,7 @@ struct ChatInputAreaView: View {
       Task { await viewModel.sendMessage(userInput: typed) }
       return
     }
+    guard viewModel.validateCredential(for: ChatViewModel.openChatModel) else { return }
     composer.clearAll()
     Task {
       await viewModel.sendComposed(
@@ -4196,8 +4492,8 @@ struct ChatInputAreaView: View {
   /// Tab key in composer: complete/dispatch the highlighted suggestion without clearing the
   /// rest of the composer.
   private func handleTabComplete() -> Bool {
-    guard let command = highlightedSuggestionCommand() else { return false }
-    selectCommand(command)
+    guard let suggestion = highlightedSuggestion() else { return false }
+    selectSuggestion(suggestion)
     return true
   }
 
@@ -4205,64 +4501,90 @@ struct ChatInputAreaView: View {
 
   private var commandSuggestionsOverlay: some View {
     Group {
-      if lastWord.hasPrefix("/") {
-        let suggestions = filteredCommandSuggestions
-        if !suggestions.isEmpty {
-          let highlight = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
-          ScrollViewReader { proxy in
-            ScrollView {
-              VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(suggestions.enumerated()), id: \.element.command) { index, item in
-                  HStack(alignment: .top, spacing: 8) {
-                    Text(item.command)
-                      .font(.system(.body, design: .monospaced))
-                      .fontWeight(.medium)
-                      .foregroundColor(ChatTheme.primaryText)
-                    Text(item.description)
-                      .font(.caption)
-                      .foregroundColor(ChatTheme.secondaryText)
-                      .lineLimit(2)
-                  }
-                  .frame(maxWidth: .infinity, alignment: .leading)
-                  .padding(.horizontal, 12)
-                  .padding(.vertical, 8)
-                  .background(
-                    RoundedRectangle(cornerRadius: 6)
-                      .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
-                  )
-                  .padding(.horizontal, 4)
-                  .contentShape(Rectangle())
-                  .onTapGesture { selectCommand(item.command) }
-                  .id(item.command)
-                }
+      let suggestions = filteredCommandSuggestions
+      if !suggestions.isEmpty {
+        let highlight = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+              ForEach(Array(suggestions.enumerated()), id: \.element.command) { index, item in
+                suggestionRow(item)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                  RoundedRectangle(cornerRadius: 6)
+                    .fill(index == highlight ? ChatTheme.primaryText.opacity(0.10) : Color.clear)
+                )
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+                .onTapGesture { selectSuggestion(item) }
+                .id(item.command)
               }
-              .padding(.vertical, 6)
             }
-            .frame(maxHeight: 260)
-            // Keep the highlighted row visible as ↑/↓ moves through a long list.
-            .onChange(of: selectedSuggestionIndex) { _ in
-              let i = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
-              withAnimation(.easeOut(duration: 0.1)) {
-                proxy.scrollTo(suggestions[i].command, anchor: .center)
-              }
+            .padding(.vertical, 6)
+          }
+          // A ScrollView takes all the height it is offered; size it to the rows so a short
+          // list (three Claude models) does not float in an empty 260 pt box.
+          // Rows whose description wraps to a second line (`/workspace`) are taller.
+          .frame(height: min(260, suggestions.reduce(12) { $0 + ($1.detail.count > 80 ? 50 : 34) }))
+          // Keep the highlighted row visible as ↑/↓ moves through a long list.
+          .onChange(of: selectedSuggestionIndex) { _ in
+            let i = max(0, min(selectedSuggestionIndex, suggestions.count - 1))
+            withAnimation(.easeOut(duration: 0.1)) {
+              proxy.scrollTo(suggestions[i].command, anchor: .center)
             }
           }
-          // Was `.allowsHitTesting(false)` — that also swallowed scroll gestures, so a list
-          // longer than 260pt couldn't be scrolled with trackpad/wheel (only ↑/↓ auto-scroll
-          // worked). The overlay sits ABOVE the composer in a VStack (no overlap), and rows are
-          // now tap-to-select, so enabling hit testing is safe and makes the popup scrollable.
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(ChatTheme.controlBackground)
-          .overlay(
-            RoundedRectangle(cornerRadius: 8)
-              .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
-          )
-          .clipShape(RoundedRectangle(cornerRadius: 8))
-          .frame(maxWidth: 720)
-          .frame(maxWidth: .infinity, alignment: .center)
-          .padding(.horizontal, 24)
-          .padding(.bottom, 4)
         }
+        // Was `.allowsHitTesting(false)` — that also swallowed scroll gestures, so a list
+        // longer than 260pt couldn't be scrolled with trackpad/wheel (only ↑/↓ auto-scroll
+        // worked). The overlay sits ABOVE the composer in a VStack (no overlap), and rows are
+        // now tap-to-select, so enabling hit testing is safe and makes the popup scrollable.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ChatTheme.controlBackground)
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(ChatTheme.primaryText.opacity(ChatTheme.borderOpacity), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: 720)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 4)
+      }
+    }
+  }
+
+  /// A command row reads as code (`/new` + what it does); a model row reads as a menu item
+  /// (display name, provider, and a checkmark on the current model, like the composer's picker).
+  @ViewBuilder
+  private func suggestionRow(_ item: ChatViewModel.SlashSuggestion) -> some View {
+    if item.model != nil {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(item.title)
+          .font(.body)
+          .foregroundColor(ChatTheme.primaryText)
+        Text(item.detail)
+          .font(.caption)
+          .foregroundColor(ChatTheme.secondaryText)
+        Spacer(minLength: 8)
+        if item.isCurrent {
+          Image(systemName: "checkmark")
+            .font(.caption.weight(.semibold))
+            .foregroundColor(ChatTheme.secondaryText)
+            .accessibilityLabel("Current model")
+        }
+      }
+    } else {
+      HStack(alignment: .top, spacing: 8) {
+        Text(item.title)
+          .font(.system(.body, design: .monospaced))
+          .fontWeight(.medium)
+          .foregroundColor(ChatTheme.primaryText)
+        Text(item.detail)
+          .font(.caption)
+          .foregroundColor(ChatTheme.secondaryText)
+          .lineLimit(2)
       }
     }
   }
@@ -4319,8 +4641,8 @@ struct ChatInputAreaView: View {
   /// something it had said).
   private var composerPlaceholder: String {
     let model = resolvedOpenGeminiModel
-    guard model.provider == .localMLX else { return "Message \(model.displayName)…" }
-    return "Message \(model.displayName) · no web search or tools…"
+    guard model.provider == .localMLX else { return String(localized: "Message \(model.displayName)…") }
+    return String(localized: "Message \(model.displayName) · no web search or tools…")
   }
 
   private var inputBar: some View {
@@ -4378,7 +4700,7 @@ struct ChatInputAreaView: View {
         composerToolbarButton(
           icon: "record.circle",
           label: "/meeting",
-          help: viewModel.isMeetingActive ? "Stop the current meeting recording" : "Start a new live meeting recording",
+          help: viewModel.isMeetingActive ? ("Stop the current meeting recording" as LocalizedStringKey) : "Start a new live meeting recording",
           tint: viewModel.isMeetingActive ? .red : ChatTheme.secondaryText,
           action: { viewModel.handleMeetingButtonTap() })
 
@@ -4396,7 +4718,7 @@ struct ChatInputAreaView: View {
                 let missingCredential = !provider.hasCredential
                 ForEach(models, id: \.self) { model in
                   Toggle(
-                    missingCredential ? "\(model.displayName) — needs setup" : model.displayName,
+                    missingCredential ? String(localized: "\(model.displayName) — needs setup") : model.displayName,
                     isOn: Binding(
                       get: { model == current },
                       set: { _ in
@@ -4409,7 +4731,7 @@ struct ChatInputAreaView: View {
             }
           }
           Divider()
-          Button("API Keys & Endpoints…") { SettingsManager.shared.showSettings() }
+          Button("API Keys & Endpoints…") { SettingsManager.shared.showSettings(tab: .accounts) }
         } label: {
           HStack(spacing: 4) {
             Image(systemName: "cpu").font(.caption)
@@ -4461,8 +4783,8 @@ struct ChatInputAreaView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasContent && !viewModel.isSending)
-        .help(viewModel.isSending ? "Stop sending (/stop)" : "Send message")
-        .accessibilityLabel(viewModel.isSending ? "Stop sending" : "Send message")
+        .help(viewModel.isSending ? ("Stop sending (⌘.)" as LocalizedStringKey) : "Send message")
+        .accessibilityLabel(viewModel.isSending ? ("Stop sending" as LocalizedStringKey) : "Send message")
         .pointerCursorOnHover()
       }
       .padding(.horizontal, 8)
@@ -5140,7 +5462,7 @@ private struct CodeBlockView: View {
           HStack(spacing: 4) {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
               .font(.system(size: 11))
-            Text(copied ? "Copied" : "Copy")
+            Text(copied ? ("Copied" as LocalizedStringKey) : "Copy")
               .font(.system(size: 11))
           }
           .foregroundColor(ChatTheme.primaryText.opacity(0.5))
@@ -5182,17 +5504,35 @@ private struct CodeBlockView: View {
   }
 }
 
+// MARK: - Destructive confirmation
+
+/// Modal confirmation for chat actions that cannot be undone (delete, clear).
+enum ChatConfirm {
+  @MainActor
+  static func destructive(title: LocalizedStringResource, message: LocalizedStringResource, button: LocalizedStringResource) -> Bool {
+    let alert = NSAlert()
+    alert.alertStyle = .warning
+    alert.messageText = String(localized: title)
+    alert.informativeText = String(localized: message)
+    let confirm = alert.addButton(withTitle: String(localized: button))
+    confirm.hasDestructiveAction = true
+    alert.addButton(withTitle: String(localized: "Cancel"))
+    return alert.runModal() == .alertFirstButtonReturn
+  }
+}
+
 // MARK: - Copy Reply Button (under model replies)
 
 private struct CopyReplyButtonView: View {
   /// Resolved on click, not per render — for image-bearing replies the marker strip
   /// rebuilds a multi-MB string, which must not run on every streaming re-render.
   let text: () -> String
+  var help: LocalizedStringKey = "Copy this reply to the clipboard"
 
   var body: some View {
     MessageActionButton(
       systemImage: "doc.on.doc",
-      help: "Copy this reply to the clipboard"
+      help: help
     ) {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(text(), forType: .string)
@@ -5223,7 +5563,7 @@ private struct DownloadImageButtonView: View {
       panel.allowedContentTypes = [contentType]
     }
     panel.nameFieldStringValue = "generated-image.\(ext)"
-    panel.message = "Save the generated image"
+    panel.message = String(localized: "Save the generated image")
     if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
       panel.directoryURL = URL(fileURLWithPath: lastPath)
     } else if let screenshotFolder = ScreenshotSaveLocation.resolveFolderURL() {
@@ -5234,7 +5574,7 @@ private struct DownloadImageButtonView: View {
       try image.data.write(to: url)
       UserDefaults.standard.set(url.deletingLastPathComponent().path, forKey: UserDefaultsKeys.lastAttachDirectoryPath)
     } catch {
-      DebugLogger.logError("GEMINI-CHAT: Failed to save generated image: \(error.localizedDescription)")
+      DebugLogger.logError("GEMINI-CHAT: Failed to save generated image: \(error.logDescription)")
     }
   }
 
@@ -5329,8 +5669,8 @@ private struct ReadAloudButtonView: View {
     MessageActionButton(
       systemImage: isTTSActive ? "stop.fill" : "speaker.wave.2",
       isActive: isTTSActive,
-      help: isTTSActive ? "Click to stop" : "Read this reply aloud",
-      accessibilityText: isTTSActive ? "Reading aloud; click to stop" : "Read this reply aloud"
+      help: isTTSActive ? ("Click to stop" as LocalizedStringKey) : "Read this reply aloud",
+      accessibilityText: isTTSActive ? ("Reading aloud; click to stop" as LocalizedStringKey) : "Read this reply aloud"
     ) {
       if isTTSActive {
         NotificationCenter.default.post(name: .chatReadAloudStop, object: nil)
@@ -5663,7 +6003,7 @@ private struct MessageBubbleView: View {
         HStack(spacing: 4) {
           Image(systemName: showsCommandInstruction ? "chevron.down" : "chevron.right")
             .font(.system(size: 9, weight: .semibold))
-          Text(showsCommandInstruction ? "Hide instruction" : "Show instruction")
+          Text(showsCommandInstruction ? ("Hide instruction" as LocalizedStringKey) : "Show instruction")
             .font(.system(size: 11))
         }
         .foregroundColor(ChatTheme.secondaryText)
@@ -5729,7 +6069,7 @@ private struct MessageBubbleView: View {
             }
           }
           if !text.isEmpty {
-            CopyReplyButtonView(text: { text })
+            CopyReplyButtonView(text: { text }, help: "Copy this message to the clipboard")
           }
         }
         .padding(.top, 4)

@@ -9,8 +9,16 @@ class SettingsViewModel: ObservableObject {
   // MARK: - Published State
   @Published var data = SettingsData()
 
+  /// What is on disk as far as this view model knows: set after a load, after a reconcile reload,
+  /// after a focus reload and after a successful save. `saveSettings()` writes only what differs
+  /// from it, so a value changed elsewhere since Settings loaded (Chat `/model`, `/pin`, a key
+  /// pasted in the Welcome Tour) is not overwritten by this window's stale copy. It is never
+  /// assigned from `data` before the save has run.
+  private var persisted = SettingsData()
+
   // MARK: - Initialization
   private var reconcileObserver: NSObjectProtocol?
+  private var keyWindowObserver: NSObjectProtocol?
 
   init() {
     loadCurrentSettings()
@@ -22,13 +30,44 @@ class SettingsViewModel: ObservableObject {
     ) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
-        for slot in Self.slots { slot.load(&self.data) }
+        var reloaded = self.data
+        for slot in Self.slots { slot.load(&reloaded) }
+        self.data = reloaded
+        // Mirror the reloaded slot values into `persisted` only — the other fields of `data`
+        // may hold unsaved state and must keep differing.
+        for slot in Self.slots { slot.load(&self.persisted) }
+      }
+    }
+    // Re-read from disk when the Settings window becomes key, so the pickers show a model chosen
+    // in Chat meanwhile. Filtered to the Settings window (this class also backs the Welcome Tour).
+    keyWindowObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      MainActor.assumeIsolated {
+        guard let window = note.object as? NSWindow,
+              window.delegate is SettingsWindowController
+        else { return }
+        self?.reloadFromDisk()
       }
     }
   }
 
   deinit {
     if let reconcileObserver { NotificationCenter.default.removeObserver(reconcileObserver) }
+    if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+  }
+
+  /// Re-reads the slots and the Google key from disk into both `data` and `persisted`.
+  /// Shortcuts are deliberately not re-read: a shortcut recorder may be mid-recording and its
+  /// pending value must not be replaced. Does not run the model reconciler.
+  func reloadFromDisk() {
+    guard !data.isLoading else { return }
+    var reloaded = data
+    for slot in Self.slots { slot.load(&reloaded) }
+    reloaded.googleAPIKey = KeychainManager.shared.get(.google) ?? ""
+    data = reloaded
+    for slot in Self.slots { slot.load(&persisted) }
+    persisted.googleAPIKey = reloaded.googleAPIKey
   }
   
 
@@ -45,17 +84,29 @@ class SettingsViewModel: ObservableObject {
     // Models. These route through migrating loaders, which forward a renamed or superseded
     // model id to its replacement and persist the rewrite, so a stale selection still appears
     // in the pickers instead of silently falling back to the default.
+    //
+    // The notice is the one the picker used to post by hand, with the same object and no
+    // userInfo. Read Aloud, Smart Improvement and both meeting models never posted one.
     .custom(\.selectedTranscriptionModel,
             load: { TranscriptionModel.loadSelected() },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedTranscriptionModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+            }),
     .custom(\.selectedPromptModel,
             load: { PromptModel.loadPromptModel(forKey: UserDefaultsKeys.selectedPromptModel,
                                                 default: SettingsDefaults.selectedPromptModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedPromptModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedPromptModel)
+            }),
     .custom(\.selectedChatModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedChatModel,
                                                   default: SettingsDefaults.selectedChatModel) },
-            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) }),
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.selectedChatModel) },
+            onDidChange: { data in
+              NotificationCenter.default.post(name: .promptModelChanged, object: data.selectedChatModel)
+            }),
     .custom(\.selectedImprovementModel,
             load: { PromptModel.loadChatSlotModel(forKey: UserDefaultsKeys.selectedImprovementModel,
                                                   default: SettingsDefaults.selectedImprovementModel) },
@@ -173,8 +224,6 @@ class SettingsViewModel: ObservableObject {
     data.openChat = currentConfig.openChat.isEnabled ? currentConfig.openChat : nil
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
-    data.voiceFeedback = currentConfig.voiceFeedback.isEnabled ? currentConfig.voiceFeedback : nil
-    data.meetingMarker = currentConfig.meetingMarker.isEnabled ? currentConfig.meetingMarker : nil
     data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
 
     for slot in Self.slots { slot.load(&data) }
@@ -183,6 +232,7 @@ class SettingsViewModel: ObservableObject {
     data.screenshotSaveFolderDisplayPath = ScreenshotSaveLocation.displayPath  // display only
     data.googleAPIKey = KeychainManager.shared.get(.google) ?? ""              // Keychain
     data.launchAtLogin = SMAppService.mainApp.status == .enabled               // SMAppService
+    persisted = data
   }
 
   // MARK: - Validation
@@ -210,12 +260,12 @@ class SettingsViewModel: ObservableObject {
       let duplicatedShortcuts = shortcutCounts.filter { $0.value.count > 1 }
       if let firstDuplicate = duplicatedShortcuts.first {
         let shortcutDisplay = firstDuplicate.key.displayString
-        let conflictingActions = firstDuplicate.value.joined(separator: " and ")
+        let conflictingActions = ListFormatter.localizedString(byJoining: firstDuplicate.value)
         return
-          "Shortcut '\(shortcutDisplay)' is used by both \(conflictingActions). Please use unique shortcuts."
+          String(localized: "Shortcut '\(shortcutDisplay)' is used by both \(conflictingActions). Please use unique shortcuts.")
       }
 
-      return "All enabled shortcuts must be different. Please use unique shortcuts."
+      return String(localized: "All enabled shortcuts must be different. Please use unique shortcuts.")
     }
 
     return nil
@@ -260,33 +310,58 @@ class SettingsViewModel: ObservableObject {
 
   private static let configurableShortcutSlots: [ConfigurableShortcutSlot] = [
     ConfigurableShortcutSlot(
-      field: .toggleDictation, label: "Toggle Dictation",
+      field: .toggleDictation, label: String(localized: "Toggle Dictation"),
       read: { $0.toggleDictation }, write: { $0.toggleDictation = $1 }),
     ConfigurableShortcutSlot(
-      field: .togglePrompting, label: "Toggle Dictate Prompt",
+      field: .togglePrompting, label: String(localized: "Toggle Dictate Prompt"),
       read: { $0.togglePrompting }, write: { $0.togglePrompting = $1 }),
     ConfigurableShortcutSlot(
-      field: .toggleSettings, label: "Toggle Settings",
+      field: .toggleSettings, label: String(localized: "Toggle Settings"),
       read: { $0.openSettings }, write: { $0.openSettings = $1 }),
     ConfigurableShortcutSlot(
-      field: .toggleChat, label: "Chat",
+      field: .toggleChat, label: String(localized: "Chat"),
       read: { $0.openChat }, write: { $0.openChat = $1 }),
     ConfigurableShortcutSlot(
-      field: .screenshotCapture, label: "Screenshot to Clipboard",
+      field: .screenshotCapture, label: String(localized: "Screenshot to Clipboard"),
       read: { $0.screenshotCapture }, write: { $0.screenshotCapture = $1 }),
     ConfigurableShortcutSlot(
-      field: .readAloudShortcut, label: "Read Aloud",
+      field: .readAloudShortcut, label: String(localized: "Read Aloud"),
       read: { $0.readAloud }, write: { $0.readAloud = $1 }),
     ConfigurableShortcutSlot(
-      field: .voiceFeedbackShortcut, label: "Voice Feedback",
-      read: { $0.voiceFeedback }, write: { $0.voiceFeedback = $1 }),
-    ConfigurableShortcutSlot(
-      field: .meetingMarkerShortcut, label: "Flag Meeting Moment",
-      read: { $0.meetingMarker }, write: { $0.meetingMarker = $1 }),
-    ConfigurableShortcutSlot(
-      field: .addToGlossaryShortcut, label: "Add Selection to Glossary",
+      field: .addToGlossaryShortcut, label: String(localized: "Add Selection to Glossary"),
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 }),
   ]
+
+  /// The shortcut half of `data` as a `ShortcutConfig`. Also used by the onboarding Done step,
+  /// which must persist shortcuts without writing every other settings slot.
+  static func shortcutConfig(from data: SettingsData) -> ShortcutConfig {
+    // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
+    // shortcut" — we persist a disabled placeholder using the matching
+    // factory default's keycode so the stored shape stays stable.
+    func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
+      ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
+    }
+    let factory = ShortcutConfig.default
+    // Break the assembly into locals — a single 6-way `??`/`disable()` literal pushed the
+    // type-checker past its time budget once a 7th shortcut was added.
+    let startRecording = data.toggleDictation ?? disable(factory.startRecording)
+    let startPrompting = data.togglePrompting ?? disable(factory.startPrompting)
+    let openSettings = data.openSettings ?? disable(factory.openSettings)
+    let openChat = data.openChat ?? disable(factory.openChat)
+    let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
+    let readAloud = data.readAloud ?? disable(factory.readAloud)
+    let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
+    let newConfig = ShortcutConfig(
+      startRecording: startRecording,
+      startPrompting: startPrompting,
+      openSettings: openSettings,
+      openChat: openChat,
+      screenshotCapture: screenshotCapture,
+      readAloud: readAloud,
+      addToGlossary: addToGlossary
+    )
+    return newConfig
+  }
 
   // MARK: - Save Settings
   func saveSettings() async -> String? {
@@ -305,45 +380,33 @@ class SettingsViewModel: ObservableObject {
     // Never write an empty value here: after a failed Keychain read at load,
     // data.googleAPIKey is "" while the real key is still stored — persisting "" would
     // wipe it.
-    if !data.googleAPIKey.isEmpty, !KeychainManager.shared.save(data.googleAPIKey, for: .google) {
+    // Only what differs from `persisted` is written (see its doc comment).
+    var googleKeySaved = true
+    if !data.googleAPIKey.isEmpty, data.googleAPIKey != persisted.googleAPIKey,
+       !KeychainManager.shared.save(data.googleAPIKey, for: .google)
+    {
+      googleKeySaved = false
       DebugLogger.logError("SETTINGS: Failed to save Google API key to Keychain")
     }
 
-    for slot in Self.slots { slot.save(data) }
-
-    // Save toggle shortcuts. `nil` in SettingsData means "user cleared this
-    // shortcut" — we persist a disabled placeholder using the matching
-    // factory default's keycode so the stored shape stays stable.
-    func disable(_ template: ShortcutDefinition) -> ShortcutDefinition {
-      ShortcutDefinition(key: template.key, modifiers: template.modifiers, isEnabled: false)
+    // Captured before `persisted` is replaced: after that assignment every slot compares equal
+    // and a notice for the change just written would be dropped.
+    let changedSlots = SettingsSlot.slotsToSave(Self.slots, data: data, persisted: persisted)
+    for slot in changedSlots {
+      slot.save(data)
     }
-    let factory = ShortcutConfig.default
-    // Break the assembly into locals — a single 6-way `??`/`disable()` literal pushed the
-    // type-checker past its time budget once a 7th shortcut was added.
-    let startRecording = data.toggleDictation ?? disable(factory.startRecording)
-    let startPrompting = data.togglePrompting ?? disable(factory.startPrompting)
-    let openSettings = data.openSettings ?? disable(factory.openSettings)
-    let openChat = data.openChat ?? disable(factory.openChat)
-    let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
-    let readAloud = data.readAloud ?? disable(factory.readAloud)
-    let voiceFeedback = data.voiceFeedback ?? disable(factory.voiceFeedback)
-    let meetingMarker = data.meetingMarker ?? disable(factory.meetingMarker)
-    let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
-    let newConfig = ShortcutConfig(
-      startRecording: startRecording,
-      startPrompting: startPrompting,
-      openSettings: openSettings,
-      openChat: openChat,
-      screenshotCapture: screenshotCapture,
-      readAloud: readAloud,
-      voiceFeedback: voiceFeedback,
-      meetingMarker: meetingMarker,
-      addToGlossary: addToGlossary
-    )
-    ShortcutConfigManager.shared.saveConfiguration(newConfig)
 
-    // Notify about model change
-    NotificationCenter.default.post(name: .modelChanged, object: data.selectedTranscriptionModel)
+    let newShortcuts = Self.shortcutConfig(from: data)
+    if newShortcuts != Self.shortcutConfig(from: persisted) {
+      ShortcutConfigManager.shared.saveConfiguration(newShortcuts)
+    }
+
+    let previousGoogleKey = persisted.googleAPIKey
+    persisted = data
+    if !googleKeySaved { persisted.googleAPIKey = previousGoogleKey }
+    for slot in changedSlots {
+      slot.onDidChange?(data)
+    }
 
     data.isLoading = false
 
@@ -373,10 +436,10 @@ class SettingsViewModel: ObservableObject {
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
       
     } catch {
-      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.localizedDescription)")
+      DebugLogger.logError("LAUNCH: Failed to toggle launch at login: \(error.logDescription)")
       // Revert state on error
       data.launchAtLogin = SMAppService.mainApp.status == .enabled
-      showError("Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))")
+      showError(String(localized: "Failed to update Launch at Login setting: \(SpeechErrorFormatter.formatForUser(error))"))
     }
   }
 
@@ -520,7 +583,7 @@ class SettingsViewModel: ObservableObject {
       SystemPromptsStore.shared.resetSystemPromptsToDefaults()
       DebugLogger.log("RESET: Deleted context data and reset system prompts to defaults")
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
   }
 
@@ -530,7 +593,7 @@ class SettingsViewModel: ObservableObject {
     do {
       try ContextLogger.shared.deleteAllContextData()
     } catch {
-      DebugLogger.logError("RESET: Failed to delete context data: \(error.localizedDescription)")
+      DebugLogger.logError("RESET: Failed to delete context data: \(error.logDescription)")
     }
 
     ChatSessionStore.shared.deleteAllSessions()

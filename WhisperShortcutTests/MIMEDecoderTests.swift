@@ -39,6 +39,96 @@ struct MIMEDecoderTests {
     #expect(latin.subject == "Grüße")
   }
 
+  @Test func adjacentEncodedWordsJoinBeforeCharsetDecoding() {
+    // "ü" (C3 BC) split across two Q words, plus a space that must be dropped between them.
+    let split = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?Q?Gr=C3?= =?UTF-8?Q?=BC=C3=9Fe?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(split.subject == "Grüße")
+
+    let bytes = Data("Grüße".utf8)
+    let one = bytes.prefix(3).base64EncodedString()
+    let two = bytes.dropFirst(3).base64EncodedString()
+    let b64 = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?B?\(one)?=
+     =?UTF-8?B?\(two)?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(b64.subject == "Grüße")
+
+    let mixedCharsets = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?Q?a?= =?ISO-8859-1?Q?=FC?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(mixedCharsets.subject == "aü")
+  }
+
+  @Test func base64ToleratesMissingPaddingAndStrayBytes() {
+    let body = MIMEDecoder.decode(mail("""
+    Content-Type: text/plain; charset=utf-8
+    Content-Transfer-Encoding: base64
+
+    SGVsbG8s
+    IHdvcmxk
+    IQ
+    """))
+    #expect(body.body.contains("Hello, world!"))
+
+    let word = MIMEDecoder.decode(mail("""
+    Subject: =?UTF-8?B?SGFsbG8?=
+    Content-Type: text/plain; charset=utf-8
+
+    x
+    """))
+    #expect(word.subject == "Hallo")
+  }
+
+  @Test func htmlEntitiesNumericAndNamed() {
+    let decoded = MIMEDecoder.decode(mail("""
+    Content-Type: text/html; charset=utf-8
+
+    <p>Gr&uuml;&szlig;e &#252; &#xFC; &Uuml;ber M&Ouml;bel &ndash; &laquo;x&raquo; &euro;5 &amp;lt; caf&eacute; &copy;</p>
+    """))
+    #expect(decoded.body == "Grüße ü ü Über MÖbel – «x» €5 &lt; café ©")
+  }
+
+  @Test func mixedKeepsAllTextPartsInOrder() {
+    let decoded = MIMEDecoder.decode(mail("""
+    From: Ann <ann@example.com>
+    Subject: Mixed
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary="b"
+
+    --b
+    Content-Type: text/plain; charset=utf-8
+
+    FIRSTPART
+    --b
+    Content-Type: image/png; name="pic.png"
+    Content-Disposition: inline; filename="pic.png"
+    Content-Transfer-Encoding: base64
+
+    iVBORw0KGgo=
+    --b
+    Content-Type: text/plain; charset=utf-8
+
+    SECONDPART
+    --b--
+    """))
+    let first = decoded.body.range(of: "FIRSTPART")
+    let second = decoded.body.range(of: "SECONDPART")
+    #expect(first != nil && second != nil)
+    if let first, let second { #expect(first.lowerBound < second.lowerBound) }
+    #expect(decoded.attachments.map(\.name) == ["pic.png"])
+  }
+
   @Test func nestedAlternativePrefersPlain() {
     let decoded = MIMEDecoder.decode(mail("""
     From: Ann <ann@example.com>
@@ -121,6 +211,57 @@ struct MIMEDecoderTests {
     #expect(decoded.body.hasPrefix(String(repeating: "a", count: 20_000)))
     #expect(decoded.body.hasSuffix("…[truncated]"))
     #expect(decoded.body.count == 20_000 + "…[truncated]".count)
+  }
+  @Test func htmlBlockTagsBecomeLineBreaks() {
+    let raw = mail("""
+    Content-Type: text/html; charset=utf-8
+
+    <h1>Title</h1><div>First</div><div>Second</div><ul><li>One</li><li>Two</li></ul><table><tr><td>A</td></tr><tr><td>B</td></tr></table>Line<br>Next &amp; done<p></p><p></p><p></p><p>End</p>
+    """)
+    let body = MIMEDecoder.decode(raw).body
+    #expect(body.contains("Title\nFirst\nSecond"))
+    #expect(body.contains("One\n"))
+    #expect(body.contains("A\n"))
+    #expect(body.contains("Line\nNext & done"))
+    #expect(!body.contains("\n\n\n"))
+  }
+
+  @Test func forwardedMessageTextReachesBody() {
+    let raw = mail("""
+    Content-Type: multipart/mixed; boundary="OUT"
+
+    --OUT
+    Content-Type: text/plain; charset=utf-8
+
+    See below.
+    --OUT
+    Content-Type: message/rfc822
+
+    From: boss@b.test
+    Subject: Budget
+    Content-Type: text/plain; charset=utf-8
+
+    The budget is 5.
+    --OUT--
+    """)
+    let body = MIMEDecoder.decode(raw).body
+    #expect(body.hasPrefix("See below."))
+    #expect(body.contains("---------- Forwarded message ----------"))
+    #expect(body.contains("From: boss@b.test"))
+    #expect(body.contains("Subject: Budget"))
+    #expect(body.contains("The budget is 5."))
+  }
+
+  @Test func rawUTF8HeaderDecodes() {
+    let decoded = MIMEDecoder.decode(mail("From: a@b.test\nSubject: Grüße\n\nbody"))
+    #expect(decoded.subject == "Grüße")
+  }
+
+  @Test func rawLatin1HeaderStillDecodes() {
+    var raw = Data("From: a@b.test\r\nSubject: Gr".utf8)
+    raw.append(contentsOf: [0xFC, 0xDF, 0x65])
+    raw.append(Data("\r\n\r\nbody".utf8))
+    #expect(MIMEDecoder.decode(raw).subject == "Grüße")
   }
 }
 

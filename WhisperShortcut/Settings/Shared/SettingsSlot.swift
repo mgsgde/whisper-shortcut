@@ -13,26 +13,49 @@ import Foundation
 struct SettingsSlot {
   let load: (inout SettingsData) -> Void
   let save: (SettingsData) -> Void
+  /// Whether this slot's value differs between two snapshots. `SettingsViewModel.saveSettings()`
+  /// writes only slots that differ from what it last loaded or saved, so a value changed elsewhere
+  /// (Chat `/model`, `/pin`) is not overwritten by a stale copy held by a long-lived Settings window.
+  let differs: (SettingsData, SettingsData) -> Bool
+  /// Fired by `saveSettings()` after this slot is written, and only then.
+  ///
+  /// Model pickers used to `UserDefaults.set` the same key the slot already saves, then post
+  /// `.modelChanged` or `.promptModelChanged` themselves. Dictate posted `.modelChanged` a second
+  /// time from `saveSettings`, so one picker change notified twice, and a save that did not touch
+  /// the model could still have been preceded by a notice from the picker. The notice now lives
+  /// on the slot, with the same name and object as before, and a slot that did not change cannot
+  /// post one.
+  let onDidChange: ((SettingsData) -> Void)?
+
+  /// The slots whose value in `data` differs from `persisted` — the ones a save must write.
+  static func slotsToSave(_ slots: [SettingsSlot], data: SettingsData, persisted: SettingsData)
+    -> [SettingsSlot]
+  {
+    slots.filter { $0.differs(data, persisted) }
+  }
 }
 
 extension SettingsSlot {
   /// Full control over both halves — for settings whose load routes through a migrating loader
   /// (`PromptModel.loadChatSlotModel`, `TranscriptionModel.loadSelected`, …) or a preference
   /// namespace (`ReadAloudPreferences`, `ScreenshotSaveLocation`).
-  static func custom<Value>(
+  static func custom<Value: Equatable>(
     _ keyPath: WritableKeyPath<SettingsData, Value>,
     load: @escaping () -> Value,
-    save: @escaping (Value) -> Void
+    save: @escaping (Value) -> Void,
+    onDidChange: ((SettingsData) -> Void)? = nil
   ) -> SettingsSlot {
     SettingsSlot(
       load: { data in data[keyPath: keyPath] = load() },
-      save: { data in save(data[keyPath: keyPath]) }
+      save: { data in save(data[keyPath: keyPath]) },
+      differs: { lhs, rhs in lhs[keyPath: keyPath] != rhs[keyPath: keyPath] },
+      onDidChange: onDidChange
     )
   }
 
   /// An enum persisted as its `String` raw value. Unknown/absent raw values fall back to
   /// `fallback` — no migration, so only use it for enums that have never been renamed.
-  static func rawValue<Value: RawRepresentable>(
+  static func rawValue<Value: RawRepresentable & Equatable>(
     _ keyPath: WritableKeyPath<SettingsData, Value>,
     key: String,
     default fallback: Value

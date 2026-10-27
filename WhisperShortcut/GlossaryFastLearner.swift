@@ -133,16 +133,13 @@ final class GlossaryFastLearner {
     guard !target.isEmpty else { return glossary }
 
     let kept = glossary.components(separatedBy: .newlines).compactMap { line -> String? in
-      if line.range(
-        of: #"\((?:not|nicht)\s+"#, options: [.regularExpression, .caseInsensitive]) != nil
-      {
-        return line
-      }
+      // Annotated lines already say which spelling is wrong. The check used to be a shorter
+      // regex than the one the prompt parses, so a broken annotation was protected here and
+      // ignored everywhere else.
+      if GlossaryDocument.carriesAnnotation(line) { return line }
       // Preserve a leading `Terms:` label so the list keeps its shape when a member is dropped.
-      let labelRange = line.range(
-        of: #"^\s*Terms:\s*"#, options: [.regularExpression, .caseInsensitive])
-      let label = labelRange.map { String(line[$0]) } ?? ""
-      let body = labelRange.map { String(line[$0.upperBound...]) } ?? line
+      let label = GlossaryDocument.termsLabel(on: line)
+      let body = String(line.dropFirst(label.count))
 
       let members = body.components(separatedBy: ",")
       let survivors = members.filter { fold($0.trimmingCharacters(in: .whitespaces)) != target }
@@ -257,22 +254,10 @@ final class GlossaryFastLearner {
     DebugLogger.log("GLOSSARY-LEARN: added \(additions.count) term(s) from typed chat text")
   }
 
-  /// Internal so voice feedback and the chat tool can reuse the same transcript window
+  /// Internal so the chat tool can reuse the same transcript window
   /// when they pick a majority spelling. The scan is file IO; callers are already off the UI path.
   func recentTranscriptionResults() -> [String] {
-    let decoder = JSONDecoder()
-    var results: [String] = []
-    for fileURL in ContextLogger.shared.interactionLogFiles(lastDays: transcriptWindowDays) {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.components(separatedBy: .newlines) where !line.isEmpty {
-        guard let data = line.data(using: .utf8),
-              let entry = try? decoder.decode(InteractionLogEntry.self, from: data),
-              entry.mode == "transcription",
-              let result = entry.result else { continue }
-        results.append(result)
-      }
-    }
-    return results
+    UserContextLog.interactions(lastDays: transcriptWindowDays, mode: .transcription).compactMap(\.result)
   }
 
   // MARK: - Text helpers
@@ -290,9 +275,10 @@ final class GlossaryFastLearner {
   }
 
   /// Case- and diacritic-insensitive form used for phonetic-ish comparison
-  /// ("Gödde" and "godde" fold to the same string).
+  /// ("Gödde" and "godde" fold to the same string). POSIX, via `GlossaryDocument.fold`,
+  /// so a Turkish locale does not give this learner a different key than the prompt.
   private func fold(_ word: String) -> String {
-    word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+    GlossaryDocument.fold(word)
   }
 
   /// German/English inflectional endings a longer word may add to a shorter stem

@@ -26,8 +26,8 @@ enum ModelStoreError: LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case .downloadFailed(let message): return "Download failed: \(message)"
-    case .fileError(let message): return "File error: \(message)"
+    case .downloadFailed(let message): return String(localized: "Download failed: \(message)")
+    case .fileError(let message): return String(localized: "File error: \(message)")
     }
   }
 }
@@ -111,7 +111,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// Status line shown between "downloaded" and "ready". WhisperKit overrides this because its
   /// wait is CoreML compiling for the Neural Engine — minutes, once, and worth naming.
   func preparingMessage(for model: Model) -> String {
-    "Loading \(model.displayName) into memory…"
+    String(localized: "Loading \(model.displayName) into memory…")
   }
 
   /// When loading fails after the folder looked complete, delete it and fetch once more.
@@ -159,14 +159,21 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
     if let existing = readyTasks[model] {
       // Someone (Settings, a previous dictation, the launch pre-load) is already on it.
-      try await existing.value
-      return
+      guard existing.isCancelled else {
+        try await existing.value
+        return
+      }
+      // A cancelled run still finishes the file in flight; wait so two fetches never write one folder.
+      _ = try? await existing.value
     }
     let task = Task<Void, Error> { try await self.makeReady(model) }
     readyTasks[model] = task
     defer {
-      readyTasks[model] = nil
-      readyPhase[model] = nil
+      // Only clear our own entry: a newer run may have replaced a cancelled one.
+      if readyTasks[model] == task {
+        readyTasks[model] = nil
+        readyPhase[model] = nil
+      }
     }
     try await task.value
   }
@@ -175,18 +182,18 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   func statusLine(_ phase: ReadyPhase, for model: Model) -> String {
     switch phase {
     case .downloading(let fraction, let isRetry):
-      let verb = isRetry ? "Downloading \(model.displayName) again" : "Downloading \(model.displayName)"
-      return "\(verb) — \(Int(fraction * 100))% of \(model.estimatedSizeLabel)"
+      let verb = isRetry ? String(localized: "Downloading \(model.displayName) again") : String(localized: "Downloading \(model.displayName)")
+      return String(localized: "\(verb) — \(Int(fraction * 100))% of \(model.estimatedSizeLabel)")
     case .loading:
       return preparingMessage(for: model)
     }
   }
 
   /// Same progress popup Dictate Prompt uses, so Chat and a picker tap are not a silent hang.
-  func ensureReadyWithUI(_ model: Model, title: String) async throws {
+  func ensureReadyWithUI(_ model: Model, title: LocalizedStringResource) async throws {
     defer { PopupNotificationWindow.dismissProcessing() }
     try await ensureReady(model) { status in
-      PopupNotificationWindow.showOrUpdateProcessing(status, title: title)
+      PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: title)
     }
   }
 
@@ -205,7 +212,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       // not a corrupt folder; purging 1.6 GB on a slow Mac would be the prewarmer's "far
       // too destructive" case on the dictation path.
       DebugLogger.logWarning(
-        "\(logPrefix): \(model.displayName) failed to load (\(error.localizedDescription)); treating as corrupt and re-downloading once")
+        "\(logPrefix): \(model.displayName) failed to load (\(error.logDescription)); treating as corrupt and re-downloading once")
       try? removeFiles(of: model)
       await unload(model)
       try await download(model, isRetry: true)
@@ -243,14 +250,19 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
   func downloadModel(_ model: Model, onProgress: ((Double) -> Void)? = nil) async throws {
     if let existing = downloadTasks[model] {
-      try await existing.value
-      return
+      guard existing.isCancelled else {
+        try await existing.value
+        return
+      }
+      // A cancelled download still finishes the file in flight; wait so two fetches never write one folder.
+      _ = try? await existing.value
     }
     let task = Task<Void, Error> {
       try await self.performDownload(model, onProgress: onProgress)
     }
     downloadTasks[model] = task
-    defer { downloadTasks[model] = nil }
+    // Only clear our own entry: a newer download may have replaced a cancelled one.
+    defer { if downloadTasks[model] == task { downloadTasks[model] = nil } }
     try await withTaskCancellationHandler {
       try await task.value
     } onCancel: {
@@ -276,7 +288,9 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     do {
       try await fetch(model) { fraction in
         Task { @MainActor [weak self] in
-          self?.downloadProgress[model] = fraction
+          // A hop queued before cancel/finish must not resurrect stale progress.
+          guard let self, self.downloadingModels.contains(model) else { return }
+          self.downloadProgress[model] = fraction
           onProgress?(fraction)
         }
       }
@@ -287,7 +301,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
 
       guard isModelAvailable(model) else {
         throw ModelStoreError.downloadFailed(
-          "Model downloaded but required files are missing. Please try again.")
+          String(localized: "Model downloaded but required files are missing. Please try again."))
       }
       DebugLogger.logSuccess("\(logPrefix): \(model.displayName) downloaded successfully")
     } catch {
@@ -298,7 +312,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       if let error = error as? ModelStoreError {
         throw error
       }
-      DebugLogger.logError("\(logPrefix): Download failed: \(error.localizedDescription)")
+      DebugLogger.logError("\(logPrefix): Download failed: \(error.logDescription)")
       throw ModelStoreError.downloadFailed(error.localizedDescription)
     }
   }
@@ -320,7 +334,7 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
   /// inside the very `readyTasks` entry that `cancelDownload` would cancel.
   private func removeFiles(of model: Model) throws {
     guard let modelPath = resolveModelPath(for: model) else {
-      throw ModelStoreError.fileError("Model not found")
+      throw ModelStoreError.fileError(String(localized: "Model not found"))
     }
     try fileManager.removeItem(at: deletionTarget(for: modelPath))
   }

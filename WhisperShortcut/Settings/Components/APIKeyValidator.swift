@@ -23,7 +23,7 @@ enum APIKeyProvider: CaseIterable {
     }
   }
 
-  var sectionTitle: String {
+  var sectionTitle: LocalizedStringResource {
     switch self {
     case .google: return "Google API Key"
     case .openai: return "OpenAI API Key"
@@ -32,7 +32,7 @@ enum APIKeyProvider: CaseIterable {
     }
   }
 
-  var sectionSubtitle: String {
+  var sectionSubtitle: LocalizedStringResource {
     switch self {
     case .google:
       return "Powers Gemini transcription, Dictate Prompt, Read Aloud, and Chat. Get a key from Google AI Studio (link below)."
@@ -93,11 +93,29 @@ enum APIKeyProvider: CaseIterable {
       ]
     }
   }
+
+  /// Nil on success. Settings and onboarding each used to persist a key themselves: onboarding
+  /// on the main thread, without `reconcileAll`, and with a generic failure string instead of
+  /// `KeychainSaveWarning`. `SecItemUpdate` is a synchronous IPC to securityd that stalls the
+  /// main thread, so the write hops off it; both screens then reconcile and, for a non-empty
+  /// key, schedule the cloud-model offer.
+  func store(_ key: String) async -> OSStatus? {
+    let credential = self.credential
+    let status: OSStatus? = await Task.detached {
+      let saved = KeychainManager.shared.save(key, for: credential)
+      return saved ? nil : KeychainManager.shared.lastWriteError(for: credential)
+    }.value
+    await MainActor.run {
+      ModelSelectionReconciler.reconcileAll()
+      if !key.isEmpty { CloudModelOffer.scheduleCheck() }
+    }
+    return status
+  }
 }
 
 /// One "get a key here" link row under an API key field.
 struct APIKeyHelpLink: Identifiable {
-  let intro: String
+  let intro: LocalizedStringResource
   let label: String
   let url: URL
 
@@ -162,7 +180,7 @@ enum APIKeyValidator {
         return .unverified
       }
     } catch {
-      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.localizedDescription))")
+      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.logDescription))")
       return .unverified
     }
   }

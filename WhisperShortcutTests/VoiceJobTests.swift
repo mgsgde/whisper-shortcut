@@ -4,14 +4,14 @@ import Testing
 @testable import WhisperShortcut_AppStore
 
 /// Cancelling a job must reach every stage of its work, not just the first network call — the
-/// Voice Feedback bug this owner fixes was a second stage that kept running after a cancel.
+/// bug this guards against was a second stage that kept running after a cancel.
 @MainActor
 @Suite("Voice job")
 struct VoiceJobTests {
 
   @Test("cancel() stops a later stage of the job's work")
   func cancelReachesLaterStages() async throws {
-    let job = VoiceJob(mode: .voiceFeedback, audioURL: URL(fileURLWithPath: "/tmp/x.wav"))
+    let job = VoiceJob(mode: .prompt, audioURL: URL(fileURLWithPath: "/tmp/x.wav"))
     var reachedSecondStage = false
     var sawCancellation = false
     await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in

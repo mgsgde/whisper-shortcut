@@ -1,18 +1,13 @@
 import ScreenCaptureKit
 import SwiftUI
 
-/// Speech to Prompt Settings Tab - Shortcuts, Prompt, GPT Model
+/// Dictate Prompt Settings Tab — model, screen context, tools and prompt. The shortcut is set in General.
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      // Shortcuts Section
-      shortcutsSection
-      
-      SpacedSectionDivider()
-
       // Model Selection Section
       modelSection
 
@@ -49,31 +44,6 @@ struct SpeechToPromptSettingsTab: View {
     }
   }
 
-  // MARK: - Shortcuts Section
-  @ViewBuilder
-  private var shortcutsSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Keyboard Shortcut",
-        systemImage: "keyboard",
-        subtitle: "Start/Stop Dictate Prompt with one shortcut"
-      )
-
-      ShortcutRecorderRow(
-        label: "Toggle Dictate Prompt:",
-        shortcut: $viewModel.data.togglePrompting,
-        focusedField: .togglePrompting,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
-    }
-  }
   
   // MARK: - Model Selection Section
   @ViewBuilder
@@ -85,12 +55,6 @@ struct SpeechToPromptSettingsTab: View {
       recommendedModel: SettingsDefaults.selectedPromptModel,
       subscriptionMode: false,
       onModelChanged: {
-        UserDefaults.standard.set(
-          viewModel.data.selectedPromptModel.rawValue,
-          forKey: UserDefaultsKeys.selectedPromptModel)
-        NotificationCenter.default.post(
-          name: .promptModelChanged,
-          object: viewModel.data.selectedPromptModel)
         Task {
           await viewModel.saveSettings()
         }
@@ -151,6 +115,8 @@ struct SpeechToPromptSettingsTab: View {
         systemImage: "questionmark.circle",
         subtitle: "Step-by-step instructions for using Dictate Prompt"
       )
+
+      ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.togglePrompting)
 
       VStack(alignment: .leading, spacing: 8) {
         Text("1. Select text")

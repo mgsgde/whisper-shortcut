@@ -55,7 +55,7 @@ struct LLMProviderRoundtripTests {
     )
     func grok() async throws {
         let reply = try await GrokChatProvider.shared.generateText(
-            model: PromptModel.grok4.rawValue,
+            model: PromptModel.grok43.rawValue,
             prompt: Self.prompt
         )
         #expect(!reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

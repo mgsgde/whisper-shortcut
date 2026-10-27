@@ -6,7 +6,7 @@ import SwiftUI
 struct ImprovementSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
-  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = true
+  @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
@@ -19,10 +19,6 @@ struct ImprovementSettingsTab: View {
       SpacedSectionDivider()
 
       SmartImprovementScorecardSection()
-
-      SpacedSectionDivider()
-
-      voiceFeedbackSection
 
       SpacedSectionDivider()
 
@@ -42,37 +38,6 @@ struct ImprovementSettingsTab: View {
     }
     .onAppear {
       refreshImprovementState()
-    }
-  }
-
-  // MARK: - Voice Feedback Section
-  @ViewBuilder
-  private var voiceFeedbackSection: some View {
-    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Voice Feedback",
-        systemImage: "megaphone",
-        subtitle: "Press the shortcut and speak an instruction (e.g. \"my name is spelled G-ö-d-d-e\"). The model turns it into a proposed change to your context, which you review before it's applied."
-      )
-
-      ShortcutRecorderRow(
-        label: "Voice Feedback:",
-        shortcut: $viewModel.data.voiceFeedback,
-        focusedField: .voiceFeedbackShortcut,
-        currentFocus: $focusedField,
-        onChanged: {
-          Task {
-            await viewModel.saveSettings()
-          }
-        },
-        findConflict: viewModel.findShortcutConflict,
-        clearShortcut: viewModel.clearShortcut
-      )
-
-      Text("Uses the same model as Smart Improvement. Changes are proposed in a review window and go to the system-prompts history, so you can revert them.")
-        .font(.caption)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -205,9 +170,6 @@ struct ImprovementSettingsTab: View {
           recommendedModel: SettingsDefaults.selectedImprovementModel,
           subscriptionMode: improvementSubscriptionMode,
           onModelChanged: {
-            UserDefaults.standard.set(
-              viewModel.data.selectedImprovementModel.rawValue,
-              forKey: UserDefaultsKeys.selectedImprovementModel)
             Task {
               await viewModel.saveSettings()
             }

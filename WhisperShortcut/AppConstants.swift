@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 // MARK: - App Constants
@@ -205,6 +206,26 @@ Output rules (CRITICAL):
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
   /// Sparkle appcast for the direct (GitHub) build; always points at the newest release asset.
+  /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
+  /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
+  static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
+  /// A dev instance that runs next to the user's own one. It registers no global hotkeys, no Fn
+  /// toggle, no MCP server, no Sparkle and no daily auto-run, so it cannot fight that instance.
+  /// True when launched with `--sidecar` (the dev scripts do), and also for any Dev build started
+  /// while the installed release (`com.magnusgoedde.whispershortcut`) runs: Xcode's Run button,
+  /// the driver and in-app relaunches then cannot grab the release's hotkeys, Fn key or MCP port.
+  /// Evaluated once at launch.
+  static let isSidecarInstance = sidecarReason != nil
+  /// Why this process is a sidecar ("argv" / "release running"), nil when it is not one.
+  static let sidecarReason: String? = {
+    if ProcessInfo.processInfo.arguments.contains("--sidecar") { return "argv" }
+    if isDevBuild,
+      !NSRunningApplication.runningApplications(withBundleIdentifier: "com.magnusgoedde.whispershortcut").isEmpty
+    {
+      return "release running"
+    }
+    return nil
+  }()
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).
@@ -400,10 +421,6 @@ Output rules (CRITICAL):
   /// background value (10 s) the first two thirds of every fast chunk could not rotate at all.
   static let liveMeetingFastChunkMinDuration: TimeInterval = 6
 
-  /// Text stored for a marker set by hotkey. The value of a marker is the timestamp it carries —
-  /// the user cannot type while the meeting runs, which is the whole reason the hotkey exists.
-  static let liveMeetingDefaultMarkerText = "Flagged by me"
-
   /// Transcription prompt for live meeting chunks with speaker diarization.
   static let liveMeetingDiarizationPrompt =
     """
@@ -439,19 +456,7 @@ Transcript:
 
   /// Final post-meeting summary prompt (provider-agnostic — used by whichever provider owns the
   /// selected meeting-summary model).
-  static func meetingSummaryPrompt(transcript: String, markers: [String] = []) -> String {
-    // Markers are the moments the participant flagged by hotkey while the meeting ran — the one
-    // signal in the transcript that carries explicit human attention, so the summary leans on them.
-    let markerBlock =
-      markers.isEmpty
-      ? ""
-      : """
-
-        The participant flagged these moments as important while the meeting was running. Make sure \
-        the summary covers each of them, and open with a "## Flagged Moments" section listing them:
-        \(markers.map { "- \($0)" }.joined(separator: "\n"))
-        """
-
+  static func meetingSummaryPrompt(transcript: String) -> String {
     return """
     You are summarizing a completed meeting transcript.
 
@@ -462,7 +467,6 @@ Transcript:
     4. Do NOT write plain paragraphs. Every piece of information must be a bullet under a heading.
     5. Include: main points, key takeaways, decisions, action items (if any).
     6. Write the summary in the same language as the transcript. Output only the Markdown, no preamble.
-    \(markerBlock)
 
     Transcript:
     \(transcript)

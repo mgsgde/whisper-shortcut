@@ -2,11 +2,11 @@ import SwiftUI
 
 /// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and Smart Improvement.
 struct PromptModelSelectionView: View {
-  let title: String
+  let title: LocalizedStringResource
   /// Optional SF Symbol shown next to the section header title.
   let systemImage: String?
   /// When nil, uses the default Dictate Prompt subtitle.
-  let subtitle: String?
+  let subtitle: LocalizedStringResource?
   /// When false, renders a small label instead of SectionHeader (e.g. when embedded in another section).
   let showSectionHeader: Bool
   @Binding var selectedModel: PromptModel
@@ -26,9 +26,9 @@ struct PromptModelSelectionView: View {
   @ObservedObject private var mlxManager = LocalLLMModelManager.shared
 
   init(
-    title: String,
+    title: LocalizedStringResource,
     systemImage: String? = nil,
-    subtitle: String? = nil,
+    subtitle: LocalizedStringResource? = nil,
     showSectionHeader: Bool = true,
     selectedModel: Binding<PromptModel>,
     availableModels: [PromptModel]? = nil,
@@ -61,7 +61,7 @@ struct PromptModelSelectionView: View {
     return selectedModel
   }
 
-  private var effectiveSubtitle: String {
+  private var effectiveSubtitle: LocalizedStringResource {
     if subscriptionMode {
       if let custom = subscriptionFixedModelDescription {
         return "In subscription mode, model selection is not available. \(custom)"
@@ -73,7 +73,7 @@ struct PromptModelSelectionView: View {
 
   private var subscriptionModeFixedModelLine: String {
     if let custom = subscriptionFixedModelDescription { return custom }
-    return "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)"
+    return String(localized: "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)")
   }
 
   var body: some View {
@@ -104,33 +104,47 @@ struct PromptModelSelectionView: View {
           .padding(.vertical, 4)
       }
 
-      // Model Selection Grid, grouped by provider with image-generation models split out
-      // (Nano Banana generates images, not chat replies). When only one group is present we
-      // render a single plain grid so short lists keep their original look.
-      let groups = modelGroups
-      VStack(alignment: .leading, spacing: 0) {
-        if groups.count > 1 {
-          ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-            if index > 0 { Divider().padding(.vertical, 10) }
-            groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
-            modelGrid(group.models)
+      CuratedModelPicker(
+        curation: ModelPickerCuration(models: models, recommended: recommendedModel, selected: displayModel),
+        cell: { model, badges in modelCell(model, badges: badges) },
+        more: { groupedGrids($0) })
+
+      // Model Details right under the picker they describe (use displayModel so subscription shows the fixed model's description and cost)
+      VStack(alignment: .leading, spacing: 8) {
+        Text(displayModel.description)
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .textSelection(.enabled)
+
+        HStack {
+          Text("Cost:")
+            .font(.callout)
+            .fontWeight(.medium)
+            .foregroundColor(.secondary)
+
+          Text(displayModel.costLevel.title)
+            .font(.callout)
+            .fontWeight(.semibold)
+            .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
+        }
+
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+          Text("Tip: Compare models (speed, intelligence, pricing):")
+            .font(.caption)
+            .foregroundColor(.secondary)
+          if let url = URL(string: AppConstants.geminiModelsComparisonURL) {
+            Link("gemini-models", destination: url)
+              .font(.caption)
+              .lineLimit(1)
+              .pointerCursorOnHover()
           }
-        } else {
-          modelGrid(models)
         }
       }
-      .padding(groups.count > 1 ? 10 : 0)
-      .background(Color(.controlBackgroundColor))
-      .cornerRadius(8)
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(Color(.separatorColor), lineWidth: 1)
-      )
 
       if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
         HStack {
           let fraction = mlxManager.downloadProgress[downloading] ?? 0
-          Text(fraction > 0 ? "Downloading \(downloading.displayName)… \(Int(fraction * 100))%" : "Starting \(downloading.displayName)…")
+          Text(fraction > 0 ? ("Downloading \(downloading.displayName)… \(Int(fraction * 100))%" as LocalizedStringKey) : "Starting \(downloading.displayName)…")
             .font(.callout)
             .foregroundColor(.secondary)
           Spacer()
@@ -146,50 +160,6 @@ struct PromptModelSelectionView: View {
       if models.contains(where: { $0.localMLXModelType != nil }) {
         LocalLLMModelsSection(models: models.compactMap(\.localMLXModelType))
       }
-
-      // Model Details (use displayModel so subscription shows the fixed model's description and cost)
-      VStack(alignment: .leading, spacing: 8) {
-        Text(displayModel.description)
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        HStack {
-          Text("Cost:")
-            .font(.callout)
-            .fontWeight(.medium)
-            .foregroundColor(.secondary)
-
-          Text(displayModel.costLevel)
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
-        }
-
-        if displayModel == recommendedModel {
-          HStack {
-            Image(systemName: "star.fill")
-              .foregroundColor(.yellow)
-              .font(.caption)
-            Text("Recommended")
-              .font(.callout)
-              .fontWeight(.medium)
-              .foregroundColor(.secondary)
-          }
-        }
-
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text("Tip: Compare models (speed, intelligence, pricing):")
-            .font(.caption)
-            .foregroundColor(.secondary)
-          if let url = URL(string: AppConstants.geminiModelsComparisonURL) {
-            Link("gemini-models", destination: url)
-              .font(.caption)
-              .lineLimit(1)
-              .pointerCursorOnHover()
-          }
-        }
-      }
     }
   }
 
@@ -197,23 +167,43 @@ struct PromptModelSelectionView: View {
 
   private struct ModelGroup {
     let symbol: String
-    let title: String
-    let subtitle: String?
+    let title: LocalizedStringResource
+    let subtitle: LocalizedStringResource?
     let models: [PromptModel]
+  }
+
+  /// The "More models" remainder, grouped by provider with image-generation models split out
+  /// (Nano Banana generates images, not chat replies). A single group renders as a plain grid.
+  @ViewBuilder
+  private func groupedGrids(_ models: [PromptModel]) -> some View {
+    let groups = Self.modelGroups(models)
+    VStack(alignment: .leading, spacing: 0) {
+      if groups.count > 1 {
+        ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+          if index > 0 { Divider().padding(.vertical, 10) }
+          groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
+          modelGrid(group.models)
+        }
+      } else {
+        modelGrid(models)
+      }
+    }
   }
 
   /// Models split into provider groups (Gemini / Grok / OpenAI), preserving order, with
   /// image-generation models pulled into their own trailing group. Empty groups are dropped.
-  private var modelGroups: [ModelGroup] {
+  private static func modelGroups(_ models: [PromptModel]) -> [ModelGroup] {
     let textModels = models.filter { !$0.generatesImages }
     let imageModels = models.filter { $0.generatesImages }
 
-    let providerOrder: [(ChatModelProvider, String, String, String?)] = [
+    let providerOrder: [(ChatModelProvider, String, LocalizedStringResource, LocalizedStringResource?)] = [
       (.gemini, "sparkles", "Gemini", nil),
       (.grok, "bolt.fill", "Grok (xAI)", nil),
       (.openai, "brain", "OpenAI", nil),
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
-      (.customOpenAI, "arrow.triangle.branch", "Custom endpoint", nil),
+      (.chatGPTPlan, "person.crop.circle.badge.checkmark", "ChatGPT plan", "Your ChatGPT Plus or Pro plan · no API key"),
+      (.openRouter, "arrow.triangle.branch", "OpenRouter", "Any model on your OpenRouter account"),
+      (.customOpenAI, "network", "Custom endpoint", "Your own OpenAI-compatible server"),
       (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),
       (.local, "server.rack", "Local Server", "Your own Ollama / LM Studio · any model you have pulled"),
     ]
@@ -232,27 +222,29 @@ struct PromptModelSelectionView: View {
   }
 
   @ViewBuilder
-  private func groupHeader(symbol: String, title: String, subtitle: String?) -> some View {
+  private func groupHeader(symbol: String, title: LocalizedStringResource, subtitle: LocalizedStringResource?) -> some View {
     ModelGroupHeader(symbol: symbol, title: title, subtitle: subtitle)
   }
 
   private func modelGrid(_ models: [PromptModel]) -> some View {
-    ModelGrid(models: models) { modelCell($0) }
+    ModelGrid(models: models) { modelCell($0, badges: []) }
   }
 
   @ViewBuilder
-  private func modelCell(_ model: PromptModel) -> some View {
+  private func modelCell(_ model: PromptModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
       title: model.displayName,
       subtitle: mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
-      // The star means "recommended for *this* picker", which is what `recommendedModel` is for.
+      // `badges` comes from the curation, whose Recommended is this picker's `recommendedModel`.
       // Letting an MLX model carry its own catalogue star put a second star into Smart
       // Improvement and meeting-summary pickers, whose recommendation is a cloud model — the
       // exact confusion the `recommendedModel` doc above was introduced to end. The catalogue's
       // own star lives in `LocalLLMModelsSection`, where it means "best offline model".
-      isRecommended: model == recommendedModel,
+      badges: badges,
+      setupBadge: subscriptionMode ? nil : model.pickerSetupBadge,
+      setupHelp: model.provider.credentialRequiredMessage,
       onTap: {
         selectedModel = model
         onModelChanged?()
@@ -264,11 +256,11 @@ struct PromptModelSelectionView: View {
     guard let type = model.localMLXModelType else { return nil }
     if mlxManager.downloadingModels.contains(type) {
       if let fraction = mlxManager.downloadProgress[type] {
-        return "Downloading… \(Int(fraction * 100))%"
+        return String(localized: "Downloading… \(Int(fraction * 100))%")
       }
-      return "Downloading…"
+      return String(localized: "Downloading…")
     }
-    return mlxManager.isModelAvailable(type) ? nil : "Not downloaded"
+    return mlxManager.isModelAvailable(type) ? nil : String(localized: "Not downloaded")
   }
 
 }

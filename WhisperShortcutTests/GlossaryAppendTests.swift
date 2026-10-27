@@ -31,6 +31,11 @@ struct GlossaryAppendTests {
     #expect(!SystemPromptsStore.glossaryContains("Sakrumtorsion", in: glossary))
     // A substring of an entry is not an entry: "Fascia" must still be addable.
     #expect(!SystemPromptsStore.glossaryContains("Fascia", in: glossary))
+    // Diacritics and a rejected spelling are the same term. "Goedde" is not: oe does not fold to ö.
+    #expect(SystemPromptsStore.glossaryContains("Gödde", in: glossary))
+    #expect(SystemPromptsStore.glossaryContains("godde", in: "Gödde"))
+    #expect(SystemPromptsStore.glossaryContains("Gödde", in: "Goedde (not \"Gödde\")"))
+    #expect(!SystemPromptsStore.glossaryContains("Gödde", in: "Goedde"))
   }
 
   /// The failure this guards against is not a crash but a silently degraded transcript: a whole

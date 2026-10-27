@@ -5,90 +5,90 @@ struct SpeechErrorFormatter {
 
   // MARK: - Constants
   private enum Constants {
-    static let slowDownWaitTime = "15 minutes"
+    static let slowDownWaitTime = String(localized: "15 minutes")
   }
 
   /// Format a TranscriptionError into a user-friendly message
   static func format(_ error: TranscriptionError) -> String {
     switch error {
     case .noGoogleAPIKey:
-      return """
+      return String(localized: """
         ⚠️ No Gemini Credential
 
         You have selected a Gemini model, but no credential is available.
         Open Settings and either add your Google API key in the "Google API Key" section or sign in with Google (Google Account / SSO).
         Without an API key or Google sign-in, Gemini transcription cannot be performed.
-        """
+        """)
 
     case .invalidAPIKey:
-      return """
+      return String(localized: """
         ❌ Authentication Error
 
         Your API key is invalid or has expired.
         Please check the API key for the selected provider in Settings.
-        """
+        """)
 
     case .incorrectAPIKey:
-      return """
+      return String(localized: """
         ❌ Incorrect API Key
 
         The API key provided is not correct.
         Please ensure the API key is correct and that you have added your payment details and activated the API key.
-        """
+        """)
 
     case .countryNotSupported:
-      return """
+      return String(localized: """
         ❌ Country Not Supported
 
         You are accessing the API from an unsupported country, region, or territory.
         Please see Google's documentation for supported regions.
-        """
+        """)
 
     case .invalidRequest:
-      return """
+      return String(localized: """
         ❌ Invalid Request
 
         The request was malformed or contained invalid parameters.
         Please check your audio file format and try again.
-        """
+        """)
 
     case .permissionDenied:
-      return """
+      return String(localized: """
         ❌ Permission Denied
 
         You don't have permission to access this resource.
         Please check your API key permissions.
-        """
+        """)
 
     case .notFound:
-      return """
+      return String(localized: """
         ❌ Resource Not Found
 
         The requested resource was not found.
         Please try again.
-        """
+        """)
 
     case .modelDeprecated:
-      return """
+      return String(localized: """
         ❌ Model No Longer Available
 
         The requested resource was not found. This can happen if the selected model is no longer available.
 
         Choose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite).
-        """
+        """)
 
     case .rateLimited(let retryAfter, let topUpURL):
       if topUpURL != nil {
-        return """
+        return String(localized: """
           ⏳ Daily Limit Reached
 
           Your included usage for this period is used up and your balance is insufficient for further requests.
 
           Top up your balance in the Dashboard to continue. Use the "Top up" button below to open the website.
-          """
+          """)
       }
-      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Wait a moment and try again, or check billing (see above)."
-      return """
+      let waitMessage = retryAfter.map { String(localized: "Please wait \(Int($0)) seconds and try again.") } ?? String(localized: "Wait a moment and try again, or check billing (see above).")
+      return String(localized: """
         ⏳ Rate Limit Exceeded
 
         Your AI provider rejected the request because of usage limits on your API key.
@@ -106,21 +106,21 @@ struct SpeechErrorFormatter {
         If you use Sign in with Google instead of an API key, check your GCP project’s billing in Google Cloud Console.
 
         \(waitMessage)
-        """
+        """)
 
     case .billingRequired(let topUpURL):
       // When the provider told us unambiguously which balance is empty, say so and let the popup's
       // "Top up" button do the rest — listing three unrelated dashboards would be noise.
       if topUpURL != nil {
-        return """
+        return String(localized: """
           💳 Out of Credit
 
           Your OpenRouter balance is empty, so the request was rejected.
 
           Add credit to continue. Use the "Top up" button below to open your OpenRouter dashboard.
-          """
+          """)
       }
-      return """
+      return String(localized: """
         💳 Billing Required
 
         Your API account has no usable credit, or this model requires billing to be enabled.
@@ -131,11 +131,11 @@ struct SpeechErrorFormatter {
         • Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)
         • OpenAI: https://platform.openai.com/settings/organization/billing — add credit
         • xAI: https://console.x.ai — add credit
-        """
+        """)
 
     case .quotaExceeded(let retryAfter):
-      let waitMessage = retryAfter.map { "Please wait \(Int($0)) seconds and try again." } ?? "Please try again after adding more credits."
-      return """
+      let waitMessage = retryAfter.map { String(localized: "Please wait \(Int($0)) seconds and try again.") } ?? String(localized: "Please try again after adding more credits.")
+      return String(localized: """
         ⏳ Quota Exceeded
 
         You have exceeded your current quota. Please check your plan and billing details.
@@ -149,35 +149,35 @@ struct SpeechErrorFormatter {
         3. Add more credits or upgrade your plan
 
         \(waitMessage)
-        """
+        """)
 
     case .serverError(let code):
-      return """
+      return String(localized: """
         ❌ Server Error (\(code))
 
         The AI provider returned an error.
         Please try again later.
-        """
+        """)
 
     case .serviceUnavailable:
-      return """
+      return String(localized: """
         🔄 Service Unavailable
 
         The AI provider is temporarily unavailable.
         Multiple retries were attempted automatically.
         Please wait a moment and try again.
-        """
+        """)
 
     case .slowDown:
-      return """
+      return String(localized: """
         🔄 Slow Down
 
         A sudden increase in your request rate is impacting service reliability.
         Please reduce your request rate to its original level, maintain a consistent rate for at least \(Constants.slowDownWaitTime), and then gradually increase it.
-        """
+        """)
 
     case .requestTimeout:
-      return """
+      return String(localized: """
         ⏰ Request Timeout
 
         The transcription service took too long to respond (over 60 seconds).
@@ -191,7 +191,7 @@ struct SpeechErrorFormatter {
         • Wait a moment and try again
         • Check your internet connection
         • Try with a shorter recording
-        """
+        """)
         
     case .localProcessingTimeout(let stage, let seconds):
       let action: String
@@ -199,7 +199,7 @@ struct SpeechErrorFormatter {
       case .modelLoad: action = "load"
       case .decode: action = "transcribe your recording"
       }
-      return """
+      return String(localized: """
         ⏰ Local Model Timeout
 
         The on-device model took too long to \(action) (over \(seconds) seconds).
@@ -213,10 +213,10 @@ struct SpeechErrorFormatter {
         • Wait a moment and try again
         • Try a smaller model in Settings → Dictate
         • Try with a shorter recording
-        """
+        """)
 
     case .resourceTimeout:
-      return """
+      return String(localized: """
         ⏰ Resource Timeout
 
         The entire request took too long to complete (over 5 minutes).
@@ -230,11 +230,11 @@ struct SpeechErrorFormatter {
         • Try with a shorter recording
         • Check your internet connection speed
         • The app will automatically retry (up to 2 attempts)
-        """
+        """)
         
     case .networkError(let details):
       if details.lowercased().contains("timeout") {
-        return """
+        return String(localized: """
           ⏰ Generic Timeout
 
           The request timed out for an unknown reason.
@@ -242,15 +242,15 @@ struct SpeechErrorFormatter {
           Error: \(details)
 
           Please try again or use a shorter recording.
-          """
+          """)
       } else {
-        return """
+        return String(localized: """
           ❌ Network Error
 
           Error: \(details)
 
           Please check your internet connection and try again.
-          """
+          """)
       }
 
     case .fileError(let details):
@@ -258,7 +258,7 @@ struct SpeechErrorFormatter {
       let lowercasedDetails = details.lowercased()
       if lowercasedDetails.contains("model") && (lowercasedDetails.contains("not found") || lowercasedDetails.contains("download") || lowercasedDetails.contains("missing")) {
         // This is likely a model availability issue that wasn't caught properly
-        return """
+        return String(localized: """
           📥 Model Not Downloaded
 
           The offline model could not be loaded.
@@ -267,40 +267,40 @@ struct SpeechErrorFormatter {
 
           To download the model:
           1. Open Settings (click the menu bar icon and select "Settings")
-          2. Go to the "Offline Models" tab
+          2. Go to the "Dictate" tab, section "Offline Models"
           3. Click "Download" next to your selected model
           4. Wait for the download to complete
           5. Try transcribing again
 
           Note: If the model was already downloaded, it may be incomplete or corrupted. Try deleting and re-downloading it.
-          """
+          """)
       }
       
-      return """
+      return String(localized: """
         ❌ File Error
 
         Error: \(details)
 
         Please try again with a different audio file.
-        """
+        """)
 
     case .fileTooLarge:
-      return """
+      return String(localized: """
         ❌ File Too Large
 
         The audio file is larger than \(AppConstants.maxFileSizeDisplay) and cannot be transcribed.
         Please use a shorter recording.
-        """
+        """)
 
     case .emptyFile:
-      return """
+      return String(localized: """
         ❌ Empty Audio File
 
         The recording contains no audio data.
         Please try again.
-        """
+        """)
     case .localModelFailed(let details):
-      return """
+      return String(localized: """
         ⚠️ Offline Model Error
 
         The offline model could not be loaded or run.
@@ -308,15 +308,15 @@ struct SpeechErrorFormatter {
         \(details)
 
         Your recording was kept – try Retry. If it keeps failing, re-download the model in Settings → Dictate.
-        """
+        """)
     case .emptyModelReply:
-      return """
+      return String(localized: """
         ⚠️ No Reply
 
         The model returned no text. Your recording was kept – try Retry or another model.
-        """
+        """)
     case .noSpeechDetected:
-      return """
+      return String(localized: """
         🎤 No Speech Detected
 
         No speech was detected in your recording. Please make sure to:
@@ -325,9 +325,9 @@ struct SpeechErrorFormatter {
         • Speak your prompt or instruction before stopping the recording
 
         Try recording again with clear speech.
-        """
+        """)
     case .textTooShort:
-      return """
+      return String(localized: """
         🎤 Very Short Text Detected
 
         Only very little text was recognized. This could mean:
@@ -336,16 +336,16 @@ struct SpeechErrorFormatter {
         • You spoke very briefly
 
         Try recording again and speak louder and more clearly.
-        """
+        """)
     case .promptLeakDetected:
-      return """
+      return String(localized: """
         ⚠️ API Response Issue
 
         The transcription service returned an unexpected response.
         This is typically a temporary API issue.
 
         Please record again. If the problem persists, the audio might be unclear.
-        """
+        """)
     case .modelNotAvailable(let modelType):
       let sizeText: String
       if let size = ModelManager.shared.getModelSize(modelType) {
@@ -354,7 +354,7 @@ struct SpeechErrorFormatter {
         sizeText = "~\(modelType.estimatedSizeMB) MB"
       }
       
-      return """
+      return String(localized: """
         📥 Model Not Downloaded
 
         The offline model "\(modelType.displayName)" is not yet downloaded.
@@ -363,32 +363,32 @@ struct SpeechErrorFormatter {
 
         To download the model:
         1. Open Settings (click the menu bar icon and select "Settings")
-        2. Go to the "Offline Models" tab
+        2. Go to the "Dictate" tab, section "Offline Models"
         3. Click "Download" next to \(modelType.displayName)
         4. Wait for the download to complete (this may take several minutes)
         5. Try transcribing again
 
         Note: Models are downloaded from HuggingFace and stored locally on your Mac. Once downloaded, they work completely offline.
-        """
+        """)
 
     case .voiceRequiresAPIKey:
-      return """
+      return String(localized: """
         🎤 Voice Output Requires API Key
 
         Voice output (Read Aloud) is not available when using Sign in with Google.
 
-        To use voice output, add a Google API key in Settings → General → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
-        """
+        To use voice output, add a Google API key in Settings → Accounts → Google API Key. Voice output will then use the Generative Language API directly and does not require allowlist access.
+        """)
 
     case .subscriptionRequired:
-      return "Authentication required. Add your API key in Settings (General tab)."
+      return String(localized: "Authentication required. Add your API key in Settings → Accounts.")
 
     case .noSelectedText:
-      return """
+      return String(localized: """
         Dictate Prompt edits text you have selected, and nothing was selected.
 
         Select the text you want changed first, then press the shortcut and say what to do with it.
-        """
+        """)
     }
   }
 
@@ -396,59 +396,59 @@ struct SpeechErrorFormatter {
   static func shortStatus(_ error: TranscriptionError) -> String {
     switch error {
     case .noGoogleAPIKey:
-      return "⚠️ No Google API Key"
+      return String(localized: "⚠️ No Google API Key")
     case .invalidAPIKey:
-      return "❌ Invalid Authentication"
+      return String(localized: "❌ Invalid Authentication")
     case .incorrectAPIKey:
-      return "❌ Incorrect API Key"
+      return String(localized: "❌ Incorrect API Key")
     case .countryNotSupported:
-      return "❌ Country Not Supported"
+      return String(localized: "❌ Country Not Supported")
     case .rateLimited:
-      return "⏳ Rate Limited"
+      return String(localized: "⏳ Rate Limited")
     case .quotaExceeded:
-      return "⏳ Quota Exceeded"
+      return String(localized: "⏳ Quota Exceeded")
     case .billingRequired:
-      return "💳 Billing Required"
+      return String(localized: "💳 Billing Required")
     case .networkError:
-      return "⏰ Network Error"
+      return String(localized: "⏰ Network Error")
     case .requestTimeout:
-      return "⏰ Request Timeout"
+      return String(localized: "⏰ Request Timeout")
     case .localProcessingTimeout:
-      return "⏰ Local Model Timeout"
+      return String(localized: "⏰ Local Model Timeout")
     case .resourceTimeout:
-      return "⏰ Resource Timeout"
+      return String(localized: "⏰ Resource Timeout")
     case .serverError:
-      return "❌ Server Error"
+      return String(localized: "❌ Server Error")
     case .serviceUnavailable:
-      return "🔄 Service Unavailable"
+      return String(localized: "🔄 Service Unavailable")
     case .slowDown:
-      return "🔄 Slow Down"
+      return String(localized: "🔄 Slow Down")
     case .fileTooLarge:
-      return "❌ File Too Large"
+      return String(localized: "❌ File Too Large")
     case .emptyFile:
-      return "❌ Empty File"
+      return String(localized: "❌ Empty File")
     case .emptyModelReply:
-      return "⚠️ No Reply"
+      return String(localized: "⚠️ No Reply")
     case .localModelFailed:
-      return "⚠️ Offline Model Error"
+      return String(localized: "⚠️ Offline Model Error")
     case .noSpeechDetected:
-      return "🎤 No Speech"
+      return String(localized: "🎤 No Speech")
     case .textTooShort:
-      return "🎤 Text Too Short"
+      return String(localized: "🎤 Text Too Short")
     case .promptLeakDetected:
-      return "⚠️ API Issue"
+      return String(localized: "⚠️ API Issue")
     case .modelNotAvailable:
-      return "📥 Model Not Downloaded"
+      return String(localized: "📥 Model Not Downloaded")
     case .modelDeprecated:
-      return "❌ Model no longer available"
+      return String(localized: "❌ Model no longer available")
     case .voiceRequiresAPIKey:
-      return "🎤 Voice Requires API Key"
+      return String(localized: "🎤 Voice Requires API Key")
     case .subscriptionRequired:
-      return "⚠️ Authentication Required"
+      return String(localized: "⚠️ Authentication Required")
     case .noSelectedText:
-      return "📝 Nothing Selected"
+      return String(localized: "📝 Nothing Selected")
     default:
-      return "❌ Error"
+      return String(localized: "❌ Error")
     }
   }
 
@@ -461,7 +461,7 @@ struct SpeechErrorFormatter {
     }
     let message = error.localizedDescription
     if message.isEmpty {
-      return "An error occurred. Please try again."
+      return String(localized: "An error occurred. Please try again.")
     }
     return message
   }
@@ -471,7 +471,7 @@ struct SpeechErrorFormatter {
     if let transcriptionError = error as? TranscriptionError {
       return shortStatus(transcriptionError)
     }
-    return "Error"
+    return String(localized: "Error")
   }
 
   // MARK: - Popup title and body (avoids showing title twice)

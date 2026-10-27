@@ -32,13 +32,15 @@ enum MIMEDecoder {
     } else {
       chosen = collected.plain ?? ""
     }
+    let withForwarded = collected.forwarded.isEmpty
+      ? chosen : [chosen, collected.forwarded].filter { !$0.isEmpty }.joined(separator: "\n\n")
     return DecodedMail(
       from: decodeEncodedWords(headers.joined("from")),
       to: decodeEncodedWords(headers.joined("to")),
       cc: decodeEncodedWords(headers.joined("cc")),
       subject: decodeEncodedWords(headers.joined("subject")),
       date: decodeEncodedWords(headers.joined("date")),
-      body: cap(chosen),
+      body: cap(withForwarded),
       attachments: collected.attachments)
   }
 
@@ -47,6 +49,8 @@ enum MIMEDecoder {
   private struct Collected {
     var plain: String?
     var html: String?
+    /// Text of message/rfc822 parts (forwarded mails), each behind a marker line.
+    var forwarded = ""
     var attachments: [(name: String, bytes: Int)] = []
   }
 
@@ -56,15 +60,31 @@ enum MIMEDecoder {
       guard let boundary = headers.parameter("content-type", "boundary"), !boundary.isEmpty else {
         return Collected()
       }
+      // multipart/alternative holds one text in several renditions: keep the first. Every other
+      // multipart (mixed, related, ...) holds consecutive parts of one message: join them.
+      let isAlternative = type == "multipart/alternative"
       var merged = Collected()
       for part in splitMultipart(body, boundary: boundary) {
         let (partHeaders, partBody) = splitHeaderBody(part)
         let child = collect(headers: parseHeaders(partHeaders), body: partBody)
-        if merged.plain == nil { merged.plain = child.plain }
-        if merged.html == nil { merged.html = child.html }
+        if isAlternative {
+          if merged.plain == nil { merged.plain = child.plain }
+          if merged.html == nil { merged.html = child.html }
+        } else {
+          merged.plain = joinText(merged.plain, child.plain)
+          merged.html = joinText(merged.html, child.html)
+        }
         merged.attachments += child.attachments
+        if !child.forwarded.isEmpty {
+          merged.forwarded += (merged.forwarded.isEmpty ? "" : "\n\n") + child.forwarded
+        }
       }
       return merged
+    }
+
+    if type == "message/rfc822" {
+      let inner = decodeTransfer(body, encoding: headers.transferEncoding)
+      return Collected(forwarded: forwardedText(from: inner))
     }
 
     let decoded = decodeTransfer(body, encoding: headers.transferEncoding)
@@ -88,6 +108,30 @@ enum MIMEDecoder {
       return Collected(attachments: [(name, decoded.count)])
     }
     return Collected()
+  }
+
+  private static func joinText(_ first: String?, _ second: String?) -> String? {
+    guard let first else { return second }
+    guard let second, !second.isEmpty else { return first }
+    return first.isEmpty ? second : first + "\n\n" + second
+  }
+
+  /// A nested message rendered as text: marker, From/Subject when present, then its body
+  /// (plain preferred, HTML stripped otherwise). Empty when the inner message has no text.
+  private static func forwardedText(from data: Data) -> String {
+    let (headerData, bodyData) = splitHeaderBody(data)
+    let headers = parseHeaders(headerData)
+    let inner = collect(headers: headers, body: bodyData)
+    var text = inner.plain ?? ""
+    if text.isEmpty, let html = inner.html { text = stripHTML(html) }
+    if !inner.forwarded.isEmpty { text = text.isEmpty ? inner.forwarded : text + "\n\n" + inner.forwarded }
+    guard !text.isEmpty else { return "" }
+    var lines = ["---------- Forwarded message ----------"]
+    let from = decodeEncodedWords(headers.joined("from"))
+    let subject = decodeEncodedWords(headers.joined("subject"))
+    if !from.isEmpty { lines.append("From: \(from)") }
+    if !subject.isEmpty { lines.append("Subject: \(subject)") }
+    return lines.joined(separator: "\n") + "\n\n" + text
   }
 
   private static func cap(_ body: String) -> String {
@@ -137,7 +181,7 @@ enum MIMEDecoder {
   }
 
   private static func parseHeaders(_ data: Data) -> HeaderMap {
-    let text = unfold(String(data: data, encoding: .isoLatin1) ?? "")
+    let text = unfold(String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "")
     var map = HeaderMap()
     for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
       let row = String(line)
@@ -278,10 +322,7 @@ enum MIMEDecoder {
   private static func decodeTransfer(_ body: Data, encoding: String) -> Data {
     switch encoding.lowercased() {
     case "base64":
-      let cleaned = body.filter { byte in
-        byte != 0x20 && byte != 0x09 && byte != 0x0D && byte != 0x0A
-      }
-      return Data(base64Encoded: cleaned) ?? Data()
+      return decodeBase64Lenient(body)
     case "quoted-printable":
       return decodeQuotedPrintable(body)
     default:
@@ -346,34 +387,59 @@ enum MIMEDecoder {
     if matches.isEmpty { return value }
     var out = ""
     var cursor = 0
-    var lastWasWord = false
+    // Adjacent encoded words with the same charset and encoding are one byte stream (a UTF-8
+    // character may be split across them), so bytes are joined before the charset decode.
+    var pending: (charset: String, encoding: String, data: Data, raw: String)?
+    func flush() {
+      guard let word = pending else { return }
+      if word.data.isEmpty, !word.raw.isEmpty {
+        out += "=? \(word.raw) ?="
+      } else {
+        out += decodeCharset(word.data, charset: word.charset)
+      }
+      pending = nil
+    }
     for match in matches {
       let gap = ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
       let gapIsSpace = gap.unicodeScalars.allSatisfy {
         $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r"
       }
-      if !(lastWasWord && gapIsSpace) { out += gap }
       let charset = ns.substring(with: match.range(at: 1))
       let encoding = ns.substring(with: match.range(at: 2))
       let text = ns.substring(with: match.range(at: 3))
-      out += decodeOneWord(charset: charset, encoding: encoding, text: text)
+      let bytes = encoding.uppercased() == "B" ? decodeBase64Lenient(Data(text.utf8)) : decodeQ(text)
+      if pending != nil, gapIsSpace {
+        if pending?.charset.lowercased() == charset.lowercased(),
+           pending?.encoding.uppercased() == encoding.uppercased() {
+          pending?.data.append(bytes)
+          pending?.raw += text
+          cursor = match.range.location + match.range.length
+          continue
+        }
+        flush()
+      } else {
+        flush()
+        out += gap
+      }
+      pending = (charset, encoding, bytes, text)
       cursor = match.range.location + match.range.length
-      lastWasWord = true
     }
+    flush()
     out += ns.substring(from: cursor)
     return out
   }
 
-  private static func decodeOneWord(charset: String, encoding: String, text: String) -> String {
-    let data: Data
-    if encoding.uppercased() == "B" {
-      let filtered = text.unicodeScalars.filter { !$0.properties.isWhitespace }.map { Character($0) }
-      data = Data(base64Encoded: String(filtered)) ?? Data()
-    } else {
-      data = decodeQ(text)
+  /// Base64 as real mail has it: line breaks, stray characters and missing or surplus padding
+  /// are tolerated instead of failing the whole part.
+  static func decodeBase64Lenient(_ input: Data) -> Data {
+    var symbols = input.filter { byte in
+      (byte >= 0x41 && byte <= 0x5A) || (byte >= 0x61 && byte <= 0x7A)
+        || (byte >= 0x30 && byte <= 0x39) || byte == 0x2B || byte == 0x2F
     }
-    if data.isEmpty, !text.isEmpty { return "=? \(text) ?=" }
-    return decodeCharset(data, charset: charset)
+    // One leftover symbol carries no full byte.
+    if symbols.count % 4 == 1 { symbols.removeLast() }
+    while symbols.count % 4 != 0 { symbols.append(0x3D) }
+    return Data(base64Encoded: symbols, options: .ignoreUnknownCharacters) ?? Data()
   }
 
   private static func decodeQ(_ text: String) -> Data {
@@ -441,9 +507,10 @@ enum MIMEDecoder {
   private static func stripHTML(_ html: String) -> String {
     var text = replacing(html, pattern: #"(?is)<script\b[^>]*>.*?</script>|<script\b[^>]*>.*"#, with: "")
     text = replacing(text, pattern: #"(?is)<style\b[^>]*>.*?</style>|<style\b[^>]*>.*"#, with: "")
-    text = replacing(text, pattern: #"(?i)<\s*br\s*/?\s*>|<\s*/?\s*p\b[^>]*>"#, with: "\n")
+    text = replacing(text, pattern: #"(?i)<\s*br\b[^>]*>|<\s*/?\s*p\b[^>]*>|<\s*/\s*(?:div|li|tr|h[1-6]|ul|ol|table|blockquote)\s*>"#, with: "\n")
     text = replacing(text, pattern: #"<[^>]+>"#, with: "")
     text = decodeEntities(text)
+    text = replacing(text, pattern: #"\n{3,}"#, with: "\n\n")
     return text.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
@@ -459,15 +526,32 @@ enum MIMEDecoder {
     var result = text
     result = replacingNumeric(result, pattern: #"&#x([0-9A-Fa-f]+);"#, radix: 16)
     result = replacingNumeric(result, pattern: #"&#(\d+);"#, radix: 10)
-    let named: [(String, String)] = [
-      ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "),
-    ]
-    for (entity, value) in named {
-      result = result.replacingOccurrences(of: entity, with: value, options: .caseInsensitive)
+    guard let regex = try? NSRegularExpression(pattern: #"&([A-Za-z][A-Za-z0-9]*);"#) else { return result }
+    let ns = result as NSString
+    var out = ""
+    var cursor = 0
+    for match in regex.matches(in: result, range: NSRange(location: 0, length: ns.length)) {
+      let name = ns.substring(with: match.range(at: 1))
+      guard let value = namedEntities[name] ?? namedEntities[name.lowercased()].flatMap({ lowered in
+        // Case-insensitive only for the ASCII entities, where case carries no meaning.
+        ["lt", "gt", "quot", "apos", "nbsp", "amp"].contains(name.lowercased()) ? lowered : nil
+      }) else { continue }
+      out += ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+      out += value
+      cursor = match.range.location + match.range.length
     }
-    result = result.replacingOccurrences(of: "&amp;", with: "&", options: .caseInsensitive)
-    return result
+    out += ns.substring(from: cursor)
+    return out
   }
+
+  private static let namedEntities: [String: String] = [
+    "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
+    "uuml": "ü", "ouml": "ö", "auml": "ä", "Uuml": "Ü", "Ouml": "Ö", "Auml": "Ä", "szlig": "ß",
+    "eacute": "é", "egrave": "è", "agrave": "à", "ccedil": "ç", "euro": "€",
+    "ndash": "–", "mdash": "—", "hellip": "…", "laquo": "«", "raquo": "»",
+    "bdquo": "„", "ldquo": "“", "rdquo": "”", "lsquo": "‘", "rsquo": "’",
+    "copy": "©", "reg": "®",
+  ]
 
   private static func replacingNumeric(_ text: String, pattern: String, radix: Int) -> String {
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }

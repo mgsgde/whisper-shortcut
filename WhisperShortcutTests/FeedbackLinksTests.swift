@@ -92,4 +92,52 @@ struct FeedbackLinksTests {
     #expect(url.absoluteString.removingPercentEncoding?.contains("hang-20260902-100000.txt") == true)
     #expect(url.absoluteString.removingPercentEncoding?.contains("Reveal Hang Reports") == true)
   }
+
+  @Test("An AI problem-report URL carries the title, body and ai-report label")
+  func issueURLCarriesFields() {
+    guard let url = FeedbackLinks.issueURL(title: "Glossary echo", body: "The list was appended.") else {
+      Issue.record("no URL")
+      return
+    }
+    let decoded = url.absoluteString.removingPercentEncoding ?? ""
+    #expect(url.path.hasSuffix("/issues/new"))
+    #expect(decoded.contains("title=Glossary echo"))
+    #expect(decoded.contains("The list was appended."))
+    #expect(url.absoluteString.contains("labels=ai-report"))
+  }
+
+  @Test("A 10,000-character issue body is truncated")
+  func issueURLTruncatesLongBody() {
+    let body = String(repeating: "x", count: 10_000)
+    guard let url = FeedbackLinks.issueURL(title: "T", body: body) else {
+      Issue.record("no URL")
+      return
+    }
+    let decoded = url.absoluteString.removingPercentEncoding ?? ""
+    #expect(decoded.contains("…(truncated)"))
+    #expect(url.absoluteString.count < 8_000)
+  }
+
+  @Test("Umlauts and spaces count at their encoded size, so the URL stays under GitHub's limit")
+  func issueURLCapsEncodedLength() {
+    let body = String(repeating: "Größe ändern ", count: 1_500)
+    guard let url = FeedbackLinks.issueURL(title: "T", body: body) else {
+      Issue.record("no URL")
+      return
+    }
+    #expect(url.absoluteString.count < 8_000)
+    #expect((url.absoluteString.removingPercentEncoding ?? "").contains("…(truncated)"))
+  }
+
+  @Test("& + = in a value are encoded, so they cannot end or corrupt the field")
+  func issueURLEncodesQuerySeparators() {
+    guard let url = FeedbackLinks.issueURL(title: "A & B", body: "x=1 + y&labels=bug") else {
+      Issue.record("no URL")
+      return
+    }
+    let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+    #expect(items.first { $0.name == "title" }?.value == "A & B")
+    #expect(items.first { $0.name == "body" }?.value == "x=1 + y&labels=bug")
+    #expect(items.filter { $0.name == "labels" }.map(\.value) == ["ai-report"])
+  }
 }

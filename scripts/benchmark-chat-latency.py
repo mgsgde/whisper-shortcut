@@ -118,7 +118,7 @@ def call(model, prompt, key, max_tokens, thinking, grounding):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default="gemini-3.7-flash,gemini-3.8-flash")
+    ap.add_argument("--models", default="gemini-3.8-flash,gemini-4-argon")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--prompts", type=int, default=12)
     ap.add_argument("--max-tokens", type=int, default=1024,

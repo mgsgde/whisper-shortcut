@@ -18,8 +18,8 @@ actor GoogleCalendarAPIClient {
     DebugLogger.logNetwork("GOOGLE-CALENDAR: listEvents maxResults=\(maxResults) hoursAhead=\(hoursAhead) hoursBack=\(hoursBack)")
     let cappedMax = min(max(maxResults, 1), maxResultsCap)
     let now = Date()
-    let past = now.addingTimeInterval(-TimeInterval(max(hoursBack, 0) * 3600))
-    let future = now.addingTimeInterval(TimeInterval(max(hoursAhead, 0) * 3600))
+    let past = now.addingTimeInterval(-TimeInterval(min(max(hoursBack, 0), 24 * 366) * 3600))
+    let future = now.addingTimeInterval(TimeInterval(min(max(hoursAhead, 0), 24 * 366) * 3600))
 
     let formatter = ISO8601DateFormatter()
     let timeMin = formatter.string(from: past)

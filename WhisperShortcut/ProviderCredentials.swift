@@ -18,12 +18,14 @@ enum ProviderCredentials {
     case openAI
     case xAI
     case anthropic
+    case openRouter
 
     var displayName: String {
       switch self {
       case .openAI: return "OpenAI"
       case .xAI: return "xAI"
       case .anthropic: return "Anthropic"
+      case .openRouter: return "OpenRouter"
       }
     }
 
@@ -31,8 +33,9 @@ enum ProviderCredentials {
     var capability: String {
       switch self {
       case .openAI: return "OpenAI models"
-      case .xAI: return "Grok models"
-      case .anthropic: return "Claude models"
+      case .xAI: return String(localized: "Grok models")
+      case .anthropic: return String(localized: "Claude models")
+      case .openRouter: return "OpenRouter models"
       }
     }
 
@@ -41,6 +44,7 @@ enum ProviderCredentials {
       case .openAI: return KeychainManager.shared.get(.openAI)
       case .xAI: return KeychainManager.shared.get(.xai)
       case .anthropic: return KeychainManager.shared.get(.anthropic)
+      case .openRouter: return KeychainManager.shared.get(.openRouter)
       }
     }
 
@@ -52,8 +56,16 @@ enum ProviderCredentials {
     }
   }
 
+  /// Whether a usable key is stored. `Kind.hasStoredKey` stays fileprivate so a caller that needs
+  /// the key itself still goes through `require` and its error. Presence checks (pickers, the
+  /// reconciler, transcription) were calling `KeychainManager.hasNonEmpty`, which does not trim,
+  /// so a whitespace-only key read as configured there and missing in `verifyConfigured`.
+  static func hasKey(_ kind: Kind) -> Bool {
+    kind.hasStoredKey
+  }
+
   /// The key for `kind`, trimmed and guaranteed non-empty, or a `.networkError` naming the exact
-  /// Settings location. All three key fields live under Settings → General.
+  /// Settings location. All three key fields live under Settings → Accounts.
   static func require(_ kind: Kind) throws -> String {
     guard let key = kind.storedKey?.trimmingCharacters(in: .whitespacesAndNewlines),
           !key.isEmpty else {
@@ -64,12 +76,18 @@ enum ProviderCredentials {
 
   /// Message shown when no key is stored.
   static func missingKeyMessage(_ kind: Kind) -> String {
-    "No \(kind.displayName) API key configured. Add your \(kind.displayName) API key in Settings → General to use \(kind.capability)."
+    let name = kind.displayName
+    switch kind {
+    case .openAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenAI models.")
+    case .xAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Grok models.")
+    case .anthropic: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Claude models.")
+    case .openRouter: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenRouter models.")
+    }
   }
 
   /// Message shown when the provider rejects the key we sent (HTTP 401/403).
   static func invalidKeyMessage(_ kind: Kind) -> String {
-    "\(kind.displayName) API key is invalid. Check the key in Settings → General."
+    "\(kind.displayName) API key is invalid. Check the key in Settings → Accounts."
   }
 
   /// Pre-flight check for callers that only need to fail early and don't hold the key themselves
@@ -88,6 +106,7 @@ enum ProviderCredentials {
   /// this replaces.
   static var anyChatCredentialConfigured: Bool {
     ChatModelProvider.allCases.contains { $0.requiresUserSuppliedCredential && $0.hasCredential }
+      || ChatGPTPlanPreferences.isConfigured
   }
 }
 
@@ -106,6 +125,9 @@ extension ChatModelProvider {
     case gemini
     /// Configured by endpoint (URL + optional key), not by a key alone.
     case endpoint
+    /// Signed in with ChatGPT (`ChatGPTPlanCredentials`). **Not an API key**: it is an OAuth session,
+    /// so it is excluded from `requiresUserSuppliedCredential` and from every key field/validation.
+    case chatGPTPlan
     /// Nothing to configure — reachability surfaces at request time.
     case none
   }
@@ -117,6 +139,8 @@ extension ChatModelProvider {
     case .grok: return .key(.xAI)
     case .anthropic: return .key(.anthropic)
     case .customOpenAI: return .endpoint
+    case .openRouter: return .key(.openRouter)
+    case .chatGPTPlan: return .chatGPTPlan
     case .local, .localMLX: return .none
     }
   }
@@ -127,6 +151,7 @@ extension ChatModelProvider {
     case .key(let kind): return kind.hasStoredKey
     case .gemini: return GeminiCredentialProvider.shared.hasCredential()
     case .endpoint: return OpenAIChatPreferences.isConfigured
+    case .chatGPTPlan: return ChatGPTPlanPreferences.isConfigured
     case .none: return true
     }
   }
@@ -139,9 +164,11 @@ extension ChatModelProvider {
     case .key(let kind):
       return ProviderCredentials.missingKeyMessage(kind)
     case .gemini:
-      return "No Google API key configured. Add your Gemini API key in Settings → General to use Gemini models."
+      return "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models."
     case .endpoint:
       return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
+    case .chatGPTPlan:
+      return "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan."
     case .none:
       return ""
     }
@@ -152,7 +179,7 @@ extension ChatModelProvider {
   var requiresUserSuppliedCredential: Bool {
     switch credentialRequirement {
     case .key, .gemini: return true
-    case .endpoint, .none: return false
+    case .endpoint, .chatGPTPlan, .none: return false
     }
   }
 }

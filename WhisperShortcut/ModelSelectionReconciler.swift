@@ -21,31 +21,25 @@ enum ModelSelectionReconciler {
 
   // MARK: - Key availability
 
+  /// Forwards to `ChatModelProvider.hasCredential`. This switch called `hasNonEmpty`, which does
+  /// not trim, so the reconciler kept a whitespace-only key that `verifyConfigured` then rejected.
+  /// Local and MLX stay "always available" because their requirement is `.none`.
   static func hasKey(_ provider: ChatModelProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .customOpenAI: return OpenAIChatPreferences.isConfigured
-    case .grok: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .anthropic: return KeychainManager.shared.hasNonEmpty(.anthropic)
-    // Local server and in-process MLX need no key — treat as "always available" so a user's explicit local
-    // selection is never reconciled away.
-    case .local, .localMLX: return true
-    }
+    provider.hasCredential
   }
 
   private static func hasKey(_ provider: TTSProvider) -> Bool {
-    switch provider {
-    case .gemini: return GeminiCredentialProvider.shared.hasCredential()
-    case .openai: return KeychainManager.shared.hasNonEmpty(.openAI)
-    case .xai: return KeychainManager.shared.hasNonEmpty(.xai)
-    case .system: return true
-    }
+    provider.hasCredential
   }
 
   /// Substitute-provider preference, consulted only when the current selection's provider has no
-  /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI.
-  static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok]
+  /// key. Gemini first (it's the app's primary backend), then OpenAI, then xAI, then OpenRouter —
+  /// last because it is the one account that can stand in for all of them, so someone who connected
+  /// only OpenRouter during onboarding gets a working Chat instead of a Gemini slot with no key.
+  /// `reconcileAll` still has no transcription stand-in for OpenRouter (`transcriptionReplacement`
+  /// returns nil). Onboarding's explicit Cloud pick uses `preferredCloudTranscription`, which adds
+  /// that stand-in only as a last resort — `reconcileAll` must not start moving dictation there.
+  nonisolated static let providerPreference: [ChatModelProvider] = [.gemini, .openai, .grok, .openRouter]
 
   /// Keys whose values Offline Mode rewrites. Snapshotted on enable, restored on disable.
   private static let snapshotKeys: [String] = [
@@ -102,6 +96,8 @@ enum ModelSelectionReconciler {
       // Turning Offline Mode on is a decision for on-device models; a later key must not read the
       // key-less fallback as "never chosen" and move these slots to the cloud once the mode is off.
       adoptKeylessOfflineFallbacks()
+      // Same for Read Aloud: Offline Mode is a deliberate choice for the on-device voice.
+      UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.keylessReadAloudFallback)
       snapshotPreOfflineSelectionsIfNeeded()
       reconcileForOfflineMode()
       return
@@ -179,8 +175,8 @@ enum ModelSelectionReconciler {
   // MARK: - Offline Mode
 
   /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
-  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement
-  /// (which also drives Voice Feedback). The last two follow the Dictate Prompt model so a single
+  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement.
+  /// The last two follow the Dictate Prompt model so a single
   /// on-device model serves every text slot and only one MLX model needs to be in memory.
   private static func reconcileForOfflineMode() {
     for key in [
@@ -416,13 +412,54 @@ enum ModelSelectionReconciler {
 
   // MARK: - Read Aloud (TTSModel)
 
+  /// Cloud Read Aloud models in preference order. Not `readAloudModels`: that list is filtered by
+  /// Offline Mode and starts with the macOS voice.
+  private static let readAloudCloudPreference: [TTSModel] = [
+    .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS,
+  ]
+
+  /// Where Read Aloud goes once a cloud key exists after the macOS-voice fallback, or nil while
+  /// none does: the previous selection if its provider is keyed again, else the first keyed cloud
+  /// model. `hasKey` is passed in so the rule can be tested without the Keychain.
+  static func readAloudUpgrade(
+    previous: TTSModel?,
+    hasKey hasKeyForProvider: (TTSProvider) -> Bool
+  ) -> TTSModel? {
+    if let previous, previous != .systemMacOS,
+      readAloudCloudPreference.contains(previous), hasKeyForProvider(previous.provider)
+    {
+      return previous
+    }
+    return readAloudCloudPreference.first(where: { hasKeyForProvider($0.provider) })
+  }
+
   private static func reconcileReadAloud() {
     let key = UserDefaultsKeys.selectedReadAloudModel
+    let recordKey = UserDefaultsKeys.keylessReadAloudFallback
     let raw = UserDefaults.standard.string(forKey: key) ?? SettingsDefaults.readAloudModel.rawValue
     let current = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(raw)) ?? SettingsDefaults.readAloudModel
+    let storedPrevious = UserDefaults.standard.string(forKey: recordKey)
+    // The macOS voice has no key, so without the record a later cloud key would never move the
+    // slot off the fallback. A slot the user changed drops its record, so a later manual pick of
+    // the macOS voice is not upgraded.
+    if let storedPrevious {
+      if current == .systemMacOS {
+        let previous = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(storedPrevious))
+        if let upgrade = readAloudUpgrade(previous: previous, hasKey: { hasKey($0) }) {
+          UserDefaults.standard.set(upgrade.rawValue, forKey: key)
+          UserDefaults.standard.removeObject(forKey: recordKey)
+          DebugLogger.log("MODEL-RECONCILE: \(key): systemMacOS → \(upgrade.rawValue) (cloud key added)")
+        }
+        return
+      }
+      UserDefaults.standard.removeObject(forKey: recordKey)
+    }
     if hasKey(current.provider) { return }
     guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
+    if replacement == .systemMacOS {
+      UserDefaults.standard.set(current.rawValue, forKey: recordKey)
+    }
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
   }
 
@@ -446,17 +483,43 @@ enum ModelSelectionReconciler {
     replaceTranscriptionSelection(key: key, current: current)
   }
 
+  /// Cloud transcription model onboarding should select: the first provider in
+  /// `providerPreference` that has a credential and a `transcriptionReplacement`.
+  ///
+  /// OpenRouter is in that list but `transcriptionReplacement` returns nil — `reconcileAll`
+  /// must not silently move dictation onto an account the user connected for Chat. Onboarding
+  /// still has to point Dictate at something when that account is the only one that can
+  /// transcribe, so `.openRouterTranscription` is appended here, and only as that last resort.
+  /// A chat-only credential (Anthropic) does not count as a stand-in and does not block this
+  /// fallback. `hasKey` is passed in so the order can be tested without the Keychain.
+  nonisolated static func preferredCloudTranscription(
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> TranscriptionModel? {
+    for provider in providerPreference {
+      if hasKeyForProvider(provider), let model = transcriptionReplacement(for: provider) {
+        return model
+      }
+    }
+    if hasKeyForProvider(.openRouter) { return .openRouterTranscription }
+    return nil
+  }
+
+  /// `preferredCloudTranscription(hasKey:)` against the credentials actually stored.
+  static func preferredCloudTranscription() -> TranscriptionModel? {
+    preferredCloudTranscription(hasKey: { hasKey($0) })
+  }
+
   /// Which transcription model stands in for a given chat provider, or `nil` when that provider
   /// has none. Split out of `replaceTranscriptionSelection` so the table can be tested directly.
-  static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
+  nonisolated static func transcriptionReplacement(for provider: ChatModelProvider) -> TranscriptionModel? {
     switch provider {
     // Each provider's best-measured tier (plans/model-audits/2026-09-03-audit.md). Gemini is named
     // explicitly: the app-wide default is now an OpenAI model and would dead-end a Gemini-only user.
     case .gemini: return .gemini31FlashLite
     case .openai: return .openAIGPTTranscribe
     case .grok: return .xaiTranscribe
-    // `providerPreference` never includes these; Anthropic has no transcription models here.
-    case .local, .localMLX, .customOpenAI, .anthropic: return nil
+    // OpenRouter is in `providerPreference` for chat slots only; the rest are never substitutes.
+    case .local, .localMLX, .customOpenAI, .openRouter, .chatGPTPlan, .anthropic: return nil
     }
   }
 

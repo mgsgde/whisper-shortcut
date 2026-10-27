@@ -15,7 +15,7 @@ struct TranscriptionTuningTests {
 
   @Test("Flash tiers send the configured thinking level and temperature")
   func flashTiersSendConfiguredValues() {
-    for model in [TranscriptionModel.gemini31FlashLite, .gemini35FlashLite, .gemini35Flash, .gemini37Flash] {
+    for model in [TranscriptionModel.gemini31FlashLite, .gemini35FlashLite, .gemini38Flash] {
       let config = model.geminiTranscriptionGenerationConfig(temperature: 0.2, effort: .medium)
       #expect(config.thinkingConfig?.thinkingLevel == "medium", "\(model.rawValue)")
       #expect(config.thinkingConfig?.thinkingBudget == nil, "\(model.rawValue)")
@@ -27,23 +27,27 @@ struct TranscriptionTuningTests {
   func proClampsMinimal() {
     // Unreachable in the shipped app since 2026-08-03 (Pro is no longer selectable for dictation),
     // but kept so re-offering it cannot regress into sending a level the API rejects.
-    let clamped = TranscriptionModel.gemini31Pro.geminiTranscriptionGenerationConfig(
-      temperature: 0.0, effort: .minimal)
-    #expect(clamped.thinkingConfig?.thinkingLevel == "low")
+    // Argon is the same shape: flagship reasoning, not a dictation model, and it documents
+    // low/medium/high only.
+    for model in [TranscriptionModel.gemini31Pro, .gemini4Argon] {
+      let clamped = model.geminiTranscriptionGenerationConfig(
+        temperature: 0.0, effort: .minimal)
+      #expect(clamped.thinkingConfig?.thinkingLevel == "low", "\(model.rawValue)")
 
-    let unclamped = TranscriptionModel.gemini31Pro.geminiTranscriptionGenerationConfig(
-      temperature: 0.0, effort: .high)
-    #expect(unclamped.thinkingConfig?.thinkingLevel == "high")
+      let unclamped = model.geminiTranscriptionGenerationConfig(
+        temperature: 0.0, effort: .high)
+      #expect(unclamped.thinkingConfig?.thinkingLevel == "high", "\(model.rawValue)")
+    }
   }
 
-  @Test("3.7 Flash is clamped off minimal — the API rejects that level for it")
-  func flash37ClampsMinimal() {
-    // Live-verified 2026-08-23: gemini-3.7-flash returns HTTP 400 for thinkingLevel MINIMAL.
-    let clamped = TranscriptionModel.gemini37Flash.geminiTranscriptionGenerationConfig(
+  @Test("3.8 Flash is clamped off minimal — the API rejects that level for it")
+  func flash38ClampsMinimal() {
+    // Live-verified 2026-09-06: gemini-3.8-flash returns HTTP 400 for thinkingLevel MINIMAL.
+    let clamped = TranscriptionModel.gemini38Flash.geminiTranscriptionGenerationConfig(
       temperature: 0.0, effort: .minimal)
     #expect(clamped.thinkingConfig?.thinkingLevel == "low")
 
-    let unclamped = TranscriptionModel.gemini37Flash.geminiTranscriptionGenerationConfig(
+    let unclamped = TranscriptionModel.gemini38Flash.geminiTranscriptionGenerationConfig(
       temperature: 0.0, effort: .high)
     #expect(unclamped.thinkingConfig?.thinkingLevel == "high")
   }

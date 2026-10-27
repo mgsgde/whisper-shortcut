@@ -57,28 +57,24 @@ agent, scheduled or interactive:
   `plans/instrumentation-gaps.md`; a plan you just made untrue → its status line in
   `plans/active/`.
 
-## Model tiering: Opus 5.5 thinks, Grok types (Grok paused until 2026-10-02)
+## Model tiering: Opus 5.5 thinks, cheap hands type
 
-Owner rulings, in Magnus's words (2026-09-28, superseding the 2026-09-17 Fable split):
+Owner rulings, in Magnus's words. The user-level `~/.claude/CLAUDE.md` holds the full wording and
+the current daily cap; this table is the repo's copy of the split, not a second source for it.
 
 - „Es soll nicht mehr Fable genutzt werden, es soll überall Opus 5.5 verwendet werden, nicht
-  Fable." — planning, evaluation, review and every judgment run on **Opus 5.5**. No Fable
-  session, no Fable advisor, no Fable subagent.
-- „Für das Implementieren, für das Typing soll eigentlich Cursors CLI genutzt werden mit Grok
-  4.7, aber da das Kontingent, die Tokens aktuell aufgebraucht sind, soll bis zum 2. Oktober das
-  pausiert sein und dann soll Opus 5.5 verwendet werden."
+  Fable." (2026-09-28): planning, evaluation, review and every judgment run on **Opus 5.5**.
+- „Opus 5.5 fürs Planen und fürs Evaluieren und für die UI … stupide Tätigkeiten wie Typing: Grok
+  oder Sonnet" (2026-10-02). „Wann immer Grok aufgebraucht ist, einfach Sonnet verwenden"
+  (2026-10-11).
 
-So, today:
-
-| Job | Normally | Until the Cursor reset on 2026-10-02 |
-|---|---|---|
-| Plan, spec, review, judge, talk to Magnus | Opus 5.5 session | same |
-| Typing from a finished plan | Grok 4.7 via Cursor CLI: `cursor-agent -p --output-format text --force --trust --model grok-4.7-high "<brief>"` (never `auto`, never a `-fast` id) | **Opus 5.5 session types itself** — no `cursor-agent` (a run on 2026-09-28 sat for minutes with no output and no changes) |
-| Large gathering sweep | `Agent` with `model: "opus"` | same |
-| Simple lookup | `Agent` with `"sonnet"` / `"haiku"`, or directly | same |
-
-From 2026-10-02 typing goes back to Grok via `cursor-agent` without asking again; if it still
-fails (quota, login), the session types itself and says so.
+| Job | Who |
+|---|---|
+| Plan, spec, review, judge, talk to Magnus | Opus 5.5 session |
+| UI: layout, copy, states, visible components | **Opus 5.5 session itself**, checked in the running app with screenshots |
+| Typing from a finished plan (plumbing, mechanical edits, tests) | 1. Grok 4.7 via `cursor-agent -p --output-format text --force --trust --model grok-4.7-high "<brief>"` (never `auto`, never a `-fast` id), capped per day, see `~/.claude/CLAUDE.md` · 2. over the cap or on failure: `Agent` with `model: "sonnet"`, same brief, no asking |
+| Large gathering sweep | `Agent` with `model: "opus"` |
+| Simple lookup | `Agent` with `"sonnet"` / `"haiku"`, or directly |
 
 Why the split pays: the cost of a session is its **rounds**, not its tool calls — every round
 re-sends the standing context (`AGENTS.md` + `index.mdc` + memory). A 20-round exploration on the
@@ -87,7 +83,7 @@ the report).
 
 In the Opus 5.5 session:
 
-- **The session does:** measure, spec, review, and — while Grok is paused — build. Interpreting
+- **The session does:** measure, spec, review, and the UI. Interpreting
   what the numbers mean, writing the plan, talking to Magnus, **picking the model** for every
   delegated task (named in the report), and judging the diff and the verbatim test output before
   it is handed over.
@@ -100,8 +96,7 @@ In the Opus 5.5 session:
 - **The threshold is size, not kind:** one or two lookups whose location is already known are
   cheaper done directly than briefed. Prose whose text *is* the deliverable (a rule, a plan, a
   report) is written by the model that decided it.
-- **Once the spec stands, it is built** — by Grok from one complete brief, or (until
-  2026-10-02) by the session itself: the code, `bash scripts/rebuild-and-restart.sh` (real exit
+- **Once the spec stands, it is built** — by Grok (or Sonnet) from one complete brief: the code, `bash scripts/rebuild-and-restart.sh` (real exit
   status), `bash scripts/run-tests.sh` when relevant (output quoted verbatim).
 - **Then the review:** diff read, test output quoted, verdict by Opus 5.5 — for a large change a
   fresh `Agent` with `model: "opus"` that did not write the code. Not a rubber stamp.
@@ -113,9 +108,8 @@ thing itself.
 
 **Scheduled work** runs on the Max subscription (no API key): the four launchd loops and the
 implementer's plan and review steps on `claude-opus-5-5`. The implementer's build step normally
-runs `IMPLEMENTER_BUILD_AGENT=cursor` / `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`; since 2026-09-28
-it is `claude` / `claude-opus-5-5` in `~/.config/whispershortcut-implementer/env` and as the script
-default, until the Cursor reset on 2026-10-02 (`plans/agent-loops.md`).
+runs `IMPLEMENTER_BUILD_AGENT=cursor` / `IMPLEMENTER_BUILD_MODEL=grok-4.7-high`; over Grok's daily
+cap `run-implementer.sh` switches that run to `claude-sonnet-5-5` (`plans/agent-loops.md`).
 
 ## Releasing is somebody else's job
 
@@ -123,6 +117,11 @@ Merging PRs and cutting releases run through one dedicated session, titled
 **`whisper Deployments`** — it holds standing authority to `gh pr merge`, dispatch release
 workflows and drive `scripts/create-release.sh` / `/submit-appstore`; you do not. That sentence
 means "get it ready and hand it over", also when the task says "release" or "ship".
+
+**Never quit, kill or reinstall the user's running app while it records a meeting.** Run
+`bash scripts/meeting-guard.sh` first and stop if it refuses (exit 1) — also before installing a
+release into `/Applications`. On 2026-10-20 an install's `osascript … quit` cut the last eight
+minutes of a live client meeting. The dev scripts already call the guard; ad-hoc commands must too.
 
 So "finished" means: committed on your branch, pushed, `bash scripts/run-tests.sh` green and
 **quoted**, a report that names the **branch and commit** plus what to look at — **and that same

@@ -107,12 +107,12 @@ enum DictatePromptSelectionDecision {
 /// A reference, created synchronously when the shortcut is pressed and stored on the recording
 /// before capture starts. The copied text arrives asynchronously (the synthetic ⌘C is polled for up
 /// to `pollDeadline`), so the job awaits `value()` instead of reading the pasteboard itself. That
-/// removes the race the Voice Feedback selection accepts: a recording shorter than the copy no
+/// removes the race a fire-and-forget copy accepts: a recording shorter than the copy no
 /// longer loses its selection, it just waits the remaining few hundred milliseconds.
 /// Thread-safe rather than main-actor-isolated: it is created from the (nonisolated) shortcut
 /// handlers and awaited from the job.
 final class DictatePromptSelectionCapture: @unchecked Sendable {
-  /// Same budget as the Voice Feedback and Glossary copies.
+  /// Same budget as the Glossary copy.
   static let pollDeadline: TimeInterval = 0.5
   /// How long to keep watching the pasteboard after ⌘C once the poll has already given up.
   /// Logging only: a copy that arrives in this window is still a compose turn.
