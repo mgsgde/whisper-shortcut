@@ -158,9 +158,9 @@ struct AIAppsSettingsTab: View {
     case .read:
       return String(localized: "AI apps can read meetings and your setup, never change anything.")
     case .propose:
-      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access.")
+      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access.")
     case .apply:
-      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access.")
+      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
     }
   }
 
@@ -393,14 +393,11 @@ struct AIAppsSettingsTab: View {
     }
     .buttonStyle(.borderedProminent)
     .controlSize(.small)
-    .disabled(connecting != nil || setupToken.isEmpty || !isRunning)
+    // Not gated on the server running: the entry only needs the address and key, and the app
+    // connects as soon as the server is up.
+    .disabled(connecting != nil || setupToken.isEmpty)
     .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
     .pointerCursorOnHover()
-  }
-
-  private var isRunning: Bool {
-    if case .running = server.status { return true }
-    return false
   }
 
   private func connect(_ client: MCPClient) {

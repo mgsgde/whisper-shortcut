@@ -139,7 +139,13 @@ enum MCPClientInstaller {
   static func connect(
     _ client: MCPClient, url: String, token: String, mcpRemotePackage: String, serverName: String
   ) async -> Result<URL, Error> {
-    let expected = client.configFolder
+    let configFolder = client.configFolder
+    // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
+    // not exist can't be picked. Ask for the nearest folder that exists and create the rest inside it.
+    var expected = configFolder
+    while !FileManager.default.fileExists(atPath: expected.path), expected.pathComponents.count > 1 {
+      expected = expected.deletingLastPathComponent()
+    }
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
@@ -163,13 +169,13 @@ enum MCPClientInstaller {
 
     do {
       let fm = FileManager.default
-      try fm.createDirectory(at: chosen, withIntermediateDirectories: true)
-      let file = chosen.appendingPathComponent(client.configFileName)
+      try fm.createDirectory(at: configFolder, withIntermediateDirectories: true)
+      let file = configFolder.appendingPathComponent(client.configFileName)
       let existed = fm.fileExists(atPath: file.path)
       let existingData = existed ? try Data(contentsOf: file) : nil
 
       if let existingData {
-        let backup = chosen.appendingPathComponent(client.configFileName + ".whispershortcut-backup")
+        let backup = configFolder.appendingPathComponent(client.configFileName + ".whispershortcut-backup")
         try existingData.write(to: backup, options: .atomic)
       }
 

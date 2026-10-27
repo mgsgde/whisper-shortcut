@@ -3083,16 +3083,6 @@
         }
       }
     },
-    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Copy the setup below again so your AI app gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Kopieren Sie die Einrichtung unten noch einmal, damit Ihre KI-App den neuen Zugriff bekommt."
-          }
-        }
-      }
-    },
     "Changes are saved automatically" : {
       "localizations" : {
         "de" : {
@@ -6212,16 +6202,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Niederländisch"
-          }
-        }
-      }
-    },
-    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Copy the setup below again so your AI app gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Kopieren Sie die Einrichtung unten noch einmal, damit Ihre KI-App den neuen Zugriff bekommt."
           }
         }
       }
@@ -19942,6 +19922,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich in die Einstellungen von %@ einzutragen. Klicken Sie auf „Erlauben“."
+          }
+        }
+      }
+    },
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
           }
         }
       }
