@@ -615,6 +615,11 @@ class ChatViewModel: ObservableObject {
           sessionId: session.id, content: finalContent, attachedParts: attachedParts,
           commandName: commandName))
       DebugLogger.log("GEMINI-CHAT: Queued composed message, queue size: \(messageQueue.count)")
+      // Queued while nothing is sending here: on the MainActor that means the queue is stalled
+      // (e.g. the drain failed its credential check). `performSend` marks `sendingSessionIds`
+      // synchronously and its `defer` removes it and drains in one synchronous block, so no
+      // send can be "in flight but not yet marked". Drain now, FIFO, or this message waits forever.
+      if !isSending { processNextQueued() }
       return
     }
     performSend(content: finalContent, attachedParts: attachedParts, commandName: commandName)
@@ -2236,6 +2241,8 @@ class ChatViewModel: ObservableObject {
     let setupHint = model.provider.hasCredential ? "" : " " + model.provider.credentialRequiredMessage
     appendModelMessage(verbatim: String(localized: "Model set to **\(model.displayName)**.") + setupHint)
     DebugLogger.log("GEMINI-CHAT: switchToModel \(model.displayName)")
+    // A queue stalled by the old model's missing credential resumes with the new one.
+    processNextQueued()
   }
 
   /// Why `model` cannot be the chat model right now, or nil when it can (it is in
