@@ -259,7 +259,7 @@ private enum QuickActionCardMetrics {
 }
 
 /// Dictate Prompt while recording: one card instead of a list floating over the pill. Top to
-/// bottom: what the run acts on, the quick actions (⌃1–5), a text field that has keyboard focus
+/// bottom: what the run acts on, the quick actions (⌃1–9), a text field that has keyboard focus
 /// from the start, and the recording controls.
 ///
 /// Nothing is highlighted until ↑/↓ moves into the list, so ↩ on an empty field means the same as

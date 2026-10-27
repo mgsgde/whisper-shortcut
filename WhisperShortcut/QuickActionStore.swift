@@ -2,9 +2,9 @@
 //  QuickActionStore.swift
 //  WhisperShortcut
 //
-//  The few Dictate Prompt instructions the user actually repeats, so ⌘2 can run one
-//  without speaking. Read from the interaction log off the main thread and cached;
-//  the ⌘2 path only touches the cache.
+//  Dictate Prompt quick actions for ⌘2: the user's own prompts, then ones learned from
+//  the interaction log. The log is read off the main thread and cached; the ⌘2 path
+//  only touches the cache and UserDefaults.
 //
 
 import Foundation
@@ -69,16 +69,20 @@ struct QuickAction: Equatable, Identifiable {
   var kind: QuickActionKind { QuickActionKind.classify(key) }
 }
 
-/// Top Dictate Prompt instructions from the last 30 days of interaction logs.
+/// Dictate Prompt quick actions for ⌘2.
 ///
-/// Learned entries come first. When logging is off, Offline Mode is on, or fewer than
-/// three instructions clear the bar, the list is filled up to five with built-in defaults.
+/// The user's own prompts come first (Settings → Dictate Prompt), then ones learned
+/// from the last 30 days of interaction logs. Built-in defaults fill the list only when
+/// the user has none of their own: when logging is off, Offline Mode is on, or fewer
+/// than three learned instructions clear the bar.
 final class QuickActionStore {
 
   static let shared = QuickActionStore()
 
   static let lookbackDays = 30
   static let maxEntries = 5
+  /// ⌃1–9 picks an entry, so the card never shows more than this many.
+  static let maxCustomEntries = 9
   static let minimumCount = 2
   static let maxKeyLength = 60
   /// Below this many learned entries the built-in defaults fill the rest of the list.
@@ -96,44 +100,114 @@ final class QuickActionStore {
   private static let edgePunctuation = CharacterSet(charactersIn: ".,!?;:")
 
   private let cacheLock = NSLock()
-  private var cached: [QuickAction]
+  /// Learned entries only, no built-in defaults. Combined with the user's prompts in `current()`.
+  private var cachedLearned: [QuickAction]
+  private var cachedForceFallback: Bool
 
   private init() {
-    cached = Self.padding([])
+    cachedLearned = []
+    cachedForceFallback = false
   }
 
-  /// Cache only. Safe on the ⌘2 path — never reads the log.
+  /// Cache and UserDefaults only. Safe on the ⌘2 path — never reads the log.
   func current() -> [QuickAction] {
     cacheLock.lock()
     defer { cacheLock.unlock() }
-    return cached
+    return Self.combined(
+      custom: Self.storedCustomTexts(),
+      learned: cachedLearned,
+      forceFallback: cachedForceFallback,
+      includeLearned: Self.learnedEnabled)
   }
 
-  /// Re-reads the interaction log and replaces the cache. Call off the main thread.
+  /// Re-reads the interaction log and replaces the cached learned list. Call off the main thread.
   func refresh() {
     let instructions = Self.promptInstructions(lastDays: Self.lookbackDays)
     let forceFallback = !ContextLoggingPreference.isEnabled || OfflineMode.isEnabled
-    let actions = Self.ranked(from: instructions, forceFallback: forceFallback)
+    let learned = Self.rankLearned(from: instructions)
     cacheLock.lock()
-    cached = actions
+    cachedLearned = learned
+    cachedForceFallback = forceFallback
     cacheLock.unlock()
     DebugLogger.log(
-      "QUICK-ACTIONS: Cached \(actions.count) entries from \(instructions.count) prompt logs")
+      "QUICK-ACTIONS: Cached \(learned.count) entries from \(instructions.count) prompt logs")
+  }
+
+  /// Also show prompts learned from usage. Unset → true.
+  static var learnedEnabled: Bool {
+    UserDefaults.standard.object(
+      forKey: UserDefaultsKeys.dictatePromptLearnedQuickActionsEnabled) as? Bool ?? true
+  }
+
+  /// The user's own quick prompts in display order. May include blanks still being edited.
+  static func storedCustomTexts() -> [String] {
+    UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) ?? []
   }
 
   /// Groups prompt instructions, drops same-kind single-word duplicates across languages
   /// (e.g. "Korrigiere" / "Corriger"), and, when asked or when fewer than three qualify,
   /// pads with the built-in defaults. Learned entries stay in front.
   static func ranked(from instructions: [String], forceFallback: Bool) -> [QuickAction] {
-    let learned = rankLearned(from: instructions)
+    applyingFallback(to: rankLearned(from: instructions), forceFallback: forceFallback)
+  }
+
+  /// Learned entries, padded with built-in defaults when asked or when fewer than
+  /// `minimumLearnedToSkipDefaults` qualify.
+  private static func applyingFallback(
+    to learned: [QuickAction], forceFallback: Bool
+  ) -> [QuickAction] {
     let fill = forceFallback || learned.count < minimumLearnedToSkipDefaults
     guard fill else { return learned }
     return padding(learned)
   }
 
+  /// Own prompts first (trimmed, blanks and duplicate keys dropped, capped at
+  /// `maxCustomEntries`), then learned entries whose key is not already present.
+  /// With no own prompts, learning on returns the same list as `ranked`; learning off
+  /// returns nothing. Built-in defaults are never appended once the user has prompts
+  /// of their own.
+  static func combined(
+    custom: [String], learned: [QuickAction], forceFallback: Bool, includeLearned: Bool
+  ) -> [QuickAction] {
+    let own = customActions(from: custom)
+    if own.isEmpty {
+      guard includeLearned else { return [] }
+      return applyingFallback(to: learned, forceFallback: forceFallback)
+    }
+    guard includeLearned else { return own }
+    var result = own
+    var seen = Set(own.map(\.key))
+    for action in learned {
+      if result.count >= maxCustomEntries { break }
+      if seen.contains(action.key) { continue }
+      seen.insert(action.key)
+      result.append(action)
+    }
+    return result
+  }
+
+  /// Trimmed custom prompts in order. Blanks, empty keys, and later duplicate keys are
+  /// dropped; text is kept as typed.
+  private static func customActions(from texts: [String]) -> [QuickAction] {
+    var result: [QuickAction] = []
+    var seen: Set<String> = []
+    for raw in texts {
+      if result.count >= maxCustomEntries { break }
+      let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      if text.isEmpty { continue }
+      let key = normalizeKey(text)
+      if key.isEmpty || seen.contains(key) { continue }
+      seen.insert(key)
+      result.append(QuickAction(key: key, text: text))
+    }
+    return result
+  }
+
   // MARK: - Ranking
 
-  private static func rankLearned(from instructions: [String]) -> [QuickAction] {
+  /// Groups prompt instructions and drops same-kind single-word duplicates across
+  /// languages. No built-in defaults; `ranked` adds those.
+  static func rankLearned(from instructions: [String]) -> [QuickAction] {
     let placeholder = normalizeKey(SpeechService.voiceInstructionPlaceholder)
     var buckets: [String: Bucket] = [:]
 
