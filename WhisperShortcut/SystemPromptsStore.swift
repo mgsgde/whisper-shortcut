@@ -148,7 +148,9 @@ final class SystemPromptsStore {
 
   /// The longest a selection may be and still be a vocabulary entry rather than prose.
   static let maxTermCharacters = 60
-  static let maxTermWords = 5
+  /// Same cap the transcription prompt applies (`GlossaryDocument.maxTermWords`). This used
+  /// to be 5 here and 3 in the prompt builder, so a 4- or 5-word term never reached the model.
+  static let maxTermWords = GlossaryDocument.maxTermWords
 
   /// Adds a user-selected spelling to the Glossary, if it is a term and not already there.
   ///
@@ -185,14 +187,28 @@ final class SystemPromptsStore {
     return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"'()[]"))
   }
 
-  /// Case- and separator-insensitive membership test. The glossary is comma-separated by
-  /// convention but users write one term per line too, so both are treated as separators.
+  /// Membership test for "Add Selection to Glossary". Comma-separated lines and one term per
+  /// line are both real; annotations are read, not compared as raw text. Matching is
+  /// `GlossaryDocument.fold`, so "Gödde" is the term "Godde" and a rejected spelling inside
+  /// `(not …)` — a lowercased split on commas used to miss both.
   static func glossaryContains(_ term: String, in glossary: String) -> Bool {
-    let needle = term.lowercased()
-    return glossary
-      .components(separatedBy: CharacterSet(charactersIn: ",\n"))
-      .map { normaliseTerm($0).lowercased() }
-      .contains(needle)
+    let needle = GlossaryDocument.fold(normaliseTerm(term))
+    guard !needle.isEmpty else { return false }
+    if GlossaryDocument.parse(glossary).entries.contains(where: {
+      GlossaryDocument.fold(normaliseTerm($0.term)) == needle
+    }) {
+      return true
+    }
+    // Rejected spellings are read off the line, not off the entries: an annotation with
+    // no term beside it never becomes an entry, and it is still a spelling the user rejected.
+    for line in glossary.components(separatedBy: .newlines) {
+      for rejected in GlossaryDocument.rejectedSpellings(on: line)
+        where GlossaryDocument.fold(normaliseTerm(rejected)) == needle
+      {
+        return true
+      }
+    }
+    return false
   }
 
   /// Read Aloud rewrite prompt. Returns default if section missing or empty.

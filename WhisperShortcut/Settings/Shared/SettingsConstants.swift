@@ -25,6 +25,8 @@ enum SettingsConstants {
 
   // MARK: - Visual
   static let cornerRadius: CGFloat = 8
+  /// Radius of the standalone cards (`cardChrome()`): onboarding steps and the offline-model card.
+  static let cardCornerRadius: CGFloat = 10
   /// Inset for boxed cards (General/Privacy tabs).
   static let cardPadding: CGFloat = 16
   /// Inset for compact list rows inside a card (e.g. the offline model rows).

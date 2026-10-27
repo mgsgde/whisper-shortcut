@@ -312,12 +312,6 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
 
   // MARK: - PKCE
 
-  private static func generateCodeVerifier() -> String {
-    var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    return base64URLEncode(Data(bytes))
-  }
-
   private static func codeChallengeS256(verifier: String) -> String {
     base64URLEncode(Data(SHA256.hash(data: Data(verifier.utf8))))
   }
@@ -360,7 +354,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     let saved = useDifferentAccount ? nil : store.load()
     let hostID = saved?.extAgentHostID.isEmpty == false ? saved!.extAgentHostID : ChatGPTPlanCredentials.hostID(defaults: defaults)
 
-    let verifier = Self.generateCodeVerifier()
+    let verifier = OAuthCSRF.makeState()
     let challenge = Self.codeChallengeS256(verifier: verifier)
     let state = OAuthCSRF.makeState()
     let nonce = OAuthCSRF.makeState()
@@ -670,10 +664,18 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     return json
   }
 
+  /// True only for genuine `openai.com` hosts over HTTPS — exactly `openai.com` or any subdomain
+  /// ending in `.openai.com`. A plain `hasSuffix("openai.com")` check also accepts look-alike
+  /// hosts such as `evilopenai.com`, so every discovery-document URL must go through this.
+  static func isOpenAIHost(_ url: URL) -> Bool {
+    guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
+    return host == "openai.com" || host.hasSuffix(".openai.com")
+  }
+
   private func revocationEndpoint() async throws -> URL {
     let document = try await discoveryDocument()
     guard let text = document["revocation_endpoint"] as? String, let url = URL(string: text),
-      url.scheme == "https", url.host?.hasSuffix("openai.com") == true
+      Self.isOpenAIHost(url)
     else { throw ChatGPTPlanSignInError.invalidResponse }
     return url
   }
@@ -682,7 +684,7 @@ final class ChatGPTPlanOAuthService: NSObject, ObservableObject {
     if !reload, let cachedKeys { return cachedKeys }
     let uri = (try? await discoveryDocument())?["jwks_uri"] as? String
     let url = uri.flatMap(URL.init(string:)) ?? ChatGPTPlanOAuthConfig.fallbackJWKSURL
-    guard url.scheme == "https", url.host?.hasSuffix("openai.com") == true else {
+    guard Self.isOpenAIHost(url) else {
       throw ChatGPTPlanIDTokenValidator.ValidationError.jwksUnavailable
     }
     var request = URLRequest(url: url)

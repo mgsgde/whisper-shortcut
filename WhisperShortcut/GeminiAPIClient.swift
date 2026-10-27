@@ -215,7 +215,7 @@ class GeminiAPIClient {
   }
 
   /// `:generateContent` URL shared by title generation, structured output, and image generation.
-  private static func generateContentEndpoint(model: String) -> String {
+  static func generateContentEndpoint(model: String) -> String {
     "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
   }
   
@@ -961,17 +961,49 @@ class GeminiAPIClient {
   /// `generationConfig.responseSchema` + `responseMimeType:"application/json"` and returns the
   /// parsed top-level JSON object. `schema` is the canonical JSON Schema (Gemini accepts the
   /// OpenAPI-3.0 subset directly; it must NOT contain `additionalProperties`). Used by
-  /// `GeminiChatProvider.generateStructured` and the chat/meeting title path.
+  /// `GeminiChatProvider.generateStructured`, the chat/meeting title path, and Smart Improvement.
+  ///
+  /// `origin` and `withRetry` were hardcoded off here, so the derivation path kept a private
+  /// copy of this body (no `thinkingConfig`, and its own retry/origin). Defaults match the
+  /// previous call.
   func generateStructured(
     model: String,
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     schema: [String: Any],
     credential: GeminiCredential,
-    thinkingLevel: ThinkingLevel = .default
+    thinkingLevel: ThinkingLevel = .default,
+    origin: RequestOrigin? = nil,
+    withRetry: Bool = false
   ) async throws -> [String: Any] {
     let endpoint = Self.generateContentEndpoint(model: model)
     var request = try createRequest(endpoint: endpoint, credential: credential)
+    request.httpBody = try JSONSerialization.data(withJSONObject: structuredRequestBody(
+      model: model,
+      contents: contents,
+      systemInstruction: systemInstruction,
+      schema: schema,
+      thinkingLevel: thinkingLevel))
+    let response: GeminiResponse = try await performRequest(
+      request, responseType: GeminiResponse.self, mode: "GEMINI-STRUCTURED",
+      origin: origin, withRetry: withRetry)
+    let text = extractText(from: response)
+    guard let data = text.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw TranscriptionError.networkError("Gemini structured response was not valid JSON: \(text.prefix(200))")
+    }
+    return obj
+  }
+
+  /// JSON body `generateStructured` posts. Visible so a test can diff it against the old
+  /// hand-built Smart Improvement request, which was this shape without `thinkingConfig`.
+  func structuredRequestBody(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    schema: [String: Any],
+    thinkingLevel: ThinkingLevel
+  ) -> [String: Any] {
     var generationConfig: [String: Any] = [
       "responseMimeType": "application/json",
       "responseSchema": schema,
@@ -985,18 +1017,10 @@ class GeminiAPIClient {
       "contents": contents,
       "generationConfig": generationConfig,
     ]
-    if let systemInstruction = systemInstruction {
+    if let systemInstruction {
       body["system_instruction"] = systemInstruction
     }
-    request.httpBody = try JSONSerialization.data(withJSONObject: body)
-    let response: GeminiResponse = try await performRequest(
-      request, responseType: GeminiResponse.self, mode: "GEMINI-STRUCTURED", withRetry: false)
-    let text = extractText(from: response)
-    guard let data = text.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw TranscriptionError.networkError("Gemini structured response was not valid JSON: \(text.prefix(200))")
-    }
-    return obj
+    return body
   }
 
   /// Native image generation/editing ("Nano Banana") via a single non-streaming `:generateContent`

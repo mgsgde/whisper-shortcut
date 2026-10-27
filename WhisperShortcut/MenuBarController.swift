@@ -540,24 +540,33 @@ class MenuBarController: NSObject {
   }
 
   /// Dictate … Glossary in menu order (same order as before the table existed).
+  /// Chat and Settings are separate rows further down: Settings is titled "Settings…", and
+  /// putting them here would move them above Copy Last Transcription.
   private static let actionRows: [ModeRow] = {
     var rows = [
       ModeRow(
-        tag: .dictate, title: "Dictate", stopTitle: "Stop Dictate",
-        action: #selector(toggleTranscription), shortcut: \.startRecording, mode: .dictate),
+        tag: .dictate, title: ShortcutAction.dictate.localizedTitle, stopTitle: "Stop Dictate",
+        action: #selector(toggleTranscription), shortcut: ShortcutAction.dictate.keyPath,
+        mode: .dictate),
       ModeRow(
-        tag: .dictatePrompt, title: "Dictate Prompt", stopTitle: "Stop Dictate Prompt",
-        action: #selector(togglePrompting), shortcut: \.startPrompting, mode: .dictatePrompt),
+        tag: .dictatePrompt, title: ShortcutAction.dictatePrompt.localizedTitle, stopTitle: "Stop Dictate Prompt",
+        action: #selector(togglePrompting), shortcut: ShortcutAction.dictatePrompt.keyPath,
+        mode: .dictatePrompt),
       ModeRow(
-        tag: .screenshot, title: "Screenshot", stopTitle: nil,
-        action: #selector(takeScreenshot), shortcut: \.screenshotCapture, mode: nil),
+        tag: .screenshot, title: ShortcutAction.screenshot.localizedTitle, stopTitle: nil,
+        action: #selector(takeScreenshot), shortcut: ShortcutAction.screenshot.keyPath, mode: nil),
     ]
+    // `readAloudFromMenu` is compiled out of the App Store target, so a runtime
+    // `isInThisBuild` check would not compile there. The condition is the same one.
     #if !APP_STORE
     rows.append(
       ModeRow(
-        tag: .readAloud, title: "Read Aloud", stopTitle: "Stop Read Aloud",
-        action: #selector(readAloudFromMenu), shortcut: \.readAloud, mode: .readAloudSelection))
+        tag: .readAloud, title: ShortcutAction.readAloud.localizedTitle, stopTitle: "Stop Read Aloud",
+        action: #selector(readAloudFromMenu), shortcut: ShortcutAction.readAloud.keyPath,
+        mode: .readAloudSelection))
     #endif
+    // Not a `ShortcutAction`: the assistant list never named Glossary. The menu title is
+    // "Add Selection to Glossary", not "Add to Glossary".
     #if !APP_STORE
     rows.append(
       ModeRow(
@@ -1555,7 +1564,7 @@ class MenuBarController: NSObject {
 
   private func cancelInFlightTranscription() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "transcription", detail: cancelSignalDetail())
+      .cancelledWhileProcessing, mode: InteractionMode.transcription.rawValue, detail: cancelSignalDetail())
     let job = currentJob
     discardStreamingSession()
     speechService.cancelTranscription()
@@ -1626,7 +1635,7 @@ class MenuBarController: NSObject {
   /// recording.
   private func cancelInFlightPrompt() {
     ContextLogger.shared.logSignal(
-      .cancelledWhileProcessing, mode: "prompt", detail: cancelSignalDetail())
+      .cancelledWhileProcessing, mode: InteractionMode.prompt.rawValue, detail: cancelSignalDetail())
     let job = currentJob
     speechService.cancelPrompt()
     job?.cancel()
@@ -2037,8 +2046,8 @@ class MenuBarController: NSObject {
     /// row. Nil for modes that log no interaction (live meeting).
     var interactionLogMode: String? {
       switch mode {
-      case .transcription: return "transcription"
-      case .prompt: return "prompt"
+      case .transcription: return InteractionMode.transcription.rawValue
+      case .prompt: return InteractionMode.prompt.rawValue
       case .liveMeeting: return nil
       }
     }
@@ -2698,7 +2707,7 @@ class MenuBarController: NSObject {
   private func prepareDictatePromptSelection(
     logPrefix: String, model: PromptModel
   ) -> (ready: Bool, selection: DictatePromptSelectionCapture?) {
-    if model.dictatePromptUsesScreenshotSelection {
+    if model.dictatePromptSelectionPermission == .screenRecording {
       if PermissionStatusChecker.status(for: .screenRecording) != .granted {
         DebugLogger.logWarning("\(logPrefix): Screen Recording missing — Dictate Prompt needs it for the screenshot")
         Self.showScreenRecordingPermissionError()
@@ -2712,7 +2721,7 @@ class MenuBarController: NSObject {
     // Prompt took its decision (or since launch) and the change was not the app's own result copy
     // or restore — see `DictatePromptSelectionDecision.clipboardIsFreshSelection` for the residual
     // risk (a stale copy the user made by hand still looks fresh).
-    if AppConstants.dictatePromptUsesScreenshotSelection {
+    if model.dictatePromptSelectionPermission == nil {
       let current = NSPasteboard.general.changeCount
       let fresh = DictatePromptSelectionDecision.clipboardIsFreshSelection(
         currentChangeCount: current,

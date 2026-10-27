@@ -122,10 +122,6 @@ struct ScorecardWeek: Identifiable, Equatable, Sendable {
 
 /// Deterministic, counts-only scorecard over the UserContext interaction and signal logs.
 enum SmartImprovementScorecard {
-  /// A later prompt is a follow-up only when it starts within this many seconds of the previous one.
-  static let followUpWindow: TimeInterval = 300
-  /// Word-level similarity at or above this counts as the same text coming back.
-  static let followUpSimilarity = 0.8
   /// Trailing window stored on a history entry and shown as "current".
   static let snapshotDays = 28
 
@@ -140,18 +136,19 @@ enum SmartImprovementScorecard {
 
   /// Rejected spellings from `X (not "Y")` / `X (nicht "Y, Z")` annotations.
   ///
-  /// The keyword match is case-insensitive. The inner list is comma-separated, and each form is
-  /// trimmed of spaces and `"` / `'`. Same pattern as SpeechService:
-  /// `#"\((?:not|nicht)\s+[^)]*\)"#`. Deduplicated by folded form (case- and diacritic-insensitive);
-  /// the first spelling is kept, in order of first appearance.
+  /// Read through `GlossaryDocument`, which is the same annotation parse the prompt uses.
+  /// A private copy of the regex here used to be able to disagree with it. Deduplicated by
+  /// folded form; the first spelling is kept, in order of first appearance.
   static func rejectedSpellings(in glossaries: [String]) -> [String] {
     var seen = Set<String>()
     var spellings: [String] = []
     for glossary in glossaries {
-      for spelling in annotationSpellings(in: glossary) {
-        let key = fold(spelling)
-        guard seen.insert(key).inserted else { continue }
-        spellings.append(spelling)
+      for line in glossary.components(separatedBy: .newlines) {
+        for spelling in GlossaryDocument.rejectedSpellings(on: line) {
+          let key = GlossaryDocument.fold(spelling)
+          guard seen.insert(key).inserted else { continue }
+          spellings.append(spelling)
+        }
       }
     }
     return spellings
@@ -193,30 +190,13 @@ enum SmartImprovementScorecard {
     }.count
   }
 
-  /// Word-level similarity in `0...1`.
-  ///
-  /// Both sides are folded (case and diacritics), punctuation is dropped, whitespace is collapsed,
-  /// and the strings are split on spaces. The result is `1 - levenshtein(words) / max(wordCount)`.
-  /// Two empty strings are 0. When the shorter word list is under `followUpSimilarity` of the
-  /// longer one, the result is 0 without running the edit distance.
-  static func similarity(_ a: String, _ b: String) -> Double {
-    let wordsA = normalisedWords(a)
-    let wordsB = normalisedWords(b)
-    if wordsA.isEmpty && wordsB.isEmpty { return 0 }
-    let maxCount = max(wordsA.count, wordsB.count)
-    let minCount = min(wordsA.count, wordsB.count)
-    if Double(minCount) / Double(maxCount) < followUpSimilarity { return 0 }
-    let distance = levenshtein(wordsA, wordsB)
-    return 1 - Double(distance) / Double(maxCount)
-  }
-
   /// Counts for entries whose `ts` falls in `[from, to)`.
   ///
   /// `ts` is ISO-8601, with or without fractional seconds. Unparsable rows are skipped.
   /// A prompt P is a follow-up of the immediately previous prompt Q (the previous prompt in the
-  /// whole list, not only those inside the window) when `0 <= P.ts - Q.ts <= followUpWindow`,
-  /// P's selection is non-empty after trimming, and
-  /// `similarity(P.selectedText, Q.modelResponse) >= followUpSimilarity`.
+  /// whole list, not only those inside the window) when `PromptFollowUp.isFollowUp` says so —
+  /// the same predicate that emits the `promptFollowUp` signal. A private word-Levenshtein
+  /// cutoff of 0.8 used to count a different set.
   /// Pass every entry and let `from` / `to` decide what is counted.
   static func metrics(
     interactions: [InteractionLogEntry],
@@ -226,34 +206,30 @@ enum SmartImprovementScorecard {
     to: Date
   ) -> ScorecardMetrics {
     let parsed = interactions.compactMap { entry -> (entry: InteractionLogEntry, date: Date)? in
-      guard let date = parseTimestamp(entry.ts) else { return nil }
+      guard let date = UserContextLog.timestamp(entry.ts) else { return nil }
       return (entry, date)
     }
     let prompts = parsed
-      .filter { $0.entry.mode == "prompt" }
+      .filter { $0.entry.interactionMode == .prompt }
       .sorted { $0.date < $1.date }
     var followUp = Array(repeating: false, count: prompts.count)
     if prompts.count > 1 {
       for index in 1..<prompts.count {
         let gap = prompts[index].date.timeIntervalSince(prompts[index - 1].date)
-        guard gap >= 0, gap <= followUpWindow else { continue }
-        let selection = (prompts[index].entry.selectedText ?? "")
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !selection.isEmpty else { continue }
-        let previousResponse = prompts[index - 1].entry.modelResponse ?? ""
-        if similarity(selection, previousResponse) >= followUpSimilarity {
-          followUp[index] = true
-        }
+        followUp[index] = PromptFollowUp.isFollowUp(
+          selection: prompts[index].entry.selectedText ?? "",
+          previousResponse: prompts[index - 1].entry.modelResponse ?? "",
+          gap: gap)
       }
     }
 
     var metrics = ScorecardMetrics()
     for item in parsed where item.date >= from && item.date < to {
-      switch item.entry.mode {
-      case "transcription":
+      switch item.entry.interactionMode {
+      case .transcription:
         metrics.transcriptions += 1
         metrics.rejectedSpellingHits += rejectedSpellingHits(in: item.entry.result ?? "", rejected: rejected)
-      case "geminiChat":
+      case .chat:
         metrics.chatTurns += 1
       default:
         break
@@ -271,10 +247,10 @@ enum SmartImprovementScorecard {
       }
     }
     for signal in signals {
-      guard let date = parseTimestamp(signal.ts), date >= from, date < to else { continue }
-      switch signal.kind {
-      case "promptRetry": metrics.promptRetries += 1
-      case "chatRetry": metrics.chatRetries += 1
+      guard let date = UserContextLog.timestamp(signal.ts), date >= from, date < to else { continue }
+      switch OutcomeSignal(rawValue: signal.kind) {
+      case .promptRetry: metrics.promptRetries += 1
+      case .chatRetry: metrics.chatRetries += 1
       default: break
       }
     }
@@ -290,7 +266,7 @@ enum SmartImprovementScorecard {
   ) -> [ScorecardWeek] {
     var starts: [String: Date] = [:]
     func note(_ ts: String) {
-      guard let date = parseTimestamp(ts),
+      guard let date = UserContextLog.timestamp(ts),
             let interval = calendar.dateInterval(of: .weekOfYear, for: date) else { return }
       let id = weekID(interval.start, calendar: calendar)
       if starts[id] == nil { starts[id] = interval.start }
@@ -380,33 +356,9 @@ enum SmartImprovementScorecard {
 
   // MARK: - Glossary annotations
 
-  private static let annotationPattern = #"\((?:not|nicht)\s+[^)]*\)"#
   private static let matchLocale = Locale(identifier: "en_US_POSIX")
   /// Em dash and en dash. Hyphen-minus is ordinary punctuation and is not a dash here.
   private static let dashCharacters: Set<Character> = ["\u{2014}", "\u{2013}"]
-
-  private static func annotationSpellings(in glossary: String) -> [String] {
-    var spellings: [String] = []
-    var cursor = glossary[...]
-    while let range = cursor.range(
-      of: annotationPattern, options: [.regularExpression, .caseInsensitive])
-    {
-      let inner = cursor[range]
-        .replacingOccurrences(
-          of: #"^\((?:not|nicht)\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
-        .replacingOccurrences(of: ")", with: "")
-      for form in inner.components(separatedBy: ",") {
-        let cleaned = form.trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
-        if !cleaned.isEmpty { spellings.append(cleaned) }
-      }
-      cursor = cursor[range.upperBound...]
-    }
-    return spellings
-  }
-
-  private static func fold(_ text: String) -> String {
-    text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: matchLocale)
-  }
 
   private static func isWholeWord(_ match: Range<String.Index>, in text: String) -> Bool {
     if match.lowerBound > text.startIndex {
@@ -447,39 +399,7 @@ enum SmartImprovementScorecard {
     text.contains { dashCharacters.contains($0) }
   }
 
-  // MARK: - Similarity
-
-  private static func normalisedWords(_ text: String) -> [String] {
-    let folded = fold(text)
-    let cleaned = String(folded.map { $0.isPunctuation ? " " : $0 })
-    return cleaned.split(whereSeparator: \.isWhitespace).map(String.init)
-  }
-
-  private static func levenshtein(_ a: [String], _ b: [String]) -> Int {
-    if a.isEmpty { return b.count }
-    if b.isEmpty { return a.count }
-    var previous = Array(0...b.count)
-    var current = Array(repeating: 0, count: b.count + 1)
-    for i in 1...a.count {
-      current[0] = i
-      for j in 1...b.count {
-        let substitution = previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)
-        current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
-      }
-      swap(&previous, &current)
-    }
-    return previous[b.count]
-  }
-
   // MARK: - Timestamps and weeks
-
-  private static let fractionalTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
-  private static let plainTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
-
-  private static func parseTimestamp(_ ts: String) -> Date? {
-    if let date = try? Date(ts, strategy: fractionalTimestamp) { return date }
-    return try? Date(ts, strategy: plainTimestamp)
-  }
 
   private static func weekID(_ date: Date, calendar: Calendar) -> String {
     let year = calendar.component(.yearForWeekOfYear, from: date)
@@ -497,13 +417,15 @@ enum SmartImprovementScorecard {
 
   private static func load(directory: URL, lastDays: Int, now: Date) -> LoadedLogs {
     var loaded = LoadedLogs()
-    for url in logFileURLs(directory: directory, prefix: "interactions-", lastDays: lastDays, now: now) {
-      loaded.interactions.append(contentsOf: decodeJSONL(url))
-    }
-    for url in logFileURLs(directory: directory, prefix: "signals-", lastDays: lastDays, now: now) {
-      loaded.signals.append(contentsOf: decodeJSONL(url))
-    }
-    loaded.history = decodeJSONL(directory.appendingPathComponent("system-prompts-history.jsonl"))
+    loaded.interactions = UserContextLog.decodeLines(
+      UserContextLog.files(stream: .interactions, in: directory, lastDays: lastDays, now: now),
+      as: InteractionLogEntry.self)
+    loaded.signals = UserContextLog.decodeLines(
+      UserContextLog.files(stream: .signals, in: directory, lastDays: lastDays, now: now),
+      as: SignalLogEntry.self)
+    loaded.history = UserContextLog.decodeLines(
+      [directory.appendingPathComponent("system-prompts-history.jsonl")],
+      as: UnifiedSystemPromptHistoryEntry.self)
     return loaded
   }
 
@@ -529,7 +451,7 @@ enum SmartImprovementScorecard {
     for entry in history {
       guard entry.scorecard != nil else { continue }
       if let section, entry.section != section { continue }
-      guard let date = parseTimestamp(entry.ts) else { continue }
+      guard let date = UserContextLog.timestamp(entry.ts) else { continue }
       if let current = best, date < current.date { continue }
       best = (entry, date)
     }
@@ -548,35 +470,4 @@ enum SmartImprovementScorecard {
       after: after)
   }
 
-  /// Daily `prefixYYYY-MM-DD.jsonl` files, same filename date as `ContextLogger.logFiles`.
-  private static func logFileURLs(directory: URL, prefix: String, lastDays: Int, now: Date) -> [URL] {
-    guard let contents = try? FileManager.default.contentsOfDirectory(
-      at: directory, includingPropertiesForKeys: nil)
-    else { return [] }
-    let cutoff = Calendar.current.date(byAdding: .day, value: -lastDays, to: now) ?? now
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd"
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = .current
-    return contents.filter { url in
-      let name = url.lastPathComponent
-      guard name.hasPrefix(prefix), name.hasSuffix(".jsonl") else { return false }
-      let dateString = String(name.dropFirst(prefix.count).dropLast(".jsonl".count))
-      guard let fileDate = formatter.date(from: dateString) else { return false }
-      return fileDate >= cutoff
-    }.sorted { $0.lastPathComponent < $1.lastPathComponent }
-  }
-
-  private static func decodeJSONL<T: Decodable>(_ url: URL) -> [T] {
-    guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-    let decoder = JSONDecoder()
-    var rows: [T] = []
-    for line in text.split(whereSeparator: \.isNewline) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { continue }
-      guard let row = try? decoder.decode(T.self, from: data) else { continue }
-      rows.append(row)
-    }
-    return rows
-  }
 }

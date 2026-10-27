@@ -35,7 +35,9 @@ struct MeetingsInAIAppsSection: View {
 
   /// The key the setup cards carry.
   private var setupToken: String {
-    accessLevel == .read ? server.token() : server.writeToken()
+    // nil only on a transient Keychain failure; show empty rather than crash — the UI already
+    // treats an empty token as "not ready yet".
+    (accessLevel == .read ? server.token() : server.writeToken()) ?? ""
   }
 
   var body: some View {
