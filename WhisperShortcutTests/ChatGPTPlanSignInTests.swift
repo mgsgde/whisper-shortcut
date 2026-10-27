@@ -436,4 +436,15 @@ struct ChatGPTPlanSignInTests {
     let decoded = try ChatGPTPlanCredentials.makeDecoder().decode(ChatGPTPlanCredentials.self, from: data)
     #expect(decoded == original)
   }
+
+  // MARK: Host validation
+
+  @Test("Only genuine HTTPS openai.com hosts are accepted; look-alikes are not")
+  func openAIHostValidation() throws {
+    #expect(ChatGPTPlanOAuthService.isOpenAIHost(try #require(URL(string: "https://auth.openai.com/x"))))
+    #expect(ChatGPTPlanOAuthService.isOpenAIHost(try #require(URL(string: "https://openai.com/x"))))
+    #expect(!ChatGPTPlanOAuthService.isOpenAIHost(try #require(URL(string: "https://evilopenai.com/x"))))
+    #expect(!ChatGPTPlanOAuthService.isOpenAIHost(try #require(URL(string: "https://auth.openai.com.evil.io/x"))))
+    #expect(!ChatGPTPlanOAuthService.isOpenAIHost(try #require(URL(string: "http://auth.openai.com/x"))))
+  }
 }
