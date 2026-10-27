@@ -67,6 +67,12 @@ struct QuickAction: Equatable, Identifiable {
   let text: String
   /// Derived from `key`; drives the icon and de-duplication.
   var kind: QuickActionKind { QuickActionKind.classify(key) }
+  /// True for the built-in defaults (`QuickActionStore.fallbackTexts`) only.
+  var isBuiltIn = false
+  /// Needs a selection to act on: a built-in default, or text that is only an edit verb
+  /// ("Korrigiere") — the same rule `refusesEditWithoutSelection` applies. `kind` is a substring
+  /// guess that drives the icon, so it must not decide that "Write a short reply" is an edit.
+  var isEdit: Bool { isBuiltIn || DictatePromptSelectionDecision.isBareEditCommand(text) }
 }
 
 /// Dictate Prompt quick actions for ⌘2.
@@ -270,7 +276,7 @@ final class QuickActionStore {
       if kind != .other, seenKinds.contains(kind) { continue }
       seen.insert(key)
       if kind != .other { seenKinds.insert(kind) }
-      result.append(QuickAction(key: key, text: text))
+      result.append(QuickAction(key: key, text: text, isBuiltIn: true))
     }
     return result
   }
