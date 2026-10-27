@@ -20018,6 +20018,16 @@
           }
         }
       }
+    },
+    "Test build: Connect is off here, so it can't overwrite the setup of the WhisperShortcut you use every day." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test-Build: „Verbinden“ ist hier aus, damit es die Einrichtung Ihres alltäglichen WhisperShortcut nicht überschreibt."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

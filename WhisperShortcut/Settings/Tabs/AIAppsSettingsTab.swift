@@ -75,6 +75,13 @@ struct AIAppsSettingsTab: View {
         accessPicker
 
         VStack(alignment: .leading, spacing: 10) {
+          if AppConstants.isSidecarInstance {
+            Label("Test build: Connect is off here, so it can't overwrite the setup of the WhisperShortcut you use every day.", systemImage: "testtube.2")
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
           setupCard(
             .claudeCode,
             manualInstruction: "Run in Terminal, then start a new Claude Code session:",
@@ -388,7 +395,9 @@ struct AIAppsSettingsTab: View {
     .controlSize(.small)
     // Not gated on the server running: the entry only needs the address and key, and the app
     // connects as soon as the server is up.
-    .disabled(connecting != nil || setupToken.isEmpty)
+    // A test build runs next to the user's own instance with its own key and never starts the
+    // server, so a Connect from it would point the user's real AI app at the wrong key.
+    .disabled(connecting != nil || setupToken.isEmpty || AppConstants.isSidecarInstance)
     .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
     .pointerCursorOnHover()
   }
