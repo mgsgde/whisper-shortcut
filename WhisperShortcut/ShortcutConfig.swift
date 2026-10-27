@@ -58,7 +58,7 @@ extension Key: @retroactive Codable {
     case .eight: return "8"
     case .nine: return "9"
     case .escape: return "⎋"
-    case .space: return "Space"
+    case .space: return String(localized: "Space", comment: "Name of the space bar key in a shortcut")
     case .comma: return ","
     case .period: return "."
     case .f1: return "F1"

@@ -12,9 +12,9 @@ import SwiftUI
 struct MessageActionButton: View {
   let systemImage: String
   var isActive: Bool = false
-  let help: String
+  let help: LocalizedStringKey
   /// Defaults to `help`; set it only where the spoken label should differ from the tooltip.
-  var accessibilityText: String? = nil
+  var accessibilityText: LocalizedStringKey? = nil
   let action: () -> Void
 
   @State private var isHovered = false

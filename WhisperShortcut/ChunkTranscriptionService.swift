@@ -19,9 +19,9 @@ enum ChunkedTranscriptionError: Error, LocalizedError {
         case .chunkingFailed(let error):
             return ChunkFailureMessage.message(context: "audio", error: error)
         case .allChunksFailed(let errors):
-            return "All \(errors.count) chunks failed to transcribe"
+            return String(localized: "All \(errors.count) chunks failed to transcribe")
         case .partialSuccess(_, let failedChunks):
-            return "Partial transcription: \(failedChunks.count) chunk(s) failed"
+            return String(localized: "Partial transcription: \(failedChunks.count) chunk(s) failed")
         }
     }
 }

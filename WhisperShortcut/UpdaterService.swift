@@ -44,7 +44,7 @@ final class UpdaterService: NSObject, ObservableObject {
     do {
       try updater.start()
     } catch {
-      DebugLogger.log("UPDATER: failed to start Sparkle: \(error.localizedDescription)")
+      DebugLogger.log("UPDATER: failed to start Sparkle: \(error.logDescription)")
     }
     updater.automaticallyDownloadsUpdates = false
 
@@ -92,7 +92,7 @@ extension UpdaterService: SPUUpdaterDelegate {
 
   nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
     if let error {
-      DebugLogger.log("UPDATER: update cycle finished with error: \(error.localizedDescription)")
+      DebugLogger.log("UPDATER: update cycle finished with error: \(error.logDescription)")
     } else {
       DebugLogger.log("UPDATER: update cycle finished")
     }

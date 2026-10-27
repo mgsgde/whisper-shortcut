@@ -50,11 +50,11 @@ enum ChatModelProvider: String, CaseIterable {
     case .grok: return "Grok"
     case .openai: return "GPT"
     case .anthropic: return "Claude"
-    case .customOpenAI: return "Custom endpoint"
+    case .customOpenAI: return String(localized: "Custom endpoint")
     case .openRouter: return "OpenRouter"
-    case .chatGPTPlan: return "ChatGPT plan"
-    case .local: return "Local server"
-    case .localMLX: return "On this Mac"
+    case .chatGPTPlan: return String(localized: "ChatGPT plan")
+    case .local: return String(localized: "Local server")
+    case .localMLX: return String(localized: "On this Mac")
     }
   }
 
@@ -254,17 +254,17 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAIEndpoint:
       // Short on purpose: this is a chip next to the composer's slash-command row, and a long
       // name squeezed those buttons until they hyphenated mid-word ("/at-tach").
-      return "Custom endpoint"
+      return String(localized: "Custom endpoint")
     case .openRouterChat:
       return OpenRouterChatPreferences.shortModelName
     case .chatGPTPlanChat:
       return ChatGPTPlanPreferences.displayName
     case .localModel:
-      return "Local Server (Ollama / LM Studio)"
+      return String(localized: "Local Server (Ollama / LM Studio)")
     case .localMLXQwen34BInstruct:
-      return "Qwen3 4B Instruct (Offline)"
+      return String(localized: "Qwen3 4B Instruct (Offline)")
     case .localMLXQwen359B:
-      return "Qwen3.5 9B (Offline)"
+      return String(localized: "Qwen3.5 9B (Offline)")
     }
   }
 
@@ -306,49 +306,49 @@ enum PromptModel: String, CaseIterable {
   var description: String {
     switch self {
     case .gemini4Argon:
-      return "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal"
+      return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier) • Multimodal")
     case .gemini31Pro:
-      return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
+      return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
-      return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal"
+      return String(localized: "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Multimodal")
     case .gemini35FlashLite:
-      return "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal"
+      return String(localized: "Google's Gemini 3.5 Flash-Lite • Fastest, most cost-effective 3.5 model • High throughput • Multimodal")
     case .gemini38Flash:
-      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal"
+      return String(localized: "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents • Multimodal")
     case .geminiImage:
-      return "Google's Gemini Image (Nano Banana 2.1) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key"
+      return String(localized: "Google's Gemini Image (Nano Banana 2.1) • Generates and edits images from a prompt + optional input image • Free tier • Requires Gemini API key")
     case .geminiImagePro:
-      return "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key"
+      return String(localized: "Google's Gemini Image Pro (Nano Banana Pro) • Studio-quality image generation/editing up to 4K • Best text rendering • Paid (no free tier) • Requires Gemini API key")
     case .grok47:
-      return "xAI's Grok 4.7 • Flagship • Most intelligent and fastest model • 500k context • Needs an xAI API key"
+      return String(localized: "xAI's Grok 4.7 • Flagship • Most intelligent and fastest model • 500k context • Needs an xAI API key")
     case .grok43:
-      return "xAI's Grok 4.3 • Cheaper 1M-context option • Leading non-hallucination + agentic tool use • Web + X search • Requires xAI API key"
+      return String(localized: "xAI's Grok 4.3 • Cheaper 1M-context option • Leading non-hallucination + agentic tool use • Web + X search • Requires xAI API key")
     case .openaiGPT5Mini:
-      return "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key"
+      return String(localized: "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key")
     case .openaiGPT6Sol:
-      return "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key"
+      return String(localized: "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key")
     case .openaiGPT6Luna:
-      return "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key"
+      return String(localized: "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key")
     case .openaiGPT4oAudio:
-      return "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key"
+      return String(localized: "OpenAI's GPT Audio • Accepts inline audio for voice-driven prompts • Requires OpenAI API key")
     case .claudeSonnet55:
-      return "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key"
+      return String(localized: "Anthropic's Claude Sonnet 5.5 • Best speed/intelligence balance • Text + images • 1M context • Needs an Anthropic API key")
     case .claudeOpus55:
-      return "Anthropic's Claude Opus 5.5 • Deeper reasoning for hard questions • Text + images • 1M context • Needs an Anthropic API key"
+      return String(localized: "Anthropic's Claude Opus 5.5 • Deeper reasoning for hard questions • Text + images • 1M context • Needs an Anthropic API key")
     case .claudeHaiku55:
-      return "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key"
+      return String(localized: "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key")
     case .customOpenAIEndpoint:
-      return "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search"
+      return String(localized: "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search")
     case .openRouterChat:
-      return "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search"
+      return String(localized: "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search")
     case .chatGPTPlanChat:
-      return "Chat on your ChatGPT Plus or Pro plan, no API key • Sign in under Settings → Accounts • Text + images • No web search or tools yet"
+      return String(localized: "Chat on your ChatGPT Plus or Pro plan, no API key • Sign in under Settings → Accounts • Text + images • No web search or tools yet")
     case .localModel:
-      return "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings"
+      return String(localized: "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings")
     case .localMLXQwen34BInstruct:
-      return "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline"
+      return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
     case .localMLXQwen359B:
-      return "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM"
+      return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
     }
   }
   
@@ -357,23 +357,23 @@ enum PromptModel: String, CaseIterable {
     return self == SettingsDefaults.selectedPromptModel
   }
   
-  var costLevel: String {
+  var costLevel: CostLevel {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
-      return "Low"
+      return .low
     case .localMLXQwen34BInstruct, .localMLXQwen359B:
-      return "Free (Offline)"
+      return .freeOffline
     case .gemini31Pro, .geminiImagePro:
-      return "Medium"
+      return .medium
     case .grok43, .grok47:
-      return "Medium"
+      return .medium
     case .openaiGPT4oAudio, .openaiGPT6Sol, .claudeSonnet55:
-      return "Medium"
+      return .medium
     case .openaiGPT5Mini, .openaiGPT6Luna:
-      return "Low"
+      return .low
     case .gemini4Argon, .claudeOpus55:
-      return "High"
+      return .high
     }
   }
 
@@ -482,15 +482,15 @@ enum PromptModel: String, CaseIterable {
   /// Actionable message when this model can't run Dictate Prompt for lack of a credential.
   var apiKeyRequiredMessageForDictatePrompt: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings → Accounts to use Dictate Prompt."
-    case .openai: return "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt."
-    case .customOpenAI: return "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
-    case .openRouter: return "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
-    case .chatGPTPlan: return "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
-    case .grok: return "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings."
-    case .anthropic: return "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."
-    case .local: return "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running."
-    case .localMLX: return "Select an offline MLX model above. It downloads automatically when you pick it or dictate with it."
+    case .gemini: return String(localized: "Add your Gemini API key in Settings → Accounts to use Dictate Prompt.")
+    case .openai: return String(localized: "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt.")
+    case .customOpenAI: return String(localized: "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .openRouter: return String(localized: "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .chatGPTPlan: return String(localized: "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .grok: return String(localized: "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings.")
+    case .anthropic: return String(localized: "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .local: return String(localized: "Set your local server endpoint (Ollama / LM Studio) in Dictate Prompt settings, and make sure it is running.")
+    case .localMLX: return String(localized: "Select an offline MLX model above. It downloads automatically when you pick it or dictate with it.")
     }
   }
 
@@ -1082,22 +1082,22 @@ enum TTSModel: String, CaseIterable {
     case .gemini38FlashTTS: return "Gemini 3.8 Flash TTS"
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
-    case .systemMacOS: return "macOS (On-Device)"
+    case .systemMacOS: return String(localized: "macOS (On-Device)")
     }
   }
 
   var description: String {
     switch self {
     case .gemini38FlashLiteTTS:
-      return "Google's Gemini 3.8 Flash-Lite TTS • Fastest start, lowest cost • 100+ languages • Recommended"
+      return String(localized: "Google's Gemini 3.8 Flash-Lite TTS • Fastest start, lowest cost • 100+ languages • Recommended")
     case .gemini38FlashTTS:
-      return "Google's Gemini 3.8 Flash TTS • Highest voice quality • Slower to start than Flash-Lite"
+      return String(localized: "Google's Gemini 3.8 Flash TTS • Highest voice quality • Slower to start than Flash-Lite")
     case .openAIGpt4oMiniTTS:
-      return "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key"
+      return String(localized: "OpenAI's GPT-4o mini TTS • Natural, steerable speech • Needs an OpenAI API key")
     case .grokVoiceTTS:
-      return "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key"
+      return String(localized: "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key")
     case .systemMacOS:
-      return "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode"
+      return String(localized: "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode")
     }
   }
 
@@ -1150,10 +1150,10 @@ enum TTSModel: String, CaseIterable {
   /// Actionable message when this TTS model can't run Read Aloud for lack of a credential.
   var apiKeyRequiredMessage: String {
     switch provider {
-    case .gemini: return "Add your Gemini API key in Settings → Accounts or sign in with Google to use Read Aloud."
-    case .openai: return "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model."
-    case .xai: return "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model."
-    case .system: return "On-device macOS voices need no API key."
+    case .gemini: return String(localized: "Add your Gemini API key in Settings → Accounts or sign in with Google to use Read Aloud.")
+    case .openai: return String(localized: "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
+    case .xai: return String(localized: "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
+    case .system: return String(localized: "On-device macOS voices need no API key.")
     }
   }
 
@@ -1162,10 +1162,10 @@ enum TTSModel: String, CaseIterable {
     return self == SettingsDefaults.readAloudModel
   }
 
-  var costLevel: String {
+  var costLevel: CostLevel {
     switch provider {
-    case .system: return "Free"
-    case .gemini, .openai, .xai: return "Low"
+    case .system: return .free
+    case .gemini, .openai, .xai: return .low
     }
   }
 
@@ -1218,17 +1218,17 @@ enum NotificationPosition: String, CaseIterable {
   var displayName: String {
     switch self {
     case .leftBottom:
-      return "Left bottom"
+      return String(localized: "Left bottom")
     case .rightBottom:
-      return "Right bottom"
+      return String(localized: "Right bottom")
     case .leftTop:
-      return "Left top"
+      return String(localized: "Left top")
     case .rightTop:
-      return "Right top"
+      return String(localized: "Right top")
     case .centerTop:
-      return "Center top"
+      return String(localized: "Center top")
     case .centerBottom:
-      return "Center bottom"
+      return String(localized: "Center bottom")
     }
   }
   
@@ -1252,21 +1252,21 @@ enum NotificationDuration: Double, CaseIterable {
   var displayName: String {
     switch self {
     case .oneSecond:
-      return "1 second"
+      return String(localized: "1 second")
     case .twoSeconds:
-      return "2 seconds"
+      return String(localized: "2 seconds")
     case .threeSeconds:
-      return "3 seconds"
+      return String(localized: "3 seconds")
     case .fiveSeconds:
-      return "5 seconds"
+      return String(localized: "5 seconds")
     case .sevenSeconds:
-      return "7 seconds"
+      return String(localized: "7 seconds")
     case .tenSeconds:
-      return "10 seconds"
+      return String(localized: "10 seconds")
     case .fifteenSeconds:
-      return "15 seconds"
+      return String(localized: "15 seconds")
     case .thirtySeconds:
-      return "30 seconds"
+      return String(localized: "30 seconds")
     }
   }
   
@@ -1293,11 +1293,11 @@ enum ConfirmAboveDuration: Double, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .never: return "Never"
-    case .oneMinute: return "1 minute"
-    case .twoMinutes: return "2 minutes"
-    case .fiveMinutes: return "5 minutes"
-    case .tenMinutes: return "10 minutes"
+    case .never: return String(localized: "Never")
+    case .oneMinute: return String(localized: "1 minute")
+    case .twoMinutes: return String(localized: "2 minutes")
+    case .fiveMinutes: return String(localized: "5 minutes")
+    case .tenMinutes: return String(localized: "10 minutes")
     }
   }
 
@@ -1325,10 +1325,10 @@ enum MeetingSafeguardDuration: Double, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .never: return "Never"
-    case .sixtyMinutes: return "60 minutes"
-    case .ninetyMinutes: return "90 minutes"
-    case .twoHours: return "2 hours"
+    case .never: return String(localized: "Never")
+    case .sixtyMinutes: return String(localized: "60 minutes")
+    case .ninetyMinutes: return String(localized: "90 minutes")
+    case .twoHours: return String(localized: "2 hours")
     }
   }
 
@@ -1362,11 +1362,11 @@ enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .off: return "Off"
-    case .every3Days: return "Every 3 days"
-    case .every7Days: return "Every 7 days"
-    case .every14Days: return "Every 14 days"
-    case .every30Days: return "Every 30 days"
+    case .off: return String(localized: "Off")
+    case .every3Days: return String(localized: "Every 3 days")
+    case .every7Days: return String(localized: "Every 7 days")
+    case .every14Days: return String(localized: "Every 14 days")
+    case .every30Days: return String(localized: "Every 30 days")
     }
   }
 }
@@ -1401,53 +1401,53 @@ enum WhisperLanguage: String, CaseIterable {
   var displayName: String {
     switch self {
     case .auto:
-      return "Auto-detect"
+      return String(localized: "Auto-detect")
     case .en:
-      return "English"
+      return String(localized: "English")
     case .de:
-      return "German"
+      return String(localized: "German")
     case .fr:
-      return "French"
+      return String(localized: "French")
     case .es:
-      return "Spanish"
+      return String(localized: "Spanish")
     case .it:
-      return "Italian"
+      return String(localized: "Italian")
     case .pt:
-      return "Portuguese"
+      return String(localized: "Portuguese")
     case .ru:
-      return "Russian"
+      return String(localized: "Russian")
     case .ja:
-      return "Japanese"
+      return String(localized: "Japanese")
     case .ko:
-      return "Korean"
+      return String(localized: "Korean")
     case .zh:
-      return "Chinese"
+      return String(localized: "Chinese")
     case .nl:
-      return "Dutch"
+      return String(localized: "Dutch")
     case .pl:
-      return "Polish"
+      return String(localized: "Polish")
     case .tr:
-      return "Turkish"
+      return String(localized: "Turkish")
     case .sv:
-      return "Swedish"
+      return String(localized: "Swedish")
     case .da:
-      return "Danish"
+      return String(localized: "Danish")
     case .no:
-      return "Norwegian"
+      return String(localized: "Norwegian")
     case .fi:
-      return "Finnish"
+      return String(localized: "Finnish")
     case .cs:
-      return "Czech"
+      return String(localized: "Czech")
     case .hu:
-      return "Hungarian"
+      return String(localized: "Hungarian")
     case .ro:
-      return "Romanian"
+      return String(localized: "Romanian")
     case .el:
-      return "Greek"
+      return String(localized: "Greek")
     case .ar:
-      return "Arabic"
+      return String(localized: "Arabic")
     case .hi:
-      return "Hindi"
+      return String(localized: "Hindi")
     }
   }
   
@@ -1477,6 +1477,23 @@ enum SettingsTab: String, CaseIterable {
   // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
   case permissions = "Privacy & Permissions"
   case about = "About"
+
+  /// What the sidebar shows. The raw value is the persisted identity and stays English.
+  var displayName: LocalizedStringResource {
+    switch self {
+    case .general: return "General"
+    case .accounts: return "Accounts"
+    case .speechToText: return "Dictate"
+    case .speechToPrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .meetings: return "Meetings"
+    case .improvement: return "Smart Improvement"
+    case .permissions: return "Privacy & Permissions"
+    case .about: return "About"
+    }
+  }
 }
 
 // MARK: - Read Aloud Playback Speed
@@ -1754,8 +1771,8 @@ enum OpenAIChatPreferences {
 
     var description: String {
       switch self {
-      case .proxyKey: return "the key entered above for this server"
-      case .openAIKey: return "your OpenAI API key from Settings → Accounts"
+      case .proxyKey: return String(localized: "the key entered above for this server")
+      case .openAIKey: return String(localized: "your OpenAI API key from Settings → Accounts")
       }
     }
   }
@@ -1908,10 +1925,10 @@ enum LiveMeetingChunkInterval: Double, CaseIterable {
   
   var displayName: String {
     switch self {
-    case .fifteenSeconds: return "15 seconds"
-    case .thirtySeconds: return "30 seconds"
-    case .fortyFiveSeconds: return "45 seconds"
-    case .sixtySeconds: return "60 seconds"
+    case .fifteenSeconds: return String(localized: "15 seconds")
+    case .thirtySeconds: return String(localized: "30 seconds")
+    case .fortyFiveSeconds: return String(localized: "45 seconds")
+    case .sixtySeconds: return String(localized: "60 seconds")
     }
   }
 }
@@ -1936,7 +1953,7 @@ enum TranscriptionTemperature: String, CaseIterable {
   /// word in one picker. The distinction now lives in the explanatory text instead.
   var displayName: String {
     switch self {
-    case .verbatim: return "0.0 · verbatim"
+    case .verbatim: return String(localized: "0.0 · verbatim")
     case .low: return "0.2"
     case .balanced: return "0.5"
     case .modelDefault: return "1.0"
@@ -1963,10 +1980,10 @@ enum TranscriptionThinkingEffort: String, CaseIterable {
 
   var displayName: String {
     switch self {
-    case .minimal: return "Minimal"
-    case .low: return "Low"
-    case .medium: return "Medium"
-    case .high: return "High"
+    case .minimal: return String(localized: "Minimal")
+    case .low: return String(localized: "Low")
+    case .medium: return String(localized: "Medium")
+    case .high: return String(localized: "High")
     }
   }
 }

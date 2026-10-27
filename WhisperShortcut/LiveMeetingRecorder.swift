@@ -145,7 +145,7 @@ class LiveMeetingRecorder: NSObject {
         let error = NSError(
           domain: Constants.errorDomain,
           code: Constants.permissionDeniedCode,
-          userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"]
+          userInfo: [NSLocalizedDescriptionKey: String(localized: "Microphone permission denied")]
         )
         self.delegate?.liveMeetingRecorder(didFailWithError: error)
       }
@@ -334,7 +334,7 @@ class LiveMeetingRecorder: NSObject {
       }
       DispatchQueue.main.async {
         guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
-        let error = LiveMeetingRecorderError.recordingFailed(reason: "Failed to start recording")
+        let error = LiveMeetingRecorderError.recordingFailed(reason: String(localized: "Failed to start recording"))
         DebugLogger.logError("LIVE-MEETING: Recorder failed to start, tearing down session")
         self.isSessionActive = false
         self.chunkTimer?.invalidate()

@@ -41,9 +41,9 @@ struct MailProvider: Sendable {
   /// don't host custom domains (T-Online, Yahoo, freenet), which only appear via their own addresses.
   let hostsCustomDomains: Bool
 
-  private static let icloudNote = "Use an app-specific password from account.apple.com."
-  private static let tOnlineNote = "Use your T-Online e-mail password, not the login password."
-  private static let yahooNote = "Use an app password from Yahoo account security."
+  private static let icloudNote = String(localized: "Use an app-specific password from account.apple.com.")
+  private static let tOnlineNote = String(localized: "Use your T-Online e-mail password, not the login password.")
+  private static let yahooNote = String(localized: "Use an app password from Yahoo account security.")
 
   private static func make(
     _ name: String, _ host: String, note: String? = nil,
@@ -100,10 +100,10 @@ enum MailProviderPresets {
       return .unknown(suggestedHost: "")
     }
     if isMicrosoft(domain) {
-      return .unsupported(reason: "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet.")
+      return .unsupported(reason: String(localized: "Microsoft accounts only allow sign-in through Microsoft, which WhisperShortcut doesn't support yet."))
     }
     if domain == "gmail.com" || domain == "googlemail.com" {
-      return .unsupported(reason: "Gmail is read through the Google connection: Settings → Accounts → Google Account.")
+      return .unsupported(reason: String(localized: "Gmail is read through the Google connection: Settings → Accounts → Google Account."))
     }
     if let provider = MailProvider.provider(forDomain: domain) {
       return .preset(MailServerPreset(host: provider.host, port: provider.port, note: provider.note))

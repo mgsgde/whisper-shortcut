@@ -33,15 +33,15 @@ enum IMAPError: LocalizedError, Equatable, Sendable {
   var errorDescription: String? {
     switch self {
     case .authenticationFailed:
-      return "The server rejected the email address or password."
+      return String(localized: "The server rejected the email address or password.")
     case .connectionFailed(let host):
       return "Couldn't reach \(host). Check the server name."
     case .tlsFailed:
-      return "The secure connection to the mail server failed."
+      return String(localized: "The secure connection to the mail server failed.")
     case .timeout:
-      return "The mail server did not respond in time."
+      return String(localized: "The mail server did not respond in time.")
     case .unsupportedPassword:
-      return "The password contains a line break."
+      return String(localized: "The password contains a line break.")
     case .server(let text):
       return text
     case .protocolError(let text):
@@ -287,7 +287,7 @@ actor IMAPSession {
       guard response.textJoined.uppercased().contains("FETCH"), let literal = response.literals.last else { continue }
       return literal
     }
-    throw IMAPError.protocolError("The mail server did not return the message.")
+    throw IMAPError.protocolError(String(localized: "The mail server did not return the message."))
   }
 
   func logout() async {
@@ -372,7 +372,7 @@ actor IMAPSession {
       let opening = response.opening.trimmingCharacters(in: .whitespacesAndNewlines)
       if opening.isEmpty { continue }
       if opening.hasPrefix("+") {
-        throw IMAPError.protocolError("Unexpected continuation from the mail server.")
+        throw IMAPError.protocolError(String(localized: "Unexpected continuation from the mail server."))
       }
       if Self.hasTag(opening, tag: tag) {
         try finishTagged(opening, tag: tag, authenticating: authenticating)
@@ -390,10 +390,10 @@ actor IMAPSession {
       if opening.hasPrefix("+") { return }
       if Self.hasTag(opening, tag: tag) {
         try finishTagged(opening, tag: tag, authenticating: authenticating)
-        throw IMAPError.protocolError("Expected a continuation from the mail server.")
+        throw IMAPError.protocolError(String(localized: "Expected a continuation from the mail server."))
       }
       if opening.uppercased().hasPrefix("* BYE") {
-        throw IMAPError.protocolError("The server closed the connection.")
+        throw IMAPError.protocolError(String(localized: "The server closed the connection."))
       }
     }
   }
@@ -406,13 +406,13 @@ actor IMAPSession {
       if authenticating { throw IMAPError.authenticationFailed }
       throw IMAPError.server(scrub(String(rest)))
     }
-    throw IMAPError.protocolError("Unexpected response from the mail server.")
+    throw IMAPError.protocolError(String(localized: "Unexpected response from the mail server."))
   }
 
   private func checkGreeting(_ response: ServerResponse) throws {
     let opening = response.opening.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     guard opening.hasPrefix("* OK") || opening.hasPrefix("* PREAUTH") else {
-      throw IMAPError.protocolError("Unexpected greeting from the mail server.")
+      throw IMAPError.protocolError(String(localized: "Unexpected greeting from the mail server."))
     }
   }
 
@@ -447,7 +447,7 @@ actor IMAPSession {
       try await fill(before: deadline)
     }
     guard let range = buffer.range(of: crlf) else {
-      throw IMAPError.protocolError("Expected a line from the mail server.")
+      throw IMAPError.protocolError(String(localized: "Expected a line from the mail server."))
     }
     let line = Data(buffer[..<range.lowerBound])
     buffer.removeSubrange(..<range.upperBound)
@@ -477,7 +477,7 @@ actor IMAPSession {
   private func fill(before deadline: Deadline) async throws {
     let chunk = try await readChunk(before: deadline)
     if chunk.isEmpty {
-      throw IMAPError.protocolError("The server closed the connection.")
+      throw IMAPError.protocolError(String(localized: "The server closed the connection."))
     }
     buffer.append(chunk)
   }
@@ -518,7 +518,7 @@ actor IMAPSession {
         } catch let error as IMAPError {
           return .failed(error)
         } catch {
-          return .failed(.protocolError("The mail server request failed."))
+          return .failed(.protocolError(String(localized: "The mail server request failed.")))
         }
       }
       group.addTask {
@@ -624,7 +624,7 @@ actor IMAPSession {
 
   private func rejectOversized(_ responses: [ServerResponse]) throws {
     if responses.contains(where: \.oversized) {
-      throw IMAPError.protocolError("The message is larger than 2 MB.")
+      throw IMAPError.protocolError(String(localized: "The message is larger than 2 MB."))
     }
   }
 

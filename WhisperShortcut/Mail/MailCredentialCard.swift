@@ -102,13 +102,13 @@ struct MailCredentialCardView: View {
       Image(systemName: phase == .connected ? "checkmark.circle.fill" : "lock")
         .foregroundColor(phase == .connected ? .green : ChatTheme.secondaryText)
       VStack(alignment: .leading, spacing: 3) {
-        Text(phase == .connected ? "Connected \(request.email)" : "Connect \(request.email)")
+        Text(phase == .connected ? ("Connected \(request.email)" as LocalizedStringKey) : "Connect \(request.email)")
           .font(.system(size: 13, weight: .semibold))
           .foregroundColor(ChatTheme.primaryText)
           .lineLimit(1)
           .truncationMode(.middle)
         Text(phase == .connected
-             ? "Saved in your Keychain. Read-only access."
+             ? ("Saved in your Keychain. Read-only access." as LocalizedStringKey)
              : "Read-only. Your password stays in your Keychain and is never sent to the AI.")
           .font(.system(size: 12))
           .foregroundColor(ChatTheme.secondaryText)
@@ -215,7 +215,7 @@ struct MailCredentialCardView: View {
     }
   }
 
-  private func label(_ text: String) -> some View {
+  private func label(_ text: LocalizedStringKey) -> some View {
     Text(text)
       .font(.system(size: 12))
       .foregroundColor(ChatTheme.secondaryText)

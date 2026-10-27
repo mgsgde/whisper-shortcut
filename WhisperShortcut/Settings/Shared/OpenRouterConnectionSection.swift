@@ -160,8 +160,8 @@ struct OpenRouterConnectionSection: View {
             .foregroundColor(.secondary)
         }
         .buttonStyle(.plain)
-        .help(isKeyVisible ? "Hide key" : "Show key")
-        .accessibilityLabel(isKeyVisible ? "Hide key" : "Show key")
+        .help(isKeyVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
+        .accessibilityLabel(isKeyVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
 
         Spacer()
       }

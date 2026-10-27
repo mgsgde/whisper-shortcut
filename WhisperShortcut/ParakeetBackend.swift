@@ -216,9 +216,9 @@ enum ParakeetBackendError: LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case .notDownloaded: return "Parakeet Ultra is not fully downloaded."
-    case .audioTooShort: return "The recording is too short to transcribe."
-    case .notLoaded: return "Parakeet Ultra was not loaded."
+    case .notDownloaded: return String(localized: "Parakeet Ultra is not fully downloaded.")
+    case .audioTooShort: return String(localized: "The recording is too short to transcribe.")
+    case .notLoaded: return String(localized: "Parakeet Ultra was not loaded.")
     }
   }
 }

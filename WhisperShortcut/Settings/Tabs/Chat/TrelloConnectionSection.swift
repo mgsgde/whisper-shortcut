@@ -117,7 +117,7 @@ struct TrelloConnectionSection: View {
           .font(.callout)
           .foregroundColor(.secondary)
         Spacer()
-        Button(awaitingToken ? "Re-open browser" : "Connect Trello") {
+        Button(awaitingToken ? ("Re-open browser" as LocalizedStringKey) : "Connect Trello") {
           startConnect()
         }
         .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
