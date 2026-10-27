@@ -1,5 +1,7 @@
 import Testing
 import Foundation
+import AppKit
+import HotKey
 @testable import WhisperShortcut_AppStore
 
 @Suite("MCP settings catalog and get_settings/update_settings")
@@ -26,15 +28,42 @@ struct MCPSettingsCatalogTests {
     }
   }
 
-  @Test("No excluded UserDefaults key is exposed raw")
-  func noSecretsExposed() {
-    // The catalog must never carry an API key or token under any id.
-    let env = MCPTestEnv()
-    let forbidden = ["apikey", "api_key", "token", "secret", "password"]
-    for setting in env.settingsCatalog {
-      let lowered = setting.id.lowercased()
-      #expect(!forbidden.contains { lowered.contains($0) })
+  /// Deny-list from the spec's "Never exposed" list (`plans/active/mcp-settings.md`): applying
+  /// every catalog entry with a plausible valid value into an isolated defaults suite must never
+  /// write any of these keys. Sparkle's is framework-internal, not in `UserDefaultsKeys`.
+  private static let deniedKeys: [String] = [
+    UserDefaultsKeys.mcpServerEnabled, UserDefaultsKeys.mcpServerPort,
+    UserDefaultsKeys.mcpConfigAccessLevel, UserDefaultsKeys.mcpShareRecentInteractions,
+    UserDefaultsKeys.offlineModeEnabled, UserDefaultsKeys.contextLoggingEnabled,
+    UserDefaultsKeys.customOpenAIChatEndpointURL, UserDefaultsKeys.customTranscriptionAPIURL,
+    UserDefaultsKeys.localPromptEndpointURL, UserDefaultsKeys.workspaceFolders,
+    UserDefaultsKeys.chatWorkspaceWriteEnabled, UserDefaultsKeys.telemetryEnabled,
+    "SUEnableAutomaticChecks",
+  ]
+
+  /// A plausible valid value for a setting, used only to probe that applying it never touches a
+  /// denied key — not to check the setting's own behaviour.
+  private static func sampleValue(for setting: MCPSetting) -> Any? {
+    switch setting.kind {
+    case .bool: return true
+    case .string: return setting.read() as? String ?? ""
+    case .enumeration(let options):
+      return options().first(where: \.available)?.value ?? options().first?.value
+    case .shortcut: return NSNull()
     }
+  }
+
+  @Test("No entry's apply ever writes a denied UserDefaults key")
+  func noDeniedKeyEverWritten() {
+    let env = MCPTestEnv(level: .apply)
+    let before = Self.deniedKeys.map { env.testDefaults.object(forKey: $0).map { "\($0)" } }
+    for setting in env.settingsCatalog {
+      guard setting.unavailableReason() == nil, let value = Self.sampleValue(for: setting) else { continue }
+      guard setting.validate(value) == nil else { continue }
+      try? setting.apply(value)
+    }
+    let after = Self.deniedKeys.map { env.testDefaults.object(forKey: $0).map { "\($0)" } }
+    #expect(before == after, "a catalog entry wrote a key on the spec's \"Never exposed\" list")
   }
 
   @Test("An enum setting's current value is one of its own options")
@@ -166,6 +195,47 @@ struct MCPSettingsCatalogTests {
     #expect(entry?["value"] as? Bool == false)
   }
 
+  /// A tiny two-entry catalog (one normal bool, one that throws on apply) to exercise
+  /// `applySettingsBatch`'s rollback without touching any real settings.
+  private func rollbackCatalog(flag: Box<Bool>, shouldThrow: Box<Bool>) -> [MCPSetting] {
+    let good = MCPSetting(
+      id: "fake.good", title: "Fake Good", category: "fake", kind: .bool,
+      read: { flag.value }, validate: { _ in nil },
+      apply: { value in flag.value = (value as? Bool) ?? false })
+    let bad = MCPSetting(
+      id: "fake.bad", title: "Fake Bad", category: "fake", kind: .bool,
+      read: { false }, validate: { _ in nil },
+      apply: { _ in if shouldThrow.value { throw MCPConfigError(message: "boom") } })
+    return [good, bad]
+  }
+
+  private final class Box<T> { var value: T; init(_ v: T) { value = v } }
+
+  @Test("A throwing apply on the 2nd item rolls back the 1st; nothing is logged")
+  func batchRollsBackOnFailure() {
+    let env = MCPTestEnv(level: .apply)
+    let flag = Box(false)
+    let shouldThrow = Box(true)
+    let catalog = rollbackCatalog(flag: flag, shouldThrow: shouldThrow)
+    let items = [
+      MCPSettingsChangeItem(
+        id: "fake.good", title: "Fake Good", fromLabel: "false", toLabel: "true",
+        fromJSON: MCPSettingsCatalog.encodeValue(false), toJSON: MCPSettingsCatalog.encodeValue(true)),
+      MCPSettingsChangeItem(
+        id: "fake.bad", title: "Fake Bad", fromLabel: "false", toLabel: "true",
+        fromJSON: MCPSettingsCatalog.encodeValue(false), toJSON: MCPSettingsCatalog.encodeValue(true)),
+    ]
+    let before = env.changeLog.changes.count
+    let result = env.tools().env.applier.applySettingsBatch(
+      catalog: catalog, items: items, rationale: "r", viaProposal: false)
+    switch result {
+    case .success: Issue.record("expected failure")
+    case .failure: break
+    }
+    #expect(flag.value == false, "the 1st item must have been rolled back")
+    #expect(env.changeLog.changes.count == before, "no change-log entry for a failed batch")
+  }
+
   @Test("Undo restores every value of an applied batch")
   func undoRestoresBatch() {
     let env = MCPTestEnv(level: .apply)
@@ -182,12 +252,42 @@ struct MCPSettingsCatalogTests {
     #expect(settings.first { $0["id"] as? String == "window.settings_close_on_focus_loss" }?["value"] as? Bool == false)
   }
 
+  @Test("Undo skips an item changed by hand since the AI app's edit; the hand-set value is kept")
+  func undoSkipsWhenChangedSince() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["notifications.enabled": false], "rationale": "r"],
+      access: .write)
+    let changeID = obj(r)["change_id"] as? String ?? ""
+    // Someone (or another AI app) changes it by hand before Undo runs.
+    env.testDefaults.set(true, forKey: UserDefaultsKeys.showPopupNotifications)
+    let outcome = env.changeLog.undo(changeID)
+    #expect(outcome == .conflict(current: nil), "the only item in the batch was skipped, so the whole undo is a conflict")
+    #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.showPopupNotifications) == true, "the hand-set value must be kept")
+  }
+
+  @Test("settingsChangedExternally is posted exactly once per applied batch")
+  func settingsChangedExternallyPostedOnce() {
+    let env = MCPTestEnv(level: .apply)
+    final class Counter { var count = 0 }
+    let counter = Counter()
+    let observer = NotificationCenter.default.addObserver(
+      forName: .settingsChangedExternally, object: nil, queue: nil) { _ in counter.count += 1 }
+    defer { NotificationCenter.default.removeObserver(observer) }
+    _ = env.tools().call(
+      name: "update_settings",
+      arguments: [
+        "changes": ["notifications.enabled": false, "window.settings_close_on_focus_loss": true], "rationale": "r",
+      ], access: .write)
+    #expect(counter.count == 1)
+  }
+
   // MARK: - Shortcuts
 
   @Test("A shortcut missing ⌘/⌥/⌃ is refused")
   func shortcutModifierRuleEnforced() {
     let env = MCPTestEnv(level: .apply)
-    let dict: [String: Any] = ["key": 0, "modifiers": 0, "isEnabled": true]
+    let dict: [String: Any] = ["key": "a", "modifiers": []]
     let r = env.tools().call(
       name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
     #expect(r.isError)
@@ -202,6 +302,65 @@ struct MCPSettingsCatalogTests {
     let r = env.tools().call(
       name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
     #expect(r.isError)
+  }
+
+  @Test("An unknown key name is refused")
+  func shortcutUnknownKeyRejected() {
+    let env = MCPTestEnv(level: .apply)
+    let dict: [String: Any] = ["key": "notakey", "modifiers": ["control", "option"]]
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
+    #expect(r.isError)
+  }
+
+  @Test("An extra modifier name (capsLock-like) is refused")
+  func shortcutUnknownModifierRejected() {
+    let env = MCPTestEnv(level: .apply)
+    let dict: [String: Any] = ["key": "1", "modifiers": ["control", "capslock"]]
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
+    #expect(r.isError)
+  }
+
+  @Test("A modifier-only key name is refused as the key itself")
+  func shortcutModifierAsKeyRejected() {
+    let env = MCPTestEnv(level: .apply)
+    let dict: [String: Any] = ["key": "command", "modifiers": ["control"]]
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
+    #expect(r.isError)
+  }
+
+  @Test("A shortcut round-trips through the {key, modifiers} JSON format")
+  func shortcutFormatRoundTrips() throws {
+    let env = MCPTestEnv(level: .apply)
+    let dict: [String: Any] = ["key": "5", "modifiers": ["control", "option"]]
+    let r = env.tools().call(
+      name: "update_settings", arguments: ["changes": ["shortcuts.dictate": dict], "rationale": "r"], access: .write)
+    #expect(!r.isError)
+    #expect(env.box.shortcutConfig.startRecording.key == .five)
+    #expect(env.box.shortcutConfig.startRecording.modifiers == [.control, .option])
+
+    let after = env.tools().call(name: "get_settings", arguments: ["category": "shortcuts"], access: .write)
+    let settings = obj(after)["settings"] as? [[String: Any]] ?? []
+    let entry = settings.first { $0["id"] as? String == "shortcuts.dictate" }
+    let value = try #require(entry?["value"] as? [String: Any])
+    #expect(value["key"] as? String == "5")
+    #expect(Set((value["modifiers"] as? [String]) ?? []) == Set(["control", "option"]))
+  }
+
+  @Test("Two shortcut items in the same batch claiming the same unused combo are both rejected; nothing is written")
+  func shortcutBatchConflictBetweenNewItems() {
+    let env = MCPTestEnv(level: .apply)
+    // ⌃⌥9 is not used by any default shortcut.
+    let dict: [String: Any] = ["key": "9", "modifiers": ["control", "option"]]
+    let before = env.box.shortcutConfig
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["shortcuts.open_chat": dict, "shortcuts.open_settings": dict], "rationale": "r"],
+      access: .write)
+    #expect(r.isError)
+    #expect(env.box.shortcutConfig == before, "nothing in the batch must have been written")
   }
 
   @Test("null disables the shortcut")
@@ -367,6 +526,20 @@ struct MCPSettingsCatalogTests {
     #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode) == false)
   }
 
+  @Test("chat.x_search_handles change-log toLabel shows the normalized form, not the raw input")
+  func xSearchHandlesToLabelNormalized() {
+    let env = MCPTestEnv(level: .apply)
+    let r = env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["chat.x_search_handles": "@ElonMusk @elonmusk"], "rationale": "r"],
+      access: .write)
+    #expect(!r.isError)
+    let changeID = obj(r)["change_id"] as? String ?? ""
+    let change = env.changeLog.changes.first { $0.id == changeID }
+    let toLabel = change?.settingsChanges?.first { $0.id == "chat.x_search_handles" }?.toLabel
+    #expect(toLabel == "elonmusk", "must show the normalized/deduped form, not the raw \"@ElonMusk @elonmusk\"")
+  }
+
   @Test("notifications.duration round-trips through update_settings and get_settings")
   func notificationDurationRoundTrip() {
     let env = MCPTestEnv(level: .apply)
@@ -383,10 +556,15 @@ struct MCPSettingsCatalogTests {
     #expect(env.testDefaults.double(forKey: UserDefaultsKeys.notificationDuration) == NotificationDuration.tenSeconds.rawValue)
   }
 
+  /// The new MCP shortcut JSON format `{"key": "<name>", "modifiers": [...]}`, mirroring
+  /// `MCPSettingsCatalog`'s own `json(of:)` so tests can build a value for an existing
+  /// `ShortcutDefinition` (e.g. a slot's current combo) without duplicating its modifier mapping.
   private static func jsonObject(of definition: ShortcutDefinition) -> [String: Any] {
-    guard let data = try? JSONEncoder().encode(definition),
-      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else { return [:] }
-    return obj
+    var modifiers: [String] = []
+    if definition.modifiers.contains(.command) { modifiers.append("command") }
+    if definition.modifiers.contains(.option) { modifiers.append("option") }
+    if definition.modifiers.contains(.control) { modifiers.append("control") }
+    if definition.modifiers.contains(.shift) { modifiers.append("shift") }
+    return ["key": definition.key.mcpKeyName, "modifiers": modifiers]
   }
 }

@@ -22,7 +22,7 @@ Two generic tools, one catalog. No tool per setting.
   picked now ("needs an OpenAI API key in Settings → Accounts", "direct-download build only",
   "not downloaded"). Also `requires_approval: true` for the proposal-only entries below, and
   `note` where a setting only matters with another one (e.g. language is ignored by Gemini models).
-- `update_settings` (write, `destructiveHint: false`, `idempotentHint: true`). Input
+- `update_settings` (write, `destructiveHint: true` — deliberate: a settings write can be hard to notice and the batch is all-or-nothing, so clients should treat it with the same caution as a delete). Input
   `changes: {id: value}` (max 20) plus the usual `rationale`. All-or-nothing: every change is
   validated first; one invalid change rejects the call with one line per problem and writes nothing.
   - Access level `read`: rejected like other write tools.

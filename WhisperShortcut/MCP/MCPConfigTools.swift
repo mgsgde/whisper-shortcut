@@ -241,7 +241,7 @@ struct MCPConfigTools {
     ],
     write(
       "update_settings", "Update Settings",
-      "Changes one or more settings from get_settings. All changes are validated first; if any one is invalid, nothing is written. Settings that always wait for approval (e.g. Launch at login) turn the whole call into one proposal, even at access level \"apply\".",
+      "Changes one or more settings from get_settings. All changes are validated together against the state the whole call would leave (not just today's values) first; if any one is invalid, nothing is written. Settings that always wait for approval (e.g. Launch at login) turn the whole call into one proposal, even at access level \"apply\". A \"shortcut\"-type setting's value is {\"key\": <name, e.g. \"a\"/\"1\"/\"f5\"/\"space\"/\"return\">, \"modifiers\": [subset of \"command\",\"option\",\"control\",\"shift\"]}, or null to disable it.",
       [
         "changes": [
           "type": "object",

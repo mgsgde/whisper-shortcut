@@ -177,13 +177,41 @@ final class MCPChangeLog: ObservableObject {
     }
   }
 
-  /// Replays each item's `from` value through the live catalog. Items whose setting no longer
-  /// validates (credential removed, permission revoked, setting removed) are skipped and named,
-  /// rather than failing the whole undo.
+  /// Replays each item's `from` value through the live catalog — but only for an item whose
+  /// setting still holds the value this change wrote (`item.toJSON`); one changed by hand (or by
+  /// another AI app) since is skipped and named as "changed since", the same conflict rule the
+  /// non-settings undo path above applies via `MCPConfigTargets.normalized(current) ==
+  /// normalized(change.newContent)`. An item whose setting no longer validates at all
+  /// (credential removed, permission revoked, setting removed) is skipped and named too. If
+  /// EVERY item in the batch is skipped, nothing happened — report `.conflict` the same way a
+  /// single-target undo would, rather than a vacuous "undone" with nothing restored.
   private func undoSettings(_ change: MCPChange, index: Int) -> MCPUndoResult {
     guard let items = change.settingsChanges else { return .failed("This change has no settings.") }
+
+    let skipReasons: [String?] = items.map { item in
+      guard let setting = settingsCatalog.first(where: { $0.id == item.id }) else {
+        return "setting no longer exists"
+      }
+      guard let toValue = MCPSettingsCatalog.decodeValue(item.toJSON) else {
+        return "could not read the current value"
+      }
+      guard MCPSettingsCatalog.sameValue(setting.read(), toValue) else {
+        return "changed since"
+      }
+      return nil
+    }
+
+    guard skipReasons.contains(where: { $0 == nil }) else {
+      DebugLogger.log("MCP-CONFIG: undo settings rejected (changed since, all items)")
+      return .conflict(current: nil)
+    }
+
     var skipped: [String] = []
-    for item in items {
+    for (item, skipReason) in zip(items, skipReasons) {
+      if let skipReason {
+        skipped.append("\(item.title) (\(skipReason))")
+        continue
+      }
       switch MCPSettingsCatalog.restore(catalog: settingsCatalog, id: item.id, json: item.fromJSON) {
       case .restored: break
       case .invalid(let reason): skipped.append("\(item.title) (\(reason))")

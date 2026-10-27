@@ -32,7 +32,9 @@ extension MCPConfigTools {
         if let reason = opt.reason { o["reason"] = reason }
         return o
       }
-    case .shortcut: out["type"] = "shortcut"
+    case .shortcut:
+      out["type"] = "shortcut"
+      out["format"] = MCPSettingsCatalog.shortcutFormatHint
     }
     return out
   }
@@ -84,11 +86,21 @@ extension MCPConfigTools {
       return (json(["status": "no_change", "changed": []]), false)
     }
 
+    // Re-check the WHOLE batch together, not just each item against today's on-disk state — e.g.
+    // two shortcut items in this call both claiming the same still-unused combo each pass the
+    // per-item `validate` above (today's config has neither), but not together. Catching that
+    // here means the AI app gets the error before any proposal is even created.
+    if let problem = MCPSettingsCatalog.validateBatch(
+      catalog: env.settingsCatalog, items: real.map { ($0.setting.id, $0.to) })
+    {
+      return reject(tool, "invalid value", problem)
+    }
+
     let items = real.map { c in
       MCPSettingsChangeItem(
         id: c.setting.id, title: c.setting.title,
         fromLabel: MCPSettingsCatalog.label(for: c.from, kind: c.setting.kind),
-        toLabel: MCPSettingsCatalog.label(for: c.to, kind: c.setting.kind),
+        toLabel: MCPSettingsCatalog.label(for: c.setting.normalizeForLabel(c.to), kind: c.setting.kind),
         fromJSON: MCPSettingsCatalog.encodeValue(c.from), toJSON: MCPSettingsCatalog.encodeValue(c.to))
     }
     let changedSummary: [[String: Any]] = items.map {

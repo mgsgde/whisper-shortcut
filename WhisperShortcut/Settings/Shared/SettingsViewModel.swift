@@ -319,14 +319,22 @@ class SettingsViewModel: ObservableObject {
   func findShortcutConflict(_ candidate: ShortcutDefinition, for field: SettingsFocusField)
     -> ShortcutConflict?
   {
-    for slot in Self.configurableShortcutSlots {
-      guard slot.field != field,
-        let existingShortcut = slot.read(data),
-        existingShortcut == candidate
-      else { continue }
-      return ShortcutConflict(field: slot.field, label: slot.label)
+    // Delegates to `ShortcutValidation.conflictingSlot`, the same conflict rule
+    // `get_settings`/`update_settings`'s shortcut entries use, so the two surfaces can't drift
+    // apart. `excluding` is a label here (this registry has no slot names otherwise); labels are
+    // unique across `configurableShortcutSlots`, so excluding by label is equivalent to excluding
+    // by field.
+    guard let excludingLabel = Self.configurableShortcutSlots.first(where: { $0.field == field })?.label
+    else { return nil }
+    let slots: [(name: String, definition: ShortcutDefinition?)] = Self.configurableShortcutSlots.map {
+      ($0.label, $0.read(data))
     }
-    return nil
+    guard
+      let conflictLabel = ShortcutValidation.conflictingSlot(
+        key: candidate.key, modifiers: candidate.modifiers, among: slots, excluding: excludingLabel),
+      let conflictField = Self.configurableShortcutSlots.first(where: { $0.label == conflictLabel })?.field
+    else { return nil }
+    return ShortcutConflict(field: conflictField, label: conflictLabel)
   }
 
   /// Used by the recorder's "Reassign" action — clears the conflicting slot

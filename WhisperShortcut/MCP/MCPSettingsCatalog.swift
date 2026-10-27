@@ -20,29 +20,43 @@ enum ShortcutValidation {
   ]
 
   /// nil = allowed. F1–F20 may be bare; everything else needs ⌘/⌥/⌃ (Shift alone is rejected —
-  /// macOS routes Shift+<printable> to text input, so Carbon never fires those bindings).
+  /// macOS routes Shift+<printable> to text input, so Carbon never fires those bindings). Wording
+  /// matches `ShortcutRecorderRow.handleKeyDown`'s inline messages exactly — that is the UI copy
+  /// of record, this is the shared copy both the recorder and the MCP catalog call.
   static func modifierRuleViolation(key: Key, modifiers: NSEvent.ModifierFlags) -> String? {
     if functionKeys.contains(key) { return nil }
     let commandModifiers = modifiers.intersection([.command, .option, .control])
     guard commandModifiers.isEmpty else { return nil }
-    if modifiers.isEmpty { return "Add ⌘/⌥/⌃ — or use an F-key (F1–F20) on its own." }
-    return "Shift alone won't fire — add ⌘/⌥/⌃."
+    if modifiers.isEmpty { return "Add ⌘/⌥/⌃ — or use an F-key (F1–F20) on its own" }
+    return "Shift alone won't fire — add ⌘/⌥/⌃"
+  }
+
+  /// The slot name already using `key`/`modifiers` among `slots`, other than `excluding`; nil =
+  /// free. Generic over (name, definition) pairs so `SettingsViewModel.findShortcutConflict` (which
+  /// has no `ShortcutConfig`, only its own per-field `SettingsData`) and the `ShortcutConfig`
+  /// overload below share one conflict rule instead of two copies that can drift apart.
+  static func conflictingSlot(
+    key: Key, modifiers: NSEvent.ModifierFlags,
+    among slots: [(name: String, definition: ShortcutDefinition?)], excluding: String
+  ) -> String? {
+    for (name, def) in slots where name != excluding {
+      guard let def, def.isEnabled, def.key == key, def.modifiers == modifiers else { continue }
+      return name
+    }
+    return nil
   }
 
   /// The slot name already using `key`/`modifiers` in `config`, other than `excluding`; nil = free.
   static func conflictingSlot(
     key: Key, modifiers: NSEvent.ModifierFlags, in config: ShortcutConfig, excluding: String
   ) -> String? {
-    let slots: [(name: String, def: ShortcutDefinition)] = [
+    let slots: [(name: String, definition: ShortcutDefinition?)] = [
       ("Toggle Dictation", config.startRecording), ("Toggle Dictate Prompt", config.startPrompting),
       ("Open Settings", config.openSettings), ("Open Chat", config.openChat),
       ("Screenshot", config.screenshotCapture), ("Read Aloud", config.readAloud),
       ("Add to Glossary", config.addToGlossary),
     ]
-    for (name, def) in slots where name != excluding && def.isEnabled {
-      if def.key == key && def.modifiers == modifiers { return name }
-    }
-    return nil
+    return conflictingSlot(key: key, modifiers: modifiers, among: slots, excluding: excluding)
   }
 }
 
@@ -86,11 +100,17 @@ struct MCPSetting {
   /// nil = valid. Runs before any `apply`, so a batch with one invalid change writes nothing.
   let validate: (Any) -> String?
   let apply: (Any) throws -> Void
+  /// What a proposal/change-log `toLabel` should show for a raw value headed into `apply` —
+  /// identity for almost everything, but `chat.x_search_handles` normalizes (lowercases, dedupes,
+  /// caps) before storing, so the label must show what will actually be stored, not the AI's raw
+  /// input verbatim.
+  let normalizeForLabel: (Any) -> Any
 
   init(
     id: String, title: String, category: String, kind: Kind, proposalOnly: Bool = false,
     unavailableReason: @escaping () -> String? = { nil }, read: @escaping () -> Any,
-    validate: @escaping (Any) -> String?, apply: @escaping (Any) throws -> Void
+    validate: @escaping (Any) -> String?, apply: @escaping (Any) throws -> Void,
+    normalizeForLabel: @escaping (Any) -> Any = { $0 }
   ) {
     self.id = id
     self.title = title
@@ -101,6 +121,7 @@ struct MCPSetting {
     self.read = read
     self.validate = validate
     self.apply = apply
+    self.normalizeForLabel = normalizeForLabel
   }
 }
 
@@ -212,16 +233,113 @@ enum MCPSettingsCatalog {
     }
   }
 
+  /// `modifiers` names the MCP shortcut JSON format accepts; anything else (including other
+  /// `HotKey.Key(string:)` modifier spellings like "capslock" or "fn") is rejected rather than
+  /// silently masked, so an AI app's typo surfaces as an error instead of a wrong shortcut.
+  private static let modifierNameToFlag: [String: NSEvent.ModifierFlags] = [
+    "command": .command, "option": .option, "control": .control, "shift": .shift,
+  ]
+
+  /// Carbon key names that are themselves modifier keys, never a real "key" to bind. Rejected as
+  /// `key` even though `HotKey.Key(string:)` parses them (it also accepts "command", "shift", …).
+  private static let modifierOnlyKeys: Set<Key> = [
+    .command, .rightCommand, .option, .rightOption, .control, .rightControl,
+    .shift, .rightShift, .function, .capsLock,
+  ]
+
+  /// Decodes the MCP shortcut JSON format (spec in `plans/active/mcp-settings.md`):
+  /// `{"key": "1", "modifiers": ["control", "option"]}` — `key` is the key's name/character as
+  /// `HotKey.Key(string:)` describes it ("a", "1", "f5", "space", "return", …), `modifiers` is a
+  /// subset of `["command", "option", "control", "shift"]`. Unknown keys or modifier names are
+  /// rejected (nil) rather than falling back to `.a` or being silently dropped — the old
+  /// `ShortcutDefinition`-shaped format (carbon keycode + modifier bitmask) is no longer accepted.
+  /// `displayCharacter` is always nil: there is no `NSEvent` to capture one from, and deriving it
+  /// from the AI's `key` string (rather than the user's real keyboard) is exactly what
+  /// `ShortcutRecorderRow` does NOT do — `ShortcutDefinition.renderShortcut` already falls back to
+  /// the layout-aware character (or `Key.displayString`) when `displayCharacter` is nil, the same
+  /// path legacy stored shortcuts use.
   private static func shortcutDefinition(from dict: [String: Any]) -> ShortcutDefinition? {
-    guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
-    return try? JSONDecoder().decode(ShortcutDefinition.self, from: data)
+    guard let keyString = dict["key"] as? String, let key = Key(string: keyString),
+      !modifierOnlyKeys.contains(key)
+    else { return nil }
+    guard let modifierNames = dict["modifiers"] as? [String] else { return nil }
+    var modifiers: NSEvent.ModifierFlags = []
+    for name in modifierNames {
+      guard let flag = modifierNameToFlag[name.lowercased()] else { return nil }
+      modifiers.insert(flag)
+    }
+    return ShortcutDefinition(key: key, modifiers: modifiers, isEnabled: true, displayCharacter: nil)
   }
 
+  /// Inverse of `shortcutDefinition(from:)`: the same `{"key", "modifiers"}` shape `read` and
+  /// `get_settings` hand back, and an AI app's `update_settings` call must accept.
   private static func json(of definition: ShortcutDefinition) -> Any {
-    guard let data = try? JSONEncoder().encode(definition),
-      let obj = try? JSONSerialization.jsonObject(with: data)
-    else { return NSNull() }
-    return obj
+    let modifierNames: [String] = modifierNameToFlag
+      .filter { definition.modifiers.contains($0.value) }
+      .map(\.key)
+    return ["key": definition.key.mcpKeyName, "modifiers": modifierNames.sorted()]
+  }
+
+  /// Shown in `validate`/`apply` errors and in `update_settings`'s tool description, so an AI app
+  /// sees the expected shape rather than guessing at the old `ShortcutDefinition` Codable layout.
+  static let shortcutFormatHint =
+    "A shortcut needs {\"key\": <name, e.g. \\\"a\\\"/\\\"1\\\"/\\\"f5\\\"/\\\"space\\\"/\\\"return\\\">, "
+    + "\"modifiers\": [subset of \"command\",\"option\",\"control\",\"shift\"]}, or null to disable."
+
+  /// id → slot name, the same name each `shortcutSetting(slot:)` call below passes to
+  /// `ShortcutValidation.conflictingSlot(excluding:)` — so `validateBatch`'s merged-state conflict
+  /// check (which cannot see the local `slot` captured in each entry's own closures) names the
+  /// same slot the per-item check would.
+  static let shortcutSlotNames: [String: String] = [
+    "shortcuts.dictate": "Toggle Dictation",
+    "shortcuts.dictate_prompt": "Toggle Dictate Prompt",
+    "shortcuts.screenshot": "Screenshot",
+    "shortcuts.read_aloud": "Read Aloud",
+    "shortcuts.add_to_glossary": "Add to Glossary",
+    "shortcuts.open_chat": "Open Chat",
+    "shortcuts.open_settings": "Open Settings",
+  ]
+
+  /// Validates every item in a batch against the state the WHOLE batch would leave — not just
+  /// today's on-disk state each item's own `validate` compares against — so e.g. two shortcut
+  /// items in the same batch that both claim the same still-unused combo are caught before
+  /// anything is written, and so is an item that would conflict with another item's new value.
+  /// Returns the first problem, or nil if every item in the batch is fine together.
+  static func validateBatch(catalog: [MCPSetting], items: [(id: String, value: Any)]) -> String? {
+    var byID: [String: Any] = [:]
+    for item in items {
+      guard let setting = catalog.first(where: { $0.id == item.id }) else {
+        return "Unknown setting: \(item.id)."
+      }
+      if let reason = setting.unavailableReason() { return "\(setting.title): \(reason)" }
+      if let problem = setting.validate(item.value) { return "\(setting.title): \(problem)" }
+      byID[item.id] = item.value
+    }
+
+    // Shortcut items only: re-run the modifier rule and the conflict check across the merged
+    // state (every catalog shortcut slot, with this batch's changes layered on top of today's
+    // on-disk config) for each shortcut item actually in the batch.
+    let shortcutSettings = catalog.filter {
+      if case .shortcut = $0.kind { return true } else { return false }
+    }
+    func resolvedDefinition(for setting: MCPSetting) -> ShortcutDefinition? {
+      let value = byID[setting.id] ?? setting.read()
+      guard !(value is NSNull), let dict = value as? [String: Any] else { return nil }
+      return shortcutDefinition(from: dict)
+    }
+    let resolved: [(setting: MCPSetting, def: ShortcutDefinition)] = shortcutSettings.compactMap { s in
+      resolvedDefinition(for: s).map { (s, $0) }
+    }
+    for (setting, def) in resolved where byID[setting.id] != nil {
+      if let problem = ShortcutValidation.modifierRuleViolation(key: def.key, modifiers: def.modifiers) {
+        return "\(setting.title): \(problem)"
+      }
+      if let other = resolved.first(where: { $0.setting.id != setting.id && $0.def.key == def.key && $0.def.modifiers == def.modifiers }) {
+        let otherName = shortcutSlotNames[other.setting.id] ?? other.setting.title
+        return "\(setting.title): That shortcut is already used by \(otherName)."
+      }
+    }
+    return nil
   }
 
   // MARK: - Restore (Undo)
@@ -361,43 +479,82 @@ enum MCPSettingsCatalog {
       }
     }
 
+    /// `true` only for a local MLX model whose weights are not yet on disk. The MCP surface must
+    /// never trigger a multi-GB background download by picking an option —
+    /// `PromptModel.hasRequiredCredential` is `true` for every local model whether or not it's
+    /// downloaded (the Settings picker, via `.promptModelChanged` → `MenuBarController`, is the
+    /// thing allowed to kick off that download; `update_settings` is not).
+    func needsLocalModelDownload(_ model: PromptModel) -> Bool {
+      guard let type = model.localMLXModelType else { return false }
+      return MLXModelPaths.localDirectory(for: type) == nil
+    }
+
+    let notDownloadedReason = "Not downloaded. Download it in Settings first."
+
+    /// `hasCredential`, additionally refusing a local MLX model that isn't downloaded yet.
+    func availableNow(_ model: PromptModel, hasCredential: (PromptModel) -> Bool) -> Bool {
+      hasCredential(model) && !needsLocalModelDownload(model)
+    }
+
     func promptModelSetting(
       id: String, title: String, key: String, fallback: PromptModel,
       models: @escaping () -> [PromptModel],
-      hasCredential: @escaping (PromptModel) -> Bool
+      hasCredential: @escaping (PromptModel) -> Bool,
+      // `meetings.summary_model` / `improvement.model` resolve their stored raw value the same
+      // way `PromptModel.loadChatSlotModel` does (legacy raw-value migration, in-enum deprecation
+      // mapping, chat-model supersession) so a valid stored value isn't misreported as the
+      // fallback — see `PromptModel.resolvedChatSlotModel(forRawValue:)`, which does this WITHOUT
+      // touching UserDefaults, unlike the real loader (which hardcodes `.standard`).
+      // `dictate_prompt.model` keeps the plain lookup: it also accepts audio-only models the
+      // chat-slot resolver's `supportsTextChat` filter would drop.
+      resolveStoredRawValueAsChatSlot: Bool = false,
+      // Only `dictate_prompt.model`'s own picker (`SpeechToPromptSettingsTab`) posts
+      // `.promptModelChanged` on save; the Meeting Summary and Smart Improvement pickers don't, so
+      // this must not post it there either (even though it is now harmless — the download gate
+      // above means `.apply` only ever stores an already-downloaded model).
+      postsPromptModelChanged: Bool = true
     ) -> MCPSetting {
-      MCPSetting(
+      func resolveStored(_ raw: String) -> PromptModel? {
+        if resolveStoredRawValueAsChatSlot {
+          return PromptModel.resolvedChatSlotModel(forRawValue: raw)
+        }
+        guard let model = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)),
+          models().contains(model)
+        else { return nil }
+        return model
+      }
+      return MCPSetting(
         id: id, title: title, category: "models",
         kind: .enumeration(options: {
-          let selected = defaults.string(forKey: key)
-            .flatMap { PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue($0)) } ?? fallback
+          let selected = defaults.string(forKey: key).flatMap(resolveStored) ?? fallback
           return ModelPickerCuration.visibleModels(models(), selected: selected).map { model in
             MCPSetting.Option(
               model.rawValue, model.displayName,
-              available: hasCredential(model), reason: model.pickerSetupBadge)
+              available: availableNow(model, hasCredential: hasCredential),
+              reason: needsLocalModelDownload(model) ? notDownloadedReason : model.pickerSetupBadge)
           }
         }),
         read: {
-          if let raw = defaults.string(forKey: key),
-            let model = PromptModel(rawValue: PromptModel.migrateLegacyPromptRawValue(raw)),
-            models().contains(model)
-          {
-            return model.rawValue
-          }
-          return fallback.rawValue
+          (defaults.string(forKey: key).flatMap(resolveStored) ?? fallback).rawValue
         },
         validate: { value in
           guard let raw = value as? String, let model = PromptModel(rawValue: raw), models().contains(model) else {
             return "Unknown \(title)."
           }
-          return hasCredential(model) ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
+          guard hasCredential(model) else {
+            return "\(model.displayName) needs a key or setup the user hasn't added yet."
+          }
+          guard !needsLocalModelDownload(model) else {
+            return "\(model.displayName): \(notDownloadedReason)"
+          }
+          return nil
         },
         apply: { value in
           guard let raw = value as? String, let model = PromptModel(rawValue: raw) else {
             throw MCPConfigError(message: "Unknown \(title).")
           }
           defaults.set(model.rawValue, forKey: key)
-          deps.postNotification(.promptModelChanged, model)
+          if postsPromptModelChanged { deps.postNotification(.promptModelChanged, model) }
           deps.postSelectionsChanged()
         })
     }
@@ -432,21 +589,34 @@ enum MCPSettingsCatalog {
     var settings: [MCPSetting] = []
 
     // MARK: dictation.transcription_model
+    // Uses `TranscriptionModel.selectableForDictation` (not `allCases`), same as
+    // `meetings.transcription_model` below, so Offline Mode and non-dictation models are
+    // respected. Reads through the injected `defaults` with the same migration helper the real
+    // loader (`TranscriptionModel.loadSelected()`, which hardcodes `.standard` and has
+    // write-side-effects the catalog's `read` must not have) uses.
     settings.append(MCPSetting(
       id: "dictation.transcription_model", title: "Dictation model", category: "models",
       kind: .enumeration(options: {
-        let selected = TranscriptionModel.loadSelected()
-        return ModelPickerCuration.visibleModels(TranscriptionModel.allCases, selected: selected).map {
+        let migrated = TranscriptionModel.migrateLegacyTranscriptionRawValue(
+          defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) ?? "")
+        let selected = TranscriptionModel(rawValue: migrated) ?? SettingsDefaults.selectedTranscriptionModel
+        return ModelPickerCuration.visibleModels(TranscriptionModel.selectableForDictation, selected: selected).map {
           MCPSetting.Option(
             $0.rawValue, $0.displayName, available: $0.hasRequiredCredential,
             reason: $0.pickerSetupBadge)
         }
       }),
-      read: { TranscriptionModel.loadSelected().rawValue },
-      validate: { value in
-        guard let raw = value as? String, let model = TranscriptionModel(rawValue: raw) else {
-          return "Unknown transcription model."
+      read: {
+        guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
+          return SettingsDefaults.selectedTranscriptionModel.rawValue
         }
+        let migrated = TranscriptionModel.migrateLegacyTranscriptionRawValue(raw)
+        return TranscriptionModel(rawValue: migrated)?.rawValue ?? SettingsDefaults.selectedTranscriptionModel.rawValue
+      },
+      validate: { value in
+        guard let raw = value as? String, let model = TranscriptionModel(rawValue: raw),
+          TranscriptionModel.selectableForDictation.contains(model)
+        else { return "Unknown transcription model." }
         return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
       },
       apply: { value in
@@ -459,28 +629,44 @@ enum MCPSettingsCatalog {
       }))
 
     // MARK: chat.model
+    // `read` resolves the stored raw value the same way `PromptModel.loadChatSlotModel` does
+    // (legacy raw-value migration, deprecation mapping, chat-model supersession), so a valid
+    // stored value isn't misreported as the fallback. `available`/`reason` refuse a local MLX
+    // model that isn't downloaded yet — picking one here must never trigger a background download.
     settings.append(MCPSetting(
       id: "chat.model", title: "Chat model", category: "models",
       kind: .enumeration(options: {
         PromptModel.chatModels.map {
-          MCPSetting.Option($0.rawValue, $0.displayName, available: $0.hasRequiredCredential, reason: $0.pickerSetupBadge)
+          MCPSetting.Option(
+            $0.rawValue, $0.displayName,
+            available: availableNow($0, hasCredential: { $0.hasRequiredCredential }),
+            reason: needsLocalModelDownload($0) ? notDownloadedReason : $0.pickerSetupBadge)
         }
       }),
       read: {
-        (defaults.string(forKey: UserDefaultsKeys.selectedChatModel)).flatMap(PromptModel.init(rawValue:))?.rawValue
-          ?? SettingsDefaults.selectedChatModel.rawValue
+        guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedChatModel) else {
+          return SettingsDefaults.selectedChatModel.rawValue
+        }
+        return (PromptModel.resolvedChatSlotModel(forRawValue: raw) ?? SettingsDefaults.selectedChatModel).rawValue
       },
       validate: { value in
         guard let raw = value as? String, let model = PromptModel(rawValue: raw), PromptModel.chatModels.contains(model) else {
           return "Unknown chat model."
         }
-        return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key the user hasn't added yet."
+        guard model.hasRequiredCredential else {
+          return "\(model.displayName) needs a key the user hasn't added yet."
+        }
+        guard !needsLocalModelDownload(model) else {
+          return "\(model.displayName): \(notDownloadedReason)"
+        }
+        return nil
       },
       apply: { value in
         guard let raw = value as? String, let model = PromptModel(rawValue: raw) else {
           throw MCPConfigError(message: "Unknown chat model.")
         }
         ChatViewModel.persistChatModelSelection(model, defaults: defaults)
+        // Matches ChatView's own picker, which posts this on selection.
         deps.postNotification(.promptModelChanged, model)
         deps.postSelectionsChanged()
       }))
@@ -488,7 +674,7 @@ enum MCPSettingsCatalog {
     // MARK: chat.openrouter_model_id
     settings.append(MCPSetting(
       id: "chat.openrouter_model_id", title: "OpenRouter chat model id", category: "models", kind: .string(maxLength: 200),
-      read: { OpenRouterChatPreferences.modelID },
+      read: { OpenRouterChatPreferences.modelID(defaults: defaults) },
       validate: { value in
         guard let s = value as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, s.count <= 200 else {
           return "OpenRouter model id must be 1–200 characters."
@@ -497,7 +683,7 @@ enum MCPSettingsCatalog {
       },
       apply: { value in
         guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-        OpenRouterChatPreferences.setModelID(s)
+        OpenRouterChatPreferences.setModelID(s, defaults: defaults)
       }))
 
     // MARK: meetings.transcription_model
@@ -551,18 +737,24 @@ enum MCPSettingsCatalog {
       hasCredential: { $0.hasRequiredCredentialForDictatePrompt }))
 
     // MARK: meetings.summary_model
+    // Settings → Meetings' own picker (`MeetingsSettingsTab`) writes through `SettingsViewModel`'s
+    // save flow, which does not post `.promptModelChanged` — so this entry must not either.
     settings.append(promptModelSetting(
       id: "meetings.summary_model", title: "Meeting summary model",
       key: UserDefaultsKeys.selectedMeetingSummaryModel, fallback: SettingsDefaults.selectedMeetingSummaryModel,
       models: { PromptModel.textChatModels },
-      hasCredential: { $0.hasRequiredCredential }))
+      hasCredential: { $0.hasRequiredCredential },
+      resolveStoredRawValueAsChatSlot: true, postsPromptModelChanged: false))
 
     // MARK: improvement.model
+    // Same reasoning as `meetings.summary_model`: `ImprovementSettingsTab`'s picker doesn't post
+    // `.promptModelChanged` either.
     settings.append(promptModelSetting(
       id: "improvement.model", title: "Smart Improvement model",
       key: UserDefaultsKeys.selectedImprovementModel, fallback: SettingsDefaults.selectedImprovementModel,
       models: { PromptModel.textChatModels },
-      hasCredential: { $0.hasRequiredCredential }))
+      hasCredential: { $0.hasRequiredCredential },
+      resolveStoredRawValueAsChatSlot: true, postsPromptModelChanged: false))
 
     // MARK: read_aloud.model
     settings.append(MCPSetting(
@@ -609,8 +801,8 @@ enum MCPSettingsCatalog {
           return ChatGPTPlanPreferences.isConfigured ? nil : "needs ChatGPT sign-in"
         #endif
       },
-      read: { ChatGPTPlanPreferences.modelID },
-      write: { ChatGPTPlanPreferences.setModelID($0) }))
+      read: { ChatGPTPlanPreferences.modelID(defaults: defaults) },
+      write: { ChatGPTPlanPreferences.setModelID($0, defaults: defaults) }))
 
     // MARK: chat.custom_endpoint_model_id
     settings.append(modelIDSetting(
@@ -690,7 +882,7 @@ enum MCPSettingsCatalog {
         validate: { value in
           if value is NSNull { return nil }
           guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else {
-            return "A shortcut needs a key, modifiers and enabled."
+            return "\(Self.shortcutFormatHint)"
           }
           if let problem = ShortcutValidation.modifierRuleViolation(key: def.key, modifiers: def.modifiers) {
             return problem
@@ -710,7 +902,7 @@ enum MCPSettingsCatalog {
               key: current.key, modifiers: current.modifiers, isEnabled: false)
           } else {
             guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else {
-              throw MCPConfigError(message: "A shortcut needs a key, modifiers and enabled.")
+              throw MCPConfigError(message: "\(Self.shortcutFormatHint)")
             }
             config[keyPath: keyPath] = def
           }
@@ -762,11 +954,13 @@ enum MCPSettingsCatalog {
       key: UserDefaultsKeys.notificationDuration, defaultValue: SettingsDefaults.notificationDuration,
       label: { $0.isRecommended ? "\($0.displayName) (Recommended)" : $0.displayName }))
 
-    // MARK: clipboard.auto_paste — never prompts; refused without Accessibility already granted.
+    // MARK: clipboard.auto_paste — never prompts; stays visible and can always be turned OFF.
+    // `enablingRefused`, not `unavailableReason`, so an AI app can still see and disable this
+    // without Accessibility — matching `dictate_prompt.screenshot_context`'s pattern below.
     settings.append(boolSetting(
       id: "clipboard.auto_paste", title: "Auto-paste after dictation", category: "clipboard",
       key: UserDefaultsKeys.autoPasteAfterDictation, defaultValue: SettingsDefaults.autoPasteAfterDictation,
-      unavailableReason: {
+      enablingRefused: {
         deps.hasAccessibilityPermission() ? nil : "Needs the Accessibility permission, which the user has to grant themselves."
       }))
 
@@ -775,11 +969,20 @@ enum MCPSettingsCatalog {
       id: "clipboard.restore_after_paste", title: "Restore clipboard after auto-paste", category: "clipboard",
       key: UserDefaultsKeys.restoreClipboardAfterPaste, defaultValue: SettingsDefaults.restoreClipboardAfterPaste))
 
-    // MARK: dictation.fn_key — same permission gate.
+    // MARK: dictation.fn_key — direct-download build only (hidden in Settings on the App Store
+    // build, `KeyboardShortcutsSection`'s `#if !APP_STORE`); same Accessibility gate as
+    // `clipboard.auto_paste`, via `enablingRefused` so OFF always stays reachable.
     settings.append(boolSetting(
       id: "dictation.fn_key", title: "Hold fn to dictate", category: "dictation",
       key: UserDefaultsKeys.fnKeyDictation, defaultValue: SettingsDefaults.fnKeyDictation,
       unavailableReason: {
+        #if APP_STORE
+          return "Direct-download build only."
+        #else
+          return nil
+        #endif
+      },
+      enablingRefused: {
         deps.hasAccessibilityPermission() ? nil : "Needs the Accessibility permission, which the user has to grant themselves."
       }))
 
@@ -834,11 +1037,13 @@ enum MCPSettingsCatalog {
     voiceSetting(id: "read_aloud.voice.xai", title: "xAI voice", provider: .xai)
     voiceSetting(id: "read_aloud.voice.system", title: "macOS voice", provider: .system)
 
-    // MARK: screenshot.save_enabled — refused without a folder chosen; MCP never opens the picker.
+    // MARK: screenshot.save_enabled — refused turning ON without a folder chosen (MCP never opens
+    // the picker); `enablingRefused`, not `unavailableReason`, so the entry stays visible and OFF
+    // always stays reachable.
     settings.append(boolSetting(
       id: "screenshot.save_enabled", title: "Save dictation screenshots", category: "screenshot",
       key: UserDefaultsKeys.screenshotSaveEnabled, defaultValue: SettingsDefaults.screenshotSaveEnabled,
-      unavailableReason: {
+      enablingRefused: {
         deps.hasScreenshotFolder() ? nil : "No folder is chosen yet; the user has to pick one in WhisperShortcut Settings."
       }))
 
@@ -891,6 +1096,12 @@ enum MCPSettingsCatalog {
         guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
         let stored = XSearchHandles.normalize(s).joined(separator: " ")
         defaults.set(stored, forKey: UserDefaultsKeys.grokXSearchHandles)
+      },
+      // The proposal/change-log `toLabel` must show what will actually be stored (normalized),
+      // not the AI's raw input verbatim.
+      normalizeForLabel: { value in
+        guard let s = value as? String else { return value }
+        return XSearchHandles.normalize(s).joined(separator: " ")
       }))
 
     // MARK: improvement.auto_run_interval — picker stores the Int raw value (days; 0 = off).
@@ -958,26 +1169,47 @@ enum MCPSettingsCatalog {
 // settings proposal; mirrors `MCPConfigApplier`'s other `apply*` methods).
 
 extension MCPConfigApplier {
-  /// Validates every item against the live catalog, then applies all of them and records one
-  /// change-log entry. Fails without writing anything if any item no longer validates (e.g. the
-  /// setting's dependency changed between validation at the tool call and this apply).
+  /// All-or-nothing: validates every item against the state the WHOLE batch would leave (not
+  /// just today's on-disk state, which can't see two items in the same batch claiming the same
+  /// combo — see `MCPSettingsCatalog.validateBatch`), applies them in order, and records one
+  /// change-log entry only once every item has succeeded. If an `apply` throws partway through,
+  /// everything already applied in this batch is rolled back (reverse order, by replaying each
+  /// item's `from` value through `apply`) before the failure is returned — a batch must never
+  /// leave earlier items written, unlogged, with no `.settingsChangedExternally` for a failure
+  /// further down. The accepted-proposal path (`MCPProposalStore.accept`) calls this same
+  /// function, so both ways into a settings change go through one all-or-nothing apply.
   func applySettingsBatch(
     catalog: [MCPSetting], items: [MCPSettingsChangeItem], rationale: String, viaProposal: Bool
   ) -> Result<String, Error> {
     MCPMain.run {
+      var decoded: [(id: String, value: Any)] = []
+      for item in items {
+        guard let value = MCPSettingsCatalog.decodeValue(item.toJSON) else {
+          return .failure(MCPConfigError(message: "Could not read the new value for \(item.id)."))
+        }
+        decoded.append((item.id, value))
+      }
+      if let problem = MCPSettingsCatalog.validateBatch(catalog: catalog, items: decoded) {
+        return .failure(MCPConfigError(message: problem))
+      }
+
       var applied: [MCPSettingsChangeItem] = []
       for item in items {
         guard let setting = catalog.first(where: { $0.id == item.id }) else {
           return .failure(MCPConfigError(message: "Unknown setting: \(item.id)."))
         }
-        if let reason = setting.unavailableReason() { return .failure(MCPConfigError(message: reason)) }
         guard let value = MCPSettingsCatalog.decodeValue(item.toJSON) else {
           return .failure(MCPConfigError(message: "Could not read the new value for \(item.id)."))
         }
-        if let problem = setting.validate(value) { return .failure(MCPConfigError(message: problem)) }
         do {
           try setting.apply(value)
         } catch {
+          for rollback in applied.reversed() {
+            guard let rollbackSetting = catalog.first(where: { $0.id == rollback.id }),
+              let fromValue = MCPSettingsCatalog.decodeValue(rollback.fromJSON)
+            else { continue }
+            try? rollbackSetting.apply(fromValue)
+          }
           return .failure(error)
         }
         applied.append(item)

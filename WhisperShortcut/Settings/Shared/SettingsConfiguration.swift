@@ -1577,15 +1577,22 @@ enum ChatGPTPlanPreferences {
 
   /// Slug sent to the Responses API: the saved choice, else the first catalog entry, else
   /// `fallbackModelID`.
-  static var modelID: String {
-    let saved = (UserDefaults.standard.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) ?? "")
+  static var modelID: String { modelID(defaults: .standard) }
+
+  /// Same as `modelID`, reading through an injected `UserDefaults` — `MCPSettingsCatalog` needs
+  /// this so its `chat.chatgpt_plan_model_id` entry never touches the real UserDefaults.standard
+  /// in tests.
+  static func modelID(defaults: UserDefaults) -> String {
+    let saved = (defaults.string(forKey: UserDefaultsKeys.chatGPTPlanModelID) ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
     if !saved.isEmpty { return saved }
     return ChatGPTPlanModelCatalog.cachedModels().first?.slug ?? fallbackModelID
   }
 
-  static func setModelID(_ slug: String) {
-    UserDefaults.standard.set(slug, forKey: UserDefaultsKeys.chatGPTPlanModelID)
+  static func setModelID(_ slug: String) { setModelID(slug, defaults: .standard) }
+
+  static func setModelID(_ slug: String, defaults: UserDefaults) {
+    defaults.set(slug, forKey: UserDefaultsKeys.chatGPTPlanModelID)
   }
 
   /// Name of the selected model for the composer chip and pickers: the catalog's `display_name`,
@@ -1620,14 +1627,21 @@ enum OpenRouterChatPreferences {
   }
 
   /// Slug sent to OpenRouter (e.g. `openai/gpt-4o`).
-  static var modelID: String {
-    let v = (UserDefaults.standard.string(forKey: UserDefaultsKeys.openRouterChatModelID) ?? "")
+  static var modelID: String { modelID(defaults: .standard) }
+
+  /// Same as `modelID`, reading through an injected `UserDefaults` — `MCPSettingsCatalog` needs
+  /// this so its `chat.openrouter_model_id` entry never touches the real UserDefaults.standard
+  /// in tests.
+  static func modelID(defaults: UserDefaults) -> String {
+    let v = (defaults.string(forKey: UserDefaultsKeys.openRouterChatModelID) ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
     return v.isEmpty ? SettingsDefaults.openRouterChatModelID : v
   }
 
-  static func setModelID(_ slug: String) {
-    UserDefaults.standard.set(slug, forKey: UserDefaultsKeys.openRouterChatModelID)
+  static func setModelID(_ slug: String) { setModelID(slug, defaults: .standard) }
+
+  static func setModelID(_ slug: String, defaults: UserDefaults) {
+    defaults.set(slug, forKey: UserDefaultsKeys.openRouterChatModelID)
   }
 
   /// The part of `modelID` after the last "/" (the whole slug when there is none) — short enough
