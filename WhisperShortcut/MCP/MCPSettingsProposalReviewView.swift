@@ -1,45 +1,99 @@
 import SwiftUI
 
-/// Plain, functional review body for a `.settings` proposal: one line per change, no diff
-/// styling and no editing (there is no single text to edit). Deliberately minimal — the visual
-/// design of this screen is Opus 5.5's to do later; this exists so `update_settings` has
-/// somewhere to show up today. See `plans/active/mcp-settings.md`.
+/// Review window for a `.settings` proposal from `update_settings`: one row per change, the old
+/// value struck through next to the new one, the AI app's reason above. No editing: the changes
+/// are picker values, and editing them belongs in Settings. Accepting applies the whole batch at
+/// once, and the batch is one entry in "Changed by AI apps", so one Undo restores all of it.
 struct MCPSettingsProposalReviewView: View {
   let items: [MCPSettingsChangeItem]
   let rationale: String
   let onAccept: () -> Void
   let onCancel: () -> Void
 
-  var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      Text("Suggested by an AI app")
-        .font(.headline)
+  private var acceptTitle: String {
+    items.count == 1 ? "Apply Change" : "Apply \(items.count) Changes"
+  }
 
-      ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
-          ForEach(items, id: \.id) { item in
-            Text("\(item.title): \(item.fromLabel) → \(item.toLabel)")
-              .font(.body)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Settings Change from an AI App")
+          .font(.headline)
+        Text("Nothing has changed yet. Accepted changes apply together.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
-      Divider()
+      if !rationale.isEmpty {
+        HStack(alignment: .top, spacing: 8) {
+          Image(systemName: "quote.opening")
+            .foregroundColor(.accentColor)
+          Text(rationale)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.08))
+        .cornerRadius(6)
+      }
 
-      Text(rationale)
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            if index > 0 { Divider() }
+            changeRow(item)
+          }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor), lineWidth: 1))
+      }
 
-      HStack {
+      HStack(spacing: 12) {
+        Button("Decline") { onCancel() }
+          .keyboardShortcut(.cancelAction)
+          .pointerCursorOnHover()
+
         Spacer()
-        Button("Decline", action: onCancel)
-        Button("Accept", action: onAccept)
-          .keyboardShortcut(.defaultAction)
+
+        Text("You can undo it in Settings → Meetings.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+
+        // No default-action shortcut: this window can open while the user types elsewhere, and a
+        // stray Return must never change their setup.
+        Button(acceptTitle) { onAccept() }
+          .buttonStyle(.borderedProminent)
+          .disabled(items.isEmpty)
+          .pointerCursorOnHover()
       }
     }
     .padding(20)
-    .frame(minWidth: 480, idealWidth: 520, minHeight: 280, idealHeight: 360)
+    .frame(minWidth: 520, idealWidth: 560, minHeight: 320, idealHeight: 420)
+  }
+
+  private func changeRow(_ item: MCPSettingsChangeItem) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(item.title)
+        .font(.callout)
+        .fontWeight(.medium)
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text(item.fromLabel)
+          .strikethrough()
+          .foregroundColor(.secondary)
+        Image(systemName: "arrow.right")
+          .font(.caption)
+          .foregroundColor(.secondary)
+        Text(item.toLabel)
+          .fontWeight(.semibold)
+      }
+      .font(.callout)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 }

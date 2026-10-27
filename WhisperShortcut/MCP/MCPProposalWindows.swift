@@ -49,8 +49,8 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
         onDiscard: { [weak self] in self?.decline(id) }))
     } else if proposal.kind == .settings {
-      window.title = "Settings change suggested by an AI app"
-      window.setContentSize(NSSize(width: 520, height: 360))
+      window.title = "Settings Change from an AI App"
+      window.setContentSize(NSSize(width: 560, height: 420))
       window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
         items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
         onAccept: { [weak self] in self?.acceptSettings(id) },
@@ -216,9 +216,18 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         ? "New command /\(proposal.commandName ?? "")" : "Command /\(proposal.commandName ?? "")"
     case .deleteCommand: return "Delete command /\(proposal.commandName ?? "")"
     case .problemReport: return "Problem report: \(proposal.title ?? "untitled")"
-    case .settings:
-      let count = proposal.settingsChanges?.count ?? 0
-      return count == 1 ? "1 setting" : "\(count) settings"
+    case .settings: return settingsSummary(proposal.settingsChanges ?? [])
+    }
+  }
+
+  /// One line for a settings batch: the change itself when there is one ("Dictation model:
+  /// GPT Transcribe → Gemini Flash"), else the first two titles and how many more.
+  static func settingsSummary(_ items: [MCPSettingsChangeItem]) -> String {
+    switch items.count {
+    case 0: return "Settings"
+    case 1: return "\(items[0].title): \(items[0].fromLabel) → \(items[0].toLabel)"
+    case 2: return "\(items[0].title), \(items[1].title)"
+    default: return "\(items[0].title), \(items[1].title) and \(items.count - 2) more"
     }
   }
 
@@ -229,9 +238,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
     case .writingStyle: return "Writing style profile"
     case .saveCommand: return change.previousContent == nil ? "New command /\(change.target)" : "Command /\(change.target)"
     case .deleteCommand: return "Deleted command /\(change.target)"
-    case .settings:
-      let count = change.settingsChanges?.count ?? 0
-      return count == 1 ? "1 setting" : "\(count) settings"
+    case .settings: return settingsSummary(change.settingsChanges ?? [])
     }
   }
 
