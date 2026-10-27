@@ -48,7 +48,7 @@ struct MeetingAudioBacklogTests {
       LiveMeetingChunk(startTime: 5, text: "Speaker A: first"),
       LiveMeetingChunk(startTime: 754, text: "Speaker B: second\nline two"),
     ]
-    let parsed = LiveMeetingTranscriptStore.parseTranscript(MeetingAudioBacklog.transcriptText(chunks))
+    let parsed = MeetingTranscriptFormat.parse(MeetingTranscriptFormat.text(chunks))
     #expect(parsed.map(\.text) == chunks.map(\.text))
     #expect(parsed.map(\.startTime) == [5, 754])
   }

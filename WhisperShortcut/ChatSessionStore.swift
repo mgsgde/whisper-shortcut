@@ -613,7 +613,7 @@ class ChatSessionStore {
   }
 
   private static func meetingSortDate(_ session: ChatSession) -> Date {
-    session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+    session.meetingStem.flatMap(MeetingTranscriptFormat.date(fromStem:)) ?? session.lastUpdated
   }
 
   private func archiveBulk(label: String, include: (ChatSession) -> Bool) {

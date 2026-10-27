@@ -122,9 +122,4 @@ enum MeetingAudioBacklog {
       }
       .map { $0.element.1 }
   }
-
-  /// Renders chunks in the transcript file format `appendToTranscript` writes.
-  static func transcriptText(_ chunks: [LiveMeetingChunk]) -> String {
-    chunks.map { "\($0.timestampString) \($0.text)\n\n" }.joined()
-  }
 }

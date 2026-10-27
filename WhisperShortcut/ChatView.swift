@@ -2582,7 +2582,7 @@ class ChatViewModel: ObservableObject {
       let summary = loadMeetingSummaryFromDisk() ?? ""
       LiveMeetingTranscriptStore.shared.rehydrateForResume(
         stem: stem,
-        chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
+        chunks: MeetingTranscriptFormat.parse(transcript),
         summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
         notes: MeetingListService.shared.loadNotes(forStem: stem))
     }
@@ -3512,7 +3512,7 @@ struct ChatView: View {
     guard viewModel.isCurrentSessionMeeting else { return messages.map { .message($0) } }
     let notes = viewModel.meetingNotesForDisplay
     guard !notes.isEmpty,
-          let meetingStart = viewModel.currentMeetingStem.flatMap(MeetingListService.date(fromStem:))
+          let meetingStart = viewModel.currentMeetingStem.flatMap(MeetingTranscriptFormat.date(fromStem:))
     else { return messages.map { .message($0) } }
 
     var result: [MeetingStreamItem] = []

@@ -123,7 +123,7 @@ struct MCPMeetingTools {
 
   private func chunks(for id: String) -> [LiveMeetingChunk]? {
     guard let text = try? String(contentsOf: url(id, ext: "txt"), encoding: .utf8) else { return nil }
-    return LiveMeetingTranscriptStore.parseTranscript(text)
+    return MeetingTranscriptFormat.parse(text)
   }
 
   static func format(_ seconds: TimeInterval) -> String {

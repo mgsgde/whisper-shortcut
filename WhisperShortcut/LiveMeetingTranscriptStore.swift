@@ -15,9 +15,7 @@ struct LiveMeetingChunk: Identifiable, Sendable {
 
   /// Display timestamp string, e.g. "[02:15]"
   var timestampString: String {
-    let minutes = Int(startTime) / 60
-    let seconds = Int(startTime) % 60
-    return String(format: "[%02d:%02d]", minutes, seconds)
+    MeetingTranscriptFormat.timestamp(startTime)
   }
 }
 
@@ -40,9 +38,7 @@ struct LiveMeetingNote: Identifiable, Sendable {
   }
 
   var timestampString: String {
-    let minutes = Int(startTime) / 60
-    let seconds = Int(startTime) % 60
-    return String(format: "[%02d:%02d]", minutes, seconds)
+    MeetingTranscriptFormat.timestamp(startTime)
   }
 
   /// Plain-text rendering used for chat context and for the clipboard.
@@ -109,16 +105,6 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     }
   }
 
-  /// Generates a timestamp-based filename stem (e.g. "Meeting-2026-03-04-201119").
-  /// Used as the meeting's unique ID for both transcript files and chat store scope.
-  static func generateStem() -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-    return "Meeting-\(formatter.string(from: Date()))"
-  }
-
   /// Call when a new meeting session starts. Clears previous data.
   /// Generates a stem if one was not already set (e.g. when starting via global shortcut without "New Meeting").
   /// Must be called on the main thread (state mutations are synchronous so callers can read
@@ -126,7 +112,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   func startSession() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.startSession must be called on main thread")
     if self.currentMeetingFilenameStem == nil {
-      self.currentMeetingFilenameStem = Self.generateStem()
+      self.currentMeetingFilenameStem = MeetingTranscriptFormat.newStem()
     }
     self.chunks = []
     self.liveNotes = []
@@ -158,32 +144,6 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.liveNotes = notes
     DebugLogger.log(
       "LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count), notes: \(notes.count))")
-  }
-
-  /// Matches a "[mm:ss]" timestamp marker at the start of a line (minutes may exceed two digits for
-  /// long meetings). Anchored so a "[1:23]" inside a chunk's text does not split the chunk.
-  private static let timestampRegex = try! NSRegularExpression(
-    pattern: #"^\[(\d+):(\d{2})\]"#, options: [.anchorsMatchLines])
-
-  /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
-  /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.
-  static func parseTranscript(_ text: String) -> [LiveMeetingChunk] {
-    let ns = text as NSString
-    let matches = timestampRegex.matches(in: text, range: NSRange(location: 0, length: ns.length))
-    var result: [LiveMeetingChunk] = []
-    for (i, m) in matches.enumerated() {
-      let minutes = Int(ns.substring(with: m.range(at: 1))) ?? 0
-      let seconds = Int(ns.substring(with: m.range(at: 2))) ?? 0
-      let start = TimeInterval(minutes * 60 + seconds)
-      let bodyStart = m.range.location + m.range.length
-      let bodyEnd = (i + 1 < matches.count) ? matches[i + 1].range.location : ns.length
-      let body = ns.substring(with: NSRange(location: bodyStart, length: bodyEnd - bodyStart))
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      if !body.isEmpty {
-        result.append(LiveMeetingChunk(startTime: start, text: body))
-      }
-    }
-    return result
   }
 
   /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
@@ -234,7 +194,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// `startSession` / `createTranscriptFile` call synchronously (avoids stem races).
   func clearForNewMeeting() {
     assert(Thread.isMainThread, "LiveMeetingTranscriptStore.clearForNewMeeting must be called on main thread")
-    let stem = Self.generateStem()
+    let stem = MeetingTranscriptFormat.newStem()
     self.chunks = []
     self.liveNotes = []
     self.summary = ""

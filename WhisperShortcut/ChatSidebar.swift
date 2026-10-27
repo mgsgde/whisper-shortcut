@@ -79,7 +79,7 @@ struct ChatSidebar: View {
   /// Date a meeting buckets by: when the meeting took place (parsed from
   /// `meetingStem`), falling back to `lastUpdated`.
   private static func meetingSortDate(_ session: ChatSession) -> Date {
-    session.meetingStem.flatMap(MeetingListService.date(fromStem:)) ?? session.lastUpdated
+    session.meetingStem.flatMap(MeetingTranscriptFormat.date(fromStem:)) ?? session.lastUpdated
   }
 
   /// Date a session sorts and groups by. Meetings bucket by meeting date;

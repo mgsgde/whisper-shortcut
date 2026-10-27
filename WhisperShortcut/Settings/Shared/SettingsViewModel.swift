@@ -527,8 +527,7 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Live Meeting Transcripts Folder
   func openTranscriptsFolder() {
-    let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let transcriptsDir = MeetingFiles.directory
 
     if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
       do {
@@ -588,7 +587,7 @@ class SettingsViewModel: ObservableObject {
 
     let fm = FileManager.default
     let appSupport = AppSupportPaths.whisperShortcutApplicationSupportURL()
-    let meetingsDir = appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let meetingsDir = MeetingFiles.directory
     try? fm.removeItem(at: meetingsDir)
 
     let systemPromptsFile = appSupport.appendingPathComponent("UserContext")

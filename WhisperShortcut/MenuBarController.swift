@@ -1766,7 +1766,7 @@ class MenuBarController: NSObject {
       encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     LiveMeetingTranscriptStore.shared.rehydrateForResume(
       stem: stem,
-      chunks: LiveMeetingTranscriptStore.parseTranscript(transcript),
+      chunks: MeetingTranscriptFormat.parse(transcript),
       summary: summary,
       notes: MeetingListService.shared.loadNotes(forStem: stem))
     startLiveMeeting(resuming: true)
@@ -1778,8 +1778,7 @@ class MenuBarController: NSObject {
   }
 
   @objc func openTranscriptsFolder() {
-    let transcriptsDir = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+    let transcriptsDir = MeetingFiles.directory
     
     if !FileManager.default.fileExists(atPath: transcriptsDir.path) {
       do {
