@@ -28,9 +28,7 @@
 #   bash driver.sh onboarding-reset   # show Welcome again (keeps Keychain + container data)
 #   bash driver.sh onboarding-wipe    # DESTRUCTIVE: delete app container, then relaunch
 #
-# Menu items: Dictate, Dictate Prompt, Screenshot, Read Aloud,
-#             Copy Last Transcription, Recent Transcriptions, Chat, Settings…,
-#             Rate WhisperShortcut, Quit WhisperShortcut
+# Menu items: run `driver.sh items` for the live list.
 # ("Settings…" opens the window titled "Settings" — note the trailing Unicode ellipsis U+2026,
 #  not three periods. Quote it in the shell. "Chat" opens the chat window.)
 #
@@ -38,6 +36,10 @@
 # been renamed before ("Configure" → "Settings…").
 #
 # Screenshots land in $WS_SHOT_DIR (default /tmp). `shot "Settings…" settings` → /tmp/ws-settings.png
+#
+# Language: WS_LANG=de launches the app in German (`-AppleLanguages (de)`), for the layout check
+# of a translation. Quit first (`driver.sh quit`), then `WS_LANG=de driver.sh ensure`. Menu items
+# are then German too: "Einstellungen…" instead of "Settings…".
 
 set -euo pipefail
 
@@ -72,7 +74,9 @@ proc_spec() {
 }
 # Launch this checkout's bundle; as a sidecar when another instance already owns the hotkeys.
 launch_app() {
-  if other_instance_running; then open -n "$APP_PATH" --args --sidecar; else open -n "$APP_PATH"; fi
+  local lang=()
+  [[ -n "${WS_LANG:-}" ]] && lang=(-AppleLanguages "(${WS_LANG})")
+  if other_instance_running; then open -n "$APP_PATH" --args --sidecar ${lang[@]+"${lang[@]}"}; else open -n "$APP_PATH" --args ${lang[@]+"${lang[@]}"}; fi
 }
 # Quit only the instance of this checkout (never `pkill -x`, which would take the user's too).
 quit_app() {

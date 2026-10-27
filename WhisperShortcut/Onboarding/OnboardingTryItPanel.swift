@@ -177,7 +177,7 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
         let message = SpeechErrorFormatter.formatForUser(error)
         let tab = Self.settingsTab(for: error, message: message)
         self.phase = .failure(message, tab)
-        DebugLogger.logError("ONBOARDING: try-it failed: \(error.localizedDescription)")
+        DebugLogger.logError("ONBOARDING: try-it failed: \(error.logDescription)")
       }
       try? FileManager.default.removeItem(at: audioURL)
       self.recorder = nil
@@ -191,7 +191,7 @@ final class OnboardingTryItController: ObservableObject, AudioRecorderDelegate {
       self.countdownTask = nil
       let message = SpeechErrorFormatter.formatForUser(error)
       self.phase = .failure(message, .permissions)
-      DebugLogger.logError("ONBOARDING: try-it record failed: \(error.localizedDescription)")
+      DebugLogger.logError("ONBOARDING: try-it record failed: \(error.logDescription)")
       self.recorder = nil
     }
   }

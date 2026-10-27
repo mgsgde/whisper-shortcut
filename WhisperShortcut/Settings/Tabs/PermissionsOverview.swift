@@ -208,7 +208,7 @@ struct PermissionsOverview: View {
     do {
       try process.run()
     } catch {
-      DebugLogger.logError("PERMISSIONS: relaunch helper failed: \(error.localizedDescription)")
+      DebugLogger.logError("PERMISSIONS: relaunch helper failed: \(error.logDescription)")
       return
     }
 
@@ -232,19 +232,19 @@ struct PermissionsOverview: View {
   @ViewBuilder
   private func permissionRow(
     name: String,
-    description: String,
+    description: LocalizedStringKey,
     required: Bool,
     status: PermissionStatus,
     actions: AnyView,
-    hint: String? = nil
+    hint: LocalizedStringKey? = nil
   ) -> some View {
     HStack(alignment: .top, spacing: 16) {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 8) {
-          Text(name)
+          Text(verbatim: name)
             .font(.callout)
             .fontWeight(.semibold)
-          Text(required ? "Required" : "Optional")
+          Text(required ? ("Required" as LocalizedStringKey) : "Optional")
             .font(.caption2)
             .fontWeight(.medium)
             .padding(.horizontal, 6)

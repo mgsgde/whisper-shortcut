@@ -24,6 +24,9 @@ final class UpdaterService: NSObject, ObservableObject {
   }
 
   private var controller: SPUStandardUpdaterController!
+  /// A scheduled update that arrived while a meeting recorded and was held back (see
+  /// `standardUserDriverShouldHandleShowingScheduledUpdate`). Shown when the meeting ends.
+  private var deferredScheduledUpdate = false
   private var started = false
   private var observations: [NSKeyValueObservation] = []
 
@@ -41,7 +44,7 @@ final class UpdaterService: NSObject, ObservableObject {
     do {
       try updater.start()
     } catch {
-      DebugLogger.log("UPDATER: failed to start Sparkle: \(error.localizedDescription)")
+      DebugLogger.log("UPDATER: failed to start Sparkle: \(error.logDescription)")
     }
     updater.automaticallyDownloadsUpdates = false
 
@@ -58,6 +61,15 @@ final class UpdaterService: NSObject, ObservableObject {
       },
     ]
     DebugLogger.log("UPDATER: started (feed \(AppConstants.sparkleFeedURL))")
+  }
+
+  /// Called when a live meeting has finished. A held-back scheduled update is brought up now;
+  /// Sparkle keeps that update session open and shows it in focus on the next check.
+  func showDeferredUpdateIfAny() {
+    guard deferredScheduledUpdate else { return }
+    deferredScheduledUpdate = false
+    DebugLogger.log("UPDATER: meeting ended, showing the deferred scheduled update")
+    controller.checkForUpdates(nil)
   }
 
   /// User-initiated check.
@@ -80,7 +92,7 @@ extension UpdaterService: SPUUpdaterDelegate {
 
   nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
     if let error {
-      DebugLogger.log("UPDATER: update cycle finished with error: \(error.localizedDescription)")
+      DebugLogger.log("UPDATER: update cycle finished with error: \(error.logDescription)")
     } else {
       DebugLogger.log("UPDATER: update cycle finished")
     }
@@ -93,13 +105,28 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
   nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(
     _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
   ) -> Bool {
-    true
+    // A scheduled update must not pop a window (and steal focus) while this process records a
+    // live meeting. Declining here defers it to the next scheduled check.
+    if Self.thisProcessIsRecordingMeeting() {
+      DebugLogger.log("UPDATER: deferring scheduled update \(update.displayVersionString) (meeting recording)")
+      Task { @MainActor in UpdaterService.shared.deferredScheduledUpdate = true }
+      return false
+    }
+    return true
+  }
+
+  /// True when the live-meeting marker belongs to this process (written at session start, cleared
+  /// at the end). File-based so it is safe from Sparkle's nonisolated delegate callbacks.
+  nonisolated private static func thisProcessIsRecordingMeeting() -> Bool {
+    guard let payload = LiveMeetingRecordingMarker.read()?.payload else { return false }
+    return payload.pid == getpid()
   }
 
   nonisolated func standardUserDriverWillHandleShowingUpdate(
     _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
   ) {
     guard !state.userInitiated else { return }
+    guard handleShowingUpdate, !Self.thisProcessIsRecordingMeeting() else { return }
     DebugLogger.log("UPDATER: scheduled update found: \(update.displayVersionString)")
     // Menu-bar (LSUIElement) app: bring Sparkle's alert in front of other windows.
     Task { @MainActor in NSApp.activate(ignoringOtherApps: true) }

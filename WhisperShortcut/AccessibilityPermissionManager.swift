@@ -28,8 +28,8 @@ class AccessibilityPermissionManager {
     }
 
     let alert = NSAlert()
-    alert.messageText = "Enable Accessibility for Auto-Paste"
-    alert.informativeText = """
+    alert.messageText = String(localized: "Enable Accessibility for Auto-Paste")
+    alert.informativeText = String(localized: """
       Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.
 
       Dictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.
@@ -39,11 +39,11 @@ class AccessibilityPermissionManager {
       2. Enable WhisperShortcut
 
       Already listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click "Copy Reset Command" and run it in Terminal to clear the stale entry.
-      """
+      """)
     alert.alertStyle = .informational
-    alert.addButton(withTitle: "Open System Settings")
-    alert.addButton(withTitle: "Copy Reset Command")
-    alert.addButton(withTitle: "Not Now")
+    alert.addButton(withTitle: String(localized: "Open System Settings"))
+    alert.addButton(withTitle: String(localized: "Copy Reset Command"))
+    alert.addButton(withTitle: String(localized: "Not Now"))
 
     let response = alert.runModal()
 

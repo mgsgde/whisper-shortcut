@@ -24,7 +24,10 @@ enum MailHostDetector {
     for host in mxHosts {
       let normalized = normalizedName(host)
       guard !normalized.isEmpty else { continue }
-      for rule in rules where normalized == rule.suffix || normalized.hasSuffix("." + rule.suffix) {
+      if let provider = MailProvider.provider(forMXHost: normalized) {
+        return .imapHost(provider.host)
+      }
+      for rule in nonImapRules where normalized == rule.suffix || normalized.hasSuffix("." + rule.suffix) {
         return rule.guess
       }
     }
@@ -44,23 +47,8 @@ enum MailHostDetector {
     return name
   }
 
-  private static let rules: [(suffix: String, guess: MailProviderGuess)] = [
-    ("ionos.de", .imapHost("imap.ionos.de")),
-    ("ionos.com", .imapHost("imap.ionos.de")),
-    ("ionos.co.uk", .imapHost("imap.ionos.de")),
-    ("kundenserver.de", .imapHost("imap.ionos.de")),
-    ("1and1.com", .imapHost("imap.ionos.de")),
-    ("rzone.de", .imapHost("imap.strato.de")),
-    ("your-server.de", .imapHost("mail.your-server.de")),
-    ("mail.icloud.com", .imapHost("imap.mail.me.com")),
-    ("mailbox.org", .imapHost("imap.mailbox.org")),
-    ("messagingengine.com", .imapHost("imap.fastmail.com")),
-    ("zoho.eu", .imapHost("imap.zoho.eu")),
-    ("zoho.com", .imapHost("imap.zoho.com")),
-    ("hostinger.com", .imapHost("imap.hostinger.com")),
-    ("gmx.net", .imapHost("imap.gmx.net")),
-    ("web.de", .imapHost("imap.web.de")),
-    ("posteo.de", .imapHost("posteo.de")),
+  /// Providers WhisperShortcut can't read over IMAP. IMAP providers live in `MailProvider.all`.
+  private static let nonImapRules: [(suffix: String, guess: MailProviderGuess)] = [
     ("google.com", .google),
     ("googlemail.com", .google),
     ("outlook.com", .microsoft),

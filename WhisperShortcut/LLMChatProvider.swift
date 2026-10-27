@@ -331,7 +331,7 @@ enum OpenAICompatibleStructured {
     logTag: String
   ) async throws -> [String: Any] {
     guard let url = URL(string: endpoint) else {
-      throw TranscriptionError.networkError("Invalid \(logTag) endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid \(logTag) endpoint URL"))
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -365,7 +365,7 @@ enum OpenAICompatibleStructured {
     DebugLogger.logNetwork("\(logTag)-STRUCTURED: POST \(endpoint) model=\(model) schema=\(schemaName)")
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from \(logTag) API")
+      throw TranscriptionError.networkError(String(localized: "Invalid response from \(logTag) API"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       let text = String(data: data, encoding: .utf8) ?? ""
@@ -444,7 +444,7 @@ enum OpenAICompatibleStream {
     _ config: Config, body: [String: Any]
   ) async throws -> URLSession.AsyncBytes {
     guard let url = URL(string: config.endpoint) else {
-      throw TranscriptionError.networkError("Invalid \(config.logTag) endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid \(config.logTag) endpoint URL"))
     }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -465,7 +465,7 @@ enum OpenAICompatibleStream {
     }
 
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from \(config.logTag) API")
+      throw TranscriptionError.networkError(String(localized: "Invalid response from \(config.logTag) API"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       var errData = Data()

@@ -33,8 +33,8 @@ enum ProviderCredentials {
     var capability: String {
       switch self {
       case .openAI: return "OpenAI models"
-      case .xAI: return "Grok models"
-      case .anthropic: return "Claude models"
+      case .xAI: return String(localized: "Grok models")
+      case .anthropic: return String(localized: "Claude models")
       case .openRouter: return "OpenRouter models"
       }
     }
@@ -76,7 +76,13 @@ enum ProviderCredentials {
 
   /// Message shown when no key is stored.
   static func missingKeyMessage(_ kind: Kind) -> String {
-    "No \(kind.displayName) API key configured. Add your \(kind.displayName) API key in Settings → Accounts to use \(kind.capability)."
+    let name = kind.displayName
+    switch kind {
+    case .openAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenAI models.")
+    case .xAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Grok models.")
+    case .anthropic: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Claude models.")
+    case .openRouter: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenRouter models.")
+    }
   }
 
   /// Message shown when the provider rejects the key we sent (HTTP 401/403).

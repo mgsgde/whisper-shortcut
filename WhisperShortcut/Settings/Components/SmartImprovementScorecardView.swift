@@ -15,37 +15,37 @@ enum ScorecardMetric: CaseIterable, Identifiable {
 
   var title: String {
     switch self {
-    case .rejectedSpellings: return "Rejected spellings"
-    case .followUps: return "Follow-up fixes"
-    case .dashes: return "Dashes added"
-    case .promptRetries: return "Prompt retries"
-    case .chatRetries: return "Chat retries"
+    case .rejectedSpellings: return String(localized: "Rejected spellings")
+    case .followUps: return String(localized: "Follow-up fixes")
+    case .dashes: return String(localized: "Dashes added")
+    case .promptRetries: return String(localized: "Prompt retries")
+    case .chatRetries: return String(localized: "Chat retries")
     }
   }
 
   /// Column header in the weekly table, where the full title would not fit.
   var shortTitle: String {
     switch self {
-    case .rejectedSpellings: return "Spellings"
-    case .followUps: return "Follow-ups"
-    case .dashes: return "Dashes"
-    case .promptRetries: return "Prompt retries"
-    case .chatRetries: return "Chat retries"
+    case .rejectedSpellings: return String(localized: "Spellings")
+    case .followUps: return String(localized: "Follow-ups")
+    case .dashes: return String(localized: "Dashes")
+    case .promptRetries: return String(localized: "Prompt retries")
+    case .chatRetries: return String(localized: "Chat retries")
     }
   }
 
   var explanation: String {
     switch self {
     case .rejectedSpellings:
-      return "Spellings you rejected in the Glossary (X (not \"Y\")) that still showed up, per 100 dictations."
+      return String(localized: "Spellings you rejected in the Glossary (X (not \"Y\")) that still showed up, per 100 dictations.")
     case .followUps:
-      return "Share of Dictate Prompts that reworked the previous result within 5 minutes, because the first one missed."
+      return String(localized: "Share of Dictate Prompts that reworked the previous result within 5 minutes, because the first one missed.")
     case .dashes:
-      return "Share of Dictate Prompts that added an em or en dash to text that had none."
+      return String(localized: "Share of Dictate Prompts that added an em or en dash to text that had none.")
     case .promptRetries:
-      return "Dictate Prompts re-run on the same selection with a new instruction, per 100 prompts."
+      return String(localized: "Dictate Prompts re-run on the same selection with a new instruction, per 100 prompts.")
     case .chatRetries:
-      return "Chat messages sent again because the answer wasn't good enough, per 100 chat turns."
+      return String(localized: "Chat messages sent again because the answer wasn't good enough, per 100 chat turns.")
     }
   }
 
@@ -104,20 +104,20 @@ private let scorecardMinimumSample = 10
 extension SystemPromptSection {
   var scorecardDisplayName: String {
     switch self {
-    case .dictation: return "Dictation"
-    case .whisperGlossary: return "Glossary"
-    case .promptMode: return "Dictate Prompt"
-    case .chat: return "Chat"
-    case .readAloudRewrite: return "Read Aloud"
+    case .dictation: return String(localized: "Dictation")
+    case .whisperGlossary: return String(localized: "Glossary")
+    case .promptMode: return String(localized: "Dictate Prompt")
+    case .chat: return String(localized: "Chat")
+    case .readAloudRewrite: return String(localized: "Read Aloud")
     }
   }
 }
 
 private func scorecardSourceName(_ source: String) -> String {
   switch source {
-  case "auto": return "Smart Improvement"
-  case "voice-feedback": return "Spoken feedback"  // legacy history rows
-  case "chat": return "Chat"
+  case "auto": return String(localized: "Smart Improvement")
+  case "voice-feedback": return String(localized: "Spoken feedback")  // legacy history rows
+  case "chat": return String(localized: "Chat")
   default: return source
   }
 }
@@ -161,11 +161,11 @@ private enum ScorecardEmptyReason {
   var message: String {
     switch self {
     case .offline:
-      return "Offline Mode keeps no usage logs, so there is nothing to measure."
+      return String(localized: "Offline Mode keeps no usage logs, so there is nothing to measure.")
     case .loggingOff:
-      return "Turn on \"Save usage data\" to start measuring."
+      return String(localized: "Turn on \"Save usage data\" to start measuring.")
     case .noData:
-      return "Nothing to measure yet. Numbers appear once you've used the app for a few days."
+      return String(localized: "Nothing to measure yet. Numbers appear once you've used the app for a few days.")
     }
   }
 }
@@ -416,7 +416,7 @@ struct SmartImprovementScorecardStrip: View {
         VStack(alignment: .leading, spacing: 6) {
           Text(
             report.lastChange == nil
-              ? "Last 4 weeks. No earlier change was measured, so accepting this one sets the baseline."
+              ? ("Last 4 weeks. No earlier change was measured, so accepting this one sets the baseline." as LocalizedStringKey)
               : "Last 4 weeks. No usage since the last change yet."
           )
           .font(.caption)

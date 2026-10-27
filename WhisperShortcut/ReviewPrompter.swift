@@ -189,15 +189,15 @@ final class ReviewPrompter {
 
     let alert = NSAlert()
     alert.alertStyle = .informational
-    alert.messageText = "Hey, I'm Magnus — the developer"
-    alert.informativeText = """
+    alert.messageText = String(localized: "Hey, I'm Magnus — the developer")
+    alert.informativeText = String(localized: """
       If you enjoy WhisperShortcut, feel free to buy it on the App Store and leave a \
       short review. It really helps me out as a solo developer.
 
       Best wishes from Heidelberg, Germany
-      """
-    alert.addButton(withTitle: "Open App Store")
-    alert.addButton(withTitle: "Maybe Later")
+      """)
+    alert.addButton(withTitle: String(localized: "Open App Store"))
+    alert.addButton(withTitle: String(localized: "Maybe Later"))
 
     let response = alert.runModal()
     if response == .alertFirstButtonReturn {

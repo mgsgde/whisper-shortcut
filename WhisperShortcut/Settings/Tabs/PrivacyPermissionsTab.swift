@@ -102,7 +102,7 @@ struct OfflineModeSection: View {
 
   @ViewBuilder
   private func offlineModeBullet(
-    _ text: String, systemImage: String = "checkmark.circle.fill", color: Color = .green
+    _ text: LocalizedStringKey, systemImage: String = "checkmark.circle.fill", color: Color = .green
   ) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: systemImage)
@@ -145,7 +145,7 @@ struct PrivacySection: View {
           .font(.headline)
       }
       OpenSourceBanner()
-      ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
+      ForEach(Array(PrivacyCopy.promiseBullets.enumerated()), id: \.offset) { _, bullet in
         promiseBullet(bullet)
       }
       HStack(spacing: 12) {
@@ -175,7 +175,7 @@ struct PrivacySection: View {
   }
 
   @ViewBuilder
-  private func promiseBullet(_ text: String) -> some View {
+  private func promiseBullet(_ text: LocalizedStringResource) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 8) {
       Image(systemName: "checkmark.circle.fill")
         .font(.caption)

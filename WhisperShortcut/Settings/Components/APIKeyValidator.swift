@@ -23,7 +23,7 @@ enum APIKeyProvider: CaseIterable {
     }
   }
 
-  var sectionTitle: String {
+  var sectionTitle: LocalizedStringResource {
     switch self {
     case .google: return "Google API Key"
     case .openai: return "OpenAI API Key"
@@ -32,7 +32,7 @@ enum APIKeyProvider: CaseIterable {
     }
   }
 
-  var sectionSubtitle: String {
+  var sectionSubtitle: LocalizedStringResource {
     switch self {
     case .google:
       return "Powers Gemini transcription, Dictate Prompt, Read Aloud, and Chat. Get a key from Google AI Studio (link below)."
@@ -115,7 +115,7 @@ enum APIKeyProvider: CaseIterable {
 
 /// One "get a key here" link row under an API key field.
 struct APIKeyHelpLink: Identifiable {
-  let intro: String
+  let intro: LocalizedStringResource
   let label: String
   let url: URL
 
@@ -180,7 +180,7 @@ enum APIKeyValidator {
         return .unverified
       }
     } catch {
-      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.localizedDescription))")
+      DebugLogger.log("API-KEY-VALIDATION: \(provider) unverified (network error: \(error.logDescription))")
       return .unverified
     }
   }

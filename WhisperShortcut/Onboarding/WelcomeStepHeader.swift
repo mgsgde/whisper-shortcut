@@ -4,8 +4,8 @@ import SwiftUI
 /// out by hand, and only two of them let the subtitle wrap.
 struct WelcomeStepHeader: View {
   let systemImage: String
-  let title: String
-  let subtitle: String
+  let title: LocalizedStringKey
+  let subtitle: LocalizedStringKey
 
   var body: some View {
     HStack(spacing: 12) {

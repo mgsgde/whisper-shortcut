@@ -41,7 +41,7 @@ struct UsageReportSheet: View {
 
         Spacer()
 
-        Button(copied ? "Copied!" : "Copy") {
+        Button(copied ? ("Copied!" as LocalizedStringKey) : "Copy") {
           NSPasteboard.general.clearContents()
           NSPasteboard.general.setString(report, forType: .string)
           copied = true

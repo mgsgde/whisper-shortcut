@@ -1,6 +1,6 @@
 ---
 name: review-refactors
-description: Hunt for the mid-to-long-term simplest, most elegant design — deep structural simplifications, not surface cleanups. Explicitly discounts "that's more code / more work to build" as an objection, so it argues for the best long-term shape even when it means large rework. Given no target it triages the repo itself (churn, defect density, size, crusted code, centrality) and picks the highest-payback hotspots. Produces a tiered, blast-radius-tagged proposal list; applies only what the user approves. Use when the user asks where the code could be built simpler/more elegantly/better, wants refactoring opportunities, wants technical debt reduced, or wants duplication removed across files. Scope is WhisperShortcut Swift ONLY — for web/ workspace tooling, use the parent review-refactors skill.
+description: Hunt for the mid-to-long-term simplest, most elegant design — deep structural simplifications, not surface cleanups. Explicitly discounts "that's more code / more work to build" as an objection, so it argues for the best long-term shape even when it means large rework. Given no target it triages the repo itself (churn, defect density, size, crusted code, centrality) and picks the highest-payback hotspots. Produces a tiered, blast-radius-tagged proposal list; applies only what the user approves. Use when the user asks where the code could be built simpler/more elegantly/better, wants refactoring opportunities, wants technical debt reduced, or wants duplication removed across files. Scope is WhisperShortcut Swift ONLY — for web/ and workspace tooling, use the parent `review-refactors-web` skill.
 ---
 
 # Review Refactors
@@ -279,7 +279,7 @@ Refactors must not change behavior. For each applied change:
    the equivalence lock against the old copies.
 5. Keep comments and naming at the density of the surrounding code. Document _why_ the seam exists,
    never what the line does.
-6. Hold everything in the working tree. Do not commit, push, or cut a release unless explicitly told.
+6. Commit only the files you touched, per `AGENTS.md` → Git; never tag or release.
 
 ## Step 6 — Report, then update the ledger
 

@@ -19,13 +19,47 @@ struct MCPMeetingToolsTests {
   private let old = "Meeting-2026-10-18-090000-Budget"
   private let liveText = "[00:05] Speaker A: Hello team\n\n[01:10] Speaker B: Budget is fine\n\n[02:30] Speaker A: Ship it Friday\n"
 
-  private func fixture(liveStem: String? = "Meeting-2026-10-19-110109") throws -> MCPMeetingTools {
+  private func fixture(
+    liveStem: String? = "Meeting-2026-10-19-110109",
+    titles: [String: String] = [:]
+  ) throws -> MCPMeetingTools {
     let dir = try makeDir()
     try write(dir, "\(live).txt", liveText)
     try write(dir, "\(old).txt", "[00:10] Speaker A: Über die Straße gehen\n\n[05:00] Speaker B: Quarterly numbers\n")
     try write(dir, "\(old).notes.md", "- decided on café budget")
     try write(dir, "\(old).summary.md", "Summary text")
-    return MCPMeetingTools(meetingsDirectory: dir, liveStem: { liveStem })
+    return MCPMeetingTools(meetingsDirectory: dir, liveStem: { liveStem }, meetingTitles: { titles })
+  }
+
+  private func titleField(_ listing: String, _ id: String) -> String? {
+    let line = listing.split(separator: "\n").first { $0.contains("id: \(id) |") }
+    return line?.components(separatedBy: " | ").first { $0.hasPrefix("title: ") }
+  }
+
+  @Test("list_meetings shows the session title for the live meeting")
+  func sessionTitleShown() throws {
+    let r = try fixture(titles: [live: "Energiemarkt und Strategie"]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, live) == "title: Energiemarkt und Strategie")
+  }
+
+  @Test("Session title wins over filename-suffix title")
+  func sessionTitleWins() throws {
+    let r = try fixture(titles: [old: "Q3 Budget"]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Q3 Budget")
+  }
+
+  @Test("Without session title the suffix shows, with neither a dash")
+  func titleFallbacks() throws {
+    let r = try fixture().call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Budget")
+    #expect(titleField(r.text, live) == "title: -")
+  }
+
+  @Test("Whitespace-only session title falls back")
+  func blankSessionTitle() throws {
+    let r = try fixture(titles: [live: "  \n ", old: "   "]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Budget")
+    #expect(titleField(r.text, live) == "title: -")
   }
 
   @Test("Live transcript without since returns everything and next_since")

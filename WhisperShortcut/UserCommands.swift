@@ -52,13 +52,13 @@ enum UserCommandParser {
 
     let stem = (fileName as NSString).deletingPathExtension.lowercased()
     guard isValidName(stem) else {
-      return fail("Invalid name. Use lowercase letters, digits and dashes (max 40 characters).")
+      return fail(String(localized: "Invalid name. Use lowercase letters, digits and dashes (max 40 characters)."))
     }
     if reservedNames.contains(stem) {
       return fail("/\(stem) is a built-in command")
     }
     if contents.utf8.count > maxFileBytes {
-      return fail("File is larger than 32 KB")
+      return fail(String(localized: "File is larger than 32 KB"))
     }
 
     var text = contents
@@ -82,7 +82,7 @@ enum UserCommandParser {
       body = lines[(close + 1)...].joined(separator: "\n")
     }
     body = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !body.isEmpty else { return fail("The command text is empty") }
+    guard !body.isEmpty else { return fail(String(localized: "The command text is empty")) }
 
     var scope = UserCommandScope.both
     if let raw = meta["scope"], !raw.isEmpty {
@@ -92,7 +92,7 @@ enum UserCommandParser {
         issues.append(
           UserCommandIssue(
             fileName: fileName,
-            message: "Unknown scope \"\(raw)\" (use meeting, chat or both); using both",
+            message: String(localized: "Unknown scope \"\(raw)\" (use meeting, chat or both); using both"),
             isWarning: true))
       }
     }
@@ -200,11 +200,11 @@ final class UserCommandStore: ObservableObject {
       do {
         let data = try Data(contentsOf: url)
         if data.count > UserCommandParser.maxFileBytes {
-          problems.append(UserCommandIssue(fileName: fileName, message: "File is larger than 32 KB", isWarning: false))
+          problems.append(UserCommandIssue(fileName: fileName, message: String(localized: "File is larger than 32 KB"), isWarning: false))
           continue
         }
         guard let text = String(data: data, encoding: .utf8) else {
-          problems.append(UserCommandIssue(fileName: fileName, message: "File is not valid UTF-8 text", isWarning: false))
+          problems.append(UserCommandIssue(fileName: fileName, message: String(localized: "File is not valid UTF-8 text"), isWarning: false))
           continue
         }
         let result = UserCommandParser.parse(
@@ -264,10 +264,10 @@ final class UserCommandStore: ObservableObject {
 
     var errorDescription: String? {
       switch self {
-      case .invalidName: return "Invalid name. Use lowercase letters, digits and dashes (max 40 characters)."
-      case .reserved(let n): return "/\(n) is a built-in command"
-      case .emptyText: return "The command text is empty"
-      case .tooLarge: return "The command is larger than 32 KB"
+      case .invalidName: return String(localized: "Invalid name. Use lowercase letters, digits and dashes (max 40 characters).")
+      case .reserved(let n): return String(localized: "/\(n) is a built-in command")
+      case .emptyText: return String(localized: "The command text is empty")
+      case .tooLarge: return String(localized: "The command is larger than 32 KB")
       }
     }
   }

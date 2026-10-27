@@ -58,7 +58,7 @@ extension Key: @retroactive Codable {
     case .eight: return "8"
     case .nine: return "9"
     case .escape: return "⎋"
-    case .space: return "Space"
+    case .space: return String(localized: "Space", comment: "Name of the space bar key in a shortcut")
     case .comma: return ","
     case .period: return "."
     case .f1: return "F1"
@@ -168,6 +168,19 @@ enum ShortcutAction: CaseIterable {
   /// The name the assistant-facing list uses. A surface whose label differs on purpose
   /// (the menu's "Settings…", Settings' "Open Chat:") keeps that string locally.
   var title: String {
+    switch self {
+    case .dictate: return "Dictate"
+    case .dictatePrompt: return "Dictate Prompt"
+    case .screenshot: return "Screenshot"
+    case .readAloud: return "Read Aloud"
+    case .chat: return "Chat"
+    case .settings: return "Settings"
+    }
+  }
+
+  /// `title` for on-screen labels. `title` itself stays English because the assistant-facing
+  /// list is model input, not UI.
+  var localizedTitle: LocalizedStringResource {
     switch self {
     case .dictate: return "Dictate"
     case .dictatePrompt: return "Dictate Prompt"

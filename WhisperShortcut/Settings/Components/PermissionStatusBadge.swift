@@ -28,7 +28,7 @@ struct PermissionStatusBadge: View {
     }
   }
 
-  private var label: String {
+  private var label: LocalizedStringKey {
     switch status {
     case .granted: return "Granted"
     case .denied: return "Denied"
@@ -42,9 +42,9 @@ extension PermissionKind {
   /// The name macOS uses for the permission in System Settings → Privacy & Security.
   var displayName: String {
     switch self {
-    case .microphone: return "Microphone"
-    case .accessibility: return "Accessibility"
-    case .screenRecording: return "Screen Recording"
+    case .microphone: return String(localized: "Microphone")
+    case .accessibility: return String(localized: "Accessibility")
+    case .screenRecording: return String(localized: "Screen Recording")
     }
   }
 }

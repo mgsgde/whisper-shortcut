@@ -24,21 +24,22 @@ enum ChatGPTPlanError: LocalizedError, Equatable {
   var errorDescription: String? {
     switch self {
     case .usageLimit:
-      return "You've reached the ChatGPT plan limit for WhisperShortcut. Check or raise it in ChatGPT Settings → Usage."
+      return String(localized: "You've reached the ChatGPT plan limit for WhisperShortcut. Check or raise it in ChatGPT Settings → Usage.")
     case .notEligible:
-      return "Your ChatGPT plan or workspace doesn't allow use in WhisperShortcut. Pick another chat model, or add an API key in Settings → Accounts."
+      return String(localized: "Your ChatGPT plan or workspace doesn't allow use in WhisperShortcut. Pick another chat model, or add an API key in Settings → Accounts.")
     case .usageUnavailable:
-      return "ChatGPT couldn't check your plan usage right now. Try again in a minute."
+      return String(localized: "ChatGPT couldn't check your plan usage right now. Try again in a minute.")
     case .signInRequired:
-      return "Your ChatGPT sign-in has expired. Sign in again in Settings → Accounts."
+      return String(localized: "Your ChatGPT sign-in has expired. Sign in again in Settings → Accounts.")
     case .planNotEnabled:
-      return "ChatGPT plan use wasn't allowed when you signed in. Turn it on in Settings → Accounts."
+      return String(localized: "ChatGPT plan use wasn't allowed when you signed in. Turn it on in Settings → Accounts.")
     case .unsupportedCapability(let param):
-      return "Your ChatGPT plan can't run part of this request (\(param ?? "unknown")). Remove it and try again."
+      let which = param ?? String(localized: "unknown")
+      return String(localized: "Your ChatGPT plan can't run part of this request (\(which)). Remove it and try again.")
     case .other(let status, let message, let requestID):
-      var text = status.map { "ChatGPT returned an error (HTTP \($0)): \(message)" }
-        ?? "ChatGPT returned an error: \(message)"
-      if let requestID, !requestID.isEmpty { text += " (request ID: \(requestID))" }
+      var text = status.map { String(localized: "ChatGPT returned an error (HTTP \($0)): \(message)") }
+        ?? String(localized: "ChatGPT returned an error: \(message)")
+      if let requestID, !requestID.isEmpty { text += String(localized: " (request ID: \(requestID))") }
       return text
     }
   }
@@ -100,7 +101,8 @@ enum ChatGPTPlanError: LocalizedError, Equatable {
     case "response.incomplete":
       let reason = (payload["incomplete_details"] as? [String: Any])?["reason"] as? String
       return .other(
-        status: nil, message: "The reply was cut off" + (reason.map { " (\($0))" } ?? "") + ".",
+        status: nil,
+        message: reason.map { String(localized: "The reply was cut off (\($0)).") } ?? String(localized: "The reply was cut off."),
         requestID: nil)
     case "error":
       let message = payload["message"] as? String
@@ -108,7 +110,7 @@ enum ChatGPTPlanError: LocalizedError, Equatable {
         status: nil, code: payload["code"] as? String, param: payload["param"] as? String,
         message: message, requestID: requestID(in: payload, error: nil, message: message))
     default:
-      return .other(status: nil, message: "The connection ended before ChatGPT finished the reply.", requestID: nil)
+      return .other(status: nil, message: String(localized: "The connection ended before ChatGPT finished the reply."), requestID: nil)
     }
   }
 

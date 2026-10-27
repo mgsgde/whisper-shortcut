@@ -59,16 +59,16 @@ struct SettingsView: View {
             .foregroundColor(.accentColor)
             .frame(width: 20, height: 20)
 
-          Text(tab.rawValue)
+          Text(tab.displayName)
             .font(.body)
         }
         .padding(.vertical, 2)
       }
-      .help(description(for: tab))
+      .help(Text(description(for: tab)))
       .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
-    .frame(minWidth: 210, idealWidth: 220, maxWidth: 260)
+    .frame(minWidth: 270, idealWidth: 270, maxWidth: 300)
   }
 
   // MARK: - Detail View
@@ -159,7 +159,7 @@ struct SettingsView: View {
     }
   }
 
-  private func description(for tab: SettingsTab) -> String {
+  private func description(for tab: SettingsTab) -> LocalizedStringKey {
     switch tab {
     case .general:
       return "Shortcuts and app behavior"

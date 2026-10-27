@@ -207,7 +207,7 @@ struct WelcomeDictationSetupStep: View {
   // MARK: - Choice cards
 
   private func choiceCard(
-    _ value: DictationChoice, icon: String, title: String, tagline: String, facts: [String]
+    _ value: DictationChoice, icon: String, title: LocalizedStringKey, tagline: LocalizedStringKey, facts: [LocalizedStringKey]
   ) -> some View {
     let selected = choice == value
     return Button {
@@ -233,7 +233,7 @@ struct WelcomeDictationSetupStep: View {
             .foregroundStyle(selected ? Color.accentColor : Color.secondary.opacity(0.5))
         }
         VStack(alignment: .leading, spacing: 4) {
-          ForEach(facts, id: \.self) { fact in
+          ForEach(Array(facts.enumerated()), id: \.offset) { _, fact in
             HStack(alignment: .firstTextBaseline, spacing: 6) {
               Text("•").foregroundStyle(.secondary)
               Text(fact)
@@ -367,7 +367,7 @@ struct WelcomeDictationSetupStep: View {
     }
   }
 
-  private var pendingHint: String {
+  private var pendingHint: LocalizedStringKey {
     switch choice {
     case nil: return "Pick Offline or Cloud to continue."
     case .offline: return "Download the offline model to continue."
@@ -383,7 +383,7 @@ struct WelcomePrivacyDetails: View {
       Text(PrivacyCopy.promiseTitle)
         .font(.headline)
       VStack(alignment: .leading, spacing: 10) {
-        ForEach(PrivacyCopy.promiseBullets, id: \.self) { bullet in
+        ForEach(Array(PrivacyCopy.promiseBullets.enumerated()), id: \.offset) { _, bullet in
           HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
               .foregroundStyle(.green)
@@ -617,7 +617,7 @@ struct OnboardingAPIKeyRow: View {
   let provider: APIKeyProvider
   /// Extra line under the title. The provider's own subtitle is the Settings paragraph;
   /// onboarding keeps the shorter note it already showed.
-  var note: String? = nil
+  var note: LocalizedStringKey? = nil
   /// Runs after a successful save, once `store` has reconciled. The setup step re-picks a
   /// transcription model and re-reads Continue from here.
   var onStored: () -> Void = {}
@@ -675,8 +675,8 @@ struct OnboardingAPIKeyRow: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isVisible ? "Hide key" : "Show key")
-        .help(isVisible ? "Hide key" : "Show key")
+        .accessibilityLabel(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
+        .help(isVisible ? ("Hide key" as LocalizedStringKey) : "Show key")
 
         Button("Save") {
           let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -727,7 +727,7 @@ struct OnboardingAPIKeyRow: View {
       Image(systemName: "circle.fill")
         .font(.system(size: 7))
         .foregroundStyle(isConfigured ? .green : .gray)
-      Text(isConfigured ? "Configured" : "Not set")
+      Text(isConfigured ? ("Configured" as LocalizedStringKey) : "Not set")
         .font(.caption2)
         .foregroundStyle(.secondary)
     }
@@ -743,7 +743,7 @@ struct WelcomeTryItStep: View {
   /// A disabled Dictate binding renders as "Disabled", which used to read
   /// "Later, Disabled does the same…". There is no other wording for that case, so the
   /// "Later, … does the same" clause is dropped and only the instruction to try it remains.
-  private var tryItDetail: String {
+  private var tryItDetail: LocalizedStringKey {
     let shortcut = ShortcutConfigManager.shared.loadConfiguration()[keyPath: ShortcutAction.dictate.keyPath]
     guard shortcut.isEnabled else { return "Say a sentence." }
     return "Say a sentence. Later, \(shortcut.displayStringWithSeparator) does the same in any app and puts the text where your cursor is."
@@ -848,7 +848,7 @@ struct OnboardingAutoPasteCard: View {
         HStack(spacing: 8) {
           PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
-            ? "Accessibility granted — auto-paste is ready."
+            ? ("Accessibility granted — auto-paste is ready." as LocalizedStringKey)
             : "Enable WhisperShortcut in System Settings, then return here.")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -883,12 +883,12 @@ struct WelcomeDoneStep: View {
   /// `requirements` is "all must be granted" — a single missing one makes the row red.
   private struct ShortcutFeature: Identifiable {
     let shortcut: String
-    let name: String
-    let detail: String
+    let name: LocalizedStringResource
+    let detail: LocalizedStringKey
     let requirements: [PermissionKind]
     /// Dictate also needs a transcription model that can run (a key or a downloaded model).
     var needsTranscriptionModel = false
-    var id: String { name }
+    var id: String { shortcut }
   }
 
   /// Read from the recorders' model, so a shortcut re-recorded on this step shows up in the list
@@ -920,7 +920,7 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: dictate.displayString,
-          name: ShortcutAction.dictate.title,
+          name: ShortcutAction.dictate.localizedTitle,
           detail: "press and start speaking — your words land as text",
           requirements: [.microphone],
           needsTranscriptionModel: true))
@@ -935,16 +935,16 @@ struct WelcomeDoneStep: View {
         promptRequirements.append(selection)
       }
       #if APP_STORE
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place. This build reads the highlighted text from a screenshot (Screen Recording). Offline models need you to copy the selection with ⌘C first."
       #else
-      let promptDetail =
+      let promptDetail: LocalizedStringKey =
         "select text, speak an instruction — the selection is rewritten in place"
       #endif
       list.append(
         ShortcutFeature(
           shortcut: prompting.displayString,
-          name: ShortcutAction.dictatePrompt.title,
+          name: ShortcutAction.dictatePrompt.localizedTitle,
           detail: promptDetail,
           requirements: promptRequirements))
     }
@@ -953,7 +953,7 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: screenshot.displayString,
-          name: ShortcutAction.screenshot.title,
+          name: ShortcutAction.screenshot.localizedTitle,
           detail: "capture your screen straight to the clipboard or a folder",
           requirements: [.screenRecording]))
     }
@@ -964,7 +964,7 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: chat.displayString,
-          name: ShortcutAction.chat.title,
+          name: ShortcutAction.chat.localizedTitle,
           detail: "a full conversation window, with screenshots",
           requirements: []))
     }
@@ -975,7 +975,7 @@ struct WelcomeDoneStep: View {
       list.append(
         ShortcutFeature(
           shortcut: binding(.readAloud).displayString,
-          name: ShortcutAction.readAloud.title,
+          name: ShortcutAction.readAloud.localizedTitle,
           detail: "select text anywhere and hear it spoken",
           requirements: [.accessibility]))
     }
@@ -989,7 +989,7 @@ struct WelcomeDoneStep: View {
         .font(.system(size: 40))
         .foregroundStyle(dictationReady ? .green : .orange)
       VStack(spacing: 8) {
-        Text(dictationReady ? "You're ready" : "Almost ready")
+        Text(dictationReady ? ("You're ready" as LocalizedStringKey) : "Almost ready")
           .font(.largeTitle)
           .fontWeight(.semibold)
         // The app has no Dock icon or main window, so say where it lives — and describe the icon
@@ -1138,7 +1138,7 @@ struct WelcomeDoneStep: View {
     }
   }
 
-  private func badgeContent(icon: String, color: Color, text: String) -> some View {
+  private func badgeContent(icon: String, color: Color, text: LocalizedStringKey) -> some View {
     HStack(spacing: 4) {
       Image(systemName: icon)
         .foregroundStyle(color)

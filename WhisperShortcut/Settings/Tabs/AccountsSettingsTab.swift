@@ -78,12 +78,12 @@ struct AccountsSettingsTab: View {
 
 /// Small group label above a run of sections, so a long tab reads as two lists rather than one.
 struct AccountsGroupHeader: View {
-  let title: String
-  let subtitle: String
+  let title: LocalizedStringResource
+  let subtitle: LocalizedStringKey
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(title.uppercased())
+      Text(String(localized: title).uppercased())
         .font(.caption)
         .fontWeight(.semibold)
         .foregroundColor(.secondary)
