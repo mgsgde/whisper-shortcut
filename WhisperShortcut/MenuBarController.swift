@@ -1892,12 +1892,15 @@ class MenuBarController: NSObject {
     retryAction: (() -> Void)? = nil,
     retryActionTitle: LocalizedStringResource = "Retry",
     dismissAction: (() -> Void)? = nil,
-    topUpURL: URL? = nil
+    topUpURL: URL? = nil,
+    changesAppState: Bool = true
   ) {
     if dismissProcessingFirst {
       PopupNotificationWindow.dismissProcessing()
     }
-    appState = appState.showError(shortTitle)
+    if changesAppState {
+      appState = appState.showError(shortTitle)
+    }
     PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
@@ -3355,6 +3358,8 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
+    // A meeting owns `appState`; a failed segment shows its popup only.
+    let meetingOwnsState = isLiveMeetingActive
     recording = nil
     clipboardManager.discardRestorePoint()
     dismissQuickActions()
@@ -3374,11 +3379,12 @@ extension MenuBarController: AudioRecorderDelegate {
         message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
         dismissProcessingFirst: false,
         retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-        retryActionTitle: "Open System Settings"
+        retryActionTitle: "Open System Settings",
+        changesAppState: !meetingOwnsState
       )
       return
     }
-    presentError(shortTitle: String(localized: "Recording Error"), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+    presentError(shortTitle: String(localized: "Recording Error"), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false, changesAppState: !meetingOwnsState)
   }
 }
 
