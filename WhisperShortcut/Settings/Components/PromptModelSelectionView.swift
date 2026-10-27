@@ -256,11 +256,11 @@ struct PromptModelSelectionView: View {
     guard let type = model.localMLXModelType else { return nil }
     if mlxManager.downloadingModels.contains(type) {
       if let fraction = mlxManager.downloadProgress[type] {
-        return "Downloading… \(Int(fraction * 100))%"
+        return String(localized: "Downloading… \(Int(fraction * 100))%")
       }
-      return "Downloading…"
+      return String(localized: "Downloading…")
     }
-    return mlxManager.isModelAvailable(type) ? nil : "Not downloaded"
+    return mlxManager.isModelAvailable(type) ? nil : String(localized: "Not downloaded")
   }
 
 }

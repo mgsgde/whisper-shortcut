@@ -2868,7 +2868,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das beste davon"
+            "value" : "Beste Wahl"
           }
         }
       }
@@ -3038,7 +3038,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In den Systemeinstellungen ändern …"
+            "value" : "Ändern …"
           }
         }
       }
@@ -12361,6 +12361,16 @@
         }
       }
     },
+    "Press a key…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste drücken …"
+          }
+        }
+      }
+    },
     "press and start speaking — your words land as text" : {
       "localizations" : {
         "de" : {
@@ -15603,6 +15613,17 @@
         }
       }
     },
+    "Space" : {
+      "comment" : "Name of the space bar key in a shortcut",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leertaste"
+          }
+        }
+      }
+    },
     "Spanish" : {
       "localizations" : {
         "de" : {
@@ -17912,7 +17933,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Willkommenstour …"
+            "value" : "Einführung …"
           }
         }
       }

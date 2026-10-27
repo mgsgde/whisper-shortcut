@@ -38,7 +38,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
                   .font(.caption)
                 // A gigabyte-scale download with no number reads as a hang; show how far it is.
                 let fraction = store.downloadProgress[model]
-                Text(fraction.map { "Downloading… \(Int($0 * 100))%" } ?? "Downloading…")
+                Text(fraction.map { String(localized: "Downloading… \(Int($0 * 100))%") } ?? String(localized: "Downloading…"))
                   .font(.caption)
                   .foregroundColor(.secondary)
                   .monospacedDigit()

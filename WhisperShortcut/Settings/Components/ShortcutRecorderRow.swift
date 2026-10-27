@@ -194,9 +194,9 @@ struct ShortcutRecorderRow: View {
 
   private var currentDisplayText: String {
     if let pending = pendingShortcut { return pending.displayString }
-    if isRecording { return "Press a key…" }
+    if isRecording { return String(localized: "Press a key…") }
     if let s = shortcut, s.isEnabled { return s.displayString }
-    return "Not set"
+    return String(localized: "Not set")
   }
 
   private var borderColor: Color {
