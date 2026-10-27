@@ -8,12 +8,14 @@ extension Notification.Name {
 
 /// A change an AI app asked for that waits for the user's decision.
 struct MCPProposal: Codable, Identifiable {
-  enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand }
+  enum Kind: String, Codable { case systemPrompt, writingStyle, saveCommand, deleteCommand, problemReport }
   enum Status: String, Codable { case pending, accepted, declined }
 
   let id: String
   let createdAt: Date
   let kind: Kind
+  /// Short summary for a `.problemReport`. Optional so older JSONL lines still decode.
+  var title: String?
   /// `SystemPromptSection` raw value for `.systemPrompt`.
   var section: String?
   var commandName: String?
@@ -76,14 +78,14 @@ final class MCPProposalStore: ObservableObject {
       AppSupportPaths.ensureDirectoryExists(fileURL.deletingLastPathComponent())
       try (lines.joined(separator: "\n") + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
     } catch {
-      DebugLogger.logError("MCP-CONFIG: could not write proposals: \(error.localizedDescription)")
+      DebugLogger.logError("MCP-CONFIG: could not write proposals: \(error.logDescription)")
     }
     NotificationCenter.default.post(name: .mcpProposalsDidChange, object: nil)
   }
 
   /// Stores a new pending proposal. Runs on main.
   func create(
-    kind: MCPProposal.Kind, section: String? = nil, commandName: String? = nil,
+    kind: MCPProposal.Kind, title: String? = nil, section: String? = nil, commandName: String? = nil,
     commandScope: String? = nil, commandLabel: String? = nil, commandDescription: String? = nil,
     previousContent: String?, proposedContent: String?, rationale: String
   ) throws -> MCPProposal {
@@ -96,6 +98,7 @@ final class MCPProposalStore: ObservableObject {
         case .systemPrompt: return q.section == section
         case .writingStyle: return true
         case .saveCommand, .deleteCommand: return q.commandName == commandName
+        case .problemReport: return false
         }
       }
       if sameTarget.isEmpty, pending.count >= Self.maxPending {
@@ -104,7 +107,7 @@ final class MCPProposalStore: ObservableObject {
       }
       for i in sameTarget { all[i].status = .declined }
       let proposal = MCPProposal(
-        id: UUID().uuidString, createdAt: Date(), kind: kind, section: section,
+        id: UUID().uuidString, createdAt: Date(), kind: kind, title: title, section: section,
         commandName: commandName, commandScope: commandScope, commandLabel: commandLabel,
         commandDescription: commandDescription, previousContent: previousContent,
         proposedContent: proposedContent, rationale: rationale, status: .pending, edited: false)
@@ -131,27 +134,38 @@ final class MCPProposalStore: ObservableObject {
     case .saveCommand, .deleteCommand:
       applier.targets.commands.reload()
       return applier.targets.commands.commands.first { $0.name == proposal.commandName }?.body
+    case .problemReport:
+      return nil
     }
   }
 
   /// Applies the proposal (optionally with the user's edited text) through the same path as access
-  /// level "apply" and returns the change id. A failed apply leaves the proposal pending.
+  /// level "apply" and returns the change id. A problem report is only marked accepted: nothing is
+  /// applied and no change is logged. A failed apply leaves the proposal pending.
   func accept(_ id: String, editedContent: String? = nil) -> Result<String, Error> {
     MCPMain.run {
       guard let index = all.firstIndex(where: { $0.id == id && $0.status == .pending }) else {
         return .failure(MCPConfigError(message: "No pending proposal with that id."))
       }
-      guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
       var proposal = all[index]
+      if proposal.kind != .deleteCommand, let editedContent, editedContent != proposal.proposedContent {
+        proposal.proposedContent = editedContent
+        proposal.edited = true
+      }
+      if proposal.kind == .problemReport {
+        proposal.status = .accepted
+        all[index] = proposal
+        commit()
+        let content = proposal.proposedContent ?? ""
+        DebugLogger.log("MCP-CONFIG: proposal \(proposal.kind.rawValue) accepted edited=\(proposal.edited) len=\(content.count)")
+        return .success(proposal.id)
+      }
+      guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
       let now = MCPConfigTargets.normalized(currentForCompare(proposal, applier: applier)) ?? ""
       if now != (MCPConfigTargets.normalized(proposal.previousContent) ?? "") {
         DebugLogger.log("MCP-CONFIG: proposal \(proposal.kind.rawValue) accept rejected (changed since)")
         return .failure(MCPConfigError(
           message: "This changed since the AI app suggested it. Decline it and ask the AI app again."))
-      }
-      if proposal.kind != .deleteCommand, let editedContent, editedContent != proposal.proposedContent {
-        proposal.proposedContent = editedContent
-        proposal.edited = true
       }
       let content = proposal.proposedContent ?? ""
       let result: Result<String, Error>
@@ -173,6 +187,9 @@ final class MCPProposalStore: ObservableObject {
       case .deleteCommand:
         result = applier.applyDeleteCommand(
           name: proposal.commandName ?? "", rationale: proposal.rationale, viaProposal: true)
+      case .problemReport:
+        // Accepted above, before any applier call. This arm keeps the switch exhaustive.
+        result = .success(proposal.id)
       }
       if case .success = result {
         proposal.status = .accepted

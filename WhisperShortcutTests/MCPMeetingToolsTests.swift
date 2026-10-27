@@ -19,13 +19,47 @@ struct MCPMeetingToolsTests {
   private let old = "Meeting-2026-10-18-090000-Budget"
   private let liveText = "[00:05] Speaker A: Hello team\n\n[01:10] Speaker B: Budget is fine\n\n[02:30] Speaker A: Ship it Friday\n"
 
-  private func fixture(liveStem: String? = "Meeting-2026-10-19-110109") throws -> MCPMeetingTools {
+  private func fixture(
+    liveStem: String? = "Meeting-2026-10-19-110109",
+    titles: [String: String] = [:]
+  ) throws -> MCPMeetingTools {
     let dir = try makeDir()
     try write(dir, "\(live).txt", liveText)
     try write(dir, "\(old).txt", "[00:10] Speaker A: Über die Straße gehen\n\n[05:00] Speaker B: Quarterly numbers\n")
     try write(dir, "\(old).notes.md", "- decided on café budget")
     try write(dir, "\(old).summary.md", "Summary text")
-    return MCPMeetingTools(meetingsDirectory: dir, liveStem: { liveStem })
+    return MCPMeetingTools(meetingsDirectory: dir, liveStem: { liveStem }, meetingTitles: { titles })
+  }
+
+  private func titleField(_ listing: String, _ id: String) -> String? {
+    let line = listing.split(separator: "\n").first { $0.contains("id: \(id) |") }
+    return line?.components(separatedBy: " | ").first { $0.hasPrefix("title: ") }
+  }
+
+  @Test("list_meetings shows the session title for the live meeting")
+  func sessionTitleShown() throws {
+    let r = try fixture(titles: [live: "Energiemarkt und Strategie"]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, live) == "title: Energiemarkt und Strategie")
+  }
+
+  @Test("Session title wins over filename-suffix title")
+  func sessionTitleWins() throws {
+    let r = try fixture(titles: [old: "Q3 Budget"]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Q3 Budget")
+  }
+
+  @Test("Without session title the suffix shows, with neither a dash")
+  func titleFallbacks() throws {
+    let r = try fixture().call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Budget")
+    #expect(titleField(r.text, live) == "title: -")
+  }
+
+  @Test("Whitespace-only session title falls back")
+  func blankSessionTitle() throws {
+    let r = try fixture(titles: [live: "  \n ", old: "   "]).call(name: "list_meetings", arguments: [:])
+    #expect(titleField(r.text, old) == "title: Budget")
+    #expect(titleField(r.text, live) == "title: -")
   }
 
   @Test("Live transcript without since returns everything and next_since")
@@ -156,5 +190,69 @@ struct MCPMeetingToolsTests {
     #expect(r.text.contains("Output cut"))
     #expect(r.text.contains("end399"))
     #expect(!r.text.contains("end0 "))
+  }
+
+  // MARK: - Cursor (next_since)
+
+  private func cursor(_ text: String) throws -> String {
+    let marker = "next_since: "
+    let range = try #require(text.range(of: marker))
+    return String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  @Test("Incremental: cursor count unchanged returns only the new chunks")
+  func liveCursorIncremental() throws {
+    let dir = try makeDir()
+    try write(dir, "\(live).txt", liveText)
+    let t = MCPMeetingTools(meetingsDirectory: dir, liveStem: { self.live })
+
+    let first = t.call(name: "get_live_transcript", arguments: [:])
+    let c1 = try cursor(first.text)
+    #expect(c1.contains("@3"))  // 3 chunks at or before 02:30
+
+    // Append a new chunk after the cursor's timestamp — no history before it changes.
+    try write(dir, "\(live).txt", liveText + "[03:00] Speaker B: One more thing\n")
+    let second = t.call(name: "get_live_transcript", arguments: ["since": c1])
+    #expect(!second.isError)
+    #expect(!second.text.contains("Revised"))
+    #expect(!second.text.contains("Hello team"))
+    #expect(second.text.contains("One more thing"))
+    let c2 = try cursor(second.text)
+    #expect(c2.contains("@4"))
+  }
+
+  @Test("Splice: a chunk inserted before the cursor triggers the full-transcript Revised path")
+  func liveCursorSpliceRevised() throws {
+    let dir = try makeDir()
+    try write(dir, "\(live).txt", liveText)
+    let t = MCPMeetingTools(meetingsDirectory: dir, liveStem: { self.live })
+
+    let first = t.call(name: "get_live_transcript", arguments: [:])
+    let c1 = try cursor(first.text)
+
+    // A late-transcribed chunk at 00:30 is spliced in before the cursor's 02:30 — replaceChunks can
+    // do this when a delayed transcription result finally arrives. The at-or-before count changes.
+    let revisedText = "[00:05] Speaker A: Hello team\n\n[00:30] Speaker A: Late arrival\n\n"
+      + "[01:10] Speaker B: Budget is fine\n\n[02:30] Speaker A: Ship it Friday\n"
+    try write(dir, "\(live).txt", revisedText)
+
+    let second = t.call(name: "get_live_transcript", arguments: ["since": c1])
+    #expect(!second.isError)
+    #expect(second.text.contains("Revised: earlier parts of the transcript changed, this is the full text again."))
+    #expect(second.text.contains("Hello team"))
+    #expect(second.text.contains("Late arrival"))
+    #expect(second.text.contains("Ship it Friday"))
+  }
+
+  @Test("Backward compatible: a bare mm:ss cursor (no @N) still filters by timestamp alone")
+  func liveCursorLegacyBareFormat() throws {
+    let r = try fixture().call(name: "get_live_transcript", arguments: ["since": "01:10"])
+    #expect(!r.isError)
+    #expect(!r.text.contains("Revised"))
+    #expect(!r.text.contains("Hello team"))
+    #expect(!r.text.contains("Budget is fine"))
+    #expect(r.text.contains("Ship it Friday"))
+    let c = try cursor(r.text)
+    #expect(c.contains("@"))  // the next cursor issued is still the new format
   }
 }

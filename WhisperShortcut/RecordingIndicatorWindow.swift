@@ -37,7 +37,7 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var phase: RecordingIndicatorPhase = .recording
   /// The status word next to the spinner / level bars. Names the mode ("Prompting", "Thinking")
   /// so Dictate and Dictate Prompt no longer both read "Listening"/"Transcribing".
-  @Published var statusLabel = "Listening"
+  @Published var statusLabel = String(localized: "Listening")
   @Published var levels: [CGFloat] = Array(repeating: 0, count: RecordingIndicatorModel.barCount)
   /// `.speaking` only: whether playback is paused.
   @Published var isPaused = false
@@ -123,7 +123,7 @@ private struct PillCircleButton: View {
   let symbolName: String
   let foreground: Color
   let background: Color
-  let accessibilityLabel: String
+  let accessibilityLabel: LocalizedStringKey
   var isBusy: Bool = false
   let action: () -> Void
 
@@ -248,7 +248,7 @@ private enum QuickActionCardMetrics {
   static let dividerSpacing: CGFloat = 4
   static let cornerRadius: CGFloat = 16
 
-  static let typeFieldPlaceholder = "Type an instruction, or just speak"
+  static let typeFieldPlaceholder: LocalizedStringKey = "Type an instruction, or just speak"
 
   /// Header, `count` quick actions, the text field, and the recording controls as the footer.
   static func height(count: Int) -> CGFloat {
@@ -360,7 +360,9 @@ private struct QuickActionCardView: View {
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.white.opacity(0.55))
     case .selection(let text, let fromClipboard):
-      Text("\(fromClipboard ? "Clipboard" : "Selection"): \u{201C}\(Self.preview(text))\u{201D}")
+      Text(fromClipboard
+        ? "Clipboard: \u{201C}\(Self.preview(text))\u{201D}"
+        : "Selection: \u{201C}\(Self.preview(text))\u{201D}")
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.white.opacity(0.75))
         .lineLimit(1)
@@ -470,11 +472,11 @@ private struct QuickActionCardView: View {
   // MARK: Footer
 
   private var footerLabel: String {
-    if isTyping { return "\u{21A9} runs what you typed" }
+    if isTyping { return String(localized: "\u{21A9} runs what you typed") }
     if let selectedIndex, actions.indices.contains(selectedIndex) {
-      return "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}"
+      return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
     }
-    return "Speak your instruction"
+    return String(localized: "Speak your instruction")
   }
 
   private var footer: some View {
@@ -496,7 +498,7 @@ private struct QuickActionCardView: View {
       }
       PillCircleButton(
         symbolName: "checkmark", foreground: .black, background: .white,
-        accessibilityLabel: isTyping ? "Run typed instruction" : "Stop and process",
+        accessibilityLabel: isTyping ? ("Run typed instruction" as LocalizedStringKey) : "Stop and process",
         action: onConfirm)
     }
     .padding(.horizontal, 4)
@@ -609,7 +611,7 @@ struct RecordingIndicatorView: View {
         PillCircleButton(
           symbolName: model.isPaused ? "play.fill" : "pause.fill", foreground: .black, background: .white,
           accessibilityLabel: (model.isBuffering && !model.isPaused)
-            ? "Loading more audio — click to pause"
+            ? ("Loading more audio — click to pause" as LocalizedStringKey)
             : (model.isPaused ? "Resume reading aloud" : "Pause reading aloud"),
           isBusy: model.isBuffering && !model.isPaused,
           action: onTogglePause)
@@ -644,9 +646,9 @@ struct RecordingIndicatorView: View {
     switch model.phase {
     case .recording, .processing: return model.statusLabel
     case .speaking:
-      if model.isPaused { return "Read Aloud paused" }
-      if model.isBuffering { return "Reading aloud — loading" }
-      return "Reading aloud"
+      if model.isPaused { return String(localized: "Read Aloud paused") }
+      if model.isBuffering { return String(localized: "Reading aloud — loading") }
+      return String(localized: "Reading aloud")
     }
   }
 }
@@ -747,7 +749,7 @@ final class RecordingIndicatorManager {
 
   // MARK: Phase transitions
 
-  func showRecording(label: String = "Listening") {
+  func showRecording(label: String = String(localized: "Listening")) {
     model.resetLevels()
     model.statusLabel = label
     model.phase = .recording
@@ -759,7 +761,7 @@ final class RecordingIndicatorManager {
   /// with no recording phase (Read Aloud / TTS) pass `summonIfNeeded: true` to pull the
   /// processing pill up directly. Otherwise it stays a no-op so pill-less flows
   /// (e.g. file-based processing) don't suddenly grow a pill.
-  func showProcessing(summonIfNeeded: Bool = false, label: String = "Transcribing") {
+  func showProcessing(summonIfNeeded: Bool = false, label: String = String(localized: "Transcribing")) {
     model.statusLabel = label
     model.phase = .processing
     if isVisible, let panel {
@@ -1011,8 +1013,8 @@ extension AppState.RecordingMode {
   /// Short enough for the fixed recording pill width (see `pillSize`).
   var pillLabel: String {
     switch self {
-    case .transcription, .liveMeeting: return "Listening"
-    case .prompt: return "Prompting"
+    case .transcription, .liveMeeting: return String(localized: "Listening")
+    case .prompt: return String(localized: "Prompting")
     }
   }
 }
@@ -1021,11 +1023,11 @@ extension AppState.ProcessingMode {
   /// Short enough for the fixed processing pill width (see `pillSize`).
   var pillLabel: String {
     switch self {
-    case .transcribing: return "Transcribing"
-    case .prompting: return "Thinking"
-    case .ttsProcessing: return "Preparing"
+    case .transcribing: return String(localized: "Transcribing")
+    case .prompting: return String(localized: "Thinking")
+    case .ttsProcessing: return String(localized: "Preparing")
     case .splitting, .processingChunks, .merging:
-      return isTTSContext ? "Preparing" : "Transcribing"
+      return isTTSContext ? String(localized: "Preparing") : String(localized: "Transcribing")
     }
   }
 }

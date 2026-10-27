@@ -50,7 +50,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
       mapHTTPError: { status, body in
         if status == 404 {
           return TranscriptionError.networkError(
-            "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings.")
+            String(localized: "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings."))
         }
         return ChatProviderHTTPError.map(provider: "Local LLM", status: status, body: body)
       },
@@ -116,7 +116,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
     // Not used by the local Dictate Prompt path. Smart Improvement / structured features stay on
     // cloud models for now; implement via OpenAICompatibleStructured if local structured output is
     // needed later.
-    throw TranscriptionError.networkError("Structured output is not supported for local models yet.")
+    throw TranscriptionError.networkError(String(localized: "Structured output is not supported for local models yet."))
   }
 
   /// Removes `<think>…</think>` reasoning blocks that hybrid models emit inline in `content`.

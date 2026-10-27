@@ -17,6 +17,15 @@ struct SettingsSlot {
   /// writes only slots that differ from what it last loaded or saved, so a value changed elsewhere
   /// (Chat `/model`, `/pin`) is not overwritten by a stale copy held by a long-lived Settings window.
   let differs: (SettingsData, SettingsData) -> Bool
+  /// Fired by `saveSettings()` after this slot is written, and only then.
+  ///
+  /// Model pickers used to `UserDefaults.set` the same key the slot already saves, then post
+  /// `.modelChanged` or `.promptModelChanged` themselves. Dictate posted `.modelChanged` a second
+  /// time from `saveSettings`, so one picker change notified twice, and a save that did not touch
+  /// the model could still have been preceded by a notice from the picker. The notice now lives
+  /// on the slot, with the same name and object as before, and a slot that did not change cannot
+  /// post one.
+  let onDidChange: ((SettingsData) -> Void)?
 
   /// The slots whose value in `data` differs from `persisted` — the ones a save must write.
   static func slotsToSave(_ slots: [SettingsSlot], data: SettingsData, persisted: SettingsData)
@@ -33,12 +42,14 @@ extension SettingsSlot {
   static func custom<Value: Equatable>(
     _ keyPath: WritableKeyPath<SettingsData, Value>,
     load: @escaping () -> Value,
-    save: @escaping (Value) -> Void
+    save: @escaping (Value) -> Void,
+    onDidChange: ((SettingsData) -> Void)? = nil
   ) -> SettingsSlot {
     SettingsSlot(
       load: { data in data[keyPath: keyPath] = load() },
       save: { data in save(data[keyPath: keyPath]) },
-      differs: { lhs, rhs in lhs[keyPath: keyPath] != rhs[keyPath: keyPath] }
+      differs: { lhs, rhs in lhs[keyPath: keyPath] != rhs[keyPath: keyPath] },
+      onDidChange: onDidChange
     )
   }
 

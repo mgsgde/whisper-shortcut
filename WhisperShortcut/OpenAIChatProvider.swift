@@ -32,7 +32,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     var providerLabel: String {
       switch self {
       case .openAI: return "OpenAI"
-      case .customEndpoint: return "Custom endpoint"
+      case .customEndpoint: return String(localized: "Custom endpoint")
       case .openRouter: return "OpenRouter"
       }
     }
@@ -51,7 +51,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     let route = Route(model: model)
     if let attachmentError = ChatAttachmentGuard.rejectUnsupported(
       in: contents,
-      provider: route == .customEndpoint ? "This endpoint" : route.providerLabel,
+      provider: route == .customEndpoint ? String(localized: "This endpoint") : route.providerLabel,
       allowedPrefixes: ["image/", "audio/"]
     ) {
       return AsyncThrowingStream { $0.finish(throwing: attachmentError) }
@@ -85,17 +85,17 @@ final class OpenAIChatProvider: LLMChatProvider {
     case .customEndpoint:
       guard OpenAIChatPreferences.customEndpointBaseURL != nil else {
         throw TranscriptionError.networkError(
-          "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model.")
+          String(localized: "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model."))
       }
       guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
         throw TranscriptionError.networkError(
-          "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI.")
+          String(localized: "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI."))
       }
       return apiKey
     case .openRouter:
       guard let apiKey = OpenRouterChatPreferences.apiKey else {
         throw TranscriptionError.networkError(
-          "Connect your OpenRouter account in Settings → Accounts to use OpenRouter in Chat.")
+          String(localized: "Connect your OpenRouter account in Settings → Accounts to use OpenRouter in Chat."))
       }
       return apiKey
     case .openAI:

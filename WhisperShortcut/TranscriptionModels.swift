@@ -125,19 +125,19 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini38Flash:
       return "Gemini 3.8 Flash"
     case .whisperTiny:
-      return "Whisper Tiny (Offline)"
+      return String(localized: "Whisper Tiny (Offline)")
     case .whisperBase:
-      return "Whisper Base (Offline)"
+      return String(localized: "Whisper Base (Offline)")
     case .whisperSmall:
-      return "Whisper Small (Offline)"
+      return String(localized: "Whisper Small (Offline)")
     case .whisperMedium:
-      return "Whisper Medium (Offline)"
+      return String(localized: "Whisper Medium (Offline)")
     case .whisperLarge:
-      return "Whisper Large (Offline)"
+      return String(localized: "Whisper Large (Offline)")
     case .whisperLargeTurbo:
-      return "Whisper Large v3 Turbo (Offline)"
+      return String(localized: "Whisper Large v3 Turbo (Offline)")
     case .parakeetUltra:
-      return "Parakeet Ultra (Offline)"
+      return String(localized: "Parakeet Ultra (Offline)")
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -147,7 +147,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .xaiTranscribe:
       return "Grok Speech-to-Text"
     case .selfHostedTranscription:
-      return "Self-hosted Transcription Endpoint"
+      return String(localized: "Self-hosted Transcription Endpoint")
     case .openRouterTranscription:
       return "OpenRouter"
     }
@@ -255,71 +255,71 @@ enum TranscriptionModel: String, CaseIterable {
   /// Gemini 2.0 family was removed from this enum; no transcription option is deprecated in-app.
   var isDeprecated: Bool { false }
 
-  var costLevel: String {
+  var costLevel: CostLevel {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash:
-      return "Low"
+      return .low
     case .gemini4Argon:
-      return "High"
+      return .high
     case .gemini31Pro:
-      return "Medium"
+      return .medium
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
          .whisperLargeTurbo, .parakeetUltra:
-      return "Free (Offline)"
+      return .freeOffline
     case .openAIGPTTranscribe:
-      return "Low"
+      return .low
     case .openAIGPT4oTranscribe:
-      return "Medium"
+      return .medium
     case .openAIGPT4oMiniTranscribe:
-      return "Low"
+      return .low
     case .xaiTranscribe:
-      return "Low"
+      return .low
     case .selfHostedTranscription:
-      return "Custom"
+      return .custom
     case .openRouterTranscription:
-      return "Varies"
+      return .varies
     }
   }
 
   var description: String {
     switch self {
     case .gemini4Argon:
-      return "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)"
+      return String(localized: "Google's Gemini 4 Argon • Flagship reasoning for hard research questions • Paid (no free tier)")
     case .gemini31Pro:
-      return "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal"
+      return String(localized: "Google's Gemini 3.1 Pro model • Complex reasoning and agentic workflows • Multimodal")
     case .gemini31FlashLite:
-      return "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation"
+      return String(localized: "Google's Gemini 3.1 Flash-Lite • Fastest, most cost-efficient 3-series • Ideal for dictation")
     case .gemini35FlashLite:
-      return "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput"
+      return String(localized: "Google's Gemini 3.5 Flash-Lite • Cheapest audio input ($0.30/1M) • Fast, high-throughput")
     case .gemini38Flash:
-      return "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents"
+      return String(localized: "Google's Gemini 3.8 Flash • Most intelligent Flash • Most capable workhorse for coding and agents")
     case .whisperTiny:
-      return "OpenAI Whisper Tiny • Fastest • ~75MB • Offline"
+      return String(localized: "OpenAI Whisper Tiny • Fastest • ~75MB • Offline")
     case .whisperBase:
-      return "OpenAI Whisper Base • Smallest download • ~140MB • Offline"
+      return String(localized: "OpenAI Whisper Base • Smallest download • ~140MB • Offline")
     case .whisperSmall:
-      return "OpenAI Whisper Small • Better quality • ~460MB • Offline"
+      return String(localized: "OpenAI Whisper Small • Better quality • ~460MB • Offline")
     case .whisperMedium:
-      return "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline"
+      return String(localized: "OpenAI Whisper Medium • Best quality • ~1.5GB • Offline")
     case .whisperLarge:
-      return "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline"
+      return String(localized: "OpenAI Whisper Large v3 • Highest quality • ~3GB • Offline")
     case .whisperLargeTurbo:
-      return "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline"
+      return String(localized: "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline")
     case .parakeetUltra:
-      return "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline"
+      return String(localized: "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline")
     case .openAIGPTTranscribe:
-      return "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt"
+      return String(localized: "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt")
     case .openAIGPT4oTranscribe:
-      return "OpenAI's flagship audio transcription model • High accuracy • Cloud"
+      return String(localized: "OpenAI's flagship audio transcription model • High accuracy • Cloud")
     case .openAIGPT4oMiniTranscribe:
-      return "OpenAI's faster, cheaper transcription model • Cloud"
+      return String(localized: "OpenAI's faster, cheaper transcription model • Cloud")
     case .xaiTranscribe:
-      return "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key"
+      return String(localized: "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key")
     case .selfHostedTranscription:
-      return "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint"
+      return String(localized: "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint")
     case .openRouterTranscription:
-      return "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → Accounts"
+      return String(localized: "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → Accounts")
     }
   }
   
@@ -420,12 +420,12 @@ enum TranscriptionModel: String, CaseIterable {
   var systemPromptIgnoredReason: String? {
     switch self {
     case .openAIGPTTranscribe:
-      return "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured."
+      return String(localized: "\(displayName) ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured.")
     // Provider-wide rather than case-by-case: this list was spelled out per model and
     // `whisperLargeTurbo` was added to the enum without being added here, so the newest — and
     // recommended — offline model was the one showing an inert prompt editor with no warning.
     case _ where provider == .offline:
-      return "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for."
+      return String(localized: "Offline models ignore the system prompt below — they accept no instructions. Only the Glossary reaches them: as conditioning text for Whisper, as terms Parakeet listens for.")
     default:
       return nil
     }
@@ -1116,36 +1116,36 @@ enum TranscriptionError: Error, Equatable {
 
   var title: String {
     switch self {
-    case .noGoogleAPIKey: return "No Google API Key"
-    case .invalidAPIKey: return "Invalid Authentication"
-    case .incorrectAPIKey: return "Incorrect API Key"
-    case .countryNotSupported: return "Country Not Supported"
-    case .invalidRequest: return "Invalid Request"
-    case .permissionDenied: return "Permission Denied"
-    case .notFound: return "Not Found"
-    case .modelDeprecated: return "Model No Longer Available"
-    case .rateLimited: return "Rate Limited"
-    case .quotaExceeded: return "Quota Exceeded"
-    case .billingRequired: return "Billing Required"
-    case .serverError: return "Server Error"
-    case .serviceUnavailable: return "Service Unavailable"
-    case .slowDown: return "Slow Down"
-    case .networkError: return "Network Error"
-    case .requestTimeout: return "Request Timeout"
-    case .resourceTimeout: return "Resource Timeout"
-    case .fileError: return "File Error"
-    case .fileTooLarge: return "File Too Large"
-    case .emptyFile: return "Empty File"
-    case .noSpeechDetected: return "No Speech Detected"
-    case .textTooShort: return "Text Too Short"
-    case .promptLeakDetected: return "API Response Issue"
-    case .modelNotAvailable: return "Model Not Downloaded"
-    case .voiceRequiresAPIKey: return "Voice Requires API Key"
-    case .subscriptionRequired: return "Subscription Required"
-    case .noSelectedText: return "Nothing Selected"
-    case .localProcessingTimeout: return "Local Processing Timeout"
-    case .emptyModelReply: return "No Reply"
-    case .localModelFailed: return "Offline Model Error"
+    case .noGoogleAPIKey: return String(localized: "No Google API Key")
+    case .invalidAPIKey: return String(localized: "Invalid Authentication")
+    case .incorrectAPIKey: return String(localized: "Incorrect API Key")
+    case .countryNotSupported: return String(localized: "Country Not Supported")
+    case .invalidRequest: return String(localized: "Invalid Request")
+    case .permissionDenied: return String(localized: "Permission Denied")
+    case .notFound: return String(localized: "Not Found")
+    case .modelDeprecated: return String(localized: "Model No Longer Available")
+    case .rateLimited: return String(localized: "Rate Limited")
+    case .quotaExceeded: return String(localized: "Quota Exceeded")
+    case .billingRequired: return String(localized: "Billing Required")
+    case .serverError: return String(localized: "Server Error")
+    case .serviceUnavailable: return String(localized: "Service Unavailable")
+    case .slowDown: return String(localized: "Slow Down")
+    case .networkError: return String(localized: "Network Error")
+    case .requestTimeout: return String(localized: "Request Timeout")
+    case .resourceTimeout: return String(localized: "Resource Timeout")
+    case .fileError: return String(localized: "File Error")
+    case .fileTooLarge: return String(localized: "File Too Large")
+    case .emptyFile: return String(localized: "Empty File")
+    case .noSpeechDetected: return String(localized: "No Speech Detected")
+    case .textTooShort: return String(localized: "Text Too Short")
+    case .promptLeakDetected: return String(localized: "API Response Issue")
+    case .modelNotAvailable: return String(localized: "Model Not Downloaded")
+    case .voiceRequiresAPIKey: return String(localized: "Voice Requires API Key")
+    case .subscriptionRequired: return String(localized: "Subscription Required")
+    case .noSelectedText: return String(localized: "Nothing Selected")
+    case .localProcessingTimeout: return String(localized: "Local Processing Timeout")
+    case .emptyModelReply: return String(localized: "No Reply")
+    case .localModelFailed: return String(localized: "Offline Model Error")
     }
   }
 

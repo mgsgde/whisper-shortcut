@@ -18,13 +18,18 @@ enum TelemetryArea: String, CaseIterable, Codable {
   case other
 
   /// Maps `InteractionLogEntry.mode` / `SignalLogEntry.mode` strings onto an area.
+  /// `smartImprovement` is a `RequestOrigin`, not an interaction mode: timeouts on that
+  /// path are logged with it, and an unknown spelling stays `.other`.
   init(logMode: String?) {
-    switch logMode {
-    case "transcription": self = .dictation
-    case "prompt": self = .prompt
-    case "geminiChat": self = .chat
-    case "smartImprovement": self = .smartImprovement
-    default: self = .other
+    if logMode == RequestOrigin.smartImprovement.rawValue {
+      self = .smartImprovement
+      return
+    }
+    switch logMode.flatMap(InteractionMode.init(rawValue:)) {
+    case .transcription: self = .dictation
+    case .prompt: self = .prompt
+    case .chat: self = .chat
+    case nil: self = .other
     }
   }
 }
@@ -48,6 +53,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case requestTimedOut
   case noSpeechDetected
   case noInputSignal
+  case glossaryEchoRemoved
 
   init(signal: OutcomeSignal) {
     switch signal {
@@ -63,6 +69,7 @@ enum TelemetryCountName: String, CaseIterable, Codable {
     case .requestTimedOut: self = .requestTimedOut
     case .noSpeechDetected: self = .noSpeechDetected
     case .noInputSignal: self = .noInputSignal
+    case .glossaryEchoRemoved: self = .glossaryEchoRemoved
     }
   }
 }

@@ -93,7 +93,7 @@ struct MCPServerTests {
     ])
   }
 
-  @Test("The write token lists write tools only above access level read")
+  @Test("The write token's tools/list is stable across access levels; the read token never gets write tools")
   func writeTokenList() throws {
     let body = #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#
     func names(_ auth: String, _ level: MCPConfigAccessLevel) throws -> Set<String> {
@@ -101,10 +101,26 @@ struct MCPServerTests {
       let list = try #require((try json(r)["result"] as? [String: Any])?["tools"] as? [[String: Any]])
       return Set(list.compactMap { $0["name"] as? String })
     }
-    #expect(try names("Bearer write-token", .read).contains("add_glossary_terms") == false)
+    // Clients call tools/list once per session and cache it: the write token's list must not
+    // change as the user flips Settings between read/propose/apply. Enforcement at call time
+    // (not list time) is covered by "Write calls over HTTP" below.
+    #expect(try names("Bearer write-token", .read).contains("add_glossary_terms"))
     #expect(try names("Bearer write-token", .propose).contains("add_glossary_terms"))
     #expect(try names("Bearer write-token", .apply).contains("update_system_prompt"))
     #expect(try names("Bearer secret-token", .apply).contains("add_glossary_terms") == false)
+  }
+
+  @Test("Every tool returned by tools/list has an annotations object with a title")
+  func toolsHaveAnnotations() throws {
+    let r = try json(rpc(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#))
+    let list = try #require((r["result"] as? [String: Any])?["tools"] as? [[String: Any]])
+    #expect(!list.isEmpty)
+    for tool in list {
+      let name = tool["name"] as? String ?? "?"
+      let annotations = tool["annotations"] as? [String: Any]
+      #expect(annotations != nil, "\(name) has no annotations")
+      #expect((annotations?["title"] as? String)?.isEmpty == false, "\(name) has no annotations.title")
+    }
   }
 
   @Test("Write calls over HTTP: read token errors, write token applies")
@@ -181,5 +197,30 @@ struct MCPServerTests {
     request.setValue(nil, forHTTPHeaderField: "Authorization")
     let (_, denied) = try await URLSession.shared.data(for: request)
     #expect((denied as? HTTPURLResponse)?.statusCode == 401)
+  }
+
+  // MARK: MCPMain.runBounded
+
+  @Test("runBounded returns the block's value when main is free")
+  func runBoundedMainFree() async throws {
+    let value = await Task.detached { MCPMain.runBounded(timeout: 2) { 42 } }.value
+    #expect(value == 42)
+  }
+
+  @Test("runBounded times out and the block never runs when main is held")
+  func runBoundedMainBusy() async throws {
+    let gate = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async { gate.wait() }
+
+    final class Box { var ran = false }
+    let box = Box()
+    let result = await Task.detached {
+      MCPMain.runBounded(timeout: 0.2) { box.ran = true }
+    }.value
+    #expect(result == nil)
+
+    gate.signal()
+    await MainActor.run {}
+    #expect(box.ran == false)
   }
 }

@@ -79,12 +79,6 @@ struct ChatSettingsTab: View {
       recommendedModel: SettingsDefaults.selectedChatModel,
       subscriptionMode: false,
       onModelChanged: {
-        UserDefaults.standard.set(
-          viewModel.data.selectedChatModel.rawValue,
-          forKey: UserDefaultsKeys.selectedChatModel)
-        NotificationCenter.default.post(
-          name: .promptModelChanged,
-          object: viewModel.data.selectedChatModel)
         Task {
           await viewModel.saveSettings()
         }

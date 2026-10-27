@@ -33,8 +33,8 @@ enum ProviderCredentials {
     var capability: String {
       switch self {
       case .openAI: return "OpenAI models"
-      case .xAI: return "Grok models"
-      case .anthropic: return "Claude models"
+      case .xAI: return String(localized: "Grok models")
+      case .anthropic: return String(localized: "Claude models")
       case .openRouter: return "OpenRouter models"
       }
     }
@@ -56,6 +56,14 @@ enum ProviderCredentials {
     }
   }
 
+  /// Whether a usable key is stored. `Kind.hasStoredKey` stays fileprivate so a caller that needs
+  /// the key itself still goes through `require` and its error. Presence checks (pickers, the
+  /// reconciler, transcription) were calling `KeychainManager.hasNonEmpty`, which does not trim,
+  /// so a whitespace-only key read as configured there and missing in `verifyConfigured`.
+  static func hasKey(_ kind: Kind) -> Bool {
+    kind.hasStoredKey
+  }
+
   /// The key for `kind`, trimmed and guaranteed non-empty, or a `.networkError` naming the exact
   /// Settings location. All three key fields live under Settings → Accounts.
   static func require(_ kind: Kind) throws -> String {
@@ -68,7 +76,13 @@ enum ProviderCredentials {
 
   /// Message shown when no key is stored.
   static func missingKeyMessage(_ kind: Kind) -> String {
-    "No \(kind.displayName) API key configured. Add your \(kind.displayName) API key in Settings → Accounts to use \(kind.capability)."
+    let name = kind.displayName
+    switch kind {
+    case .openAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenAI models.")
+    case .xAI: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Grok models.")
+    case .anthropic: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use Claude models.")
+    case .openRouter: return String(localized: "No \(name) API key configured. Add your \(name) API key in Settings → Accounts to use OpenRouter models.")
+    }
   }
 
   /// Message shown when the provider rejects the key we sent (HTTP 401/403).

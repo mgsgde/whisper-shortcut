@@ -310,19 +310,7 @@ final class QuickActionStore {
   }
 
   private static func promptInstructions(lastDays: Int) -> [String] {
-    let decoder = JSONDecoder()
-    var instructions: [String] = []
-    for fileURL in ContextLogger.shared.interactionLogFiles(lastDays: lastDays) {
-      guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-      for line in content.split(whereSeparator: \.isNewline) {
-        guard let entry = try? decoder.decode(InteractionLogEntry.self, from: Data(line.utf8)),
-          entry.mode == "prompt",
-          let userInstruction = entry.userInstruction
-        else { continue }
-        instructions.append(userInstruction)
-      }
-    }
-    return instructions
+    UserContextLog.interactions(lastDays: lastDays, mode: .prompt).compactMap(\.userInstruction)
   }
 
   private struct Bucket {

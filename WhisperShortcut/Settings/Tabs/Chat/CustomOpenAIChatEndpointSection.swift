@@ -130,8 +130,8 @@ struct CustomOpenAIChatEndpointSection: View {
                 .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help(isKeyVisible ? "Hide API key" : "Show API key")
-            .accessibilityLabel(isKeyVisible ? "Hide API key" : "Show API key")
+            .help(isKeyVisible ? ("Hide API key" as LocalizedStringKey) : "Show API key")
+            .accessibilityLabel(isKeyVisible ? ("Hide API key" as LocalizedStringKey) : "Show API key")
           }
 
           credentialStatus

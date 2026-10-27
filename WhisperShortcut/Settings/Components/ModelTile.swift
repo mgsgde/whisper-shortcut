@@ -26,14 +26,14 @@ struct ModelTile: View {
 
   var body: some View {
     VStack(spacing: 3) {
-      Text(title)
+      Text(verbatim: title)
         .font(.system(.body, design: .default))
         .fontWeight(.medium)
         .foregroundColor(isSelected ? .white : (isDisabled ? .secondary : .primary))
         .multilineTextAlignment(.center)
 
       if let subtitle {
-        Text(subtitle)
+        Text(verbatim: subtitle)
           .font(.caption2)
           .foregroundColor(isSelected ? .white.opacity(0.85) : .secondary)
           .lineLimit(1)
@@ -46,7 +46,7 @@ struct ModelTile: View {
             badgeLabel(badge.title, symbol: badge.symbol, tint: tint(for: badge))
           }
           if let providerPick {
-            badgeLabel("Best \(providerPick) pick", symbol: "star", tint: .yellow)
+            badgeLabel(String(localized: "Best \(providerPick) pick", comment: "Tile badge: the provider's own recommended model, e.g. 'Best Gemini pick'"), symbol: "star", tint: .yellow)
           }
           if let setupBadge {
             badgeLabel(setupBadge, symbol: "key.fill", tint: .orange)
@@ -82,7 +82,7 @@ struct ModelTile: View {
       Image(systemName: symbol)
         .font(.system(size: 8, weight: .semibold))
         .foregroundColor(isSelected ? .white : tint)
-      Text(text)
+      Text(verbatim: text)
         .font(.caption2)
         .fontWeight(.medium)
         .foregroundColor(isSelected ? .white.opacity(0.9) : .secondary)
@@ -99,7 +99,7 @@ struct ModelTile: View {
   }
 
   private var accessibilityText: String {
-    ([title, subtitle] + badges.map(\.title) + [providerPick.map { "Best \($0) pick" }, setupBadge])
+    ([title, subtitle] + badges.map(\.title) + [providerPick.map { String(localized: "Best \($0) pick", comment: "Tile badge: the provider's own recommended model, e.g. 'Best Gemini pick'") }, setupBadge])
       .compactMap { $0 }
       .joined(separator: ", ")
   }

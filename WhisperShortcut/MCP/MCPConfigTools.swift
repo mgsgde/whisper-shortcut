@@ -95,7 +95,7 @@ struct MCPConfigTools {
   static let readToolNames: Set<String> = ["get_configuration", "get_recent_interactions"]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status",
+    "delete_command", "get_proposal_status", "report_problem",
   ]
 
   func handles(_ name: String) -> Bool {
@@ -124,6 +124,7 @@ struct MCPConfigTools {
           ]
         ],
       ] as [String: Any],
+      "annotations": ["title": "Get Configuration", "readOnlyHint": true, "openWorldHint": false],
     ],
     [
       "name": "get_recent_interactions",
@@ -136,38 +137,48 @@ struct MCPConfigTools {
           "mode": ["type": "string", "description": "Only this mode, e.g. transcription or prompt."],
         ],
       ] as [String: Any],
+      "annotations": ["title": "Get Recent Interactions", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 
-  private static func write(_ name: String, _ description: String, _ properties: [String: Any], required: [String]) -> [String: Any] {
+  private static func write(
+    _ name: String, _ title: String, _ description: String, _ properties: [String: Any], required: [String],
+    annotations: [String: Any]
+  ) -> [String: Any] {
     var props = properties
     props["rationale"] = rationaleProperty
+    var ann = annotations
+    ann["title"] = title
     return [
       "name": name, "description": description,
       "inputSchema": ["type": "object", "properties": props, "required": required + ["rationale"]] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
+      "annotations": ann,
     ]
   }
 
   static let writeToolDefinitions: [[String: Any]] = [
     write(
-      "add_glossary_terms",
-      "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once.",
+      "add_glossary_terms", "Add Glossary Terms",
+      "Adds names and domain terms to the Whisper glossary. Only ever adds, never removes. Each term is a bare term or: Term (not \"wrong\", \"wrong2\") with the misheard forms. Max 60 characters and 5 words per term; the glossary has a budget of 1,200 characters. Applied at once, unless the user set AI app access to \"Suggest changes for me to approve\" in WhisperShortcut Settings, in which case it creates a proposal the user reviews there.",
       ["terms": ["type": "array", "items": ["type": "string"], "description": "Terms to add."]],
-      required: ["terms"]),
+      required: ["terms"],
+      annotations: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false]),
     write(
-      "update_system_prompt",
+      "update_system_prompt", "Update System Prompt",
       "Replaces one system prompt section with the full new text (max 5,000 characters). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible.",
       [
         "section": ["type": "string", "enum": sectionNames],
         "content": ["type": "string", "description": "The complete new text of the section."],
-      ], required: ["section", "content"]),
+      ], required: ["section", "content"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "update_writing_style_profile",
+      "update_writing_style_profile", "Update Writing Style Profile",
       "Replaces the writing style profile with the full new text (max \(WritingStyleStore.maxChars) characters). Read it first.",
-      ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"]),
+      ["content": ["type": "string", "description": "The complete new profile."]], required: ["content"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "save_command",
+      "save_command", "Save Command",
       "Creates or overwrites a chat command (a saved instruction the user runs as /name).",
       [
         "name": ["type": "string", "description": "Lowercase letters, digits and dashes, max 40."],
@@ -175,25 +186,53 @@ struct MCPConfigTools {
         "scope": ["type": "string", "enum": ["meeting", "chat", "both"]],
         "label": ["type": "string", "description": "Optional button text."],
         "description": ["type": "string", "description": "Optional one-line description."],
-      ], required: ["name", "text", "scope"]),
+      ], required: ["name", "text", "scope"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
     write(
-      "delete_command", "Moves a chat command to the Trash.",
-      ["name": ["type": "string"]], required: ["name"]),
+      "delete_command", "Delete Command", "Moves a chat command to the Trash.",
+      ["name": ["type": "string"]], required: ["name"],
+      annotations: ["readOnlyHint": false, "destructiveHint": true, "openWorldHint": false]),
+    [
+      "name": "report_problem",
+      "description":
+        "Reports a problem in WhisperShortcut itself that no setting can fix: the instructions already forbid the behavior, or the mistake is in what the app does (pasting, history, timing, the wrong model). Saves a report the user reviews in WhisperShortcut; nothing is sent unless they open it as a GitHub issue themselves. Remove names, patient, customer and other private data from the examples.",
+      "inputSchema": [
+        "type": "object",
+        "properties": [
+          "title": ["type": "string", "description": "Short summary, max 120 characters."],
+          "what_happens": ["type": "string", "description": "What the app does wrong, max 1,000 characters."],
+          "examples": [
+            "type": "array", "items": ["type": "string"],
+            "description": "Up to 3 short redacted excerpts, each max 500 characters.",
+          ],
+          "suspected_cause": ["type": "string", "description": "Optional. Where the bug might be, max 1,000 characters."],
+          "why_not_settings": [
+            "type": "string",
+            "description": "Why a setting or prompt change cannot fix it, max 500 characters.",
+          ],
+        ],
+        "required": ["title", "what_happens", "why_not_settings"],
+      ] as [String: Any],
+      "_meta": ["anthropic/requiresUserInteraction": true],
+      "annotations": ["title": "Report Problem", "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false],
+    ],
     [
       "name": "get_proposal_status",
       "description": "Reports whether a proposal made earlier is pending, accepted or declined.",
       "inputSchema": [
         "type": "object", "properties": ["id": ["type": "string"]], "required": ["id"],
       ] as [String: Any],
-      "_meta": ["anthropic/requiresUserInteraction": true],
+      // Read-only: unlike the other write-set tools, it needs no "_meta" requiresUserInteraction hint.
+      "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
     ],
   ]
 
-  /// Tool definitions visible to a client: write tools only for the write token and level above read.
+  /// Tool definitions visible to a client: gated only by token type, not by the user's configured
+  /// access level — clients fetch tools/list once per session and cache it, so the list a write
+  /// token sees must not change as the user flips Settings between read/propose/apply. Calling a
+  /// write tool at access level "read" is still rejected in `call()`, which runs per request.
   func toolDefinitions(access: MCPAccess) -> [[String: Any]] {
-    var defs = Self.readToolDefinitions
-    if access == .write && env.accessLevel() != .read { defs += Self.writeToolDefinitions }
-    return defs
+    access == .write ? Self.readToolDefinitions + Self.writeToolDefinitions : Self.readToolDefinitions
   }
 
   // MARK: - Dispatch
@@ -215,6 +254,7 @@ struct MCPConfigTools {
     case "update_writing_style_profile": return updateWritingStyle(arguments)
     case "save_command": return saveCommand(arguments)
     case "delete_command": return deleteCommand(arguments)
+    case "report_problem": return reportProblem(arguments)
     case "get_proposal_status": return getProposalStatus(arguments)
     default: return ("Unknown tool: \(name)", true)
     }
@@ -268,8 +308,11 @@ struct MCPConfigTools {
     for (name, section) in Self.sections {
       let body = env.targets.systemPrompts.loadSection(section)
       let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      // The default's length lets an AI app see at a glance which customized section grew far
+      // past what the app ships, the usual sign of rules piling up.
       info[name] = [
         "customized": SystemPromptsStore.isCustomized(trimmed, for: section), "length": trimmed.count,
+        "default_length": MCPProposalWindows.defaultText(for: section).count,
       ]
     }
     return info
@@ -421,6 +464,17 @@ struct MCPConfigTools {
         return reject(
           tool, "over budget",
           "The glossary budget is \(SystemPromptsStore.glossaryCharBudget) characters and only \(left) are left. Nothing was written. Pick the terms that occur most in the user's recent dictations.")
+      }
+      if env.accessLevel() == .propose {
+        do {
+          let p = try env.proposals.create(
+            kind: .systemPrompt, section: SystemPromptSection.whisperGlossary.rawValue,
+            previousContent: current, proposedContent: merged, rationale: r.value!)
+          log(tool, "proposed", len: merged.count)
+          return pendingResult(p.id)
+        } catch {
+          return reject(tool, "too many pending", error.localizedDescription)
+        }
       }
       let known = Set(GlossaryLearning.entries(in: current).map { GlossaryLearning.fold($0.term) })
       let added = GlossaryLearning.entries(in: merged).map(\.term).filter { !known.contains(GlossaryLearning.fold($0)) }
@@ -585,6 +639,91 @@ struct MCPConfigTools {
       return appliedResult(
         env.applier.applyDeleteCommand(name: name, rationale: r.value!, viaProposal: false),
         tool: tool, len: 0)
+    }
+  }
+
+  // MARK: - report_problem
+
+  private func boundedText(
+    _ args: [String: Any], key: String, limit: Int, required: Bool
+  ) -> (value: String?, error: MCPToolResult?) {
+    let raw = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if raw.isEmpty {
+      if required {
+        return (nil, reject("report_problem", "missing \(key)", "\(key) is required."))
+      }
+      return (nil, nil)
+    }
+    guard raw.count <= limit else {
+      return (nil, reject(
+        "report_problem", "\(key) too long",
+        "\(key) is \(raw.count) characters; the limit is \(limit)."))
+    }
+    return (raw, nil)
+  }
+
+  private func problemReportBody(
+    whatHappens: String, examples: [String], suspectedCause: String?, whyNotSettings: String
+  ) -> String {
+    var parts = ["## What happens\n\(whatHappens)"]
+    if !examples.isEmpty {
+      parts.append("## Examples\n" + examples.map { "- \($0)" }.joined(separator: "\n"))
+    }
+    if let suspectedCause, !suspectedCause.isEmpty {
+      parts.append("## Suspected cause\n\(suspectedCause)")
+    }
+    parts.append("## Why settings can't fix it\n\(whyNotSettings)")
+    parts.append(
+      "---\nReported by an AI app via WhisperShortcut's MCP server.\n\(FeedbackLinks.environmentBlock)")
+    return parts.joined(separator: "\n\n")
+  }
+
+  /// Always a proposal, at every access level above read: the user decides whether to open the issue.
+  private func reportProblem(_ args: [String: Any]) -> MCPToolResult {
+    let title = boundedText(args, key: "title", limit: 120, required: true)
+    if let e = title.error { return e }
+    let what = boundedText(args, key: "what_happens", limit: 1_000, required: true)
+    if let e = what.error { return e }
+    let why = boundedText(args, key: "why_not_settings", limit: 500, required: true)
+    if let e = why.error { return e }
+    let cause = boundedText(args, key: "suspected_cause", limit: 1_000, required: false)
+    if let e = cause.error { return e }
+
+    var examples: [String] = []
+    if args["examples"] != nil {
+      guard let list = args["examples"] as? [String] else {
+        return reject("report_problem", "examples not strings", "examples must be a list of strings.")
+      }
+      guard list.count <= 3 else {
+        return reject(
+          "report_problem", "too many examples",
+          "examples has \(list.count) items; the limit is 3.")
+      }
+      for item in list {
+        let trimmed = item.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 500 else {
+          return reject(
+            "report_problem", "example too long",
+            "An example is \(trimmed.count) characters; the limit is 500.")
+        }
+        if !trimmed.isEmpty { examples.append(trimmed) }
+      }
+    }
+
+    let body = problemReportBody(
+      whatHappens: what.value!, examples: examples, suspectedCause: cause.value, whyNotSettings: why.value!)
+    return MCPMain.run {
+      do {
+        let proposal = try env.proposals.create(
+          kind: .problemReport, title: title.value, previousContent: nil,
+          proposedContent: body, rationale: why.value!)
+        log("report_problem", "proposed", len: body.count)
+        return (
+          "Saved as a problem report in WhisperShortcut (id \(proposal.id)). The user decides whether to send it; nothing leaves the Mac unless they open it as a GitHub issue.",
+          false)
+      } catch {
+        return reject("report_problem", "too many pending", error.localizedDescription)
+      }
     }
   }
 

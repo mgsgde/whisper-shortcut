@@ -83,7 +83,7 @@ struct ChatGPTPlanChatModelSection: View {
         }
       }
       if models.isEmpty {
-        Text(service.planEnabled ? "No models loaded yet" : "Sign in to see your models")
+        Text(service.planEnabled ? ("No models loaded yet" as LocalizedStringKey) : "Sign in to see your models")
       }
     } label: {
       HStack {

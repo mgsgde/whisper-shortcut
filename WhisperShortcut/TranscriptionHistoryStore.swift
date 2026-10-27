@@ -97,7 +97,7 @@ final class TranscriptionHistoryStore {
       encoder.dateEncodingStrategy = .iso8601
       try encoder.encode(storage).write(to: fileURL, options: .atomic)
     } catch {
-      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Failed to persist: \(error.localizedDescription)")
+      DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Failed to persist: \(error.logDescription)")
     }
   }
 
