@@ -2516,6 +2516,16 @@
         }
       }
     },
+    "Ask about anything said so far. Notes appear here as the meeting goes on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragen Sie nach allem, was bisher gesagt wurde. Notizen erscheinen hier im Lauf des Meetings."
+          }
+        }
+      }
+    },
     "Ask about this note" : {
       "localizations" : {
         "de" : {
@@ -2542,6 +2552,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fragen Sie etwas"
+          }
+        }
+      }
+    },
+    "Ask anything about this meeting. The summary is under Notes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragen Sie alles zu diesem Meeting. Die Zusammenfassung steht unter Notizen."
           }
         }
       }
@@ -4576,6 +4596,16 @@
         }
       }
     },
+    "Copy the full transcript of this meeting. The arrow also copies notes and chat as Markdown." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert das vollständige Transkript dieses Meetings. Über den Pfeil kopieren Sie auch Notizen und Chat als Markdown."
+          }
+        }
+      }
+    },
     "Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen." : {
       "localizations" : {
         "de" : {
@@ -4642,6 +4672,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkript + Chat kopieren"
+          }
+        }
+      }
+    },
+    "Copy Transcript + Notes + Chat (Markdown)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript + Notizen + Chat kopieren (Markdown)"
           }
         }
       }
@@ -10995,6 +11035,16 @@
         }
       }
     },
+    "Offline Models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modelle"
+          }
+        }
+      }
+    },
     "Offline models allow you to transcribe audio without an internet connection. Models are automatically downloaded from HuggingFace and cached locally." : {
       "localizations" : {
         "de" : {
@@ -11377,6 +11427,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "memory.md in der Standard-App öffnen"
+          }
+        }
+      }
+    },
+    "Open notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notizen öffnen"
           }
         }
       }
@@ -14070,6 +14130,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Weitergeleitet"
+          }
+        }
+      }
+    },
+    "Run Dictate Prompt and Chat on this Mac, inside the app, with no server to install. Each model downloads once from Hugging Face and stays cached locally." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt und Chat laufen auf diesem Mac, in der App selbst, ohne Server. Jedes Modell wird einmal von Hugging Face geladen und bleibt lokal gespeichert."
           }
         }
       }

@@ -97,6 +97,8 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// Used as the meeting's unique ID for both transcript files and chat store scope.
   static func generateStem() -> String {
     let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
     formatter.dateFormat = "yyyy-MM-dd-HHmmss"
     return "Meeting-\(formatter.string(from: Date()))"
   }
@@ -144,8 +146,10 @@ final class LiveMeetingTranscriptStore: ObservableObject {
       "LIVE-MEETING-STORE: Rehydrated for resume (stem: \(stem), chunks: \(chunks.count), notes: \(notes.count))")
   }
 
-  /// Matches a "[mm:ss]" timestamp marker (minutes may exceed two digits for long meetings).
-  private static let timestampRegex = try! NSRegularExpression(pattern: #"\[(\d+):(\d{2})\]"#)
+  /// Matches a "[mm:ss]" timestamp marker at the start of a line (minutes may exceed two digits for
+  /// long meetings). Anchored so a "[1:23]" inside a chunk's text does not split the chunk.
+  private static let timestampRegex = try! NSRegularExpression(
+    pattern: #"^\[(\d+):(\d{2})\]"#, options: [.anchorsMatchLines])
 
   /// Parses a transcript file (as written by `appendToTranscript`: "[mm:ss] text" blocks
   /// separated by blank lines) back into chunks. Used to rehydrate a resumed meeting.

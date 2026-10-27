@@ -2628,6 +2628,8 @@ class ChatViewModel: ObservableObject {
 
   var currentMeetingStem: String? { session.meetingStem }
 
+  var currentSessionDisplayTitle: String { Self.displayTitle(for: session) }
+
   func loadMeetingTranscriptFromDisk() -> String? {
     guard let stem = session.meetingStem else { return nil }
     return loadMeetingTranscriptFromDisk(stem: stem)
@@ -3597,7 +3599,11 @@ struct ChatView: View {
           LazyVStack(alignment: .leading, spacing: 20) {
             Color.clear.frame(height: 1).id("listTop")
             if viewModel.messages.isEmpty && !viewModel.isSending {
-              emptyStateCommandHints
+              if viewModel.isCurrentSessionMeeting {
+                meetingEmptyState
+              } else {
+                emptyStateCommandHints
+              }
             }
             ForEach(meetingStreamItems) { item in
               switch item {
@@ -3783,6 +3789,50 @@ struct ChatView: View {
     .onHover { inside in hoveredNoteId = inside ? note.id : nil }
   }
 
+  /// A meeting's chat before the first question. The general empty state offered "Start meeting"
+  /// and the global shortcuts here, inside a meeting that was already running or over, and never
+  /// said which meeting this was. The live notes, if any, follow below it in the same column.
+  private var meetingEmptyState: some View {
+    let isActive = viewModel.isCurrentSessionTheActiveMeeting
+    let start = viewModel.currentMeetingStem.flatMap(MeetingListService.date(fromStem:))
+    return VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 6) {
+        Text(viewModel.currentSessionDisplayTitle)
+          .font(.title2)
+          .fontWeight(.semibold)
+          .foregroundColor(ChatTheme.primaryText)
+          .lineLimit(2)
+        if let start {
+          Text(start.formatted(date: .complete, time: .shortened))
+            .font(.callout)
+            .foregroundColor(ChatTheme.secondaryText)
+        }
+      }
+      Text(isActive
+           ? "Ask about anything said so far. Notes appear here as the meeting goes on."
+           : "Ask anything about this meeting. The summary is under Notes.")
+        .font(.callout)
+        .foregroundColor(ChatTheme.secondaryText)
+      if !isActive {
+        Button {
+          meetingTab = .notes
+        } label: {
+          Label("Open notes", systemImage: "list.bullet.rectangle")
+            .font(.callout)
+            .foregroundColor(ChatTheme.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(ChatTheme.controlBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .pointerCursorOnHover()
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.top, 24)
+  }
+
   private var emptyStateCommandHints: some View {
     let config = ShortcutConfigManager.shared.loadConfiguration()
     let shortcuts: [(shortcut: String, description: LocalizedStringKey)] = [
@@ -3958,40 +4008,30 @@ struct ChatView: View {
         Spacer()
 
         // The transcript is a thing you paste elsewhere, not a thing you read here — so it gets a
-        // button and a Finder escape hatch instead of a tab of its own.
-        Button(action: { viewModel.copyMeetingTranscript() }) {
+        // button instead of a tab of its own. One split control: a click copies the transcript, the
+        // arrow offers the Markdown export with notes and chat (the questions are part of the record
+        // too) and the Finder escape hatch. Two side-by-side "Copy transcript…" buttons read as one.
+        Menu {
+          Button("Copy Transcript + Notes + Chat (Markdown)") { viewModel.copyMeetingTranscriptAndChat() }
+          Divider()
+          Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
+        } label: {
           HStack(spacing: 4) {
             Image(systemName: "doc.on.doc").font(.system(size: 10))
             Text("Copy transcript").font(.system(size: 11))
           }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .contentShape(Rectangle())
+        } primaryAction: {
+          viewModel.copyMeetingTranscript()
         }
-        .buttonStyle(.plain)
-        .help("Copy the full transcript of this meeting to the clipboard")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .font(.system(size: 11))
+        .controlSize(.small)
+        .fixedSize()
+        .foregroundColor(ChatTheme.secondaryText)
+        .padding(.horizontal, 8)
+        .help("Copy the full transcript of this meeting. The arrow also copies notes and chat as Markdown.")
         .accessibilityLabel("Copy transcript")
-        .pointerCursorOnHover()
-        .contextMenu {
-          Button("Copy Transcript + Chat") { viewModel.copyMeetingTranscriptAndChat() }
-          Button("Show Transcript File in Finder") { viewModel.revealMeetingTranscript() }
-        }
-
-        // The questions asked during the meeting are part of the record too; this copies both.
-        Button(action: { viewModel.copyMeetingTranscriptAndChat() }) {
-          HStack(spacing: 4) {
-            Image(systemName: "doc.on.doc.fill").font(.system(size: 10))
-            Text("Copy transcript + chat").font(.system(size: 11))
-          }
-          .foregroundColor(ChatTheme.secondaryText)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 3)
-          .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Copy the transcript, the live notes, and the full chat history of this meeting as Markdown")
-        .accessibilityLabel("Copy transcript and chat")
         .pointerCursorOnHover()
 
         // Stopping is not instant, so the button reports the wait instead of inviting a second press:

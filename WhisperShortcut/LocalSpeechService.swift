@@ -67,9 +67,18 @@ import WhisperKit
 actor LocalSpeechService {
   static let shared = LocalSpeechService()
   
-  private var whisperKit: WhisperKit?
-  private var parakeet: ParakeetBackend?
-  private var currentModelType: OfflineModelType?
+  /// The one resident engine, with the model it was loaded for — the single source of truth for
+  /// "what is in memory". `nil` after an unload.
+  private var loaded: Loaded?
+  private var whisperKit: WhisperKit? {
+    if case .whisper(let kit, _)? = loaded { return kit }
+    return nil
+  }
+  private var parakeet: ParakeetBackend? {
+    if case .parakeet(let backend, _)? = loaded { return backend }
+    return nil
+  }
+  private var currentModelType: OfflineModelType? { loaded?.modelType }
   /// The load `initializeModel` is currently running, so concurrent callers share it.
   private var inFlightLoad: (type: OfflineModelType, task: Task<Void, Error>)?
   /// The last model that was loaded, kept across unloads so `transcribe` can put it back.
@@ -113,13 +122,22 @@ actor LocalSpeechService {
     decodeDeadlineFloor + decodeDeadlineRealtimeFactor * max(0, seconds ?? 0)
   }
 
-  private final class LoadedWhisperKit: @unchecked Sendable {
-    let kit: WhisperKit
-    init(_ kit: WhisperKit) { self.kit = kit }
+  /// Exactly one engine is ever resident. `@unchecked Sendable` because `WhisperKit` is not
+  /// Sendable: a value is built inside the deadline's closure and only stored by this actor
+  /// afterwards, never touched from two places at once.
+  private enum Loaded: @unchecked Sendable {
+    case whisper(WhisperKit, OfflineModelType)
+    case parakeet(ParakeetBackend, OfflineModelType)
+
+    var modelType: OfflineModelType {
+      switch self {
+      case .whisper(_, let type), .parakeet(_, let type): return type
+      }
+    }
   }
 
   /// Weights of either engine are in memory.
-  private var hasLoadedModel: Bool { whisperKit != nil || parakeet != nil }
+  private var hasLoadedModel: Bool { loaded != nil }
   
   private init() {}
   
@@ -166,24 +184,29 @@ actor LocalSpeechService {
     }
 
     if modelType.engine == .parakeet {
-      try await initializeParakeet(modelType)
+      // The completeness check is not a formality here — FluidAudio downloads a missing file on load.
+      try await loadEngine(
+        modelType, incompleteFolder: "model folder",
+        load: { .parakeet(try await ParakeetBackend.load(), modelType) },
+        mapFailure: { error in
+          if case ParakeetBackendError.notDownloaded = error {
+            return TranscriptionError.modelNotAvailable(modelType)
+          }
+          let errorMessage = error.localizedDescription
+          DebugLogger.logError("LOCAL-SPEECH: Parakeet initialization failed: \(errorMessage)")
+          return TranscriptionError.localModelFailed(String(localized: "Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
+        })
       return
     }
-    
+
     // Resolve the actual model path using ModelManager
     guard let modelPath = ModelManager.shared.resolveModelPath(for: modelType) else {
       DebugLogger.logError("LOCAL-SPEECH: Model path not found for \(modelType.displayName)")
       throw TranscriptionError.modelNotAvailable(modelType)
     }
-    
+
     DebugLogger.log("LOCAL-SPEECH: Using model path: \(modelPath.path)")
 
-    guard ModelManager.shared.isModelAvailable(modelType) else {
-      DebugLogger.logError(
-        "LOCAL-SPEECH: Not loading \(modelType.displayName) — its compiled model folder is incomplete; the download has to finish first")
-      throw TranscriptionError.modelNotAvailable(modelType)
-    }
-    
     // Initialize WhisperKit with the specific model folder.
     //
     // `computeOptions` is the load-time decision, not a speed knob: leaving the audio encoder on
@@ -191,17 +214,18 @@ actor LocalSpeechService {
     // CoreML→ANE compile that took over 14 minutes here without finishing. See
     // `OfflineModelType.usesNeuralEngine`.
     let encoderCompute: MLComputeUnits = modelType.usesNeuralEngine ? .cpuAndNeuralEngine : .cpuAndGPU
-    // `prefillCompute` exists only on WhisperKit main after 1.1.0; the 1.1.0 pin we
-    // ship against has no such knob — prefill follows `textDecoderCompute`.
-    DebugLogger.log(
-      "LOCAL-SPEECH: Compute units — encoder/decoder: \(modelType.usesNeuralEngine ? "CPU+ANE" : "CPU+GPU")")
-    let loadStart = CFAbsoluteTimeGetCurrent()
+    let usesNeuralEngine = modelType.usesNeuralEngine
     let modelPathString = modelPath.path
-    
-    do {
-      // Build `WhisperKitConfig` inside the Sendable closure from String + MLComputeUnits —
-      // the config class itself is not Sendable. Assign actor state only after the call returns.
-      let loaded = try await WallClockDeadline.run(seconds: Self.modelLoadDeadline) {
+
+    try await loadEngine(
+      modelType, incompleteFolder: "compiled model folder",
+      load: {
+        // `prefillCompute` exists only on WhisperKit main after 1.1.0; the 1.1.0 pin we
+        // ship against has no such knob — prefill follows `textDecoderCompute`.
+        DebugLogger.log(
+          "LOCAL-SPEECH: Compute units — encoder/decoder: \(usesNeuralEngine ? "CPU+ANE" : "CPU+GPU")")
+        // Build `WhisperKitConfig` inside the Sendable closure from String + MLComputeUnits —
+        // the config class itself is not Sendable. Assign actor state only after the call returns.
         let config = WhisperKitConfig(
           modelFolder: modelPathString,
           computeOptions: ModelComputeOptions(
@@ -209,11 +233,42 @@ actor LocalSpeechService {
             audioEncoderCompute: encoderCompute,
             textDecoderCompute: encoderCompute)
         )
-        return LoadedWhisperKit(try await WhisperKit(config))
-      }
-      whisperKit = loaded.kit
-      parakeet = nil  // exactly one engine resident
-      currentModelType = modelType
+        return .whisper(try await WhisperKit(config), modelType)
+      },
+      mapFailure: { error in
+        // Check if error is related to missing or incomplete model files
+        let errorMessage = error.localizedDescription
+        DebugLogger.logError("LOCAL-SPEECH: WhisperKit initialization failed: \(errorMessage)")
+
+        if Self.looksLikeMissingModel(errorMessage) {
+          // This is a model availability issue
+          DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete")
+          return TranscriptionError.modelNotAvailable(modelType)
+        }
+
+        // For other errors, wrap in fileError with more context
+        return TranscriptionError.localModelFailed(String(localized: "Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
+      })
+  }
+
+  /// What both engines share: the completeness gate, the wall-clock deadline, committing the
+  /// resident engine and the load log lines. Engine-specific work is `load` (builds the engine)
+  /// and `mapFailure` (turns a non-timeout, non-cancellation load error into the error to throw).
+  private func loadEngine(
+    _ modelType: OfflineModelType,
+    incompleteFolder: String,
+    load: @escaping @Sendable () async throws -> Loaded,
+    mapFailure: (Error) -> TranscriptionError
+  ) async throws {
+    guard ModelManager.shared.isModelAvailable(modelType) else {
+      DebugLogger.logError(
+        "LOCAL-SPEECH: Not loading \(modelType.displayName) — its \(incompleteFolder) is incomplete; the download has to finish first")
+      throw TranscriptionError.modelNotAvailable(modelType)
+    }
+    let loadStart = CFAbsoluteTimeGetCurrent()
+    do {
+      let engine = try await WallClockDeadline.run(seconds: Self.modelLoadDeadline, operation: load)
+      loaded = engine  // exactly one engine resident
       lastLoadedModelType = modelType
       startLifetimeGuardsIfNeeded()
       scheduleIdleUnload()
@@ -241,65 +296,7 @@ actor LocalSpeechService {
     } catch is CancellationError {
       throw CancellationError()
     } catch {
-      // Check if error is related to missing or incomplete model files
-      let errorMessage = error.localizedDescription
-      DebugLogger.logError("LOCAL-SPEECH: WhisperKit initialization failed: \(errorMessage)")
-      
-      if Self.looksLikeMissingModel(errorMessage) {
-        // This is a model availability issue
-        DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete")
-        throw TranscriptionError.modelNotAvailable(modelType)
-      }
-      
-      // For other errors, wrap in fileError with more context
-      throw TranscriptionError.localModelFailed(String(localized: "Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
-    }
-  }
-  
-  /// Parakeet's half of `initializeModel`: same completeness gate, deadline, state and log line.
-  /// The completeness check is not a formality here — FluidAudio downloads a missing file on load.
-  private func initializeParakeet(_ modelType: OfflineModelType) async throws {
-    guard ModelManager.shared.isModelAvailable(modelType) else {
-      DebugLogger.logError(
-        "LOCAL-SPEECH: Not loading \(modelType.displayName) — its model folder is incomplete; the download has to finish first")
-      throw TranscriptionError.modelNotAvailable(modelType)
-    }
-    let loadStart = CFAbsoluteTimeGetCurrent()
-    do {
-      let backend = try await WallClockDeadline.run(seconds: Self.modelLoadDeadline) {
-        try await ParakeetBackend.load()
-      }
-      parakeet = backend
-      whisperKit = nil  // exactly one engine resident
-      currentModelType = modelType
-      lastLoadedModelType = modelType
-      startLifetimeGuardsIfNeeded()
-      scheduleIdleUnload()
-      let elapsed = CFAbsoluteTimeGetCurrent() - loadStart
-      DebugLogger.logSuccess(
-        "LOCAL-SPEECH: Model initialized successfully in \(String(format: "%.1f", elapsed))s")
-      DebugLogger.logSpeech(
-        "SPEED: LOCAL-SPEECH load model=\(modelType.rawValue) "
-          + "loadMs=\(String(format: "%.0f", elapsed * 1000))")
-    } catch TranscriptionError.requestTimeout {
-      DebugLogger.logError(
-        "LOCAL-SPEECH: model load exceeded \(Int(Self.modelLoadDeadline))s wall-clock deadline for \(modelType.displayName) — aborting (LocalDeadline)")
-      ContextLogger.shared.logRequestTimedOut(
-        timeoutSeconds: Int(Self.modelLoadDeadline),
-        logPrefix: "LOCAL-SPEECH",
-        origin: .transcription,
-        stage: "modelLoad",
-        model: modelType.rawValue)
-      throw TranscriptionError.localProcessingTimeout(
-        stage: .modelLoad, seconds: Int(Self.modelLoadDeadline))
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch ParakeetBackendError.notDownloaded {
-      throw TranscriptionError.modelNotAvailable(modelType)
-    } catch {
-      let errorMessage = error.localizedDescription
-      DebugLogger.logError("LOCAL-SPEECH: Parakeet initialization failed: \(errorMessage)")
-      throw TranscriptionError.localModelFailed(String(localized: "Failed to load model: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
+      throw mapFailure(error)
     }
   }
 
@@ -309,13 +306,11 @@ actor LocalSpeechService {
   }
 
   private func unloadModel(reason: String) {
-    guard hasLoadedModel || currentModelType != nil else { return }
+    guard hasLoadedModel else { return }
     DebugLogger.log("LOCAL-SPEECH: Unloading model (\(reason))")
-    whisperKit = nil
     // Dropping the reference is the whole unload — see the note in `ParakeetBackend` on why it
     // must not call FluidAudio's `cleanup()` while a decode may still be running.
-    parakeet = nil
-    currentModelType = nil
+    loaded = nil
     lifetime.cancelIdleUnload()
   }
 
@@ -392,6 +387,19 @@ actor LocalSpeechService {
     //
     // Reloading here closes the race for good, because inside the actor the check and the decode
     // cannot be separated by an unload.
+    //
+    // A model switch unloads the old model before it loads the new one, so a transcribe that
+    // lands mid-switch also sees nothing loaded — and `lastLoadedModelType` is still the OLD
+    // model. Reloading that would queue behind the switch, then unload the model the user just
+    // selected. So first wait for a load of a DIFFERENT model that is already running; its
+    // failure is its owner's to report, and the reload below then covers it. A running load of
+    // the same model is joined by `initializeModel` below, which surfaces its error instead of
+    // starting a second load after it failed.
+    if !hasLoadedModel, let running = inFlightLoad, running.type != lastLoadedModelType {
+      DebugLogger.log(
+        "LOCAL-SPEECH: Model load in flight (\(running.type.displayName)) — waiting for it instead of reloading")
+      _ = try? await running.task.value
+    }
     if !hasLoadedModel, let reloadType = lastLoadedModelType {
       DebugLogger.logWarning(
         "LOCAL-SPEECH: Model was unloaded since the caller checked — reloading \(reloadType.displayName)")
@@ -469,7 +477,7 @@ actor LocalSpeechService {
     } else if let whisperKit {
       (text, decodeElapsed) = try await transcribeWithWhisper(
         whisperKit, audioURL: audioURL, language: language, prompt: prompt,
-        chunkingStrategy: chunkingStrategy, deadline: deadline)
+        chunkingStrategy: chunkingStrategy, deadline: deadline, audioSeconds: audioDuration)
     } else {
       throw TranscriptionError.localModelFailed(String(localized: "Offline model not initialized"))
     }
@@ -500,7 +508,7 @@ actor LocalSpeechService {
   /// segments joined. Returns the raw text and the decode time (retry included).
   private func transcribeWithWhisper(
     _ whisperKit: WhisperKit, audioURL: URL, language: String?, prompt: String?,
-    chunkingStrategy: ChunkingStrategy?, deadline: TimeInterval
+    chunkingStrategy: ChunkingStrategy?, deadline: TimeInterval, audioSeconds: Double?
   ) async throws -> (String, Double) {
     // Build promptTokens from dictation prompt if available
     let promptTokens: [Int]? = buildPromptTokens(prompt: prompt, whisperKit: whisperKit)
@@ -516,7 +524,7 @@ actor LocalSpeechService {
     let decodeStart = CFAbsoluteTimeGetCurrent()
     var transcriptionResults = try await performWhisperTranscription(
       whisperKit: whisperKit, audioURL: audioURL, decodeOptions: decodeOptions,
-      deadline: deadline
+      deadline: deadline, audioSeconds: audioSeconds
     )
     
     // Fallback: if prompt was used and result is empty, retry without prompt (WhisperKit #372)
@@ -526,7 +534,7 @@ actor LocalSpeechService {
         language: language, promptTokens: nil, chunkingStrategy: chunkingStrategy)
       transcriptionResults = try await performWhisperTranscription(
         whisperKit: whisperKit, audioURL: audioURL, decodeOptions: fallbackOptions,
-        deadline: deadline
+        deadline: deadline, audioSeconds: audioSeconds
       )
     }
     
@@ -548,10 +556,39 @@ actor LocalSpeechService {
     _ backend: ParakeetBackend, audioURL: URL, language: String?, vocabulary: [String],
     deadline: TimeInterval, audioSeconds: Double?
   ) async throws -> String {
+    try await Self.withDecodeDeadline(
+      seconds: deadline, audioSeconds: audioSeconds,
+      model: currentModelType?.rawValue ?? "unknown",
+      op: { try await backend.transcribe(audioURL: audioURL, language: language, vocabulary: vocabulary) },
+      mapFailure: { error in
+        switch error {
+        case ParakeetBackendError.audioTooShort:
+          return TranscriptionError.noSpeechDetected
+        case ParakeetBackendError.notLoaded:
+          return ParakeetBackendError.notLoaded
+        default:
+          // Not "corrupted, download again": the files passed the completeness check before this
+          // load, and sending someone to re-download 700 MB for a decode error helps nobody.
+          let errorMessage = error.localizedDescription
+          DebugLogger.logError("LOCAL-SPEECH: Parakeet transcription failed: \(errorMessage)")
+          return TranscriptionError.localModelFailed(String(localized: "Offline transcription failed: \(errorMessage)"))
+        }
+      })
+  }
+
+  /// The decode-deadline tail both engines share: run `op` under the wall-clock deadline, map the
+  /// deadline to `localProcessingTimeout` (with the log line and the `ContextLogger` entry), let
+  /// cancellation through untouched, and hand every other error to the engine's `mapFailure`.
+  /// A cancelled decode is the caller's cancellation, never a model problem.
+  static func withDecodeDeadline<T: Sendable>(
+    seconds deadline: TimeInterval,
+    audioSeconds: Double?,
+    model: String,
+    op: @escaping @Sendable () async throws -> T,
+    mapFailure: (Error) -> Error
+  ) async throws -> T {
     do {
-      return try await WallClockDeadline.run(seconds: deadline) {
-        try await backend.transcribe(audioURL: audioURL, language: language, vocabulary: vocabulary)
-      }
+      return try await WallClockDeadline.run(seconds: deadline, operation: op)
     } catch TranscriptionError.requestTimeout {
       let audioSecondsText = audioSeconds.map { String(format: "%.1f", $0) } ?? "?"
       DebugLogger.logError(
@@ -561,23 +598,33 @@ actor LocalSpeechService {
         logPrefix: "LOCAL-SPEECH",
         origin: .transcription,
         stage: "decode",
-        model: currentModelType?.rawValue ?? "unknown")
+        model: model)
       throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
     } catch is CancellationError {
       throw CancellationError()
-    } catch ParakeetBackendError.audioTooShort {
-      throw TranscriptionError.noSpeechDetected
-    } catch ParakeetBackendError.notLoaded {
-      throw ParakeetBackendError.notLoaded
     } catch {
-      // Not "corrupted, download again": the files passed the completeness check before this
-      // load, and sending someone to re-download 700 MB for a decode error helps nobody.
-      let errorMessage = error.localizedDescription
-      DebugLogger.logError("LOCAL-SPEECH: Parakeet transcription failed: \(errorMessage)")
-      throw TranscriptionError.localModelFailed(String(localized: "Offline transcription failed: \(errorMessage)"))
+      throw mapFailure(error)
     }
   }
-  
+
+  /// Whisper's mapping for a failed decode. The missing-model heuristic is Whisper-only: its
+  /// errors are free-form CoreML text, whereas Parakeet's are typed.
+  static func whisperDecodeFailure(_ error: Error, modelType: OfflineModelType?) -> Error {
+    let errorMessage = error.localizedDescription
+    DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")
+
+    if looksLikeMissingModel(errorMessage) {
+      DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete during transcription")
+      if let modelType {
+        return TranscriptionError.modelNotAvailable(modelType)
+      } else {
+        return TranscriptionError.localModelFailed(String(localized: "Model is missing or incomplete. Please download it in Settings."))
+      }
+    }
+
+    return TranscriptionError.localModelFailed(String(localized: "Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
+  }
+
   // MARK: - Prompt Token Building
   
   /// Rewrites the user's glossary into something Whisper can safely be conditioned on.
@@ -706,12 +753,16 @@ actor LocalSpeechService {
     whisperKit: WhisperKit,
     audioURL: URL,
     decodeOptions: DecodingOptions,
-    deadline: TimeInterval
+    deadline: TimeInterval,
+    audioSeconds: Double?
   ) async throws -> [TranscriptionResult] {
     let whisperKitStartTime = CFAbsoluteTimeGetCurrent()
     let audioPath = audioURL.path
-    do {
-      let results = try await WallClockDeadline.run(seconds: deadline) {
+    let modelType = currentModelType
+    let results = try await Self.withDecodeDeadline(
+      seconds: deadline, audioSeconds: audioSeconds,
+      model: modelType?.rawValue ?? "unknown",
+      op: {
         try await whisperKit.transcribe(
           audioPath: audioPath,
           decodeOptions: decodeOptions
@@ -728,47 +779,17 @@ actor LocalSpeechService {
           // behaviour is exactly the pre-slice-4 one.
           return !Task.isCancelled
         }
-      }
-      let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
-      DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
-      // Where the call's time went, from WhisperKit's own stopwatch. The total alone cannot
-      // tell a slow encoder pass from a long token loop or a temperature fallback, and those
-      // call for different fixes (compute placement, model, thresholds).
-      let summary = Self.timingsSummary(of: results)
-      lastDecodeTimingsSummary = summary
-      DebugLogger.logSpeech("SPEED: LOCAL-SPEECH timings \(summary)")
-      return results
-    } catch TranscriptionError.requestTimeout {
-      let audioSecondsText: String
-      if let seconds = try? AudioDuration.avAudioFileSeconds(audioURL) {
-        audioSecondsText = String(format: "%.2f", seconds)
-      } else {
-        audioSecondsText = "n/a"
-      }
-      DebugLogger.logError(
-        "LOCAL-SPEECH: decode exceeded \(Int(deadline))s wall-clock deadline (audio \(audioSecondsText)s) — aborting (LocalDeadline)")
-      ContextLogger.shared.logRequestTimedOut(
-        timeoutSeconds: Int(deadline),
-        logPrefix: "LOCAL-SPEECH",
-        origin: .transcription,
-        stage: "decode",
-        model: currentModelType?.rawValue ?? "unknown")
-      throw TranscriptionError.localProcessingTimeout(stage: .decode, seconds: Int(deadline))
-    } catch {
-      let errorMessage = error.localizedDescription
-      DebugLogger.logError("LOCAL-SPEECH: Transcription failed: \(errorMessage)")
-      
-      if Self.looksLikeMissingModel(errorMessage) {
-        DebugLogger.logError("LOCAL-SPEECH: Model appears to be missing or incomplete during transcription")
-        if let modelType = currentModelType {
-          throw TranscriptionError.modelNotAvailable(modelType)
-        } else {
-          throw TranscriptionError.localModelFailed(String(localized: "Model is missing or incomplete. Please download it in Settings."))
-        }
-      }
-      
-      throw TranscriptionError.localModelFailed(String(localized: "Transcription failed: \(errorMessage). The model may be incomplete or corrupted. Please try downloading it again in Settings."))
-    }
+      },
+      mapFailure: { Self.whisperDecodeFailure($0, modelType: modelType) })
+    let whisperKitTime = CFAbsoluteTimeGetCurrent() - whisperKitStartTime
+    DebugLogger.logSpeech("SPEED: WhisperKit transcribe call took \(String(format: "%.3f", whisperKitTime))s (\(String(format: "%.0f", whisperKitTime * 1000))ms)")
+    // Where the call's time went, from WhisperKit's own stopwatch. The total alone cannot
+    // tell a slow encoder pass from a long token loop or a temperature fallback, and those
+    // call for different fixes (compute placement, model, thresholds).
+    let summary = Self.timingsSummary(of: results)
+    lastDecodeTimingsSummary = summary
+    DebugLogger.logSpeech("SPEED: LOCAL-SPEECH timings \(summary)")
+    return results
   }
   
   /// One line per decode: how many 30 s windows ran, and the seconds spent in each stage.
@@ -851,11 +872,7 @@ actor LocalSpeechService {
     }
   }
   
-  // MARK: - Check if Model is Ready
-  func isReady() -> Bool {
-    return currentModelType != nil && hasLoadedModel
-  }
-
+  // MARK: - Loaded Model Queries
   /// Returns true if the given model type is currently loaded (so we use the selected model, not a previously pre-loaded one).
   func isLoaded(modelType: OfflineModelType) -> Bool {
     return currentModelType == modelType

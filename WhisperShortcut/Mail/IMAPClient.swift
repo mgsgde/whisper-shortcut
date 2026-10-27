@@ -22,6 +22,14 @@ enum IMAPError: LocalizedError, Equatable, Sendable {
   case server(String)
   case protocolError(String)
 
+  /// The connection itself is gone or unusable, so a LOGOUT would only wait for another timeout.
+  var isTransportFailure: Bool {
+    switch self {
+    case .timeout, .connectionFailed, .tlsFailed: return true
+    default: return false
+    }
+  }
+
   var errorDescription: String? {
     switch self {
     case .authenticationFailed:
@@ -128,7 +136,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
     return try await withTaskCancellationHandler {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
         let once = ResumeOnce()
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, _, error in
           guard let self else { return }
           if let error {
             if once.claim() { continuation.resume(throwing: self.map(error)) }
@@ -138,7 +146,7 @@ final class NWIMAPTransport: IMAPTransport, @unchecked Sendable {
             if once.claim() { continuation.resume(returning: data) }
             return
           }
-          if once.claim() { continuation.resume(returning: isComplete ? Data() : Data()) }
+          if once.claim() { continuation.resume(returning: Data()) }
         }
       }
     } onCancel: {
@@ -176,7 +184,22 @@ actor IMAPSession {
   /// Values that must never appear in a log line or an error string.
   private var secrets: [String] = []
 
-  private static let commandTimeout: Duration = .seconds(20)
+  /// A command fails when no byte moves (read or write) for this long. Resets on every transfer,
+  /// so a large literal on a slow but steady link keeps going.
+  private static let idleTimeout: Duration = .seconds(20)
+  /// Hard cap for one command however steadily bytes arrive.
+  private static let commandCap: Duration = .seconds(120)
+
+  /// Idle deadline that restarts per transfer, bounded by the overall cap of the command.
+  struct Deadline: Sendable {
+    let cap: ContinuousClock.Instant
+    let idle: Duration
+
+    /// The instant the next single read or write has to finish by.
+    func next() -> ContinuousClock.Instant {
+      min(ContinuousClock.now.advanced(by: idle), cap)
+    }
+  }
   private static let maxLiteralBytes = 2_000_000
 
   init(transport: IMAPTransport, host: String = "") {
@@ -322,7 +345,7 @@ actor IMAPSession {
     return String(format: "A%03d", tagCounter)
   }
 
-  private func send(tag: String, pieces: [Piece], before deadline: ContinuousClock.Instant, authenticating: Bool) async throws {
+  private func send(tag: String, pieces: [Piece], before deadline: Deadline, authenticating: Bool) async throws {
     logCommand(tag: tag, pieces: pieces)
     var pending = Data(tag.utf8)
     for piece in pieces {
@@ -341,7 +364,7 @@ actor IMAPSession {
     try await writeChunk(pending, before: deadline)
   }
 
-  private func collect(tag: String, before deadline: ContinuousClock.Instant, authenticating: Bool) async throws -> [ServerResponse] {
+  private func collect(tag: String, before deadline: Deadline, authenticating: Bool) async throws -> [ServerResponse] {
     var items: [ServerResponse] = []
     while true {
       let response = try await readResponse(before: deadline)
@@ -359,7 +382,7 @@ actor IMAPSession {
     }
   }
 
-  private func readContinuation(tag: String, before deadline: ContinuousClock.Instant, authenticating: Bool) async throws {
+  private func readContinuation(tag: String, before deadline: Deadline, authenticating: Bool) async throws {
     while true {
       let response = try await readResponse(before: deadline)
       logResponse(response, tag: tag)
@@ -395,7 +418,7 @@ actor IMAPSession {
 
   // MARK: - Reader
 
-  private func readResponse(before deadline: ContinuousClock.Instant) async throws -> ServerResponse {
+  private func readResponse(before deadline: Deadline) async throws -> ServerResponse {
     var segments: [ServerResponse.Segment] = []
     var oversized = false
     while true {
@@ -418,7 +441,7 @@ actor IMAPSession {
     }
   }
 
-  private func readLine(before deadline: ContinuousClock.Instant) async throws -> String {
+  private func readLine(before deadline: Deadline) async throws -> String {
     let crlf = Data([13, 10])
     while buffer.range(of: crlf) == nil {
       try await fill(before: deadline)
@@ -431,7 +454,7 @@ actor IMAPSession {
     return String(decoding: line, as: UTF8.self)
   }
 
-  private func readExact(_ count: Int, before deadline: ContinuousClock.Instant) async throws -> Data {
+  private func readExact(_ count: Int, before deadline: Deadline) async throws -> Data {
     while buffer.count < count {
       try await fill(before: deadline)
     }
@@ -440,7 +463,7 @@ actor IMAPSession {
     return data
   }
 
-  private func discard(_ count: Int, before deadline: ContinuousClock.Instant) async throws {
+  private func discard(_ count: Int, before deadline: Deadline) async throws {
     var left = count
     while left > 0 {
       if buffer.isEmpty { try await fill(before: deadline) }
@@ -451,7 +474,7 @@ actor IMAPSession {
     DebugLogger.log("IMAP: discarded literal bytes=\(count)")
   }
 
-  private func fill(before deadline: ContinuousClock.Instant) async throws {
+  private func fill(before deadline: Deadline) async throws {
     let chunk = try await readChunk(before: deadline)
     if chunk.isEmpty {
       throw IMAPError.protocolError(String(localized: "The server closed the connection."))
@@ -459,14 +482,14 @@ actor IMAPSession {
     buffer.append(chunk)
   }
 
-  private func readChunk(before deadline: ContinuousClock.Instant) async throws -> Data {
+  private func readChunk(before deadline: Deadline) async throws -> Data {
     let transport = self.transport
     return try await race(before: deadline) {
       try await transport.read()
     }
   }
 
-  private func writeChunk(_ data: Data, before deadline: ContinuousClock.Instant) async throws {
+  private func writeChunk(_ data: Data, before deadline: Deadline) async throws {
     let transport = self.transport
     try await race(before: deadline) {
       try await transport.write(data)
@@ -481,10 +504,11 @@ actor IMAPSession {
   }
 
   private func race<T: Sendable>(
-    before deadline: ContinuousClock.Instant,
+    before deadline: Deadline,
     _ operation: @Sendable @escaping () async throws -> T
   ) async throws -> T {
-    if ContinuousClock.now >= deadline { throw IMAPError.timeout }
+    let limit = deadline.next()
+    if ContinuousClock.now >= limit { throw IMAPError.timeout }
     return try await withThrowingTaskGroup(of: RaceResult<T>.self) { group in
       group.addTask {
         do {
@@ -499,7 +523,7 @@ actor IMAPSession {
       }
       group.addTask {
         do {
-          try await Task.sleep(until: deadline, clock: ContinuousClock())
+          try await Task.sleep(until: limit, clock: ContinuousClock())
           return .timedOut
         } catch is CancellationError {
           return .cancelled
@@ -563,7 +587,15 @@ actor IMAPSession {
   }
 
   private func mailboxName(in response: ServerResponse) -> String? {
-    if case .literal(let data) = response.segments.last {
+    // readResponse appends the (usually empty) rest of the line after a literal, so the literal
+    // is the mailbox name when only whitespace text follows it.
+    if let index = response.segments.lastIndex(where: { if case .literal = $0 { return true } else { return false } }),
+      case .literal(let data) = response.segments[index],
+      response.segments[(index + 1)...].allSatisfy({
+        if case .text(let text) = $0 { return text.allSatisfy(\.isWhitespace) }
+        return false
+      })
+    {
       let name = String(decoding: data, as: UTF8.self)
       return Self.decodeModifiedUTF7(name)
     }
@@ -637,8 +669,8 @@ actor IMAPSession {
     return result
   }
 
-  private static func deadline() -> ContinuousClock.Instant {
-    ContinuousClock.now.advanced(by: commandTimeout)
+  private static func deadline() -> Deadline {
+    Deadline(cap: ContinuousClock.now.advanced(by: commandCap), idle: idleTimeout)
   }
 
   private static func rejectLineBreaks(user: String, password: String) throws {
