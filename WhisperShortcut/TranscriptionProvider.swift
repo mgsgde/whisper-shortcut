@@ -48,7 +48,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .openAI: return "OpenAI"
     case .xai: return "xAI (Grok)"
     case .openRouter: return "OpenRouter"
-    case .selfHosted: return String(localized: "Self-hosted")
+    case .selfHosted: return String(localized: "Own server")
     case .offline: return String(localized: "On-device")
     }
   }
@@ -116,7 +116,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .openRouter:
       return String(localized: "Connect your OpenRouter account in Settings → Accounts to transcribe through OpenRouter, or pick a different model.")
     case .selfHosted:
-      return String(localized: "Configure your self-hosted transcription endpoint in Dictate settings, or pick a different model.")
+      return String(localized: "Set up your own server (OpenAI-compatible) in Settings → Dictate, or pick a different model.")
     case .offline:
       return String(localized: "Download the selected offline model in Settings → Dictate, or pick a different transcription model.")
     }

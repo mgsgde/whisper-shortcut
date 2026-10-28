@@ -203,7 +203,7 @@ struct PromptModelSelectionView: View {
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
       (.chatGPTPlan, "person.crop.circle.badge.checkmark", "ChatGPT plan", "Your ChatGPT Plus or Pro plan · no API key"),
       (.openRouter, "arrow.triangle.branch", "OpenRouter", "Any model on your OpenRouter account"),
-      (.customOpenAI, "network", "Custom endpoint", "Your own OpenAI-compatible server"),
+      (.customOpenAI, "server.rack", "Own server", "OpenAI-compatible: LiteLLM, Azure, Vertex, …"),
       (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),
       (.local, "server.rack", "Local Server", "Your own Ollama / LM Studio · any model you have pulled"),
     ]
@@ -234,7 +234,7 @@ struct PromptModelSelectionView: View {
   private func modelCell(_ model: PromptModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
       title: model.displayName,
-      subtitle: mlxTileSubtitle(for: model),
+      subtitle: model.provider == .customOpenAI ? ownServerTileSubtitle : mlxTileSubtitle(for: model),
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
       // `badges` comes from the curation, whose Recommended is this picker's `recommendedModel`.
@@ -250,6 +250,11 @@ struct PromptModelSelectionView: View {
         onModelChanged?()
       }
     )
+  }
+
+  /// The model the shared server is asked for, once it is set up, so the tile names what runs.
+  private var ownServerTileSubtitle: String? {
+    CustomEndpointPreferences.isConfigured ? "→ \(OpenAIChatPreferences.modelID)" : nil
   }
 
   private func mlxTileSubtitle(for model: PromptModel) -> String? {

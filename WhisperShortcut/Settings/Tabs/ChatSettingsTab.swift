@@ -18,7 +18,7 @@ struct ChatSettingsTab: View {
         OpenRouterChatModelSection()
       case .customOpenAI:
         SpacedSectionDivider()
-        CustomOpenAIChatEndpointSection()
+        OwnServerEndpointSection(route: .chat)
       case .chatGPTPlan:
         SpacedSectionDivider()
         ChatGPTPlanChatModelSection()
@@ -73,7 +73,7 @@ struct ChatSettingsTab: View {
   private var modelSection: some View {
     PromptModelSelectionView(
       title: "Chat Model",
-      subtitle: "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → Accounts. “Custom endpoint” is for your own OpenAI-compatible server and is set up below once you pick it.",
+      subtitle: "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → Accounts. “Own server” is your own OpenAI-compatible server (LiteLLM, Azure, …), shared with Dictate and Dictate Prompt.",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       recommendedModel: SettingsDefaults.selectedChatModel,

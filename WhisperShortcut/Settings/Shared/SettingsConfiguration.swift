@@ -50,7 +50,7 @@ enum ChatModelProvider: String, CaseIterable {
     case .grok: return "Grok"
     case .openai: return "GPT"
     case .anthropic: return "Claude"
-    case .customOpenAI: return String(localized: "Custom endpoint")
+    case .customOpenAI: return String(localized: "Own server")
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return String(localized: "ChatGPT plan")
     case .local: return String(localized: "Local server")
@@ -254,7 +254,7 @@ enum PromptModel: String, CaseIterable {
     case .customOpenAIEndpoint:
       // Short on purpose: this is a chip next to the composer's slash-command row, and a long
       // name squeezed those buttons until they hyphenated mid-word ("/at-tach").
-      return String(localized: "Custom endpoint")
+      return String(localized: "Own server")
     case .openRouterChat:
       return OpenRouterChatPreferences.shortModelName
     case .chatGPTPlanChat:
@@ -338,7 +338,7 @@ enum PromptModel: String, CaseIterable {
     case .claudeHaiku55:
       return String(localized: "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key")
     case .customOpenAIEndpoint:
-      return String(localized: "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search")
+      return String(localized: "Your own OpenAI-compatible server (LiteLLM, Azure OpenAI, Vertex AI, OpenInference, self-hosted) • Set up once below, shared by Dictate, Dictate Prompt and Chat • No web search")
     case .openRouterChat:
       return String(localized: "Any chat model OpenRouter routes to, on your OpenRouter account • Pick the model in Settings → Chat • Connect the account in Settings → Accounts • No web search")
     case .chatGPTPlanChat:

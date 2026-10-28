@@ -147,7 +147,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .xaiTranscribe:
       return "Grok Speech-to-Text"
     case .selfHostedTranscription:
-      return String(localized: "Self-hosted Transcription Endpoint")
+      return String(localized: "Own server")
     case .openRouterTranscription:
       return "OpenRouter"
     }
@@ -317,7 +317,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .xaiTranscribe:
       return String(localized: "xAI's Grok Speech-to-Text • Cloud • Requires xAI API key")
     case .selfHostedTranscription:
-      return String(localized: "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint")
+      return String(localized: "Transcribes on your own OpenAI-compatible server (LiteLLM, Azure, faster-whisper-server, …), the same one Chat and Dictate Prompt can use")
     case .openRouterTranscription:
       return String(localized: "Any audio-capable model on OpenRouter • Pick the model in Dictate settings • Connect your OpenRouter account in Settings → Accounts")
     }

@@ -32,7 +32,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     var providerLabel: String {
       switch self {
       case .openAI: return "OpenAI"
-      case .customEndpoint: return String(localized: "Custom endpoint")
+      case .customEndpoint: return String(localized: "Own server")
       case .openRouter: return "OpenRouter"
       }
     }
@@ -85,7 +85,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     case .customEndpoint:
       guard OpenAIChatPreferences.customEndpointBaseURL != nil else {
         throw TranscriptionError.networkError(
-          String(localized: "Custom endpoint URL is missing. Set it in Settings → Chat, then select Custom endpoint as the chat model."))
+          String(localized: "Your own server's base URL is missing. Set it in Settings → Chat, then pick Own server as the chat model."))
       }
       guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
         throw TranscriptionError.networkError(

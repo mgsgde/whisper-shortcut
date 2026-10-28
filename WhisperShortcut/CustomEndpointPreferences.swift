@@ -66,13 +66,22 @@ enum CustomEndpointPreferences {
   /// A legacy override that still has its own bearer token keeps that token — it may be a
   /// different server from Chat. Otherwise the Chat key (including the OpenAI-key fallback
   /// `OpenAIChatPreferences` already applies). Nil when neither is set.
+  ///
+  /// An override without its own token gets the shared server's key only when it points at the
+  /// same host, and never the OpenAI fallback: that fallback was judged against the base URL, and
+  /// an override elsewhere (a keyless Whisper box) must not receive the user's OpenAI key.
   static var transcriptionCredential: String? {
-    if transcriptionURLOverride != nil {
-      let legacy = (KeychainManager.shared.get(.customTranscriptionBearerToken) ?? "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      if !legacy.isEmpty { return legacy }
+    if let override = transcriptionURLOverride {
+      if let legacy = nonempty(KeychainManager.shared.get(.customTranscriptionBearerToken)) { return legacy }
+      guard let base = baseURL, sameHost(override, base) else { return nil }
+      return nonempty(KeychainManager.shared.get(.customOpenAIChatAPIKey))
     }
     return OpenAIChatPreferences.resolvedAPIKey
+  }
+
+  static func sameHost(_ lhs: String, _ rhs: String) -> Bool {
+    guard let a = endpointParts(lhs), let b = endpointParts(rhs) else { return false }
+    return a.host == b.host && a.port == b.port
   }
 
   /// Shown when Dictate or Dictate Prompt needs the shared server and no URL is stored.

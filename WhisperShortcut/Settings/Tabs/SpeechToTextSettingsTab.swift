@@ -180,7 +180,7 @@ struct SpeechToTextSettingsTab: View {
       }
 
       if viewModel.data.selectedTranscriptionModel == .selfHostedTranscription {
-        SelfHostedTranscriptionEndpointSection()
+        OwnServerEndpointSection(route: .dictate)
       }
 
       if viewModel.data.selectedTranscriptionModel == .openRouterTranscription {

@@ -806,7 +806,7 @@ enum MCPSettingsCatalog {
 
     // MARK: chat.custom_endpoint_model_id
     settings.append(modelIDSetting(
-      id: "chat.custom_endpoint_model_id", title: "Custom endpoint model id",
+      id: "chat.custom_endpoint_model_id", title: "Own server chat model id",
       read: { storedOrDefault(UserDefaultsKeys.customOpenAIChatModelID, default: SettingsDefaults.customOpenAIChatModelID) },
       write: { defaults.set($0, forKey: UserDefaultsKeys.customOpenAIChatModelID) }))
 
