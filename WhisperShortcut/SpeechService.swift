@@ -2686,6 +2686,11 @@ class SpeechService {
 
   // MARK: - OpenAI-Compatible Multipart Helper
 
+  /// Live-meeting chunks send no glossary keywords; every other origin (dictation, ...) does.
+  nonisolated static func shouldSendGlossaryKeywords(origin: NoSpeechOrigin?) -> Bool {
+    origin != .liveMeetingChunk
+  }
+
   /// Shared multipart POST for both the OpenAI cloud path and the self-hosted endpoint path.
   /// Forwards Whisper Glossary as the `prompt` field and the language selection as the `language`
   /// field whenever the OpenAI layout (`file`) is used. The whisper-asr-webservice layout
@@ -2744,7 +2749,11 @@ class SpeechService {
     // Resolved through the enum rather than a literal so this and `honorsSystemPrompt`, which
     // tells the user the same fact in Settings, cannot drift apart.
     let isContextFieldStyle = modelID == TranscriptionModel.openAIGPTTranscribe.openAIAPIModelID
-    let contextKeywords = isContextFieldStyle ? glossaryKeywords() : []
+    // Live-meeting chunks carry loud system audio (YouTube, calls) that gpt-transcribe answers
+    // with the keywords themselves — 2026-10-28 it wrote whole fake lines like "Claude Code, MCP
+    // und Bachata." — so meetings send none. Dictation keeps them.
+    let keywordsOff = !Self.shouldSendGlossaryKeywords(origin: NoSpeechContext.current?.origin)
+    let contextKeywords = (isContextFieldStyle && !keywordsOff) ? glossaryKeywords() : []
     let combinedPrompt: String? = {
       if isContextFieldStyle { return nil }
       if isWhisperStyle {
@@ -2763,7 +2772,7 @@ class SpeechService {
     let languageCode = savedLanguage.languageCode
 
     let promptLogValue = isContextFieldStyle
-      ? "n/a (context fields: \(contextKeywords.count) keyword(s))"
+      ? "n/a (context fields: \(contextKeywords.count) keyword(s)\(keywordsOff ? ", live meeting: keywords off" : ""))"
       : (combinedPrompt == nil
         ? "none"
         : "\(combinedPrompt!.count) chars\(trimmedDictationHint.isEmpty ? "" : " (dictation+glossary)")")

@@ -150,6 +150,74 @@ struct TranscriptPlausibilityTests {
     #expect(result == text)
   }
 
+  private static let meetingGlossary = [
+    "Claude Code", "MCP", "Bachata", "sabaki.dance", "Wianco", "Datev", "Regulon", "Lemniskus",
+    "Parakeet", "Vibe-Coding", "KMU", "Odoo", "Johanna", "Pia", "Codex", "Wellensteyn", "Goedde",
+    "Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "GrokBot", "Opus", "Sonnet",
+    "Gemini", "Implementer Queue", "Karlsruhe", "Kizomba", "Salsa", "AutoMagic", "Onepager",
+    "Whisper Shortcut", "Schönstein",
+  ]
+
+  private static let meetingEchoList =
+    "Claude Code, MCP und Bachata. sabaki.dance, Wianco und Datev. Regulon, Lemniskus und Parakeet. Vibe-Coding, KMU und Odoo. Johanna, Pia und Codex. Wellensteyn, Goedde und Claude. Christoph, Michelbach und Cursor. EnBW, Grok und GrokBot. Opus, Sonnet und Gemini. Implementer Queue, Karlsruhe und Kizomba. Salsa, AutoMagic und Onepager. Whisper Shortcut und Schönstein."
+
+  @Test("A short glossary echo with 'und' between terms is discarded")
+  func discardsShortEchoWithConnector() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Claude Code, MCP und Bachata.", audioDurationSeconds: 12.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("A full glossary echo with 'und' between terms is discarded")
+  func discardsLongEchoWithConnectors() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      Self.meetingEchoList, audioDurationSeconds: 29.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("A speaker-labelled full echo with connectors is discarded")
+  func discardsSpeakerLabelledEchoWithConnectors() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Speaker A: " + Self.meetingEchoList, audioDurationSeconds: 29.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("A real sentence with glossary names and 'und' stays")
+  func keepsRealSentenceWithConnectors() {
+    let text = "Ich spreche mit Johanna und Pia über Odoo und die KMU-Kunden."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 5.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A transcript of only connectors is not an echo")
+  func keepsConnectorOnlyTranscript() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "und.", audioDurationSeconds: 6.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == "und.")
+  }
+
+  @Test("Known limit: a fabricated sentence around glossary terms is not caught")
+  func keepsFabricatedSentenceKnownLimit() {
+    let text = "Claude Code hilft beim Vibe-Coding."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 12.0,
+      glossaryTerms: Self.meetingGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("Only live-meeting chunks drop the glossary keywords")
+  func keywordsOffForMeetingChunksOnly() {
+    #expect(!SpeechService.shouldSendGlossaryKeywords(origin: .liveMeetingChunk))
+    #expect(SpeechService.shouldSendGlossaryKeywords(origin: .dictation))
+    #expect(SpeechService.shouldSendGlossaryKeywords(origin: nil))
+  }
+
   @Test("A speaker-labelled glossary echo on a long near-silent chunk is discarded")
   func discardsSpeakerLabelledGlossaryEcho() {
     // 2026-10-28: 11.4 s of near-silent meeting audio came back as exactly this.
