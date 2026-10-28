@@ -12584,16 +12584,6 @@
         }
       }
     },
-    "Previous 7 Days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte 7 Tage"
-          }
-        }
-      }
-    },
     "Privacy" : {
       "localizations" : {
         "de" : {
