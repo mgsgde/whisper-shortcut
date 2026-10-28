@@ -346,6 +346,11 @@ final class SystemAudioCapture {
   private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
   private var ioProcID: AudioDeviceIOProcID?
   private var skipChannelCount = 0
+  /// The output device's nominal sample rate and input channel count as setUpCaptureGraph saw
+  /// them. Written on `controlQueue`, read on main, so guarded by a lock. A format notification
+  /// that matches these is an echo of our own aggregate device, not a real change.
+  private let builtFormatLock = NSLock()
+  private var builtFormat: (sampleRate: Double, inputChannels: Int)?
   private var outputDeviceNameAtStart = ""
   private var scratch: [Float] = []
 
@@ -359,6 +364,16 @@ final class SystemAudioCapture {
   private var generation = 0
   private var defaultOutputListenerBlock: AudioObjectPropertyListenerBlock?
   private var restartInProgress = false
+  /// A format change arrived while a restart was running; run one more when it completes.
+  private var restartPending = false
+  /// Listeners on the current default output device (sample rate, input channel count): when
+  /// Bluetooth switches between call mode and A2DP the device stays the same but the tap's format
+  /// does not.
+  private var formatListenerDeviceID: AudioObjectID?
+  private var formatListeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+  private var formatDebounceWork: DispatchWorkItem?
+  private var formatGeneration = 0
+  private static let formatDebounce: TimeInterval = 0.5
   private var timer: Timer?
   private var heuristic = SystemAudioPermissionHeuristic()
   private var permissionSuspected = false
@@ -381,6 +396,11 @@ final class SystemAudioCapture {
         mElement: kAudioObjectPropertyElementMain)
       AudioObjectRemovePropertyListenerBlock(
         AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
+    }
+    if let deviceID = formatListenerDeviceID {
+      for (var address, block) in formatListeners {
+        AudioObjectRemovePropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+      }
     }
   }
 
@@ -421,6 +441,7 @@ final class SystemAudioCapture {
       return
     }
     defaultOutputListenerBlock = listenerBlock
+    moveFormatListeners(to: OutputRoute.readDefaultOutputDevice())
 
     let newTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       self?.handleTick()
@@ -488,6 +509,11 @@ final class SystemAudioCapture {
         AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
       defaultOutputListenerBlock = nil
     }
+    removeFormatListeners()
+    formatGeneration += 1
+    formatDebounceWork?.cancel()
+    formatDebounceWork = nil
+    restartPending = false
 
     controlQueue.async { [weak self] in
       self?.teardownCaptureGraph()
@@ -614,6 +640,9 @@ final class SystemAudioCapture {
       skipChannels = Self.readInputChannelCount(outputDeviceID)
     }
     skipChannelCount = skipChannels
+    builtFormatLock.lock()
+    builtFormat = (Self.readNominalSampleRate(outputDeviceID), Self.readInputChannelCount(outputDeviceID))
+    builtFormatLock.unlock()
 
     let isFloat32 =
       usedFormat.mFormatID == kAudioFormatLinearPCM
@@ -704,9 +733,85 @@ final class SystemAudioCapture {
 
   // MARK: Default output device changes
 
+  private static func formatAddresses() -> [AudioObjectPropertyAddress] {
+    [
+      AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyNominalSampleRate,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain),
+      AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyStreamConfiguration,
+        mScope: kAudioObjectPropertyScopeInput,
+        mElement: kAudioObjectPropertyElementMain),
+    ]
+  }
+
+  /// Listens for sample-rate and input-channel changes on `deviceID` (the current default output).
+  private func moveFormatListeners(to deviceID: AudioObjectID?) {
+    dispatchPrecondition(condition: .onQueue(.main))
+    removeFormatListeners()
+    guard isRunning, let deviceID, deviceID != kAudioObjectUnknown else { return }
+    for var address in Self.formatAddresses() {
+      guard AudioObjectHasProperty(deviceID, &address) else { continue }
+      let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+        self?.scheduleFormatRestart()
+      }
+      let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+      guard status == noErr else {
+        DebugLogger.logError("SYSTEM-AUDIO: format listener failed (\(status))")
+        continue
+      }
+      formatListeners.append((address, block))
+    }
+    formatListenerDeviceID = deviceID
+  }
+
+  private func removeFormatListeners() {
+    if let deviceID = formatListenerDeviceID {
+      for (var address, block) in formatListeners {
+        AudioObjectRemovePropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+      }
+    }
+    formatListeners = []
+    formatListenerDeviceID = nil
+  }
+
+  /// Bluetooth flaps, so a burst of format changes becomes one rebuild.
+  private func scheduleFormatRestart() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard isRunning else { return }
+    formatGeneration += 1
+    let generation = formatGeneration
+    formatDebounceWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.isRunning, generation == self.formatGeneration else { return }
+      // Building the aggregate device can itself fire these notifications; only a real
+      // difference from what the graph was built with justifies a rebuild.
+      self.builtFormatLock.lock()
+      let built = self.builtFormat
+      self.builtFormatLock.unlock()
+      if let built, let device = OutputRoute.readDefaultOutputDevice(),
+        Self.readNominalSampleRate(device) == built.sampleRate,
+        Self.readInputChannelCount(device) == built.inputChannels
+      {
+        return
+      }
+      DebugLogger.log("SYSTEM-AUDIO: output format changed, rebuilding tap")
+      self.handleDefaultOutputDeviceChanged()
+    }
+    formatDebounceWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.formatDebounce, execute: work)
+  }
+
   private func handleDefaultOutputDeviceChanged() {
     dispatchPrecondition(condition: .onQueue(.main))
-    guard isRunning, !restartInProgress else { return }
+    guard isRunning else { return }
+    // The listeners follow the device the tap is about to be built for.
+    moveFormatListeners(to: OutputRoute.readDefaultOutputDevice())
+    guard !restartInProgress else {
+      restartPending = true
+      return
+    }
     restartInProgress = true
     tapActive = false
     let gen = generation
@@ -723,11 +828,16 @@ final class SystemAudioCapture {
           self.ownProcessObjectIDMain = ownObject
           self.tapActive = true
           self.onOutputRouteChange?(OutputRoute.current())
+          if self.restartPending {
+            self.restartPending = false
+            self.handleDefaultOutputDeviceChanged()
+          }
         }
       } catch {
         // Already logged inside setUpCaptureGraph().
         DispatchQueue.main.async {
           self.restartInProgress = false
+          self.restartPending = false
           self.failIfCurrent(generation: gen, error: error)
         }
       }
@@ -814,6 +924,17 @@ final class SystemAudioCapture {
   }
 
   // MARK: Static Core Audio helpers
+
+  private static func readNominalSampleRate(_ deviceID: AudioObjectID) -> Double {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyNominalSampleRate,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+    var value: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+    return status == noErr ? value : 0
+  }
 
   private static func readInputChannelCount(_ deviceID: AudioObjectID) -> Int {
     var address = AudioObjectPropertyAddress(
