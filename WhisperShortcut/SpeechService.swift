@@ -283,6 +283,21 @@ class SpeechService {
     parsedGlossary().terms
   }
 
+  /// Glossary-echo gate for the OpenAI-compatible path: a near-silent chunk answered with nothing
+  /// but vocabulary we sent as `keywords`/`prompt` is "no speech". A nil or non-positive duration
+  /// skips the gate.
+  private func gatingGlossaryEcho(_ text: String, audioDurationSeconds: Double?, logPrefix: String) throws -> String {
+    guard let duration = audioDurationSeconds, duration > 0 else { return text }
+    let kept = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: duration, glossaryTerms: glossaryTermsForEchoCheck(), mode: logPrefix)
+    if kept.isEmpty {
+      ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
+      DebugLogger.logWarning("\(logPrefix): glossary echo discarded")
+      throw TranscriptionError.noSpeechDetected
+    }
+    return kept
+  }
+
   /// The Whisper Glossary as literal terms for `gpt-transcribe`'s `keywords` field: the same
   /// sanitized reference vocabulary the prompt-based backends get, plus the *correct* half of
   /// every tie-breaker pair.
@@ -2394,6 +2409,7 @@ class SpeechService {
     let mimeType = mimeTypeForAudioExtension(fileExtension)
 
     let session = makeTranscriptionURLSession()
+    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
     return try await sendOpenAICompatibleTranscriptionRequest(
       url: endpoint,
       fieldName: "file",
@@ -2405,7 +2421,8 @@ class SpeechService {
       extraHeaders: [],
       session: session,
       logPrefix: "OPENAI-TRANSCRIPTION",
-      dictationHint: dictationHint
+      dictationHint: dictationHint,
+      audioDurationSeconds: audioDuration
     )
   }
 
@@ -2425,6 +2442,7 @@ class SpeechService {
     let mimeType = mimeTypeForAudioExtension(fileExtension)
 
     let session = makeTranscriptionURLSession()
+    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
     return try await sendOpenAICompatibleTranscriptionRequest(
       url: endpoint,
       fieldName: "file",
@@ -2436,7 +2454,8 @@ class SpeechService {
       extraHeaders: [],
       session: session,
       logPrefix: "XAI-TRANSCRIPTION",
-      dictationHint: dictationHint
+      dictationHint: dictationHint,
+      audioDurationSeconds: audioDuration
     )
   }
 
@@ -2448,6 +2467,7 @@ class SpeechService {
     let mimeType = mimeTypeForAudioExtension(fileExtension)
     let session = makeTranscriptionURLSession()
     let modelID = CustomEndpointPreferences.transcriptionModelID
+    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
 
     // A legacy URL that is not `{base}/audio/transcriptions` keeps today's attempt list.
     if let configuredEndpoint = CustomEndpointPreferences.transcriptionURLOverride {
@@ -2505,7 +2525,8 @@ class SpeechService {
             bearerToken: requestBearerToken,
             extraHeaders: extraHeaders,
             session: session,
-            logPrefix: "SELF-HOSTED-TRANSCRIPTION"
+            logPrefix: "SELF-HOSTED-TRANSCRIPTION",
+            audioDurationSeconds: audioDuration
           )
         } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
           DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
@@ -2541,7 +2562,8 @@ class SpeechService {
       bearerToken: requestBearerToken,
       extraHeaders: extraHeaders,
       session: session,
-      logPrefix: "SELF-HOSTED-TRANSCRIPTION"
+      logPrefix: "SELF-HOSTED-TRANSCRIPTION",
+      audioDurationSeconds: audioDuration
     )
   }
 
@@ -2684,7 +2706,8 @@ class SpeechService {
     bearerToken: String?, extraHeaders: [[String: String]],
     session: URLSession,
     logPrefix: String,
-    dictationHint: String? = nil
+    dictationHint: String? = nil,
+    audioDurationSeconds: Double? = nil
   ) async throws -> String {
     var requestURL = url
     if fieldName == "audio_file",
@@ -2844,13 +2867,15 @@ class SpeechService {
           source: "apiEmptyResult", peakDb: "n/a", durationMs: "n/a", logPrefix: logPrefix)
         throw TranscriptionError.noSpeechDetected
       }
-      DebugLogger.logSuccess("\(logPrefix): \(result.count) chars")
-      return result
+      let gated = try gatingGlossaryEcho(result, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
+      DebugLogger.logSuccess("\(logPrefix): \(gated.count) chars")
+      return gated
     }
     if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
        !text.isEmpty {
-      DebugLogger.logSuccess("\(logPrefix): \(text.count) chars (plain text)")
-      return text
+      let gated = try gatingGlossaryEcho(text, audioDurationSeconds: audioDurationSeconds, logPrefix: logPrefix)
+      DebugLogger.logSuccess("\(logPrefix): \(gated.count) chars (plain text)")
+      return gated
     }
     DebugLogger.log("\(logPrefix): empty transcription (no speech detected)")
     ContextLogger.shared.logNoSpeechDetected(

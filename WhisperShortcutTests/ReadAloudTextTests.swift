@@ -129,6 +129,27 @@ struct TranscriptPlausibilityTests {
     #expect(result == "sabaki.dance")
   }
 
+  private static let openAIGlossary = [
+    "Claude Code", "MCP", "Bachata", "sabaki.dance", "Datev", "Regulon", "Parakeet", "Codex",
+  ]
+
+  @Test("OpenAI-compatible path: a glossary echo from 11 s of audio is discarded")
+  func discardsGlossaryEchoOnOpenAIPath() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Claude Code.", audioDurationSeconds: 11.0,
+      glossaryTerms: Self.openAIGlossary, mode: "OPENAI-TRANSCRIPTION")
+    #expect(result == "")
+  }
+
+  @Test("OpenAI-compatible path: a real sentence with glossary terms stays")
+  func keepsRealSentenceOnOpenAIPath() {
+    let text = "Wir besprechen morgen die Datev-Anbindung mit Claude Code."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 4.0,
+      glossaryTerms: Self.openAIGlossary, mode: "OPENAI-TRANSCRIPTION")
+    #expect(result == text)
+  }
+
   @Test("A speaker-labelled glossary echo on a long near-silent chunk is discarded")
   func discardsSpeakerLabelledGlossaryEcho() {
     // 2026-10-28: 11.4 s of near-silent meeting audio came back as exactly this.
