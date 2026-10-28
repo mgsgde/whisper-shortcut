@@ -226,9 +226,14 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
   static func settingsSummary(_ items: [MCPSettingsChangeItem]) -> String {
     switch items.count {
     case 0: return String(localized: "Settings")
-    case 1: return "\(items[0].title): \(items[0].fromLabel) → \(items[0].toLabel)"
-    case 2: return "\(items[0].title), \(items[1].title)"
-    default: return String(localized: "\(items[0].title), \(items[1].title) and \(items.count - 2) more")
+    case 1:
+      return "\(MCPSettingsCatalog.reviewTitle(items[0].title)): \(MCPSettingsCatalog.reviewLabel(items[0].fromLabel)) → \(MCPSettingsCatalog.reviewLabel(items[0].toLabel))"
+    case 2:
+      return "\(MCPSettingsCatalog.reviewTitle(items[0].title)), \(MCPSettingsCatalog.reviewTitle(items[1].title))"
+    default:
+      let first = MCPSettingsCatalog.reviewTitle(items[0].title)
+      let second = MCPSettingsCatalog.reviewTitle(items[1].title)
+      return String(localized: "\(first), \(second) and \(items.count - 2) more")
     }
   }
 

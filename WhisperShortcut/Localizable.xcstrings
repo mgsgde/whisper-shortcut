@@ -27,6 +27,16 @@
         }
       }
     },
+    " and " : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " und "
+          }
+        }
+      }
+    },
     "\"%@\" added to your Glossary." : {
       "localizations" : {
         "de" : {
@@ -84,6 +94,90 @@
         }
       },
       "shouldTranslate" : false
+    },
+    "%@ API error HTTP %lld: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-API-Fehler HTTP %lld: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ API error HTTP %2$lld: %3$@"
+          }
+        }
+      }
+    },
+    "%@ API error: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-API-Fehler: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ API error: %2$@"
+          }
+        }
+      }
+    },
+    "%@ API key is invalid. Check the key in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für %@ ist ungültig. Prüfen Sie ihn unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
+    "%@ API key is invalid. Check the key in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für %@ ist ungültig. Prüfen Sie ihn in den Einstellungen."
+          }
+        }
+      }
+    },
+    "%@ are larger than %@ and weren't attached." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sind größer als %@ und wurden nicht angehängt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ are larger than %2$@ and weren't attached."
+          }
+        }
+      }
+    },
+    "%@ can't use %@ attachments. Switch to a Gemini model to chat about PDFs and documents." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kann keine %@-Anhänge verarbeiten. Wechseln Sie zu einem Gemini-Modell, um über PDFs und Dokumente zu chatten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ can't use %2$@ attachments. Switch to a Gemini model to chat about PDFs and documents."
+          }
+        }
+      }
     },
     "%@ chars" : {
       "localizations" : {
@@ -146,6 +240,22 @@
         }
       }
     },
+    "%@ is larger than %@ and wasn't attached." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist größer als %@ und wurde nicht angehängt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is larger than %2$@ and wasn't attached."
+          }
+        }
+      }
+    },
     "%@ is not valid JSON, so it was left untouched. Fix or remove the file and try again." : {
       "localizations" : {
         "de" : {
@@ -198,6 +308,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ KI-Anweisung wird aufgenommen – Meeting wird weiter aufgenommen"
+          }
+        }
+      }
+    },
+    "%@ request failed. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an %@ fehlgeschlagen. Bitte versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "%@ request failed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an %@ fehlgeschlagen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ request failed: %2$@"
+          }
+        }
+      }
+    },
+    "%@ stopped responding twice in a row (no progress for %llds). Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat zweimal hintereinander nicht mehr geantwortet (%llds ohne Fortschritt). Bitte versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ stopped responding twice in a row (no progress for %2$llds). Please try again."
+          }
+        }
+      }
+    },
+    "%@ structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von %@ war kein gültiges JSON"
           }
         }
       }
@@ -780,6 +942,26 @@
         }
       }
     },
+    "%lld lines from selection" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Zeilen aus der Auswahl"
+          }
+        }
+      }
+    },
+    "%lld lines pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Zeilen eingefügt"
+          }
+        }
+      }
+    },
     "%lld lists" : {
       "localizations" : {
         "de" : {
@@ -1047,6 +1229,16 @@
         }
       }
     },
+    "%lld tool calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Tool-Aufrufen"
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "shouldTranslate" : false
     },
@@ -1062,6 +1254,16 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld%% of %2$@"
+          }
+        }
+      }
+    },
+    "(empty)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(leer)"
           }
         }
       }
@@ -1192,6 +1394,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 Sekunde"
+          }
+        }
+      }
+    },
+    "1 tool call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Tool-Aufruf"
           }
         }
       }
@@ -1452,6 +1664,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "@karpathy @simonw"
+          }
+        }
+      }
+    },
+    "[Pasted content]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Eingefügter Inhalt]"
+          }
+        }
+      }
+    },
+    "[Quote]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Zitat]"
+          }
+        }
+      }
+    },
+    "[Selection]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Auswahl]"
+          }
+        }
+      }
+    },
+    "[Selection] [Pasted content]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Auswahl] [Eingefügter Inhalt]"
+          }
+        }
+      }
+    },
+    "_(no response)_" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_(keine Antwort)_"
+          }
+        }
+      }
+    },
+    "_(stopped after running tools)_" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_(nach dem Ausführen von Tools gestoppt)_"
+          }
+        }
+      }
+    },
+    "_I hit the tool-call round limit after %@ and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Ich habe nach %@ das Limit für Tool-Runden erreicht und aufgehört, bevor ich eine Antwort geschrieben habe. Alles, was ich bereits erledigt habe, ist wirksam – lassen Sie es sich zusammenfassen oder grenzen Sie die Anfrage ein, damit weniger Schritte nötig sind._"
+          }
+        }
+      }
+    },
+    "_I looked into this with the available tools but didn't find anything relevant to summarize. Try narrowing the request — e.g. name a specific sender, subject, or date range._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Ich habe mit den verfügbaren Tools nachgesehen, aber nichts Passendes zum Zusammenfassen gefunden. Grenzen Sie die Anfrage ein – nennen Sie z. B. einen bestimmten Absender, Betreff oder Zeitraum._"
+          }
+        }
+      }
+    },
+    "_Reply was truncated._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Antwort wurde abgeschnitten._"
           }
         }
       }
@@ -1824,6 +2126,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Diktat-Glossar hinzufügen: %@"
+          }
+        }
+      }
+    },
+    "Add to Glossary shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Zum Glossar hinzufügen"
           }
         }
       }
@@ -2408,12 +2720,42 @@
         }
       }
     },
+    "Anthropic API key is invalid. Check the key in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anthropic-API-Schlüssel ist ungültig. Prüfen Sie ihn unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
     "Anthropic bills $10 per 1,000 searches on your API key, plus the tokens of the results. Claude searches at most 5 times per message, and only when a question needs current information." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anthropic berechnet über Ihren API-Schlüssel 10 $ pro 1.000 Suchen, dazu die Tokens der Ergebnisse. Claude sucht höchstens fünfmal pro Nachricht und nur, wenn eine Frage aktuelle Informationen braucht."
+          }
+        }
+      }
+    },
+    "Anthropic structured response did not include valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Anthropic enthielt kein gültiges JSON"
+          }
+        }
+      }
+    },
+    "Anthropic structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Anthropic war kein gültiges JSON"
           }
         }
       }
@@ -2474,6 +2816,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jedes Modell über Ihr OpenRouter-Konto"
+          }
+        }
+      }
+    },
+    "API key is invalid for the custom endpoint. Check Settings → Chat or Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für den eigenen Endpunkt ist ungültig. Prüfen Sie Einstellungen → Chat oder Konten."
           }
         }
       }
@@ -3074,6 +3426,16 @@
         }
       }
     },
+    "Auto-paste after dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Diktat automatisch einfügen"
+          }
+        }
+      }
+    },
     "Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.\n\nDictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.\n\nTo turn on auto-paste, click \"Open System Settings\". There:\n1. Go to Privacy & Security → Accessibility\n2. Enable WhisperShortcut\n\nAlready listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click \"Copy Reset Command\" and run it in Terminal to clear the stale entry." : {
       "localizations" : {
         "de" : {
@@ -3315,6 +3677,16 @@
         }
       }
     },
+    "Can't reach the local LLM server at %@. Start it (e.g. run `ollama serve` / open LM Studio) or fix the endpoint in Dictate Prompt settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der lokale LLM-Server unter %@ ist nicht erreichbar. Starten Sie ihn (z. B. mit `ollama serve` oder in LM Studio) oder korrigieren Sie den Endpunkt in den Dictate-Prompt-Einstellungen."
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -3451,6 +3823,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Von KI-Apps geändert"
+          }
+        }
+      }
+    },
+    "changed since" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "inzwischen geändert"
           }
         }
       }
@@ -3602,6 +3984,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat-Nachrichten, die erneut gesendet wurden, weil die Antwort nicht gut genug war, pro 100 Chat-Runden."
+          }
+        }
+      }
+    },
+    "Chat model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Modell"
           }
         }
       }
@@ -3832,12 +4224,32 @@
         }
       }
     },
+    "ChatGPT plan model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für das ChatGPT-Abo"
+          }
+        }
+      }
+    },
     "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle über das ChatGPT-Abo gibt es vorerst nur im Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "ChatGPT plan structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort des ChatGPT-Abos war kein gültiges JSON"
           }
         }
       }
@@ -3898,6 +4310,16 @@
         }
       }
     },
+    "ChatGPT returned an ID token that could not be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT hat ein ID-Token geliefert, das nicht gelesen werden konnte."
+          }
+        }
+      }
+    },
     "ChatGPT Settings → Usage" : {
       "localizations" : {
         "de" : {
@@ -3928,12 +4350,92 @@
         }
       }
     },
+    "ChatGPT signed the ID token with an unsupported algorithm (%@)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT hat das ID-Token mit einem nicht unterstützten Verfahren signiert (%@)."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token came from an unexpected issuer. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT stammt von einem unerwarteten Aussteller. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token has already expired. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT ist bereits abgelaufen. Melden Sie sich bitte erneut an."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token is missing \"%@\"." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im ID-Token von ChatGPT fehlt „%@“."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token signature could not be verified. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Signatur des ChatGPT-ID-Tokens konnte nicht geprüft werden. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token was issued for a different app. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT wurde für eine andere App ausgestellt. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
     "ChatGPT's response contained no ID token." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Antwort von ChatGPT enthielt kein ID-Token."
+          }
+        }
+      }
+    },
+    "ChatGPT's sign-in response did not match this attempt. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldeantwort von ChatGPT passt nicht zu diesem Versuch. Melden Sie sich bitte erneut an."
+          }
+        }
+      }
+    },
+    "ChatGPT's signing key for this token was not found. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Signaturschlüssel von ChatGPT für dieses Token wurde nicht gefunden. Melden Sie sich bitte erneut an."
           }
         }
       }
@@ -4249,6 +4751,16 @@
         }
       }
     },
+    "Claude declined this request." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude hat diese Anfrage abgelehnt."
+          }
+        }
+      }
+    },
     "Claude Desktop" : {
       "localizations" : {
         "de" : {
@@ -4289,12 +4801,32 @@
         }
       }
     },
+    "Claude only supports image attachments — %@ isn't supported. Switch to a Gemini model to chat about PDFs and documents." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude unterstützt nur Bildanhänge – %@ wird nicht unterstützt. Wechseln Sie zu einem Gemini-Modell, um über PDFs und Dokumente zu chatten."
+          }
+        }
+      }
+    },
     "Claude stopped mid-reply: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Claude hat mitten in der Antwort aufgehört: %@"
+          }
+        }
+      }
+    },
+    "Claude's structured reply was cut off at the token limit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Claude wurde am Token-Limit abgeschnitten."
           }
         }
       }
@@ -4415,6 +4947,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen schließen, wenn außerhalb geklickt wird"
+          }
+        }
+      }
+    },
+    "Close Settings when it loses focus" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen schließen, wenn sie den Fokus verlieren"
           }
         }
       }
@@ -4715,6 +5257,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden Sie Ihr Google-Konto (Einstellungen → Konten), dann werden gesendete E-Mails automatisch importiert, oder fügen Sie eigene Nachrichten über „Beispiele hinzufügen“ ein."
+          }
+        }
+      }
+    },
+    "Connect your Google account in Settings first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie zuerst Ihr Google-Konto in den Einstellungen."
           }
         }
       }
@@ -5279,6 +5831,16 @@
         }
       }
     },
+    "Could not bind a local port for the sign-in callback (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Rückmeldung der Anmeldung konnte kein lokaler Port belegt werden (errno %d)."
+          }
+        }
+      }
+    },
     "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again." : {
       "localizations" : {
         "de" : {
@@ -5331,6 +5893,46 @@
         }
       }
     },
+    "Could not listen on the local sign-in callback port (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am lokalen Port für die Rückmeldung der Anmeldung kann nicht gelauscht werden (errno %d)."
+          }
+        }
+      }
+    },
+    "Could not load ChatGPT's signing keys. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Signaturschlüssel von ChatGPT konnten nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Could not open a local socket for the sign-in callback (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Rückmeldung der Anmeldung konnte kein lokaler Socket geöffnet werden (errno %d)."
+          }
+        }
+      }
+    },
+    "Could not prepare the Dictate Prompt request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anfrage für Dictate Prompt konnte nicht vorbereitet werden"
+          }
+        }
+      }
+    },
     "Could not read audio file: %@" : {
       "localizations" : {
         "de" : {
@@ -5347,6 +5949,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der erste Teil konnte zum Zusammenfügen nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "could not read the current value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "der aktuelle Wert konnte nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "could not read the previous value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "der vorherige Wert konnte nicht gelesen werden"
           }
         }
       }
@@ -5417,6 +6039,36 @@
         }
       }
     },
+    "Could not write the glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Glossar konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not write the section." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Abschnitt konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not write the writing style profile." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Schreibstil-Profil konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
     "Couldn't apply the change" : {
       "localizations" : {
         "de" : {
@@ -5473,6 +6125,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Browser ließ sich nicht öffnen"
+          }
+        }
+      }
+    },
+    "Couldn't save the mailbox." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Postfach konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Couldn't save the password in the Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Passwort konnte nicht im Schlüsselbund gespeichert werden."
           }
         }
       }
@@ -5853,6 +6525,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der eigene Endpunkt gilt nur für den Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "Custom endpoint is not configured — set URL and API key in Settings → Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der eigene Endpunkt ist nicht eingerichtet – legen Sie URL und API-Schlüssel unter Einstellungen → Chat fest."
+          }
+        }
+      }
+    },
+    "Custom endpoint model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für den eigenen Endpunkt"
           }
         }
       }
@@ -6355,6 +7047,26 @@
         }
       }
     },
+    "Dictate Prompt kept looking things up and didn't finish. Try again, or say more precisely what to look up." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt hat immer weiter nachgeschlagen und ist nicht fertig geworden. Versuchen Sie es erneut oder sagen Sie genauer, was nachgeschlagen werden soll."
+          }
+        }
+      }
+    },
+    "Dictate Prompt model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Dictate Prompt"
+          }
+        }
+      }
+    },
     "Dictate Prompt Model" : {
       "localizations" : {
         "de" : {
@@ -6497,6 +7209,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anweisungen fürs Diktat"
+          }
+        }
+      }
+    },
+    "Dictation language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache"
+          }
+        }
+      }
+    },
+    "Dictation model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiermodell"
           }
         }
       }
@@ -7964,6 +8696,16 @@
         }
       }
     },
+    "Gemini voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini-Stimme"
+          }
+        }
+      }
+    },
     "gemini-models" : {
       "localizations" : {
         "de" : {
@@ -8642,6 +9384,16 @@
         }
       }
     },
+    "Hold fn to dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fn gedrückt halten zum Diktieren"
+          }
+        }
+      }
+    },
     "Hosted at" : {
       "localizations" : {
         "de" : {
@@ -9118,6 +9870,16 @@
         }
       }
     },
+    "Invalid Anthropic endpoint URL" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige URL für den Anthropic-Endpunkt"
+          }
+        }
+      }
+    },
     "Invalid API key. Please check your API key in Settings." : {
       "localizations" : {
         "de" : {
@@ -9220,6 +9982,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungültige Antwort von der %@-API"
+          }
+        }
+      }
+    },
+    "Invalid response from Anthropic API" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Antwort der Anthropic-API"
           }
         }
       }
@@ -9400,6 +10172,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Später"
+          }
+        }
+      }
+    },
+    "Launch at login" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Anmeldung öffnen"
           }
         }
       }
@@ -9990,12 +10772,32 @@
         }
       }
     },
+    "Local Dictate Prompt model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für das lokale Dictate-Prompt-Modell"
+          }
+        }
+      }
+    },
     "Local LLM" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lokales LLM"
+          }
+        }
+      }
+    },
+    "local models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lokale Modelle"
           }
         }
       }
@@ -10146,6 +10948,16 @@
         }
       }
     },
+    "macOS voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS-Stimme"
+          }
+        }
+      }
+    },
     "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later." : {
       "localizations" : {
         "de" : {
@@ -10276,6 +11088,16 @@
         }
       }
     },
+    "Meeting chunk interval" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abschnittslänge bei Meetings"
+          }
+        }
+      }
+    },
     "Meeting Not Started" : {
       "localizations" : {
         "de" : {
@@ -10326,6 +11148,16 @@
         }
       }
     },
+    "Meeting summary model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Meeting-Zusammenfassungen"
+          }
+        }
+      }
+    },
     "Meeting Summary Model" : {
       "localizations" : {
         "de" : {
@@ -10352,6 +11184,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Transkription und Zusammenfassungen"
+          }
+        }
+      }
+    },
+    "Meeting transcription model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Meeting-Transkription"
           }
         }
       }
@@ -11294,6 +12136,16 @@
         }
       }
     },
+    "No example messages yet. Import sent emails or add examples first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Beispielnachrichten. Importieren Sie zuerst gesendete E-Mails oder fügen Sie Beispiele hinzu."
+          }
+        }
+      }
+    },
     "No folder selected" : {
       "localizations" : {
         "de" : {
@@ -11340,6 +12192,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Google-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Google-API-Schlüssel eingerichtet. Tragen Sie Ihren Gemini-API-Schlüssel unter Einstellungen → Konten ein, um Gemini-Modelle zu nutzen."
           }
         }
       }
@@ -11460,6 +12322,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Notizen zu diesem Meeting."
+          }
+        }
+      }
+    },
+    "No pending proposal with that id." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein offener Vorschlag mit dieser ID."
           }
         }
       }
@@ -11690,6 +12562,16 @@
         }
       }
     },
+    "Not available in Offline Mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Offline-Modus nicht verfügbar."
+          }
+        }
+      }
+    },
     "Not connected" : {
       "localizations" : {
         "de" : {
@@ -11706,6 +12588,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht geladen"
+          }
+        }
+      }
+    },
+    "Not enough disk space to download this model. About %lld MB is needed, but only %lld MB is free. Free some space and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Speicherplatz, um dieses Modell herunterzuladen. Benötigt werden etwa %lld MB, frei sind nur %lld MB. Geben Sie Speicher frei und versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not enough disk space to download this model. About %1$lld MB is needed, but only %2$lld MB is free. Free some space and try again."
           }
         }
       }
@@ -11876,6 +12774,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nichts zu transkribieren. Prüfen Sie das Mikrofon und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Notification duration" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzeigedauer der Mitteilungen"
+          }
+        }
+      }
+    },
+    "Notification position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position der Mitteilungen"
           }
         }
       }
@@ -12117,6 +13035,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Älter"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An"
           }
         }
       }
@@ -12407,6 +13335,16 @@
         }
       }
     },
+    "Open Chat shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Chat öffnen"
+          }
+        }
+      }
+    },
     "Open Chat:" : {
       "localizations" : {
         "de" : {
@@ -12523,6 +13461,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen öffnen"
+          }
+        }
+      }
+    },
+    "Open Settings shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Einstellungen öffnen"
           }
         }
       }
@@ -12673,6 +13621,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenAI-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "OpenAI voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Stimme"
           }
         }
       }
@@ -12937,12 +13895,32 @@
         }
       }
     },
+    "OpenRouter chat model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter-Modell-ID für den Chat"
+          }
+        }
+      }
+    },
     "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat-Modelle über OpenRouter gibt es nur im Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "OpenRouter dictation model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter-Modell-ID fürs Diktieren"
           }
         }
       }
@@ -12967,12 +13945,32 @@
         }
       }
     },
+    "OpenRouter is not connected. Connect your account in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter ist nicht verbunden. Verbinden Sie Ihr Konto unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
     "OpenRouter rejected the authorization: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenRouter hat die Anmeldung abgelehnt: %@"
+          }
+        }
+      }
+    },
+    "OpenRouter rejected the key. Reconnect your account in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter hat den Schlüssel abgelehnt. Verbinden Sie Ihr Konto unter Einstellungen → Konten neu."
           }
         }
       }
@@ -13407,6 +14405,16 @@
         }
       }
     },
+    "Playback speed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabetempo"
+          }
+        }
+      }
+    },
     "Playback Speed" : {
       "localizations" : {
         "de" : {
@@ -13493,6 +14501,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position der Popups"
+          }
+        }
+      }
+    },
+    "Port %u is in use by another app. Quit it or choose a different port." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port %u wird von einer anderen App verwendet. Beenden Sie diese oder wählen Sie einen anderen Port."
           }
         }
       }
@@ -13839,6 +14857,26 @@
         }
       }
     },
+    "Proposals are not available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschläge sind nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Provider default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard des Anbieters"
+          }
+        }
+      }
+    },
     "Puts back what you had copied before, right after pasting. Needs auto-paste." : {
       "localizations" : {
         "de" : {
@@ -14096,12 +15134,42 @@
         }
       }
     },
+    "Read Aloud model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell fürs Vorlesen"
+          }
+        }
+      }
+    },
     "Read Aloud paused" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlesen pausiert"
+          }
+        }
+      }
+    },
+    "Read Aloud shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Vorlesen"
+          }
+        }
+      }
+    },
+    "Read Aloud smart rewrite" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen: Text vorher glätten"
           }
         }
       }
@@ -15550,6 +16618,16 @@
         }
       }
     },
+    "Same as dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie beim Diktieren"
+          }
+        }
+      }
+    },
     "Save" : {
       "localizations" : {
         "de" : {
@@ -15576,6 +16654,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Änderungen an der Merkdatei sichern"
+          }
+        }
+      }
+    },
+    "Save dictation screenshots" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfotos von Diktaten speichern"
           }
         }
       }
@@ -15807,6 +16895,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bildschirmfoto als Kontext:"
+          }
+        }
+      }
+    },
+    "Screenshot shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Bildschirmfoto"
           }
         }
       }
@@ -16181,6 +17279,16 @@
         }
       }
     },
+    "Self-hosted transcription endpoint URL is not configured. Set it in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die URL des selbst gehosteten Transkriptions-Endpunkts ist nicht eingerichtet. Legen Sie sie unter Einstellungen → Diktieren fest."
+          }
+        }
+      }
+    },
     "Send" : {
       "localizations" : {
         "de" : {
@@ -16397,6 +17505,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tragen Sie den Endpunkt Ihres lokalen Servers (Ollama / LM Studio) in den Einstellungen von Dictate Prompt ein und achten Sie darauf, dass er läuft."
+          }
+        }
+      }
+    },
+    "setting no longer exists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "die Einstellung gibt es nicht mehr"
           }
         }
       }
@@ -16688,6 +17806,16 @@
         }
       }
     },
+    "Show dictation notifications" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen beim Diktieren anzeigen"
+          }
+        }
+      }
+    },
     "Show fewer" : {
       "localizations" : {
         "de" : {
@@ -16854,6 +17982,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Melden Sie sich an, um Ihre Modelle zu sehen"
+          }
+        }
+      }
+    },
+    "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melden Sie sich unter Einstellungen → Konten mit ChatGPT an, um Ihr ChatGPT-Abo zu nutzen."
           }
         }
       }
@@ -17045,6 +18183,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Smart Improvement ist optional: Wenn Sie es unter Einstellungen → Smart Improvement einschalten, gehen Ihre Nutzungsprotokolle an den gewählten Anbieter, um Prompts zu verfeinern – nie an uns oder sonst jemanden."
+          }
+        }
+      }
+    },
+    "Smart Improvement model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Smart Improvement"
           }
         }
       }
@@ -17746,6 +18894,16 @@
         }
       }
     },
+    "Temperature" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temperatur"
+          }
+        }
+      }
+    },
     "Temperature:" : {
       "localizations" : {
         "de" : {
@@ -17812,6 +18970,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das regelt, wo die Verarbeitung läuft und mit wem Ihr Auftragsverarbeitungsvertrag besteht. Es ist keine Zertifizierung dieser App. Ob das einer beruflichen Schweigepflicht genügt, klären Sie bitte mit Ihrer eigenen Rechtsberatung. Für Diktate, die diesen Mac nie verlassen, nutzen Sie stattdessen den Offline-Modus."
+          }
+        }
+      }
+    },
+    "That is a different ChatGPT account than the one saved for this app. Sign in with the same account, or use a different account instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist ein anderes ChatGPT-Konto als das für diese App gespeicherte. Melden Sie sich mit demselben Konto an oder wechseln Sie stattdessen das Konto."
           }
         }
       }
@@ -17916,6 +19084,16 @@
         }
       }
     },
+    "The email address is not valid." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die E-Mail-Adresse ist ungültig."
+          }
+        }
+      }
+    },
     "The kept meeting audio contained no speech." : {
       "localizations" : {
         "de" : {
@@ -17942,6 +19120,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der letzte Download war unvollständig. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "The local server stopped: %@. Turn it off and on again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der lokale Server wurde gestoppt: %@. Schalten Sie ihn aus und wieder ein."
           }
         }
       }
@@ -18272,6 +19460,16 @@
         }
       }
     },
+    "Thinking effort" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denkaufwand"
+          }
+        }
+      }
+    },
     "Thinking effort:" : {
       "localizations" : {
         "de" : {
@@ -18282,12 +19480,32 @@
         }
       }
     },
+    "This change has no settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Änderung enthält keine Einstellungen."
+          }
+        }
+      }
+    },
     "This change is no longer on record." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Änderung ist nicht mehr verzeichnet."
+          }
+        }
+      }
+    },
+    "This changed since the AI app suggested it. Decline it and ask the AI app again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das hat sich geändert, seit die KI-App es vorgeschlagen hat. Lehnen Sie den Vorschlag ab und fragen Sie die KI-App erneut."
           }
         }
       }
@@ -18392,12 +19610,32 @@
         }
       }
     },
+    "this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "diesem Mac"
+          }
+        }
+      }
+    },
     "This meeting has been transcribing for over %lld minutes. Stop or continue?" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Meeting wird seit über %lld Minuten transkribiert. Beenden oder weitermachen?"
+          }
+        }
+      }
+    },
+    "This proposal has no settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Vorschlag enthält keine Einstellungen."
           }
         }
       }
@@ -18512,12 +19750,32 @@
         }
       }
     },
+    "Toggle Dictate Prompt shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Dictate Prompt starten/beenden"
+          }
+        }
+      }
+    },
     "Toggle Dictation" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktat starten/beenden"
+          }
+        }
+      }
+    },
+    "Toggle Dictation shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Diktat starten/beenden"
           }
         }
       }
@@ -19094,6 +20352,16 @@
         }
       }
     },
+    "Unknown section." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannter Abschnitt."
+          }
+        }
+      }
+    },
     "Unsupported audio format: %@" : {
       "localizations" : {
         "de" : {
@@ -19460,6 +20728,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für Smart Improvement (aus der Nutzung verbessern). Wählen Sie einen Anbieter, für den Sie einen Schlüssel haben."
+          }
+        }
+      }
+    },
+    "Using your ChatGPT plan isn't available in this version of WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ChatGPT-Abo ist in dieser Version von WhisperShortcut nicht verfügbar."
           }
         }
       }
@@ -20296,6 +21574,16 @@
         }
       }
     },
+    "X accounts for Grok" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "X-Konten für Grok"
+          }
+        }
+      }
+    },
     "X Accounts for Grok" : {
       "localizations" : {
         "de" : {
@@ -20368,12 +21656,32 @@
         }
       }
     },
+    "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das xAI-Konto hat kein Guthaben mehr oder sein monatliches Ausgabenlimit erreicht. Laden Sie unter https://console.x.ai/ auf oder erhöhen Sie das Limit, um fortzufahren."
+          }
+        }
+      }
+    },
     "xAI API Key (Grok)" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "xAI-API-Schlüssel (Grok)"
+          }
+        }
+      }
+    },
+    "xAI voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "xAI-Stimme"
           }
         }
       }
@@ -20548,6 +21856,16 @@
         }
       }
     },
+    "your ChatGPT plan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr ChatGPT-Abo"
+          }
+        }
+      }
+    },
     "Your ChatGPT plan can't run part of this request (%@). Remove it and try again." : {
       "localizations" : {
         "de" : {
@@ -20584,6 +21902,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihre ChatGPT-Anmeldung ist abgelaufen. Melden Sie sich unter Einstellungen → Konten neu an."
+          }
+        }
+      }
+    },
+    "your custom endpoint" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Endpunkt"
           }
         }
       }
@@ -20664,6 +21992,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr eigener OpenAI-kompatibler Server: OpenInference, Azure OpenAI, Vertex AI, LiteLLM oder selbst gehostet. Der hier eingetragene Schlüssel geht nur an diesen Server."
+          }
+        }
+      }
+    },
+    "your own server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server"
+          }
+        }
+      }
+    },
+    "Your own server is not set up. Add its base URL and key in Settings → Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server ist nicht eingerichtet. Tragen Sie Basis-URL und Schlüssel unter Einstellungen → Chat ein."
           }
         }
       }
@@ -20838,6 +22186,26 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to load (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange zum Laden gebraucht (über %lld Sekunden).\n\nMögliche Ursachen:\n• Der Mac ist stark ausgelastet oder hat wenig Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Unter Einstellungen → Diktieren ein kleineres Modell wählen\n• Eine kürzere Aufnahme versuchen"
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to transcribe your recording (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange gebraucht, um Ihre Aufnahme zu transkribieren (über %lld Sekunden).\n\nMögliche Ursachen:\n• Der Mac ist stark ausgelastet oder hat wenig Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Unter Einstellungen → Diktieren ein kleineres Modell wählen\n• Eine kürzere Aufnahme versuchen"
           }
         }
       }

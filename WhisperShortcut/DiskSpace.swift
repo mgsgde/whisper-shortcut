@@ -25,7 +25,7 @@ enum DiskSpaceError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .insufficient(let neededMB, let availableMB):
-      return "Not enough disk space to download this model. About \(neededMB) MB is needed, but only \(availableMB) MB is free. Free some space and try again."
+      return String(localized: "Not enough disk space to download this model. About \(neededMB) MB is needed, but only \(availableMB) MB is free. Free some space and try again.")
     }
   }
 }

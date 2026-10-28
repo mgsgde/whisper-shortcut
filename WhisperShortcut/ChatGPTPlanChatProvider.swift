@@ -158,7 +158,7 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
     guard let data = text.data(using: .utf8),
       let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     else {
-      throw TranscriptionError.networkError("ChatGPT plan structured response was not valid JSON")
+      throw TranscriptionError.networkError(String(localized: "ChatGPT plan structured response was not valid JSON"))
     }
     return parsed
   }
@@ -171,7 +171,7 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
 /// the provider factory stays total.
 struct ChatGPTPlanUnavailableProvider: LLMChatProvider {
   private var error: Error {
-    TranscriptionError.networkError("Using your ChatGPT plan isn't available in this version of WhisperShortcut.")
+    TranscriptionError.networkError(String(localized: "Using your ChatGPT plan isn't available in this version of WhisperShortcut."))
   }
 
   func sendChatStream(

@@ -25,13 +25,13 @@ enum ChatErrorFormatter {
         let lower = msg.lowercased()
         if lower.contains("503") || lower.contains("unavailable")
           || lower.contains("502") || lower.contains("504") || lower.contains("500") {
-          return "\(name) is temporarily unavailable. Please try again in a few seconds."
+          return String(localized: "\(name) is temporarily unavailable. Please try again in a few seconds.")
         }
         if msg.hasPrefix("{") || msg.contains("\"error\"") {
           if let extracted = ChatProviderHTTPError.message(from: msg) {
-            return "\(name) request failed: \(extracted)"
+            return String(localized: "\(name) request failed: \(extracted)")
           }
-          return "\(name) request failed. Please try again."
+          return String(localized: "\(name) request failed. Please try again.")
         }
         return msg
       case .fileError(let msg), .localModelFailed(let msg):

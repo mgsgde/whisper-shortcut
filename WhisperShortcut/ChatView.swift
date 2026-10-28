@@ -182,10 +182,10 @@ class ChatViewModel: ObservableObject {
       let hasSelection = content.contains("<pasted_selection>")
       let hasPaste = content.contains("<pasted_content>")
       let hasQuote = content.contains("<quoted_from_meeting>")
-      if hasSelection, hasPaste { return "[Selection] [Pasted content]" }
-      if hasSelection { return "[Selection]" }
-      if hasPaste { return "[Pasted content]" }
-      if hasQuote { return "[Quote]" }
+      if hasSelection, hasPaste { return String(localized: "[Selection] [Pasted content]") }
+      if hasSelection { return String(localized: "[Selection]") }
+      if hasPaste { return String(localized: "[Pasted content]") }
+      if hasQuote { return String(localized: "[Quote]") }
       return content
     }
   }
@@ -817,8 +817,11 @@ class ChatViewModel: ObservableObject {
 
   static func attachmentTooLargeMessage(filenames: [String]) -> String {
     let names = filenames.map { "\"\($0)\"" }.joined(separator: ", ")
-    let verb = filenames.count == 1 ? "is" : "are"
-    return "\(names) \(verb) larger than \(AppConstants.maxFileSizeDisplay) and \(filenames.count == 1 ? "wasn't" : "weren't") attached."
+    let limit = AppConstants.maxFileSizeDisplay
+    if filenames.count == 1 {
+      return String(localized: "\(names) is larger than \(limit) and wasn't attached.")
+    }
+    return String(localized: "\(names) are larger than \(limit) and weren't attached.")
   }
 
   // MARK: - Workspace folders
@@ -1165,23 +1168,25 @@ class ChatViewModel: ObservableObject {
             // Say what actually happened: the model kept working and hit the round cap. The old
             // copy claimed nothing was found, which reads as a failure even though every one of
             // those calls ran — a create/delete batch had already changed the user's data.
-            let calls = turn.executedToolCalls == 1 ? "1 tool call" : "\(turn.executedToolCalls) tool calls"
-            reply = "_I hit the tool-call round limit after \(calls) and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._"
+            let calls = turn.executedToolCalls == 1
+              ? String(localized: "1 tool call")
+              : String(localized: "\(turn.executedToolCalls) tool calls")
+            reply = String(localized: "_I hit the tool-call round limit after \(calls) and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._")
           } else if turn.executedToolCalls > 0 {
             // The model ran tools (e.g. gmail_search) but then ended its turn
             // with no summary — typically because the results were empty or
             // unrelated. A bare "(no response)" hides that; say what happened.
             DebugLogger.logWarning("CHAT: empty final turn after tool calls — surfacing no-results fallback")
-            reply = "_I looked into this with the available tools but didn't find anything relevant to summarize. Try narrowing the request — e.g. name a specific sender, subject, or date range._"
+            reply = String(localized: "_I looked into this with the available tools but didn't find anything relevant to summarize. Try narrowing the request — e.g. name a specific sender, subject, or date range._")
           } else {
-            reply = "_(no response)_"
+            reply = String(localized: "_(no response)_")
           }
         }
         if turn.truncated {
-          let note = "_Reply was truncated._"
+          let note = String(localized: "_Reply was truncated._")
           if reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             reply = note
-          } else if !reply.contains("Reply was truncated") {
+          } else if !reply.contains("Reply was truncated"), !reply.contains(note) {
             reply = reply + "\n\n" + note
           }
         }
@@ -1957,7 +1962,7 @@ class ChatViewModel: ObservableObject {
       // the turn was stopped before any text — otherwise the next turn cannot refer to them.
       updateStreamingMessage(
         id: placeholderId, sessionId: sessionId,
-        content: partial.isEmpty ? "_(stopped after running tools)_" : partial,
+        content: partial.isEmpty ? String(localized: "_(stopped after running tools)_") : partial,
         sources: [], supports: [], toolCalls: toolCalls)
     }
   }
@@ -6026,7 +6031,9 @@ private struct MessageBubbleView: View {
         let parsed = parseUserMessagePastedXML(message.content)
         ForEach(Array(parsed.sections.enumerated()), id: \.offset) { _, sec in
           let lines = sec.body.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-          let title = sec.isSelection ? "\(lines) lines from selection" : "\(lines) lines pasted"
+          let title = sec.isSelection
+            ? String(localized: "\(lines) lines from selection")
+            : String(localized: "\(lines) lines pasted")
           let icon = sec.isSelection ? "text.cursor" : "doc.plaintext"
           Label(title, systemImage: icon)
             .font(.caption)
