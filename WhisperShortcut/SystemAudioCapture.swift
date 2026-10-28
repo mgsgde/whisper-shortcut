@@ -426,11 +426,16 @@ final class SystemAudioCapture {
   /// that matches these is an echo of our own aggregate device, not a real change.
   private let builtFormatLock = NSLock()
   private var builtFormat: (sampleRate: Double, inputChannels: Int)?
+  /// The IO clock rate the capture graph labels its audio with (see `effectiveSampleRate`).
+  /// Guarded by `builtFormatLock`.
+  private var effectiveRate: Double = 0
   private var outputDeviceNameAtStart = ""
   private var scratch: [Float] = []
   private let peakMeter = ChannelPeakMeter()
   /// Main thread only: when the last peaks line was logged.
   private var lastPeakLog = Date()
+  /// Main thread only: peak windows logged since the last (re)start.
+  private var peakWindowsLogged = 0
 
   // Main thread only.
   private var ownProcessObjectIDMain = AudioObjectID(kAudioObjectUnknown)
@@ -545,6 +550,7 @@ final class SystemAudioCapture {
           self.ownProcessObjectIDMain = ownObject
           self.tapActive = true
           self.lastPeakLog = Date()
+          self.peakWindowsLogged = 0
           _ = self.peakMeter.takeAndReset()
           let elapsed = String(format: "%.2f", Date().timeIntervalSince(startedAt))
           DebugLogger.logAudio("SYSTEM-AUDIO: started tap \(summary) after \(elapsed)s")
@@ -726,6 +732,19 @@ final class SystemAudioCapture {
 
     let aggregateStreams = Self.readInputStreamChannels(newAggregateDeviceID)
     let aggregateNominal = Self.readNominalSampleRate(newAggregateDeviceID)
+    let aggregateActual = Self.readActualSampleRate(newAggregateDeviceID)
+    // The stream format can be stale (Bluetooth call mode: claims 48 kHz, delivers 16 kHz), so the
+    // device's real clock rate decides what the audio is labelled with.
+    let sampleRate = Self.effectiveSampleRate(
+      streamRate: usedFormat.mSampleRate, actualRate: aggregateActual, nominalRate: aggregateNominal)
+    builtFormatLock.lock()
+    effectiveRate = sampleRate
+    builtFormatLock.unlock()
+    if abs(sampleRate - usedFormat.mSampleRate) > 1 {
+      DebugLogger.logWarning(
+        "SYSTEM-AUDIO: stream format says \(Int(usedFormat.mSampleRate)) Hz but the device runs at "
+          + "\(Int(sampleRate)) Hz; using \(Int(sampleRate)) Hz")
+    }
     let outputNominal = Self.readNominalSampleRate(outputDeviceID)
     let outputInputChannels = Self.readInputChannelCount(outputDeviceID)
     let layout =
@@ -734,7 +753,8 @@ final class SystemAudioCapture {
     DebugLogger.logAudio(
       "SYSTEM-AUDIO-DIAG: aggregate in \(Int(usedFormat.mSampleRate)) Hz, "
         + "\(usedFormat.mChannelsPerFrame) ch, \(layout), streams \(aggregateStreams), "
-        + "skip \(skipChannels), nominal \(Int(aggregateNominal)) Hz; "
+        + "skip \(skipChannels), nominal \(Int(aggregateNominal)) Hz, "
+        + "actual \(Int(aggregateActual)) Hz, using \(Int(sampleRate)) Hz; "
         + "tap \(Int(readTapFormat.mSampleRate)) Hz \(readTapFormat.mChannelsPerFrame) ch; "
         + "output device \(outputDeviceNameAtStart) nominal \(Int(outputNominal)) Hz, "
         + "input ch \(outputInputChannels)")
@@ -749,7 +769,6 @@ final class SystemAudioCapture {
     }
     let isNonInterleaved = (usedFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
     let totalChannels = Int(usedFormat.mChannelsPerFrame)
-    let sampleRate = usedFormat.mSampleRate
     let simulate = simulateDenied
     let meter = peakMeter
 
@@ -926,6 +945,7 @@ final class SystemAudioCapture {
           self.ownProcessObjectIDMain = ownObject
           self.tapActive = true
           self.lastPeakLog = Date()
+          self.peakWindowsLogged = 0
           _ = self.peakMeter.takeAndReset()
           self.onOutputRouteChange?(OutputRoute.current())
           if self.restartPending {
@@ -970,9 +990,21 @@ final class SystemAudioCapture {
       let db = max(-160, 20 * log10(Double(max(peak, 1e-8))))
       return "ch\(index) \(String(format: "%.1f", db))"
     }
-    let fps = Int((Double(frames) / elapsed).rounded())
-    DebugLogger.logAudio(
-      "SYSTEM-AUDIO-DIAG: peaks dB [\(dbs.joined(separator: ", "))] frames \(frames) in 3s (\(fps) fps)")
+    let measuredFps = Double(frames) / elapsed
+    let fps = Int(measuredFps.rounded())
+    builtFormatLock.lock()
+    let expected = effectiveRate
+    builtFormatLock.unlock()
+    let deviates = expected > 0 && abs(measuredFps - expected) > 0.05 * expected
+    let line =
+      "peaks dB [\(dbs.joined(separator: ", "))] frames \(frames) in 3s (\(fps) fps, "
+      + "expected \(Int(expected)))"
+    if deviates {
+      DebugLogger.logWarning("WARNING SYSTEM-AUDIO-DIAG: \(line)")
+    } else if peakWindowsLogged < 3 {
+      DebugLogger.logAudio("SYSTEM-AUDIO-DIAG: \(line)")
+    }
+    peakWindowsLogged += 1
   }
 
   // MARK: Downmix (IO callback thread)
@@ -1041,6 +1073,28 @@ final class SystemAudioCapture {
   }
 
   // MARK: Static Core Audio helpers
+
+  /// The sample rate the device's IO clock really runs at (0 when unavailable).
+  private static func readActualSampleRate(_ deviceID: AudioObjectID) -> Double {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyActualSampleRate,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+    var value: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+    return status == noErr ? value : 0
+  }
+
+  /// The rate to label captured audio with. Actual and nominal rate describe the real IO clock;
+  /// the stream format can be stale (Bluetooth call mode), so it is the last resort.
+  static func effectiveSampleRate(streamRate: Double, actualRate: Double?, nominalRate: Double?)
+    -> Double
+  {
+    if let actualRate, actualRate > 0 { return actualRate }
+    if let nominalRate, nominalRate > 0 { return nominalRate }
+    return streamRate
+  }
 
   private static func readNominalSampleRate(_ deviceID: AudioObjectID) -> Double {
     var address = AudioObjectPropertyAddress(

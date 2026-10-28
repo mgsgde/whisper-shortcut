@@ -580,3 +580,32 @@ final class MeetingSystemAudioMixTests: XCTestCase {
     XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioPreference, .microphoneOnly)
   }
 }
+
+// MARK: - Effective sample rate
+
+final class EffectiveSampleRateTests: XCTestCase {
+  func testActualRateWinsOverStreamFormat() {
+    XCTAssertEqual(
+      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: 16000, nominalRate: 16000), 16000)
+  }
+
+  func testNominalRateUsedWhenActualMissing() {
+    XCTAssertEqual(
+      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: nil, nominalRate: 16000), 16000)
+  }
+
+  func testStreamRateUsedWhenActualIsZeroAndNominalMissing() {
+    XCTAssertEqual(
+      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: 0, nominalRate: nil), 48000)
+  }
+
+  func testStreamRateUsedWhenNothingElseKnown() {
+    XCTAssertEqual(
+      SystemAudioCapture.effectiveSampleRate(streamRate: 48000, actualRate: nil, nominalRate: nil), 48000)
+  }
+
+  func testActualRateWinsOverNominal() {
+    XCTAssertEqual(
+      SystemAudioCapture.effectiveSampleRate(streamRate: 44100, actualRate: 44100, nominalRate: 48000), 44100)
+  }
+}
