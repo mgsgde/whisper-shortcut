@@ -17,6 +17,12 @@ struct SpeechToPromptSettingsTab: View {
         LocalLLMEndpointSection()
       }
 
+      // The same server as Dictate and Chat; shown already set up when either configured it.
+      if viewModel.data.selectedPromptModel.provider == .customOpenAI {
+        SpacedSectionDivider()
+        OwnServerEndpointSection(route: .dictatePrompt)
+      }
+
       SpacedSectionDivider()
 
       // Screen context for voice Dictate Prompt (same UserDefaults key as before)

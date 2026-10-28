@@ -90,9 +90,9 @@ struct ModelSelectionView: View {
       let name = OpenRouterModelCatalog.shared.audioModels.first { $0.id == slug }?.name
       return "→ \(name ?? slug)"
     case .selfHosted:
-      let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      guard let host = URL(string: url)?.host, !host.isEmpty else { return "→ not configured" }
+      // Unset, the tile says what it is for, so "Own server" reads as LiteLLM / Azure without a click.
+      guard let url = CustomEndpointPreferences.transcriptionURL, let host = URL(string: url)?.host, !host.isEmpty
+      else { return String(localized: "OpenAI-compatible: LiteLLM, Azure, …") }
       return "→ \(host)"
     case .google, .openAI, .xai, .offline:
       return nil

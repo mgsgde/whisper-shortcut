@@ -166,7 +166,7 @@ extension ChatModelProvider {
     case .gemini:
       return "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models."
     case .endpoint:
-      return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
+      return "Your own server is not set up. Add its base URL and key in Settings → Chat."
     case .chatGPTPlan:
       return "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan."
     case .none:

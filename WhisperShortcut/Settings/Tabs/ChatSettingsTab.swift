@@ -18,7 +18,7 @@ struct ChatSettingsTab: View {
         OpenRouterChatModelSection()
       case .customOpenAI:
         SpacedSectionDivider()
-        CustomOpenAIChatEndpointSection()
+        OwnServerEndpointSection(route: .chat)
       case .chatGPTPlan:
         SpacedSectionDivider()
         ChatGPTPlanChatModelSection()

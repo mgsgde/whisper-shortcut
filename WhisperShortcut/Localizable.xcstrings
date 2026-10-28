@@ -1739,6 +1739,16 @@
         }
       }
     },
+    "Add your own server's base URL and key in Settings → Dictate Prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tragen Sie unter Einstellungen → Dictate Prompt die Basis-URL und den Schlüssel Ihres eigenen Servers ein."
+          }
+        }
+      }
+    },
     "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate." : {
       "localizations" : {
         "de" : {
@@ -5333,16 +5343,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eigener Endpunkt"
-          }
-        }
-      }
-    },
-    "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der eigene Endpunkt gilt nur für den Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
           }
         }
       }
@@ -19019,6 +19019,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr eigener OpenAI-kompatibler Server: OpenInference, Azure OpenAI, Vertex AI, LiteLLM oder selbst gehostet. Der hier eingetragene Schlüssel geht nur an diesen Server."
+          }
+        }
+      }
+    },
+    "Your own server is not set up. Add its base URL in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server ist nicht eingerichtet. Tragen Sie die Basis-URL unter Einstellungen → Diktieren ein."
           }
         }
       }
