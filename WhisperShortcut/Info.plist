@@ -52,6 +52,8 @@
 	<string>This app needs keychain access to securely store your Google API key.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to record audio for transcription.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>In an online meeting, WhisperShortcut records what the other participants say so it is part of the transcript.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
