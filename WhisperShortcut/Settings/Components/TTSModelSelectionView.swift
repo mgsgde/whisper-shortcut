@@ -37,41 +37,13 @@ struct TTSModelSelectionView: View {
         cell: { model, badges in modelCell(model, badges: badges) },
         more: { ModelGrid(models: $0) { modelCell($0, badges: []) } })
 
-      // Selected model details
-      VStack(alignment: .leading, spacing: 8) {
-        Text(selectedModel.description)
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        HStack {
-          Text("Cost:")
-            .font(.callout)
-            .fontWeight(.medium)
-            .foregroundColor(.secondary)
-          Text(selectedModel.costLevel.title)
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(SettingsConstants.costLevelColor(for: selectedModel.costLevel))
-        }
-
-        if !selectedModel.hasRequiredCredential {
-          HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundColor(.orange)
-              .font(.caption)
-            Text("Add the matching API key in Settings → Accounts to use this model.")
-              .font(.caption)
-              .foregroundColor(.secondary)
-          }
-        }
-      }
+      ModelDetailsFooter(description: selectedModel.description, costLevel: selectedModel.costLevel)
     }
   }
 
   private func modelCell(_ model: TTSModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
-      title: model.displayName,
+      title: model.pickerTitle,
       isSelected: selectedModel == model,
       isDisabled: false,
       badges: badges,

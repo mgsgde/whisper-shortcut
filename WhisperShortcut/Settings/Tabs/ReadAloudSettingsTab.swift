@@ -150,7 +150,7 @@ struct ReadAloudSettingsTab: View {
         VStack(alignment: .leading, spacing: 2) {
           Text("Rewrite text for speech before reading aloud")
             .font(.callout)
-          Text("When on, code, markdown, tables and other non-prose content are summarized into a speakable form. Plain prose is passed through unchanged. Adds one short Gemini call before TTS.")
+          Text("Adds one short model call before reading.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -170,7 +170,7 @@ struct ReadAloudSettingsTab: View {
       SectionHeader(
         title: "How to Use",
         systemImage: "questionmark.circle",
-        subtitle: "Read selected text aloud anywhere on your Mac"
+        subtitle: nil
       )
 
       // Selection-based Read Aloud copies via ⌘C (Accessibility); no shortcut in the App Store build.

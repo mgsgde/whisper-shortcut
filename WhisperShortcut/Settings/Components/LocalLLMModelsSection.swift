@@ -12,7 +12,7 @@ struct LocalLLMModelsSection: View {
       SectionHeader(
         title: "Offline Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Run Dictate Prompt and Chat on this Mac, inside the app, with no server to install. Each model downloads once from Hugging Face and stays cached locally."
+        subtitle: "Runs on this Mac, nothing to install. Each model downloads once and stays on disk."
       )
 
       VStack(spacing: 12) {

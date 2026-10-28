@@ -100,12 +100,6 @@ enum OfflineModelType: String, CaseIterable, DownloadableModel {
     return .whisperLargeTurbo
   }
 
-  /// Shown instead of the star on the model that is merely the fastest way to *try* offline
-  /// dictation. Keeps Base findable for a metered connection without implying it is the best pick.
-  var isQuickStart: Bool {
-    return self == .whisperBase
-  }
-
   /// Superseded by turbo and no longer offered.
   ///
   /// Medium is the same download size as turbo while being clearly less accurate, and large-v3 is
