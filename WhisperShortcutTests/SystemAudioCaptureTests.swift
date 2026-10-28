@@ -303,55 +303,202 @@ final class SystemAudioPermissionHeuristicTests: XCTestCase {
   }
 }
 
-// MARK: - MeetingAudioMode
+// MARK: - MeetingAudioRouting
 
-final class MeetingAudioModeTests: XCTestCase {
+final class MeetingAudioRoutingTests: XCTestCase {
+
+  private func route(_ name: String, transport: UInt32, dataSource: UInt32?) -> OutputRoute {
+    OutputRoute(deviceName: name, transportType: transport, dataSource: dataSource)
+  }
+
+  func testAutomaticBuiltInSpeakerIsMicrophoneOnly() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .automatic,
+      route: route(
+        "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn,
+        dataSource: 0x6973_706b))
+    XCTAssertEqual(routing, .speakers)
+  }
+
+  func testAutomaticBuiltInHeadphonesMixSystemAudio() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .automatic,
+      route: route(
+        "External Headphones", transport: kAudioDeviceTransportTypeBuiltIn,
+        dataSource: 0x6864_706e))
+    XCTAssertEqual(routing, .headphones)
+  }
+
+  func testAutomaticBluetoothMixesSystemAudio() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .automatic,
+      route: route("AirPods", transport: kAudioDeviceTransportTypeBluetooth, dataSource: nil))
+    XCTAssertEqual(routing, .headphones)
+  }
+
+  func testAutomaticHDMIIsMicrophoneOnly() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .automatic,
+      route: route("HDMI", transport: kAudioDeviceTransportTypeHDMI, dataSource: nil))
+    XCTAssertEqual(routing, .speakers)
+  }
+
+  func testAutomaticNilRouteIsMicrophoneOnly() {
+    XCTAssertEqual(
+      MeetingAudioRouting.resolve(preference: .automatic, route: nil), .noOutputDevice)
+  }
+
+  func testAlwaysMixOnSpeakersStaysManualMix() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .alwaysMixSystemAudio,
+      route: route(
+        "MacBook Pro Speakers", transport: kAudioDeviceTransportTypeBuiltIn,
+        dataSource: 0x6973_706b))
+    XCTAssertEqual(routing, .manualMix)
+  }
+
+  func testMicrophoneOnlyOnHeadphonesStaysManual() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .microphoneOnly,
+      route: route(
+        "External Headphones", transport: kAudioDeviceTransportTypeBuiltIn,
+        dataSource: 0x6864_706e))
+    XCTAssertEqual(routing, .manualMicrophoneOnly)
+  }
+
+  func testMixesSystemAudioAndIsManualForEveryCase() {
+    XCTAssertTrue(MeetingAudioRouting.headphones.mixesSystemAudio)
+    XCTAssertFalse(MeetingAudioRouting.headphones.isManual)
+
+    XCTAssertFalse(MeetingAudioRouting.speakers.mixesSystemAudio)
+    XCTAssertFalse(MeetingAudioRouting.speakers.isManual)
+
+    XCTAssertFalse(MeetingAudioRouting.noOutputDevice.mixesSystemAudio)
+    XCTAssertFalse(MeetingAudioRouting.noOutputDevice.isManual)
+
+    XCTAssertTrue(MeetingAudioRouting.manualMix.mixesSystemAudio)
+    XCTAssertTrue(MeetingAudioRouting.manualMix.isManual)
+
+    XCTAssertFalse(MeetingAudioRouting.manualMicrophoneOnly.mixesSystemAudio)
+    XCTAssertTrue(MeetingAudioRouting.manualMicrophoneOnly.isManual)
+  }
+}
+
+// MARK: - MeetingAudioPreference
+
+final class MeetingAudioPreferenceTests: XCTestCase {
+
+  override func setUp() {
+    super.setUp()
+    clearAudioPreferenceDefaults()
+  }
+
+  // The test host is the sandboxed Dev app and shares its defaults with everything else that
+  // runs in it, so both keys are removed here as well as around each test.
+  override func tearDown() {
+    clearAudioPreferenceDefaults()
+    super.tearDown()
+  }
+
+  private func clearAudioPreferenceDefaults() {
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
+  }
+
+  func testUnsetDefaultsToAutomatic() {
+    XCTAssertEqual(MeetingAudioPreference.current, .automatic)
+  }
+
+  func testUnknownStoredRawValueReadsAsAutomatic() {
+    UserDefaults.standard.set(
+      "not-a-real-mode", forKey: UserDefaultsKeys.liveMeetingAudioPreference)
+    XCTAssertEqual(MeetingAudioPreference.current, .automatic)
+  }
+
+  func testSettingPreferencePersistsAndPostsOnce() {
+    var posts = 0
+    let token = NotificationCenter.default.addObserver(
+      forName: .liveMeetingAudioPreferenceChanged, object: nil, queue: nil
+    ) { _ in
+      posts += 1
+    }
+    defer { NotificationCenter.default.removeObserver(token) }
+
+    MeetingAudioPreference.current = .alwaysMixSystemAudio
+
+    XCTAssertEqual(posts, 1)
+    XCTAssertEqual(MeetingAudioPreference.current, .alwaysMixSystemAudio)
+    XCTAssertEqual(
+      UserDefaults.standard.string(forKey: UserDefaultsKeys.liveMeetingAudioPreference),
+      MeetingAudioPreference.alwaysMixSystemAudio.rawValue)
+  }
+
+  func testSettingTheSameValueAgainDoesNotPost() {
+    MeetingAudioPreference.current = .microphoneOnly
+
+    let expectation = XCTNSNotificationExpectation(name: .liveMeetingAudioPreferenceChanged)
+    expectation.isInverted = true
+
+    MeetingAudioPreference.current = .microphoneOnly
+
+    wait(for: [expectation], timeout: 0.3)
+  }
+}
+
+// MARK: - Legacy audio-mode migration
+
+final class MeetingAudioMigrationTests: XCTestCase {
+
+  private var suiteName = ""
+  private var defaults: UserDefaults!
 
   override func setUp() {
     super.setUp()
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
+    suiteName = "MeetingAudioMigrationTests-\(UUID())"
+    defaults = UserDefaults(suiteName: suiteName)
+    XCTAssertNotNil(defaults)
   }
 
-  // The test host is the sandboxed Dev app and shares its defaults with everything else that
-  // runs in it, so this is removed both via `defer` in each test and here.
   override func tearDown() {
+    defaults?.removePersistentDomain(forName: suiteName)
+    defaults = nil
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
     super.tearDown()
   }
 
-  func testUnsetDefaultsToInPerson() {
-    defer { UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode) }
-    XCTAssertEqual(MeetingAudioMode.current, .inPerson)
+  func testInPersonMigratesToAutomaticAndRemovesLegacyKey() {
+    defaults.set("inPerson", forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
+    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
   }
 
-  func testSettingOnlinePersistsAndPostsNotification() {
-    defer { UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode) }
-    let expectation = XCTNSNotificationExpectation(name: .liveMeetingAudioModeChanged)
-
-    MeetingAudioMode.current = .online
-
-    wait(for: [expectation], timeout: 1)
-    XCTAssertEqual(MeetingAudioMode.current, .online)
-    XCTAssertEqual(
-      UserDefaults.standard.string(forKey: UserDefaultsKeys.liveMeetingAudioMode), "online")
+  func testOnlineMigratesToAutomaticAndRemovesLegacyKey() {
+    defaults.set("online", forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
+    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
   }
 
-  func testSettingTheSameValueAgainDoesNotPost() {
-    defer { UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode) }
-    MeetingAudioMode.current = .online
-
-    let expectation = XCTNSNotificationExpectation(name: .liveMeetingAudioModeChanged)
-    expectation.isInverted = true
-
-    MeetingAudioMode.current = .online
-
-    wait(for: [expectation], timeout: 0.3)
+  func testUnsetMigrationIsANoOp() {
+    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
+    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
   }
 
-  func testUnknownStoredRawValueReadsAsInPerson() {
-    defer { UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode) }
-    UserDefaults.standard.set("not-a-real-mode", forKey: UserDefaultsKeys.liveMeetingAudioMode)
-    XCTAssertEqual(MeetingAudioMode.current, .inPerson)
+  func testMigrationTwiceIsHarmless() {
+    defaults.set("online", forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+    MeetingAudioPreference.migrateLegacyAudioMode(defaults)
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioMode))
+    XCTAssertNil(defaults.object(forKey: UserDefaultsKeys.liveMeetingAudioPreference))
+    XCTAssertEqual(MeetingAudioPreference.load(defaults), .automatic)
   }
 }
 
@@ -362,10 +509,12 @@ final class MeetingSystemAudioMixTests: XCTestCase {
   override func setUp() {
     super.setUp()
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
   }
 
   override func tearDown() {
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioPreference)
     super.tearDown()
   }
 
@@ -417,17 +566,17 @@ final class MeetingSystemAudioMixTests: XCTestCase {
     XCTAssertEqual(peak, 0.3, accuracy: 0.02)
   }
 
-  func testAudioModeChangeUpdatesStore() {
-    MeetingAudioMode.current = .online
-    let online = expectation(description: "store follows online")
-    DispatchQueue.main.async { online.fulfill() }
-    wait(for: [online], timeout: 1)
-    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioMode, .online)
+  func testAudioPreferenceChangeUpdatesStore() {
+    MeetingAudioPreference.current = .alwaysMixSystemAudio
+    let mix = expectation(description: "store follows always mix")
+    DispatchQueue.main.async { mix.fulfill() }
+    wait(for: [mix], timeout: 1)
+    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioPreference, .alwaysMixSystemAudio)
 
-    MeetingAudioMode.current = .inPerson
-    let inPerson = expectation(description: "store follows in person")
-    DispatchQueue.main.async { inPerson.fulfill() }
-    wait(for: [inPerson], timeout: 1)
-    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioMode, .inPerson)
+    MeetingAudioPreference.current = .microphoneOnly
+    let microphone = expectation(description: "store follows microphone only")
+    DispatchQueue.main.async { microphone.fulfill() }
+    wait(for: [microphone], timeout: 1)
+    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioPreference, .microphoneOnly)
   }
 }

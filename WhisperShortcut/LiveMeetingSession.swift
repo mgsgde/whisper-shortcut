@@ -57,66 +57,95 @@ final class LiveMeetingSession: NSObject {
     self.onFinished = onFinished
     self.onBacklogChanged = onBacklogChanged
     super.init()
-    // The meeting bar's Online / In person switch changes the mode mid-meeting.
-    audioModeObserver = NotificationCenter.default.addObserver(
-      forName: .liveMeetingAudioModeChanged, object: nil, queue: .main
+    // The meeting bar's preference (automatic / always mix / microphone only) can change mid-meeting.
+    audioPreferenceObserver = NotificationCenter.default.addObserver(
+      forName: .liveMeetingAudioPreferenceChanged, object: nil, queue: .main
     ) { [weak self] _ in
       guard let self, self.recorder != nil, !self.stopping, !self.finalized else { return }
-      self.applyAudioMode(MeetingAudioMode.current)
+      // A new choice is a new attempt: the tap's last failure was for the previous choice.
+      self.systemAudioStartFailed = false
+      self.reconcileSystemAudio()
     }
   }
 
   deinit {
-    if let audioModeObserver { NotificationCenter.default.removeObserver(audioModeObserver) }
+    if let audioPreferenceObserver {
+      NotificationCenter.default.removeObserver(audioPreferenceObserver)
+    }
   }
 
-  // MARK: - System audio (Online meeting mode)
+  // MARK: - System audio routing
 
-  private var audioModeObserver: NSObjectProtocol?
+  private var audioPreferenceObserver: NSObjectProtocol?
+  private var outputRouteMonitor: OutputRouteMonitor?
   private var systemCapture: SystemAudioCapture?
+  /// The tap failed to start during this meeting. Reconcile must not start it again until the
+  /// meeting starts over or the user changes the preference.
+  private var systemAudioStartFailed = false
   private var didShowSystemAudioAlert = false
 
-  private func applyAudioMode(_ mode: MeetingAudioMode) {
-    let store = LiveMeetingTranscriptStore.shared
-    switch mode {
-    case .online:
-      guard systemCapture == nil else { return }
-      let capture = SystemAudioCapture()
-      capture.onOutputRouteChange = { route in
-        DispatchQueue.main.async {
-          store.outputIsLikelySpeaker = route?.isLikelySpeaker ?? false
-        }
-      }
-      capture.onPermissionSuspectedChange = { [weak self] suspected in
-        DispatchQueue.main.async {
-          store.systemAudioSeemsBlocked = suspected
-          if suspected { self?.showSystemAudioBlockedAlert() }
-        }
-      }
-      // start() returns at once; the tap comes up off the main thread and a failure arrives via
-      // onStartFailed. Never abort the meeting: it keeps recording from the microphone.
-      capture.onStartFailed = { [weak self, weak capture] error in
-        guard let self, let capture, self.systemCapture === capture else { return }
-        DebugLogger.logError("LIVE-MEETING: System audio capture failed to start: \(error)")
-        self.recorder?.systemAudio = nil
-        self.systemCapture = nil
-        store.isCapturingSystemAudio = false
-        store.systemAudioSeemsBlocked = true
-        self.showSystemAudioBlockedAlert()
-      }
-      systemCapture = capture
-      recorder?.systemAudio = capture.buffer
-      store.isCapturingSystemAudio = true
-      capture.start()
-      DebugLogger.log("LIVE-MEETING: Audio mode online (system audio + microphone)")
-    case .inPerson:
-      if systemCapture != nil {
-        // Cut the chunk recorded while online first, so it still gets its system audio.
-        recorder?.rotateNow(minimumChunkAge: 0.5)
-        tearDownSystemCapture()
-      }
-      DebugLogger.log("LIVE-MEETING: Audio mode in person (microphone only)")
+  private func startOutputRouteMonitor() {
+    outputRouteMonitor?.stop()
+    let monitor = OutputRouteMonitor()
+    outputRouteMonitor = monitor
+    monitor.onChange = { [weak self] route in
+      guard let self, self.recorder != nil, !self.stopping, !self.finalized else { return }
+      LiveMeetingTranscriptStore.shared.outputRoute = route
+      self.reconcileSystemAudio()
     }
+    monitor.start()
+    LiveMeetingTranscriptStore.shared.outputRoute = monitor.route
+    reconcileSystemAudio()
+  }
+
+  private func stopOutputRouteMonitor() {
+    outputRouteMonitor?.stop()
+    outputRouteMonitor = nil
+  }
+
+  /// Starts or stops the system-audio tap so it matches the preference and the output route.
+  /// A change of either cuts the chunk in progress first, so one file is not mixed two ways.
+  private func reconcileSystemAudio() {
+    let routing = MeetingAudioRouting.resolve(
+      preference: .current, route: outputRouteMonitor?.route)
+    if routing.mixesSystemAudio {
+      if systemCapture == nil, !systemAudioStartFailed {
+        recorder?.rotateNow(minimumChunkAge: 0.5)
+        startSystemCapture()
+      }
+    } else if systemCapture != nil {
+      recorder?.rotateNow(minimumChunkAge: 0.5)
+      tearDownSystemCapture()
+    }
+    let systemAudio = systemCapture == nil ? "off" : "on"
+    DebugLogger.log("LIVE-MEETING: audio routing \(routing) (system audio \(systemAudio))")
+  }
+
+  private func startSystemCapture() {
+    let store = LiveMeetingTranscriptStore.shared
+    let capture = SystemAudioCapture()
+    capture.onPermissionSuspectedChange = { [weak self] suspected in
+      DispatchQueue.main.async {
+        store.systemAudioSeemsBlocked = suspected
+        if suspected { self?.showSystemAudioBlockedAlert() }
+      }
+    }
+    // start() returns at once; the tap comes up off the main thread and a failure arrives via
+    // onStartFailed. Never abort the meeting: it keeps recording from the microphone.
+    capture.onStartFailed = { [weak self, weak capture] error in
+      guard let self, let capture, self.systemCapture === capture else { return }
+      DebugLogger.logError("LIVE-MEETING: System audio capture failed to start: \(error)")
+      self.systemAudioStartFailed = true
+      self.recorder?.systemAudio = nil
+      self.systemCapture = nil
+      store.isCapturingSystemAudio = false
+      store.systemAudioSeemsBlocked = true
+      self.showSystemAudioBlockedAlert()
+    }
+    systemCapture = capture
+    recorder?.systemAudio = capture.buffer
+    store.isCapturingSystemAudio = true
+    capture.start()
   }
 
   /// Stops the tap and clears the runtime flags. A chunk already cut keeps its own buffer reference.
@@ -126,7 +155,6 @@ final class LiveMeetingSession: NSObject {
     systemCapture = nil
     let store = LiveMeetingTranscriptStore.shared
     store.isCapturingSystemAudio = false
-    store.outputIsLikelySpeaker = false
     store.systemAudioSeemsBlocked = false
   }
 
@@ -252,7 +280,8 @@ final class LiveMeetingSession: NSObject {
     recorder?.delegate = self
     recorder?.startSession(resumeTimeOffset: resumeOffset)
     didShowSystemAudioAlert = false
-    applyAudioMode(MeetingAudioMode.current)
+    systemAudioStartFailed = false
+    startOutputRouteMonitor()
 
     // Update state
     stopping = false
@@ -318,6 +347,7 @@ final class LiveMeetingSession: NSObject {
     guard let recorder, !stopping, !finalized else { return }
     let stem = transcriptURL?.deletingPathExtension().lastPathComponent
     let chunk = recorder.stopForTermination()
+    stopOutputRouteMonitor()
     tearDownSystemCapture()
     self.recorder = nil
     guard let chunk else {
@@ -348,6 +378,7 @@ final class LiveMeetingSession: NSObject {
     // the transcript file while a late chunk is still being appended).
     awaitingFinalChunk = true
     recorder?.stopSession()
+    stopOutputRouteMonitor()
     tearDownSystemCapture()
 
     // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
@@ -436,6 +467,7 @@ final class LiveMeetingSession: NSObject {
     stopping = false
     awaitingFinalChunk = false
     discard = false
+    stopOutputRouteMonitor()
     tearDownSystemCapture()
     recorder = nil
     pendingChunks = 0

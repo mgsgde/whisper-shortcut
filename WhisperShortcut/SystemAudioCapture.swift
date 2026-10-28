@@ -2,11 +2,11 @@
 //  SystemAudioCapture.swift
 //  WhisperShortcut
 //
-//  Captures the audio the Mac is playing out loud (the other side of an online meeting) via a
-//  Core Audio process tap, so it can be mixed into the meeting recording alongside the
-//  microphone. Only meaningful through built-in/HDMI/DisplayPort/AirPlay speakers — see
-//  `OutputRoute.isLikelySpeaker` — otherwise it would be recording headphone audio nobody but
-//  the user hears.
+//  Captures the audio the Mac is playing (the other side of an online meeting) via a Core Audio
+//  process tap, so it can be mixed into the meeting recording alongside the microphone. Meant
+//  for headphones, where the microphone cannot hear the other side. Through speakers the
+//  microphone already hears them, and mixing would record them twice — see
+//  `OutputRoute.isLikelySpeaker`.
 //
 
 import AVFoundation
@@ -118,6 +118,175 @@ struct OutputRoute: Equatable {
     let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
     guard status == noErr, let value else { return nil }
     return value.takeRetainedValue() as String
+  }
+}
+
+/// Watches the Mac's default output device and that device's output data source, independent of
+/// the system-audio tap, so a meeting can follow headphones vs. speakers while no tap is running.
+/// Main thread only. Route changes are debounced: Bluetooth flaps for a moment while it connects.
+final class OutputRouteMonitor {
+
+  var onChange: ((OutputRoute?) -> Void)?
+  private(set) var route: OutputRoute?
+
+  private var started = false
+  private var refreshGeneration = 0
+  private var debounceWork: DispatchWorkItem?
+  private var defaultOutputListener: AudioObjectPropertyListenerBlock?
+  private var dataSourceListener: AudioObjectPropertyListenerBlock?
+  private var dataSourceDeviceID: AudioObjectID?
+
+  private static let debounce: TimeInterval = 0.5
+
+  deinit {
+    debounceWork?.cancel()
+    removeListeners()
+  }
+
+  /// Reads the route synchronously and starts listening. Does not call `onChange`.
+  func start() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard !started else { return }
+    started = true
+    route = OutputRoute.current()
+    addDefaultOutputListener()
+    moveDataSourceListener(to: OutputRoute.readDefaultOutputDevice())
+  }
+
+  /// Idempotent. Drops listeners and any pending debounced read.
+  func stop() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard started else { return }
+    started = false
+    refreshGeneration += 1
+    debounceWork?.cancel()
+    debounceWork = nil
+    removeListeners()
+  }
+
+  // MARK: Listeners
+
+  private func addDefaultOutputListener() {
+    var address = Self.defaultOutputAddress()
+    let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      self?.handleDefaultOutputDeviceChanged()
+    }
+    let status = AudioObjectAddPropertyListenerBlock(
+      AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
+    guard status == noErr else {
+      DebugLogger.logError("OUTPUT-ROUTE: default output listener failed (\(status))")
+      return
+    }
+    defaultOutputListener = block
+  }
+
+  /// Plugging headphones into the built-in jack can change only the data source, not the device.
+  private func moveDataSourceListener(to deviceID: AudioObjectID?) {
+    removeDataSourceListener()
+    guard let deviceID, deviceID != kAudioObjectUnknown else { return }
+    var address = Self.dataSourceAddress()
+    guard AudioObjectHasProperty(deviceID, &address) else { return }
+    let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+      self?.scheduleRouteRefresh()
+    }
+    let status = AudioObjectAddPropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+    guard status == noErr else {
+      DebugLogger.logError("OUTPUT-ROUTE: data source listener failed (\(status))")
+      return
+    }
+    dataSourceListener = block
+    dataSourceDeviceID = deviceID
+  }
+
+  private func handleDefaultOutputDeviceChanged() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard started else { return }
+    moveDataSourceListener(to: OutputRoute.readDefaultOutputDevice())
+    scheduleRouteRefresh()
+  }
+
+  private func scheduleRouteRefresh() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard started else { return }
+    refreshGeneration += 1
+    let generation = refreshGeneration
+    debounceWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.started, generation == self.refreshGeneration else { return }
+      self.publishRouteIfChanged()
+    }
+    debounceWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounce, execute: work)
+  }
+
+  private func publishRouteIfChanged() {
+    dispatchPrecondition(condition: .onQueue(.main))
+    guard started else { return }
+    let next = OutputRoute.current()
+    guard next != route else { return }
+    route = next
+    logRoute(next)
+    onChange?(next)
+  }
+
+  private func logRoute(_ route: OutputRoute?) {
+    if let route {
+      let transport = Self.transportLabel(route.transportType)
+      DebugLogger.logAudio(
+        "OUTPUT-ROUTE: \(route.deviceName) transport=\(transport) speaker=\(route.isLikelySpeaker)")
+    } else {
+      DebugLogger.logAudio("OUTPUT-ROUTE: (none) transport=0 speaker=false")
+    }
+  }
+
+  /// A transport type is a FourCharCode when every byte is printable ASCII (some are space-padded,
+  /// e.g. 'usb '); otherwise it is logged as a decimal so an unknown value is still visible.
+  private static func transportLabel(_ value: UInt32) -> String {
+    let bytes = [
+      UInt8((value >> 24) & 0xFF),
+      UInt8((value >> 16) & 0xFF),
+      UInt8((value >> 8) & 0xFF),
+      UInt8(value & 0xFF),
+    ]
+    let printable = bytes.allSatisfy { $0 >= 32 && $0 < 127 }
+    guard printable, let text = String(bytes: bytes, encoding: .ascii) else {
+      return String(value)
+    }
+    let trimmed = text.trimmingCharacters(in: .whitespaces)
+    return trimmed.isEmpty ? String(value) : trimmed
+  }
+
+  private func removeListeners() {
+    if let block = defaultOutputListener {
+      var address = Self.defaultOutputAddress()
+      AudioObjectRemovePropertyListenerBlock(
+        AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
+      defaultOutputListener = nil
+    }
+    removeDataSourceListener()
+  }
+
+  private func removeDataSourceListener() {
+    if let deviceID = dataSourceDeviceID, let block = dataSourceListener {
+      var address = Self.dataSourceAddress()
+      AudioObjectRemovePropertyListenerBlock(deviceID, &address, DispatchQueue.main, block)
+    }
+    dataSourceDeviceID = nil
+    dataSourceListener = nil
+  }
+
+  private static func defaultOutputAddress() -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+      mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+  }
+
+  private static func dataSourceAddress() -> AudioObjectPropertyAddress {
+    AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyDataSource,
+      mScope: kAudioObjectPropertyScopeOutput,
+      mElement: kAudioObjectPropertyElementMain)
   }
 }
 
