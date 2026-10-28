@@ -32,10 +32,7 @@ struct ProblemReportReviewView: View {
       VStack(alignment: .leading, spacing: 4) {
         Text("Problem Report from an AI App")
           .font(.headline)
-        Text(
-          "An AI app on this Mac found something in WhisperShortcut that no setting can fix. "
-            + "Nothing has been sent."
-        )
+        Text("An AI app on this Mac found something in WhisperShortcut that no setting can fix. Nothing has been sent.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -44,10 +41,7 @@ struct ProblemReportReviewView: View {
       HStack(alignment: .top, spacing: 8) {
         Image(systemName: "exclamationmark.triangle.fill")
           .foregroundColor(.orange)
-        Text(
-          "GitHub issues are public. Remove names, patient or customer details and anything "
-            + "else private before you send it."
-        )
+        Text("GitHub issues are public. Remove names, patient or customer details and anything else private before you send it.")
         .font(.callout)
         .fixedSize(horizontal: false, vertical: true)
       }

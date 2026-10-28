@@ -11,7 +11,9 @@ struct MCPSettingsProposalReviewView: View {
   let onCancel: () -> Void
 
   private var acceptTitle: String {
-    items.count == 1 ? "Apply Change" : "Apply \(items.count) Changes"
+    items.count == 1
+      ? String(localized: "Apply Change")
+      : String(localized: "Apply \(items.count) Changes")
   }
 
   var body: some View {
@@ -76,17 +78,17 @@ struct MCPSettingsProposalReviewView: View {
 
   private func changeRow(_ item: MCPSettingsChangeItem) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(item.title)
+      Text(MCPSettingsCatalog.reviewTitle(item.title))
         .font(.callout)
         .fontWeight(.medium)
       HStack(alignment: .firstTextBaseline, spacing: 6) {
-        Text(item.fromLabel)
+        Text(MCPSettingsCatalog.reviewLabel(item.fromLabel))
           .strikethrough()
           .foregroundColor(.secondary)
         Image(systemName: "arrow.right")
           .font(.caption)
           .foregroundColor(.secondary)
-        Text(item.toLabel)
+        Text(MCPSettingsCatalog.reviewLabel(item.toLabel))
           .fontWeight(.semibold)
       }
       .font(.callout)

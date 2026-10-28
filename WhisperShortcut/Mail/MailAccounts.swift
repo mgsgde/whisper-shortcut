@@ -178,7 +178,7 @@ enum MailAccountStore {
     let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmedEmail.isEmpty || !trimmedEmail.contains("@") {
-      throw IMAPError.protocolError("The email address is not valid.")
+      throw IMAPError.protocolError(String(localized: "The email address is not valid."))
     }
     if trimmedHost.isEmpty {
       throw IMAPError.connectionFailed("the mail server")
@@ -195,13 +195,13 @@ enum MailAccountStore {
     let key = keychainAccount(trimmedEmail)
     guard KeychainManager.shared.saveSecret(password, account: key) else {
       KeychainManager.shared.deleteSecret(account: key)
-      throw IMAPError.protocolError("Couldn't save the password in the Keychain.")
+      throw IMAPError.protocolError(String(localized: "Couldn't save the password in the Keychain."))
     }
     do {
       try upsert(account)
     } catch {
       KeychainManager.shared.deleteSecret(account: key)
-      throw IMAPError.protocolError("Couldn't save the mailbox.")
+      throw IMAPError.protocolError(String(localized: "Couldn't save the mailbox."))
     }
     return summary
   }

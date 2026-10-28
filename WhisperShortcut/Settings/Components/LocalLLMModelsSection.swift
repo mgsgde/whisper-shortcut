@@ -34,8 +34,8 @@ struct LocalLLMModelsSection: View {
     ModelDownloadRow(
       store: manager,
       model: modelType,
-      downloadedMessage:
-        "\(modelType.displayName) was successfully downloaded. The first reply may take a moment to load the model into memory.",
+      downloadedMessage: String(
+        localized: "\(modelType.displayName) was successfully downloaded. The first reply may take a moment to load the model into memory."),
       onError: { errorMessage = $0 }
     ) {
       if modelType.isRecommended {

@@ -4,6 +4,16 @@
     "" : {
       "shouldTranslate" : false
     },
+    "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\n\nDie Meeting-Aufnahme bleibt auf diesem Mac und kann später transkribiert werden."
+          }
+        }
+      }
+    },
     " " : {
       "shouldTranslate" : false
     },
@@ -13,6 +23,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : " (Anfrage-ID: %@)"
+          }
+        }
+      }
+    },
+    " and " : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " und "
           }
         }
       }
@@ -75,6 +95,90 @@
       },
       "shouldTranslate" : false
     },
+    "%@ API error HTTP %lld: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-API-Fehler HTTP %lld: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ API error HTTP %2$lld: %3$@"
+          }
+        }
+      }
+    },
+    "%@ API error: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@-API-Fehler: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ API error: %2$@"
+          }
+        }
+      }
+    },
+    "%@ API key is invalid. Check the key in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für %@ ist ungültig. Prüfen Sie ihn unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
+    "%@ API key is invalid. Check the key in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für %@ ist ungültig. Prüfen Sie ihn in den Einstellungen."
+          }
+        }
+      }
+    },
+    "%@ are larger than %@ and weren't attached." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sind größer als %@ und wurden nicht angehängt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ are larger than %2$@ and weren't attached."
+          }
+        }
+      }
+    },
+    "%@ can't use %@ attachments. Switch to a Gemini model to chat about PDFs and documents." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kann keine %@-Anhänge verarbeiten. Wechseln Sie zu einem Gemini-Modell, um über PDFs und Dokumente zu chatten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ can't use %2$@ attachments. Switch to a Gemini model to chat about PDFs and documents."
+          }
+        }
+      }
+    },
     "%@ chars" : {
       "localizations" : {
         "de" : {
@@ -116,12 +220,48 @@
         }
       }
     },
+    "%@ holds the read-only key, so it can't suggest or make changes. Click Connect Again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nutzt den Schlüssel nur zum Lesen und kann deshalb nichts vorschlagen oder ändern. Klicken Sie auf „Erneut verbinden“."
+          }
+        }
+      }
+    },
     "%@ ignores the system prompt below — it is a pure speech-recognition model, not an instructable one. Filler-word removal, punctuation and formatting rules have no effect; your Glossary still applies, as keyword hints. Pick a Gemini model or GPT-4o Transcribe if you want the prompt honoured." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ ignoriert den System-Prompt unten, es ist ein reines Spracherkennungsmodell und nimmt keine Anweisungen an. Regeln zu Füllwörtern, Satzzeichen und Formatierung wirken nicht; Ihr Glossar gilt weiterhin, als Stichwort-Hinweise. Wählen Sie ein Gemini-Modell oder GPT-4o Transcribe, wenn der Prompt beachtet werden soll."
+          }
+        }
+      }
+    },
+    "%@ is larger than %@ and wasn't attached." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist größer als %@ und wurde nicht angehängt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is larger than %2$@ and wasn't attached."
+          }
+        }
+      }
+    },
+    "%@ is not valid JSON, so it was left untouched. Fix or remove the file and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist kein gültiges JSON und wurde nicht verändert. Korrigieren oder entfernen Sie die Datei und versuchen Sie es erneut."
           }
         }
       }
@@ -172,6 +312,58 @@
         }
       }
     },
+    "%@ request failed. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an %@ fehlgeschlagen. Bitte versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "%@ request failed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfrage an %@ fehlgeschlagen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ request failed: %2$@"
+          }
+        }
+      }
+    },
+    "%@ stopped responding twice in a row (no progress for %llds). Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat zweimal hintereinander nicht mehr geantwortet (%llds ohne Fortschritt). Bitte versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ stopped responding twice in a row (no progress for %2$llds). Please try again."
+          }
+        }
+      }
+    },
+    "%@ structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von %@ war kein gültiges JSON"
+          }
+        }
+      }
+    },
     "%@ was changed again after this, so it was left as it is. Edit it in Settings instead." : {
       "localizations" : {
         "de" : {
@@ -181,6 +373,37 @@
           }
         }
       }
+    },
+    "%@ was successfully downloaded. The first reply may take a moment to load the model into memory." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde heruntergeladen. Die erste Antwort kann etwas dauern, weil das Modell erst in den Speicher geladen wird."
+          }
+        }
+      }
+    },
+    "%@ was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde heruntergeladen. Die erste Transkription kann etwas dauern, weil das Modell erst startet; danach geht es schneller."
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        }
+      },
+      "shouldTranslate" : false
     },
     "%@ · needs setup" : {
       "localizations" : {
@@ -369,22 +592,64 @@
         }
       }
     },
+    "%@, %@ and %lld more" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@ und %3$lld weitere"
+          }
+        }
+      }
+    },
+    "%@, by %@, %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, von %2$@, %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, by %2$@, %3$@"
+          }
+        }
+      }
+    },
     "%@:" : {
       "shouldTranslate" : false
     },
     "%lld" : {
       "shouldTranslate" : false
     },
-    "%lld %@%@" : {
+    "%lld %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$lld %2$@%3$@"
+            "value" : "%1$lld %2$@"
           }
         }
       },
       "shouldTranslate" : false
+    },
+    "%lld %@, too few to read much into" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld %@, zu wenige für eine belastbare Aussage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld %2$@, too few to read much into"
+          }
+        }
+      }
     },
     "%lld accounts" : {
       "localizations" : {
@@ -677,6 +942,26 @@
         }
       }
     },
+    "%lld lines from selection" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Zeilen aus der Auswahl"
+          }
+        }
+      }
+    },
+    "%lld lines pasted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Zeilen eingefügt"
+          }
+        }
+      }
+    },
     "%lld lists" : {
       "localizations" : {
         "de" : {
@@ -794,6 +1079,22 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
           }
         }
       }
@@ -928,6 +1229,16 @@
         }
       }
     },
+    "%lld tool calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Tool-Aufrufen"
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "shouldTranslate" : false
     },
@@ -943,6 +1254,26 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld%% of %2$@"
+          }
+        }
+      }
+    },
+    "(empty)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(leer)"
+          }
+        }
+      }
+    },
+    "(no speech detected)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(keine Sprache erkannt)"
           }
         }
       }
@@ -1063,6 +1394,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 Sekunde"
+          }
+        }
+      }
+    },
+    "1 tool call" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 Tool-Aufruf"
           }
         }
       }
@@ -1327,6 +1668,96 @@
         }
       }
     },
+    "[Pasted content]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Eingefügter Inhalt]"
+          }
+        }
+      }
+    },
+    "[Quote]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Zitat]"
+          }
+        }
+      }
+    },
+    "[Selection]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Auswahl]"
+          }
+        }
+      }
+    },
+    "[Selection] [Pasted content]" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "[Auswahl] [Eingefügter Inhalt]"
+          }
+        }
+      }
+    },
+    "_(no response)_" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_(keine Antwort)_"
+          }
+        }
+      }
+    },
+    "_(stopped after running tools)_" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_(nach dem Ausführen von Tools gestoppt)_"
+          }
+        }
+      }
+    },
+    "_I hit the tool-call round limit after %@ and stopped before writing an answer. Anything I already did has taken effect — ask me to recap it, or narrow the request so it needs fewer steps._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Ich habe nach %@ das Limit für Tool-Runden erreicht und aufgehört, bevor ich eine Antwort geschrieben habe. Alles, was ich bereits erledigt habe, ist wirksam – lassen Sie es sich zusammenfassen oder grenzen Sie die Anfrage ein, damit weniger Schritte nötig sind._"
+          }
+        }
+      }
+    },
+    "_I looked into this with the available tools but didn't find anything relevant to summarize. Try narrowing the request — e.g. name a specific sender, subject, or date range._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Ich habe mit den verfügbaren Tools nachgesehen, aber nichts Passendes zum Zusammenfassen gefunden. Grenzen Sie die Anfrage ein – nennen Sie z. B. einen bestimmten Absender, Betreff oder Zeitraum._"
+          }
+        }
+      }
+    },
+    "_Reply was truncated._" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "_Antwort wurde abgeschnitten._"
+          }
+        }
+      }
+    },
     "`%@` needs a meeting chat: it works on the meeting transcript." : {
       "localizations" : {
         "de" : {
@@ -1499,6 +1930,16 @@
         }
       }
     },
+    "Add a prompt of your own" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigenen Prompt hinzufügen"
+          }
+        }
+      }
+    },
     "Add a rule to the Dictate Prompt instructions." : {
       "localizations" : {
         "de" : {
@@ -1609,12 +2050,32 @@
         }
       }
     },
+    "Add header" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header hinzufügen"
+          }
+        }
+      }
+    },
     "Add more manually" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Weitere von Hand hinzufügen"
+          }
+        }
+      }
+    },
+    "Add Prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt hinzufügen"
           }
         }
       }
@@ -1649,12 +2110,32 @@
         }
       }
     },
+    "Add this to ~/.codex/config.toml, then start a new Codex session:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie dies in ~/.codex/config.toml ein und starten Sie dann eine neue Codex-Sitzung:"
+          }
+        }
+      }
+    },
     "Add to dictation glossary: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Diktat-Glossar hinzufügen: %@"
+          }
+        }
+      }
+    },
+    "Add to Glossary shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Zum Glossar hinzufügen"
           }
         }
       }
@@ -1779,6 +2260,16 @@
         }
       }
     },
+    "Added to %@'s settings. %@ Waiting for it to connect…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Einstellungen von %@ eingetragen. %@ Warte auf die Verbindung…"
+          }
+        }
+      }
+    },
     "Added to queue. %lld improvements queued." : {
       "localizations" : {
         "de" : {
@@ -1829,12 +2320,32 @@
         }
       }
     },
+    "Adds WhisperShortcut to %@'s settings. macOS asks once for access to the folder they live in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trägt WhisperShortcut in die Einstellungen von %@ ein. macOS fragt einmal nach Zugriff auf den Ordner, in dem sie liegen."
+          }
+        }
+      }
+    },
     "Advanced" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erweitert"
+          }
+        }
+      }
+    },
+    "Advanced: headers, separate Dictate URL, Azure and Vertex notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweitert: Header, eigene Diktier-URL, Hinweise zu Azure und Vertex"
           }
         }
       }
@@ -2149,12 +2660,32 @@
         }
       }
     },
+    "Also show prompts you use often" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch häufig genutzte Prompts anzeigen"
+          }
+        }
+      }
+    },
     "Also write each screenshot as a PNG into a folder, so the chat Attach picker finds them right away" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jedes Bildschirmfoto zusätzlich als PNG in einem Ordner speichern, damit es beim Anhängen im Chat gleich da ist"
+          }
+        }
+      }
+    },
+    "An AI app on this Mac found something in WhisperShortcut that no setting can fix. Nothing has been sent." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine KI-App auf diesem Mac hat in WhisperShortcut etwas gefunden, das sich mit keiner Einstellung beheben lässt. Es wurde noch nichts gesendet."
           }
         }
       }
@@ -2189,12 +2720,42 @@
         }
       }
     },
+    "Anthropic API key is invalid. Check the key in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anthropic-API-Schlüssel ist ungültig. Prüfen Sie ihn unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
     "Anthropic bills $10 per 1,000 searches on your API key, plus the tokens of the results. Claude searches at most 5 times per message, and only when a question needs current information." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anthropic berechnet über Ihren API-Schlüssel 10 $ pro 1.000 Suchen, dazu die Tokens der Ergebnisse. Claude sucht höchstens fünfmal pro Nachricht und nur, wenn eine Frage aktuelle Informationen braucht."
+          }
+        }
+      }
+    },
+    "Anthropic structured response did not include valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Anthropic enthielt kein gültiges JSON"
+          }
+        }
+      }
+    },
+    "Anthropic structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Anthropic war kein gültiges JSON"
           }
         }
       }
@@ -2259,12 +2820,32 @@
         }
       }
     },
+    "API key is invalid for the custom endpoint. Check Settings → Chat or Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel für den eigenen Endpunkt ist ungültig. Prüfen Sie Einstellungen → Chat oder Konten."
+          }
+        }
+      }
+    },
     "API Key Required" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "API key:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel:"
           }
         }
       }
@@ -2419,12 +3000,42 @@
         }
       }
     },
+    "Apply %lld Changes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Änderungen übernehmen"
+          }
+        }
+      }
+    },
+    "Apply Change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderung übernehmen"
+          }
+        }
+      }
+    },
     "Approval needed: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Freigabe nötig: %@"
+          }
+        }
+      }
+    },
+    "Apps you already connected stop working until you connect them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits verbundene Apps funktionieren erst wieder, wenn Sie sie neu verbinden."
           }
         }
       }
@@ -2535,6 +3146,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trello-Karte %@ archivieren."
+          }
+        }
+      }
+    },
+    "Archived" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archiviert"
           }
         }
       }
@@ -2805,6 +3426,16 @@
         }
       }
     },
+    "Auto-paste after dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Diktat automatisch einfügen"
+          }
+        }
+      }
+    },
     "Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.\n\nDictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.\n\nTo turn on auto-paste, click \"Open System Settings\". There:\n1. Go to Privacy & Security → Accessibility\n2. Enable WhisperShortcut\n\nAlready listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click \"Copy Reset Command\" and run it in Terminal to clear the stale entry." : {
       "localizations" : {
         "de" : {
@@ -2855,12 +3486,52 @@
         }
       }
     },
+    "Azure" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure"
+          }
+        }
+      }
+    },
+    "Azure detected — your key is sent as the `api-key` header, which is what Azure expects. A bare resource URL is expanded to `/openai/v1`; on that surface Model must be your deployment name, not an OpenAI model id." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure erkannt: Ihr Schlüssel wird als `api-key`-Header gesendet, so wie Azure es erwartet. Eine reine Ressourcen-URL wird zu `/openai/v1` ergänzt; dort muss unter Modell Ihr Deployment-Name stehen, nicht eine OpenAI-Modell-ID."
+          }
+        }
+      }
+    },
+    "Azure detected: the key goes in the `api-key` header. A bare resource URL becomes `/openai/v1`, and the models are your deployment names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure erkannt: Der Schlüssel wird im Header `api-key` gesendet. Eine reine Ressourcen-URL wird zu `/openai/v1`, und die Modelle sind Ihre Deployment-Namen."
+          }
+        }
+      }
+    },
     "Azure OpenAI" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Azure OpenAI"
+          }
+        }
+      }
+    },
+    "Azure OpenAI / Vertex AI: chat requests go to the endpoint you enter here, in the region your own resource or project runs in, under your Microsoft or Google contract — not through any server of ours. Vertex takes a short-lived `gcloud auth print-access-token` value as the API key above, so it stops working after about an hour and has to be pasted again; Azure keys do not expire." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure OpenAI / Vertex AI: Chat-Anfragen gehen an den Endpunkt, den Sie hier eintragen, in der Region Ihrer eigenen Ressource bzw. Ihres Projekts und unter Ihrem Vertrag mit Microsoft oder Google, nicht über einen unserer Server. Vertex nimmt als API-Schlüssel oben einen kurzlebigen Wert aus `gcloud auth print-access-token`; er läuft nach etwa einer Stunde ab und muss dann neu eingefügt werden. Azure-Schlüssel laufen nicht ab."
           }
         }
       }
@@ -3006,6 +3677,16 @@
         }
       }
     },
+    "Can't reach the local LLM server at %@. Start it (e.g. run `ollama serve` / open LM Studio) or fix the endpoint in Dictate Prompt settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der lokale LLM-Server unter %@ ist nicht erreichbar. Starten Sie ihn (z. B. mit `ollama serve` oder in LM Studio) oder korrigieren Sie den Endpunkt in den Dictate-Prompt-Einstellungen."
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -3032,6 +3713,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abgebrochen"
+          }
+        }
+      }
+    },
+    "Cancelled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochen."
           }
         }
       }
@@ -3132,6 +3823,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Von KI-Apps geändert"
+          }
+        }
+      }
+    },
+    "changed since" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "inzwischen geändert"
+          }
+        }
+      }
+    },
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
           }
         }
       }
@@ -3277,12 +3988,42 @@
         }
       }
     },
+    "Chat model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Modell"
+          }
+        }
+      }
+    },
     "Chat Model" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat-Modell"
+          }
+        }
+      }
+    },
+    "Chat model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Modell:"
+          }
+        }
+      }
+    },
+    "Chat needs this server's key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat braucht den Schlüssel dieses Servers."
           }
         }
       }
@@ -3393,6 +4134,16 @@
         }
       }
     },
+    "chat turns" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Runden"
+          }
+        }
+      }
+    },
     "Chat with any model OpenRouter routes to, billed to your OpenRouter account." : {
       "localizations" : {
         "de" : {
@@ -3473,12 +4224,32 @@
         }
       }
     },
+    "ChatGPT plan model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für das ChatGPT-Abo"
+          }
+        }
+      }
+    },
     "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modelle über das ChatGPT-Abo gibt es vorerst nur im Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "ChatGPT plan structured response was not valid JSON" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort des ChatGPT-Abos war kein gültiges JSON"
           }
         }
       }
@@ -3539,6 +4310,16 @@
         }
       }
     },
+    "ChatGPT returned an ID token that could not be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT hat ein ID-Token geliefert, das nicht gelesen werden konnte."
+          }
+        }
+      }
+    },
     "ChatGPT Settings → Usage" : {
       "localizations" : {
         "de" : {
@@ -3569,12 +4350,92 @@
         }
       }
     },
+    "ChatGPT signed the ID token with an unsupported algorithm (%@)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ChatGPT hat das ID-Token mit einem nicht unterstützten Verfahren signiert (%@)."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token came from an unexpected issuer. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT stammt von einem unerwarteten Aussteller. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token has already expired. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT ist bereits abgelaufen. Melden Sie sich bitte erneut an."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token is missing \"%@\"." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im ID-Token von ChatGPT fehlt „%@“."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token signature could not be verified. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Signatur des ChatGPT-ID-Tokens konnte nicht geprüft werden. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
+    "ChatGPT's ID token was issued for a different app. Sign-in was refused." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ID-Token von ChatGPT wurde für eine andere App ausgestellt. Die Anmeldung wurde abgelehnt."
+          }
+        }
+      }
+    },
     "ChatGPT's response contained no ID token." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Antwort von ChatGPT enthielt kein ID-Token."
+          }
+        }
+      }
+    },
+    "ChatGPT's sign-in response did not match this attempt. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldeantwort von ChatGPT passt nicht zu diesem Versuch. Melden Sie sich bitte erneut an."
+          }
+        }
+      }
+    },
+    "ChatGPT's signing key for this token was not found. Try signing in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Signaturschlüssel von ChatGPT für dieses Token wurde nicht gefunden. Melden Sie sich bitte erneut an."
           }
         }
       }
@@ -3809,6 +4670,17 @@
         }
       }
     },
+    "Claude & AI Apps" : {
+      "comment" : "Settings tab",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude & KI-Apps"
+          }
+        }
+      }
+    },
     "Claude & Other AI Apps" : {
       "localizations" : {
         "de" : {
@@ -3825,6 +4697,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Claude (Anthropic)"
+          }
+        }
+      }
+    },
+    "Claude and other AI apps on this Mac can read your meetings, including the one recording right now. Connect them in Claude & AI Apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere KI-Apps auf diesem Mac können Ihre Meetings lesen, auch das, das gerade aufgenommen wird. Verbinden Sie sie unter Claude & KI-Apps."
+          }
+        }
+      }
+    },
+    "Claude and other apps connected with the current key lose access until you connect them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere Apps mit dem aktuellen Schlüssel verlieren den Zugriff, bis Sie sie neu verbinden."
           }
         }
       }
@@ -3855,6 +4747,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Claude Code"
+          }
+        }
+      }
+    },
+    "Claude declined this request." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude hat diese Anfrage abgelehnt."
           }
         }
       }
@@ -3899,12 +4801,32 @@
         }
       }
     },
+    "Claude only supports image attachments — %@ isn't supported. Switch to a Gemini model to chat about PDFs and documents." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude unterstützt nur Bildanhänge – %@ wird nicht unterstützt. Wechseln Sie zu einem Gemini-Modell, um über PDFs und Dokumente zu chatten."
+          }
+        }
+      }
+    },
     "Claude stopped mid-reply: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Claude hat mitten in der Antwort aufgehört: %@"
+          }
+        }
+      }
+    },
+    "Claude's structured reply was cut off at the token limit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die strukturierte Antwort von Claude wurde am Token-Limit abgeschnitten."
           }
         }
       }
@@ -4025,6 +4947,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen schließen, wenn außerhalb geklickt wird"
+          }
+        }
+      }
+    },
+    "Close Settings when it loses focus" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen schließen, wenn sie den Fokus verlieren"
           }
         }
       }
@@ -4229,12 +5161,42 @@
         }
       }
     },
+    "Connect Again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut verbinden"
+          }
+        }
+      }
+    },
     "Connect at least one. Every feature then lets you pick a model from the providers connected here. Offline models need none of this." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden Sie mindestens einen. Jede Funktion lässt Sie dann ein Modell der hier verbundenen Anbieter wählen. Offline-Modelle brauchen nichts davon."
+          }
+        }
+      }
+    },
+    "Connect Claude and other AI apps on this Mac to WhisperShortcut. They can set it up for you from what they already know about you: names for the glossary, how your messages should sound, your commands. And they can read your meetings, including the one recording right now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie Claude und andere KI-Apps auf diesem Mac mit WhisperShortcut. Sie können es für Sie einrichten, mit dem, was sie schon über Sie wissen: Namen fürs Glossar, wie Ihre Nachrichten klingen sollen, Ihre Befehle. Und sie können Ihre Meetings lesen, auch das, das gerade aufgenommen wird."
+          }
+        }
+      }
+    },
+    "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude und andere KI-Apps verbinden, um WhisperShortcut einzurichten und Meetings zu lesen"
           }
         }
       }
@@ -4295,6 +5257,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden Sie Ihr Google-Konto (Einstellungen → Konten), dann werden gesendete E-Mails automatisch importiert, oder fügen Sie eigene Nachrichten über „Beispiele hinzufügen“ ein."
+          }
+        }
+      }
+    },
+    "Connect your Google account in Settings first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden Sie zuerst Ihr Google-Konto in den Einstellungen."
           }
         }
       }
@@ -4389,6 +5361,26 @@
         }
       }
     },
+    "Connected, read only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden, nur Lesen"
+          }
+        }
+      }
+    },
+    "Connected. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden. %@"
+          }
+        }
+      }
+    },
     "Connecting your mailbox" : {
       "localizations" : {
         "de" : {
@@ -4445,6 +5437,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Per WhatsApp schreiben"
+          }
+        }
+      }
+    },
+    "Contains your dictated text. Remove names or anything else private before you send it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enthält Ihren diktierten Text. Entfernen Sie Namen und alles andere Private, bevor Sie ihn senden."
           }
         }
       }
@@ -4545,6 +5547,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unverändert kopiert – mit ⌘V einfügen."
+          }
+        }
+      }
+    },
+    "Copied – press ⌘V to paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiert – mit ⌘V einfügen"
           }
         }
       }
@@ -4659,12 +5671,32 @@
         }
       }
     },
+    "Copy the prompts shown today into your own list, then edit them" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die heute angezeigten Prompts in Ihre eigene Liste übernehmen und dann bearbeiten"
+          }
+        }
+      }
+    },
     "Copy the text you want edited (⌘C) before you start dictating — the local model reads your clipboard, not the screen." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kopieren Sie den Text, der bearbeitet werden soll (⌘C), bevor Sie diktieren. Das lokale Modell liest die Zwischenablage, nicht den Bildschirm."
+          }
+        }
+      }
+    },
+    "Copy the text you want edited (⌘C) before you start dictating. Your own server reads the clipboard, not the screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren Sie den Text, der bearbeitet werden soll (⌘C), bevor Sie zu diktieren beginnen. Ihr eigener Server liest die Zwischenablage, nicht den Bildschirm."
           }
         }
       }
@@ -4799,6 +5831,16 @@
         }
       }
     },
+    "Could not bind a local port for the sign-in callback (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Rückmeldung der Anmeldung konnte kein lokaler Port belegt werden (errno %d)."
+          }
+        }
+      }
+    },
     "Could not capture a screenshot of the current screen. Check Screen Recording permission in System Settings, then try again." : {
       "localizations" : {
         "de" : {
@@ -4851,6 +5893,46 @@
         }
       }
     },
+    "Could not listen on the local sign-in callback port (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am lokalen Port für die Rückmeldung der Anmeldung kann nicht gelauscht werden (errno %d)."
+          }
+        }
+      }
+    },
+    "Could not load ChatGPT's signing keys. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Signaturschlüssel von ChatGPT konnten nicht geladen werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Could not open a local socket for the sign-in callback (errno %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Rückmeldung der Anmeldung konnte kein lokaler Socket geöffnet werden (errno %d)."
+          }
+        }
+      }
+    },
+    "Could not prepare the Dictate Prompt request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anfrage für Dictate Prompt konnte nicht vorbereitet werden"
+          }
+        }
+      }
+    },
     "Could not read audio file: %@" : {
       "localizations" : {
         "de" : {
@@ -4867,6 +5949,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der erste Teil konnte zum Zusammenfügen nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "could not read the current value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "der aktuelle Wert konnte nicht gelesen werden"
+          }
+        }
+      }
+    },
+    "could not read the previous value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "der vorherige Wert konnte nicht gelesen werden"
           }
         }
       }
@@ -4937,6 +6039,36 @@
         }
       }
     },
+    "Could not write the glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Glossar konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not write the section." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Abschnitt konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not write the writing style profile." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Schreibstil-Profil konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
     "Couldn't apply the change" : {
       "localizations" : {
         "de" : {
@@ -4967,6 +6099,16 @@
         }
       }
     },
+    "Couldn't load your ChatGPT models: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre ChatGPT-Modelle konnten nicht geladen werden: %@"
+          }
+        }
+      }
+    },
     "Couldn't open WhatsApp — use Settings → About for the other contact options." : {
       "localizations" : {
         "de" : {
@@ -4983,6 +6125,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Browser ließ sich nicht öffnen"
+          }
+        }
+      }
+    },
+    "Couldn't save the mailbox." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Postfach konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Couldn't save the password in the Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Passwort konnte nicht im Schlüsselbund gespeichert werden."
           }
         }
       }
@@ -5317,6 +6479,16 @@
         }
       }
     },
+    "Current settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Einstellungen"
+          }
+        }
+      }
+    },
     "Currently used by %@" : {
       "localizations" : {
         "de" : {
@@ -5343,6 +6515,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eigener Endpunkt"
+          }
+        }
+      }
+    },
+    "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der eigene Endpunkt gilt nur für den Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "Custom endpoint is not configured — set URL and API key in Settings → Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der eigene Endpunkt ist nicht eingerichtet – legen Sie URL und API-Schlüssel unter Einstellungen → Chat fest."
+          }
+        }
+      }
+    },
+    "Custom endpoint model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für den eigenen Endpunkt"
           }
         }
       }
@@ -5433,6 +6635,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ablehnen"
+          }
+        }
+      }
+    },
+    "Default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
           }
         }
       }
@@ -5713,6 +6925,16 @@
         }
       }
     },
+    "Details (editable)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details (bearbeitbar)"
+          }
+        }
+      }
+    },
     "Detected from your domain's mail settings." : {
       "localizations" : {
         "de" : {
@@ -5740,6 +6962,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren"
+          }
+        }
+      }
+    },
+    "Dictate model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiermodell:"
           }
         }
       }
@@ -5811,6 +7043,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dictate Prompt gibt es mit Grok nicht."
+          }
+        }
+      }
+    },
+    "Dictate Prompt kept looking things up and didn't finish. Try again, or say more precisely what to look up." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt hat immer weiter nachgeschlagen und ist nicht fertig geworden. Versuchen Sie es erneut oder sagen Sie genauer, was nachgeschlagen werden soll."
+          }
+        }
+      }
+    },
+    "Dictate Prompt model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Dictate Prompt"
           }
         }
       }
@@ -5901,6 +7153,16 @@
         }
       }
     },
+    "Dictate URL:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktier-URL:"
+          }
+        }
+      }
+    },
     "Dictate:" : {
       "localizations" : {
         "de" : {
@@ -5951,12 +7213,42 @@
         }
       }
     },
+    "Dictation language" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache"
+          }
+        }
+      }
+    },
+    "Dictation model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiermodell"
+          }
+        }
+      }
+    },
     "Dictation Prompt" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktat-Prompt"
+          }
+        }
+      }
+    },
+    "dictations" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktate"
           }
         }
       }
@@ -5997,6 +7289,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direkt"
+          }
+        }
+      }
+    },
+    "Disabled" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviert"
           }
         }
       }
@@ -6269,6 +7571,26 @@
         }
       }
     },
+    "e.g. Translate to English" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Ins Englische übersetzen"
+          }
+        }
+      }
+    },
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
     "Edit" : {
       "localizations" : {
         "de" : {
@@ -6319,6 +7641,16 @@
         }
       }
     },
+    "Edit server…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server bearbeiten …"
+          }
+        }
+      }
+    },
     "Edit this message and send it again" : {
       "localizations" : {
         "de" : {
@@ -6365,6 +7697,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei wird bearbeitet"
+          }
+        }
+      }
+    },
+    "Email" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-Mail"
           }
         }
       }
@@ -6725,12 +8067,44 @@
         }
       }
     },
+    "Failed to delete %@: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ konnte nicht gelöscht werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to delete %1$@: %2$@"
+          }
+        }
+      }
+    },
     "Failed to determine audio duration" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Länge der Aufnahme konnte nicht bestimmt werden"
+          }
+        }
+      }
+    },
+    "Failed to download %@: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ konnte nicht heruntergeladen werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to download %1$@: %2$@"
           }
         }
       }
@@ -6817,6 +8191,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Anmeldefenster von OpenRouter ließ sich nicht öffnen."
+          }
+        }
+      }
+    },
+    "Failed to save the API key to the Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der API-Schlüssel konnte nicht im Schlüsselbund gespeichert werden."
           }
         }
       }
@@ -6982,6 +8366,16 @@
         }
       }
     },
+    "Finish" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        }
+      }
+    },
     "Finish setup…" : {
       "localizations" : {
         "de" : {
@@ -7102,12 +8496,32 @@
         }
       }
     },
+    "For example: a word I didn't say was added at the end" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel: Am Ende stand ein Wort, das ich nicht gesagt habe"
+          }
+        }
+      }
+    },
     "For OpenRouter, pick OpenRouter in the chat model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für OpenRouter wählen Sie stattdessen OpenRouter in der Modellauswahl des Chats. Dort wird das Konto aus Einstellungen → Konten genutzt, ohne URL oder Schlüssel hier."
+          }
+        }
+      }
+    },
+    "For OpenRouter, pick OpenRouter in the model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für OpenRouter wählen Sie stattdessen OpenRouter in der Modellauswahl. Es nutzt das Konto aus Einstellungen → Konten, ohne dass Sie hier URL oder Schlüssel eintragen."
           }
         }
       }
@@ -7282,6 +8696,16 @@
         }
       }
     },
+    "Gemini voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini-Stimme"
+          }
+        }
+      }
+    },
     "gemini-models" : {
       "localizations" : {
         "de" : {
@@ -7379,6 +8803,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel holen:"
+          }
+        }
+      }
+    },
+    "GitHub issues are public. Remove names, patient or customer details and anything else private before you send it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub-Issues sind öffentlich. Entfernen Sie Namen, Patienten- oder Kundendaten und alles andere Private, bevor Sie es senden."
           }
         }
       }
@@ -7640,6 +9074,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verstanden"
+          }
+        }
+      }
+    },
+    "Grant Access" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugriff erlauben"
           }
         }
       }
@@ -7930,6 +9374,16 @@
         }
       }
     },
+    "Hold fn to dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fn gedrückt halten zum Diktieren"
+          }
+        }
+      }
+    },
     "Hosted at" : {
       "localizations" : {
         "de" : {
@@ -7986,6 +9440,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So geht's"
+          }
+        }
+      }
+    },
+    "http://localhost:4000/v1" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:4000/v1"
+          }
+        }
+      }
+    },
+    "http://localhost:4000/v1, LiteLLM's default port. The model fields take the model_name entries from your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:4000/v1, der Standardport von LiteLLM. In die Modellfelder gehören die model_name-Einträge aus Ihrer LiteLLM-Konfiguration."
           }
         }
       }
@@ -8166,6 +9640,16 @@
         }
       }
     },
+    "Improve from usage" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Nutzung verbessern"
+          }
+        }
+      }
+    },
     "Improve prompts and context from your usage" : {
       "localizations" : {
         "de" : {
@@ -8196,12 +9680,32 @@
         }
       }
     },
+    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit bereits vorhandenen Servern) und starten Sie Claude neu."
+          }
+        }
+      }
+    },
     "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit schon vorhandenen Servern), beenden Sie Claude und öffnen Sie es wieder. Braucht Node.js."
+          }
+        }
+      }
+    },
+    "In person" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vor Ort"
           }
         }
       }
@@ -8356,6 +9860,16 @@
         }
       }
     },
+    "Invalid Anthropic endpoint URL" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige URL für den Anthropic-Endpunkt"
+          }
+        }
+      }
+    },
     "Invalid API key. Please check your API key in Settings." : {
       "localizations" : {
         "de" : {
@@ -8458,6 +9972,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungültige Antwort von der %@-API"
+          }
+        }
+      }
+    },
+    "Invalid response from Anthropic API" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Antwort der Anthropic-API"
           }
         }
       }
@@ -8642,6 +10166,16 @@
         }
       }
     },
+    "Launch at login" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Anmeldung öffnen"
+          }
+        }
+      }
+    },
     "Launch at Login" : {
       "localizations" : {
         "de" : {
@@ -8684,6 +10218,26 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Learned from %1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "Learned from your Dictate Prompt instructions of the last 30 days, listed below your own prompts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelernt aus Ihren Dictate-Prompt-Anweisungen der letzten 30 Tage, unter Ihren eigenen Prompts aufgeführt."
+          }
+        }
+      }
+    },
+    "Learned from your Dictate Prompt instructions of the last 30 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelernt aus Ihren Dictate-Prompt-Anweisungen der letzten 30 Tage."
           }
         }
       }
@@ -8744,6 +10298,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bewertung im App Store schreiben"
+          }
+        }
+      }
+    },
+    "Leave empty to use the base URL. Only for a speech server that lives elsewhere, e.g. whisper-asr-webservice's /asr." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer lassen, um die Basis-URL zu verwenden. Nur für einen Sprachserver, der woanders läuft, z. B. /asr von whisper-asr-webservice."
           }
         }
       }
@@ -8864,6 +10428,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordner aufgelistet"
+          }
+        }
+      }
+    },
+    "Listed above the recording pill while you dictate a prompt. Click one or press ⌃1–9 instead of speaking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinen über der Aufnahmeanzeige, während Sie einen Prompt diktieren. Klicken Sie einen an oder drücken Sie ⌃1–9, statt zu sprechen."
           }
         }
       }
@@ -9014,6 +10588,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trello-Listen werden aufgelistet"
+          }
+        }
+      }
+    },
+    "LiteLLM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LiteLLM"
           }
         }
       }
@@ -9178,12 +10762,32 @@
         }
       }
     },
+    "Local Dictate Prompt model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell-ID für das lokale Dictate-Prompt-Modell"
+          }
+        }
+      }
+    },
     "Local LLM" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lokales LLM"
+          }
+        }
+      }
+    },
+    "local models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lokale Modelle"
           }
         }
       }
@@ -9334,6 +10938,16 @@
         }
       }
     },
+    "macOS voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS-Stimme"
+          }
+        }
+      }
+    },
     "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later." : {
       "localizations" : {
         "de" : {
@@ -9464,6 +11078,16 @@
         }
       }
     },
+    "Meeting chunk interval" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abschnittslänge bei Meetings"
+          }
+        }
+      }
+    },
     "Meeting Not Started" : {
       "localizations" : {
         "de" : {
@@ -9514,6 +11138,16 @@
         }
       }
     },
+    "Meeting summary model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Meeting-Zusammenfassungen"
+          }
+        }
+      }
+    },
     "Meeting Summary Model" : {
       "localizations" : {
         "de" : {
@@ -9530,6 +11164,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting-Transkription"
+          }
+        }
+      }
+    },
+    "Meeting transcription and summaries" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription und Zusammenfassungen"
+          }
+        }
+      }
+    },
+    "Meeting transcription model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Meeting-Transkription"
           }
         }
       }
@@ -9571,6 +11225,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meetings"
+          }
+        }
+      }
+    },
+    "Meetings in Claude" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meetings in Claude"
           }
         }
       }
@@ -9651,6 +11315,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dem Entwickler schreiben, mit dem Ende dieses Chats im Anhang"
+          }
+        }
+      }
+    },
+    "Messenger" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messenger"
           }
         }
       }
@@ -9935,12 +11609,32 @@
         }
       }
     },
+    "Move prompt %lld up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt %lld nach oben verschieben"
+          }
+        }
+      }
+    },
     "Move Trello card %@." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trello-Karte %@ verschieben."
+          }
+        }
+      }
+    },
+    "Move up — a lower number" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach oben: eine niedrigere Nummer"
           }
         }
       }
@@ -10056,6 +11750,7 @@
       }
     },
     "Needs download" : {
+      "comment" : "Tile badge: on-device model not downloaded yet",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10072,6 +11767,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel fehlt"
+          }
+        }
+      }
+    },
+    "Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Node.js."
           }
         }
       }
@@ -10421,6 +12126,26 @@
         }
       }
     },
+    "No example messages yet. Import sent emails or add examples first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Beispielnachrichten. Importieren Sie zuerst gesendete E-Mails oder fügen Sie Beispiele hinzu."
+          }
+        }
+      }
+    },
+    "No folder selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Ordner ausgewählt"
+          }
+        }
+      }
+    },
     "No folders are shared yet. Use `/folder`, or drop a folder onto this window, to grant access — macOS only allows that through the picker or a drop." : {
       "localizations" : {
         "de" : {
@@ -10457,6 +12182,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Google-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Google-API-Schlüssel eingerichtet. Tragen Sie Ihren Gemini-API-Schlüssel unter Einstellungen → Konten ein, um Gemini-Modelle zu nutzen."
           }
         }
       }
@@ -10511,6 +12246,16 @@
         }
       }
     },
+    "No key: fine for a local speech server without auth." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Schlüssel: in Ordnung für einen lokalen Sprachserver ohne Anmeldung."
+          }
+        }
+      }
+    },
     "No meetings yet" : {
       "localizations" : {
         "de" : {
@@ -10557,6 +12302,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Notizen zu diesem Meeting."
+          }
+        }
+      }
+    },
+    "No pending proposal with that id." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein offener Vorschlag mit dieser ID."
+          }
+        }
+      }
+    },
+    "No prompts of your own yet. Until you add one, the list shows the instructions you repeat most, filled up with a few defaults." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine eigenen Prompts. Bis Sie einen hinzufügen, zeigt die Liste Ihre häufigsten Anweisungen, ergänzt um ein paar Standardvorschläge."
+          }
+        }
+      }
+    },
+    "No prompts of your own, and suggestions are off: the list stays hidden while you record." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine eigenen Prompts und Vorschläge sind aus: Die Liste bleibt während der Aufnahme ausgeblendet."
           }
         }
       }
@@ -10767,6 +12542,16 @@
         }
       }
     },
+    "Not available in Offline Mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Offline-Modus nicht verfügbar."
+          }
+        }
+      }
+    },
     "Not connected" : {
       "localizations" : {
         "de" : {
@@ -10783,6 +12568,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht geladen"
+          }
+        }
+      }
+    },
+    "Not enough disk space to download this model. About %lld MB is needed, but only %lld MB is free. Free some space and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Speicherplatz, um dieses Modell herunterzuladen. Benötigt werden etwa %lld MB, frei sind nur %lld MB. Geben Sie Speicher frei und versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not enough disk space to download this model. About %1$lld MB is needed, but only %2$lld MB is free. Free some space and try again."
           }
         }
       }
@@ -10897,6 +12698,16 @@
         }
       }
     },
+    "Nothing has changed yet. Accepted changes apply together." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch wurde nichts geändert. Angenommene Änderungen werden zusammen übernommen."
+          }
+        }
+      }
+    },
     "Nothing learned yet." : {
       "localizations" : {
         "de" : {
@@ -10943,6 +12754,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nichts zu transkribieren. Prüfen Sie das Mikrofon und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Notification duration" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzeigedauer der Mitteilungen"
+          }
+        }
+      }
+    },
+    "Notification position" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position der Mitteilungen"
           }
         }
       }
@@ -11188,6 +13019,16 @@
         }
       }
     },
+    "On" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An"
+          }
+        }
+      }
+    },
     "On this Mac" : {
       "localizations" : {
         "de" : {
@@ -11258,6 +13099,16 @@
         }
       }
     },
+    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel."
+          }
+        }
+      }
+    },
     "One-time download, %@" : {
       "localizations" : {
         "de" : {
@@ -11274,6 +13125,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmaliger Download, danach läuft es offline. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "Online meeting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online-Meeting"
           }
         }
       }
@@ -11454,12 +13315,32 @@
         }
       }
     },
+    "Open Chat shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Chat öffnen"
+          }
+        }
+      }
+    },
     "Open Chat:" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat öffnen:"
+          }
+        }
+      }
+    },
+    "Open Claude & AI Apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claude & KI-Apps öffnen"
           }
         }
       }
@@ -11560,6 +13441,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen öffnen"
+          }
+        }
+      }
+    },
+    "Open Settings shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Einstellungen öffnen"
           }
         }
       }
@@ -11714,6 +13605,16 @@
         }
       }
     },
+    "OpenAI voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-Stimme"
+          }
+        }
+      }
+    },
     "OpenAI Whisper Base • Small download • ~140MB • Offline" : {
       "localizations" : {
         "de" : {
@@ -11780,6 +13681,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenAI Whisper Tiny • Am schnellsten • ca. 75 MB • Offline"
+          }
+        }
+      }
+    },
+    "OpenAI's agent. ChatGPT itself can't reach apps on your Mac, Codex can." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Agent von OpenAI. ChatGPT selbst erreicht keine Apps auf Ihrem Mac, Codex schon."
           }
         }
       }
@@ -11864,6 +13775,26 @@
         }
       }
     },
+    "OpenAI-compatible: LiteLLM, Azure, Vertex, …" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-kompatibel: LiteLLM, Azure, Vertex, …"
+          }
+        }
+      }
+    },
+    "OpenAI-compatible: LiteLLM, Azure, …" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-kompatibel: LiteLLM, Azure, …"
+          }
+        }
+      }
+    },
     "Opened" : {
       "localizations" : {
         "de" : {
@@ -11944,12 +13875,32 @@
         }
       }
     },
+    "OpenRouter chat model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter-Modell-ID für den Chat"
+          }
+        }
+      }
+    },
     "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat-Modelle über OpenRouter gibt es nur im Chat. Wählen Sie für Dictate Prompt ein Gemini-, OpenAI-GPT-Audio- oder lokales Modell."
+          }
+        }
+      }
+    },
+    "OpenRouter dictation model id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter-Modell-ID fürs Diktieren"
           }
         }
       }
@@ -11974,12 +13925,32 @@
         }
       }
     },
+    "OpenRouter is not connected. Connect your account in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter ist nicht verbunden. Verbinden Sie Ihr Konto unter Einstellungen → Konten."
+          }
+        }
+      }
+    },
     "OpenRouter rejected the authorization: %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "OpenRouter hat die Anmeldung abgelehnt: %@"
+          }
+        }
+      }
+    },
+    "OpenRouter rejected the key. Reconnect your account in Settings → Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenRouter hat den Schlüssel abgelehnt. Verbinden Sie Ihr Konto unter Einstellungen → Konten neu."
           }
         }
       }
@@ -12040,6 +14011,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Optional"
+          }
+        }
+      }
+    },
+    "Optional for a local server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional bei einem lokalen Server"
           }
         }
       }
@@ -12110,6 +14091,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei %@ überschreiben"
+          }
+        }
+      }
+    },
+    "Own server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Server"
           }
         }
       }
@@ -12354,6 +14345,16 @@
         }
       }
     },
+    "Plan use not allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abo-Nutzung nicht erlaubt"
+          }
+        }
+      }
+    },
     "Plan use wasn't allowed, so Chat can't run on this account yet." : {
       "localizations" : {
         "de" : {
@@ -12384,6 +14385,16 @@
         }
       }
     },
+    "Playback speed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabetempo"
+          }
+        }
+      }
+    },
     "Playback Speed" : {
       "localizations" : {
         "de" : {
@@ -12410,6 +14421,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wiedergabetempo – zum Ändern klicken"
+          }
+        }
+      }
+    },
+    "Please choose the folder %@ and click Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte wählen Sie den Ordner %@ und klicken Sie auf „Erlauben“."
           }
         }
       }
@@ -12460,6 +14481,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position der Popups"
+          }
+        }
+      }
+    },
+    "Port %u is in use by another app. Quit it or choose a different port." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port %u wird von einer anderen App verwendet. Beenden Sie diese oder wählen Sie einen anderen Port."
           }
         }
       }
@@ -12580,16 +14611,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Letzte 30 Tage"
-          }
-        }
-      }
-    },
-    "Previous 7 Days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte 7 Tage"
           }
         }
       }
@@ -12806,6 +14827,36 @@
         }
       }
     },
+    "prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompts"
+          }
+        }
+      }
+    },
+    "Proposals are not available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschläge sind nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Provider default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard des Anbieters"
+          }
+        }
+      }
+    },
     "Puts back what you had copied before, right after pasting. Needs auto-paste." : {
       "localizations" : {
         "de" : {
@@ -12852,12 +14903,42 @@
         }
       }
     },
+    "Quick prompt %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnell-Prompt %lld"
+          }
+        }
+      }
+    },
+    "Quick Prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnell-Prompts"
+          }
+        }
+      }
+    },
     "Quit & Reopen WhisperShortcut" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut beenden und neu öffnen"
+          }
+        }
+      }
+    },
+    "Quit and reopen Claude." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden und öffnen Sie Claude neu."
           }
         }
       }
@@ -13033,12 +15114,42 @@
         }
       }
     },
+    "Read Aloud model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell fürs Vorlesen"
+          }
+        }
+      }
+    },
     "Read Aloud paused" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlesen pausiert"
+          }
+        }
+      }
+    },
+    "Read Aloud shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Vorlesen"
+          }
+        }
+      }
+    },
+    "Read Aloud smart rewrite" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen: Text vorher glätten"
           }
         }
       }
@@ -13636,12 +15747,32 @@
         }
       }
     },
+    "Remove prompt %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prompt %lld entfernen"
+          }
+        }
+      }
+    },
     "Remove rules from the Dictate Prompt instructions." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regeln aus den Anweisungen von Dictate Prompt entfernen."
+          }
+        }
+      }
+    },
+    "Remove this prompt" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesen Prompt entfernen"
           }
         }
       }
@@ -13752,6 +15883,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bericht (bearbeitbar)"
+          }
+        }
+      }
+    },
+    "Report a Problem with a Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit einem Diktat melden"
+          }
+        }
+      }
+    },
+    "Report a Problem with Last Dictation…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit letztem Diktat melden…"
+          }
+        }
+      }
+    },
+    "Report a Problem with Your Last Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit Ihrem letzten Diktat melden"
           }
         }
       }
@@ -13952,6 +16113,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Meeting wiederherstellen"
+          }
+        }
+      }
+    },
+    "Restored, except: %@. They are no longer valid." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederhergestellt, außer: %@. Diese sind nicht mehr gültig."
           }
         }
       }
@@ -14277,6 +16448,16 @@
         }
       }
     },
+    "Run in Terminal, then start a new Claude Code session:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Terminal ausführen, dann eine neue Claude-Code-Sitzung starten:"
+          }
+        }
+      }
+    },
     "Run offline with an on-device model" : {
       "localizations" : {
         "de" : {
@@ -14313,6 +16494,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft unter %@"
+          }
+        }
+      }
+    },
+    "Running…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft…"
+          }
+        }
+      }
+    },
+    "Running… (%lld in queue)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft… (%lld in der Warteschlange)"
           }
         }
       }
@@ -14377,6 +16578,16 @@
         }
       }
     },
+    "Same as dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie beim Diktieren"
+          }
+        }
+      }
+    },
     "Save" : {
       "localizations" : {
         "de" : {
@@ -14403,6 +16614,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Änderungen an der Merkdatei sichern"
+          }
+        }
+      }
+    },
+    "Save dictation screenshots" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfotos von Diktaten speichern"
           }
         }
       }
@@ -14634,6 +16855,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bildschirmfoto als Kontext:"
+          }
+        }
+      }
+    },
+    "Screenshot shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Bildschirmfoto"
           }
         }
       }
@@ -15008,6 +17239,16 @@
         }
       }
     },
+    "Self-hosted transcription endpoint URL is not configured. Set it in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die URL des selbst gehosteten Transkriptions-Endpunkts ist nicht eingerichtet. Legen Sie sie unter Einstellungen → Diktieren fest."
+          }
+        }
+      }
+    },
     "Send" : {
       "localizations" : {
         "de" : {
@@ -15038,6 +17279,16 @@
         }
       }
     },
+    "Send by Email" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per E-Mail senden"
+          }
+        }
+      }
+    },
     "Send Feedback" : {
       "localizations" : {
         "de" : {
@@ -15054,6 +17305,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nachricht senden"
+          }
+        }
+      }
+    },
+    "Send the last dictation with its model and version, after you check it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das letzte Diktat mit Modell und Version senden, nachdem Sie es geprüft haben"
           }
         }
       }
@@ -15094,6 +17355,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird nur an den Server oben gesendet."
+          }
+        }
+      }
+    },
+    "Sent with every request to this server, e.g. CF-Access-Client-Id / CF-Access-Client-Secret for Cloudflare Access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird bei jeder Anfrage an diesen Server mitgeschickt, z. B. CF-Access-Client-Id / CF-Access-Client-Secret für Cloudflare Access."
           }
         }
       }
@@ -15148,6 +17419,36 @@
         }
       }
     },
+    "Set up by hand" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von Hand einrichten"
+          }
+        }
+      }
+    },
+    "Set up your own server (OpenAI-compatible) in Settings → Dictate, or pick a different model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie Ihren eigenen Server (OpenAI-kompatibel) unter Einstellungen → Diktieren ein oder wählen Sie ein anderes Modell."
+          }
+        }
+      }
+    },
+    "Set up: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten: %@"
+          }
+        }
+      }
+    },
     "Set with `/x @karpathy @simonw`, clear with `/x off`." : {
       "localizations" : {
         "de" : {
@@ -15168,6 +17469,16 @@
         }
       }
     },
+    "setting no longer exists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "die Einstellung gibt es nicht mehr"
+          }
+        }
+      }
+    },
     "Settings" : {
       "comment" : "Settings window and menu item",
       "localizations" : {
@@ -15175,6 +17486,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einstellungen"
+          }
+        }
+      }
+    },
+    "Settings Change from an AI App" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungsänderung von einer KI-App"
           }
         }
       }
@@ -15319,6 +17640,16 @@
         }
       }
     },
+    "Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam für Diktieren, Dictate Prompt und Chat. Eine Änderung am Server gilt für alle drei."
+          }
+        }
+      }
+    },
     "Shift alone won't fire — add ⌘/⌥/⌃" : {
       "localizations" : {
         "de" : {
@@ -15431,6 +17762,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel anzeigen"
+          }
+        }
+      }
+    },
+    "Show dictation notifications" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen beim Diktieren anzeigen"
           }
         }
       }
@@ -15605,6 +17946,16 @@
         }
       }
     },
+    "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melden Sie sich unter Einstellungen → Konten mit ChatGPT an, um Ihr ChatGPT-Abo zu nutzen."
+          }
+        }
+      }
+    },
     "Sign in with Google" : {
       "localizations" : {
         "de" : {
@@ -15645,6 +17996,16 @@
         }
       }
     },
+    "Sign-in expired" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldung abgelaufen"
+          }
+        }
+      }
+    },
     "Sign-in for %@ expired" : {
       "localizations" : {
         "de" : {
@@ -15661,6 +18022,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Angemeldet als %@"
+          }
+        }
+      }
+    },
+    "Signed out here, but ChatGPT didn't confirm it. To be sure, remove WhisperShortcut's access in ChatGPT Settings → Usage." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier abgemeldet, aber ChatGPT hat es nicht bestätigt. Entfernen Sie zur Sicherheit den Zugriff von WhisperShortcut in den ChatGPT-Einstellungen unter Nutzung."
           }
         }
       }
@@ -15772,6 +18143,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Smart Improvement ist optional: Wenn Sie es unter Einstellungen → Smart Improvement einschalten, gehen Ihre Nutzungsprotokolle an den gewählten Anbieter, um Prompts zu verfeinern – nie an uns oder sonst jemanden."
+          }
+        }
+      }
+    },
+    "Smart Improvement model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für Smart Improvement"
           }
         }
       }
@@ -15967,12 +18348,42 @@
         }
       }
     },
+    "Start a new Claude Code session." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten Sie eine neue Claude-Code-Sitzung."
+          }
+        }
+      }
+    },
+    "Start a new Codex session." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starten Sie eine neue Codex-Sitzung."
+          }
+        }
+      }
+    },
     "Start a new live meeting recording" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neue Live-Meeting-Aufnahme starten"
+          }
+        }
+      }
+    },
+    "Start from Current List" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit aktueller Liste beginnen"
           }
         }
       }
@@ -16303,6 +18714,16 @@
         }
       }
     },
+    "Suggested settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorgeschlagene Einstellungen"
+          }
+        }
+      }
+    },
     "Superseded by Large v3 Turbo" : {
       "localizations" : {
         "de" : {
@@ -16373,6 +18794,16 @@
         }
       }
     },
+    "System Audio Not Recorded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemton wird nicht aufgenommen"
+          }
+        }
+      }
+    },
     "System Prompt" : {
       "localizations" : {
         "de" : {
@@ -16413,12 +18844,32 @@
         }
       }
     },
+    "Temperature" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temperatur"
+          }
+        }
+      }
+    },
     "Temperature:" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Temperatur:"
+          }
+        }
+      }
+    },
+    "Test build: Connect is off here, so it can't overwrite the setup of the WhisperShortcut you use every day." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test-Build: „Verbinden“ ist hier aus, damit es die Einrichtung Ihres alltäglichen WhisperShortcut nicht überschreibt."
           }
         }
       }
@@ -16463,6 +18914,26 @@
         }
       }
     },
+    "That covers where inference runs and who your data-processing agreement is with. It is not a certification of this app, and whether it satisfies a professional confidentiality duty is your call to make with your own counsel. For dictation that never leaves this Mac, use Offline Mode instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das regelt, wo die Verarbeitung läuft und mit wem Ihr Auftragsverarbeitungsvertrag besteht. Es ist keine Zertifizierung dieser App. Ob das einer beruflichen Schweigepflicht genügt, klären Sie bitte mit Ihrer eigenen Rechtsberatung. Für Diktate, die diesen Mac nie verlassen, nutzen Sie stattdessen den Offline-Modus."
+          }
+        }
+      }
+    },
+    "That is a different ChatGPT account than the one saved for this app. Sign in with the same account, or use a different account instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist ein anderes ChatGPT-Konto als das für diese App gespeicherte. Melden Sie sich mit demselben Konto an oder wechseln Sie stattdessen das Konto."
+          }
+        }
+      }
+    },
     "That matches every shared folder, so this chat still uses all of them." : {
       "localizations" : {
         "de" : {
@@ -16489,6 +18960,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das URL-Format von Azure OpenAI / Foundry. Ersetzen Sie <resource> durch den Namen Ihrer Ressource und tragen Sie unter Modell den Namen Ihres Deployments ein."
+          }
+        }
+      }
+    },
+    "The Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set the models to your deployment names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das URL-Format für Azure OpenAI / Foundry. Ersetzen Sie <resource> durch Ihren Ressourcennamen und tragen Sie als Modelle Ihre Deployment-Namen ein."
           }
         }
       }
@@ -16543,6 +19024,36 @@
         }
       }
     },
+    "The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in WhatsApp or Mail." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Entwickler bekommt den Text und die Details unten, Sie müssen also weder Version noch Modell heraussuchen. Gesendet wird erst, wenn Sie in WhatsApp oder Mail auf Senden drücken."
+          }
+        }
+      }
+    },
+    "The email address is not valid." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die E-Mail-Adresse ist ungültig."
+          }
+        }
+      }
+    },
+    "The kept meeting audio contained no speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aufbewahrte Meeting-Aufnahme enthielt keine Sprache."
+          }
+        }
+      }
+    },
     "the key entered above for this server" : {
       "localizations" : {
         "de" : {
@@ -16559,6 +19070,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der letzte Download war unvollständig. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "The local server stopped: %@. Turn it off and on again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der lokale Server wurde gestoppt: %@. Schalten Sie ihn aus und wieder ein."
           }
         }
       }
@@ -16589,6 +19110,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Anfrage an den Mailserver ist fehlgeschlagen."
+          }
+        }
+      }
+    },
+    "The meeting transcript is complete again. The summary is being regenerated." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting-Transkript ist wieder vollständig. Die Zusammenfassung wird neu erstellt."
+          }
+        }
+      }
+    },
+    "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting-Transkript wurde gespeichert, aber die Zusammenfassung konnte nicht erstellt werden (das Modell für die Zusammenfassung ist nicht erreichbar). Sobald der Dienst wieder läuft, können Sie sie in der Meeting-Übersicht neu erstellen."
+          }
+        }
+      }
+    },
+    "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Meeting-Transkript wurde gespeichert, aber die Zusammenfassung konnte nicht erstellt werden, weil kein lokales Modell dafür verfügbar ist. Wählen Sie eins unter Einstellungen → Meetings → Modell für Meeting-Zusammenfassungen; danach können Sie die Zusammenfassung in der Meeting-Übersicht neu erstellen."
           }
         }
       }
@@ -16629,6 +19180,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die nächste Änderung, die Sie annehmen, wird ab dann gemessen."
+          }
+        }
+      }
+    },
+    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
           }
         }
       }
@@ -16763,6 +19324,16 @@
         }
       }
     },
+    "The speech-to-text model your server serves, e.g. whisper-1 or the model name in your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Spracherkennungsmodell, das Ihr Server anbietet, z. B. whisper-1 oder der Modellname aus Ihrer LiteLLM-Konfiguration."
+          }
+        }
+      }
+    },
     "The transcription failed." : {
       "localizations" : {
         "de" : {
@@ -16789,6 +19360,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das OpenAI-kompatible URL-Format von Vertex AI. Ersetzen Sie <project> durch die ID Ihres Google-Cloud-Projekts."
+          }
+        }
+      }
+    },
+    "Then applies it to your selected text. On Azure, your deployment name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wendet sie dann auf den markierten Text an. Bei Azure: Ihr Deployment-Name."
           }
         }
       }
@@ -16829,6 +19410,16 @@
         }
       }
     },
+    "Thinking effort" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denkaufwand"
+          }
+        }
+      }
+    },
     "Thinking effort:" : {
       "localizations" : {
         "de" : {
@@ -16839,12 +19430,32 @@
         }
       }
     },
+    "This change has no settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Änderung enthält keine Einstellungen."
+          }
+        }
+      }
+    },
     "This change is no longer on record." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Änderung ist nicht mehr verzeichnet."
+          }
+        }
+      }
+    },
+    "This changed since the AI app suggested it. Decline it and ask the AI app again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das hat sich geändert, seit die KI-App es vorgeschlagen hat. Lehnen Sie den Vorschlag ab und fragen Sie die KI-App erneut."
           }
         }
       }
@@ -16945,6 +19556,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Schlüssel wird nicht unterstützt"
+          }
+        }
+      }
+    },
+    "this Mac" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "diesem Mac"
+          }
+        }
+      }
+    },
+    "This meeting has been transcribing for over %lld minutes. Stop or continue?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Meeting wird seit über %lld Minuten transkribiert. Beenden oder weitermachen?"
+          }
+        }
+      }
+    },
+    "This proposal has no settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Vorschlag enthält keine Einstellungen."
           }
         }
       }
@@ -17059,12 +19700,32 @@
         }
       }
     },
+    "Toggle Dictate Prompt shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Dictate Prompt starten/beenden"
+          }
+        }
+      }
+    },
     "Toggle Dictation" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktat starten/beenden"
+          }
+        }
+      }
+    },
+    "Toggle Dictation shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Diktat starten/beenden"
           }
         }
       }
@@ -17145,6 +19806,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abgebrochene Aufnahme transkribieren"
+          }
+        }
+      }
+    },
+    "Transcribes on your own OpenAI-compatible server (LiteLLM, Azure, faster-whisper-server, …), the same one Chat and Dictate Prompt can use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert auf Ihrem eigenen OpenAI-kompatiblen Server (LiteLLM, Azure, faster-whisper-server, …), demselben, den auch Chat und Dictate Prompt nutzen können"
+          }
+        }
+      }
+    },
+    "Transcribes your spoken instruction first, e.g. whisper-1 or the model name in your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert zuerst Ihre gesprochene Anweisung, z. B. whisper-1 oder der Modellname aus Ihrer LiteLLM-Konfiguration."
           }
         }
       }
@@ -17621,6 +20302,16 @@
         }
       }
     },
+    "Unknown section." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannter Abschnitt."
+          }
+        }
+      }
+    },
     "Unsupported audio format: %@" : {
       "localizations" : {
         "de" : {
@@ -17661,12 +20352,32 @@
         }
       }
     },
+    "Up to %lld prompts, one per ⌃ shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis zu %lld Prompts, einer pro ⌃-Kurzbefehl"
+          }
+        }
+      }
+    },
     "Up to /v1 — the app appends /chat/completions." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bis /v1 – die App hängt /chat/completions an."
+          }
+        }
+      }
+    },
+    "Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
           }
         }
       }
@@ -17797,6 +20508,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufgabe wird geändert"
+          }
+        }
+      }
+    },
+    "URL and chat model for openinference.de (GLM 5.2). Enter your sk-oi-… key below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL und Chat-Modell für openinference.de (GLM 5.2). Tragen Sie unten Ihren sk-oi-…-Schlüssel ein."
           }
         }
       }
@@ -17961,6 +20682,16 @@
         }
       }
     },
+    "Using your ChatGPT plan isn't available in this version of WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ChatGPT-Abo ist in dieser Version von WhisperShortcut nicht verfügbar."
+          }
+        }
+      }
+    },
     "Value" : {
       "localizations" : {
         "de" : {
@@ -17987,6 +20718,48 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version %@"
+          }
+        }
+      }
+    },
+    "Version %@ (build %@)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %1$@ (Build %2$@)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version %1$@ (build %2$@)"
+          }
+        }
+      }
+    },
+    "Version %@ (build %@) · last checked %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %1$@ (Build %2$@) · zuletzt geprüft %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version %1$@ (build %2$@) · last checked %3$@"
+          }
+        }
+      }
+    },
+    "Vertex" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertex"
           }
         }
       }
@@ -18211,6 +20984,16 @@
         }
       }
     },
+    "What went wrong?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was ist schiefgelaufen?"
+          }
+        }
+      }
+    },
     "What's new in %@" : {
       "localizations" : {
         "de" : {
@@ -18237,6 +21020,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn eingeschaltet, geht bei Anfragen an Dictate Prompt ein Bildschirmfoto mit, damit die KI sieht, worum es geht. Braucht die Berechtigung Bildschirmaufnahme."
+          }
+        }
+      }
+    },
+    "When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. Off by default." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn eingeschaltet, werden Nutzungsprotokolle (Diktat, Dictate Prompt, Chat) gespeichert, damit „Aus Nutzung verbessern“ bessere Prompts vorschlagen kann. Standardmäßig aus."
           }
         }
       }
@@ -18297,6 +21090,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn eingeschaltet, werden Code, Markdown, Tabellen und andere Inhalte, die kein Fließtext sind, in sprechbare Form gebracht. Fließtext bleibt unverändert. Kostet einen kurzen Gemini-Aufruf vor der Sprachausgabe."
+          }
+        }
+      }
+    },
+    "Where the popup appears and how long it stays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wo das Popup erscheint und wie lange es bleibt"
           }
         }
       }
@@ -18401,6 +21204,16 @@
         }
       }
     },
+    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
+          }
+        }
+      }
+    },
     "WhisperShortcut can’t read your saved prompts" : {
       "localizations" : {
         "de" : {
@@ -18481,52 +21294,12 @@
         }
       }
     },
-    "Online meeting" : {
+    "WhisperShortcut needs access to this folder once to add itself to %@'s settings. Click Allow." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Online-Meeting"
-          }
-        }
-      }
-    },
-    "In person" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vor Ort"
-          }
-        }
-      }
-    },
-    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
-          }
-        }
-      }
-    },
-    "System Audio Not Recorded" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Systemton wird nicht aufgenommen"
-          }
-        }
-      }
-    },
-    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
+            "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich in die Einstellungen von %@ einzutragen. Klicken Sie auf „Erlauben“."
           }
         }
       }
@@ -18641,6 +21414,16 @@
         }
       }
     },
+    "Work Chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeits-Chat"
+          }
+        }
+      }
+    },
     "Works with any OpenAI /v1/audio/transcriptions–compatible endpoint (OpenAI, self-hosted Whisper, faster-whisper-server, or any other compatible backend). Use custom headers for Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret) or other auth schemes." : {
       "localizations" : {
         "de" : {
@@ -18741,6 +21524,16 @@
         }
       }
     },
+    "X accounts for Grok" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "X-Konten für Grok"
+          }
+        }
+      }
+    },
     "X Accounts for Grok" : {
       "localizations" : {
         "de" : {
@@ -18813,12 +21606,32 @@
         }
       }
     },
+    "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das xAI-Konto hat kein Guthaben mehr oder sein monatliches Ausgabenlimit erreicht. Laden Sie unter https://console.x.ai/ auf oder erhöhen Sie das Limit, um fortzufahren."
+          }
+        }
+      }
+    },
     "xAI API Key (Grok)" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "xAI-API-Schlüssel (Grok)"
+          }
+        }
+      }
+    },
+    "xAI voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "xAI-Stimme"
           }
         }
       }
@@ -18883,6 +21696,26 @@
         }
       }
     },
+    "You can also add terms by asking in Chat — e.g. “Kimi is spelled with one m”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Begriffe können Sie auch im Chat hinzufügen lassen, z. B. „Kimi schreibt man mit einem m“."
+          }
+        }
+      }
+    },
+    "You can also change this by asking in Chat — e.g. “when I say correct, never translate”. Edits made there land in this text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können das auch im Chat ändern lassen, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
+          }
+        }
+      }
+    },
     "You can change this anytime in Settings → Privacy & Permissions." : {
       "localizations" : {
         "de" : {
@@ -18899,6 +21732,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Tour finden Sie jederzeit wieder unter Einstellungen → Über."
+          }
+        }
+      }
+    },
+    "You can undo it in Settings → Claude & AI Apps." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können das unter Einstellungen → Claude & KI-Apps rückgängig machen."
           }
         }
       }
@@ -18963,6 +21806,16 @@
         }
       }
     },
+    "your ChatGPT plan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr ChatGPT-Abo"
+          }
+        }
+      }
+    },
     "Your ChatGPT plan can't run part of this request (%@). Remove it and try again." : {
       "localizations" : {
         "de" : {
@@ -18999,6 +21852,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihre ChatGPT-Anmeldung ist abgelaufen. Melden Sie sich unter Einstellungen → Konten neu an."
+          }
+        }
+      }
+    },
+    "your custom endpoint" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Endpunkt"
           }
         }
       }
@@ -19053,6 +21916,16 @@
         }
       }
     },
+    "Your own OpenAI-compatible server (LiteLLM, Azure OpenAI, Vertex AI, OpenInference, self-hosted) • Set up once below, shared by Dictate, Dictate Prompt and Chat • No web search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener OpenAI-kompatibler Server (LiteLLM, Azure OpenAI, Vertex AI, OpenInference, selbst gehostet) • Einmal unten einrichten, gemeinsam für Diktieren, Dictate Prompt und Chat • Keine Websuche"
+          }
+        }
+      }
+    },
     "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search" : {
       "localizations" : {
         "de" : {
@@ -19073,12 +21946,42 @@
         }
       }
     },
+    "your own server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server"
+          }
+        }
+      }
+    },
+    "Your own server is not set up. Add its base URL and key in Settings → Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server ist nicht eingerichtet. Tragen Sie Basis-URL und Schlüssel unter Einstellungen → Chat ein."
+          }
+        }
+      }
+    },
     "Your own server is not set up. Add its base URL in Settings → Dictate." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr eigener Server ist nicht eingerichtet. Tragen Sie die Basis-URL unter Einstellungen → Diktieren ein."
+          }
+        }
+      }
+    },
+    "Your own server's base URL is missing. Set it in Settings → Chat, then pick Own server as the chat model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Basis-URL Ihres eigenen Servers fehlt. Tragen Sie sie unter Einstellungen → Chat ein und wählen Sie dann „Eigener Server“ als Chat-Modell."
           }
         }
       }
@@ -19121,6 +22024,16 @@
     },
     "• %@" : {
       "shouldTranslate" : false
+    },
+    "→ not configured" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "→ nicht eingerichtet"
+          }
+        }
+      }
     },
     "↩" : {
       "shouldTranslate" : false
@@ -19223,6 +22136,26 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "⏰ Local Model Timeout\n\nThe on-device model took too long to %1$@ (over %2$lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording"
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to load (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange zum Laden gebraucht (über %lld Sekunden).\n\nMögliche Ursachen:\n• Der Mac ist stark ausgelastet oder hat wenig Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Unter Einstellungen → Diktieren ein kleineres Modell wählen\n• Eine kürzere Aufnahme versuchen"
+          }
+        }
+      }
+    },
+    "⏰ Local Model Timeout\n\nThe on-device model took too long to transcribe your recording (over %lld seconds).\n\nThis usually means:\n• The Mac is under heavy load or low on memory\n• The model is still being compiled after a download or macOS update\n• The recording is very long for this model size\n\nSolutions:\n• Wait a moment and try again\n• Try a smaller model in Settings → Dictate\n• Try with a shorter recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏰ Zeitüberschreitung beim lokalen Modell\n\nDas Modell auf dem Gerät hat zu lange gebraucht, um Ihre Aufnahme zu transkribieren (über %lld Sekunden).\n\nMögliche Ursachen:\n• Der Mac ist stark ausgelastet oder hat wenig Arbeitsspeicher\n• Das Modell wird nach einem Download oder macOS-Update noch kompiliert\n• Die Aufnahme ist für diese Modellgröße sehr lang\n\nLösungen:\n• Kurz warten und erneut versuchen\n• Unter Einstellungen → Diktieren ein kleineres Modell wählen\n• Eine kürzere Aufnahme versuchen"
           }
         }
       }
@@ -19935,406 +22868,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔴 Dictate Prompt wird aufgenommen …"
-          }
-        }
-      }
-    },
-    "Claude & AI Apps" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude & KI-Apps"
-          }
-        }
-      }
-    },
-    "Connect Claude and other AI apps on this Mac to WhisperShortcut. They can set it up for you from what they already know about you: names for the glossary, how your messages should sound, your commands. And they can read your meetings, including the one recording right now." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbinden Sie Claude und andere KI-Apps auf diesem Mac mit WhisperShortcut. Sie können es für Sie einrichten, mit dem, was sie schon über Sie wissen: Namen fürs Glossar, wie Ihre Nachrichten klingen sollen, Ihre Befehle. Und sie können Ihre Meetings lesen, auch das, das gerade aufgenommen wird."
-          }
-        }
-      }
-    },
-    "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude und andere KI-Apps verbinden, um WhisperShortcut einzurichten und Meetings zu lesen"
-          }
-        }
-      }
-    },
-    "Meeting transcription and summaries" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meeting-Transkription und Zusammenfassungen"
-          }
-        }
-      }
-    },
-    "Meetings in Claude" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meetings in Claude"
-          }
-        }
-      }
-    },
-    "Claude and other AI apps on this Mac can read your meetings, including the one recording right now. Connect them in Claude & AI Apps." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude und andere KI-Apps auf diesem Mac können Ihre Meetings lesen, auch das, das gerade aufgenommen wird. Verbinden Sie sie unter Claude & KI-Apps."
-          }
-        }
-      }
-    },
-    "Open Claude & AI Apps" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude & KI-Apps öffnen"
-          }
-        }
-      }
-    },
-    "Run in Terminal, then start a new Claude Code session:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Terminal ausführen, dann eine neue Claude-Code-Sitzung starten:"
-          }
-        }
-      }
-    },
-    "Needs Node.js." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Benötigt Node.js."
-          }
-        }
-      }
-    },
-    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit bereits vorhandenen Servern) und starten Sie Claude neu."
-          }
-        }
-      }
-    },
-    "OpenAI's agent. ChatGPT itself can't reach apps on your Mac, Codex can." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Agent von OpenAI. ChatGPT selbst erreicht keine Apps auf Ihrem Mac, Codex schon."
-          }
-        }
-      }
-    },
-    "Add this to ~/.codex/config.toml, then start a new Codex session:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fügen Sie dies in ~/.codex/config.toml ein und starten Sie dann eine neue Codex-Sitzung:"
-          }
-        }
-      }
-    },
-    "Apps you already connected stop working until you connect them again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bereits verbundene Apps funktionieren erst wieder, wenn Sie sie neu verbinden."
-          }
-        }
-      }
-    },
-    "Claude and other apps connected with the current key lose access until you connect them again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude und andere Apps mit dem aktuellen Schlüssel verlieren den Zugriff, bis Sie sie neu verbinden."
-          }
-        }
-      }
-    },
-    "Connected. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbunden. %@"
-          }
-        }
-      }
-    },
-    "Set up by hand" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Von Hand einrichten"
-          }
-        }
-      }
-    },
-    "Connect Again" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erneut verbinden"
-          }
-        }
-      }
-    },
-    "Adds WhisperShortcut to %@'s settings. macOS asks once for access to the folder they live in." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trägt WhisperShortcut in die Einstellungen von %@ ein. macOS fragt einmal nach Zugriff auf den Ordner, in dem sie liegen."
-          }
-        }
-      }
-    },
-    "Cancelled." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abgebrochen."
-          }
-        }
-      }
-    },
-    "Please choose the folder %@ and click Allow." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bitte wählen Sie den Ordner %@ und klicken Sie auf „Erlauben“."
-          }
-        }
-      }
-    },
-    "%@ is not valid JSON, so it was left untouched. Fix or remove the file and try again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ist kein gültiges JSON und wurde nicht verändert. Korrigieren oder entfernen Sie die Datei und versuchen Sie es erneut."
-          }
-        }
-      }
-    },
-    "Start a new Claude Code session." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starten Sie eine neue Claude-Code-Sitzung."
-          }
-        }
-      }
-    },
-    "Quit and reopen Claude." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beenden und öffnen Sie Claude neu."
-          }
-        }
-      }
-    },
-    "Start a new Codex session." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starten Sie eine neue Codex-Sitzung."
-          }
-        }
-      }
-    },
-    "WhisperShortcut needs access to this folder once to add itself to %@'s settings. Click Allow." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich in die Einstellungen von %@ einzutragen. Klicken Sie auf „Erlauben“."
-          }
-        }
-      }
-    },
-    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
-          }
-        }
-      }
-    },
-    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
-          }
-        }
-      }
-    },
-    "Added to %@'s settings. %@ Waiting for it to connect…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In die Einstellungen von %@ eingetragen. %@ Warte auf die Verbindung…"
-          }
-        }
-      }
-    },
-    "Connected, read only" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbunden, nur Lesen"
-          }
-        }
-      }
-    },
-    "%@ · %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ · %@"
-          }
-        }
-      }
-    },
-    "%@ holds the read-only key, so it can't suggest or make changes. Click Connect Again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ nutzt den Schlüssel nur zum Lesen und kann deshalb nichts vorschlagen oder ändern. Klicken Sie auf „Erneut verbinden“."
-          }
-        }
-      }
-    },
-    "Test build: Connect is off here, so it can't overwrite the setup of the WhisperShortcut you use every day." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Test-Build: „Verbinden“ ist hier aus, damit es die Einrichtung Ihres alltäglichen WhisperShortcut nicht überschreibt."
-          }
-        }
-      }
-    },
-    "%@, %@ and %lld more" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@, %2$@ und %3$lld weitere"
-          }
-        }
-      }
-    },
-    "Settings Change from an AI App" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einstellungsänderung von einer KI-App"
-          }
-        }
-      }
-    },
-    "Nothing has changed yet. Accepted changes apply together." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch wurde nichts geändert. Angenommene Änderungen werden zusammen übernommen."
-          }
-        }
-      }
-    },
-    "You can undo it in Settings → Claude & AI Apps." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sie können das unter Einstellungen → Claude & KI-Apps rückgängig machen."
-          }
-        }
-      }
-    },
-    "Restored, except: %@. They are no longer valid." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiederhergestellt, außer: %@. Diese sind nicht mehr gültig."
-          }
-        }
-      }
-    },
-    "When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. Off by default." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn eingeschaltet, werden Nutzungsprotokolle (Diktat, Dictate Prompt, Chat) gespeichert, damit „Aus Nutzung verbessern“ bessere Prompts vorschlagen kann. Standardmäßig aus."
-          }
-        }
-      }
-    },
-    "Current settings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktuelle Einstellungen"
-          }
-        }
-      }
-    },
-    "Suggested settings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorgeschlagene Einstellungen"
           }
         }
       }

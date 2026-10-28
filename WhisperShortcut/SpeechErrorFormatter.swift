@@ -194,26 +194,40 @@ struct SpeechErrorFormatter {
         """)
         
     case .localProcessingTimeout(let stage, let seconds):
-      let action: String
       switch stage {
-      case .modelLoad: action = "load"
-      case .decode: action = "transcribe your recording"
+      case .modelLoad:
+        return String(localized: """
+          ⏰ Local Model Timeout
+
+          The on-device model took too long to load (over \(seconds) seconds).
+
+          This usually means:
+          • The Mac is under heavy load or low on memory
+          • The model is still being compiled after a download or macOS update
+          • The recording is very long for this model size
+
+          Solutions:
+          • Wait a moment and try again
+          • Try a smaller model in Settings → Dictate
+          • Try with a shorter recording
+          """)
+      case .decode:
+        return String(localized: """
+          ⏰ Local Model Timeout
+
+          The on-device model took too long to transcribe your recording (over \(seconds) seconds).
+
+          This usually means:
+          • The Mac is under heavy load or low on memory
+          • The model is still being compiled after a download or macOS update
+          • The recording is very long for this model size
+
+          Solutions:
+          • Wait a moment and try again
+          • Try a smaller model in Settings → Dictate
+          • Try with a shorter recording
+          """)
       }
-      return String(localized: """
-        ⏰ Local Model Timeout
-
-        The on-device model took too long to \(action) (over \(seconds) seconds).
-
-        This usually means:
-        • The Mac is under heavy load or low on memory
-        • The model is still being compiled after a download or macOS update
-        • The recording is very long for this model size
-
-        Solutions:
-        • Wait a moment and try again
-        • Try a smaller model in Settings → Dictate
-        • Try with a shorter recording
-        """)
 
     case .resourceTimeout:
       return String(localized: """

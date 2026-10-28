@@ -392,7 +392,7 @@ struct ShortcutDefinition: Codable, Equatable, Hashable {
 
   private func renderShortcut(separator: String) -> String {
     if !isEnabled {
-      return "Disabled"
+      return String(localized: "Disabled")
     }
 
     var parts: [String] = []

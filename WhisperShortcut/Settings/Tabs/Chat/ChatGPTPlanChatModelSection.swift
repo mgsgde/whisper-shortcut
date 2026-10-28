@@ -114,7 +114,9 @@ struct ChatGPTPlanChatModelSection: View {
         modelID = ChatGPTPlanPreferences.modelID
       } catch {
         // A stale list is still useful; only say something when there is nothing to show.
-        if models.isEmpty { loadError = "Couldn't load your ChatGPT models: \(error.localizedDescription)" }
+        if models.isEmpty {
+          loadError = String(localized: "Couldn't load your ChatGPT models: \(error.localizedDescription)")
+        }
       }
       isLoading = false
     }

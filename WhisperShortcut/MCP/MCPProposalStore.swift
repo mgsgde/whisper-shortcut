@@ -156,15 +156,15 @@ final class MCPProposalStore: ObservableObject {
   func accept(_ id: String, editedContent: String? = nil) -> Result<String, Error> {
     MCPMain.run {
       guard let index = all.firstIndex(where: { $0.id == id && $0.status == .pending }) else {
-        return .failure(MCPConfigError(message: "No pending proposal with that id."))
+        return .failure(MCPConfigError(message: String(localized: "No pending proposal with that id.")))
       }
       var proposal = all[index]
       // No editing for `.settings`: the proposal window for settings has no text field to edit.
       if proposal.kind == .settings {
         guard let items = proposal.settingsChanges else {
-          return .failure(MCPConfigError(message: "This proposal has no settings."))
+          return .failure(MCPConfigError(message: String(localized: "This proposal has no settings.")))
         }
-        guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
+        guard let applier else { return .failure(MCPConfigError(message: String(localized: "Proposals are not available."))) }
         let result = applier.applySettingsBatch(
           catalog: settingsCatalog, items: items, rationale: proposal.rationale, viaProposal: true)
         if case .success = result {
@@ -187,19 +187,19 @@ final class MCPProposalStore: ObservableObject {
         DebugLogger.log("MCP-CONFIG: proposal \(proposal.kind.rawValue) accepted edited=\(proposal.edited) len=\(content.count)")
         return .success(proposal.id)
       }
-      guard let applier else { return .failure(MCPConfigError(message: "Proposals are not available.")) }
+      guard let applier else { return .failure(MCPConfigError(message: String(localized: "Proposals are not available."))) }
       let now = MCPConfigTargets.normalized(currentForCompare(proposal, applier: applier)) ?? ""
       if now != (MCPConfigTargets.normalized(proposal.previousContent) ?? "") {
         DebugLogger.log("MCP-CONFIG: proposal \(proposal.kind.rawValue) accept rejected (changed since)")
         return .failure(MCPConfigError(
-          message: "This changed since the AI app suggested it. Decline it and ask the AI app again."))
+          message: String(localized: "This changed since the AI app suggested it. Decline it and ask the AI app again.")))
       }
       let content = proposal.proposedContent ?? ""
       let result: Result<String, Error>
       switch proposal.kind {
       case .systemPrompt:
         guard let section = proposal.section.flatMap(SystemPromptSection.init(rawValue:)) else {
-          return .failure(MCPConfigError(message: "Unknown section."))
+          return .failure(MCPConfigError(message: String(localized: "Unknown section.")))
         }
         result = applier.applySystemPrompt(
           section: section, content: content, rationale: proposal.rationale, viaProposal: true)

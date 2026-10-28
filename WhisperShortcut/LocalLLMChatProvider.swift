@@ -156,7 +156,7 @@ final class LocalLLMChatProvider: LLMChatProvider {
        urlError.code == .cannotConnectToHost || urlError.code == .cannotFindHost
         || urlError.code == .networkConnectionLost || urlError.code == .timedOut {
       return TranscriptionError.networkError(
-        "Can't reach the local LLM server at \(endpoint). Start it (e.g. run `ollama serve` / open LM Studio) or fix the endpoint in Dictate Prompt settings.")
+        String(localized: "Can't reach the local LLM server at \(endpoint). Start it (e.g. run `ollama serve` / open LM Studio) or fix the endpoint in Dictate Prompt settings."))
     }
     return error
   }

@@ -543,6 +543,11 @@ class KeychainManager: KeychainManaging {
     if usesDataProtection && !legacy {
       query[kSecUseDataProtectionKeychain as String] = true
     }
+    // Hermetic tests read credential presence. A login-keychain ACL dialog would block the
+    // suite until someone clicks it; fail that lookup instead of asking.
+    if ProcessInfo.processInfo.environment["HERMETIC"] == "1" {
+      query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+    }
     return query
   }
 

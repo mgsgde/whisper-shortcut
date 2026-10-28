@@ -160,7 +160,7 @@ struct ChatGPTPlanConnectionSection: View {
       let confirmed = await service.signOut()
       ModelSelectionReconciler.reconcileAll()
       if !confirmed {
-        signOutWarning = "Signed out here, but ChatGPT didn't confirm it. To be sure, remove WhisperShortcut's access in ChatGPT Settings → Usage."
+        signOutWarning = String(localized: "Signed out here, but ChatGPT didn't confirm it. To be sure, remove WhisperShortcut's access in ChatGPT Settings → Usage.")
       }
     }
   }
@@ -200,7 +200,7 @@ struct ChatGPTPlanAccountStatusRow: View {
         .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
       if let email = service.accountEmail, service.planEnabled, !service.needsSignIn {
-        Label("\(email) · signed in under Settings → Accounts", systemImage: "checkmark.circle.fill")
+        Label(String(localized: "\(email) · signed in under Settings → Accounts"), systemImage: "checkmark.circle.fill")
           .labelStyle(TintedIconLabelStyle(tint: .green))
           .lineLimit(1)
           .truncationMode(.middle)
@@ -220,8 +220,8 @@ struct ChatGPTPlanAccountStatusRow: View {
   }
 
   private var statusText: String {
-    if service.needsSignIn { return "Sign-in expired" }
-    if service.accountEmail != nil { return "Plan use not allowed" }
-    return "Not signed in"
+    if service.needsSignIn { return String(localized: "Sign-in expired") }
+    if service.accountEmail != nil { return String(localized: "Plan use not allowed") }
+    return String(localized: "Not signed in")
   }
 }

@@ -172,7 +172,7 @@ enum DictatePromptAgent {
     if result.finalRoundText.isEmpty, result.toolLoopExhausted {
       // Otherwise the empty text would surface as "no speech detected", which is not what happened.
       throw TranscriptionError.networkError(
-        "Dictate Prompt kept looking things up and didn't finish. Try again, or say more precisely what to look up.")
+        String(localized: "Dictate Prompt kept looking things up and didn't finish. Try again, or say more precisely what to look up."))
     }
     // Only the last round: earlier rounds' lead-ins ("Let me check your calendar.") must not be pasted.
     return result.finalRoundText
@@ -184,7 +184,7 @@ enum DictatePromptAgent {
   private static func dictionary(from content: GeminiChatRequest.GeminiChatContent) throws -> [String: Any] {
     let data = try JSONEncoder().encode(content)
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw TranscriptionError.networkError("Could not prepare the Dictate Prompt request")
+      throw TranscriptionError.networkError(String(localized: "Could not prepare the Dictate Prompt request"))
     }
     return object
   }

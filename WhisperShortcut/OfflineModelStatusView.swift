@@ -157,7 +157,7 @@ struct ComposerModelReadinessBadge: View {
   private func shortLabel(_ phase: ReadyPhase) -> String {
     switch phase {
     case .downloading(let fraction, _): return "\(Int(fraction * 100))%"
-    case .loading: return "Loading…"
+    case .loading: return String(localized: "Loading…")
     }
   }
 }

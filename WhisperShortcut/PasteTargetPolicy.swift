@@ -32,7 +32,7 @@ enum PasteTargetPolicy {
   }
 
   /// The pill text shown when the result stayed on the clipboard.
-  static let copiedHint = "Copied – press ⌘V to paste"
+  static let copiedHint = String(localized: "Copied – press ⌘V to paste")
 
   /// - Parameter ownTextFieldStillFocused: WhisperShortcut had an editable text field focused when
   ///   the recording started, and the same window still has one focused now. Without it the

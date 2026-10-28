@@ -131,7 +131,7 @@ enum CloudModelOffer {
     alert.addButton(withTitle: String(localized: "Keep On-Device"))
 
     let lines = upgrades.map { "\($0.feature): \($0.fromName) → \($0.toName)" }.joined(separator: "\n")
-    let companies = providers.map(companyName).joined(separator: " and ")
+    let companies = providers.map(companyName).joined(separator: String(localized: " and "))
     alert.informativeText = String(localized: """
       These features still run on this Mac:
 
@@ -188,9 +188,9 @@ enum CloudModelOffer {
     case .grok: return "Grok"
     case .anthropic: return "Claude"
     case .openRouter: return "OpenRouter"
-    case .chatGPTPlan: return "your ChatGPT plan"
-    case .customOpenAI: return "your own server"
-    case .local, .localMLX: return "local models"
+    case .chatGPTPlan: return String(localized: "your ChatGPT plan")
+    case .customOpenAI: return String(localized: "your own server")
+    case .local, .localMLX: return String(localized: "local models")
     }
   }
 
@@ -202,8 +202,8 @@ enum CloudModelOffer {
     case .anthropic: return "Anthropic"
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return "OpenAI"
-    case .customOpenAI: return "your own server"
-    case .local, .localMLX: return "this Mac"
+    case .customOpenAI: return String(localized: "your own server")
+    case .local, .localMLX: return String(localized: "this Mac")
     }
   }
 }

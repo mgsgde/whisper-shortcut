@@ -16,7 +16,19 @@ enum WritingContext: String, Codable, CaseIterable {
   case workChat
   case defaultContext = "default"
 
+  /// Picker label. Profile headers and text sent to the model use `englishName`.
   var displayName: String {
+    switch self {
+    case .email: return String(localized: "Email")
+    case .messenger: return String(localized: "Messenger")
+    case .workChat: return String(localized: "Work Chat")
+    case .defaultContext: return String(localized: "Default")
+    }
+  }
+
+  /// English name written into `profile.md` and into prompts. A language change must not
+  /// rewrite those files or the text the model reads.
+  var englishName: String {
     switch self {
     case .email: return "Email"
     case .messenger: return "Messenger"
@@ -26,7 +38,7 @@ enum WritingContext: String, Codable, CaseIterable {
   }
 
   /// Section header in `profile.md`, same `=== … ===` convention as `system-prompts.md`.
-  var profileHeader: String { "=== \(displayName) ===" }
+  var profileHeader: String { "=== \(englishName) ===" }
 }
 
 enum WritingContextResolver {

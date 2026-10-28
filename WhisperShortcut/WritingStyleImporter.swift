@@ -19,11 +19,11 @@ enum WritingStyleImporter {
     var errorDescription: String? {
       switch self {
       case .offlineMode:
-        return "Not available in Offline Mode."
+        return String(localized: "Not available in Offline Mode.")
       case .googleNotConnected:
-        return "Connect your Google account in Settings first."
+        return String(localized: "Connect your Google account in Settings first.")
       case .noSamples:
-        return "No example messages yet. Import sent emails or add examples first."
+        return String(localized: "No example messages yet. Import sent emails or add examples first.")
       }
     }
   }
@@ -271,7 +271,7 @@ enum WritingStyleImporter {
     "properties": Dictionary(uniqueKeysWithValues: WritingContext.allCases.map {
       ($0.rawValue, [
         "type": "string",
-        "description": "Profile lines for \($0.displayName) messages, or an empty string when there are no examples for it.",
+        "description": "Profile lines for \($0.englishName) messages, or an empty string when there are no examples for it.",
       ] as [String: Any])
     }),
     "required": WritingContext.allCases.map(\.rawValue),
