@@ -11,7 +11,9 @@ struct MCPSettingsProposalReviewView: View {
   let onCancel: () -> Void
 
   private var acceptTitle: String {
-    items.count == 1 ? "Apply Change" : "Apply \(items.count) Changes"
+    items.count == 1
+      ? String(localized: "Apply Change")
+      : String(localized: "Apply \(items.count) Changes")
   }
 
   var body: some View {

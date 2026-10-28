@@ -76,9 +76,13 @@ struct UpdatesSection: View {
   }
 
   private var statusLine: String {
-    let version = "Version \(AppConstants.appVersion) (build \(AppConstants.appBuildNumber))"
-    guard let last = updater.lastUpdateCheckDate else { return version }
-    return "\(version) · last checked \(last.formatted(.relative(presentation: .named)))"
+    let version = AppConstants.appVersion
+    let build = AppConstants.appBuildNumber
+    guard let last = updater.lastUpdateCheckDate else {
+      return String(localized: "Version \(version) (build \(build))")
+    }
+    let checked = last.formatted(.relative(presentation: .named))
+    return String(localized: "Version \(version) (build \(build)) · last checked \(checked)")
   }
 
   /// Offline Mode promises that nothing leaves the Mac; the update check is the one exception,

@@ -291,8 +291,8 @@ final class LiveMeetingSession: NSObject {
         "LIVE-MEETING-SAFEGUARD: Showing duration prompt after \(thresholdMinutes) minutes")
       let alert = NSAlert()
       alert.messageText = String(localized: "Long meeting")
-      alert.informativeText =
-        "This meeting has been transcribing for over \(thresholdMinutes) minutes. Stop or continue?"
+      alert.informativeText = String(
+        localized: "This meeting has been transcribing for over \(thresholdMinutes) minutes. Stop or continue?")
       alert.alertStyle = .informational
       alert.addButton(withTitle: String(localized: "Stop meeting"))
       alert.addButton(withTitle: String(localized: "Continue"))
@@ -483,8 +483,8 @@ final class LiveMeetingSession: NSObject {
         await MainActor.run {
           PopupNotificationWindow.showError(
             verbatim: offline
-              ? "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library."
-              : "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back.",
+              ? String(localized: "The meeting transcript was saved, but the summary couldn't be generated because no on-device summary model is available. Pick one in Settings → Meetings → Meeting Summary Model; you can then regenerate the summary from the meeting library.")
+              : String(localized: "The meeting transcript was saved, but the summary couldn't be generated (the summary model is unavailable). You can regenerate it from the meeting library when the service is back."),
             title: "Live Meeting – Summary Failed"
           )
         }
@@ -596,8 +596,8 @@ final class LiveMeetingSession: NSObject {
     } else if announce {
       PopupNotificationWindow.showInfo(
         verbatim: recovered == 0
-          ? "The kept meeting audio contained no speech."
-          : "The meeting transcript is complete again. The summary is being regenerated.",
+          ? String(localized: "The kept meeting audio contained no speech.")
+          : String(localized: "The meeting transcript is complete again. The summary is being regenerated."),
         title: "Meeting Transcription Recovered")
     }
   }
@@ -1070,7 +1070,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
               self.didShowTranscriptionFailureAlert = true
               PopupNotificationWindow.showError(
                 verbatim: SpeechErrorFormatter.formatForUser(error)
-                  + (kept ? "\n\nThe meeting audio is kept on this Mac and can be transcribed later." : ""),
+                  + (kept
+                    ? String(localized: "\n\nThe meeting audio is kept on this Mac and can be transcribed later.")
+                    : ""),
                 title: "Live Meeting – Quota Reached"
               )
             }

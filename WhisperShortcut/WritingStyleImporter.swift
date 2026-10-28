@@ -271,7 +271,7 @@ enum WritingStyleImporter {
     "properties": Dictionary(uniqueKeysWithValues: WritingContext.allCases.map {
       ($0.rawValue, [
         "type": "string",
-        "description": "Profile lines for \($0.displayName) messages, or an empty string when there are no examples for it.",
+        "description": "Profile lines for \($0.englishName) messages, or an empty string when there are no examples for it.",
       ] as [String: Any])
     }),
     "required": WritingContext.allCases.map(\.rawValue),

@@ -14,13 +14,17 @@ struct PopupNotificationsSection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: includeToggle ? "Popup Notifications" : "Popup placement",
-        systemImage: "bell",
-        subtitle: includeToggle
-          ? "Show popup windows with transcription and AI response text"
-          : "Where the popup appears and how long it stays"
-      )
+      if includeToggle {
+        SectionHeader(
+          title: "Popup Notifications",
+          systemImage: "bell",
+          subtitle: "Show popup windows with transcription and AI response text")
+      } else {
+        SectionHeader(
+          title: "Popup placement",
+          systemImage: "bell",
+          subtitle: "Where the popup appears and how long it stays")
+      }
 
       if includeToggle {
         HStack(alignment: .center, spacing: 16) {

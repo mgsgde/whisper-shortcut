@@ -73,9 +73,9 @@ enum ScorecardMetric: CaseIterable, Identifiable {
 
   var sampleNoun: String {
     switch self {
-    case .rejectedSpellings: return "dictations"
-    case .followUps, .promptRetries, .dashes: return "prompts"
-    case .chatRetries: return "chat turns"
+    case .rejectedSpellings: return String(localized: "dictations")
+    case .followUps, .promptRetries, .dashes: return String(localized: "prompts")
+    case .chatRetries: return String(localized: "chat turns")
     }
   }
 
@@ -210,7 +210,7 @@ private struct ScorecardChange: View {
 private func scorecardChangeCaption(_ change: SmartImprovementScorecard.Report.Change) -> String {
   let section = SystemPromptSection(rawValue: change.section)?.scorecardDisplayName ?? change.section
   let date = change.ts.formatted(.dateTime.month(.abbreviated).day())
-  return "\(section), by \(scorecardSourceName(change.source)), \(date)"
+  return String(localized: "\(section), by \(scorecardSourceName(change.source)), \(date)")
 }
 
 private struct ScorecardLoading: View {
@@ -344,7 +344,9 @@ struct SmartImprovementScorecardSection: View {
             Text(metric.formatted(metric.value(in: week.metrics)))
               .foregroundStyle(thin ? .tertiary : .primary)
               .help(
-                "\(metric.sampleSize(in: week.metrics)) \(metric.sampleNoun)\(thin ? ", too few to read much into" : "")"
+                thin
+                  ? LocalizedStringResource("\(metric.sampleSize(in: week.metrics)) \(metric.sampleNoun), too few to read much into")
+                  : LocalizedStringResource("\(metric.sampleSize(in: week.metrics)) \(metric.sampleNoun)")
               )
           }
         }

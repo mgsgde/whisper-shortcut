@@ -126,7 +126,9 @@ struct ModelSelectionView: View {
     case .selfHosted:
       let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      guard let host = URL(string: url)?.host, !host.isEmpty else { return "→ not configured" }
+      guard let host = URL(string: url)?.host, !host.isEmpty else {
+        return String(localized: "→ not configured")
+      }
       return "→ \(host)"
     case .google, .openAI, .xai, .offline:
       return nil

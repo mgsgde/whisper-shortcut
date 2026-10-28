@@ -38,8 +38,8 @@ struct QuickPromptsSection: View {
           .disabled(rows.count >= QuickActionStore.maxCustomEntries)
           .help(
             rows.count >= QuickActionStore.maxCustomEntries
-              ? "Up to \(QuickActionStore.maxCustomEntries) prompts, one per ⌃ shortcut"
-              : "Add a prompt of your own")
+              ? LocalizedStringResource("Up to \(QuickActionStore.maxCustomEntries) prompts, one per ⌃ shortcut")
+              : LocalizedStringResource("Add a prompt of your own"))
           .pointerCursorOnHover()
 
           if rows.isEmpty, learnedEnabled {
@@ -87,7 +87,7 @@ struct QuickPromptsSection: View {
 
       TextField("e.g. Translate to English", text: binding(for: row.id))
         .textFieldStyle(.roundedBorder)
-        .accessibilityLabel("Quick prompt \(index + 1)")
+        .accessibilityLabel(String(localized: "Quick prompt \(index + 1)"))
 
       Text("\u{2303}\(index + 1)")
         .font(.callout.monospacedDigit())
@@ -103,7 +103,7 @@ struct QuickPromptsSection: View {
       .buttonStyle(.borderless)
       .disabled(index == 0)
       .help("Move up — a lower number")
-      .accessibilityLabel("Move prompt \(index + 1) up")
+      .accessibilityLabel(String(localized: "Move prompt \(index + 1) up"))
       .pointerCursorOnHover()
 
       Button {
@@ -113,7 +113,7 @@ struct QuickPromptsSection: View {
       }
       .buttonStyle(.borderless)
       .help("Remove this prompt")
-      .accessibilityLabel("Remove prompt \(index + 1)")
+      .accessibilityLabel(String(localized: "Remove prompt \(index + 1)"))
       .pointerCursorOnHover()
     }
   }
@@ -122,8 +122,8 @@ struct QuickPromptsSection: View {
   private var emptyState: some View {
     Text(
       learnedEnabled
-        ? "No prompts of your own yet. Until you add one, the list shows the instructions you repeat most, filled up with a few defaults."
-        : "No prompts of your own, and suggestions are off: the list stays hidden while you record."
+        ? LocalizedStringResource("No prompts of your own yet. Until you add one, the list shows the instructions you repeat most, filled up with a few defaults.")
+        : LocalizedStringResource("No prompts of your own, and suggestions are off: the list stays hidden while you record.")
     )
     .font(.callout)
     .foregroundColor(.secondary)
@@ -132,8 +132,8 @@ struct QuickPromptsSection: View {
 
   private var learnedCaption: String {
     rows.isEmpty
-      ? "Learned from your Dictate Prompt instructions of the last 30 days."
-      : "Learned from your Dictate Prompt instructions of the last 30 days, listed below your own prompts."
+      ? String(localized: "Learned from your Dictate Prompt instructions of the last 30 days.")
+      : String(localized: "Learned from your Dictate Prompt instructions of the last 30 days, listed below your own prompts.")
   }
 
   // MARK: - Editing

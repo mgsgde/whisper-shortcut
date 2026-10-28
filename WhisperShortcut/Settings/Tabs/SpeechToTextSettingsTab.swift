@@ -272,8 +272,8 @@ struct SpeechToTextSettingsTab: View {
     ModelDownloadRow(
       store: modelManager,
       model: modelType,
-      downloadedMessage:
-        "\(modelType.displayName) was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster.",
+      downloadedMessage: String(
+        localized: "\(modelType.displayName) was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster."),
       onError: { viewModel.showError($0) }
     ) {
       if modelType.isRecommended {

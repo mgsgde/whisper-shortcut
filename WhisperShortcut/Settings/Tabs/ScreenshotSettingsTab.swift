@@ -68,7 +68,9 @@ struct ScreenshotSettingsTab: View {
 
   private var folderDisplay: String {
     let path = viewModel.data.screenshotSaveFolderDisplayPath
-    return path.isEmpty ? "No folder selected" : (path as NSString).abbreviatingWithTildeInPath
+    return path.isEmpty
+      ? String(localized: "No folder selected")
+      : (path as NSString).abbreviatingWithTildeInPath
   }
 
   private func chooseFolder() {
