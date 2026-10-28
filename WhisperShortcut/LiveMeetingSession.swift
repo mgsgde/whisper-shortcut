@@ -78,7 +78,6 @@ final class LiveMeetingSession: NSObject {
 
   private var audioPreferenceObserver: NSObjectProtocol?
   private var outputRouteMonitor: OutputRouteMonitor?
-  private var inputDeviceGuard = MeetingInputDeviceGuard()
   private var systemCapture: SystemAudioCapture?
   /// The tap failed to start during this meeting. Reconcile must not start it again until the
   /// meeting starts over or the user changes the preference.
@@ -110,9 +109,6 @@ final class LiveMeetingSession: NSObject {
     let routing = MeetingAudioRouting.resolve(
       preference: .current, route: outputRouteMonitor?.route)
     if routing.mixesSystemAudio {
-      // Bluetooth earbuds as input force call mode (HFP) and ruin the tap; idempotent, so it also
-      // covers earbuds connected mid-meeting. Not undone when mixing stops (avoids flapping).
-      inputDeviceGuard.applyIfNeeded()
       if systemCapture == nil, !systemAudioStartFailed {
         recorder?.rotateNow(minimumChunkAge: 0.5)
         startSystemCapture()
@@ -280,12 +276,6 @@ final class LiveMeetingSession: NSObject {
     }
 
     // Create and start recorder
-    // Switch a Bluetooth input away before the first chunk records from the earbuds.
-    if MeetingAudioRouting.resolve(preference: .current, route: OutputRoute.current())
-      .mixesSystemAudio
-    {
-      inputDeviceGuard.applyIfNeeded()
-    }
     recorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
     recorder?.delegate = self
     recorder?.startSession(resumeTimeOffset: resumeOffset)
@@ -359,7 +349,6 @@ final class LiveMeetingSession: NSObject {
     let chunk = recorder.stopForTermination()
     stopOutputRouteMonitor()
     tearDownSystemCapture()
-    inputDeviceGuard.restore()
     self.recorder = nil
     guard let chunk else {
       DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
@@ -391,7 +380,6 @@ final class LiveMeetingSession: NSObject {
     recorder?.stopSession()
     stopOutputRouteMonitor()
     tearDownSystemCapture()
-    inputDeviceGuard.restore()
 
     // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
     // doesn't get stuck in "stopping" forever.
@@ -440,7 +428,6 @@ final class LiveMeetingSession: NSObject {
       return
     }
     finalized = true
-    inputDeviceGuard.restore()
     LiveMeetingRecordingMarker.clear()
     #if !APP_STORE && canImport(Sparkle)
     Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() }

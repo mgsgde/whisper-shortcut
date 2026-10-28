@@ -13,6 +13,81 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Foundation
+import os
+
+// MARK: - ChannelPeakMeter
+
+/// Per-raw-channel max |sample| and frame count for the diagnostics log. Written from the IO
+/// callback (real-time: preallocated storage, `os_unfair_lock_trylock`, skips the update when
+/// busy), read and reset from the main thread every few seconds.
+final class ChannelPeakMeter: @unchecked Sendable {
+  static let maxChannels = 8
+  private let peaks = UnsafeMutablePointer<Float>.allocate(capacity: ChannelPeakMeter.maxChannels)
+  private let lock = UnsafeMutablePointer<os_unfair_lock>.allocate(capacity: 1)
+  private var frames = 0
+  private var channels = 0
+
+  init() {
+    peaks.initialize(repeating: 0, count: Self.maxChannels)
+    lock.initialize(to: os_unfair_lock())
+  }
+
+  deinit {
+    peaks.deallocate()
+    lock.deallocate()
+  }
+
+  /// IO callback thread. Looks at every raw input channel before any downmix.
+  func record(
+    inputData: UnsafePointer<AudioBufferList>, isNonInterleaved: Bool, totalChannels: Int
+  ) {
+    guard os_unfair_lock_trylock(lock) else { return }
+    defer { os_unfair_lock_unlock(lock) }
+    let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inputData))
+    if isNonInterleaved {
+      let count = min(buffers.count, Self.maxChannels)
+      var frameCount = 0
+      for channel in 0..<count {
+        guard let data = buffers[channel].mData else { continue }
+        let samples = data.assumingMemoryBound(to: Float.self)
+        let n = Int(buffers[channel].mDataByteSize) / MemoryLayout<Float>.size
+        frameCount = max(frameCount, n)
+        var peak = peaks[channel]
+        for i in 0..<n { peak = max(peak, abs(samples[i])) }
+        peaks[channel] = peak
+      }
+      channels = max(channels, count)
+      frames += frameCount
+    } else {
+      guard buffers.count > 0, let data = buffers[0].mData, totalChannels > 0 else { return }
+      let samples = data.assumingMemoryBound(to: Float.self)
+      let n = Int(buffers[0].mDataByteSize) / (totalChannels * MemoryLayout<Float>.size)
+      let count = min(totalChannels, Self.maxChannels)
+      for channel in 0..<count {
+        var peak = peaks[channel]
+        var index = channel
+        for _ in 0..<n {
+          peak = max(peak, abs(samples[index]))
+          index += totalChannels
+        }
+        peaks[channel] = peak
+      }
+      channels = max(channels, count)
+      frames += n
+    }
+  }
+
+  /// Main thread. Returns the peaks since the last call and resets them.
+  func takeAndReset() -> (peaks: [Float], frames: Int) {
+    os_unfair_lock_lock(lock)
+    defer { os_unfair_lock_unlock(lock) }
+    let result = (Array(UnsafeBufferPointer(start: peaks, count: channels)), frames)
+    peaks.update(repeating: 0, count: Self.maxChannels)
+    frames = 0
+    channels = 0
+    return result
+  }
+}
 
 // MARK: - OutputRoute
 
@@ -353,6 +428,9 @@ final class SystemAudioCapture {
   private var builtFormat: (sampleRate: Double, inputChannels: Int)?
   private var outputDeviceNameAtStart = ""
   private var scratch: [Float] = []
+  private let peakMeter = ChannelPeakMeter()
+  /// Main thread only: when the last peaks line was logged.
+  private var lastPeakLog = Date()
 
   // Main thread only.
   private var ownProcessObjectIDMain = AudioObjectID(kAudioObjectUnknown)
@@ -466,6 +544,8 @@ final class SystemAudioCapture {
           }
           self.ownProcessObjectIDMain = ownObject
           self.tapActive = true
+          self.lastPeakLog = Date()
+          _ = self.peakMeter.takeAndReset()
           let elapsed = String(format: "%.2f", Date().timeIntervalSince(startedAt))
           DebugLogger.logAudio("SYSTEM-AUDIO: started tap \(summary) after \(elapsed)s")
           self.onOutputRouteChange?(OutputRoute.current())
@@ -644,6 +724,21 @@ final class SystemAudioCapture {
     builtFormat = (Self.readNominalSampleRate(outputDeviceID), Self.readInputChannelCount(outputDeviceID))
     builtFormatLock.unlock()
 
+    let aggregateStreams = Self.readInputStreamChannels(newAggregateDeviceID)
+    let aggregateNominal = Self.readNominalSampleRate(newAggregateDeviceID)
+    let outputNominal = Self.readNominalSampleRate(outputDeviceID)
+    let outputInputChannels = Self.readInputChannelCount(outputDeviceID)
+    let layout =
+      (usedFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+      ? "non-interleaved" : "interleaved"
+    DebugLogger.logAudio(
+      "SYSTEM-AUDIO-DIAG: aggregate in \(Int(usedFormat.mSampleRate)) Hz, "
+        + "\(usedFormat.mChannelsPerFrame) ch, \(layout), streams \(aggregateStreams), "
+        + "skip \(skipChannels), nominal \(Int(aggregateNominal)) Hz; "
+        + "tap \(Int(readTapFormat.mSampleRate)) Hz \(readTapFormat.mChannelsPerFrame) ch; "
+        + "output device \(outputDeviceNameAtStart) nominal \(Int(outputNominal)) Hz, "
+        + "input ch \(outputInputChannels)")
+
     let isFloat32 =
       usedFormat.mFormatID == kAudioFormatLinearPCM
       && (usedFormat.mFormatFlags & kAudioFormatFlagIsFloat) != 0
@@ -656,12 +751,15 @@ final class SystemAudioCapture {
     let totalChannels = Int(usedFormat.mChannelsPerFrame)
     let sampleRate = usedFormat.mSampleRate
     let simulate = simulateDenied
+    let meter = peakMeter
 
     var newIOProcID: AudioDeviceIOProcID?
     let ioBlock: AudioDeviceIOBlock = { [weak self] _, inInputData, inInputTime, outOutputData, _ in
       Self.silence(outOutputData)
       guard let self, isFloat32 else { return }
 
+      meter.record(
+        inputData: inInputData, isNonInterleaved: isNonInterleaved, totalChannels: totalChannels)
       let (frameCount, consumed) = self.downmix(
         inputData: inInputData, isNonInterleaved: isNonInterleaved,
         skipChannels: skipChannels, totalChannels: totalChannels)
@@ -827,6 +925,8 @@ final class SystemAudioCapture {
           guard gen == self.generation, self.isRunning else { return }
           self.ownProcessObjectIDMain = ownObject
           self.tapActive = true
+          self.lastPeakLog = Date()
+          _ = self.peakMeter.takeAndReset()
           self.onOutputRouteChange?(OutputRoute.current())
           if self.restartPending {
             self.restartPending = false
@@ -849,6 +949,7 @@ final class SystemAudioCapture {
   private func handleTick() {
     dispatchPrecondition(condition: .onQueue(.main))
     guard tapActive else { return }
+    logPeaksIfDue()
     let suspected = heuristic.tick(
       dt: 1, othersPlaying: Self.isAnyOtherProcessPlaying(except: ownProcessObjectIDMain),
       hasSeenNonZero: buffer.hasSeenNonZero)
@@ -856,6 +957,22 @@ final class SystemAudioCapture {
     permissionSuspected = suspected
     DebugLogger.logWarning("SYSTEM-AUDIO: permission suspected = \(suspected)")
     onPermissionSuspectedChange?(suspected)
+  }
+
+  /// Every 3 s: per-channel peaks and the real IO frame rate, then reset.
+  private func logPeaksIfDue() {
+    let now = Date()
+    let elapsed = now.timeIntervalSince(lastPeakLog)
+    guard elapsed >= 3 else { return }
+    lastPeakLog = now
+    let (peaks, frames) = peakMeter.takeAndReset()
+    let dbs = peaks.enumerated().map { index, peak -> String in
+      let db = max(-160, 20 * log10(Double(max(peak, 1e-8))))
+      return "ch\(index) \(String(format: "%.1f", db))"
+    }
+    let fps = Int((Double(frames) / elapsed).rounded())
+    DebugLogger.logAudio(
+      "SYSTEM-AUDIO-DIAG: peaks dB [\(dbs.joined(separator: ", "))] frames \(frames) in 3s (\(fps) fps)")
   }
 
   // MARK: Downmix (IO callback thread)
@@ -934,6 +1051,25 @@ final class SystemAudioCapture {
     var size = UInt32(MemoryLayout<Float64>.size)
     let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
     return status == noErr ? value : 0
+  }
+
+  /// Channels per input stream (one entry per AudioBuffer), e.g. [1, 2].
+  private static func readInputStreamChannels(_ deviceID: AudioObjectID) -> [Int] {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyStreamConfiguration,
+      mScope: kAudioObjectPropertyScopeInput,
+      mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr, size > 0
+    else { return [] }
+    let raw = UnsafeMutableRawPointer.allocate(
+      byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { raw.deallocate() }
+    guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, raw) == noErr else {
+      return []
+    }
+    let bufferList = raw.bindMemory(to: AudioBufferList.self, capacity: 1)
+    return UnsafeMutableAudioBufferListPointer(bufferList).map { Int($0.mNumberChannels) }
   }
 
   private static func readInputChannelCount(_ deviceID: AudioObjectID) -> Int {
