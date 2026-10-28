@@ -574,7 +574,7 @@ struct ChatSidebar: View {
         Text(title)
           .font(.system(size: 13))
           .foregroundColor(textColor)
-          .lineLimit(2)
+          .lineLimit(1)
           .truncationMode(.tail)
           .help(title)
       }
