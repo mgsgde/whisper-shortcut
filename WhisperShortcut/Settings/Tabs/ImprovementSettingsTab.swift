@@ -117,7 +117,7 @@ struct ImprovementSettingsTab: View {
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
 
-          Text("Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done.")
+          Text("Needs \"Save usage data\". Runs in the background; you get a notification when it is done.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -143,7 +143,7 @@ struct ImprovementSettingsTab: View {
               }
             }
           }
-          Text("When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes.")
+          Text("Runs Improve from usage on its own at this interval.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -153,7 +153,7 @@ struct ImprovementSettingsTab: View {
         let improvementSubscriptionMode = false
         PromptModelSelectionView(
           title: "Smart Improvement Model",
-          subtitle: "Used for Smart Improvement (Improve from usage). Pick any provider you have a key for.",
+          subtitle: "The model that reviews your usage and suggests better prompts.",
           showSectionHeader: false,
           selectedModel: Binding(
             get: { viewModel.data.selectedImprovementModel },

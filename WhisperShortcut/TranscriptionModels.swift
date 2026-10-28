@@ -297,7 +297,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .whisperTiny:
       return String(localized: "OpenAI Whisper Tiny • Fastest • ~75MB • Offline")
     case .whisperBase:
-      return String(localized: "OpenAI Whisper Base • Smallest download • ~140MB • Offline")
+      return String(localized: "OpenAI Whisper Base • Small download • ~140MB • Offline")
     case .whisperSmall:
       return String(localized: "OpenAI Whisper Small • Better quality • ~460MB • Offline")
     case .whisperMedium:

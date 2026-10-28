@@ -331,6 +331,15 @@ enum TextProcessingUtility {
   /// genuine short answer that is not glossary vocabulary ("Ja.") fails the content test and
   /// survives. Only "long audio, almost no text, and that text is verbatim glossary" is dropped.
   /// Returns "" when discarded — callers already treat empty output as "no speech detected".
+  ///
+  /// A second rule is independent of length: the transcript is the glossary read out in order.
+  /// Observed: near-silent ~25 s live-meeting chunks returned the whole 36-term glossary (344
+  /// chars), which the length floor cannot catch. Discarded when the words walk the glossary's
+  /// terms front to back, consuming every word, and cover at least `minOrderedEchoTerms` terms.
+  /// A real utterance made only of glossary names is short and rarely names four or more of
+  /// them in exactly the glossary's order; the echo copies the list in order. The walk matches
+  /// term by term (not word → first term) because a glossary can hold "Claude" and later
+  /// "Claude Code", and the second "Claude" word must still count for the later term.
   static func discardingGlossaryEchoTranscript(
     _ text: String, audioDurationSeconds: Double, glossaryTerms: [String], mode: String
   ) -> String {
@@ -340,7 +349,17 @@ enum TextProcessingUtility {
     // Real speech runs 10–20 chars/s; even slow, pause-heavy dictation stays above 5. Three
     // chars/s is far enough below that floor that only near-empty output trips it.
     let minPlausibleCharacters = audioDurationSeconds * 3.0
-    guard Double(trimmed.count) < minPlausibleCharacters else { return text }
+    if Double(trimmed.count) >= minPlausibleCharacters {
+      if let termCount = orderedGlossaryEchoTermCount(trimmed, glossaryTerms: glossaryTerms),
+        termCount >= minOrderedEchoTerms
+      {
+        DebugLogger.logError(
+          "\(mode): Discarding glossary-echo transcript (ordered-list rule: \(termCount) glossary terms in glossary order, \(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio)"
+        )
+        return ""
+      }
+      return text
+    }
 
     // Content test: every word in the transcript is a glossary term. Split on anything that
     // isn't a letter or digit so `sabaki.dance`, `Sabaki-Dance` and `Sabaki, Dance` all reduce
@@ -354,9 +373,31 @@ enum TextProcessingUtility {
     guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
 
     DebugLogger.logError(
-      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), all words are glossary terms)"
+      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), short-text rule: all words are glossary terms)"
     )
     return ""
+  }
+
+  private static let minOrderedEchoTerms = 4
+
+  /// Number of glossary terms the text spells out front to back, or nil unless *every* word of
+  /// the text is consumed that way.
+  private static func orderedGlossaryEchoTermCount(_ text: String, glossaryTerms: [String]) -> Int? {
+    let words = text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+      .map { foldForEchoCheck(String($0)) }
+    guard !words.isEmpty else { return nil }
+    var position = 0
+    var matched = 0
+    for term in glossaryTerms where position < words.count {
+      let termWords = term.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        .map { foldForEchoCheck(String($0)) }
+      guard !termWords.isEmpty, position + termWords.count <= words.count,
+        Array(words[position..<position + termWords.count]) == termWords
+      else { continue }
+      position += termWords.count
+      matched += 1
+    }
+    return position == words.count ? matched : nil
   }
 
   /// Strips a glossary list the model appended after an otherwise correct dictation.
@@ -377,6 +418,15 @@ enum TextProcessingUtility {
   /// order, so "WhisperShortcut Joschka" stays), and at least two distinct terms appear (a single
   /// "SumUp." is ordinary speech; "Wir nutzen SumUp und lemniscus" has words that are not in the
   /// glossary and stays).
+  ///
+  /// A *single* term is stripped only when it is exactly one term (a multi-word term such as
+  /// "Claude Code" counts as one) and the head holds at least `minHeadWordsForSingleTermEcho`
+  /// words. Gemini Flash Lite also appends just one name ("… wie ein 14 Zoll Notebook. Joschka."),
+  /// which is the same echo the model was told not to produce. A short head ("Das war's. SumUp.")
+  /// or a sign-off ("Viele Grüße. Joschka.") is ordinary speech and stays, and so does the same
+  /// term repeated ("Joschka Joschka."), which is not one term occurrence.
+  private static let minHeadWordsForSingleTermEcho = 5
+
   static func strippingTrailingGlossaryEcho(
     _ text: String, glossaryTerms: [String], mode: String
   ) -> String {
@@ -444,7 +494,14 @@ enum TextProcessingUtility {
       lastTermIndex = termIndex
       distinctTerms.insert(termIndex)
     }
-    guard distinctTerms.count >= 2 else { return text }
+    if distinctTerms.count < 2 {
+      guard let onlyTerm = distinctTerms.first else { return text }
+      let termWordCount = glossaryTerms[onlyTerm]
+        .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
+      let headWordCount = head.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).count
+      guard tailWords.count == termWordCount, headWordCount >= minHeadWordsForSingleTermEcho
+      else { return text }
+    }
 
     let trimmedTail = tail.trimmingCharacters(in: .whitespacesAndNewlines)
     DebugLogger.logWarning("\(mode): Stripped trailing glossary echo \"\(trimmedTail)\"")

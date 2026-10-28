@@ -157,6 +157,49 @@ struct TranscriptPlausibilityTests {
     #expect(result == veryFast)
   }
 
+  private static let longEchoList = "Claude, Christoph, Michelbach, Cursor, EnBW, Grok, GrokBot, Opus, Sonnet, Gemini, Implementer Queue, Karlsruhe, Kizomba, Salsa, AutoMagic, Onepager, Whisper Shortcut, Schönstein, BlockInfinity, Claude Code, MCP, Bachata, sabaki.dance, Wianco, Datev, Regulon, Lemniskus, Parakeet, Vibe-Coding, KMU, Odoo, Johanna, Pia, Codex, Wellensteyn, Goedde"
+  private static var longEchoGlossary: [String] { longEchoList.components(separatedBy: ", ") }
+
+  @Test("The whole glossary read out in order is discarded whatever its length")
+  func discardsFullGlossaryList() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      Self.longEchoList + ".", audioDurationSeconds: 25, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
+    #expect(result == "")
+  }
+
+  // Audio is 5 s here, not 25 s: at 25 s these ~25 chars sit under the 3 chars/s floor and the
+  // pre-existing short-text rule would fire, so the new ordered-list rule would go untested.
+  @Test("Four glossary terms in glossary order are discarded")
+  func discardsFourOrderedTerms() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Claude, Cursor, Grok, Opus", audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("Glossary terms in reverse order stay")
+  func keepsReversedTerms() {
+    let text = "Opus, Grok, Cursor, Claude"
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("Three ordered terms stay")
+  func keepsThreeOrderedTerms() {
+    let text = "Claude Cursor Grok"
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 5, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A real sentence with glossary names and other words stays")
+  func keepsSentenceWithGlossaryNames() {
+    let text = "Wir haben Claude, Cursor, Grok, Opus und Sonnet heute verglichen und dann entschieden."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 25, glossaryTerms: Self.longEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
   private static let trailingEchoGlossary = ["Joschka", "SumUp", "lemniscus", "WhisperShortcut"]
 
   @Test("Report A drops the glossary tacked on after the sentence")
@@ -181,6 +224,46 @@ struct TranscriptPlausibilityTests {
     let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
       text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
     #expect(result == text)
+  }
+
+  @Test("A lone term after a full-length sentence is stripped")
+  func stripsSingleTermAfterLongHead() {
+    let text = "Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook. Joschka."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == "Das MacBook Air hat ein 16 zu 10 Display, das heißt, du hast in der Höhe noch mal mehr Display. Also gefühlt wie ein 14 Zoll Notebook.")
+  }
+
+  @Test("A sign-off name stays")
+  func keepsSignOffName() {
+    let text = "Viele Grüße. Joschka."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("Out-of-order terms after a long head stay")
+  func keepsOutOfOrderAfterLongHead() {
+    let text = "Ich habe das heute mit dem neuen Tool gebaut. SumUp lemniscus Joschka."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("The same single term twice stays")
+  func keepsRepeatedSingleTerm() {
+    let text = "Ich habe das heute mit dem neuen Tool gebaut. Joschka Joschka."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: Self.trailingEchoGlossary, mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A multi-word term counts as one term")
+  func stripsMultiWordSingleTerm() {
+    let text = "Ich habe das heute mit dem neuen Tool gebaut. Claude Code."
+    let result = TextProcessingUtility.strippingTrailingGlossaryEcho(
+      text, glossaryTerms: ["Claude Code"], mode: "TEST")
+    #expect(result == "Ich habe das heute mit dem neuen Tool gebaut.")
   }
 
   @Test("Glossary words out of order stay")

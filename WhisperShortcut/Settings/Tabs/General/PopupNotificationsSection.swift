@@ -18,7 +18,7 @@ struct PopupNotificationsSection: View {
         title: includeToggle ? "Popup Notifications" : "Popup placement",
         systemImage: "bell",
         subtitle: includeToggle
-          ? "Show popup windows with transcription and AI response text"
+          ? "A small window shows the transcribed text and AI replies."
           : "Where the popup appears and how long it stays"
       )
 
@@ -97,14 +97,6 @@ struct PopupNotificationsSection: View {
         }
       }
 
-      if includeToggle {
-        Text(
-          "When enabled, popup windows will appear showing the transcribed text, AI responses, and voice response text."
-        )
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      }
     }
   }
 }

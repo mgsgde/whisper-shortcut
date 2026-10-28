@@ -73,7 +73,7 @@ struct ChatSettingsTab: View {
   private var modelSection: some View {
     PromptModelSelectionView(
       title: "Chat Model",
-      subtitle: "Choose which model powers the chat. API keys and your OpenRouter account are set in Settings → Accounts. “Own server” is your own OpenAI-compatible server (LiteLLM, Azure, …), shared with Dictate and Dictate Prompt.",
+      subtitle: "Which model answers in the chat. Keys and accounts live under Accounts.",
       selectedModel: $viewModel.data.selectedChatModel,
       availableModels: PromptModel.chatModels,
       recommendedModel: SettingsDefaults.selectedChatModel,
@@ -93,7 +93,7 @@ struct ChatSettingsTab: View {
       SectionHeader(
         title: "Window Behavior",
         systemImage: "macwindow",
-        subtitle: "Control how the chat window behaves"
+        subtitle: nil
       )
 
       Toggle(isOn: $viewModel.data.chatCloseOnFocusLoss) {

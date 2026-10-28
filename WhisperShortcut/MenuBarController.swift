@@ -83,6 +83,9 @@ class MenuBarController: NSObject {
 
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
+  /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
+  private var reportDictationItem: NSMenuItem?
+  private var reportDictationSeparator: NSMenuItem?
   private var blinkTimer: Timer?
   private var feedbackResetTask: Task<Void, Never>?
 
@@ -499,6 +502,19 @@ class MenuBarController: NSObject {
     // most-used surface, and three permanent contact rows in it would read as nagging.
     let feedbackItem = createMenuItem("Send Feedback", action: nil, tag: .sendFeedback)
     let feedbackMenu = NSMenu()
+    // First, because a report about a concrete dictation is the one the developer can act on
+    // without asking back. Hidden while there is no dictation to report.
+    let reportItem = NSMenuItem(
+      title: String(localized: "Report a Problem with Last Dictation…"),
+      action: #selector(reportLastDictation), keyEquivalent: "")
+    reportItem.target = self
+    reportItem.toolTip = String(
+      localized: "Send the last dictation with its model and version, after you check it")
+    let reportSeparator = NSMenuItem.separator()
+    feedbackMenu.addItem(reportItem)
+    feedbackMenu.addItem(reportSeparator)
+    reportDictationItem = reportItem
+    reportDictationSeparator = reportSeparator
     for channel in FeedbackLinks.Channel.allCases {
       let item = NSMenuItem(
         title: channel.menuTitle, action: #selector(sendFeedback(_:)), keyEquivalent: "")
@@ -822,7 +838,7 @@ class MenuBarController: NSObject {
     guard actions.indices.contains(index) else { return }
     runPromptInstruction(
       actions[index].text, source: "entry \(index + 1)",
-      isEdit: actions[index].kind != .other)
+      isEdit: actions[index].isEdit)
   }
 
   /// Shared by list entries and the "Type a prompt…" field: the text replaces the audio
@@ -1151,6 +1167,8 @@ class MenuBarController: NSObject {
   private func updateTranscriptionHistoryItems(_ menu: NSMenu) {
     let entries = TranscriptionHistoryStore.shared.entries
     menu.item(withTag: MenuTag.copyLastTranscription.rawValue)?.isHidden = entries.isEmpty
+    reportDictationItem?.isHidden = entries.isEmpty
+    reportDictationSeparator?.isHidden = entries.isEmpty
 
     // Drops away once the retained file is gone (recovered, or replaced by a newer cancellation).
     let hasCancelled = cancelledRecordingURL.map {
@@ -1285,7 +1303,8 @@ class MenuBarController: NSObject {
     // The list and its text field leave with the decision to stop, handing keyboard focus
     // back during the tail. A quick action sets its instruction before calling this.
     dismissQuickActions()
-    if pendingRecordingMode != nil || pendingMeetingSegment != nil, !appState.isRecording {
+    // A pending meeting segment is cancelled even though the meeting itself is recording.
+    if pendingMeetingSegment != nil || (pendingRecordingMode != nil && !appState.isRecording) {
       cancelPendingRecordingStart()
       return
     }
@@ -1838,6 +1857,17 @@ class MenuBarController: NSObject {
     DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
   }
 
+  @objc private func reportLastDictation() {
+    guard let entry = TranscriptionHistoryStore.shared.mostRecent else {
+      DebugLogger.logWarning("DICTATION-REPORT: Requested but history is empty")
+      return
+    }
+    let details = DictationReport.body(
+      entry: entry, glossaryTerms: speechService.glossaryTermsForReport(),
+      offlineMode: OfflineMode.isEnabled)
+    DictationReportWindowController.shared.show(details: details)
+  }
+
   @objc private func rateApp() {
     NSWorkspace.shared.open(ReviewPrompter.writeReviewURL)
     DebugLogger.log("REVIEW: User opened App Store write-review page from menu")
@@ -1862,12 +1892,15 @@ class MenuBarController: NSObject {
     retryAction: (() -> Void)? = nil,
     retryActionTitle: LocalizedStringResource = "Retry",
     dismissAction: (() -> Void)? = nil,
-    topUpURL: URL? = nil
+    topUpURL: URL? = nil,
+    changesAppState: Bool = true
   ) {
     if dismissProcessingFirst {
       PopupNotificationWindow.dismissProcessing()
     }
-    appState = appState.showError(shortTitle)
+    if changesAppState {
+      appState = appState.showError(shortTitle)
+    }
     PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
   }
 
@@ -2260,6 +2293,9 @@ class MenuBarController: NSObject {
       )
     }
     var pendingAudioRef: String?
+    // Taken before transcription starts, so strips logged by this dictation (and not an earlier
+    // one) can be attached to its history entry.
+    let dictationStart = Date()
     var audioRefCommitted = false
     defer {
       if let ref = pendingAudioRef, !audioRefCommitted {
@@ -2313,8 +2349,11 @@ class MenuBarController: NSObject {
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
         // inside the store) so "Copy Last Transcription" always works for the current session.
-        TranscriptionHistoryStore.shared.record(result)
         let modelDisplayName = await self.speechService.getTranscriptionModelInfo()
+        TranscriptionHistoryStore.shared.record(
+          result, mode: "Dictation", transcriptionModel: transcriptionModelForCapture.rawValue,
+          transcriptionModelName: modelDisplayName,
+          glossaryEchoRemoved: self.speechService.glossaryEchoStrips(since: dictationStart))
         pendingAudioRef = await captureTask?.value
         audioRefCommitted = true
         ContextLogger.shared.logTranscription(
@@ -3127,7 +3166,9 @@ extension MenuBarController: AudioRecorderDelegate {
         return
       }
 
-      guard case .recording(let recordingMode) = self.appState else {
+      // During a meeting `appState` belongs to the meeting, so unclaimed audio must not run the
+      // standard finish path.
+      guard case .recording(let recordingMode) = self.appState, recordingMode != .liveMeeting else {
         // The audio is the only copy of what the user said. Never drop it: a dictation is kept as
         // the recoverable cancelled recording ("Transcribe Cancelled Recording" in the status
         // menu); an instruction recording (prompt) would be pasted as dictation,
@@ -3317,6 +3358,8 @@ extension MenuBarController: AudioRecorderDelegate {
   }
 
   func audioRecorderDidFailWithError(_ error: Error) {
+    // A meeting owns `appState`; a failed segment shows its popup only.
+    let meetingOwnsState = isLiveMeetingActive
     recording = nil
     clipboardManager.discardRestorePoint()
     dismissQuickActions()
@@ -3336,11 +3379,12 @@ extension MenuBarController: AudioRecorderDelegate {
         message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
         dismissProcessingFirst: false,
         retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
-        retryActionTitle: "Open System Settings"
+        retryActionTitle: "Open System Settings",
+        changesAppState: !meetingOwnsState
       )
       return
     }
-    presentError(shortTitle: String(localized: "Recording Error"), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false)
+    presentError(shortTitle: String(localized: "Recording Error"), message: SpeechErrorFormatter.formatForUser(error), dismissProcessingFirst: false, changesAppState: !meetingOwnsState)
   }
 }
 
@@ -3755,7 +3799,8 @@ extension MenuBarController: ChunkProgressDelegate {
     let context = currentChunkContext
     let isTTS = context == .tts
 
-    appState = .processing(.splitting(context: context))
+    // A live meeting owns `appState`; a chunked segment inside it must not overwrite it (R107).
+    guard setChunkProcessingState(.processing(.splitting(context: context))) else { return }
     updateMenuBarIcon()
 
     // The bottom-center pill already shows processing for pill-driven flows — chunk

@@ -25,6 +25,13 @@ final class TranscriptionHistoryStore {
   struct Entry: Codable {
     let ts: Date
     let text: String
+    /// What a "report a problem" window needs. All optional so files written before they
+    /// existed still decode.
+    var mode: String?
+    var transcriptionModel: String?
+    var transcriptionModelName: String?
+    /// Tails the glossary-echo strip removed. Empty = ran, nothing removed; nil = unknown.
+    var glossaryEchoRemoved: [String]?
   }
 
   /// Matches the number of rows in the "Recent Transcriptions" submenu. Small on purpose: this is
@@ -59,12 +66,17 @@ final class TranscriptionHistoryStore {
 
   /// Records a dictation result. Ignores empty text and exact repeats of the newest entry, so a
   /// re-run that produces identical output doesn't push a useful older entry out of the list.
-  func record(_ text: String) {
+  func record(
+    _ text: String, mode: String? = nil, transcriptionModel: String? = nil,
+    transcriptionModelName: String? = nil, glossaryEchoRemoved: [String]? = nil
+  ) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
     queue.async {
       if self.storage.first?.text == trimmed { return }
-      self.storage.insert(Entry(ts: Date(), text: trimmed), at: 0)
+      self.storage.insert(Entry(
+        ts: Date(), text: trimmed, mode: mode, transcriptionModel: transcriptionModel,
+        transcriptionModelName: transcriptionModelName, glossaryEchoRemoved: glossaryEchoRemoved), at: 0)
       if self.storage.count > Self.maxEntries {
         self.storage.removeLast(self.storage.count - Self.maxEntries)
       }

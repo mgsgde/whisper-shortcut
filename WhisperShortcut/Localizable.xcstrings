@@ -1387,6 +1387,16 @@
         }
       }
     },
+    "A small window shows the transcribed text and AI replies." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein kleines Fenster zeigt den erkannten Text und die KI-Antworten."
+          }
+        }
+      }
+    },
     "About" : {
       "comment" : "Settings tab",
       "localizations" : {
@@ -1809,6 +1819,16 @@
         }
       }
     },
+    "Adds one short model call before reading." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kostet vor dem Vorlesen einen kurzen Modellaufruf."
+          }
+        }
+      }
+    },
     "Advanced" : {
       "localizations" : {
         "de" : {
@@ -1859,12 +1879,12 @@
         }
       }
     },
-    "AI apps can read your meetings and setup and change the glossary, instructions, writing style and commands. API keys are never shared." : {
+    "AI apps can read your meetings and setup and change the glossary, instructions, writing style, commands and app settings such as models and shortcuts. API keys are never shared." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Apps können Ihre Meetings und Ihre Einrichtung lesen und Glossar, Anweisungen, Schreibstil und Befehle ändern. API-Schlüssel werden nie weitergegeben."
+            "value" : "KI-Apps können Ihre Meetings und Ihre Einrichtung lesen und Glossar, Anweisungen, Schreibstil, Befehle sowie App-Einstellungen wie Modelle und Tastenkürzel ändern. API-Schlüssel werden nie weitergegeben."
           }
         }
       }
@@ -4119,6 +4139,16 @@
         }
       }
     },
+    "Compare Gemini models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini-Modelle vergleichen"
+          }
+        }
+      }
+    },
     "Completed task" : {
       "localizations" : {
         "de" : {
@@ -4745,6 +4775,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkript wird korrigiert"
+          }
+        }
+      }
+    },
+    "Cost" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kosten"
           }
         }
       }
@@ -8196,6 +8236,16 @@
         }
       }
     },
+    "Include screenshot:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot mitschicken:"
+          }
+        }
+      }
+    },
     "Incorrect API Key" : {
       "localizations" : {
         "de" : {
@@ -9975,6 +10025,16 @@
         }
       }
     },
+    "Needs \"Save usage data\". Runs in the background; you get a notification when it is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt „Nutzungsdaten speichern“. Läuft im Hintergrund; Sie werden benachrichtigt, wenn es fertig ist."
+          }
+        }
+      }
+    },
     "Needs %@" : {
       "localizations" : {
         "de" : {
@@ -9991,6 +10051,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Modell"
+          }
+        }
+      }
+    },
+    "Needs download" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download nötig"
           }
         }
       }
@@ -10012,6 +10082,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Konto, Sie bezahlen den Anbieter"
+          }
+        }
+      }
+    },
+    "Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -11634,6 +11714,16 @@
         }
       }
     },
+    "OpenAI Whisper Base • Small download • ~140MB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI Whisper Base • Kleiner Download • ~140 MB • Offline"
+          }
+        }
+      }
+    },
     "OpenAI Whisper Base • Smallest download • ~140MB • Offline" : {
       "localizations" : {
         "de" : {
@@ -12204,6 +12294,16 @@
         }
       }
     },
+    "Pastes the result at the cursor (⌘V). Needs Accessibility permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Benötigt die Berechtigung „Bedienungshilfen“."
+          }
+        }
+      }
+    },
     "Pause reading aloud" : {
       "localizations" : {
         "de" : {
@@ -12702,6 +12802,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prompt läuft"
+          }
+        }
+      }
+    },
+    "Puts back what you had copied before, right after pasting. Needs auto-paste." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellt direkt nach dem Einfügen wieder her, was Sie vorher kopiert hatten. Benötigt automatisches Einfügen."
           }
         }
       }
@@ -14217,12 +14327,32 @@
         }
       }
     },
+    "Runs Improve from usage on its own at this interval." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führt „Improve from usage“ in diesem Abstand selbst aus."
+          }
+        }
+      }
+    },
     "Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft im Hintergrund mit Ihren Nutzungsprotokollen. Schalten Sie „Nutzungsdaten speichern“ ein, damit Protokolle gesammelt werden. Sie können den Tab wechseln, Sie werden benachrichtigt, wenn es fertig ist."
+          }
+        }
+      }
+    },
+    "Runs on this Mac, nothing to install. Each model downloads once and stays on disk." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft auf diesem Mac, ohne Installation. Jedes Modell wird einmal geladen und bleibt gespeichert."
           }
         }
       }
@@ -14884,6 +15014,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Senden"
+          }
+        }
+      }
+    },
+    "Send a screenshot of your screen with each spoken Dictate Prompt, so the model sees what you see." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt bei jedem gesprochenen Dictate Prompt einen Screenshot mit, damit das Modell sieht, was Sie sehen."
           }
         }
       }
@@ -16473,6 +16613,16 @@
         }
       }
     },
+    "The model that reviews your usage and suggests better prompts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell, das Ihre Nutzung auswertet und bessere Prompts vorschlägt."
+          }
+        }
+      }
+    },
     "The next change you accept is measured from then on." : {
       "localizations" : {
         "de" : {
@@ -18021,6 +18171,16 @@
         }
       }
     },
+    "What happens when Dictate or Dictate Prompt is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was passiert, wenn Dictate oder Dictate Prompt fertig ist."
+          }
+        }
+      }
+    },
     "What is sent" : {
       "localizations" : {
         "de" : {
@@ -18147,6 +18307,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ob etwas diesen Mac verlassen darf und worauf WhisperShortcut hier zugreifen kann."
+          }
+        }
+      }
+    },
+    "Which model answers in the chat. Keys and accounts live under Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welches Modell im Chat antwortet. Schlüssel und Konten finden Sie unter Konten."
           }
         }
       }
