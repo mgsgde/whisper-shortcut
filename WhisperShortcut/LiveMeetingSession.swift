@@ -93,19 +93,22 @@ final class LiveMeetingSession: NSObject {
           if suspected { self?.showSystemAudioBlockedAlert() }
         }
       }
-      do {
-        try capture.start()
-        systemCapture = capture
-        recorder?.systemAudio = capture.buffer
-        store.isCapturingSystemAudio = true
-        DebugLogger.log("LIVE-MEETING: Audio mode online (system audio + microphone)")
-      } catch {
-        // Never abort the meeting: it keeps recording from the microphone.
+      // start() returns at once; the tap comes up off the main thread and a failure arrives via
+      // onStartFailed. Never abort the meeting: it keeps recording from the microphone.
+      capture.onStartFailed = { [weak self, weak capture] error in
+        guard let self, let capture, self.systemCapture === capture else { return }
         DebugLogger.logError("LIVE-MEETING: System audio capture failed to start: \(error)")
-        systemCapture = nil
+        self.recorder?.systemAudio = nil
+        self.systemCapture = nil
+        store.isCapturingSystemAudio = false
         store.systemAudioSeemsBlocked = true
-        showSystemAudioBlockedAlert()
+        self.showSystemAudioBlockedAlert()
       }
+      systemCapture = capture
+      recorder?.systemAudio = capture.buffer
+      store.isCapturingSystemAudio = true
+      capture.start()
+      DebugLogger.log("LIVE-MEETING: Audio mode online (system audio + microphone)")
     case .inPerson:
       if systemCapture != nil {
         // Cut the chunk recorded while online first, so it still gets its system audio.

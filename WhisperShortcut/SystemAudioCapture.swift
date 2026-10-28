@@ -155,11 +155,21 @@ final class SystemAudioCapture {
   let buffer = SystemAudioBuffer()
   var onOutputRouteChange: ((OutputRoute?) -> Void)?
   var onPermissionSuspectedChange: ((Bool) -> Void)?
+  /// Main thread. Fired when the tap could not be started or restarted; the capture has already
+  /// stopped itself.
+  var onStartFailed: ((Error) -> Void)?
   private(set) var isRunning = false
 
   private let queue = DispatchQueue(
     label: "com.magnusgoedde.whispershortcut.meeting-system-audio", qos: .userInteractive)
 
+  /// Serial queue that owns every Core Audio graph call (tap, aggregate device, IO proc start and
+  /// stop). `AudioDeviceStart` can block for a minute or more behind the macOS "System Audio
+  /// Recording" prompt, so none of it may ever run on the main thread.
+  private let controlQueue = DispatchQueue(
+    label: "com.magnusgoedde.whispershortcut.meeting-system-audio.control", qos: .userInitiated)
+
+  // Owned by `controlQueue`.
   private var ownProcessObjectID = AudioObjectID(kAudioObjectUnknown)
   private var processTapID = AudioObjectID(kAudioObjectUnknown)
   private var tapUUID: UUID?
@@ -168,39 +178,61 @@ final class SystemAudioCapture {
   private var ioProcID: AudioDeviceIOProcID?
   private var skipChannelCount = 0
   private var outputDeviceNameAtStart = ""
+  private var scratch: [Float] = []
 
+  // Main thread only.
+  private var ownProcessObjectIDMain = AudioObjectID(kAudioObjectUnknown)
+  /// True once the graph is up; the permission heuristic must not run while the tap is still
+  /// waiting on the permission prompt.
+  private var tapActive = false
+  /// Bumped by every start() and stop(); a late result from an older generation is ignored (the
+  /// stop() that superseded it already queued its own teardown behind it).
+  private var generation = 0
   private var defaultOutputListenerBlock: AudioObjectPropertyListenerBlock?
   private var restartInProgress = false
-
   private var timer: Timer?
   private var heuristic = SystemAudioPermissionHeuristic()
   private var permissionSuspected = false
-
-  private var scratch: [Float] = []
   private var simulateDenied = false
 
   deinit {
-    if Thread.isMainThread {
-      stop()
-    } else {
-      DispatchQueue.main.sync {
-        stop()
+    // Never blocks: the teardown runs on the control queue with copies of the IDs.
+    let ioProc = ioProcID
+    let aggregate = aggregateDeviceID
+    let tap = processTapID
+    if ioProc != nil || aggregate != kAudioObjectUnknown || tap != kAudioObjectUnknown {
+      controlQueue.async {
+        Self.destroyGraph(ioProcID: ioProc, aggregateDeviceID: aggregate, processTapID: tap)
       }
+    }
+    if let block = defaultOutputListenerBlock {
+      var address = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+        mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+      AudioObjectRemovePropertyListenerBlock(
+        AudioObjectID(kAudioObjectSystemObject), &address, DispatchQueue.main, block)
     }
   }
 
   // MARK: Start / stop
 
-  func start() throws {
+  /// Returns immediately. The graph is built on `controlQueue`; failure arrives via
+  /// `onStartFailed` (main thread).
+  func start() {
     dispatchPrecondition(condition: .onQueue(.main))
     guard !isRunning else { return }
 
     #if DEBUG
       simulateDenied = ProcessInfo.processInfo.environment["WS_SIMULATE_SYSTEM_AUDIO_DENIED"] == "1"
     #endif
-    scratch = [Float](repeating: 0, count: 32_768)
 
-    try setUpCaptureGraph()
+    isRunning = true
+    tapActive = false
+    generation += 1
+    let gen = generation
+    heuristic = SystemAudioPermissionHeuristic()
+    permissionSuspected = false
 
     var address = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyDefaultOutputDevice,
@@ -214,14 +246,12 @@ final class SystemAudioCapture {
     guard listenerStatus == noErr else {
       DebugLogger.logError(
         "SYSTEM-AUDIO: AudioObjectAddPropertyListenerBlock failed (\(listenerStatus))")
-      teardownCaptureGraph()
-      throw NSError(domain: "SystemAudioCapture", code: Int(listenerStatus))
+      let error = NSError(domain: "SystemAudioCapture", code: Int(listenerStatus))
+      stop()
+      DispatchQueue.main.async { [weak self] in self?.onStartFailed?(error) }
+      return
     }
     defaultOutputListenerBlock = listenerBlock
-
-    isRunning = true
-    heuristic = SystemAudioPermissionHeuristic()
-    permissionSuspected = false
 
     let newTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       self?.handleTick()
@@ -229,19 +259,53 @@ final class SystemAudioCapture {
     RunLoop.main.add(newTimer, forMode: .common)
     timer = newTimer
 
-    onOutputRouteChange?(OutputRoute.current())
+    let startedAt = Date()
+    controlQueue.async { [weak self] in
+      guard let self else { return }
+      do {
+        try self.setUpCaptureGraph()
+        let ownObject = self.ownProcessObjectID
+        let note = self.skipChannelCount > 0 ? ", skipped \(self.skipChannelCount) leading ch" : ""
+        let summary =
+          "\(Int(self.tapFormat.mSampleRate)) Hz, \(Int(self.tapFormat.mChannelsPerFrame)) ch, "
+          + "output \(self.outputDeviceNameAtStart)\(note)"
+        DispatchQueue.main.async {
+          guard gen == self.generation, self.isRunning else {
+            DebugLogger.logAudio("SYSTEM-AUDIO: start finished after stop, ignored")
+            return
+          }
+          self.ownProcessObjectIDMain = ownObject
+          self.tapActive = true
+          let elapsed = String(format: "%.2f", Date().timeIntervalSince(startedAt))
+          DebugLogger.logAudio("SYSTEM-AUDIO: started tap \(summary) after \(elapsed)s")
+          self.onOutputRouteChange?(OutputRoute.current())
+        }
+      } catch {
+        // Already logged inside setUpCaptureGraph().
+        DispatchQueue.main.async {
+          self.failIfCurrent(generation: gen, error: error)
+        }
+      }
+    }
+  }
 
-    let skipNote = skipChannelCount > 0 ? ", skipped \(skipChannelCount) leading ch" : ""
-    DebugLogger.logAudio(
-      "SYSTEM-AUDIO: started tap \(Int(tapFormat.mSampleRate)) Hz, "
-        + "\(Int(tapFormat.mChannelsPerFrame)) ch, output \(outputDeviceNameAtStart)\(skipNote)")
+  /// Main thread. Tears everything down and reports the failure, unless a stop()/start() has
+  /// superseded `generation`.
+  private func failIfCurrent(generation gen: Int, error: Error) {
+    guard gen == generation, isRunning else { return }
+    stop()
+    onStartFailed?(error)
   }
 
   /// Idempotent; never clears `buffer` (the transcript pipeline still needs what was already
-  /// captured once recording stops).
+  /// captured once recording stops). Never blocks: the teardown is queued on `controlQueue`,
+  /// behind a start that may still be waiting inside `AudioDeviceStart`.
   func stop() {
+    dispatchPrecondition(condition: .onQueue(.main))
     let wasRunning = isRunning
     isRunning = false
+    tapActive = false
+    generation += 1
 
     timer?.invalidate()
     timer = nil
@@ -256,7 +320,9 @@ final class SystemAudioCapture {
       defaultOutputListenerBlock = nil
     }
 
-    teardownCaptureGraph()
+    controlQueue.async { [weak self] in
+      self?.teardownCaptureGraph()
+    }
 
     if wasRunning {
       DebugLogger.logAudio("SYSTEM-AUDIO: stopped")
@@ -269,6 +335,8 @@ final class SystemAudioCapture {
   /// starts the aggregate device. On any failure, tears down only what this call created and
   /// rethrows; the listener, timer, and buffer (owned by the caller) are untouched.
   private func setUpCaptureGraph() throws {
+    dispatchPrecondition(condition: .onQueue(controlQueue))
+    if scratch.isEmpty { scratch = [Float](repeating: 0, count: 32_768) }
     var ownPID = getpid()
     var translateAddress = AudioObjectPropertyAddress(
       mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
@@ -427,9 +495,9 @@ final class SystemAudioCapture {
     }
     ioProcID = newIOProcID
 
-    // Apple's header notes `kAudioAggregateDeviceTapAutoStartKey` can make this call block
-    // until another process is actually playing audio. Called synchronously anyway, on the
-    // caller's (main) thread, per spec — not moved to a background queue.
+    // Blocks while macOS shows the "System Audio Recording" prompt (measured 90 s), and Apple's
+    // header notes `kAudioAggregateDeviceTapAutoStartKey` can block it further. Runs on
+    // `controlQueue`, never on the main thread.
     status = AudioDeviceStart(newAggregateDeviceID, newIOProcID)
     guard status == noErr else {
       DebugLogger.logError("SYSTEM-AUDIO: AudioDeviceStart failed (\(status))")
@@ -441,22 +509,28 @@ final class SystemAudioCapture {
   /// Tears down the tap, aggregate device, and IO proc, each only if it was created. Does not
   /// touch the default-output listener, the timer, or `buffer`.
   private func teardownCaptureGraph() {
+    dispatchPrecondition(condition: .onQueue(controlQueue))
+    Self.destroyGraph(
+      ioProcID: ioProcID, aggregateDeviceID: aggregateDeviceID, processTapID: processTapID)
+    ioProcID = nil
+    aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
+    processTapID = AudioObjectID(kAudioObjectUnknown)
+    tapUUID = nil
+  }
+
+  private static func destroyGraph(
+    ioProcID: AudioDeviceIOProcID?, aggregateDeviceID: AudioObjectID, processTapID: AudioObjectID
+  ) {
     if let ioProcID {
       AudioDeviceStop(aggregateDeviceID, ioProcID)
       AudioDeviceDestroyIOProcID(aggregateDeviceID, ioProcID)
     }
-    ioProcID = nil
-
     if aggregateDeviceID != kAudioObjectUnknown {
       AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
     }
-    aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
-
     if processTapID != kAudioObjectUnknown {
       AudioHardwareDestroyProcessTap(processTapID)
     }
-    processTapID = AudioObjectID(kAudioObjectUnknown)
-    tapUUID = nil
   }
 
   // MARK: Default output device changes
@@ -465,18 +539,29 @@ final class SystemAudioCapture {
     dispatchPrecondition(condition: .onQueue(.main))
     guard isRunning, !restartInProgress else { return }
     restartInProgress = true
-    defer { restartInProgress = false }
+    tapActive = false
+    let gen = generation
 
-    teardownCaptureGraph()
-
-    do {
-      try setUpCaptureGraph()
-      onOutputRouteChange?(OutputRoute.current())
-    } catch {
-      // Already logged inside setUpCaptureGraph().
-      isRunning = false
-      timer?.invalidate()
-      timer = nil
+    controlQueue.async { [weak self] in
+      guard let self else { return }
+      self.teardownCaptureGraph()
+      do {
+        try self.setUpCaptureGraph()
+        let ownObject = self.ownProcessObjectID
+        DispatchQueue.main.async {
+          self.restartInProgress = false
+          guard gen == self.generation, self.isRunning else { return }
+          self.ownProcessObjectIDMain = ownObject
+          self.tapActive = true
+          self.onOutputRouteChange?(OutputRoute.current())
+        }
+      } catch {
+        // Already logged inside setUpCaptureGraph().
+        DispatchQueue.main.async {
+          self.restartInProgress = false
+          self.failIfCurrent(generation: gen, error: error)
+        }
+      }
     }
   }
 
@@ -484,8 +569,9 @@ final class SystemAudioCapture {
 
   private func handleTick() {
     dispatchPrecondition(condition: .onQueue(.main))
+    guard tapActive else { return }
     let suspected = heuristic.tick(
-      dt: 1, othersPlaying: Self.isAnyOtherProcessPlaying(except: ownProcessObjectID),
+      dt: 1, othersPlaying: Self.isAnyOtherProcessPlaying(except: ownProcessObjectIDMain),
       hasSeenNonZero: buffer.hasSeenNonZero)
     guard suspected != permissionSuspected else { return }
     permissionSuspected = suspected
