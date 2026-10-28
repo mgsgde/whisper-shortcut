@@ -340,21 +340,32 @@ enum TextProcessingUtility {
   /// them in exactly the glossary's order; the echo copies the list in order. The walk matches
   /// term by term (not word → first term) because a glossary can hold "Claude" and later
   /// "Claude Code", and the second "Claude" word must still count for the later term.
+  ///
+  /// Live-meeting chunks prefix each line with a speaker label. Observed 2026-10-28 (Gemini 3.1
+  /// Flash-Lite): an 11.4 s near-silent chunk came back as "Speaker A: Claude Code." (23
+  /// characters), and a ~25 s chunk as "Speaker A: Claude, Christoph, Michelbach, ..." — the whole
+  /// glossary in glossary order. Both rules below judge the text with those labels removed; a
+  /// transcript that is only labels is discarded.
   static func discardingGlossaryEchoTranscript(
     _ text: String, audioDurationSeconds: Double, glossaryTerms: [String], mode: String
   ) -> String {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty, audioDurationSeconds > 0, !glossaryTerms.isEmpty else { return text }
 
+    // "Speaker A:" / "Sprecher A:" are not glossary words; both rules judge the words after them.
+    let judged = strippingSpeakerLabels(trimmed)
+    guard !judged.isEmpty else { return "" }
+    let labelNote = judged != trimmed ? " (speaker labels ignored)" : ""
+
     // Real speech runs 10–20 chars/s; even slow, pause-heavy dictation stays above 5. Three
     // chars/s is far enough below that floor that only near-empty output trips it.
     let minPlausibleCharacters = audioDurationSeconds * 3.0
-    if Double(trimmed.count) >= minPlausibleCharacters {
-      if let termCount = orderedGlossaryEchoTermCount(trimmed, glossaryTerms: glossaryTerms),
+    if Double(judged.count) >= minPlausibleCharacters {
+      if let termCount = orderedGlossaryEchoTermCount(judged, glossaryTerms: glossaryTerms),
         termCount >= minOrderedEchoTerms
       {
         DebugLogger.logError(
-          "\(mode): Discarding glossary-echo transcript (ordered-list rule: \(termCount) glossary terms in glossary order, \(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio)"
+          "\(mode): Discarding glossary-echo transcript (ordered-list rule: \(termCount) glossary terms in glossary order, \(judged.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio)\(labelNote)"
         )
         return ""
       }
@@ -368,12 +379,12 @@ enum TextProcessingUtility {
       term.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
         .map { foldForEchoCheck(String($0)) }
     })
-    let words = trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+    let words = judged.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
       .map { foldForEchoCheck(String($0)) }
     guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
 
     DebugLogger.logError(
-      "\(mode): Discarding glossary-echo transcript (\(trimmed.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), short-text rule: all words are glossary terms)"
+      "\(mode): Discarding glossary-echo transcript (\(judged.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), short-text rule: all words are glossary terms)\(labelNote)"
     )
     return ""
   }
@@ -398,6 +409,22 @@ enum TextProcessingUtility {
       matched += 1
     }
     return position == words.count ? matched : nil
+  }
+
+  /// One leading "Speaker A:" / "Sprecher A:" per line. The joined remainder is trimmed.
+  private static let speakerLabelPrefixRegex = try! NSRegularExpression(
+    pattern: #"^\s*(Speaker|Sprecher)\s+[A-Za-z0-9]{1,3}\s*:\s*"#,
+    options: [.caseInsensitive])
+
+  private static func strippingSpeakerLabels(_ text: String) -> String {
+    let strippedLines = text.components(separatedBy: "\n").map { line -> String in
+      let range = NSRange(line.startIndex..., in: line)
+      guard let match = speakerLabelPrefixRegex.firstMatch(in: line, range: range),
+        let matched = Range(match.range, in: line)
+      else { return line }
+      return String(line[matched.upperBound...])
+    }
+    return strippedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// Strips a glossary list the model appended after an otherwise correct dictation.
