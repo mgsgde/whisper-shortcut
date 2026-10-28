@@ -787,8 +787,9 @@ class GeminiAPIClient {
             // without its signature and is dropped with the rest of the stalled round.
             guard didYieldText else {
               // Reaches the user only when the automatic re-send (outer catch) stalled as well.
+              let seconds = Int(Constants.streamStallTimeout)
               throw TranscriptionError.networkError(
-                "\(model) stopped responding twice in a row (no progress for \(Int(Constants.streamStallTimeout))s). Please try again.")
+                String(localized: "\(model) stopped responding twice in a row (no progress for \(seconds)s). Please try again."))
             }
             DebugLogger.logWarning(
               "GEMINI-CHAT-STREAM: stalled after streaming text — finishing with the partial reply (objects=\(chunkCount))")

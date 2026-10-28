@@ -106,9 +106,9 @@ final class OpenAIChatProvider: LLMChatProvider {
   private static func invalidKeyMessage(route: Route) -> String {
     switch route {
     case .customEndpoint:
-      return "API key is invalid for the custom endpoint. Check Settings → Chat or Accounts."
+      return String(localized: "API key is invalid for the custom endpoint. Check Settings → Chat or Accounts.")
     case .openRouter:
-      return "OpenRouter rejected the key. Reconnect your account in Settings → Accounts."
+      return String(localized: "OpenRouter rejected the key. Reconnect your account in Settings → Accounts.")
     case .openAI:
       return ProviderCredentials.invalidKeyMessage(.openAI)
     }

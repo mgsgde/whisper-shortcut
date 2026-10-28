@@ -75,7 +75,7 @@ final class AnthropicChatProvider: LLMChatProvider {
         do {
           let apiKey = try Self.requireAPIKey()
           guard let url = URL(string: Self.messagesURL) else {
-            throw TranscriptionError.networkError("Invalid Anthropic endpoint URL")
+            throw TranscriptionError.networkError(String(localized: "Invalid Anthropic endpoint URL"))
           }
 
           var request = URLRequest(url: url)
@@ -139,7 +139,7 @@ final class AnthropicChatProvider: LLMChatProvider {
             try await RetryBackoff.withPreFirstTokenRetry(logTag: "ANTHROPIC-CHAT-STREAM") {
               let (bytes, response) = try await self.session.bytes(for: request)
               guard let http = response as? HTTPURLResponse else {
-                throw TranscriptionError.networkError("Invalid response from Anthropic API")
+                throw TranscriptionError.networkError(String(localized: "Invalid response from Anthropic API"))
               }
               if http.statusCode < 200 || http.statusCode >= 300 {
                 var errData = Data()
@@ -375,7 +375,7 @@ final class AnthropicChatProvider: LLMChatProvider {
   ) async throws -> [String: Any] {
     let apiKey = try Self.requireAPIKey()
     guard let url = URL(string: Self.messagesURL) else {
-      throw TranscriptionError.networkError("Invalid Anthropic endpoint URL")
+      throw TranscriptionError.networkError(String(localized: "Invalid Anthropic endpoint URL"))
     }
 
     var request = URLRequest(url: url)
@@ -415,7 +415,7 @@ final class AnthropicChatProvider: LLMChatProvider {
     DebugLogger.logNetwork("ANTHROPIC-STRUCTURED: POST \(Self.messagesURL) model=\(model) schema=\(schemaName)")
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
-      throw TranscriptionError.networkError("Invalid response from Anthropic API")
+      throw TranscriptionError.networkError(String(localized: "Invalid response from Anthropic API"))
     }
     if http.statusCode < 200 || http.statusCode >= 300 {
       let text = String(data: data, encoding: .utf8) ?? ""
@@ -425,7 +425,7 @@ final class AnthropicChatProvider: LLMChatProvider {
 
     guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let content = obj["content"] as? [[String: Any]] else {
-      throw TranscriptionError.networkError("Anthropic structured response was not valid JSON")
+      throw TranscriptionError.networkError(String(localized: "Anthropic structured response was not valid JSON"))
     }
     // Select by block type: thinking blocks come first on always-thinking models.
     let text = content
@@ -436,13 +436,13 @@ final class AnthropicChatProvider: LLMChatProvider {
           let result = try? JSONSerialization.jsonObject(with: json) as? [String: Any] else {
       switch obj["stop_reason"] as? String {
       case "refusal":
-        throw TranscriptionError.networkError("Claude declined this request.")
+        throw TranscriptionError.networkError(String(localized: "Claude declined this request."))
       case "max_tokens":
-        throw TranscriptionError.networkError("Claude's structured reply was cut off at the token limit.")
+        throw TranscriptionError.networkError(String(localized: "Claude's structured reply was cut off at the token limit."))
       default:
         break
       }
-      throw TranscriptionError.networkError("Anthropic structured response did not include valid JSON")
+      throw TranscriptionError.networkError(String(localized: "Anthropic structured response did not include valid JSON"))
     }
     return result
   }
@@ -465,7 +465,7 @@ final class AnthropicChatProvider: LLMChatProvider {
       status: status,
       body: body,
       invalidKey: TranscriptionError.networkError(
-        "Anthropic API key is invalid. Check the key in Settings → Accounts."))
+        String(localized: "Anthropic API key is invalid. Check the key in Settings → Accounts.")))
   }
 
   /// Effort / adaptive thinking is supported on Sonnet, Opus, Fable, and Haiku 5.5 (default
@@ -490,7 +490,7 @@ final class AnthropicChatProvider: LLMChatProvider {
     guard !unsupported.isEmpty else { return nil }
     let types = unsupported.sorted().joined(separator: ", ")
     return TranscriptionError.fileError(
-      "Claude only supports image attachments — \(types) isn't supported. Switch to a Gemini model to chat about PDFs and documents."
+      String(localized: "Claude only supports image attachments — \(types) isn't supported. Switch to a Gemini model to chat about PDFs and documents.")
     )
   }
 }

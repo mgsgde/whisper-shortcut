@@ -186,17 +186,19 @@ final class MCPChangeLog: ObservableObject {
   /// EVERY item in the batch is skipped, nothing happened — report `.conflict` the same way a
   /// single-target undo would, rather than a vacuous "undone" with nothing restored.
   private func undoSettings(_ change: MCPChange, index: Int) -> MCPUndoResult {
-    guard let items = change.settingsChanges else { return .failed("This change has no settings.") }
+    guard let items = change.settingsChanges else {
+      return .failed(String(localized: "This change has no settings."))
+    }
 
     let skipReasons: [String?] = items.map { item in
       guard let setting = settingsCatalog.first(where: { $0.id == item.id }) else {
-        return "setting no longer exists"
+        return String(localized: "setting no longer exists")
       }
       guard let toValue = MCPSettingsCatalog.decodeValue(item.toJSON) else {
-        return "could not read the current value"
+        return String(localized: "could not read the current value")
       }
       guard MCPSettingsCatalog.sameValue(setting.read(), toValue) else {
-        return "changed since"
+        return String(localized: "changed since")
       }
       return nil
     }
@@ -209,12 +211,12 @@ final class MCPChangeLog: ObservableObject {
     var skipped: [String] = []
     for (item, skipReason) in zip(items, skipReasons) {
       if let skipReason {
-        skipped.append("\(item.title) (\(skipReason))")
+        skipped.append("\(MCPSettingsCatalog.reviewTitle(item.title)) (\(skipReason))")
         continue
       }
       switch MCPSettingsCatalog.restore(catalog: settingsCatalog, id: item.id, json: item.fromJSON) {
       case .restored: break
-      case .invalid(let reason): skipped.append("\(item.title) (\(reason))")
+      case .invalid(let reason): skipped.append("\(MCPSettingsCatalog.reviewTitle(item.title)) (\(reason))")
       }
     }
     changes[index].undoneAt = Date()
@@ -231,17 +233,17 @@ final class MCPChangeLog: ObservableObject {
       break
     case .glossaryAdd:
       guard targets.systemPrompts.updateSection(.whisperGlossary, content: change.previousContent ?? "") else {
-        throw MCPConfigError(message: "Could not write the glossary.")
+        throw MCPConfigError(message: String(localized: "Could not write the glossary."))
       }
     case .systemPrompt:
       guard let section = SystemPromptSection(rawValue: change.target),
         targets.systemPrompts.updateSection(section, content: change.previousContent ?? "")
-      else { throw MCPConfigError(message: "Could not write the section.") }
+      else { throw MCPConfigError(message: String(localized: "Could not write the section.")) }
     case .writingStyle:
       if let previous = change.previousContent {
         targets.writingStyle.saveProfile(previous)
         guard targets.writingStyle.loadProfile() == previous else {
-          throw MCPConfigError(message: "Could not write the writing style profile.")
+          throw MCPConfigError(message: String(localized: "Could not write the writing style profile."))
         }
       } else {
         // The AI app created the profile; remove it instead of leaving an empty one.

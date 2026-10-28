@@ -40,18 +40,18 @@ enum ChatGPTPlanIDTokenValidator {
 
     var errorDescription: String? {
       switch self {
-      case .malformed: return "ChatGPT returned an ID token that could not be read."
-      case .unsupportedAlgorithm(let alg): return "ChatGPT signed the ID token with an unsupported algorithm (\(alg))."
-      case .missingClaim(let claim): return "ChatGPT's ID token is missing \"\(claim)\"."
-      case .issuerMismatch: return "ChatGPT's ID token came from an unexpected issuer. Sign-in was refused."
-      case .audienceMismatch: return "ChatGPT's ID token was issued for a different app. Sign-in was refused."
-      case .expired: return "ChatGPT's ID token has already expired. Try signing in again."
-      case .nonceMismatch: return "ChatGPT's sign-in response did not match this attempt. Try signing in again."
+      case .malformed: return String(localized: "ChatGPT returned an ID token that could not be read.")
+      case .unsupportedAlgorithm(let alg): return String(localized: "ChatGPT signed the ID token with an unsupported algorithm (\(alg)).")
+      case .missingClaim(let claim): return String(localized: "ChatGPT's ID token is missing \"\(claim)\".")
+      case .issuerMismatch: return String(localized: "ChatGPT's ID token came from an unexpected issuer. Sign-in was refused.")
+      case .audienceMismatch: return String(localized: "ChatGPT's ID token was issued for a different app. Sign-in was refused.")
+      case .expired: return String(localized: "ChatGPT's ID token has already expired. Try signing in again.")
+      case .nonceMismatch: return String(localized: "ChatGPT's sign-in response did not match this attempt. Try signing in again.")
       case .subjectMismatch:
-        return "That is a different ChatGPT account than the one saved for this app. Sign in with the same account, or use a different account instead."
-      case .signatureInvalid: return "ChatGPT's ID token signature could not be verified. Sign-in was refused."
-      case .keyNotFound: return "ChatGPT's signing key for this token was not found. Try signing in again."
-      case .jwksUnavailable: return "Could not load ChatGPT's signing keys. Check your connection and try again."
+        return String(localized: "That is a different ChatGPT account than the one saved for this app. Sign in with the same account, or use a different account instead.")
+      case .signatureInvalid: return String(localized: "ChatGPT's ID token signature could not be verified. Sign-in was refused.")
+      case .keyNotFound: return String(localized: "ChatGPT's signing key for this token was not found. Try signing in again.")
+      case .jwksUnavailable: return String(localized: "Could not load ChatGPT's signing keys. Check your connection and try again.")
       }
     }
   }

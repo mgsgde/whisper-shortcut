@@ -233,6 +233,75 @@ enum MCPSettingsCatalog {
     }
   }
 
+  /// English `title` / `label(for:)` stay what `get_settings` and `update_settings` return to the
+  /// AI app. The proposal review window uses these copies so the same words can be translated.
+  static func reviewTitle(_ english: String) -> String {
+    switch english {
+    case "Dictation model": return String(localized: "Dictation model")
+    case "Chat model": return String(localized: "Chat model")
+    case "OpenRouter chat model id": return String(localized: "OpenRouter chat model id")
+    case "Meeting transcription model": return String(localized: "Meeting transcription model")
+    case "Dictate Prompt model": return String(localized: "Dictate Prompt model")
+    case "Meeting summary model": return String(localized: "Meeting summary model")
+    case "Smart Improvement model": return String(localized: "Smart Improvement model")
+    case "Read Aloud model": return String(localized: "Read Aloud model")
+    case "ChatGPT plan model id": return String(localized: "ChatGPT plan model id")
+    case "Custom endpoint model id": return String(localized: "Custom endpoint model id")
+    case "OpenRouter dictation model id": return String(localized: "OpenRouter dictation model id")
+    case "Local Dictate Prompt model id": return String(localized: "Local Dictate Prompt model id")
+    case "Dictation language": return String(localized: "Dictation language")
+    case "Temperature": return String(localized: "Temperature")
+    case "Thinking effort": return String(localized: "Thinking effort")
+    case "Toggle Dictation shortcut": return String(localized: "Toggle Dictation shortcut")
+    case "Toggle Dictate Prompt shortcut": return String(localized: "Toggle Dictate Prompt shortcut")
+    case "Screenshot shortcut": return String(localized: "Screenshot shortcut")
+    case "Read Aloud shortcut": return String(localized: "Read Aloud shortcut")
+    case "Add to Glossary shortcut": return String(localized: "Add to Glossary shortcut")
+    case "Open Chat shortcut": return String(localized: "Open Chat shortcut")
+    case "Open Settings shortcut": return String(localized: "Open Settings shortcut")
+    case "Show dictation notifications": return String(localized: "Show dictation notifications")
+    case "Notification position": return String(localized: "Notification position")
+    case "Notification duration": return String(localized: "Notification duration")
+    case "Auto-paste after dictation": return String(localized: "Auto-paste after dictation")
+    case "Restore clipboard after auto-paste": return String(localized: "Restore clipboard after auto-paste")
+    case "Hold fn to dictate": return String(localized: "Hold fn to dictate")
+    case "Close Settings when it loses focus": return String(localized: "Close Settings when it loses focus")
+    case "Close Chat when clicking outside": return String(localized: "Close Chat when clicking outside")
+    case "Read Aloud smart rewrite": return String(localized: "Read Aloud smart rewrite")
+    case "Playback speed": return String(localized: "Playback speed")
+    case "Gemini voice": return String(localized: "Gemini voice")
+    case "OpenAI voice": return String(localized: "OpenAI voice")
+    case "xAI voice": return String(localized: "xAI voice")
+    case "macOS voice": return String(localized: "macOS voice")
+    case "Save dictation screenshots": return String(localized: "Save dictation screenshots")
+    case "Ask when recording longer than": return String(localized: "Ask when recording longer than")
+    case "Meeting chunk interval": return String(localized: "Meeting chunk interval")
+    case "Ask when meeting longer than": return String(localized: "Ask when meeting longer than")
+    case "Screenshot context": return String(localized: "Screenshot context")
+    case "X accounts for Grok": return String(localized: "X accounts for Grok")
+    case "Run Improve from usage automatically": return String(localized: "Run Improve from usage automatically")
+    case "Launch at login": return String(localized: "Launch at login")
+    case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
+    case "Let Dictate Prompt use read-only tools": return String(localized: "Let Dictate Prompt use read-only tools")
+    case "Let Claude search the web": return String(localized: "Let Claude search the web")
+    default: return english
+    }
+  }
+
+  /// Review-window copy of a stored English value label. Anything that is not one of these fixed
+  /// words (a model name, a shortcut, text the user typed) is shown unchanged.
+  static func reviewLabel(_ english: String) -> String {
+    switch english {
+    case "On": return String(localized: "On")
+    case "Off": return String(localized: "Off")
+    case "(empty)": return String(localized: "(empty)")
+    case "Same as dictation": return String(localized: "Same as dictation")
+    case "Disabled": return String(localized: "Disabled")
+    case "Provider default": return String(localized: "Provider default")
+    default: return english
+    }
+  }
+
   /// `modifiers` names the MCP shortcut JSON format accepts; anything else (including other
   /// `HotKey.Key(string:)` modifier spellings like "capslock" or "fn") is rejected rather than
   /// silently masked, so an AI app's typo surfaces as an error instead of a wrong shortcut.
@@ -348,9 +417,13 @@ enum MCPSettingsCatalog {
   /// `MCPChangeLog.undo` for a `.settings` batch. Skips (rather than fails the whole undo) an item
   /// whose setting no longer validates — e.g. the model it names lost its credential meanwhile.
   static func restore(catalog: [MCPSetting], id: String, json: String) -> MCPSettingsRestoreOutcome {
-    guard let setting = catalog.first(where: { $0.id == id }) else { return .invalid("setting no longer exists") }
+    guard let setting = catalog.first(where: { $0.id == id }) else {
+      return .invalid(String(localized: "setting no longer exists"))
+    }
     guard setting.unavailableReason() == nil else { return .invalid(setting.unavailableReason() ?? "unavailable") }
-    guard let value = decodeValue(json) else { return .invalid("could not read the previous value") }
+    guard let value = decodeValue(json) else {
+      return .invalid(String(localized: "could not read the previous value"))
+    }
     if let problem = setting.validate(value) { return .invalid(problem) }
     do {
       try setting.apply(value)

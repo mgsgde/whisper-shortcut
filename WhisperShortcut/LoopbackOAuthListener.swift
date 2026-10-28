@@ -190,11 +190,11 @@ final class LoopbackOAuthListener {
     var errorDescription: String? {
       switch self {
       case .socketFailed(let code):
-        return "Could not open a local socket for the sign-in callback (errno \(code))."
+        return String(localized: "Could not open a local socket for the sign-in callback (errno \(code)).")
       case .bindFailed(let code):
-        return "Could not bind a local port for the sign-in callback (errno \(code))."
+        return String(localized: "Could not bind a local port for the sign-in callback (errno \(code)).")
       case .listenFailed(let code):
-        return "Could not listen on the local sign-in callback port (errno \(code))."
+        return String(localized: "Could not listen on the local sign-in callback port (errno \(code)).")
       }
     }
   }

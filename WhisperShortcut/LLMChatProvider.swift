@@ -371,12 +371,14 @@ enum OpenAICompatibleStructured {
       let text = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("\(logTag)-STRUCTURED: HTTP \(http.statusCode) body=\(text.prefix(500))")
       if http.statusCode == 401 {
-        throw TranscriptionError.networkError("\(logTag) API key is invalid. Check the key in Settings.")
+        throw TranscriptionError.networkError(String(localized: "\(logTag) API key is invalid. Check the key in Settings."))
       }
       if http.statusCode == 429 {
         throw TranscriptionError.rateLimited(retryAfter: nil)
       }
-      throw TranscriptionError.networkError("\(logTag) API error HTTP \(http.statusCode): \(text.prefix(500))")
+      let status = http.statusCode
+      let body = String(text.prefix(500))
+      throw TranscriptionError.networkError(String(localized: "\(logTag) API error HTTP \(status): \(body)"))
     }
 
     guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -385,7 +387,7 @@ enum OpenAICompatibleStructured {
           let content = message["content"] as? String,
           let contentData = content.data(using: .utf8),
           let parsed = try? JSONSerialization.jsonObject(with: contentData) as? [String: Any] else {
-      throw TranscriptionError.networkError("\(logTag) structured response was not valid JSON")
+      throw TranscriptionError.networkError(String(localized: "\(logTag) structured response was not valid JSON"))
     }
     return parsed
   }
@@ -1044,7 +1046,7 @@ enum ChatProviderHTTPError {
       return TranscriptionError.serverError(status)
     }
     let detail = message(from: body) ?? "HTTP \(status)"
-    return TranscriptionError.networkError("\(provider) API error: \(detail)")
+    return TranscriptionError.networkError(String(localized: "\(provider) API error: \(detail)"))
   }
 
   /// Pulls `error.message` (or `message`) out of a JSON body; otherwise a short plaintext snippet.
@@ -1084,7 +1086,7 @@ enum ChatAttachmentGuard {
     guard !unsupported.isEmpty else { return nil }
     let types = unsupported.sorted().joined(separator: ", ")
     return TranscriptionError.fileError(
-      "\(provider) can't use \(types) attachments. Switch to a Gemini model to chat about PDFs and documents."
+      String(localized: "\(provider) can't use \(types) attachments. Switch to a Gemini model to chat about PDFs and documents.")
     )
   }
 }

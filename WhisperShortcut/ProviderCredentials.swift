@@ -87,7 +87,8 @@ enum ProviderCredentials {
 
   /// Message shown when the provider rejects the key we sent (HTTP 401/403).
   static func invalidKeyMessage(_ kind: Kind) -> String {
-    "\(kind.displayName) API key is invalid. Check the key in Settings → Accounts."
+    let name = kind.displayName
+    return String(localized: "\(name) API key is invalid. Check the key in Settings → Accounts.")
   }
 
   /// Pre-flight check for callers that only need to fail early and don't hold the key themselves
@@ -164,11 +165,11 @@ extension ChatModelProvider {
     case .key(let kind):
       return ProviderCredentials.missingKeyMessage(kind)
     case .gemini:
-      return "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models."
+      return String(localized: "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models.")
     case .endpoint:
-      return "Custom endpoint is not configured — set URL and API key in Settings → Chat."
+      return String(localized: "Custom endpoint is not configured — set URL and API key in Settings → Chat.")
     case .chatGPTPlan:
-      return "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan."
+      return String(localized: "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan.")
     case .none:
       return ""
     }

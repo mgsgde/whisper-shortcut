@@ -145,7 +145,7 @@ final class MCPServer: ObservableObject {
           onFailure: { [weak self] reason in
             DispatchQueue.main.async {
               guard let self else { return }
-              self.status = .failed("The local server stopped: \(reason). Turn it off and on again.")
+              self.status = .failed(String(localized: "The local server stopped: \(reason). Turn it off and on again."))
               DebugLogger.log("MCP-SERVER: Accept loop stopped: \(reason)")
             }
           }
@@ -167,7 +167,7 @@ final class MCPServer: ObservableObject {
       } catch {
         let message: String
         if let e = error as? LoopbackHTTPServer.ServerError, e.errno == EADDRINUSE {
-          message = "Port \(requested) is in use by another app. Quit it or choose a different port."
+          message = String(localized: "Port \(requested) is in use by another app. Quit it or choose a different port.")
         } else {
           message = error.localizedDescription
         }
