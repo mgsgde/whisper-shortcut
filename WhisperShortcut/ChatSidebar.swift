@@ -48,13 +48,12 @@ struct ChatSidebar: View {
   }
 
   private enum DateGroup: CaseIterable {
-    case today, yesterday, previous7Days, previous30Days, older
+    case today, yesterday, previous30Days, older
 
     var label: String {
       switch self {
       case .today: return String(localized: "Today")
       case .yesterday: return String(localized: "Yesterday")
-      case .previous7Days: return String(localized: "Previous 7 Days")
       case .previous30Days: return String(localized: "Previous 30 Days")
       case .older: return String(localized: "Older")
       }
@@ -66,14 +65,13 @@ struct ChatSidebar: View {
     if cal.isDateInToday(date) { return .today }
     if cal.isDateInYesterday(date) { return .yesterday }
     let daysAgo = cal.dateComponents([.day], from: date, to: Date()).day ?? 0
-    if daysAgo < 7 { return .previous7Days }
     if daysAgo < 30 { return .previous30Days }
     return .older
   }
 
   /// Collapse every date group except Today and Yesterday.
   private static func defaultCollapsedGroups() -> Set<DateGroup> {
-    Set([.previous7Days, .previous30Days, .older])
+    Set([.previous30Days, .older])
   }
 
   /// Date a meeting buckets by: when the meeting took place (parsed from
