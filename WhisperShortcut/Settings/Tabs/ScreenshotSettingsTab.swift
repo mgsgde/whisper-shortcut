@@ -91,7 +91,7 @@ struct ScreenshotSettingsTab: View {
       SectionHeader(
         title: "How to Use",
         systemImage: "questionmark.circle",
-        subtitle: "Capture a screenshot anywhere on your Mac"
+        subtitle: nil
       )
 
       ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.screenshotCapture)

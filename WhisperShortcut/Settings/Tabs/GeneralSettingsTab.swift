@@ -45,7 +45,7 @@ struct GeneralSettingsTab: View {
       SectionHeader(
         title: "Window Behavior",
         systemImage: "macwindow",
-        subtitle: "Control how the Settings window behaves"
+        subtitle: nil
       )
 
       Toggle(isOn: $viewModel.data.settingsCloseOnFocusLoss) {

@@ -20,6 +20,9 @@ struct ModelTile: View {
   var setupBadge: String? = nil
   /// Tooltip for `setupBadge`: where to fix it.
   var setupHelp: String? = nil
+  /// `key.fill` for a missing key; on-device models that still have to be downloaded pass
+  /// `arrow.down.circle` so "Needs download" sits in the same badge row instead of a second line.
+  var setupSymbol: String = "key.fill"
   let onTap: () -> Void
 
   @State private var isHovered = false
@@ -49,7 +52,7 @@ struct ModelTile: View {
             badgeLabel(String(localized: "Best \(providerPick) pick", comment: "Tile badge: the provider's own recommended model, e.g. 'Best Gemini pick'"), symbol: "star", tint: .yellow)
           }
           if let setupBadge {
-            badgeLabel(setupBadge, symbol: "key.fill", tint: .orange)
+            badgeLabel(setupBadge, symbol: setupSymbol, tint: .orange)
               .help(setupHelp ?? "")
           }
         }
