@@ -4268,7 +4268,7 @@ struct ChatView: View {
   private var meetingAudioStatusHelp: LocalizedStringKey {
     switch liveStore.audioRouting {
     case .headphones, .manualMix:
-      return "With a headset your microphone can't hear the other participants, so the sound your Mac plays is recorded too (everything except WhisperShortcut). With Bluetooth earbuds the meeting records from your Mac's microphone, so the earbuds stay out of call mode and the Mac sound stays clear."
+      return "With a headset your microphone can't hear the other participants, so the sound your Mac plays is recorded too (everything except WhisperShortcut)."
     case .speakers:
       return "Without a headset your microphone hears the other participants through the speakers, so only the microphone is recorded."
     case .noOutputDevice, .manualMicrophoneOnly:

@@ -21474,12 +21474,12 @@
         }
       }
     },
-    "With a headset your microphone can't hear the other participants, so the sound your Mac plays is recorded too (everything except WhisperShortcut). With Bluetooth earbuds the meeting records from your Mac's microphone, so the earbuds stay out of call mode and the Mac sound stays clear." : {
+    "With a headset your microphone can't hear the other participants, so the sound your Mac plays is recorded too (everything except WhisperShortcut)." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mit Headset hört dein Mikrofon die anderen nicht, deshalb wird auch der Ton deines Macs aufgenommen (alles außer WhisperShortcut). Bei Bluetooth-Kopfhörern nimmt das Meeting über das Mikrofon deines Macs auf, damit die Kopfhörer nicht in den Anrufmodus wechseln und der Mac-Ton klar bleibt."
+            "value" : "Mit Headset hört dein Mikrofon die anderen nicht, deshalb wird auch der Ton deines Macs aufgenommen (alles außer WhisperShortcut)."
           }
         }
       }
