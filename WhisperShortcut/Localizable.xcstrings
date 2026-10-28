@@ -9314,16 +9314,6 @@
         }
       }
     },
-    "Hide this hint for now" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hinweis vorerst ausblenden"
-          }
-        }
-      }
-    },
     "Hide token" : {
       "localizations" : {
         "de" : {
@@ -12202,16 +12192,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Google-API-Schlüssel eingerichtet. Tragen Sie Ihren Gemini-API-Schlüssel unter Einstellungen → Konten ein, um Gemini-Modelle zu nutzen."
-          }
-        }
-      }
-    },
-    "No headset detected. Without a headset, In person is enough." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kein Headset erkannt. Ohne Headset reicht Vor Ort."
           }
         }
       }
@@ -15581,26 +15561,6 @@
         }
       }
     },
-    "Records only your microphone, for meetings in the same room." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nimmt nur Ihr Mikrofon auf, für Meetings im selben Raum."
-          }
-        }
-      }
-    },
-    "Records the other participants from your Mac's sound, plus your microphone. Best with a headset." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nimmt die anderen Teilnehmer über den Ton Ihres Mac auf, dazu Ihr Mikrofon. Am besten mit Headset."
-          }
-        }
-      }
-    },
     "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted." : {
       "localizations" : {
         "de" : {
@@ -18820,16 +18780,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zu %@ wechseln"
-          }
-        }
-      }
-    },
-    "Switch to In person" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zu Vor Ort wechseln"
           }
         }
       }
@@ -22918,6 +22868,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔴 Dictate Prompt wird aufgenommen …"
+          }
+        }
+      }
+    },
+    "Always mix in Mac sound" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac-Ton immer mit aufnehmen"
+          }
+        }
+      }
+    },
+    "Automatic (by output device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch (nach Ausgabegerät)"
+          }
+        }
+      }
+    },
+    "Headphones · others via Mac sound" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopfhörer · Gegenseite über Mac-Ton"
+          }
+        }
+      }
+    },
+    "Mac sound + microphone · manual" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac-Ton + Mikrofon · manuell"
+          }
+        }
+      }
+    },
+    "Mac sound is everything your Mac plays, except WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac-Ton ist alles, was dein Mac abspielt, außer WhisperShortcut."
+          }
+        }
+      }
+    },
+    "Microphone only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone only · manual" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Mikrofon · manuell"
+          }
+        }
+      }
+    },
+    "Only your microphone is recorded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
+    "Output: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabe: %@"
+          }
+        }
+      }
+    },
+    "Speakers · microphone only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lautsprecher · nur Mikrofon"
+          }
+        }
+      }
+    },
+    "Your microphone already hears the other participants through the speakers. Mixing in the Mac sound would record them twice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Mikrofon hört die anderen schon über die Lautsprecher. Mit dem Mac-Ton dazu wären sie doppelt in der Aufnahme."
+          }
+        }
+      }
+    },
+    "Your microphone can't hear the other participants in your headphones, so the sound your Mac plays is recorded too. That is all Mac sound, except WhisperShortcut itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Mikrofon hört die anderen in deinen Kopfhörern nicht, deshalb wird auch der Ton aufgenommen, den dein Mac abspielt. Das ist der gesamte Mac-Ton, außer WhisperShortcut selbst."
           }
         }
       }

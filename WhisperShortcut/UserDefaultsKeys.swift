@@ -132,7 +132,9 @@ enum UserDefaultsKeys {
   // MARK: - Live Meeting Settings
   static let meetingTranscriptSectionExpanded = "meetingTranscriptSectionExpanded"
   static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
+  /// Legacy Online / In person switch. Read only by `MeetingAudioPreference.migrateLegacyAudioMode`.
   static let liveMeetingAudioMode = "liveMeetingAudioMode"
+  static let liveMeetingAudioPreference = "liveMeetingAudioPreference"
   static let liveMeetingSafeguardDurationSeconds = "liveMeetingSafeguardDurationSeconds"
   static let selectedTranscriptionModelForMeetings = "selectedTranscriptionModelForMeetings"
   static let selectedMeetingSummaryModel = "selectedMeetingSummaryModel"

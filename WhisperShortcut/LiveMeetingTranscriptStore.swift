@@ -91,30 +91,38 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   private let queue = DispatchQueue(label: "com.magnusgoedde.whispershortcut.liveMeetingStore", qos: .userInitiated)
 
-  /// Whether the meeting expects the other participants through the speakers (system audio is
-  /// recorded next to the microphone) or is held in person. Mirrors `MeetingAudioMode.current`.
-  @Published private(set) var audioMode: MeetingAudioMode = MeetingAudioMode.current
+  /// Persisted choice: automatic (follow the output device), always mix Mac sound, or microphone
+  /// only. Follows `MeetingAudioPreference.current`.
+  @Published private(set) var audioPreference: MeetingAudioPreference = .automatic
 
   /// A system audio tap is running for the live meeting.
   @Published var isCapturingSystemAudio = false
 
-  /// The current output device is probably speakers, so the microphone also picks up the others.
-  @Published var outputIsLikelySpeaker = false
+  /// The Mac's default output device while a meeting is running. Nil once the meeting ends.
+  @Published var outputRoute: OutputRoute?
 
   /// System audio is probably not being recorded (permission missing, or the tap failed to start).
   @Published var systemAudioSeemsBlocked = false
 
+  /// What the running meeting records, from the preference and the output route.
+  var audioRouting: MeetingAudioRouting {
+    MeetingAudioRouting.resolve(preference: audioPreference, route: outputRoute)
+  }
+
   private init() {
+    // The legacy Online / In person key has to be gone before the first read of the new preference.
+    MeetingAudioPreference.migrateLegacyAudioMode()
+    audioPreference = MeetingAudioPreference.current
     NotificationCenter.default.addObserver(
-      forName: .liveMeetingAudioModeChanged, object: nil, queue: .main
+      forName: .liveMeetingAudioPreferenceChanged, object: nil, queue: .main
     ) { [weak self] _ in
-      self?.audioMode = MeetingAudioMode.current
+      self?.audioPreference = MeetingAudioPreference.current
     }
   }
 
   private func resetSystemAudioFlags() {
     isCapturingSystemAudio = false
-    outputIsLikelySpeaker = false
+    outputRoute = nil
     systemAudioSeemsBlocked = false
   }
 
