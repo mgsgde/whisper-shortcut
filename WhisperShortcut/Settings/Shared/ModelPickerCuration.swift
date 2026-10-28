@@ -67,6 +67,10 @@ protocol PickerCuratedModel: Hashable {
   var pickerStandInRank: Int? { get }
 }
 
+// `pickerTitle` on each model below is the name on the tile: `displayName` minus the "(Offline)" /
+// "(On-Device)" suffix it carries for menus and the chat chip. In a picker the Offline badge or
+// group header already says it, and the tile read "Qwen3 4B Instruct (Offline) · Offline".
+
 /// The curated split of one picker's models: the top row and the "More models" remainder.
 struct ModelPickerCuration<Model: PickerCuratedModel> {
   struct Featured: Hashable {
@@ -195,6 +199,19 @@ extension TranscriptionModel: PickerCuratedModel {
 
   var pickerSupersededBy: TranscriptionModel? { nil }
 
+  var pickerTitle: String {
+    switch self {
+    case .whisperTiny: return "Whisper Tiny"
+    case .whisperBase: return "Whisper Base"
+    case .whisperSmall: return "Whisper Small"
+    case .whisperMedium: return "Whisper Medium"
+    case .whisperLarge: return "Whisper Large"
+    case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
+    case .parakeetUltra: return "Parakeet Ultra"
+    default: return displayName
+    }
+  }
+
   var pickerSetupBadge: String? {
     switch provider {
     // A missing offline file is a download, not a key — the offline section handles it.
@@ -271,6 +288,14 @@ extension PromptModel: PickerCuratedModel {
   /// The same supersession Chat has always applied (`chatReplacement`), now for every picker.
   var pickerSupersededBy: PromptModel? { chatReplacement }
 
+  var pickerTitle: String {
+    switch self {
+    case .localMLXQwen34BInstruct: return "Qwen3 4B Instruct"
+    case .localMLXQwen359B: return "Qwen3.5 9B"
+    default: return displayName
+    }
+  }
+
   var pickerSetupBadge: String? {
     guard !hasRequiredCredential else { return nil }
     if case .endpoint = provider.credentialRequirement { return String(localized: "Needs setup", comment: "Tile badge: provider not configured") }
@@ -304,6 +329,8 @@ extension TTSModel: PickerCuratedModel {
   var pickerOfflineRank: Int? { provider == .system ? 0 : nil }
 
   var pickerSupersededBy: TTSModel? { nil }
+
+  var pickerTitle: String { self == .systemMacOS ? "macOS" : displayName }
 
   var pickerSetupBadge: String? { hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing") }
 

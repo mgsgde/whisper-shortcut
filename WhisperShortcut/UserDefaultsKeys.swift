@@ -132,6 +132,7 @@ enum UserDefaultsKeys {
   // MARK: - Live Meeting Settings
   static let meetingTranscriptSectionExpanded = "meetingTranscriptSectionExpanded"
   static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
+  static let liveMeetingAudioMode = "liveMeetingAudioMode"
   static let liveMeetingSafeguardDurationSeconds = "liveMeetingSafeguardDurationSeconds"
   static let selectedTranscriptionModelForMeetings = "selectedTranscriptionModelForMeetings"
   static let selectedMeetingSummaryModel = "selectedMeetingSummaryModel"
@@ -182,6 +183,10 @@ enum UserDefaultsKeys {
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
+  /// Model id for the shared custom endpoint's transcription request. Empty → `whisper-1`.
+  static let customTranscriptionModelID = "customTranscriptionModelID"
+  /// Set once a legacy Dictate-only transcription URL has been considered for the shared endpoint.
+  static let customEndpointUnifiedMigrationDone = "customEndpointUnifiedMigrationDone"
 
   // MARK: - Transcription tuning (Gemini + OpenRouter)
   /// `generationConfig.temperature` sent with transcription requests. Before this existed nothing

@@ -34,6 +34,12 @@ class LiveMeetingRecorder: NSObject {
   // MARK: - Properties
   weak var delegate: LiveMeetingRecorderDelegate?
 
+  /// System audio (the other participants) captured next to the microphone in Online meeting
+  /// mode. Nil in person: every code path below then behaves exactly as without it. Main thread.
+  /// The tracks stay separate until a chunk is delivered, where `mixSystemAudio` folds the
+  /// matching slice into the chunk's WAV.
+  var systemAudio: SystemAudioBuffer?
+
   /// Maximum chunk duration (fallback if no silence detected)
   /// Rotation cadence. Mutable so the session can switch to a responsive cadence while the user is
   /// watching the live view — see `updateMaxChunkDuration`.
@@ -90,7 +96,8 @@ class LiveMeetingRecorder: NSObject {
   /// instance (by identity) may be delivered as the final chunk; a recorder stopped by rotation is
   /// delivered by `rotateAndDeliver` as a normal chunk. Main thread only.
   private var finalRecorder: (
-    recorder: AVAudioRecorder, index: Int, startTime: TimeInterval, isSilent: Bool
+    recorder: AVAudioRecorder, index: Int, startTime: TimeInterval, isSilent: Bool,
+    wallStart: Date?, systemAudio: SystemAudioBuffer?
   )?
 
   /// Flag indicating if session is active
@@ -219,7 +226,7 @@ class LiveMeetingRecorder: NSObject {
     if let activeRecorder {
       finalRecorder = (
         activeRecorder, chunkIndex, max(0, currentChunkStartTime),
-        peakPowerDuringChunk < silenceThresholdDB
+        peakPowerDuringChunk < silenceThresholdDB, currentChunkWallStart, systemAudio
       )
       audioQueue.async { activeRecorder.stop() }
     } else {
@@ -244,7 +251,9 @@ class LiveMeetingRecorder: NSObject {
 
     let url = activeRecordingURL
     let startTime = max(0, currentChunkStartTime)
-    let age = currentChunkWallStart.map { Date().timeIntervalSince($0) } ?? 0
+    let wallStart = currentChunkWallStart
+    let age = wallStart.map { Date().timeIntervalSince($0) } ?? 0
+    let systemBuffer = systemAudio
     activeRecorder?.stop()
     for other in [recorderA, recorderB] where other !== activeRecorder {
       other?.stop()
@@ -258,7 +267,44 @@ class LiveMeetingRecorder: NSObject {
       try? FileManager.default.removeItem(at: url)
       return nil
     }
+    if let systemBuffer, let wallStart {
+      Self.mixSystemAudioLogged(
+        into: url, buffer: systemBuffer, wallStart: wallStart, chunkIndex: chunkIndex)
+    }
     return (url, startTime)
+  }
+
+  // MARK: - System audio mixing
+
+  /// Folds the system audio recorded since `wallStart` into the finished mic WAV at `url`,
+  /// in place. The WAV must already be closed (after the recorder's `stop()`).
+  static func mixSystemAudio(into url: URL, buffer: SystemAudioBuffer, wallStart: Date) throws {
+    _ = try mixSystemAudioReturningPeak(into: url, buffer: buffer, wallStart: wallStart)
+  }
+
+  /// Same as `mixSystemAudio`, returning the duration and system peak for logging.
+  private static func mixSystemAudioReturningPeak(
+    into url: URL, buffer: SystemAudioBuffer, wallStart: Date
+  ) throws -> (duration: TimeInterval, peakDB: Float) {
+    let file = try AVAudioFile(forReading: url)
+    let rate = file.fileFormat.sampleRate
+    let duration = Double(file.length) / rate
+    let samples = buffer.extract(from: wallStart, duration: duration, outputRate: rate)
+    try MeetingAudioMixer.mixInPlace(micURL: url, system: samples)
+    return (duration, MeetingAudioMixer.peakPowerDB(samples))
+  }
+
+  /// Mixing for delivery points: a failure is logged and the chunk is delivered mic-only.
+  private static func mixSystemAudioLogged(
+    into url: URL, buffer: SystemAudioBuffer, wallStart: Date, chunkIndex: Int
+  ) {
+    do {
+      let result = try mixSystemAudioReturningPeak(into: url, buffer: buffer, wallStart: wallStart)
+      DebugLogger.logAudio(
+        "LIVE-MEETING: Mixed system audio into chunk \(chunkIndex) (\(String(format: "%.1f", result.duration))s, system peak \(String(format: "%.1f", result.peakDB)) dB)")
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Mixing system audio into chunk \(chunkIndex) failed, delivering microphone only: \(error)")
+    }
   }
 
   // MARK: - Private Methods
@@ -388,7 +434,11 @@ class LiveMeetingRecorder: NSObject {
     let elapsed = Date().timeIntervalSince(wallStart)
 
     recorder.updateMeters()
-    let power = recorder.averagePower(forChannel: 0)
+    // A remote speaker only shows up in the system audio, so it counts as "not silent" too:
+    // otherwise silence rotation would cut them mid-sentence.
+    let power = max(
+      recorder.averagePower(forChannel: 0),
+      systemAudio?.recentPowerDB(window: meteringInterval) ?? -160)
     // Track peak over the ENTIRE chunk (not only after minChunkDuration) so the
     // isSilent flag reflects whether any speech occurred anywhere in the chunk.
     if power > peakPowerDuringChunk { peakPowerDuringChunk = power }
@@ -416,6 +466,9 @@ class LiveMeetingRecorder: NSObject {
     let completedRecordingURL = activeRecordingURL
     let wasRecorderAActive = isRecorderAActive
     let chunkWasSilent = peakPowerDuringChunk < silenceThresholdDB
+    // Captured now: detaching `systemAudio` later (mode switch, session end) must not lose this chunk's audio.
+    let completedWallStart = currentChunkWallStart
+    let completedSystemAudio = systemAudio
 
     let nextChunkStartTime = (sessionStartTime != nil)
       ? resumeTimeOffset + Date().timeIntervalSince(sessionStartTime!)
@@ -444,6 +497,11 @@ class LiveMeetingRecorder: NSObject {
         // the file as soon as it is handed the URL.
         audioQueue.async { [weak self] in
           stopped?.stop()
+          if let completedSystemAudio, let completedWallStart {
+            Self.mixSystemAudioLogged(
+              into: url, buffer: completedSystemAudio, wallStart: completedWallStart,
+              chunkIndex: completedChunkIndex)
+          }
           DispatchQueue.main.async {
             self?.delegate?.liveMeetingRecorder(
               didFinishChunk: url,
@@ -470,6 +528,11 @@ class LiveMeetingRecorder: NSObject {
     audioQueue.async { [weak self] in
       stopped?.stop()
       guard let url = completedRecordingURL else { return }
+      if let completedSystemAudio, let completedWallStart {
+        Self.mixSystemAudioLogged(
+          into: url, buffer: completedSystemAudio, wallStart: completedWallStart,
+          chunkIndex: completedChunkIndex)
+      }
       DispatchQueue.main.async {
         self?.delegate?.liveMeetingRecorder(
           didFinishChunk: url,
@@ -522,6 +585,10 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
         DebugLogger.logError("LIVE-MEETING: Final chunk recording failed")
       }
       if deliver {
+        if let buffer = final.systemAudio, let wallStart = final.wallStart {
+          Self.mixSystemAudioLogged(
+            into: url, buffer: buffer, wallStart: wallStart, chunkIndex: final.index)
+        }
         self.delegate?.liveMeetingRecorder(
           didFinishChunk: url, chunkIndex: final.index, startTime: final.startTime,
           isSilent: final.isSilent, isFinal: true)

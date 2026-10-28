@@ -36,12 +36,10 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
                 Image(systemName: "arrow.down.circle.fill")
                   .foregroundColor(.blue)
                   .font(.caption)
-                // A gigabyte-scale download with no number reads as a hang; show how far it is.
-                let fraction = store.downloadProgress[model]
-                Text(fraction.map { String(localized: "Downloading… \(Int($0 * 100))%") } ?? String(localized: "Downloading…"))
+                // The percentage sits next to the progress bar on the right; once is enough.
+                Text("Downloading…")
                   .font(.caption)
                   .foregroundColor(.secondary)
-                  .monospacedDigit()
               } else {
                 Image(systemName: isAvailable ? "checkmark.circle.fill" : "circle")
                   .foregroundColor(isAvailable ? .green : .secondary)

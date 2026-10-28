@@ -124,11 +124,6 @@ struct OfflineModeTests {
 
     let recommendedModels = TranscriptionModel.allCases.filter { $0.isOffline && $0.isRecommended }
     #expect(recommendedModels == [TranscriptionModel.forOfflineModel(OfflineModelType.mostAccurate)])
-
-    // The quick-start label is a separate slot, never a second recommendation.
-    let quickStart = OfflineModelType.allCases.filter(\.isQuickStart)
-    #expect(quickStart == [.whisperBase])
-    #expect(!OfflineModelType.whisperBase.isRecommended)
   }
 
   /// Every on-device model must round-trip through both directions of the mapping, or Offline

@@ -12,9 +12,7 @@ struct LaunchAtLoginSection: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Startup",
-        systemImage: "power",
-        subtitle: "Automatically start WhisperShortcut when you log in"
-      )
+        systemImage: "power")
 
       HStack(alignment: .center, spacing: 16) {
         Text("Launch at Login:")

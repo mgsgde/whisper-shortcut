@@ -26,9 +26,7 @@ struct ModelSelectionView: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: title,
-        systemImage: systemImage,
-        subtitle: "Choose the transcription model for speech recognition"
-      )
+        systemImage: systemImage)
 
       CuratedModelPicker(
         curation: ModelPickerCuration(
@@ -38,47 +36,15 @@ struct ModelSelectionView: View {
         cell: { model, badges in modelCell(model, badges: badges) },
         more: { groupedGrids($0) })
 
-      // Model Details
-      VStack(alignment: .leading, spacing: 8) {
-        Text(selectedTranscriptionModel.description)
+      ModelDetailsFooter(
+        description: selectedTranscriptionModel.description,
+        costLevel: selectedTranscriptionModel.costLevel,
+        showsCompareLink: true)
+
+      if selectedTranscriptionModel.isDeprecated {
+        Label("Deprecated – no longer available to new users. Consider switching to \(SettingsDefaults.selectedTranscriptionModel.displayName).", systemImage: "exclamationmark.triangle.fill")
           .font(.callout)
           .foregroundColor(.secondary)
-          .textSelection(.enabled)
-
-        HStack {
-          Text("Cost:")
-            .font(.callout)
-            .fontWeight(.medium)
-            .foregroundColor(.secondary)
-
-          Text(selectedTranscriptionModel.costLevel.title)
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(SettingsConstants.costLevelColor(for: selectedTranscriptionModel.costLevel))
-        }
-
-        if selectedTranscriptionModel.isDeprecated {
-          HStack {
-            Image(systemName: "exclamationmark.triangle.fill")
-              .foregroundColor(.orange)
-              .font(.caption)
-            Text("Deprecated – no longer available to new users. Consider switching to \(SettingsDefaults.selectedTranscriptionModel.displayName).")
-              .font(.callout)
-              .foregroundColor(.secondary)
-          }
-        }
-
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text("Tip: Compare Gemini models (speed, intelligence, pricing):")
-            .font(.caption)
-            .foregroundColor(.secondary)
-          if let url = URL(string: AppConstants.geminiModelsComparisonURL) {
-            Link("gemini-models", destination: url)
-              .font(.caption)
-              .lineLimit(1)
-              .pointerCursorOnHover()
-          }
-        }
       }
     }
   }
@@ -124,11 +90,9 @@ struct ModelSelectionView: View {
       let name = OpenRouterModelCatalog.shared.audioModels.first { $0.id == slug }?.name
       return "→ \(name ?? slug)"
     case .selfHosted:
-      let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      guard let host = URL(string: url)?.host, !host.isEmpty else {
-        return String(localized: "→ not configured")
-      }
+      // Unset, the tile says what it is for, so "Own server" reads as LiteLLM / Azure without a click.
+      guard let url = CustomEndpointPreferences.transcriptionURL, let host = URL(string: url)?.host, !host.isEmpty
+      else { return String(localized: "OpenAI-compatible: LiteLLM, Azure, …") }
       return "→ \(host)"
     case .google, .openAI, .xai, .offline:
       return nil
@@ -174,7 +138,7 @@ struct ModelSelectionView: View {
     _ model: TranscriptionModel, badges: [ModelPickerBadge], providerPick: String? = nil
   ) -> some View {
     ModelTile(
-      title: model.displayName,
+      title: model.pickerTitle,
       subtitle: Self.routedSubtitle(for: model),
       isSelected: selectedTranscriptionModel == model,
       isDisabled: false,

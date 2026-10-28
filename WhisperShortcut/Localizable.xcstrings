@@ -442,16 +442,16 @@
     },
     "%@, by %@, %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@, by %2$@, %3$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@, von %2$@, %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, by %2$@, %3$@"
           }
         }
       }
@@ -475,16 +475,16 @@
     },
     "%lld %@, too few to read much into" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld %2$@, too few to read much into"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld %@, zu wenige für eine belastbare Aussage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld %2$@, too few to read much into"
           }
         }
       }
@@ -903,16 +903,16 @@
     },
     "%lld of %lld" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld of %2$lld"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld von %2$lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
           }
         }
       }
@@ -1516,6 +1516,16 @@
         }
       }
     },
+    "A small window shows the transcribed text and AI replies." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein kleines Fenster zeigt den erkannten Text und die KI-Antworten."
+          }
+        }
+      }
+    },
     "About" : {
       "comment" : "Settings tab",
       "localizations" : {
@@ -1738,6 +1748,16 @@
         }
       }
     },
+    "Add header" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header hinzufügen"
+          }
+        }
+      }
+    },
     "Add more manually" : {
       "localizations" : {
         "de" : {
@@ -1888,6 +1908,16 @@
         }
       }
     },
+    "Add your own server's base URL and key in Settings → Dictate Prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tragen Sie unter Einstellungen → Dictate Prompt die Basis-URL und den Schlüssel Ihres eigenen Servers ein."
+          }
+        }
+      }
+    },
     "Add your xAI API key in Settings → Accounts to use dictation, or pick a different transcription model in Settings → Dictate." : {
       "localizations" : {
         "de" : {
@@ -1968,6 +1998,16 @@
         }
       }
     },
+    "Adds one short model call before reading." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kostet vor dem Vorlesen einen kurzen Modellaufruf."
+          }
+        }
+      }
+    },
     "Adds WhisperShortcut to %@'s settings. macOS asks once for access to the folder they live in." : {
       "localizations" : {
         "de" : {
@@ -1984,6 +2024,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erweitert"
+          }
+        }
+      }
+    },
+    "Advanced: headers, separate Dictate URL, Azure and Vertex notes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erweitert: Header, eigene Diktier-URL, Hinweise zu Azure und Vertex"
           }
         }
       }
@@ -2434,6 +2484,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "API-Schlüssel erforderlich"
+          }
+        }
+      }
+    },
+    "API key:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API-Schlüssel:"
           }
         }
       }
@@ -3064,12 +3124,32 @@
         }
       }
     },
+    "Azure" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure"
+          }
+        }
+      }
+    },
     "Azure detected — your key is sent as the `api-key` header, which is what Azure expects. A bare resource URL is expanded to `/openai/v1`; on that surface Model must be your deployment name, not an OpenAI model id." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Azure erkannt: Ihr Schlüssel wird als `api-key`-Header gesendet, so wie Azure es erwartet. Eine reine Ressourcen-URL wird zu `/openai/v1` ergänzt; dort muss unter Modell Ihr Deployment-Name stehen, nicht eine OpenAI-Modell-ID."
+          }
+        }
+      }
+    },
+    "Azure detected: the key goes in the `api-key` header. A bare resource URL becomes `/openai/v1`, and the models are your deployment names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Azure erkannt: Der Schlüssel wird im Header `api-key` gesendet. Eine reine Ressourcen-URL wird zu `/openai/v1`, und die Modelle sind Ihre Deployment-Namen."
           }
         }
       }
@@ -3532,6 +3612,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat-Modell"
+          }
+        }
+      }
+    },
+    "Chat model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Modell:"
+          }
+        }
+      }
+    },
+    "Chat needs this server's key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat braucht den Schlüssel dieses Servers."
           }
         }
       }
@@ -4429,6 +4529,16 @@
         }
       }
     },
+    "Compare Gemini models" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemini-Modelle vergleichen"
+          }
+        }
+      }
+    },
     "Completed task" : {
       "localizations" : {
         "de" : {
@@ -5029,6 +5139,16 @@
         }
       }
     },
+    "Copy the text you want edited (⌘C) before you start dictating. Your own server reads the clipboard, not the screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren Sie den Text, der bearbeitet werden soll (⌘C), bevor Sie zu diktieren beginnen. Ihr eigener Server liest die Zwischenablage, nicht den Bildschirm."
+          }
+        }
+      }
+    },
     "Copy the transcript, the live notes, and the full chat history of this meeting as Markdown" : {
       "localizations" : {
         "de" : {
@@ -5135,6 +5255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkript wird korrigiert"
+          }
+        }
+      }
+    },
+    "Cost" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kosten"
           }
         }
       }
@@ -6144,6 +6274,16 @@
         }
       }
     },
+    "Dictate model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiermodell:"
+          }
+        }
+      }
+    },
     "Dictate Prompt" : {
       "comment" : "Feature name",
       "localizations" : {
@@ -6297,6 +6437,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren Sie über jedes Audiomodell, das OpenRouter anbietet, mit einem einzigen Konto."
+          }
+        }
+      }
+    },
+    "Dictate URL:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktier-URL:"
           }
         }
       }
@@ -6759,6 +6909,16 @@
         }
       }
     },
+    "Edit server…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server bearbeiten …"
+          }
+        }
+      }
+    },
     "Edit this message and send it again" : {
       "localizations" : {
         "de" : {
@@ -7177,16 +7337,16 @@
     },
     "Failed to delete %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Failed to delete %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht gelöscht werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to delete %1$@: %2$@"
           }
         }
       }
@@ -7203,16 +7363,16 @@
     },
     "Failed to download %@: %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Failed to download %1$@: %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ konnte nicht heruntergeladen werden: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed to download %1$@: %2$@"
           }
         }
       }
@@ -7620,6 +7780,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für OpenRouter wählen Sie stattdessen OpenRouter in der Modellauswahl des Chats. Dort wird das Konto aus Einstellungen → Konten genutzt, ohne URL oder Schlüssel hier."
+          }
+        }
+      }
+    },
+    "For OpenRouter, pick OpenRouter in the model picker instead. It uses the account from Settings → Accounts, with no URL or key to enter here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für OpenRouter wählen Sie stattdessen OpenRouter in der Modellauswahl. Es nutzt das Konto aus Einstellungen → Konten, ohne dass Sie hier URL oder Schlüssel eintragen."
           }
         }
       }
@@ -8402,6 +8572,16 @@
         }
       }
     },
+    "Hide this hint for now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis vorerst ausblenden"
+          }
+        }
+      }
+    },
     "Hide token" : {
       "localizations" : {
         "de" : {
@@ -8518,6 +8698,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So geht's"
+          }
+        }
+      }
+    },
+    "http://localhost:4000/v1" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:4000/v1"
+          }
+        }
+      }
+    },
+    "http://localhost:4000/v1, LiteLLM's default port. The model fields take the model_name entries from your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:4000/v1, der Standardport von LiteLLM. In die Modellfelder gehören die model_name-Einträge aus Ihrer LiteLLM-Konfiguration."
           }
         }
       }
@@ -8758,6 +8958,16 @@
         }
       }
     },
+    "In person" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vor Ort"
+          }
+        }
+      }
+    },
     "In subscription mode, model selection is not available. %@" : {
       "localizations" : {
         "de" : {
@@ -8784,6 +8994,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Chatfenster öffnet Anhängen zuerst diesen Ordner, damit neue Bildschirmfotos nur einen Klick entfernt sind."
+          }
+        }
+      }
+    },
+    "Include screenshot:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshot mitschicken:"
           }
         }
       }
@@ -9310,6 +9530,16 @@
         }
       }
     },
+    "Leave empty to use the base URL. Only for a speech server that lives elsewhere, e.g. whisper-asr-webservice's /asr." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer lassen, um die Basis-URL zu verwenden. Nur für einen Sprachserver, der woanders läuft, z. B. /asr von whisper-asr-webservice."
+          }
+        }
+      }
+    },
     "Left bottom" : {
       "localizations" : {
         "de" : {
@@ -9586,6 +9816,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trello-Listen werden aufgelistet"
+          }
+        }
+      }
+    },
+    "LiteLLM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LiteLLM"
           }
         }
       }
@@ -10647,6 +10887,16 @@
         }
       }
     },
+    "Needs \"Save usage data\". Runs in the background; you get a notification when it is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt „Nutzungsdaten speichern“. Läuft im Hintergrund; Sie werden benachrichtigt, wenn es fertig ist."
+          }
+        }
+      }
+    },
     "Needs %@" : {
       "localizations" : {
         "de" : {
@@ -10663,6 +10913,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Modell"
+          }
+        }
+      }
+    },
+    "Needs download" : {
+      "comment" : "Tile badge: on-device model not downloaded yet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download nötig"
           }
         }
       }
@@ -10694,6 +10955,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Konto, Sie bezahlen den Anbieter"
+          }
+        }
+      }
+    },
+    "Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -11073,6 +11344,16 @@
         }
       }
     },
+    "No headset detected. Without a headset, In person is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Headset erkannt. Ohne Headset reicht Vor Ort."
+          }
+        }
+      }
+    },
     "No internet connection. Please check your network and try again." : {
       "localizations" : {
         "de" : {
@@ -11119,6 +11400,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Schlüssel nötig – die Aufnahme verlässt Ihren Mac nie. %@ transkribiert 25 europäische Sprachen, darunter Deutsch und Englisch, in Sekundenbruchteilen. Für andere Sprachen wählen Sie später ein Whisper-Modell unter Einstellungen → Diktieren."
+          }
+        }
+      }
+    },
+    "No key: fine for a local speech server without auth." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Schlüssel: in Ordnung für einen lokalen Sprachserver ohne Anmeldung."
           }
         }
       }
@@ -11900,6 +12191,16 @@
         }
       }
     },
+    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel."
+          }
+        }
+      }
+    },
     "One-time download, %@" : {
       "localizations" : {
         "de" : {
@@ -11916,6 +12217,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmaliger Download, danach läuft es offline. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "Online meeting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online-Meeting"
           }
         }
       }
@@ -12366,6 +12677,16 @@
         }
       }
     },
+    "OpenAI Whisper Base • Small download • ~140MB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI Whisper Base • Kleiner Download • ~140 MB • Offline"
+          }
+        }
+      }
+    },
     "OpenAI Whisper Base • Smallest download • ~140MB • Offline" : {
       "localizations" : {
         "de" : {
@@ -12512,6 +12833,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-6 Sol von OpenAI • Starkes Denken für Recherche und anspruchsvolle Fragen • Websuche • 1 Mio. Kontext • Braucht OpenAI-API-Schlüssel"
+          }
+        }
+      }
+    },
+    "OpenAI-compatible: LiteLLM, Azure, Vertex, …" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-kompatibel: LiteLLM, Azure, Vertex, …"
+          }
+        }
+      }
+    },
+    "OpenAI-compatible: LiteLLM, Azure, …" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI-kompatibel: LiteLLM, Azure, …"
           }
         }
       }
@@ -12696,6 +13037,16 @@
         }
       }
     },
+    "Optional for a local server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional bei einem lokalen Server"
+          }
+        }
+      }
+    },
     "Optional screenshot sent with voice Dictate Prompt requests" : {
       "localizations" : {
         "de" : {
@@ -12762,6 +13113,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei %@ überschreiben"
+          }
+        }
+      }
+    },
+    "Own server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Server"
           }
         }
       }
@@ -12942,6 +13303,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Pastes the result at the cursor (⌘V). Needs Accessibility permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Benötigt die Berechtigung „Bedienungshilfen“."
           }
         }
       }
@@ -13474,6 +13845,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prompts"
+          }
+        }
+      }
+    },
+    "Puts back what you had copied before, right after pasting. Needs auto-paste." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellt direkt nach dem Einfügen wieder her, was Sie vorher kopiert hatten. Benötigt automatisches Einfügen."
           }
         }
       }
@@ -14138,6 +14519,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme … %lld s"
+          }
+        }
+      }
+    },
+    "Records only your microphone, for meetings in the same room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt nur Ihr Mikrofon auf, für Meetings im selben Raum."
+          }
+        }
+      }
+    },
+    "Records the other participants from your Mac's sound, plus your microphone. Best with a headset." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt die anderen Teilnehmer über den Ton Ihres Mac auf, dazu Ihr Mikrofon. Am besten mit Headset."
           }
         }
       }
@@ -15109,12 +15510,32 @@
         }
       }
     },
+    "Runs Improve from usage on its own at this interval." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führt „Improve from usage“ in diesem Abstand selbst aus."
+          }
+        }
+      }
+    },
     "Runs in the background using your interaction logs. Enable \"Save usage data\" to collect logs. You can switch to another tab; you'll be notified when it's done." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft im Hintergrund mit Ihren Nutzungsprotokollen. Schalten Sie „Nutzungsdaten speichern“ ein, damit Protokolle gesammelt werden. Sie können den Tab wechseln, Sie werden benachrichtigt, wenn es fertig ist."
+          }
+        }
+      }
+    },
+    "Runs on this Mac, nothing to install. Each model downloads once and stays on disk." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft auf diesem Mac, ohne Installation. Jedes Modell wird einmal geladen und bleibt gespeichert."
           }
         }
       }
@@ -15780,6 +16201,16 @@
         }
       }
     },
+    "Send a screenshot of your screen with each spoken Dictate Prompt, so the model sees what you see." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt bei jedem gesprochenen Dictate Prompt einen Screenshot mit, damit das Modell sieht, was Sie sehen."
+          }
+        }
+      }
+    },
     "Send audio to your own OpenAI-compatible /v1/audio/transcriptions endpoint" : {
       "localizations" : {
         "de" : {
@@ -15870,6 +16301,16 @@
         }
       }
     },
+    "Sent with every request to this server, e.g. CF-Access-Client-Id / CF-Access-Client-Secret for Cloudflare Access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird bei jeder Anfrage an diesen Server mitgeschickt, z. B. CF-Access-Client-Id / CF-Access-Client-Secret für Cloudflare Access."
+          }
+        }
+      }
+    },
     "Separate with spaces or commas. Pasted profile URLs work too. Applies to new chats; type `/x` in a chat to change it there, `/x off` to search all of X." : {
       "localizations" : {
         "de" : {
@@ -15926,6 +16367,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Von Hand einrichten"
+          }
+        }
+      }
+    },
+    "Set up your own server (OpenAI-compatible) in Settings → Dictate, or pick a different model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie Ihren eigenen Server (OpenAI-kompatibel) unter Einstellungen → Diktieren ein oder wählen Sie ein anderes Modell."
+          }
+        }
+      }
+    },
+    "Set up: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten: %@"
           }
         }
       }
@@ -16107,6 +16568,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Freigegebene Ordner:"
+          }
+        }
+      }
+    },
+    "Shared with Dictate, Dictate Prompt and Chat. Changing the server changes it for all three." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinsam für Diktieren, Dictate Prompt und Chat. Eine Änderung am Server gilt für alle drei."
           }
         }
       }
@@ -17215,12 +17686,32 @@
         }
       }
     },
+    "Switch to In person" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Vor Ort wechseln"
+          }
+        }
+      }
+    },
     "Synthesizing Speech" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprache wird erzeugt"
+          }
+        }
+      }
+    },
+    "System Audio Not Recorded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemton wird nicht aufgenommen"
           }
         }
       }
@@ -17361,6 +17852,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das URL-Format von Azure OpenAI / Foundry. Ersetzen Sie <resource> durch den Namen Ihrer Ressource und tragen Sie unter Modell den Namen Ihres Deployments ein."
+          }
+        }
+      }
+    },
+    "The Azure OpenAI / Foundry URL shape. Replace <resource> with your resource name and set the models to your deployment names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das URL-Format für Azure OpenAI / Foundry. Ersetzen Sie <resource> durch Ihren Ressourcennamen und tragen Sie als Modelle Ihre Deployment-Namen ein."
           }
         }
       }
@@ -17535,12 +18036,32 @@
         }
       }
     },
+    "The model that reviews your usage and suggests better prompts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell, das Ihre Nutzung auswertet und bessere Prompts vorschlägt."
+          }
+        }
+      }
+    },
     "The next change you accept is measured from then on." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die nächste Änderung, die Sie annehmen, wird ab dann gemessen."
+          }
+        }
+      }
+    },
+    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
           }
         }
       }
@@ -17675,6 +18196,16 @@
         }
       }
     },
+    "The speech-to-text model your server serves, e.g. whisper-1 or the model name in your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Spracherkennungsmodell, das Ihr Server anbietet, z. B. whisper-1 oder der Modellname aus Ihrer LiteLLM-Konfiguration."
+          }
+        }
+      }
+    },
     "The transcription failed." : {
       "localizations" : {
         "de" : {
@@ -17701,6 +18232,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das OpenAI-kompatible URL-Format von Vertex AI. Ersetzen Sie <project> durch die ID Ihres Google-Cloud-Projekts."
+          }
+        }
+      }
+    },
+    "Then applies it to your selected text. On Azure, your deployment name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wendet sie dann auf den markierten Text an. Bei Azure: Ihr Deployment-Name."
           }
         }
       }
@@ -18067,6 +18608,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abgebrochene Aufnahme transkribieren"
+          }
+        }
+      }
+    },
+    "Transcribes on your own OpenAI-compatible server (LiteLLM, Azure, faster-whisper-server, …), the same one Chat and Dictate Prompt can use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert auf Ihrem eigenen OpenAI-kompatiblen Server (LiteLLM, Azure, faster-whisper-server, …), demselben, den auch Chat und Dictate Prompt nutzen können"
+          }
+        }
+      }
+    },
+    "Transcribes your spoken instruction first, e.g. whisper-1 or the model name in your LiteLLM config." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribiert zuerst Ihre gesprochene Anweisung, z. B. whisper-1 oder der Modellname aus Ihrer LiteLLM-Konfiguration."
           }
         }
       }
@@ -18603,6 +19164,16 @@
         }
       }
     },
+    "Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
+          }
+        }
+      }
+    },
     "Update calendar event %@." : {
       "localizations" : {
         "de" : {
@@ -18729,6 +19300,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufgabe wird geändert"
+          }
+        }
+      }
+    },
+    "URL and chat model for openinference.de (GLM 5.2). Enter your sk-oi-… key below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL und Chat-Modell für openinference.de (GLM 5.2). Tragen Sie unten Ihren sk-oi-…-Schlüssel ein."
           }
         }
       }
@@ -18925,32 +19506,42 @@
     },
     "Version %@ (build %@)" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Version %1$@ (build %2$@)"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version %1$@ (Build %2$@)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version %1$@ (build %2$@)"
           }
         }
       }
     },
     "Version %@ (build %@) · last checked %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %1$@ (Build %2$@) · zuletzt geprüft %3$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "Version %1$@ (build %2$@) · last checked %3$@"
           }
-        },
+        }
+      }
+    },
+    "Vertex" : {
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Version %1$@ (Build %2$@) · zuletzt geprüft %3$@"
+            "value" : "Vertex"
           }
         }
       }
@@ -19135,6 +19726,16 @@
         }
       }
     },
+    "What happens when Dictate or Dictate Prompt is done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was passiert, wenn Dictate oder Dictate Prompt fertig ist."
+          }
+        }
+      }
+    },
     "What is sent" : {
       "localizations" : {
         "de" : {
@@ -19295,6 +19896,16 @@
         }
       }
     },
+    "Which model answers in the chat. Keys and accounts live under Accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welches Modell im Chat antwortet. Schlüssel und Konten finden Sie unter Konten."
+          }
+        }
+      }
+    },
     "Which provider generates the spoken audio. Pick the specific voice below." : {
       "localizations" : {
         "de" : {
@@ -19371,6 +19982,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut – zum Aufnehmen klicken"
+          }
+        }
+      }
+    },
+    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
           }
         }
       }
@@ -20027,6 +20648,16 @@
         }
       }
     },
+    "Your own OpenAI-compatible server (LiteLLM, Azure OpenAI, Vertex AI, OpenInference, self-hosted) • Set up once below, shared by Dictate, Dictate Prompt and Chat • No web search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener OpenAI-kompatibler Server (LiteLLM, Azure OpenAI, Vertex AI, OpenInference, selbst gehostet) • Einmal unten einrichten, gemeinsam für Diktieren, Dictate Prompt und Chat • Keine Websuche"
+          }
+        }
+      }
+    },
     "Your own OpenAI-compatible server (OpenInference, Azure OpenAI, Vertex AI, LiteLLM, self-hosted) • Configure URL, model and key in Settings → Chat • No web search" : {
       "localizations" : {
         "de" : {
@@ -20043,6 +20674,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihr eigener OpenAI-kompatibler Server: OpenInference, Azure OpenAI, Vertex AI, LiteLLM oder selbst gehostet. Der hier eingetragene Schlüssel geht nur an diesen Server."
+          }
+        }
+      }
+    },
+    "Your own server is not set up. Add its base URL in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server ist nicht eingerichtet. Tragen Sie die Basis-URL unter Einstellungen → Diktieren ein."
+          }
+        }
+      }
+    },
+    "Your own server's base URL is missing. Set it in Settings → Chat, then pick Own server as the chat model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Basis-URL Ihres eigenen Servers fehlt. Tragen Sie sie unter Einstellungen → Chat ein und wählen Sie dann „Eigener Server“ als Chat-Modell."
           }
         }
       }

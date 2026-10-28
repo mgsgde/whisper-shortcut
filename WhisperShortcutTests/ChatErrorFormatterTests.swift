@@ -43,7 +43,7 @@ struct ChatErrorFormatterTests {
     case .grok: return "Grok"
     case .openai: return "OpenAI"
     case .anthropic: return "Claude"
-    case .customOpenAI: return "Custom endpoint"
+    case .customOpenAI: return "Own server"
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return "ChatGPT plan"
     case .local: return "Local LLM"

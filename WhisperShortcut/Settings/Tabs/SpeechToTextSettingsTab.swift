@@ -180,7 +180,7 @@ struct SpeechToTextSettingsTab: View {
       }
 
       if viewModel.data.selectedTranscriptionModel == .selfHostedTranscription {
-        SelfHostedTranscriptionEndpointSection()
+        OwnServerEndpointSection(route: .dictate)
       }
 
       if viewModel.data.selectedTranscriptionModel == .openRouterTranscription {
@@ -247,16 +247,10 @@ struct SpeechToTextSettingsTab: View {
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Available Models",
+        title: "Offline Models",
         systemImage: "arrow.down.circle",
-        subtitle: "Download and manage offline transcription models"
+        subtitle: "Runs on this Mac, nothing to install. Each model downloads once and stays on disk."
       )
-
-      Text("Offline models allow you to transcribe audio without an internet connection. Models are automatically downloaded from HuggingFace and cached locally.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .textSelection(.enabled)
-        .fixedSize(horizontal: false, vertical: true)
 
       // Available Models List
       VStack(spacing: 12) {
@@ -289,12 +283,6 @@ struct SpeechToTextSettingsTab: View {
         Text("Superseded by Large v3 Turbo")
           .font(.caption)
           .foregroundColor(.secondary)
-      } else if modelType.isQuickStart {
-        // Not a second "Recommended": this is the small download for trying offline out,
-        // and saying so keeps it findable without competing with the actual recommendation.
-        Text("Smallest download")
-          .font(.caption)
-          .foregroundColor(.secondary)
       }
     }
   }
@@ -306,7 +294,7 @@ struct SpeechToTextSettingsTab: View {
       SectionHeader(
         title: "How to Use",
         systemImage: "questionmark.circle",
-        subtitle: "Step-by-step instructions for using dictation mode"
+        subtitle: nil
       )
 
       ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.toggleDictation)

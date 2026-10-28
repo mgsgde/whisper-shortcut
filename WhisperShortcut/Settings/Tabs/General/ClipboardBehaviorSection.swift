@@ -13,7 +13,7 @@ struct ClipboardBehaviorSection: View {
       SectionHeader(
         title: "Clipboard Behavior",
         systemImage: "doc.on.clipboard",
-        subtitle: "Configure what happens after dictation or dictate prompt completes"
+        subtitle: "What happens when Dictate or Dictate Prompt is done."
       )
 
       #if APP_STORE
@@ -60,7 +60,7 @@ struct ClipboardBehaviorSection: View {
         Spacer()
       }
 
-      Text("When enabled, transcriptions and AI responses are automatically pasted at the cursor position (simulates ⌘V). Works for Dictate and Dictate Prompt. Requires Accessibility permission.")
+      Text("Pastes the result at the cursor (⌘V). Needs Accessibility permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -85,7 +85,7 @@ struct ClipboardBehaviorSection: View {
         Spacer()
       }
 
-      Text("When enabled, whatever you had copied before dictating is put back on the clipboard right after the text is pasted — so dictation doesn't overwrite your clipboard. Requires auto-paste.")
+      Text("Puts back what you had copied before, right after pasting. Needs auto-paste.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
