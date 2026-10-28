@@ -210,7 +210,7 @@ Type `/meeting` in chat to start and stop live meeting recording. Audio is rotat
 - **Headphones or headset** → the Mac's sound is recorded next to your microphone.
 - **Speakers** → microphone only: it already hears the others through the speakers, and mixing in the Mac's sound would record them twice.
 
-The meeting bar says which one is active (*Headphones · others via Mac sound* or *Speakers · microphone only*). Click it to override the detection with **Always mix in Mac sound** or **Microphone only** — needed for Bluetooth or USB speakers, which look like a headset to the app. The Mac's sound means *everything* your Mac plays (music, videos, notifications), not just the meeting app; only WhisperShortcut's own sound is left out. The first time, macOS asks for permission under Privacy & Security ▸ Screen & System Audio Recording; without it the meeting is recorded from your microphone only, and the meeting bar says so.
+The meeting bar says which one is active (*Headset · microphone + Mac sound* or *No headset · microphone only*). Click it to override the detection with **With headset: microphone + Mac sound** or **Without headset: microphone only** — needed for Bluetooth or USB speakers, which look like a headset to the app. The Mac's sound means *everything* your Mac plays (music, videos, notifications), not just the meeting app; only WhisperShortcut's own sound is left out. The first time, macOS asks for permission under Privacy & Security ▸ Screen & System Audio Recording; without it the meeting is recorded from your microphone only, and the meeting bar says so.
 
 While a meeting runs:
 

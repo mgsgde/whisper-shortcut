@@ -4252,15 +4252,15 @@ struct ChatView: View {
     liveStore.audioRouting.mixesSystemAudio && liveStore.systemAudioSeemsBlocked
   }
 
-  /// Plain-words status of what the meeting records right now. Automatic reads as the device plus
-  /// the consequence ("Headphones · others via Mac sound") so the user can tell at a glance whether
-  /// the detection got it right; manual says so, because a forgotten override is the failure mode.
+  /// Plain-words status in the user's terms: with or without a headset. Automatic says what it
+  /// detected ("Headset detected") so the user can tell at a glance whether the detection got it
+  /// right; manual says so, because a forgotten override is the failure mode.
   private var meetingAudioStatus: (icon: String, label: LocalizedStringKey) {
     switch liveStore.audioRouting {
-    case .headphones: return ("headphones", "Headphones · others via Mac sound")
-    case .speakers: return ("speaker.wave.2", "Speakers · microphone only")
+    case .headphones: return ("headphones", "Headset · microphone + Mac sound")
+    case .speakers: return ("speaker.wave.2", "No headset · microphone only")
     case .noOutputDevice: return ("mic", "Microphone only")
-    case .manualMix: return ("waveform", "Mac sound + microphone · manual")
+    case .manualMix: return ("headphones", "Microphone + Mac sound · manual")
     case .manualMicrophoneOnly: return ("mic", "Microphone only · manual")
     }
   }
@@ -4268,9 +4268,9 @@ struct ChatView: View {
   private var meetingAudioStatusHelp: LocalizedStringKey {
     switch liveStore.audioRouting {
     case .headphones, .manualMix:
-      return "Your microphone can't hear the other participants in your headphones, so the sound your Mac plays is recorded too. That is all Mac sound, except WhisperShortcut itself."
+      return "With a headset your microphone can't hear the other participants, so the sound your Mac plays is recorded too (everything except WhisperShortcut)."
     case .speakers:
-      return "Your microphone already hears the other participants through the speakers. Mixing in the Mac sound would record them twice."
+      return "Without a headset your microphone hears the other participants through the speakers, so only the microphone is recorded."
     case .noOutputDevice, .manualMicrophoneOnly:
       return "Only your microphone is recorded."
     }
@@ -4289,9 +4289,9 @@ struct ChatView: View {
         Text("Output: \(name)")
       }
       Picker("Record", selection: preference) {
-        Text("Automatic (by output device)").tag(MeetingAudioPreference.automatic)
-        Text("Always mix in Mac sound").tag(MeetingAudioPreference.alwaysMixSystemAudio)
-        Text("Microphone only").tag(MeetingAudioPreference.microphoneOnly)
+        Text("Automatic (detects headset)").tag(MeetingAudioPreference.automatic)
+        Text("With headset: microphone + Mac sound").tag(MeetingAudioPreference.alwaysMixSystemAudio)
+        Text("Without headset: microphone only").tag(MeetingAudioPreference.microphoneOnly)
       }
       .pickerStyle(.inline)
       .labelsHidden()
