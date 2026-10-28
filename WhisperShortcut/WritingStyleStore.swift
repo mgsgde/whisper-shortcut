@@ -318,11 +318,11 @@ final class WritingStyleStore {
       block += " Aim for about \(targetWords) words unless the instruction says otherwise."
     }
     if !profileSection.isEmpty {
-      block += "\n\nProfile (\(context.displayName)):\n\(profileSection)"
+      block += "\n\nProfile (\(context.englishName)):\n\(profileSection)"
     }
     guard !examples.isEmpty else { return (block, 0) }
 
-    let header = "\n\nExamples of messages the user wrote (context: \(context.displayName)). They show voice only; do not copy their content:"
+    let header = "\n\nExamples of messages the user wrote (context: \(context.englishName)). They show voice only; do not copy their content:"
     var body = ""
     var count = 0
     for (index, example) in examples.enumerated() {

@@ -80,9 +80,11 @@ struct ImprovementSettingsTab: View {
 
   private var improveFromUsageButtonLabel: String {
     if isImprovementRunning {
-      return queuedJobCount > 0 ? "Running… (\(queuedJobCount) in queue)" : "Running…"
+      return queuedJobCount > 0
+        ? String(localized: "Running… (\(queuedJobCount) in queue)")
+        : String(localized: "Running…")
     }
-    return "Improve from usage"
+    return String(localized: "Improve from usage")
   }
 
   @ViewBuilder

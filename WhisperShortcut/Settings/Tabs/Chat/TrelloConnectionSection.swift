@@ -133,7 +133,7 @@ struct TrelloConnectionSection: View {
 
     // Persist API key so TrelloOAuthConfig.apiKey can read it.
     if !KeychainManager.shared.save(trimmedKey, for: .trelloAPIKey) {
-      errorMessage = "Failed to save the API key to the Keychain."
+      errorMessage = String(localized: "Failed to save the API key to the Keychain.")
       return
     }
     apiKey = trimmedKey

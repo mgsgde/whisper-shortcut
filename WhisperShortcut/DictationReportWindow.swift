@@ -91,10 +91,7 @@ struct DictationReportView: View {
       VStack(alignment: .leading, spacing: 4) {
         Text("Report a Problem with Your Last Dictation")
           .font(.headline)
-        Text(
-          "The developer gets the text and the details below, so you don't have to look up "
-            + "the version or model. Nothing is sent until you press send in WhatsApp or Mail."
-        )
+        Text("The developer gets the text and the details below, so you don't have to look up the version or model. Nothing is sent until you press send in WhatsApp or Mail.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -145,7 +142,7 @@ struct DictationReportView: View {
 
         Spacer()
 
-        Button(copied ? "Copied" : "Copy") {
+        Button(copied ? String(localized: "Copied") : String(localized: "Copy")) {
           NSPasteboard.general.clearContents()
           NSPasteboard.general.setString(FeedbackLinks.messageBody(context: context), forType: .string)
           copied = true

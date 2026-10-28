@@ -113,7 +113,7 @@ struct PermissionsOverview: View {
         Button {
           PermissionStatusChecker.requestMicrophoneAccess { _ in refresh() }
         } label: {
-          actionLabel("Grant Access", systemImage: "mic")
+          actionLabel(String(localized: "Grant Access"), systemImage: "mic")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -126,7 +126,7 @@ struct PermissionsOverview: View {
     actionStack {
       if screenStatus != .granted {
         Button(action: requestScreenRecording) {
-          actionLabel("Grant Access", systemImage: "rectangle.inset.filled.and.person.filled")
+          actionLabel(String(localized: "Grant Access"), systemImage: "rectangle.inset.filled.and.person.filled")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -142,7 +142,7 @@ struct PermissionsOverview: View {
           AccessibilityPermissionManager.requestAccessibilityAtOptIn()
           refresh()
         } label: {
-          actionLabel("Grant Access", systemImage: "accessibility")
+          actionLabel(String(localized: "Grant Access"), systemImage: "accessibility")
         }
         .buttonStyle(.borderedProminent)
         .pointerCursorOnHover()
@@ -170,7 +170,7 @@ struct PermissionsOverview: View {
     Button {
       PermissionStatusChecker.openSystemSettings(for: kind)
     } label: {
-      actionLabel("Open System Settings", systemImage: "arrow.up.right.square")
+      actionLabel(String(localized: "Open System Settings"), systemImage: "arrow.up.right.square")
     }
     .buttonStyle(.bordered)
     .pointerCursorOnHover()

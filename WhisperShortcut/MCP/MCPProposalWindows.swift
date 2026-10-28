@@ -49,7 +49,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
         onSend: { [weak self] title, report in self?.sendReport(id, title: title, report: report) },
         onDiscard: { [weak self] in self?.decline(id) }))
     } else if proposal.kind == .settings {
-      window.title = "Settings Change from an AI App"
+      window.title = String(localized: "Settings Change from an AI App")
       window.setContentSize(NSSize(width: 560, height: 420))
       window.contentView = NSHostingView(rootView: MCPSettingsProposalReviewView(
         items: proposal.settingsChanges ?? [], rationale: proposal.rationale,
@@ -148,7 +148,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
       windows[id]?.close()
     case .failure(let error):
       let alert = NSAlert()
-      alert.messageText = "Couldn't apply the change"
+      alert.messageText = String(localized: "Couldn't apply the change")
       alert.informativeText = error.localizedDescription
       alert.runModal()
     }
@@ -234,7 +234,7 @@ final class MCPProposalWindows: NSObject, NSWindowDelegate {
 
   static func title(for change: MCPChange) -> String {
     switch change.kind {
-    case .glossaryAdd: return "Glossary"
+    case .glossaryAdd: return String(localized: "Glossary")
     case .systemPrompt: return SystemPromptSection(rawValue: change.target).map(displayName) ?? change.target
     case .writingStyle: return String(localized: "Writing style profile")
     case .saveCommand: return change.previousContent == nil ? String(localized: "New command /\(change.target)") : String(localized: "Command /\(change.target)")

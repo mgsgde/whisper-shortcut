@@ -128,7 +128,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
         // Cancelled from the Cancel button.
       } catch {
         DebugLogger.logError("\(store.logPrefix): UI download failed for \(model.displayName): \(error.logDescription)")
-        onError("Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
+        onError(String(localized: "Failed to download \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
       }
     }
   }
@@ -138,7 +138,7 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
       try store.deleteModel(model)
     } catch {
       DebugLogger.logError("\(store.logPrefix): UI delete failed for \(model.displayName): \(error.logDescription)")
-      onError("Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))")
+      onError(String(localized: "Failed to delete \(model.displayName): \(SpeechErrorFormatter.formatForUser(error))"))
     }
   }
 }

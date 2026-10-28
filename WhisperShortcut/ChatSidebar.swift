@@ -192,7 +192,7 @@ struct ChatSidebar: View {
       }
       if !archived.isEmpty {
         collapsibleHeader(
-          "Archived",
+          String(localized: "Archived"),
           isCollapsed: chatArchivedCollapsed,
           showDivider: !grouped.isEmpty
         ) {
@@ -257,7 +257,7 @@ struct ChatSidebar: View {
         }
         if !archived.isEmpty {
           collapsibleHeader(
-            "Archived",
+            String(localized: "Archived"),
             isCollapsed: meetingArchivedCollapsed,
             showDivider: !grouped.isEmpty
           ) {
