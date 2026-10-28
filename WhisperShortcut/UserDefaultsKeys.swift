@@ -182,6 +182,10 @@ enum UserDefaultsKeys {
 
   // MARK: - Custom Transcription API
   static let customTranscriptionAPIURL = "customTranscriptionAPIURL"
+  /// Model id for the shared custom endpoint's transcription request. Empty → `whisper-1`.
+  static let customTranscriptionModelID = "customTranscriptionModelID"
+  /// Set once a legacy Dictate-only transcription URL has been considered for the shared endpoint.
+  static let customEndpointUnifiedMigrationDone = "customEndpointUnifiedMigrationDone"
 
   // MARK: - Transcription tuning (Gemini + OpenRouter)
   /// `generationConfig.temperature` sent with transcription requests. Before this existed nothing

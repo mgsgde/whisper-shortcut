@@ -226,8 +226,8 @@ enum TranscriptionModel: String, CaseIterable {
     case .offline:
       return true
     case .selfHosted:
-      let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL) ?? ""
-      return OfflineMode.allows(URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)))
+      let raw = CustomEndpointPreferences.transcriptionURL ?? ""
+      return OfflineMode.allows(URL(string: raw))
     case .google, .openAI, .xai, .openRouter:
       return false
     }

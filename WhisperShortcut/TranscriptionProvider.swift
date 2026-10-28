@@ -57,7 +57,8 @@ enum TranscriptionProvider: String, CaseIterable {
   ///
   /// OpenAI, xAI and OpenRouter go through `ProviderCredentials.hasKey` so a whitespace-only key
   /// is missing here as well as in `verifyConfigured`. Gemini stays on `GeminiCredentialProvider`;
-  /// self-hosted is a non-empty endpoint URL; offline availability is per downloaded file.
+  /// self-hosted is a transcription URL (legacy override or the shared base); offline
+  /// availability is per downloaded file. A key is optional.
   var hasCredential: Bool {
     switch self {
     case .google:
@@ -69,9 +70,7 @@ enum TranscriptionProvider: String, CaseIterable {
     case .openRouter:
       return ProviderCredentials.hasKey(.openRouter)
     case .selfHosted:
-      let url = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?
-        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-      return !url.isEmpty
+      return CustomEndpointPreferences.isTranscriptionConfigured
     case .offline:
       // Availability is per downloaded model file, so only `TranscriptionModel` can answer this.
       return false

@@ -399,30 +399,33 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Whether this model can power Dictate Prompt. Two paths qualify:
-  ///   - models that accept audio directly (`supportsDirectAudioInput`), and
+  /// Whether this model can power Dictate Prompt. Three paths qualify:
+  ///   - models that accept audio directly (`supportsDirectAudioInput`),
   ///   - local models, which can't hear audio but run a transcribe-first flow (offline STT →
-  ///     local text rewrite). Drives `dictatePromptCapableModels` and the runtime guard in
+  ///     local text rewrite), and
+  ///   - the custom OpenAI-compatible endpoint, which uses that same transcribe-first flow
+  ///     against the shared server. Drives `dictatePromptCapableModels` and the runtime guard in
   ///     `SpeechService.performPrompt`.
   var supportsDictatePrompt: Bool {
     if provider == .localMLX { return localMLXModelType?.supportsDictatePrompt == true }
-    return supportsDirectAudioInput || provider == .local
+    return supportsDirectAudioInput || provider == .local || provider == .customOpenAI
   }
 
   /// Whether this model's Dictate Prompt selection is read from a screenshot rather than the
   /// clipboard.
   ///
   /// Build-wide in principle (`AppConstants.dictatePromptUsesScreenshotSelection`), but never for
-  /// a local model: those are text-only, so a screenshot reaches them as nothing at all. That
-  /// combination used to send the "edit the highlighted region" system prompt with no image *and*
-  /// no clipboard — an instruction to read something the model was never given, which is why the
-  /// App Store build's local Dictate Prompt answered with the instruction tidied up.
+  /// a local model or the custom endpoint: those are text-only, so a screenshot reaches them as
+  /// nothing at all. That combination used to send the "edit the highlighted region" system prompt
+  /// with no image *and* no clipboard — an instruction to read something the model was never given,
+  /// which is why the App Store build's local Dictate Prompt answered with the instruction tidied up.
   ///
   /// Reading the pasteboard needs no Accessibility permission; only the synthetic ⌘C does. So the
   /// local path uses the clipboard in every build, and in the App Store build the user copies for
   /// themselves.
   var dictatePromptUsesScreenshotSelection: Bool {
-    AppConstants.dictatePromptUsesScreenshotSelection && provider != .local && provider != .localMLX
+    AppConstants.dictatePromptUsesScreenshotSelection
+      && provider != .local && provider != .localMLX && provider != .customOpenAI
   }
 
   /// Permission Dictate Prompt needs before it can read a selection, or nil when the runtime
@@ -478,6 +481,7 @@ enum PromptModel: String, CaseIterable {
   var hasRequiredCredentialForDictatePrompt: Bool {
     switch provider {
     case .openai: return ProviderCredentials.hasKey(.openAI)
+    case .customOpenAI: return OpenAIChatPreferences.isConfigured
     default: return hasRequiredCredential
     }
   }
@@ -487,7 +491,7 @@ enum PromptModel: String, CaseIterable {
     switch provider {
     case .gemini: return String(localized: "Add your Gemini API key in Settings → Accounts to use Dictate Prompt.")
     case .openai: return String(localized: "Add your OpenAI API key in Settings → Accounts to use Dictate Prompt.")
-    case .customOpenAI: return String(localized: "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
+    case .customOpenAI: return String(localized: "Add your own server's base URL and key in Settings → Dictate Prompt.")
     case .openRouter: return String(localized: "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .chatGPTPlan: return String(localized: "ChatGPT plan models are for Chat only for now. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt.")
     case .grok: return String(localized: "Grok can't process audio directly. Pick a Gemini or OpenAI GPT-Audio model in Dictate Prompt settings.")
@@ -2137,6 +2141,9 @@ struct SettingsDefaults {
   static let localModelID = "llama3.2"
   /// Default model tag for the Custom endpoint chat model.
   static let customOpenAIChatModelID = "openai/gpt-4o"
+  /// Model id sent to the shared custom endpoint for transcription. The self-hosted path
+  /// hardcoded this before the id was stored.
+  static let customTranscriptionModelID = "whisper-1"
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
   static let openInferenceEndpointURL = "https://openinference.de/api/v1"
   static let openInferenceModelID = "zai-org/GLM-5.2"

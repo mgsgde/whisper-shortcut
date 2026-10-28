@@ -128,7 +128,16 @@ final class OpenAIChatProvider: LLMChatProvider {
   private static func authHeaders(apiKey: String, route: Route) -> [String: String] {
     switch route {
     case .customEndpoint:
-      return OpenAIChatPreferences.authHeaders(apiKey: apiKey)
+      // Shared extra headers (the ones Dictate already stored) ride along. The auth header
+      // wins when a name clashes, including a difference only in case.
+      let auth = OpenAIChatPreferences.authHeaders(apiKey: apiKey)
+      let authNames = Set(auth.keys.map { $0.lowercased() })
+      var merged: [String: String] = [:]
+      for (name, value) in CustomEndpointPreferences.extraHeaders where !authNames.contains(name.lowercased()) {
+        merged[name] = value
+      }
+      for (name, value) in auth { merged[name] = value }
+      return merged
     case .openRouter:
       return [
         "Authorization": "Bearer \(apiKey)",
