@@ -129,6 +129,59 @@ struct TranscriptPlausibilityTests {
     #expect(result == "sabaki.dance")
   }
 
+  @Test("A speaker-labelled glossary echo on a long near-silent chunk is discarded")
+  func discardsSpeakerLabelledGlossaryEcho() {
+    // 2026-10-28: 11.4 s of near-silent meeting audio came back as exactly this.
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Speaker A: Claude Code.", audioDurationSeconds: 11.4,
+      glossaryTerms: ["Claude", "Claude Code", "MCP"], mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("A speaker-labelled glossary list in glossary order is discarded")
+  func discardsSpeakerLabelledOrderedGlossary() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Speaker A: Claude, MCP, Bachata, Odoo.", audioDurationSeconds: 25.0,
+      glossaryTerms: ["Claude", "Christoph", "MCP", "Bachata", "Odoo"], mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("A long speaker-labelled glossary list clears the length floor and is still discarded")
+  func discardsLongSpeakerLabelledOrderedGlossary() {
+    // Above the 3 chars/s floor, so only the ordered-list rule can catch it.
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Speaker A: Claude, Christoph, Michelbach, Cursor, EnBW, Grok, Opus, Sonnet, Gemini.",
+      audioDurationSeconds: 10.0,
+      glossaryTerms: [
+        "Claude", "Christoph", "Michelbach", "Cursor", "EnBW", "Grok", "Opus", "Sonnet", "Gemini",
+      ],
+      mode: "TEST")
+    #expect(result == "")
+  }
+
+  @Test("Real speech with speaker labels is kept")
+  func keepsRealSpeechWithSpeakerLabels() {
+    let text = "Speaker A: Ja, genau.\nSpeaker B: Claude Code ist gut."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 8.0, glossaryTerms: ["Claude Code"], mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A short real glossary utterance with a speaker label is kept")
+  func keepsShortSpeakerLabelledGlossaryUtterance() {
+    let text = "Speaker A: Claude Code."
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      text, audioDurationSeconds: 1.5, glossaryTerms: ["Claude Code"], mode: "TEST")
+    #expect(result == text)
+  }
+
+  @Test("A speaker label with nothing after it is discarded")
+  func discardsBareSpeakerLabel() {
+    let result = TextProcessingUtility.discardingGlossaryEchoTranscript(
+      "Speaker A:", audioDurationSeconds: 10.0, glossaryTerms: ["Claude Code"], mode: "TEST")
+    #expect(result == "")
+  }
+
   @Test("The upper bound still discards confabulated paragraphs")
   func discardsImplausiblyLongTranscript() {
     // The failure this gate exists for: 0.9 s of audio, 538 invented characters.
