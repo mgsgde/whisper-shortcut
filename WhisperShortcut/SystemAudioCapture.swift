@@ -346,6 +346,11 @@ final class SystemAudioCapture {
   private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
   private var ioProcID: AudioDeviceIOProcID?
   private var skipChannelCount = 0
+  /// The output device's nominal sample rate and input channel count as setUpCaptureGraph saw
+  /// them. Written on `controlQueue`, read on main, so guarded by a lock. A format notification
+  /// that matches these is an echo of our own aggregate device, not a real change.
+  private let builtFormatLock = NSLock()
+  private var builtFormat: (sampleRate: Double, inputChannels: Int)?
   private var outputDeviceNameAtStart = ""
   private var scratch: [Float] = []
 
@@ -635,6 +640,9 @@ final class SystemAudioCapture {
       skipChannels = Self.readInputChannelCount(outputDeviceID)
     }
     skipChannelCount = skipChannels
+    builtFormatLock.lock()
+    builtFormat = (Self.readNominalSampleRate(outputDeviceID), Self.readInputChannelCount(outputDeviceID))
+    builtFormatLock.unlock()
 
     let isFloat32 =
       usedFormat.mFormatID == kAudioFormatLinearPCM
@@ -777,6 +785,17 @@ final class SystemAudioCapture {
     formatDebounceWork?.cancel()
     let work = DispatchWorkItem { [weak self] in
       guard let self, self.isRunning, generation == self.formatGeneration else { return }
+      // Building the aggregate device can itself fire these notifications; only a real
+      // difference from what the graph was built with justifies a rebuild.
+      self.builtFormatLock.lock()
+      let built = self.builtFormat
+      self.builtFormatLock.unlock()
+      if let built, let device = OutputRoute.readDefaultOutputDevice(),
+        Self.readNominalSampleRate(device) == built.sampleRate,
+        Self.readInputChannelCount(device) == built.inputChannels
+      {
+        return
+      }
       DebugLogger.log("SYSTEM-AUDIO: output format changed, rebuilding tap")
       self.handleDefaultOutputDeviceChanged()
     }
@@ -905,6 +924,17 @@ final class SystemAudioCapture {
   }
 
   // MARK: Static Core Audio helpers
+
+  private static func readNominalSampleRate(_ deviceID: AudioObjectID) -> Double {
+    var address = AudioObjectPropertyAddress(
+      mSelector: kAudioDevicePropertyNominalSampleRate,
+      mScope: kAudioObjectPropertyScopeGlobal,
+      mElement: kAudioObjectPropertyElementMain)
+    var value: Float64 = 0
+    var size = UInt32(MemoryLayout<Float64>.size)
+    let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
+    return status == noErr ? value : 0
+  }
 
   private static func readInputChannelCount(_ deviceID: AudioObjectID) -> Int {
     var address = AudioObjectPropertyAddress(
