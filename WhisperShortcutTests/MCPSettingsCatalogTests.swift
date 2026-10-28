@@ -151,12 +151,14 @@ struct MCPSettingsCatalogTests {
     #expect(r.isError)
   }
 
-  @Test("A model without the required credential is refused; the catalog's credential check matches the model's own")
+  @Test(
+    "A model without the required credential is refused; the catalog's credential check matches the model's own",
+    .enabled(if: !TranscriptionModel.openAIGPTTranscribe.hasRequiredCredential,
+             "OpenAI key is present; this case needs a model with no credential"))
   func modelWithoutCredentialRefused() throws {
     let env = MCPTestEnv(level: .apply)
     // The catalog's validate uses the model's own `hasRequiredCredential` (a real Keychain read,
-    // not injected — see the implementation report); skip if this Mac happens to have the key.
-    try #require(!TranscriptionModel.openAIGPTTranscribe.hasRequiredCredential)
+    // not injected — see the implementation report). The trait above skips when this Mac has the key.
     let r = env.tools().call(
       name: "update_settings",
       arguments: ["changes": ["dictation.transcription_model": "openai-gpt-transcribe"], "rationale": "r"],

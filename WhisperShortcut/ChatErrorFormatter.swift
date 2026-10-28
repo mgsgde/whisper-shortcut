@@ -59,7 +59,7 @@ enum ChatErrorFormatter {
     case .grok: return "Grok"
     case .openai: return "OpenAI"
     case .anthropic: return "Claude"
-    case .customOpenAI: return String(localized: "Custom endpoint")
+    case .customOpenAI: return String(localized: "Own server")
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return String(localized: "ChatGPT plan")
     case .local: return String(localized: "Local LLM")

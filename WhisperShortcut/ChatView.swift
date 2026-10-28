@@ -3197,6 +3197,8 @@ struct ChatView: View {
   @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
   /// Image data to show in the full-size preview sheet (from pending screenshot or from a sent message thumbnail).
   @State private var previewImageData: Data? = nil
+  /// "No headset" hint closed by the user. View state on purpose: it comes back next window/meeting.
+  @State private var headsetHintDismissed = false
   @State private var scrollActions = ChatScrollActions()
   /// Local `.scrollPosition` binding only — not on the view model so per-frame scroll updates
   /// do not `@Published`-refresh the whole chat. Cleared on `scrollAnchorClearSignal` emissions.
@@ -4007,6 +4009,12 @@ struct ChatView: View {
         .frame(width: 90, alignment: .leading)
         .help(isFinishing ? ("Transcribing the last seconds of audio before saving the meeting" as LocalizedStringKey) : "")
 
+        // Only while recording: the mode belongs to the running capture. Switching mid-meeting is
+        // cheap (the chunk in progress is cut first), so there is no pre-start dialog.
+        if isRecording {
+          meetingAudioModeSwitch
+        }
+
         // While the meeting runs, the notes stream inline in the chat, so a switcher to a second
         // surface holding the same notes is a choice between identical content. It comes back when
         // the meeting has ended, where Notes carries the summary the chat does not show.
@@ -4082,6 +4090,9 @@ struct ChatView: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 6)
+      if isRecording, let notice = meetingAudioNotice {
+        meetingAudioNoticeRow(notice)
+      }
       Divider()
     }
     .background(ChatTheme.topBarBackground)
@@ -4233,6 +4244,101 @@ struct ChatView: View {
       icon: "checkmark.circle.fill",
       background: Color.green.opacity(0.75),
       dismiss: { viewModel.noticeMessage = nil })
+  }
+
+  // MARK: - Meeting audio mode
+
+  /// What the meeting bar warns about in Online meeting mode. A blocked capture outranks the
+  /// headset hint: with no system audio at all, speakers versus headset no longer matters.
+  private enum MeetingAudioNotice { case systemAudioBlocked, noHeadset }
+
+  private var meetingAudioNotice: MeetingAudioNotice? {
+    guard liveStore.audioMode == .online else { return nil }
+    if liveStore.systemAudioSeemsBlocked { return .systemAudioBlocked }
+    if liveStore.outputIsLikelySpeaker && !headsetHintDismissed { return .noHeadset }
+    return nil
+  }
+
+  /// Same pill look as the Chat/Notes switcher, which this replaces while the meeting runs.
+  private var meetingAudioModeSwitch: some View {
+    HStack(spacing: 2) {
+      ForEach(MeetingAudioMode.allCases, id: \.self) { mode in
+        let selected = liveStore.audioMode == mode
+        Button(action: { MeetingAudioMode.current = mode }) {
+          HStack(spacing: 4) {
+            Image(systemName: mode == .online ? "headphones" : "person.2")
+              .font(.system(size: 10))
+            Text(mode == .online ? ("Online meeting" as LocalizedStringKey) : "In person")
+              .font(.system(size: 11, weight: selected ? .semibold : .regular))
+          }
+          .foregroundColor(selected ? ChatTheme.primaryText : ChatTheme.secondaryText)
+          .padding(.horizontal, 9)
+          .padding(.vertical, 4)
+          .background(selected ? ChatTheme.windowBackground : Color.clear)
+          .cornerRadius(4)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerCursorOnHover()
+        .help(mode == .online
+          ? ("Records the other participants from your Mac's sound, plus your microphone. Best with a headset." as LocalizedStringKey)
+          : "Records only your microphone, for meetings in the same room.")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+      }
+    }
+    .padding(2)
+    .background(ChatTheme.controlBackground)
+    .cornerRadius(6)
+  }
+
+  private func meetingAudioNoticeRow(_ notice: MeetingAudioNotice) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: notice == .systemAudioBlocked ? "speaker.slash.fill" : "speaker.wave.2.fill")
+        .font(.system(size: 11))
+        .foregroundColor(.orange)
+      Text(notice == .systemAudioBlocked
+        ? ("The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." as LocalizedStringKey)
+        : "No headset detected. Without a headset, In person is enough.")
+        .font(.system(size: 11))
+        .foregroundColor(ChatTheme.primaryText.opacity(0.85))
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 8)
+      Button(action: {
+        if notice == .systemAudioBlocked {
+          PermissionStatusChecker.openSystemSettings(for: .screenRecording)
+        } else {
+          MeetingAudioMode.current = .inPerson
+        }
+      }) {
+        Text(notice == .systemAudioBlocked ? ("Open System Settings" as LocalizedStringKey) : "Switch to In person")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(ChatTheme.primaryText)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 3)
+          .overlay(RoundedRectangle(cornerRadius: 4).stroke(ChatTheme.secondaryText.opacity(0.3), lineWidth: 1))
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .pointerCursorOnHover()
+      .fixedSize()
+      if notice == .noHeadset {
+        // Someone on speakers on purpose keeps Online; the hint should not stand there all meeting.
+        Button(action: { headsetHintDismissed = true }) {
+          Image(systemName: "xmark")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(ChatTheme.secondaryText)
+            .frame(width: 16, height: 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerCursorOnHover()
+        .help("Hide this hint for now")
+        .accessibilityLabel("Hide this hint for now")
+      }
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 6)
+    .background(Color.orange.opacity(0.10))
   }
 
   private func errorBanner(_ message: String) -> some View {

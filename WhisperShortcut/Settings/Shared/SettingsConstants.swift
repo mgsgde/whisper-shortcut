@@ -51,7 +51,8 @@ enum CostLevel {
     case .medium: return "Medium"
     case .high: return "High"
     case .free: return "Free"
-    case .freeOffline: return "Free (Offline)"
+    // Not "Free (Offline)": the tile's Offline badge already says where it runs.
+    case .freeOffline: return "Free"
     case .custom: return "Custom"
     case .varies: return "Varies"
     }

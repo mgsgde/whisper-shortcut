@@ -39,6 +39,23 @@
       },
       "shouldTranslate" : false
     },
+    "NSAudioCaptureUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In an online meeting, WhisperShortcut records what the other participants say so it is part of the transcript."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Online-Meetings nimmt WhisperShortcut auf, was die anderen Teilnehmer sagen, damit es im Transkript steht."
+          }
+        }
+      }
+    },
     "NSKeychainUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {

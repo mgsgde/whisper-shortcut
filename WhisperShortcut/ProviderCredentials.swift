@@ -167,7 +167,7 @@ extension ChatModelProvider {
     case .gemini:
       return String(localized: "No Google API key configured. Add your Gemini API key in Settings → Accounts to use Gemini models.")
     case .endpoint:
-      return String(localized: "Custom endpoint is not configured — set URL and API key in Settings → Chat.")
+      return String(localized: "Your own server is not set up. Add its base URL and key in Settings → Chat.")
     case .chatGPTPlan:
       return String(localized: "Sign in with ChatGPT in Settings → Accounts to use your ChatGPT plan.")
     case .none:

@@ -109,56 +109,18 @@ struct PromptModelSelectionView: View {
         cell: { model, badges in modelCell(model, badges: badges) },
         more: { groupedGrids($0) })
 
-      // Model Details right under the picker they describe (use displayModel so subscription shows the fixed model's description and cost)
-      VStack(alignment: .leading, spacing: 8) {
-        Text(displayModel.description)
-          .font(.callout)
-          .foregroundColor(.secondary)
-          .textSelection(.enabled)
+      ModelDetailsFooter(
+        description: displayModel.description,
+        costLevel: displayModel.costLevel,
+        showsCompareLink: true)
 
-        HStack {
-          Text("Cost:")
-            .font(.callout)
-            .fontWeight(.medium)
-            .foregroundColor(.secondary)
-
-          Text(displayModel.costLevel.title)
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundColor(SettingsConstants.costLevelColor(for: displayModel.costLevel))
-        }
-
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text("Tip: Compare models (speed, intelligence, pricing):")
-            .font(.caption)
-            .foregroundColor(.secondary)
-          if let url = URL(string: AppConstants.geminiModelsComparisonURL) {
-            Link("gemini-models", destination: url)
-              .font(.caption)
-              .lineLimit(1)
-              .pointerCursorOnHover()
-          }
-        }
-      }
-
-      if let downloading = LocalLLMModelType.offerable.first(where: { mlxManager.downloadingModels.contains($0) }) {
-        HStack {
-          let fraction = mlxManager.downloadProgress[downloading] ?? 0
-          Text(fraction > 0 ? ("Downloading \(downloading.displayName)… \(Int(fraction * 100))%" as LocalizedStringKey) : "Starting \(downloading.displayName)…")
-            .font(.callout)
-            .foregroundColor(.secondary)
-          Spacer()
-          Button("Cancel") {
-            mlxManager.cancelDownload(downloading)
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .pointerCursorOnHover()
-        }
-      }
-
-      if models.contains(where: { $0.localMLXModelType != nil }) {
-        LocalLLMModelsSection(models: models.compactMap(\.localMLXModelType))
+      // The download list only matters once an on-device model is picked (the tile already says
+      // "Needs download") or one is on disk to manage. Shown in every prompt picker before, it
+      // repeated the same rows in Dictate Prompt, Chat, Meetings and Smart Improvement.
+      let offlineModels = models.compactMap(\.localMLXModelType)
+      if displayModel.localMLXModelType != nil
+        || offlineModels.contains(where: { mlxManager.isModelAvailable($0) || mlxManager.downloadingModels.contains($0) }) {
+        LocalLLMModelsSection(models: offlineModels)
       }
     }
   }
@@ -203,7 +165,7 @@ struct PromptModelSelectionView: View {
       (.anthropic, "quote.bubble", "Claude (Anthropic)", nil),
       (.chatGPTPlan, "person.crop.circle.badge.checkmark", "ChatGPT plan", "Your ChatGPT Plus or Pro plan · no API key"),
       (.openRouter, "arrow.triangle.branch", "OpenRouter", "Any model on your OpenRouter account"),
-      (.customOpenAI, "network", "Custom endpoint", "Your own OpenAI-compatible server"),
+      (.customOpenAI, "server.rack", "Own server", "OpenAI-compatible: LiteLLM, Azure, Vertex, …"),
       (.localMLX, "desktopcomputer", "Offline", "Runs on your Mac · nothing to install"),
       (.local, "server.rack", "Local Server", "Your own Ollama / LM Studio · any model you have pulled"),
     ]
@@ -233,8 +195,8 @@ struct PromptModelSelectionView: View {
   @ViewBuilder
   private func modelCell(_ model: PromptModel, badges: [ModelPickerBadge]) -> some View {
     ModelTile(
-      title: model.displayName,
-      subtitle: mlxTileSubtitle(for: model),
+      title: model.pickerTitle,
+      subtitle: model.provider == .customOpenAI ? ownServerTileSubtitle : nil,
       isSelected: displayModel == model,
       isDisabled: subscriptionMode,
       // `badges` comes from the curation, whose Recommended is this picker's `recommendedModel`.
@@ -243,8 +205,9 @@ struct PromptModelSelectionView: View {
       // exact confusion the `recommendedModel` doc above was introduced to end. The catalogue's
       // own star lives in `LocalLLMModelsSection`, where it means "best offline model".
       badges: badges,
-      setupBadge: subscriptionMode ? nil : model.pickerSetupBadge,
-      setupHelp: model.provider.credentialRequiredMessage,
+      setupBadge: subscriptionMode ? nil : (mlxDownloadBadge(for: model) ?? model.pickerSetupBadge),
+      setupHelp: model.localMLXModelType == nil ? model.provider.credentialRequiredMessage : nil,
+      setupSymbol: model.localMLXModelType == nil ? "key.fill" : "arrow.down.circle",
       onTap: {
         selectedModel = model
         onModelChanged?()
@@ -252,7 +215,14 @@ struct PromptModelSelectionView: View {
     )
   }
 
-  private func mlxTileSubtitle(for model: PromptModel) -> String? {
+  /// The model the shared server is asked for, once it is set up, so the tile names what runs.
+  private var ownServerTileSubtitle: String? {
+    CustomEndpointPreferences.isConfigured ? "→ \(OpenAIChatPreferences.modelID)" : nil
+  }
+
+  /// One badge for an on-device model that is not on disk yet, in the row the Offline badge
+  /// already uses — not a second "Not downloaded" line under the name.
+  private func mlxDownloadBadge(for model: PromptModel) -> String? {
     guard let type = model.localMLXModelType else { return nil }
     if mlxManager.downloadingModels.contains(type) {
       if let fraction = mlxManager.downloadProgress[type] {
@@ -260,7 +230,7 @@ struct PromptModelSelectionView: View {
       }
       return String(localized: "Downloading…")
     }
-    return mlxManager.isModelAvailable(type) ? nil : String(localized: "Not downloaded")
+    return mlxManager.isModelAvailable(type) ? nil : String(localized: "Needs download", comment: "Tile badge: on-device model not downloaded yet")
   }
 
 }

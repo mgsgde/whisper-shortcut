@@ -17,6 +17,12 @@ struct SpeechToPromptSettingsTab: View {
         LocalLLMEndpointSection()
       }
 
+      // The same server as Dictate and Chat; shown already set up when either configured it.
+      if viewModel.data.selectedPromptModel.provider == .customOpenAI {
+        SpacedSectionDivider()
+        OwnServerEndpointSection(route: .dictatePrompt)
+      }
+
       SpacedSectionDivider()
 
       // Screen context for voice Dictate Prompt (same UserDefaults key as before)
@@ -73,11 +79,11 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "Optional screenshot sent with voice Dictate Prompt requests"
+        subtitle: "Send a screenshot of your screen with each spoken Dictate Prompt, so the model sees what you see."
       )
 
       HStack(alignment: .center, spacing: 16) {
-        Text("Screenshot context:")
+        Text("Include screenshot:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
@@ -109,7 +115,7 @@ struct SpeechToPromptSettingsTab: View {
         Spacer()
       }
 
-      Text("When enabled, a screenshot of the current screen is included in Dictate Prompt requests to give the AI visual context. Requires Screen Recording permission.")
+      Text("Needs Screen Recording permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -123,7 +129,7 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "How to Use",
         systemImage: "questionmark.circle",
-        subtitle: "Step-by-step instructions for using Dictate Prompt"
+        subtitle: nil
       )
 
       ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.togglePrompting)

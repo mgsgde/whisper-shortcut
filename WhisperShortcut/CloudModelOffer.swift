@@ -189,7 +189,7 @@ enum CloudModelOffer {
     case .anthropic: return "Claude"
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return String(localized: "your ChatGPT plan")
-    case .customOpenAI: return String(localized: "your custom endpoint")
+    case .customOpenAI: return String(localized: "your own server")
     case .local, .localMLX: return String(localized: "local models")
     }
   }
@@ -202,7 +202,7 @@ enum CloudModelOffer {
     case .anthropic: return "Anthropic"
     case .openRouter: return "OpenRouter"
     case .chatGPTPlan: return "OpenAI"
-    case .customOpenAI: return String(localized: "your custom endpoint")
+    case .customOpenAI: return String(localized: "your own server")
     case .local, .localMLX: return String(localized: "this Mac")
     }
   }

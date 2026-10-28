@@ -778,9 +778,9 @@ class SpeechService {
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
         promptStarted: promptStarted, providerLabel: providerLabel)
-    // Both run on this Mac and share `executePromptWithLocal`; the model id and the provider are
-    // the only difference, and that is decided inside.
-    case .local, .localMLX:
+    // Text-only providers share `executePromptWithLocal`. The model id, the transcription
+    // step and the provider tag are decided inside.
+    case .local, .localMLX, .customOpenAI:
       return try await executePromptWithLocal(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
@@ -791,8 +791,6 @@ class SpeechService {
       throw TranscriptionError.networkError(String(localized: "Grok can't process audio directly. Pick a Gemini model or OpenAI's GPT-4o Audio for Dictate Prompt."))
     case .anthropic:
       throw TranscriptionError.networkError(String(localized: "Claude can't process audio directly. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
-    case .customOpenAI:
-      throw TranscriptionError.networkError(String(localized: "Custom endpoint is for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
     case .openRouter:
       throw TranscriptionError.networkError(String(localized: "OpenRouter chat models are for Chat only. Pick a Gemini, OpenAI GPT-Audio, or local model for Dictate Prompt."))
     case .chatGPTPlan:
@@ -1601,13 +1599,17 @@ class SpeechService {
 
   // MARK: - Local Prompt Mode
 
-  /// Dictate Prompt via a local OpenAI-compatible server (Ollama / LM Studio). Local LLMs are
-  /// text-only, so this runs a two-step flow:
-  ///   1. transcribe the spoken instruction with the user's selected Dictate transcription model
-  ///      (pick offline Whisper there for a fully-offline experience), then
-  ///   2. send `system prompt + clipboard context + instruction` to the local model and collect
+  /// Dictate Prompt for a text-only model. Three shapes share this path:
+  ///   - a local OpenAI-compatible server (Ollama / LM Studio),
+  ///   - an in-process MLX model, and
+  ///   - the user's own OpenAI-compatible endpoint (the same base URL as Chat).
+  /// None of them accept audio, so this runs a two-step flow:
+  ///   1. transcribe the spoken instruction — the selected Dictate model for the local and MLX
+  ///      shapes (pick offline Whisper there for a fully-offline experience), or the shared
+  ///      custom endpoint for that shape — then
+  ///   2. send `system prompt + clipboard context + instruction` to the model and collect
   ///      the rewritten text via the streaming provider.
-  /// No screenshot/image is sent (local text models can't read images in Phase 1).
+  /// No screenshot/image is sent (these models are text-only).
   private func executePromptWithLocal(
     audioURL: URL,
     clipboardContext: String?,
@@ -1617,28 +1619,44 @@ class SpeechService {
     promptStarted: ContinuousClock.Instant,
     providerLabel: String
   ) async throws -> String {
-    // Two shapes of "local" share this path: an in-process MLX model and an OpenAI-compatible
-    // server. What differs is only the model id we ask for — MLX takes the picker's own rawValue
-    // and resolves the weights itself, the server takes the tag the user typed — and how the
-    // timings are labelled. Everything between is identical, which is why the provider protocol
-    // is the seam and there is no second copy of this function.
+    // Three shapes share this path. MLX takes the picker's rawValue and resolves the weights
+    // itself. A local server takes the tag the user typed. The custom endpoint sends the sentinel
+    // rawValue; `OpenAIChatProvider` resolves it to `OpenAIChatPreferences.modelID`. Everything
+    // after the transcription step is identical, which is why there is no second copy of this function.
     let useMLX = model.provider == .localMLX
-    let requestModel = useMLX ? model.rawValue : LocalLLMPreferences.modelID
-    let modelLabel = useMLX ? (model.localMLXModelType?.huggingFaceID ?? model.rawValue) : requestModel
-    let providerTag = useMLX ? "mlx" : "local"
+    let useCustom = model.provider == .customOpenAI
+    let requestModel: String
+    let modelLabel: String
+    let providerTag: String
+    if useCustom {
+      requestModel = model.rawValue
+      modelLabel = OpenAIChatPreferences.modelID
+      providerTag = "custom"
+    } else if useMLX {
+      requestModel = model.rawValue
+      modelLabel = model.localMLXModelType?.huggingFaceID ?? model.rawValue
+      providerTag = "mlx"
+    } else {
+      requestModel = LocalLLMPreferences.modelID
+      modelLabel = requestModel
+      providerTag = "local"
+    }
+    let endpointLog = useCustom
+      ? OpenAIChatPreferences.chatCompletionsURL
+      : LocalLLMPreferences.chatCompletionsURL
     DebugLogger.log(
       useMLX
         ? "PROMPT-MODE-LOCAL: Starting execution provider=mlx model=\(modelLabel)"
-        : "PROMPT-MODE-LOCAL: Starting execution endpoint=\(LocalLLMPreferences.chatCompletionsURL) model=\(modelLabel)")
+        : "PROMPT-MODE-LOCAL: Starting execution endpoint=\(endpointLog) model=\(modelLabel)")
 
     // The local path is two local models in series, and until these timings existed there was no
     // way to tell which of them the user was actually waiting on.
     let startTime = CFAbsoluteTimeGetCurrent()
 
     // Step 1: the spoken instruction. A quick action already has it as text, so the
-    // recording is never transcribed. Otherwise use `performTranscription` directly so we
-    // don't disturb the `currentTranscriptionTask` slot that the public `transcribe` entry
-    // point manages.
+    // recording is never transcribed. The custom endpoint transcribes on the shared server;
+    // local and MLX use `performTranscription` directly so we don't disturb the
+    // `currentTranscriptionTask` slot that the public `transcribe` entry point manages.
     let instruction: String
     let transcriptionTime: CFAbsoluteTime
     // Set when the instruction came from an offline engine; the reply then gets the same layout
@@ -1653,7 +1671,21 @@ class SpeechService {
       // dictation path applies (`transcribe`), so a glossary list tacked on after the
       // instruction, or a term the user struck from the Glossary, cannot come back through
       // Dictate Prompt.
-      let spoken = try await performTranscription(audioURL: audioURL)
+      let spoken: String
+      if useCustom {
+        guard CustomEndpointPreferences.isTranscriptionConfigured else {
+          throw TranscriptionError.networkError(CustomEndpointPreferences.transcriptionNotConfiguredMessage)
+        }
+        spoken = try await transcribeWithSelfHostedEndpoint(audioURL: audioURL)
+        // The shared endpoint is a server, not an offline engine, so the reply does not get the
+        // spoken-layout pass.
+        spokenOffline = false
+      } else {
+        spoken = try await performTranscription(audioURL: audioURL)
+        // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
+        // feeds the local model should arrive with the layout the user spoke.
+        spokenOffline = TranscriptionModel.loadSelected().isOffline
+      }
       let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
         spoken,
         glossaryTerms: glossaryTermsForEchoCheck(),
@@ -1663,9 +1695,6 @@ class SpeechService {
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")
       }
       let transcript = correctingRejectedSpellings(in: stripped)
-      // Offline engines write "Doppelpunkt" / "neuer Absatz" out as words; the dictated note that
-      // feeds the local model should arrive with the layout the user spoke.
-      spokenOffline = TranscriptionModel.loadSelected().isOffline
       instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
@@ -2414,77 +2443,111 @@ class SpeechService {
   // MARK: - Self-hosted Transcription Endpoint
 
   private func transcribeWithSelfHostedEndpoint(audioURL: URL) async throws -> String {
-    let configuredEndpoint = UserDefaults.standard.string(forKey: UserDefaultsKeys.customTranscriptionAPIURL)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    guard !configuredEndpoint.isEmpty else {
-      throw TranscriptionError.networkError(String(localized: "Self-hosted transcription endpoint URL is not configured. Set it in Settings → Dictate."))
-    }
-    guard let baseURL = URL(string: configuredEndpoint) else {
-      throw TranscriptionError.invalidRequest
-    }
-
-    let bearerToken = (keychainManager.get(.customTranscriptionBearerToken) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    var extraHeaders = keychainManager.getCustomTranscriptionHeaders()
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
-
-    let urlPath = baseURL.path
-    let isBaseURL = urlPath.isEmpty || urlPath == "/"
-    let base = configuredEndpoint.hasSuffix("/") ? String(configuredEndpoint.dropLast()) : configuredEndpoint
-
-    // An Azure tenant is the one endpoint here that is neither the OpenAI layout nor
-    // whisper-asr-webservice: it authenticates the key with `api-key` (a bearer header is read as
-    // an Entra token and rejected) and its path is `/openai/…`, not `/v1/…`. Both come from
-    // `CustomEndpointAuth`, the same shaping the Chat custom endpoint uses.
-    let isAzure = CustomEndpointAuth.flavor(forBaseURL: configuredEndpoint) == .azure
-    var requestBearerToken: String? = bearerToken.isEmpty ? nil : bearerToken
-    if isAzure, !bearerToken.isEmpty {
-      extraHeaders.append(["key": "api-key", "value": bearerToken])
-      requestBearerToken = nil
-    }
-
-    // For a bare host, try the OpenAI layout first, then fall back to whisper-asr-webservice.
-    // For a full path, try the same path with both field-name conventions.
-    var attempts: [(URL, String)] = []
-    if isAzure {
-      // One shape only — guessing a second path against a tenant endpoint just turns a legible
-      // 404 into two. `endpointURL` expands a bare resource host to `/openai/v1` and fills in the
-      // `api-version` a classic `/openai/deployments/<name>/…` URL requires.
-      if let shaped = CustomEndpointAuth.endpointURL(appending: "audio/transcriptions", to: configuredEndpoint),
-         let u = URL(string: shaped) {
-        attempts.append((u, "file"))
-      }
-    } else if isBaseURL {
-      if let u = URL(string: "\(base)/v1/audio/transcriptions") { attempts.append((u, "file")) }
-      if let u = URL(string: "\(base)/asr") { attempts.append((u, "audio_file")) }
-    } else {
-      attempts.append((baseURL, "file"))
-      attempts.append((baseURL, "audio_file"))
-    }
-
-    var lastError: Error = TranscriptionError.networkError(String(localized: "All request attempts failed"))
     let session = makeTranscriptionURLSession()
+    let modelID = CustomEndpointPreferences.transcriptionModelID
 
-    for (attemptURL, fieldName) in attempts {
-      do {
-        return try await sendOpenAICompatibleTranscriptionRequest(
-          url: attemptURL,
-          fieldName: fieldName,
-          modelID: fieldName == "file" ? "whisper-1" : nil,
-          audioData: audioData,
-          fileExtension: fileExtension,
-          mimeType: mimeType,
-          bearerToken: requestBearerToken,
-          extraHeaders: extraHeaders,
-          session: session,
-          logPrefix: "SELF-HOSTED-TRANSCRIPTION"
-        )
-      } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
-        DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
-        lastError = TranscriptionError.serverError(code)
+    // A legacy URL that is not `{base}/audio/transcriptions` keeps today's attempt list.
+    if let configuredEndpoint = CustomEndpointPreferences.transcriptionURLOverride {
+      guard let baseURL = URL(string: configuredEndpoint) else {
+        throw TranscriptionError.invalidRequest
+      }
+
+      let bearerToken = CustomEndpointPreferences.transcriptionCredential ?? ""
+      var extraHeaders = Self.customEndpointHeaderPairs()
+
+      let urlPath = baseURL.path
+      let isBaseURL = urlPath.isEmpty || urlPath == "/"
+      let base = configuredEndpoint.hasSuffix("/") ? String(configuredEndpoint.dropLast()) : configuredEndpoint
+
+      // An Azure tenant is the one endpoint here that is neither the OpenAI layout nor
+      // whisper-asr-webservice: it authenticates the key with `api-key` (a bearer header is read as
+      // an Entra token and rejected) and its path is `/openai/…`, not `/v1/…`. Both come from
+      // `CustomEndpointAuth`, the same shaping the Chat custom endpoint uses.
+      let isAzure = CustomEndpointAuth.flavor(forBaseURL: configuredEndpoint) == .azure
+      var requestBearerToken: String? = bearerToken.isEmpty ? nil : bearerToken
+      if isAzure, !bearerToken.isEmpty {
+        extraHeaders.append(["key": "api-key", "value": bearerToken])
+        requestBearerToken = nil
+      }
+
+      // For a bare host, try the OpenAI layout first, then fall back to whisper-asr-webservice.
+      // For a full path, try the same path with both field-name conventions.
+      var attempts: [(URL, String)] = []
+      if isAzure {
+        // One shape only — guessing a second path against a tenant endpoint just turns a legible
+        // 404 into two. `endpointURL` expands a bare resource host to `/openai/v1` and fills in the
+        // `api-version` a classic `/openai/deployments/<name>/…` URL requires.
+        if let shaped = CustomEndpointAuth.endpointURL(appending: "audio/transcriptions", to: configuredEndpoint),
+           let u = URL(string: shaped) {
+          attempts.append((u, "file"))
+        }
+      } else if isBaseURL {
+        if let u = URL(string: "\(base)/v1/audio/transcriptions") { attempts.append((u, "file")) }
+        if let u = URL(string: "\(base)/asr") { attempts.append((u, "audio_file")) }
+      } else {
+        attempts.append((baseURL, "file"))
+        attempts.append((baseURL, "audio_file"))
+      }
+
+      var lastError: Error = TranscriptionError.networkError(String(localized: "All request attempts failed"))
+      for (attemptURL, fieldName) in attempts {
+        do {
+          return try await sendOpenAICompatibleTranscriptionRequest(
+            url: attemptURL,
+            fieldName: fieldName,
+            modelID: fieldName == "file" ? modelID : nil,
+            audioData: audioData,
+            fileExtension: fileExtension,
+            mimeType: mimeType,
+            bearerToken: requestBearerToken,
+            extraHeaders: extraHeaders,
+            session: session,
+            logPrefix: "SELF-HOSTED-TRANSCRIPTION"
+          )
+        } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
+          DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
+          lastError = TranscriptionError.serverError(code)
+        }
+      }
+      throw lastError
+    }
+
+    // Shared base: one OpenAI-layout attempt. Azure authenticates with `api-key`; everyone else
+    // with a bearer token. A missing key is allowed — keyless self-hosted servers exist.
+    guard let shaped = CustomEndpointPreferences.transcriptionURL, let attemptURL = URL(string: shaped) else {
+      throw TranscriptionError.networkError(CustomEndpointPreferences.transcriptionNotConfiguredMessage)
+    }
+    var extraHeaders = Self.customEndpointHeaderPairs()
+    var requestBearerToken: String?
+    if let apiKey = CustomEndpointPreferences.transcriptionCredential {
+      let auth = CustomEndpointAuth.headers(baseURL: CustomEndpointPreferences.baseURL ?? "", apiKey: apiKey)
+      if let apiKeyHeader = auth["api-key"] {
+        extraHeaders.append(["key": "api-key", "value": apiKeyHeader])
+      }
+      if let authorization = auth["Authorization"], authorization.hasPrefix("Bearer ") {
+        requestBearerToken = String(authorization.dropFirst("Bearer ".count))
       }
     }
-    throw lastError
+    return try await sendOpenAICompatibleTranscriptionRequest(
+      url: attemptURL,
+      fieldName: "file",
+      modelID: modelID,
+      audioData: audioData,
+      fileExtension: fileExtension,
+      mimeType: mimeType,
+      bearerToken: requestBearerToken,
+      extraHeaders: extraHeaders,
+      session: session,
+      logPrefix: "SELF-HOSTED-TRANSCRIPTION"
+    )
+  }
+
+  /// Shared extra headers as the `{key, value}` pairs the multipart helper already accepts.
+  private static func customEndpointHeaderPairs() -> [[String: String]] {
+    CustomEndpointPreferences.extraHeaders.map { ["key": $0.key, "value": $0.value] }
   }
 
   // MARK: - OpenRouter Transcription (chat completions with an audio part)

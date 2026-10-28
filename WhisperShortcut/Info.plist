@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>8.63</string>
+	<string>8.65</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>261</string>
+	<string>263</string>
 	<key>GIDClientID</key>
 	<string>797100884157-9m6p166qmss4rj9psi4qbmipig9ljkn2.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -48,6 +48,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 	</dict>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>In an online meeting, WhisperShortcut records what the other participants say so it is part of the transcript.</string>
 	<key>NSKeychainUsageDescription</key>
 	<string>This app needs keychain access to securely store your Google API key.</string>
 	<key>NSMicrophoneUsageDescription</key>
