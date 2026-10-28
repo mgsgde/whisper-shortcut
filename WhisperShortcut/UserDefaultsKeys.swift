@@ -132,6 +132,7 @@ enum UserDefaultsKeys {
   // MARK: - Live Meeting Settings
   static let meetingTranscriptSectionExpanded = "meetingTranscriptSectionExpanded"
   static let liveMeetingChunkInterval = "liveMeetingChunkInterval"
+  static let liveMeetingAudioMode = "liveMeetingAudioMode"
   static let liveMeetingSafeguardDurationSeconds = "liveMeetingSafeguardDurationSeconds"
   static let selectedTranscriptionModelForMeetings = "selectedTranscriptionModelForMeetings"
   static let selectedMeetingSummaryModel = "selectedMeetingSummaryModel"

@@ -18481,6 +18481,106 @@
         }
       }
     },
+    "Online meeting" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online-Meeting"
+          }
+        }
+      }
+    },
+    "In person" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vor Ort"
+          }
+        }
+      }
+    },
+    "Records the other participants from your Mac's sound, plus your microphone. Best with a headset." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt die anderen Teilnehmer über den Ton Ihres Mac auf, dazu Ihr Mikrofon. Am besten mit Headset."
+          }
+        }
+      }
+    },
+    "Records only your microphone, for meetings in the same room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt nur Ihr Mikrofon auf, für Meetings im selben Raum."
+          }
+        }
+      }
+    },
+    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
+          }
+        }
+      }
+    },
+    "No headset detected. Without a headset, In person is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Headset erkannt. Ohne Headset reicht Vor Ort."
+          }
+        }
+      }
+    },
+    "Switch to In person" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Vor Ort wechseln"
+          }
+        }
+      }
+    },
+    "Hide this hint for now" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis vorerst ausblenden"
+          }
+        }
+      }
+    },
+    "System Audio Not Recorded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemton wird nicht aufgenommen"
+          }
+        }
+      }
+    },
+    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
+          }
+        }
+      }
+    },
     "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
       "localizations" : {
         "de" : {

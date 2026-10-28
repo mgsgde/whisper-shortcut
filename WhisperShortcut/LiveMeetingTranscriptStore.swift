@@ -91,7 +91,32 @@ final class LiveMeetingTranscriptStore: ObservableObject {
 
   private let queue = DispatchQueue(label: "com.magnusgoedde.whispershortcut.liveMeetingStore", qos: .userInitiated)
 
-  private init() {}
+  /// Whether the meeting expects the other participants through the speakers (system audio is
+  /// recorded next to the microphone) or is held in person. Mirrors `MeetingAudioMode.current`.
+  @Published private(set) var audioMode: MeetingAudioMode = MeetingAudioMode.current
+
+  /// A system audio tap is running for the live meeting.
+  @Published var isCapturingSystemAudio = false
+
+  /// The current output device is probably speakers, so the microphone also picks up the others.
+  @Published var outputIsLikelySpeaker = false
+
+  /// System audio is probably not being recorded (permission missing, or the tap failed to start).
+  @Published var systemAudioSeemsBlocked = false
+
+  private init() {
+    NotificationCenter.default.addObserver(
+      forName: .liveMeetingAudioModeChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.audioMode = MeetingAudioMode.current
+    }
+  }
+
+  private func resetSystemAudioFlags() {
+    isCapturingSystemAudio = false
+    outputIsLikelySpeaker = false
+    systemAudioSeemsBlocked = false
+  }
 
   /// Generates a timestamp-based filename stem (e.g. "Meeting-2026-03-04-201119").
   /// Used as the meeting's unique ID for both transcript files and chat store scope.
@@ -211,11 +236,13 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     if Thread.isMainThread {
       self.isSessionActive = false
       self.isFinishing = false
+      self.resetSystemAudioFlags()
       DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
     } else {
       DispatchQueue.main.async { [weak self] in
         self?.isSessionActive = false
         self?.isFinishing = false
+        self?.resetSystemAudioFlags()
         DebugLogger.log("LIVE-MEETING-STORE: Session ended, data retained for display")
       }
     }
@@ -239,6 +266,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     self.summary = ""
     self.isSessionActive = false
     self.isFinishing = false
+    self.resetSystemAudioFlags()
     self.currentMeetingFilenameStem = stem
     self.preferredMeetingName = nil
     DebugLogger.log("LIVE-MEETING-STORE: Cleared for new meeting (stem: \(stem))")
