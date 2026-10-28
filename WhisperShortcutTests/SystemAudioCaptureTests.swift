@@ -354,3 +354,80 @@ final class MeetingAudioModeTests: XCTestCase {
     XCTAssertEqual(MeetingAudioMode.current, .inPerson)
   }
 }
+
+// MARK: - Recorder mixing + store wiring
+
+final class MeetingSystemAudioMixTests: XCTestCase {
+
+  override func setUp() {
+    super.setUp()
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+  }
+
+  override func tearDown() {
+    UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.liveMeetingAudioMode)
+    super.tearDown()
+  }
+
+  func testMixSystemAudioIntoSilentChunkKeepsLengthAndAddsSignal() throws {
+    let sampleRate = 24_000.0
+    let frameCount = 48_000  // 2 s
+    let url = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("mixSystemAudioTest_\(UUID().uuidString).wav")
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatLinearPCM),
+      AVSampleRateKey: sampleRate,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false,
+    ]
+    let writeFile = try AVAudioFile(
+      forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+    let format = try XCTUnwrap(
+      AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false))
+    let silence = try XCTUnwrap(
+      AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)))
+    silence.frameLength = AVAudioFrameCount(frameCount)  // zero-filled
+    try writeFile.write(from: silence)
+    writeFile.close()
+
+    let wallStart = Date()
+    let buffer = SystemAudioBuffer()
+    let systemRate = 48_000.0
+    let sine = (0..<96_000).map { Float(0.3 * sin(2 * Double.pi * 440 * Double($0) / systemRate)) }
+    sine.withUnsafeBufferPointer {
+      buffer.append($0, sampleRate: systemRate, wallClock: wallStart)
+    }
+
+    try LiveMeetingRecorder.mixSystemAudio(into: url, buffer: buffer, wallStart: wallStart)
+
+    let readFile = try AVAudioFile(forReading: url)
+    XCTAssertEqual(Int(readFile.length), frameCount)
+    let readFormat = readFile.processingFormat
+    let readBuffer = try XCTUnwrap(
+      AVAudioPCMBuffer(pcmFormat: readFormat, frameCapacity: AVAudioFrameCount(frameCount)))
+    try readFile.read(into: readBuffer)
+    let channel = try XCTUnwrap(readBuffer.floatChannelData)[0]
+    var peak: Float = 0
+    for i in 0..<Int(readBuffer.frameLength) { peak = max(peak, abs(channel[i])) }
+    XCTAssertEqual(peak, 0.3, accuracy: 0.02)
+  }
+
+  func testAudioModeChangeUpdatesStore() {
+    MeetingAudioMode.current = .online
+    let online = expectation(description: "store follows online")
+    DispatchQueue.main.async { online.fulfill() }
+    wait(for: [online], timeout: 1)
+    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioMode, .online)
+
+    MeetingAudioMode.current = .inPerson
+    let inPerson = expectation(description: "store follows in person")
+    DispatchQueue.main.async { inPerson.fulfill() }
+    wait(for: [inPerson], timeout: 1)
+    XCTAssertEqual(LiveMeetingTranscriptStore.shared.audioMode, .inPerson)
+  }
+}

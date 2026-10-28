@@ -57,6 +57,84 @@ final class LiveMeetingSession: NSObject {
     self.onFinished = onFinished
     self.onBacklogChanged = onBacklogChanged
     super.init()
+    // The meeting bar's Online / In person switch changes the mode mid-meeting.
+    audioModeObserver = NotificationCenter.default.addObserver(
+      forName: .liveMeetingAudioModeChanged, object: nil, queue: .main
+    ) { [weak self] _ in
+      guard let self, self.recorder != nil, !self.stopping, !self.finalized else { return }
+      self.applyAudioMode(MeetingAudioMode.current)
+    }
+  }
+
+  deinit {
+    if let audioModeObserver { NotificationCenter.default.removeObserver(audioModeObserver) }
+  }
+
+  // MARK: - System audio (Online meeting mode)
+
+  private var audioModeObserver: NSObjectProtocol?
+  private var systemCapture: SystemAudioCapture?
+  private var didShowSystemAudioAlert = false
+
+  private func applyAudioMode(_ mode: MeetingAudioMode) {
+    let store = LiveMeetingTranscriptStore.shared
+    switch mode {
+    case .online:
+      guard systemCapture == nil else { return }
+      let capture = SystemAudioCapture()
+      capture.onOutputRouteChange = { route in
+        DispatchQueue.main.async {
+          store.outputIsLikelySpeaker = route?.isLikelySpeaker ?? false
+        }
+      }
+      capture.onPermissionSuspectedChange = { [weak self] suspected in
+        DispatchQueue.main.async {
+          store.systemAudioSeemsBlocked = suspected
+          if suspected { self?.showSystemAudioBlockedAlert() }
+        }
+      }
+      do {
+        try capture.start()
+        systemCapture = capture
+        recorder?.systemAudio = capture.buffer
+        store.isCapturingSystemAudio = true
+        DebugLogger.log("LIVE-MEETING: Audio mode online (system audio + microphone)")
+      } catch {
+        // Never abort the meeting: it keeps recording from the microphone.
+        DebugLogger.logError("LIVE-MEETING: System audio capture failed to start: \(error)")
+        systemCapture = nil
+        store.systemAudioSeemsBlocked = true
+        showSystemAudioBlockedAlert()
+      }
+    case .inPerson:
+      if systemCapture != nil {
+        // Cut the chunk recorded while online first, so it still gets its system audio.
+        recorder?.rotateNow(minimumChunkAge: 0.5)
+        tearDownSystemCapture()
+      }
+      DebugLogger.log("LIVE-MEETING: Audio mode in person (microphone only)")
+    }
+  }
+
+  /// Stops the tap and clears the runtime flags. A chunk already cut keeps its own buffer reference.
+  private func tearDownSystemCapture() {
+    recorder?.systemAudio = nil
+    systemCapture?.stop()
+    systemCapture = nil
+    let store = LiveMeetingTranscriptStore.shared
+    store.isCapturingSystemAudio = false
+    store.outputIsLikelySpeaker = false
+    store.systemAudioSeemsBlocked = false
+  }
+
+  private func showSystemAudioBlockedAlert() {
+    guard !didShowSystemAudioAlert else { return }
+    didShowSystemAudioAlert = true
+    PopupNotificationWindow.showError(
+      "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only.",
+      title: "System Audio Not Recorded",
+      retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
+      retryActionTitle: "Open System Settings")
   }
 
   // MARK: - Session state
@@ -170,6 +248,8 @@ final class LiveMeetingSession: NSObject {
     recorder = LiveMeetingRecorder(maxChunkDuration: chunkInterval)
     recorder?.delegate = self
     recorder?.startSession(resumeTimeOffset: resumeOffset)
+    didShowSystemAudioAlert = false
+    applyAudioMode(MeetingAudioMode.current)
 
     // Update state
     stopping = false
@@ -235,6 +315,7 @@ final class LiveMeetingSession: NSObject {
     guard let recorder, !stopping, !finalized else { return }
     let stem = transcriptURL?.deletingPathExtension().lastPathComponent
     let chunk = recorder.stopForTermination()
+    tearDownSystemCapture()
     self.recorder = nil
     guard let chunk else {
       DebugLogger.log("LIVE-MEETING: Terminating mid-meeting, no chunk worth keeping")
@@ -264,6 +345,7 @@ final class LiveMeetingSession: NSObject {
     // the transcript file while a late chunk is still being appended).
     awaitingFinalChunk = true
     recorder?.stopSession()
+    tearDownSystemCapture()
 
     // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
     // doesn't get stuck in "stopping" forever.
@@ -351,6 +433,7 @@ final class LiveMeetingSession: NSObject {
     stopping = false
     awaitingFinalChunk = false
     discard = false
+    tearDownSystemCapture()
     recorder = nil
     pendingChunks = 0
     transcriptURL = nil

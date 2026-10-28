@@ -35,18 +35,13 @@ final class SystemAudioBuffer {
   /// index, far below the spacing of a single sample at any realistic audio sample rate.
   private static let timeEpsilon: TimeInterval = 1e-6
 
-  /// Below this fraction, or below this absolute sample count, a dropped prefix is left in
-  /// place rather than compacted away, so the real-time append path is not copying the array
-  /// on every callback for a handful of stale samples.
-  private static let compactionMinSamples = 48_000
-
   private let lock = NSLock()
   private var segments: [Segment] = []
   private var seenNonZero = false
 
   private let maxRetainedSeconds: TimeInterval
 
-  init(maxRetainedSeconds: TimeInterval = 360) {
+  init(maxRetainedSeconds: TimeInterval = 150) {
     self.maxRetainedSeconds = maxRetainedSeconds
   }
 
@@ -105,26 +100,50 @@ final class SystemAudioBuffer {
   /// covering sample (before any segment, in a gap between segments, or past the newest
   /// segment) read as 0; a window straddling two adjacent segments averages across both.
   func extract(from start: Date, duration: TimeInterval, outputRate: Double = 24_000) -> [Float] {
-    lock.lock()
-    defer { lock.unlock() }
-
     let count = Int(duration * outputRate)
     guard count > 0 else { return [] }
 
-    var result = [Float](repeating: 0, count: count)
-    guard !segments.isEmpty else { return result }
-
+    // Under the lock only copy the slices that can overlap the request; the averaging runs
+    // after unlocking so the IO thread's append is never blocked for the whole resample.
+    struct Slice {
+      let startDate: Date
+      let sampleRate: Double
+      let firstIndex: Int
+      let samples: [Float]
+    }
     let dt = 1.0 / outputRate
+    let end = start.addingTimeInterval(Double(count) * dt)
+
+    lock.lock()
+    var slices: [Slice] = []
+    for segment in segments {
+      guard let range = sampleRange(in: segment, from: start, to: end) else { continue }
+      slices.append(
+        Slice(
+          startDate: segment.startDate, sampleRate: segment.sampleRate,
+          firstIndex: range.lowerBound, samples: Array(segment.samples[range])))
+    }
+    lock.unlock()
+
+    var result = [Float](repeating: 0, count: count)
+    guard !slices.isEmpty else { return result }
+
     for idx in 0..<count {
       let t = start.addingTimeInterval(Double(idx) * dt)
       let tEnd = t.addingTimeInterval(dt)
 
       var sum: Double = 0
       var n = 0
-      for segment in segments {
-        guard let range = sampleRange(in: segment, from: t, to: tEnd) else { continue }
-        for i in range {
-          sum += Double(segment.samples[i])
+      for slice in slices {
+        let loRaw = t.timeIntervalSince(slice.startDate) * slice.sampleRate
+        let hiRaw = tEnd.timeIntervalSince(slice.startDate) * slice.sampleRate
+        let lo = max(Int((loRaw - Self.timeEpsilon).rounded(.up)), slice.firstIndex)
+        let hi = min(
+          Int((hiRaw - Self.timeEpsilon).rounded(.up)) - 1,
+          slice.firstIndex + slice.samples.count - 1)
+        guard lo <= hi else { continue }
+        for i in lo...hi {
+          sum += Double(slice.samples[i - slice.firstIndex])
           n += 1
         }
       }
@@ -212,9 +231,9 @@ final class SystemAudioBuffer {
     let segment = segments[index]
     let dropped = segment.startIndex
     guard dropped > 0 else { return }
-    guard dropped >= Self.compactionMinSamples || dropped * 2 >= segment.samples.count else {
-      return
-    }
+    // Only once at least half the array is stale, so the real-time append does not memmove the
+    // whole retention window every second.
+    guard dropped * 2 >= segment.samples.count else { return }
     segments[index].samples.removeFirst(dropped)
     segments[index].startDate = segment.startDate.addingTimeInterval(Double(dropped) / segment.sampleRate)
     segments[index].startIndex = 0
