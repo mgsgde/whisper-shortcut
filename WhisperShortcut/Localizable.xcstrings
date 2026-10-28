@@ -10918,6 +10918,16 @@
         }
       }
     },
+    "Mac sound is everything your Mac plays, except WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac-Ton ist alles, was dein Mac abspielt, außer WhisperShortcut."
+          }
+        }
+      }
+    },
     "macOS (On-Device)" : {
       "localizations" : {
         "de" : {
@@ -11395,6 +11405,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Mikrofon ist in den Systemeinstellungen aus. Sie können weitermachen und es später einschalten."
+          }
+        }
+      }
+    },
+    "Microphone only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone only · manual" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Mikrofon · manuell"
           }
         }
       }
@@ -13255,6 +13285,16 @@
         }
       }
     },
+    "Only your microphone is recorded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur dein Mikrofon wird aufgenommen."
+          }
+        }
+      }
+    },
     "Open %@ in your browser." : {
       "localizations" : {
         "de" : {
@@ -14121,6 +14161,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anderer Server …"
+          }
+        }
+      }
+    },
+    "Output: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgabe: %@"
           }
         }
       }
@@ -22948,56 +22998,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔴 Dictate Prompt wird aufgenommen …"
-          }
-        }
-      }
-    },
-    "Mac sound is everything your Mac plays, except WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mac-Ton ist alles, was dein Mac abspielt, außer WhisperShortcut."
-          }
-        }
-      }
-    },
-    "Microphone only" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur Mikrofon"
-          }
-        }
-      }
-    },
-    "Microphone only · manual" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur Mikrofon · manuell"
-          }
-        }
-      }
-    },
-    "Only your microphone is recorded." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur dein Mikrofon wird aufgenommen."
-          }
-        }
-      }
-    },
-    "Output: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgabe: %@"
           }
         }
       }
