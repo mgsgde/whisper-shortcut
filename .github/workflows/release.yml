@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   hermetic-tests:
@@ -44,7 +45,6 @@ jobs:
 
   build-and-release:
     name: Build, Sign, Notarize, and Release
-    needs: hermetic-tests
     runs-on: macos-latest
     timeout-minutes: 90
 
@@ -115,10 +115,18 @@ jobs:
 
           echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
 
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/spm-packages
+          key: spm-${{ runner.os }}-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
       - name: Build and archive
         run: |
-          xcodebuild clean archive \
+          xcodebuild archive \
             -disableAutomaticPackageResolution \
+            -clonedSourcePackagesDirPath "$HOME/spm-packages" \
             -project WhisperShortcut.xcodeproj \
             -scheme WhisperShortcut \
             -configuration Release \
@@ -302,6 +310,35 @@ jobs:
               echo EOF
             } >> $GITHUB_OUTPUT
           fi
+
+      # Tests and build now run side by side (saves the ~6 min the tests took up front).
+      # Nothing is published unless the tests passed: this step sits before "Create
+      # Release", so a failing test job fails this job before any release is touched.
+      - name: Wait for hermetic tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          deadline=$((SECONDS + 45 * 60))
+          while true; do
+            result=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" --jq '.jobs[] | select(.name == "Hermetic tests") | "\(.status) \(.conclusion)"') || result=""
+            status=${result%% *}
+            conclusion=${result#* }
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                echo "Hermetic tests passed."
+                exit 0
+              fi
+              echo "::error::Hermetic tests finished with conclusion '$conclusion'; not publishing."
+              exit 1
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Timed out after 45 min waiting for the Hermetic tests job (last state: '${result:-not found}')."
+              exit 1
+            fi
+            echo "Hermetic tests not done yet (${result:-not found}); retrying in 20 s."
+            sleep 20
+          done
 
       # Decided right before publishing, not at the start: on 2026-10-19 v8.47 was set
       # back to draft by hand while this run was still building, and `draft: false`
