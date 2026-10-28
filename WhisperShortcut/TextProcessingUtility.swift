@@ -346,6 +346,12 @@ enum TextProcessingUtility {
   /// characters), and a ~25 s chunk as "Speaker A: Claude, Christoph, Michelbach, ..." — the whole
   /// glossary in glossary order. Both rules below judge the text with those labels removed; a
   /// transcript that is only labels is discarded.
+  ///
+  /// Connector words ("und", "and", "mit", ...) are neutral in both rules. Observed 2026-10-28
+  /// (gpt-transcribe, live meeting, loud system audio): the model returned "Claude Code, MCP und
+  /// Bachata." and a 29 s chunk of "X, Y und Z." triples — the glossary with "und" glued between
+  /// terms, which neither rule caught because "und" is not a glossary word. Connectors may sit
+  /// between terms, but a transcript made only of connectors is not an echo.
   static func discardingGlossaryEchoTranscript(
     _ text: String, audioDurationSeconds: Double, glossaryTerms: [String], mode: String
   ) -> String {
@@ -381,7 +387,10 @@ enum TextProcessingUtility {
     })
     let words = judged.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
       .map { foldForEchoCheck(String($0)) }
-    guard !words.isEmpty, words.allSatisfy({ folded.contains($0) }) else { return text }
+    guard !words.isEmpty,
+      words.allSatisfy({ folded.contains($0) || echoConnectorWords.contains($0) }),
+      words.contains(where: { folded.contains($0) })
+    else { return text }
 
     DebugLogger.logError(
       "\(mode): Discarding glossary-echo transcript (\(judged.count) chars from \(String(format: "%.1f", audioDurationSeconds))s audio, min plausible \(String(format: "%.0f", minPlausibleCharacters)), short-text rule: all words are glossary terms)\(labelNote)"
@@ -390,6 +399,11 @@ enum TextProcessingUtility {
   }
 
   private static let minOrderedEchoTerms = 4
+
+  /// Filler the model glues between echoed terms; compared after `foldForEchoCheck`.
+  private static let echoConnectorWords: Set<String> = [
+    "und", "and", "mit", "with", "oder", "or", "sowie", "plus", "y", "et",
+  ]
 
   /// Number of glossary terms the text spells out front to back, or nil unless *every* word of
   /// the text is consumed that way.
@@ -402,12 +416,21 @@ enum TextProcessingUtility {
     for term in glossaryTerms where position < words.count {
       let termWords = term.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
         .map { foldForEchoCheck(String($0)) }
-      guard !termWords.isEmpty, position + termWords.count <= words.count,
-        Array(words[position..<position + termWords.count]) == termWords
-      else { continue }
-      position += termWords.count
+      guard !termWords.isEmpty else { continue }
+      func matches(at start: Int) -> Bool {
+        start + termWords.count <= words.count
+          && Array(words[start..<start + termWords.count]) == termWords
+      }
+      // Match the term first; only then fall back to skipping connectors in front of it.
+      var start = position
+      if !matches(at: start) {
+        while start < words.count, echoConnectorWords.contains(words[start]) { start += 1 }
+      }
+      guard matches(at: start) else { continue }
+      position = start + termWords.count
       matched += 1
     }
+    while position < words.count, echoConnectorWords.contains(words[position]) { position += 1 }
     return position == words.count ? matched : nil
   }
 
