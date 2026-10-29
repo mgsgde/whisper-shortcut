@@ -23,6 +23,7 @@ import datetime as dt
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -195,13 +196,31 @@ def load_local(path):
     return out, None
 
 
+def resolve_bq():
+    """Path to the bq CLI.
+
+    launchd's PATH is minimal and does not include the Cloud SDK, so a miss on PATH falls
+    back to the two layouts this machine uses.
+    """
+    found = shutil.which("bq")
+    if found:
+        return found
+    for candidate in (
+        os.path.expanduser("~/google-cloud-sdk/google-cloud-sdk/bin/bq"),
+        os.path.expanduser("~/google-cloud-sdk/bin/bq"),
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return "bq"
+
+
 def bq_feature_days():
     """`{feature: {yyyy-MM-dd: count}}` from opt-in daily pings, or None when bq fails.
 
     See REMOTE_SQL: the counted day is the send date minus one day.
     """
     cmd = [
-        "bq", "query",
+        resolve_bq(), "query",
         "--nouse_legacy_sql",
         "--format=json",
         "--project_id=whisper-shortcut",

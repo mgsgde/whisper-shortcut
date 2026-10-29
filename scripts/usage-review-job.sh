@@ -14,8 +14,10 @@
 # It deliberately does NOT change code. A weekly job that edits an app you use daily, unattended
 # and unreviewed, is a liability; proposals are cheap to ignore and code changes are not. The
 # ledger is the deliverable. The one write outside that ledger: a feature bet whose window has
-# closed below 3 distinct days is filed as an ASK row in plans/implementer-queue.md (a removal
-# question, never a removal — plans/feature-bets.md).
+# closed below 3 distinct days becomes one object in a proposal file for the groomer
+# (feature-bets-YYYY-MM-DD.json under $IMPLEMENTER_INCOMING_DIR). This job does not write
+# plans/implementer-queue.md. The groomer files each as ASK/OPEN — a removal question, never
+# a removal (plans/feature-bets.md).
 #
 # The container data is copied into build/usage-review-staging/ before the Claude pass runs, and the
 # pass reads only that copy — bash has the Full Disk Access grant, claude's sandboxed Bash tool does
@@ -132,7 +134,8 @@ this week of usage is lost unless you re-run it by hand (command below)."
 
 # Feature bets. Bash reads the release container (it holds the Full Disk Access grant); the
 # Claude pass must not. A finished window under 3 distinct days is REVIEW: one line in the mail
-# and one ASK row. Dry-run prints both and writes nothing. A missing local file or a failed
+# and one object in that run's proposal file. The groomer files the ASK row; this job does not
+# write the queue. Dry-run prints the JSON and writes nothing. A missing local file or a failed
 # BigQuery read is the grader's problem to report, not this job's to abort on.
 FEATURE_BETS_JSON=""
 FEATURE_BETS_REVIEWS=""
@@ -140,6 +143,8 @@ FEATURE_BETS_TSV=""
 
 grade_feature_bets() {
   local dir="$BUSINESS_DIR/feature-bets"
+  local incoming="${IMPLEMENTER_INCOMING_DIR:-$HOME/.local/state/whispershortcut-implementer/incoming}"
+  local proposal_file="$incoming/feature-bets-${STAMP}.json"
   FEATURE_BETS_JSON="$(mktemp -t wsfeaturebets)"
   FEATURE_BETS_REVIEWS="$(mktemp -t wsfeaturebetsrev)"
   FEATURE_BETS_TSV="$(mktemp -t wsfeaturebetstsv)"
@@ -147,7 +152,7 @@ grade_feature_bets() {
   : > "$FEATURE_BETS_TSV"
   echo "=== Feature bets ==="
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "feature bets: dry-run — would write $dir and append one ASK row per REVIEW feature"
+    echo "feature bets: dry-run — would write $dir and $proposal_file (the job does not edit the queue)"
     if ! python3 "$REPO/scripts/feature-bets.py" --json > "$FEATURE_BETS_JSON"; then
       echo "WARN: feature bets grader failed — continuing without it"
       return 0
@@ -158,7 +163,7 @@ grade_feature_bets() {
       return 0
     fi
   fi
-  python3 - "$FEATURE_BETS_JSON" "$FEATURE_BETS_REVIEWS" "$FEATURE_BETS_TSV" <<'PY' || echo "WARN: feature bets output could not be read — continuing without queue rows"
+  python3 - "$FEATURE_BETS_JSON" "$FEATURE_BETS_REVIEWS" "$FEATURE_BETS_TSV" <<'PY' || echo "WARN: feature bets output could not be read — continuing without a proposal file"
 import json, sys
 payload_path, reviews_path, tsv_path = sys.argv[1:4]
 data = json.load(open(payload_path, encoding="utf-8"))
@@ -184,12 +189,17 @@ with open(reviews_path, "w", encoding="utf-8") as handle:
 with open(tsv_path, "w", encoding="utf-8") as handle:
     handle.write("\n".join(tsv))
 PY
+  local proposal_jsonl
+  proposal_jsonl="$(mktemp -t wsfeaturebetsprop)"
+  : > "$proposal_jsonl"
   while IFS="$(printf '\t')" read -r feature used window own others; do
     [ -n "$feature" ] || continue
+    # Source is "feature-bets" on rows filed before the groomer handoff, and
+    # "feature-bets YYYY-MM-DD" once the groomer files them. Both still count.
     if awk -F'|' -v feat="$feature" '
       function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
       {
-        if (trim($3) != "feature-bets") next
+        if (index(trim($3), "feature-bets") != 1) next
         if (index(trim($4), "Remove " feat "?") == 0) next
         st = trim($7)
         if (st != "MERGED" && st != "DROPPED") { found = 1; exit }
@@ -199,18 +209,74 @@ PY
       echo "feature bets: skip $feature — open row from source feature-bets already"
       continue
     fi
-    local proposal="Remove ${feature}? Used on ${used} days in ${window} (own ${own}, others ${others}). Keep = add Decision in plans/feature-bets.md."
-    if [ "$DRY_RUN" -eq 1 ]; then
-      echo "feature bets: would append ASK — $proposal"
-    else
-      python3 "$REPO/scripts/implementer/queue-edit.py" append \
-        --source feature-bets \
-        --proposal "$proposal" \
-        --falsifier "n/a: removal decision" \
-        --flag ASK \
-        || echo "WARN: could not append ASK row for $feature"
+    if python3 - "$incoming" "$proposal_file" "$feature" <<'PY'
+import json, os, sys
+incoming, dest, feature = sys.argv[1:4]
+needle = "Remove " + feature + "?"
+if not os.path.isdir(incoming):
+    sys.exit(1)
+for name in sorted(os.listdir(incoming)):
+    if not (name.startswith("feature-bets-") and name.endswith(".json")):
+        continue
+    path = os.path.join(incoming, name)
+    # This run replaces dest, so a feature only named there is not a second pending proposal.
+    if os.path.abspath(path) == os.path.abspath(dest):
+        continue
+    try:
+        data = json.load(open(path, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        continue
+    items = data if isinstance(data, list) else [data]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        blob = f"{item.get('title') or ''}\n{item.get('proposal') or ''}"
+        if needle in blob:
+            sys.exit(0)
+sys.exit(1)
+PY
+    then
+      echo "feature bets: skip $feature — already named in an incoming feature-bets proposal"
+      continue
     fi
+    local proposal="Remove ${feature}? Used on ${used} days in ${window} (own ${own}, others ${others}). Keep = add Decision in plans/feature-bets.md."
+    python3 - "$proposal_jsonl" "$STAMP" "$feature" "$proposal" <<'PY' || echo "WARN: could not record a proposal for $feature"
+import json, sys
+path, stamp, feature, text = sys.argv[1:5]
+with open(path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps({
+        "source": f"feature-bets {stamp}",
+        "title": f"Remove {feature}?",
+        "proposal": text,
+        "falsifier": "n/a: removal decision",
+        "class": "feature-removal",
+        "paths": [],
+    }, ensure_ascii=False) + "\n")
+PY
   done < "$FEATURE_BETS_TSV"
+  python3 - "$proposal_jsonl" "$proposal_file" "$DRY_RUN" "$incoming" <<'PY' || echo "WARN: could not write the feature-bets proposal file"
+import json, os, sys
+jsonl, dest, dry, incoming = sys.argv[1:5]
+items = []
+with open(jsonl, encoding="utf-8") as handle:
+    for line in handle:
+        line = line.strip()
+        if line:
+            items.append(json.loads(line))
+if not items:
+    print("feature bets: no proposal file — no REVIEW features left after dedupe")
+    sys.exit(0)
+text = json.dumps(items, ensure_ascii=False, indent=2) + "\n"
+if dry == "1":
+    print(f"feature bets: dry-run — would write {dest}")
+    sys.stdout.write(text)
+    sys.exit(0)
+os.makedirs(incoming, exist_ok=True)
+with open(dest, "w", encoding="utf-8") as handle:
+    handle.write(text)
+print(f"feature bets: wrote {len(items)} proposal(s) to {dest}")
+PY
+  rm -f "$proposal_jsonl"
 }
 
 if [ "$BUSINESS_MISSING" -eq 1 ]; then

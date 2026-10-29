@@ -15,6 +15,8 @@ classes an existing gate can judge:
 
     instrumentation → must name an OPEN row in plans/instrumentation-gaps.md. Blast radius is
                       one logged field, and the policy already ranks these above features.
+    feature-removal → always ASK with status OPEN. Removing a feature is a human decision
+                      (plans/feature-bets.md); no other gate may build it or park it elsewhere.
 
 Everything else either gets a veto window (reversible, in scope, falsifier a later run can
 grade) or lands in ASK. Nothing is ever dropped: a proposal the groomer cannot justify becomes
@@ -73,6 +75,8 @@ VETO_WINDOW_DAYS = {
     "bug-fix": int(os.environ.get("IMPLEMENTER_VETO_DAYS_BUGFIX", 2)),
     "model-migration": int(os.environ.get("IMPLEMENTER_VETO_DAYS_MODEL", 3)),
 }
+# Removing a feature is Magnus's decision (plans/feature-bets.md): always ASK, status OPEN.
+ASK_OPEN_CLASSES = ("feature-removal",)
 VETO_LANE_ENABLED = os.environ.get("IMPLEMENTER_VETO_LANE", "1") == "1"
 
 # Both auto lanes count against this. A VETO row is a build that has not started yet, so a
@@ -158,30 +162,18 @@ def rewrite_pipes(proposal):
     return out, rewritten
 
 
-def decide_lane(proposal, existing, gaps, in_flight):
-    """Return (lane, park, reason). Lookups and regexes only — never a judgement call.
+def duplicate_reason(proposal, title, existing):
+    """A queue row this proposal would repeat, or None.
 
-    `lane` is what the proposal earned; `park` is who it is then waiting for. The two are
-    orthogonal on purpose: a capped row keeps its lane and waits for a slot, and a row nobody
-    can read is not a question for the operator however good its finding may be."""
-    cls = (proposal.get("class") or "").strip()
-    title = proposal.get("title") or proposal.get("proposal") or ""
-
-    # A proposal this file cannot read is a defect in the skill that wrote it, not a question
-    # for the operator. It parks in DEFECT, where the loop can re-file it corrected — the dedup
-    # below lets a DEFECT row be superseded, and only that status.
-    if not (proposal.get("falsifier") or "").strip():
-        return "ASK", "DEFECT", "no falsifier — a row nothing can grade may not build unattended"
-
-    # Dedupe against what the queue actually stores, which is the proposal line. Comparing the
-    # title against it compares two different fields, and a short title never prefixes a longer
-    # proposal — so the check silently never fired. Both directions, because a loop may shorten
-    # or lengthen its wording between runs; both fields, because either may be the stable one.
-    # One exception, and only one: a row parked in DEFECT is not a decision and not an outcome
-    # — it is a proposal the machine refused to read. Blocking on it would mean a loop that
-    # once wrote a bad falsifier can NEVER file that finding again, however well it words it
-    # the second time. Everything else in the queue still blocks, which is what this check is
-    # for: re-proposing a written-off finding is what makes a queue useless.
+    Dedupe against what the queue actually stores, which is the proposal line. Comparing the
+    title against it compares two different fields, and a short title never prefixes a longer
+    proposal — so the check silently never fired. Both directions, because a loop may shorten
+    or lengthen its wording between runs; both fields, because either may be the stable one.
+    One exception, and only one: a row parked in DEFECT is not a decision and not an outcome
+    — it is a proposal the machine refused to read. Blocking on it would mean a loop that
+    once wrote a bad falsifier can NEVER file that finding again, however well it words it
+    the second time. Everything else in the queue still blocks, which is what this check is
+    for: re-proposing a written-off finding is what makes a queue useless."""
     for candidate in (proposal.get("proposal"), title):
         key = normalise(candidate)[:60]
         if not key:
@@ -191,7 +183,37 @@ def decide_lane(proposal, existing, gaps, in_flight):
             if stored.startswith(key) or key.startswith(stored[:60]):
                 if row["status"] == "DEFECT":
                     continue
-                return "SKIP", "OPEN", f"already in the queue as #{row['num']} ({row['status']})"
+                return f"already in the queue as #{row['num']} ({row['status']})"
+    return None
+
+
+def decide_lane(proposal, existing, gaps, in_flight):
+    """Return (lane, park, reason). Lookups and regexes only — never a judgement call.
+
+    `lane` is what the proposal earned; `park` is who it is then waiting for. The two are
+    orthogonal on purpose: a capped row keeps its lane and waits for a slot, and a row nobody
+    can read is not a question for the operator however good its finding may be."""
+    cls = (proposal.get("class") or "").strip()
+    title = proposal.get("title") or proposal.get("proposal") or ""
+
+    # Ignores falsifier, scope, veto and the in-flight cap: the row is a question for Magnus,
+    # so it cannot come out BUILD, VETO, DEFECT, BLOCKED or DEFERRED. A duplicate is not a
+    # second question — that one check still applies, and it files nothing.
+    if cls in ASK_OPEN_CLASSES:
+        duplicate = duplicate_reason(proposal, title, existing)
+        if duplicate:
+            return "SKIP", "OPEN", duplicate
+        return "ASK", "OPEN", "removing a feature is Magnus's decision — never BUILD or VETO"
+
+    # A proposal this file cannot read is a defect in the skill that wrote it, not a question
+    # for the operator. It parks in DEFECT, where the loop can re-file it corrected —
+    # duplicate_reason lets a DEFECT row be superseded, and only that status.
+    if not (proposal.get("falsifier") or "").strip():
+        return "ASK", "DEFECT", "no falsifier — a row nothing can grade may not build unattended"
+
+    duplicate = duplicate_reason(proposal, title, existing)
+    if duplicate:
+        return "SKIP", "OPEN", duplicate
 
     paths = proposal.get("paths") or []
     outside = [p for p in paths if not p.startswith(SCOPE_PREFIXES)]
