@@ -44,7 +44,7 @@ BASE="SELECT * FROM (
   FROM (SELECT timestamp, TO_JSON_STRING(jsonPayload.telemetry) AS j FROM $TABLE
         WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL $DAYS DAY))
 ) WHERE TRUE $TEST_FILTER"
-# Unnests one of the stored row arrays (counts / errors / models).
+# Unnests one of the stored row arrays (counts / errors / models / features).
 rows() { echo "UNNEST(JSON_QUERY_ARRAY(j, '\$.$1'))"; }
 num() { echo "CAST(CAST(JSON_VALUE($1, '\$.n') AS FLOAT64) AS INT64)"; }
 
@@ -97,6 +97,12 @@ q "Feature usage (sum of counts; active_days = daily pings that contain the key)
 WITH p AS ($BASE)
 SELECT JSON_VALUE(c, '\$.key') AS key, SUM($(num c)) AS total, COUNT(*) AS active_days
 FROM p, $(rows counts) AS c WHERE kind = 'daily'
+GROUP BY 1 ORDER BY 2 DESC"
+
+q "Feature usage (per feature)" "
+WITH p AS ($BASE)
+SELECT JSON_VALUE(f, '\$.key') AS key, SUM($(num f)) AS total, COUNT(*) AS active_days
+FROM p, $(rows features) AS f WHERE kind = 'daily'
 GROUP BY 1 ORDER BY 2 DESC"
 
 q "Failures by area and error class" "

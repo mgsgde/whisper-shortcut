@@ -355,3 +355,11 @@ Four weeks after the release reaches users:
 - **Schema drift:** a new feature ships without a telemetry event and stays invisible.
   Mitigation: signals are counted automatically through `logSignal`, so only new
   *start* events need a manual line.
+
+## Feature counts (2026-10-29)
+
+Foundation for per-feature usage counts, so unused features can be cut. Two sinks:
+`feature-usage.json` on this Mac (always on, never sent, reset in Settings) and a `features`
+map on the opt-in daily ping (`TelemetryFeature` raw values only; shed after models and errors
+when a ping is over the size limit). The server accepts the same closed set and stores
+`{key, n}` rows. `version` stays 1. Call sites that record each feature are a later change.

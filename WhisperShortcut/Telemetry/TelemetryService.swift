@@ -4,10 +4,10 @@ import Foundation
 ///
 /// Design and rationale: `plans/active/opt-in-telemetry.md`. The short version:
 ///
-/// - **Nothing is sent or stored unless `isEnabled`.** Declining leaves no trace. The only thing
-///   recorded regardless is local bookkeeping that never leaves the Mac on its own: the first-launch
-///   date (so an opt-in on day 5 reports day 5, not day 0) and which activation "firsts" already
-///   happened (so a first dictation after opting in late is not reported as a first).
+/// - **Nothing is sent unless `isEnabled`.** Declining leaves no trace in the ping queue. Recorded
+///   regardless, and never sent on its own: the first-launch date (so an opt-in on day 5 reports
+///   day 5, not day 0), which activation "firsts" already happened (so a first dictation after
+///   opting in late is not reported as a first), and per-feature counts in `FeatureUsageStore`.
 /// - **Counts only, built from closed enums** (`TelemetryModels.swift`). No call site can hand
 ///   this type a string that ends up in a ping, except model ids, which pass `TelemetryModelID`.
 /// - **No identifier.** Retention is computed server-side from `cohortWeek` + `dayIndex`, and each
@@ -116,15 +116,26 @@ final class TelemetryService: @unchecked Sendable {
   // MARK: - Recording
 
   func started(_ area: TelemetryArea) {
+    switch area {
+    case .readAloud: used(.readAloud)
+    case .meeting: used(.meeting)
+    default: break
+    }
     count(area, .started)
   }
 
   /// A finished dictation / prompt / chat turn. `model` is normalised by `TelemetryModelID`.
   func completed(_ area: TelemetryArea, modelKind: TelemetryModelKind?, model: String?) {
     switch area {
-    case .dictation: noteActivation(.firstDictation)
-    case .prompt: noteActivation(.firstPrompt)
-    case .chat: noteActivation(.firstChat)
+    case .dictation:
+      noteActivation(.firstDictation)
+      used(.dictation)
+    case .prompt:
+      noteActivation(.firstPrompt)
+      used(.dictatePrompt)
+    case .chat:
+      noteActivation(.firstChat)
+      used(.chat)
     default: break
     }
     guard isEnabled else { return }
@@ -157,6 +168,14 @@ final class TelemetryService: @unchecked Sendable {
   func count(_ area: TelemetryArea, _ name: TelemetryCountName) {
     guard isEnabled else { return }
     mutateToday { $0.counts[TelemetryDay.key(area, name), default: 0] += 1 }
+  }
+
+  /// One use of a feature. Always written to the local store. Added to today's ping only while
+  /// sharing is on — the store itself never leaves the Mac.
+  func used(_ feature: TelemetryFeature) {
+    env.featureUsage.record(feature)
+    guard isEnabled else { return }
+    mutateToday { $0.features[feature.rawValue, default: 0] += 1 }
   }
 
   func onboardingStepReached(_ step: WelcomeStep) {
@@ -300,12 +319,14 @@ final class TelemetryService: @unchecked Sendable {
   static let maxPingBytes = 4096
 
   /// Encodes the ping, shedding the least important detail if it would exceed the server's limit:
-  /// model breakdown first, then error classes. Counts and the envelope always survive.
+  /// model breakdown first, then error classes, then per-feature counts. Counts and the envelope
+  /// always survive.
   static func encodeWithinLimit(_ ping: TelemetryPing) -> Data? {
     var ping = ping
-    for step in 0...2 {
+    for step in 0...3 {
       if step == 1 { ping.models = nil }
       if step == 2 { ping.errors = nil }
+      if step == 3 { ping.features = nil }
       if let data = try? encoder.encode(ping), data.count <= maxPingBytes { return data }
     }
     return nil
@@ -363,6 +384,7 @@ final class TelemetryService: @unchecked Sendable {
     ping.counts = day.counts.isEmpty ? nil : day.counts
     ping.errors = day.errors.isEmpty ? nil : day.errors
     ping.models = day.models.isEmpty ? nil : day.models
+    ping.features = day.features.isEmpty ? nil : day.features
     return ping
   }
 
@@ -501,6 +523,8 @@ struct TelemetryEnvironment {
   var appVersion: String
   var build: String
   var osMajor: String
+  /// Local per-feature counts. Never sent. Tests point this at a temporary file.
+  var featureUsage: FeatureUsageStore
   /// Send milestones the moment they are queued. Tests turn this off and call `flush()` themselves.
   var autoFlush = true
 
@@ -522,7 +546,8 @@ struct TelemetryEnvironment {
       isExistingInstall: { UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) },
       appVersion: AppConstants.appVersion,
       build: build,
-      osMajor: "\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
+      osMajor: "\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)",
+      featureUsage: .shared
     )
   }
 

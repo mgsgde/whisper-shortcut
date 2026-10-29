@@ -50,6 +50,7 @@ struct TelemetryTests {
     let clock: Clock
     let defaults: UserDefaults
     let storeURL: URL
+    let featureUsage: FeatureUsageStore
     let offline: Box
 
     final class Box: @unchecked Sendable { var value = false }
@@ -81,6 +82,10 @@ struct TelemetryTests {
     let transport = FakeTransport()
     let clock = Clock(start)
     let offline = Harness.Box()
+    let featureUsageURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("feature-usage-tests-\(UUID().uuidString)")
+      .appendingPathComponent("feature-usage.json")
+    let featureUsage = FeatureUsageStore(fileURL: featureUsageURL, now: { clock.now })
     let env = TelemetryEnvironment(
       defaults: defaults,
       now: { clock.now },
@@ -93,13 +98,14 @@ struct TelemetryTests {
       appVersion: "9.99",
       build: "direct",
       osMajor: "26",
+      featureUsage: featureUsage,
       autoFlush: false
     )
     let service = TelemetryService(environment: env)
     service.recordFirstLaunchIfNeeded()
     return Harness(
       service: service, transport: transport, clock: clock, defaults: defaults, storeURL: storeURL,
-      offline: offline)
+      featureUsage: featureUsage, offline: offline)
   }
 
   /// A model id the app ships that is also wire-safe.
@@ -415,8 +421,123 @@ struct TelemetryTests {
     #expect(set("milestones") == Set(TelemetryMilestone.allCases.map(\.rawValue)))
     #expect(set("providers") == Set(TelemetryProvider.allCases.map(\.rawValue)))
     #expect(set("modelKinds") == Set(TelemetryModelKind.allCases.map(\.rawValue)))
+    #expect(set("features") == Set(TelemetryFeature.allCases.map(\.rawValue)))
     #expect(set("setupFlags") == ["offlineWhisperModel", "smartImprovement", "autoPaste"])
     #expect(schema["modelIdPattern"] as? String == "^[a-z0-9][a-z0-9._:-]{0,47}$")
     #expect(TelemetryModelID.maxLength == 48)
+  }
+
+  @Test("A day saved before feature counts still loads")
+  func dayDecodesWithoutFeatures() throws {
+    let json = """
+    {"counts":{"dictation.completed":2},"errors":{"chat.network":1},"models":{"chat":{"custom":1}}}
+    """
+    let day = try JSONDecoder().decode(TelemetryDay.self, from: Data(json.utf8))
+    #expect(day.counts == ["dictation.completed": 2])
+    #expect(day.errors == ["chat.network": 1])
+    #expect(day.models == ["chat": ["custom": 1]])
+    #expect(day.features.isEmpty)
+    #expect(!day.isEmpty)
+  }
+
+  @Test("used() counts locally with sharing off and adds nothing to the day")
+  func featureCountsStayLocalWhenOff() async {
+    let h = makeHarness()
+    h.service.used(.chat)
+    h.service.used(.chat)
+    h.service.completed(.dictation, modelKind: nil, model: nil)
+    h.service.started(.readAloud)
+    let entries = h.featureUsage.snapshot().entries
+    #expect(entries[.chat]?.count == 2)
+    #expect(entries[.dictation]?.count == 1)
+    #expect(entries[.readAloud]?.count == 1)
+
+    h.clock.advance(days: 1)
+    await h.service.flush()
+    #expect(h.transport.bodies.isEmpty)
+    #expect(h.service.previewJSON().isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: h.storeURL.path))
+  }
+
+  @Test("used() with sharing on is in the daily ping's features")
+  func featureCountsInDailyPing() async throws {
+    let h = makeHarness()
+    h.enable()
+    h.service.used(.glossaryAddSelection)
+    h.service.completed(.prompt, modelKind: nil, model: nil)
+    h.service.started(.meeting)
+    h.clock.advance(days: 1)
+    await h.service.flush()
+    let daily = try #require(h.transport.pings.first { $0["kind"] as? String == "daily" })
+    let features = try #require(daily["features"] as? [String: Int])
+    #expect(features["glossaryAddSelection"] == 1)
+    #expect(features["dictatePrompt"] == 1)
+    #expect(features["meeting"] == 1)
+    let local = h.featureUsage.snapshot().entries
+    #expect(local[.glossaryAddSelection]?.count == 1)
+    #expect(local[.dictatePrompt]?.count == 1)
+    #expect(local[.meeting]?.count == 1)
+  }
+
+  @Test("Oversized pings shed models, then errors, then features")
+  func featureCountsShedLast() throws {
+    func bulk(_ prefix: String) -> [String: Int] {
+      Dictionary(uniqueKeysWithValues: (0..<200).map {
+        ("\(prefix)-\($0)-\(String(repeating: "k", count: 24))", 1)
+      })
+    }
+    func decode(_ ping: TelemetryPing) throws -> TelemetryPing {
+      let data = try #require(TelemetryService.encodeWithinLimit(ping))
+      #expect(data.count <= TelemetryService.maxPingBytes)
+      return try JSONDecoder().decode(TelemetryPing.self, from: data)
+    }
+
+    let base = TelemetryPing(
+      app: "9.99", build: "direct", os: "26", cohortWeek: "2026-W40", dayIndex: 1, kind: .daily,
+      counts: ["dictation.completed": 4])
+
+    var modelsOnly = base
+    modelsOnly.models = ["transcription": bulk("model")]
+    modelsOnly.errors = ["dictation.network": 1]
+    modelsOnly.features = ["dictation": 2]
+    let shedModels = try decode(modelsOnly)
+    #expect(shedModels.models == nil)
+    #expect(shedModels.errors == ["dictation.network": 1])
+    #expect(shedModels.features == ["dictation": 2])
+    #expect(shedModels.counts == ["dictation.completed": 4])
+
+    var errorsOnly = base
+    errorsOnly.errors = bulk("error")
+    errorsOnly.features = ["chat": 3]
+    let shedErrors = try decode(errorsOnly)
+    #expect(shedErrors.models == nil)
+    #expect(shedErrors.errors == nil)
+    #expect(shedErrors.features == ["chat": 3])
+    #expect(shedErrors.counts == ["dictation.completed": 4])
+
+    var featuresOnly = base
+    featuresOnly.features = bulk("feature")
+    let shedFeatures = try decode(featuresOnly)
+    #expect(shedFeatures.models == nil)
+    #expect(shedFeatures.errors == nil)
+    #expect(shedFeatures.features == nil)
+    #expect(shedFeatures.counts == ["dictation.completed": 4])
+  }
+
+  @Test("Feature groups follow the vocabulary headings")
+  func featureGroups() {
+    #expect(TelemetryFeature.chat.group == .core)
+    #expect(TelemetryFeature.writingStyleApplied.group == .dictatePrompt)
+    #expect(TelemetryFeature.offlineMode.group == .dictation)
+    #expect(TelemetryFeature.readAloudSmartRewrite.group == .readAloud)
+    #expect(TelemetryFeature.chatGPTPlan.group == .providers)
+    #expect(TelemetryFeature.chatUserCommand.group == .chatCommands)
+    #expect(TelemetryFeature.chatYouTube.group == .chatContent)
+    #expect(TelemetryFeature.chatToolMeeting.group == .chatTools)
+    #expect(TelemetryFeature.meetingSummary.group == .meetings)
+    #expect(TelemetryFeature.mcpChange.group == .aiApps)
+    #expect(TelemetryFeature.smartImprovementAccepted.group == .smartImprovement)
+    #expect(TelemetryFeature.checkForUpdatesManual.group == .support)
+    #expect(Set(TelemetryFeature.allCases.map(\.group)) == Set(TelemetryFeatureGroup.allCases))
   }
 }

@@ -71,6 +71,8 @@ function sanitize(body) {
   if (counts) doc.counts = counts;
   const errors = pickCounts(body.errors, (k) => areaKey(k, schema.errorClasses));
   if (errors) doc.errors = errors;
+  const features = pickCounts(body.features, (k) => schema.features.includes(k));
+  if (features) doc.features = features;
 
   if (isObject(body.models)) {
     const models = {};
@@ -96,6 +98,7 @@ function toStorage(doc) {
   const rows = (obj) => Object.entries(obj).map(([key, n]) => ({ key, n }));
   if (doc.counts) out.counts = rows(doc.counts);
   if (doc.errors) out.errors = rows(doc.errors);
+  if (doc.features) out.features = rows(doc.features);
   if (doc.models) {
     out.models = Object.entries(doc.models).flatMap(([kind, ids]) =>
       Object.entries(ids).map(([id, n]) => ({ kind, id, n }))

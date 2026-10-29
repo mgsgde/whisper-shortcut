@@ -49,6 +49,21 @@ test('rejects non-integer and huge counts', () => {
   assert.deepStrictEqual(doc.counts, { 'chat.completed': 2 });
 });
 
+test('feature counts keep known keys, drop unknown ones, and store as rows', () => {
+  const doc = sanitize({
+    ...base,
+    kind: 'daily',
+    features: { dictation: 4, notAFeature: 2, chat: 0 },
+  });
+  assert.deepStrictEqual(doc.features, { dictation: 4 });
+  assert.deepStrictEqual(toStorage(doc).features, [{ key: 'dictation', n: 4 }]);
+  const stored = toStorage({ ...base, kind: 'daily', features: { readAloud: 2, meeting: 1 } });
+  assert.deepStrictEqual(stored.features, [
+    { key: 'readAloud', n: 2 },
+    { key: 'meeting', n: 1 },
+  ]);
+});
+
 test('storage shape turns keyed maps into rows', () => {
   const stored = toStorage({ ...base, kind: 'daily', counts: { 'dictation.completed': 3 }, errors: { 'chat.network': 1 }, models: { chat: { custom: 2 } } });
   assert.deepStrictEqual(stored.counts, [{ key: 'dictation.completed', n: 3 }]);

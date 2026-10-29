@@ -15,6 +15,7 @@ This path is used for:
 - `MeetingAudio/<meeting>/`: audio of meeting parts that couldn't be transcribed yet (for example recorded offline), one `chunk-<start ms>.wav` per part. Deleted part by part once **Retry Meeting Transcription** gets it into the transcript, and with the meeting when it is discarded.
 - `WhisperKit/`: downloaded local Whisper models.
 - `telemetry-pending.json`: opt-in anonymous usage statistics not yet sent (counts only). Exists only while "Share anonymous usage statistics" is on; deleted when it is turned off. See `WhisperShortcut/Telemetry/TelemetryService.swift`.
+- `feature-usage.json`: local per-feature counts and last-used dates. Never sent. Shown in Settings and reset there. See `WhisperShortcut/Telemetry/FeatureUsageStore.swift`.
 - Chat/session data and other app support files.
 
 ## Debug build identity (local development only)

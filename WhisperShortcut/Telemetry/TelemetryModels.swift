@@ -180,6 +180,188 @@ enum TelemetryProvider: String, CaseIterable, Codable {
   case openrouter
 }
 
+/// Which heading a `TelemetryFeature` sits under. The UI owns display names; this is only the group.
+enum TelemetryFeatureGroup: String, CaseIterable {
+  case core
+  case dictatePrompt
+  case dictation
+  case readAloud
+  case providers
+  case chatCommands
+  case chatContent
+  case chatTools
+  case meetings
+  case aiApps
+  case smartImprovement
+  case support
+}
+
+/// One countable feature. Raw values are the keys in the local store and in a ping's `features` map.
+/// A call site can only pass a case, so user text cannot become a key.
+enum TelemetryFeature: String, CaseIterable, Codable {
+  /// One finished dictation.
+  case dictation
+  /// One finished Dictate Prompt.
+  case dictatePrompt
+  /// One finished chat turn.
+  case chat
+  /// One Read Aloud start.
+  case readAloud
+  /// One live meeting start.
+  case meeting
+
+  /// Dictate Prompt ran on selected text.
+  case dictatePromptWithSelection
+  /// Dictate Prompt ran with a screenshot.
+  case dictatePromptWithScreenshot
+  /// A Dictate Prompt quick prompt was used.
+  case dictatePromptQuickPrompt
+  /// A Dictate Prompt instruction was typed.
+  case dictatePromptTypedInstruction
+  /// A Dictate Prompt lookup ran.
+  case dictatePromptLookup
+  /// Writing Style was applied to a Dictate Prompt.
+  case writingStyleApplied
+
+  /// The selection was added to the glossary.
+  case glossaryAddSelection
+  /// The last transcription was copied.
+  case copyLastTranscription
+  /// A recent transcription was copied.
+  case recentTranscriptionCopied
+  /// Offline Mode was switched on.
+  case offlineMode
+  /// A screenshot was taken from the menu.
+  case screenshotMenu
+
+  /// Read Aloud rewrote the text before speaking.
+  case readAloudSmartRewrite
+
+  /// A request was sent to the user's own server.
+  case ownServer
+  /// A request was sent through OpenRouter.
+  case openRouter
+  /// A request used the user's ChatGPT plan.
+  case chatGPTPlan
+
+  /// The /new command was used.
+  case chatCommandNew
+  /// The screenshot command was used.
+  case chatCommandScreenshot
+  /// The attach command was used.
+  case chatCommandAttach
+  /// The folder command was used.
+  case chatCommandFolder
+  /// The workspace command was used.
+  case chatCommandWorkspace
+  /// The chat model was switched.
+  case chatCommandModelSwitch
+  /// The /think command was used.
+  case chatCommandThink
+  /// The /x command was used.
+  case chatCommandX
+  /// Settings were opened from chat.
+  case chatCommandSettings
+  /// A chat was pinned.
+  case chatCommandPin
+  /// The meeting command was used.
+  case chatCommandMeeting
+  /// The copy command was used.
+  case chatCommandCopy
+  /// The feedback command was used.
+  case chatCommandFeedback
+  /// A user-defined chat command was used.
+  case chatUserCommand
+
+  /// An image was attached in chat.
+  case chatImageAttachment
+  /// Chat used web search.
+  case chatWebSearch
+  /// Chat included a YouTube video.
+  case chatYouTube
+
+  /// A chat turn used a Google tool.
+  case chatToolGoogle
+  /// A chat turn used a Trello tool.
+  case chatToolTrello
+  /// A chat turn used a mail tool.
+  case chatToolMail
+  /// A chat turn read a folder.
+  case chatToolFolderRead
+  /// A chat turn wrote a folder.
+  case chatToolFolderWrite
+  /// A chat turn generated an image.
+  case chatToolImageGeneration
+  /// A chat turn used memory.
+  case chatToolMemory
+  /// A chat turn used a meeting tool.
+  case chatToolMeeting
+
+  /// Live notes were taken during a meeting.
+  case meetingLiveNotes
+  /// A meeting summary was written.
+  case meetingSummary
+  /// Meeting transcription was retried.
+  case meetingRetryTranscription
+
+  /// An AI app read data through MCP.
+  case mcpRead
+  /// An AI app changed data through MCP.
+  case mcpChange
+
+  /// A Smart Improvement run finished.
+  case smartImprovementRun
+  /// A Smart Improvement suggestion was accepted.
+  case smartImprovementAccepted
+
+  /// Feedback was sent.
+  case sendFeedback
+  /// A problem was reported for the last dictation.
+  case reportProblemLastDictation
+  /// A usage report was shared.
+  case shareUsageReport
+  /// The welcome tour was opened again.
+  case welcomeTourReopened
+  /// Check for Updates was used.
+  case checkForUpdatesManual
+
+  var group: TelemetryFeatureGroup {
+    switch self {
+    case .dictation, .dictatePrompt, .chat, .readAloud, .meeting:
+      return .core
+    case .dictatePromptWithSelection, .dictatePromptWithScreenshot, .dictatePromptQuickPrompt,
+      .dictatePromptTypedInstruction, .dictatePromptLookup, .writingStyleApplied:
+      return .dictatePrompt
+    case .glossaryAddSelection, .copyLastTranscription, .recentTranscriptionCopied, .offlineMode,
+      .screenshotMenu:
+      return .dictation
+    case .readAloudSmartRewrite:
+      return .readAloud
+    case .ownServer, .openRouter, .chatGPTPlan:
+      return .providers
+    case .chatCommandNew, .chatCommandScreenshot, .chatCommandAttach, .chatCommandFolder,
+      .chatCommandWorkspace, .chatCommandModelSwitch, .chatCommandThink, .chatCommandX,
+      .chatCommandSettings, .chatCommandPin, .chatCommandMeeting, .chatCommandCopy,
+      .chatCommandFeedback, .chatUserCommand:
+      return .chatCommands
+    case .chatImageAttachment, .chatWebSearch, .chatYouTube:
+      return .chatContent
+    case .chatToolGoogle, .chatToolTrello, .chatToolMail, .chatToolFolderRead, .chatToolFolderWrite,
+      .chatToolImageGeneration, .chatToolMemory, .chatToolMeeting:
+      return .chatTools
+    case .meetingLiveNotes, .meetingSummary, .meetingRetryTranscription:
+      return .meetings
+    case .mcpRead, .mcpChange:
+      return .aiApps
+    case .smartImprovementRun, .smartImprovementAccepted:
+      return .smartImprovement
+    case .sendFeedback, .reportProblemLastDictation, .shareUsageReport, .welcomeTourReopened,
+      .checkForUpdatesManual:
+      return .support
+    }
+  }
+}
+
 // MARK: - Wire format
 
 /// Setup snapshot sent with each daily ping. Booleans and provider names only.
@@ -217,6 +399,8 @@ struct TelemetryPing: Codable, Equatable {
   var models: [String: [String: Int]]?
   /// `"<area>.<errorClass>"` → count.
   var errors: [String: Int]?
+  /// `TelemetryFeature` raw value → count. Omitted when the day had none.
+  var features: [String: Int]?
 }
 
 /// One calendar day of counts, persisted until it is sent.
@@ -224,8 +408,33 @@ struct TelemetryDay: Codable, Equatable {
   var counts: [String: Int] = [:]
   var models: [String: [String: Int]] = [:]
   var errors: [String: Int] = [:]
+  /// `TelemetryFeature` raw value → count for this day.
+  var features: [String: Int] = [:]
 
-  var isEmpty: Bool { counts.isEmpty && models.isEmpty && errors.isEmpty }
+  var isEmpty: Bool { counts.isEmpty && models.isEmpty && errors.isEmpty && features.isEmpty }
+
+  private enum CodingKeys: String, CodingKey {
+    case counts, models, errors, features
+  }
+
+  init() {}
+
+  /// Older builds persisted a day with no `features` key. A missing key is an empty map, not an error.
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    counts = try container.decodeIfPresent([String: Int].self, forKey: .counts) ?? [:]
+    models = try container.decodeIfPresent([String: [String: Int]].self, forKey: .models) ?? [:]
+    errors = try container.decodeIfPresent([String: Int].self, forKey: .errors) ?? [:]
+    features = try container.decodeIfPresent([String: Int].self, forKey: .features) ?? [:]
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(counts, forKey: .counts)
+    try container.encode(models, forKey: .models)
+    try container.encode(errors, forKey: .errors)
+    try container.encode(features, forKey: .features)
+  }
 
   static func key(_ area: TelemetryArea, _ name: TelemetryCountName) -> String {
     "\(area.rawValue).\(name.rawValue)"
