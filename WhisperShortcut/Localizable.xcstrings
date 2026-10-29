@@ -23001,6 +23001,436 @@
           }
         }
       }
+    },
+    "Features You Use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre genutzten Funktionen"
+          }
+        }
+      }
+    },
+    "Counted on this Mac since %@. Never sent — it only shows which features you rely on and which you never touch." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gezählt auf diesem Mac seit %@. Wird nie gesendet – es zeigt nur, welche Funktionen Sie wirklich nutzen und welche nie."
+          }
+        }
+      }
+    },
+    "%lld of %lld features used in the last 30 days" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld Funktionen in den letzten 30 Tagen genutzt"
+          }
+        }
+      }
+    },
+    "Show Feature Usage…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktionsnutzung anzeigen …"
+          }
+        }
+      }
+    },
+    "Feature Usage" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktionsnutzung"
+          }
+        }
+      }
+    },
+    "Counted on this Mac since %@. Nothing here leaves this Mac. Greyed-out features were not used in the last 30 days." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gezählt auf diesem Mac seit %@. Nichts davon verlässt diesen Mac. Ausgegraute Funktionen wurden in den letzten 30 Tagen nicht genutzt."
+          }
+        }
+      }
+    },
+    "Reset Counts…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zähler zurücksetzen …"
+          }
+        }
+      }
+    },
+    "Reset feature counts?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funktionszähler zurücksetzen?"
+          }
+        }
+      }
+    },
+    "Reset" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurücksetzen"
+          }
+        }
+      }
+    },
+    "Counting starts again from today. Your settings and usage log are not affected." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zählung beginnt ab heute neu. Ihre Einstellungen und das Nutzungsprotokoll bleiben unverändert."
+          }
+        }
+      }
+    },
+    "%lld of %lld used" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld genutzt"
+          }
+        }
+      }
+    },
+    "Basics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grundfunktionen"
+          }
+        }
+      }
+    },
+    "Dictation Extras" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat-Extras"
+          }
+        }
+      }
+    },
+    "Providers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anbieter"
+          }
+        }
+      }
+    },
+    "Chat Commands" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Befehle"
+          }
+        }
+      }
+    },
+    "Chat Content" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Inhalte"
+          }
+        }
+      }
+    },
+    "Chat Tools" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Werkzeuge"
+          }
+        }
+      }
+    },
+    "Support & Updates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support & Updates"
+          }
+        }
+      }
+    },
+    "Edit selected text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markierten Text bearbeiten"
+          }
+        }
+      }
+    },
+    "Include a screenshot" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto mitsenden"
+          }
+        }
+      }
+    },
+    "Quick prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnell-Prompts"
+          }
+        }
+      }
+    },
+    "Typed instruction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Getippte Anweisung"
+          }
+        }
+      }
+    },
+    "Look things up while writing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Schreiben nachschlagen"
+          }
+        }
+      }
+    },
+    "Screenshot from the menu bar" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto über die Menüleiste"
+          }
+        }
+      }
+    },
+    "Smart Rewrite" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart Rewrite"
+          }
+        }
+      }
+    },
+    "Your own server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener Server"
+          }
+        }
+      }
+    },
+    "Your own commands" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre eigenen Befehle"
+          }
+        }
+      }
+    },
+    "Image and file attachments" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild- und Dateianhänge"
+          }
+        }
+      }
+    },
+    "Web search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Websuche"
+          }
+        }
+      }
+    },
+    "YouTube videos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YouTube-Videos"
+          }
+        }
+      }
+    },
+    "Google Calendar, Tasks and Gmail" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Google Kalender, Tasks und Gmail"
+          }
+        }
+      }
+    },
+    "Mail accounts (IMAP)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E-Mail-Konten (IMAP)"
+          }
+        }
+      }
+    },
+    "Read shared folders" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freigegebene Ordner lesen"
+          }
+        }
+      }
+    },
+    "Edit files in shared folders" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dateien in freigegebenen Ordnern bearbeiten"
+          }
+        }
+      }
+    },
+    "Remember facts about you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fakten über Sie merken"
+          }
+        }
+      }
+    },
+    "Meeting tools" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Werkzeuge"
+          }
+        }
+      }
+    },
+    "Read by AI apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von KI-Apps gelesen"
+          }
+        }
+      }
+    },
+    "Changes made by AI apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen durch KI-Apps"
+          }
+        }
+      }
+    },
+    "Smart Improvement runs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smart-Improvement-Läufe"
+          }
+        }
+      }
+    },
+    "Accepted suggestions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angenommene Vorschläge"
+          }
+        }
+      }
+    },
+    "Report a Problem with Last Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Problem mit dem letzten Diktat melden"
+          }
+        }
+      }
+    },
+    "Welcome Tour, reopened" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Willkommenstour erneut geöffnet"
+          }
+        }
+      }
+    },
+    "Check for Updates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Updates suchen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

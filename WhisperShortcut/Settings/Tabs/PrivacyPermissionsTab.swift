@@ -22,6 +22,10 @@ struct PermissionsTab: View {
 
       Spacer().frame(height: SettingsConstants.sectionSpacing)
 
+      FeatureUsageSection()
+
+      Spacer().frame(height: SettingsConstants.sectionSpacing)
+
       #if APP_STORE
       PermissionsOverview(mode: .settings, includeAccessibility: false)
       #else
