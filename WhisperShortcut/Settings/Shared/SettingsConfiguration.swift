@@ -2105,10 +2105,18 @@ struct SettingsDefaults {
   static let restoreClipboardAfterPaste = false
 
   // MARK: - Fn Key Dictation
-  // OFF by default for the same reason as auto-paste: observing the Fn key needs global
-  // event monitors, which only work with the Accessibility permission — a fresh install
-  // must not require it (App Store Guideline 2.4.5).
-  static let fnKeyDictation = false
+  // Off in the App Store build: observing the Fn key needs Accessibility (Guideline 2.4.5).
+  // In the direct build it is on by default when the 🌐 key is set to Do Nothing, because
+  // then the toggle costs nothing and Fn is the most comfortable trigger. Without
+  // Accessibility the global monitor just receives no events. A value the user stored
+  // explicitly still wins — this is only the fallback when the key has never been written.
+  static var fnKeyDictation: Bool {
+    #if APP_STORE
+      return false
+    #else
+      return GlobeKeyUsage.isFree
+    #endif
+  }
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true

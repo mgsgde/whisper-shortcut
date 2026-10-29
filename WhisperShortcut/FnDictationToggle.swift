@@ -19,7 +19,8 @@ protocol FnDictationToggleDelegate: AnyObject {
   func fnDictationCancelProcessing()
 }
 
-/// Fn (Globe) key dictation, opt-in via Settings → General → Keyboard Shortcuts. The key is a pure toggle:
+/// Fn (Globe) key dictation. On by default in the direct build when the 🌐 key is free, toggled in
+/// Settings → General → Keyboard Shortcuts. The key is a pure toggle:
 /// - First press: starts a Dictate recording, which keeps running after the key is released.
 /// - Second press: stops the recording and transcribes it.
 /// - Press while transcribing: cancels the in-flight transcription, like the dictation
@@ -88,7 +89,11 @@ final class FnDictationToggle {
     #if APP_STORE
       return false
     #else
-      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.fnKeyDictation)
+      // Same absence check as `autoPasteAvailable`: `bool(forKey:)` is false for a missing
+      // key, which would hide the direct-build default.
+      return UserDefaults.standard.object(forKey: UserDefaultsKeys.fnKeyDictation) != nil
+        ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.fnKeyDictation)
+        : SettingsDefaults.fnKeyDictation
     #endif
   }
 

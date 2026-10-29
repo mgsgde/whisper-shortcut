@@ -7173,6 +7173,16 @@
         }
       }
     },
+    "Dictate with the Fn key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit der Fn-Taste diktieren"
+          }
+        }
+      }
+    },
     "Dictate:" : {
       "localizations" : {
         "de" : {
@@ -9390,16 +9400,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hindi"
-          }
-        }
-      }
-    },
-    "Hold fn to dictate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "fn gedrückt halten zum Diktieren"
           }
         }
       }

@@ -264,7 +264,7 @@ enum MCPSettingsCatalog {
     case "Notification duration": return String(localized: "Notification duration")
     case "Auto-paste after dictation": return String(localized: "Auto-paste after dictation")
     case "Restore clipboard after auto-paste": return String(localized: "Restore clipboard after auto-paste")
-    case "Hold fn to dictate": return String(localized: "Hold fn to dictate")
+    case "Dictate with the Fn key": return String(localized: "Dictate with the Fn key")
     case "Close Settings when it loses focus": return String(localized: "Close Settings when it loses focus")
     case "Close Chat when clicking outside": return String(localized: "Close Chat when clicking outside")
     case "Read Aloud smart rewrite": return String(localized: "Read Aloud smart rewrite")
@@ -1046,7 +1046,7 @@ enum MCPSettingsCatalog {
     // build, `KeyboardShortcutsSection`'s `#if !APP_STORE`); same Accessibility gate as
     // `clipboard.auto_paste`, via `enablingRefused` so OFF always stays reachable.
     settings.append(boolSetting(
-      id: "dictation.fn_key", title: "Hold fn to dictate", category: "dictation",
+      id: "dictation.fn_key", title: "Dictate with the Fn key", category: "dictation",
       key: UserDefaultsKeys.fnKeyDictation, defaultValue: SettingsDefaults.fnKeyDictation,
       unavailableReason: {
         #if APP_STORE

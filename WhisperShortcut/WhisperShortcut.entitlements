@@ -38,5 +38,12 @@
 		<array>
 			<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</array>
+
+		<!-- Reads AppleFnUsageType so Fn dictation can default on only when macOS's
+		     "Press 🌐 key to" is "Do Nothing". Read-only; the app never writes this domain. -->
+		<key>com.apple.security.temporary-exception.shared-preference.read-only</key>
+		<array>
+			<string>com.apple.HIToolbox</string>
+		</array>
 	</dict>
 </plist>
