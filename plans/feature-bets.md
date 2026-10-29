@@ -36,8 +36,9 @@ Magnus's Mac (`feature-usage.json` in the release container) and the opt-in tele
   other opted-in installs. "Others" is the telemetry daily total minus Magnus's local count for
   the same day, because pings carry no identifier. The report labels it as an estimate.
 - **Fail (`REVIEW`).** Below that. **This is not a removal.** The weekly usage review
-  (`scripts/usage-review-job.sh`) lists it in its mail and files one `ASK` row in
-  `plans/implementer-queue.md` ("Remove <feature>? Used on N days in 21"). A feature only comes
+  (`scripts/usage-review-job.sh`) lists it in its mail and hands the groomer one
+  `feature-removal` proposal, which always lands as an `ASK` row in `plans/implementer-queue.md`
+  ("Remove <feature>? Used on N days in 21"). A feature only comes
   out on Magnus's word. If he keeps it, the row gets `Decision=keep (<date>, his reason)` and is
   never graded again.
 - **Not measurable (`BLIND`).** A feature that cannot be counted where it is used (Offline Mode
