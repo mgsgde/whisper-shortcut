@@ -1344,6 +1344,9 @@ enum ChatToolRegistry {
   static func execute(
     name: String, args: [String: Any], context: ChatToolContext = .empty
   ) async -> ChatToolOutcome {
+    if let feature = TelemetryFeature(chatToolName: name) {
+      TelemetryService.shared.used(feature)
+    }
     if let handler = context.sessionHandlers[name] {
       DebugLogger.log("GEMINI-CHAT-TOOL: execute name=\(name) (session-scoped)")
       return await handler(args)

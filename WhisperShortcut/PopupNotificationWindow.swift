@@ -459,9 +459,12 @@ class PopupNotificationWindow: NSWindow {
   /// and the error text is right there to attach. `FeedbackLinks` adds the version and OS so the
   /// report doesn't need a round-trip before it can be acted on.
   private func openWhatsAppFeedback() {
-    FeedbackLinks.open(
+    if FeedbackLinks.open(
       .whatsApp,
       context: "I encountered this error:\n\n\(FeedbackLinks.truncated(errorText, limit: 500))")
+    {
+      TelemetryService.shared.used(.sendFeedback)
+    }
   }
 
 

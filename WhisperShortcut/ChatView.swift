@@ -948,6 +948,7 @@ class ChatViewModel: ObservableObject {
       showNotice("Couldn't open WhatsApp — use Settings → About for the other contact options.")
       return
     }
+    TelemetryService.shared.used(.sendFeedback)
     showNotice(
       excerpt.isEmpty
         ? ("Opened WhatsApp. Edit the message before sending." as LocalizedStringResource)
@@ -1073,6 +1074,9 @@ class ChatViewModel: ObservableObject {
       }
       let selectedModel = Self.openChatModel
       guard validateCredential(for: selectedModel) else { return }
+      if !attachedParts.isEmpty {
+        TelemetryService.shared.used(.chatImageAttachment)
+      }
 
       let provider = LLMProviderFactory.provider(for: selectedModel)
       let model = selectedModel.rawValue
@@ -1116,6 +1120,11 @@ class ChatViewModel: ObservableObject {
 
         let tools = buildToolDeclarations(for: sendingSession)
         let useGrounding = selectedModel.supportsGrounding
+        if useGrounding,
+          selectedModel.provider != .anthropic || AnthropicChatProvider.isWebSearchEnabledInSettings
+        {
+          TelemetryService.shared.used(.chatWebSearch)
+        }
         // 8 was too tight for batch work: "move every dateless task to today" spends two rounds
         // discovering the list and then one per task, because the model emits its edits one call at
         // a time even though they are independent. Hitting the cap mid-batch leaves the user's data
@@ -1591,6 +1600,7 @@ class ChatViewModel: ObservableObject {
 
     if lower == Self.meetingCommand {
       inputText = ""
+      TelemetryService.shared.used(.chatCommandMeeting)
       handleMeetingButtonTap()
       return
     }
@@ -1643,17 +1653,42 @@ class ChatViewModel: ObservableObject {
         if singleChatOnly {
           appendModelMessage("`/new` is unavailable in this window because it is bound to a single chat session.")
         } else {
+          TelemetryService.shared.used(.chatCommandNew)
           createNewSession()
         }
       }
-      else if lower == Self.attachCommand { attachFile() }
-      else if lower == Self.folderCommand { shareFolder() }
-      else if lower == Self.settingsCommand { SettingsManager.shared.showSettings() }
-      else if lower == Self.pinCommand { togglePin() }
-      else if lower == Self.unpinCommand { unpin() }
-      else if lower == Self.copyCommand { copyChatToClipboard(sessionId: session.id) }
-      else if lower == Self.feedbackCommand { sendFeedbackFromChat() }
-      else { await captureScreenshot() }
+      else if lower == Self.attachCommand {
+        TelemetryService.shared.used(.chatCommandAttach)
+        attachFile()
+      }
+      else if lower == Self.folderCommand {
+        TelemetryService.shared.used(.chatCommandFolder)
+        shareFolder()
+      }
+      else if lower == Self.settingsCommand {
+        TelemetryService.shared.used(.chatCommandSettings)
+        SettingsManager.shared.showSettings()
+      }
+      else if lower == Self.pinCommand {
+        TelemetryService.shared.used(.chatCommandPin)
+        togglePin()
+      }
+      else if lower == Self.unpinCommand {
+        TelemetryService.shared.used(.chatCommandPin)
+        unpin()
+      }
+      else if lower == Self.copyCommand {
+        TelemetryService.shared.used(.chatCommandCopy)
+        copyChatToClipboard(sessionId: session.id)
+      }
+      else if lower == Self.feedbackCommand {
+        TelemetryService.shared.used(.chatCommandFeedback)
+        sendFeedbackFromChat()
+      }
+      else {
+        TelemetryService.shared.used(.chatCommandScreenshot)
+        await captureScreenshot()
+      }
       return
     }
 
@@ -1715,6 +1750,7 @@ class ChatViewModel: ObservableObject {
       appendModelMessage("`\(command.slash)` needs a meeting chat: it works on the meeting transcript.")
       return
     }
+    TelemetryService.shared.used(.chatUserCommand)
     DebugLogger.log(
       "USER-COMMANDS: run \(command.slash) (\(command.scope.rawValue), \(command.body.count) chars, via \(via))")
     let text = UserCommandParser.appendingArguments(command.body, arguments: arguments)
@@ -2243,6 +2279,7 @@ class ChatViewModel: ObservableObject {
       DebugLogger.log("GEMINI-CHAT: switchToModel refused \(model.rawValue) (not offered in chat)")
       return
     }
+    TelemetryService.shared.used(.chatCommandModelSwitch)
     Self.persistChatModelSelection(model)
     NotificationCenter.default.post(name: .promptModelChanged, object: model)
     // Say it now rather than on the next send, which would fail with the same message.
@@ -2279,6 +2316,7 @@ class ChatViewModel: ObservableObject {
   /// per provider in each `LLMChatProvider` (see `ThinkingLevel`).
   @MainActor
   private func handleThinkCommand(argument: String) {
+    TelemetryService.shared.used(.chatCommandThink)
     let valid = "minimal | low | medium | high | default"
     guard !argument.isEmpty else {
       appendModelMessage(
@@ -2307,6 +2345,7 @@ class ChatViewModel: ObservableObject {
   /// all of X even when a default is configured.
   @MainActor
   private func handleXHandlesCommand(argument: String) {
+    TelemetryService.shared.used(.chatCommandX)
     let usage = String(localized: "Set with `/x @karpathy @simonw`, clear with `/x off`.")
     guard !argument.isEmpty else {
       let effective = effectiveXHandles(for: session)
@@ -2359,6 +2398,7 @@ class ChatViewModel: ObservableObject {
   /// asked about.
   @MainActor
   private func handleWorkspaceCommand(argument: String) {
+    TelemetryService.shared.used(.chatCommandWorkspace)
     let shared = WorkspaceFolders.displayPaths
     let abbreviate: (String) -> String = { ($0 as NSString).abbreviatingWithTildeInPath }
     guard !shared.isEmpty else {

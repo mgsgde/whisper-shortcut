@@ -938,6 +938,9 @@ class SpeechService {
         }
         DebugLogger.logWarning("\(logPrefix): Screenshot capture returned nothing — sending without it")
       }
+      if screenshot != nil {
+        TelemetryService.shared.used(.dictatePromptWithScreenshot)
+      }
     } else if wantsScreenshot {
       DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
     }
@@ -947,6 +950,7 @@ class SpeechService {
     let selectionBlock: String?
     if let context = clipboardContext, !context.isEmpty {
       DebugLogger.log("\(logPrefix): Adding clipboard context (length: \(context.count) chars)")
+      TelemetryService.shared.used(.dictatePromptWithSelection)
       selectionBlock = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
     } else if isComposeTurn {
       DebugLogger.log("\(logPrefix): Compose turn — no selected text, sending the compose marker")
@@ -1001,6 +1005,7 @@ class SpeechService {
     DebugLogger.log(
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")
+    TelemetryService.shared.used(.writingStyleApplied)
     return "\n\n" + block.text
   }
 
@@ -2023,6 +2028,7 @@ class SpeechService {
       return text
     }
     do {
+      TelemetryService.shared.used(.readAloudSmartRewrite)
       let rewritten = try await rewriteForSpeech(text)
       guard Self.rewriteStaysWithinLengthBudget(rewritten, for: text) else {
         DebugLogger.logWarning(

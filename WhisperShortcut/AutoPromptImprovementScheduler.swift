@@ -178,6 +178,7 @@ class AutoPromptImprovementScheduler {
     // Burn the session-cooldown only once eligibility passes and real work is about to start,
     // otherwise a no-op early return above would block the next manual click for `smartImprovementCooldownSeconds`.
     lastRunStartedAt = Date()
+    TelemetryService.shared.used(.smartImprovementRun)
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -405,6 +406,7 @@ class AutoPromptImprovementScheduler {
   }
 
   private func applySuggestion(_ suggested: String, for kind: GenerationKind, panelOriginal: String) {
+    TelemetryService.shared.used(.smartImprovementAccepted)
     let improvementModel = currentImprovementModelDisplayName()
     let section = kind.systemPromptSection
     // The Glossary shortcut or chat may have appended glossary lines since this suggestion was written.

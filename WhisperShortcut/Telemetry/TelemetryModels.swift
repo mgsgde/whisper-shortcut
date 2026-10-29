@@ -325,6 +325,38 @@ enum TelemetryFeature: String, CaseIterable, Codable {
   /// Check for Updates was used.
   case checkForUpdatesManual
 
+  private static let folderReadTools: Set<String> = [
+    "list_workspace_folders", "list_directory", "read_text_file", "search_files",
+  ]
+  private static let folderWriteTools: Set<String> = [
+    "write_text_file", "append_to_file", "edit_text_file",
+  ]
+
+  /// The feature a chat tool belongs to, or nil for tools that are not one of the counted groups.
+  /// Names are the ones declared in `ChatTools` / `ChatToolSteps`. `gmail_*` is mail (the Google
+  /// account's inbox); `google_*` is the rest of the Google account tools.
+  init?(chatToolName name: String) {
+    if name.hasPrefix("google_") {
+      self = .chatToolGoogle
+    } else if name.hasPrefix("trello_") {
+      self = .chatToolTrello
+    } else if name.hasPrefix("gmail_") || name.hasPrefix("mail_") || name == "connect_mail_account" {
+      self = .chatToolMail
+    } else if Self.folderReadTools.contains(name) {
+      self = .chatToolFolderRead
+    } else if Self.folderWriteTools.contains(name) {
+      self = .chatToolFolderWrite
+    } else if name == "generate_image" {
+      self = .chatToolImageGeneration
+    } else if name == "remember_about_user" || name == "forget_about_user" {
+      self = .chatToolMemory
+    } else if name == "refine_meeting_summary" || name == "correct_transcript_term" || name.contains("meeting") {
+      self = .chatToolMeeting
+    } else {
+      return nil
+    }
+  }
+
   var group: TelemetryFeatureGroup {
     switch self {
     case .dictation, .dictatePrompt, .chat, .readAloud, .meeting:

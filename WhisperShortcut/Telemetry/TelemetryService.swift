@@ -117,8 +117,8 @@ final class TelemetryService: @unchecked Sendable {
 
   func started(_ area: TelemetryArea) {
     switch area {
-    case .readAloud: used(.readAloud)
-    case .meeting: used(.meeting)
+    case .readAloud: self.used(.readAloud)
+    case .meeting: self.used(.meeting)
     default: break
     }
     count(area, .started)
@@ -129,13 +129,13 @@ final class TelemetryService: @unchecked Sendable {
     switch area {
     case .dictation:
       noteActivation(.firstDictation)
-      used(.dictation)
+      self.used(.dictation)
     case .prompt:
       noteActivation(.firstPrompt)
-      used(.dictatePrompt)
+      self.used(.dictatePrompt)
     case .chat:
       noteActivation(.firstChat)
-      used(.chat)
+      self.used(.chat)
     default: break
     }
     guard isEnabled else { return }
@@ -176,6 +176,38 @@ final class TelemetryService: @unchecked Sendable {
     env.featureUsage.record(feature)
     guard isEnabled else { return }
     mutateToday { $0.features[feature.rawValue, default: 0] += 1 }
+  }
+
+  /// One completed dictation, Dictate Prompt, or chat turn that went through the user's own
+  /// server, OpenRouter, or their ChatGPT plan. `providerLabel` is the Dictate Prompt log tag
+  /// (`ChatModelProvider.rawValue`, or "mlx"); when it is absent the model id is a
+  /// `TranscriptionModel` or `PromptModel` raw value. Anything else is not counted.
+  func recordRoutedProvider(modelID: String?, providerLabel: String? = nil) {
+    if let providerLabel {
+      switch providerLabel {
+      case ChatModelProvider.customOpenAI.rawValue: self.used(.ownServer)
+      case ChatModelProvider.openRouter.rawValue: self.used(.openRouter)
+      case ChatModelProvider.chatGPTPlan.rawValue: self.used(.chatGPTPlan)
+      default: break
+      }
+      return
+    }
+    if let modelID, let model = TranscriptionModel(rawValue: modelID) {
+      switch model.provider {
+      case .selfHosted: self.used(.ownServer)
+      case .openRouter: self.used(.openRouter)
+      default: break
+      }
+      return
+    }
+    if let modelID, let model = PromptModel(rawValue: modelID) {
+      switch model.provider {
+      case .customOpenAI: self.used(.ownServer)
+      case .openRouter: self.used(.openRouter)
+      case .chatGPTPlan: self.used(.chatGPTPlan)
+      default: break
+      }
+    }
   }
 
   func onboardingStepReached(_ step: WelcomeStep) {

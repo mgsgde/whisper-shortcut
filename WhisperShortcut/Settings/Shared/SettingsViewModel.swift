@@ -541,13 +541,17 @@ class SettingsViewModel: ObservableObject {
 
   // MARK: - Feedback
   func openWhatsAppFeedback() {
-    FeedbackLinks.open(.whatsApp)
+    if FeedbackLinks.open(.whatsApp) {
+      TelemetryService.shared.used(.sendFeedback)
+    }
   }
 
   /// The fallback for everyone without WhatsApp — regionally common, and blocked outright on many
   /// managed Macs, in which case the WhatsApp button is a dead end.
   func openEmailFeedback() {
-    FeedbackLinks.open(.email)
+    if FeedbackLinks.open(.email) {
+      TelemetryService.shared.used(.sendFeedback)
+    }
   }
 
   // MARK: - App Store Link

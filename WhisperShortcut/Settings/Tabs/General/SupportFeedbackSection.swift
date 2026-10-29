@@ -84,6 +84,7 @@ struct SupportFeedbackSection: View {
           // beachball on a button press.
           Button(action: {
             guard !isBuildingReport else { return }
+            TelemetryService.shared.used(.shareUsageReport)
             isBuildingReport = true
             Task.detached(priority: .userInitiated) {
               let report = UsageReport.build()

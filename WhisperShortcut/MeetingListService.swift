@@ -169,6 +169,7 @@ final class MeetingListService: ObservableObject {
       let trimmed = summaryText.trimmingCharacters(in: .whitespacesAndNewlines)
       if !trimmed.isEmpty {
         saveSummary(trimmed, transcriptFileURL: meeting.url)
+        TelemetryService.shared.used(.meetingSummary)
         return trimmed
       }
     } catch {

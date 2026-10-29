@@ -303,6 +303,8 @@ class ContextLogger {
     // Before the guard: opt-in usage statistics are independent of "Save usage data". Only the
     // model id goes in — never `result`.
     TelemetryService.shared.completed(.dictation, modelKind: .transcription, model: transcriptionModel)
+    TelemetryService.shared.recordRoutedProvider(modelID: transcriptionModel)
+    if OfflineMode.isEnabled { TelemetryService.shared.used(.offlineMode) }
     guard isLoggingEnabled else { return }
     let entry = InteractionLogEntry(
       ts: UserContextLog.nowString(),
@@ -330,6 +332,7 @@ class ContextLogger {
     loadMs: Int? = nil
   ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
+    TelemetryService.shared.recordRoutedProvider(modelID: model, providerLabel: provider)
     guard isLoggingEnabled else { return }
     let modeString = InteractionMode.prompt.rawValue
     // Response time, not `lastPromptAt`: retry detection resets that on a compose run.
@@ -416,6 +419,7 @@ class ContextLogger {
   /// Logs one chat turn (user message + model response) when "Save usage data" is enabled.
   func logChat(userMessage: String, modelResponse: String, model: String?) {
     TelemetryService.shared.completed(.chat, modelKind: .chat, model: model)
+    TelemetryService.shared.recordRoutedProvider(modelID: model)
     guard isLoggingEnabled else { return }
     // Generated-image responses embed the full base64 JPEG inline as a ⟦GEMINI_IMG:…⟧
     // marker (~1 MB+ each). Replace it with a short placeholder before writing so the JSONL

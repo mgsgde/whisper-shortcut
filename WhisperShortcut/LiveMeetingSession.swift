@@ -979,6 +979,7 @@ final class LiveMeetingSession: NSObject {
         }
         LiveMeetingTranscriptStore.shared.appendNote(
           LiveMeetingNote(startTime: noteStartTime, bullets: bullets))
+        TelemetryService.shared.used(.meetingLiveNotes)
         self.persistNotes()
         DebugLogger.log("LIVE-MEETING-NOTES: Appended note with \(bullets.count) bullet(s)")
       }

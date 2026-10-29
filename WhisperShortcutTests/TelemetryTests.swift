@@ -540,4 +540,71 @@ struct TelemetryTests {
     #expect(TelemetryFeature.checkForUpdatesManual.group == .support)
     #expect(Set(TelemetryFeature.allCases.map(\.group)) == Set(TelemetryFeatureGroup.allCases))
   }
+
+  @Test("A chat tool name maps to its feature group")
+  func chatToolNameMapping() {
+    #expect(TelemetryFeature(chatToolName: "google_calendar_list_events") == .chatToolGoogle)
+    #expect(TelemetryFeature(chatToolName: "trello_create_card") == .chatToolTrello)
+    #expect(TelemetryFeature(chatToolName: "mail_search") == .chatToolMail)
+    #expect(TelemetryFeature(chatToolName: "connect_mail_account") == .chatToolMail)
+    #expect(TelemetryFeature(chatToolName: "gmail_read") == .chatToolMail)
+    #expect(TelemetryFeature(chatToolName: "search_files") == .chatToolFolderRead)
+    #expect(TelemetryFeature(chatToolName: "edit_text_file") == .chatToolFolderWrite)
+    #expect(TelemetryFeature(chatToolName: "generate_image") == .chatToolImageGeneration)
+    #expect(TelemetryFeature(chatToolName: "forget_about_user") == .chatToolMemory)
+    #expect(TelemetryFeature(chatToolName: "refine_meeting_summary") == .chatToolMeeting)
+    #expect(TelemetryFeature(chatToolName: "correct_transcript_term") == .chatToolMeeting)
+    #expect(TelemetryFeature(chatToolName: "read_clipboard") == nil)
+    #expect(TelemetryFeature(chatToolName: "not_a_tool") == nil)
+  }
+
+  @Test("Every feature is recorded somewhere")
+  func everyFeatureIsRecorded() throws {
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("WhisperShortcut")
+    let source = try Self.swiftSources(under: root)
+
+    // Cases with no sensible call site. A row here is a gap — keep the reason in the comment.
+    let knownUnplaced: Set<TelemetryFeature> = [
+      // none
+    ]
+
+    #expect(source.contains("init?(chatToolName"))
+    #expect(source.contains("TelemetryFeature(chatToolName:"))
+    for feature in TelemetryFeature.allCases {
+      if feature.group == .chatTools || knownUnplaced.contains(feature) { continue }
+      #expect(
+        Self.sourceRecords(feature, in: source),
+        "\(feature.rawValue) has no .used(.\(feature.rawValue)) call")
+    }
+  }
+
+  /// `.used(.chat)` is a prefix of `.used(.chatCommandNew)`, so the character after the case
+  /// has to end the call.
+  private static func sourceRecords(_ feature: TelemetryFeature, in source: String) -> Bool {
+    let needle = ".used(.\(feature.rawValue))"
+    var rest = Substring(source)
+    while let found = rest.range(of: needle) {
+      let next = rest[found.upperBound...].first
+      if next == nil || !(next!.isLetter || next!.isNumber || next == "_") {
+        return true
+      }
+      rest = rest[found.upperBound...]
+    }
+    return false
+  }
+
+  private static func swiftSources(under root: URL) throws -> String {
+    guard let enumerator = FileManager.default.enumerator(
+      at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
+    else {
+      throw CocoaError(.fileReadNoSuchFile)
+    }
+    var parts: [String] = []
+    for case let url as URL in enumerator where url.pathExtension == "swift" {
+      parts.append(try String(contentsOf: url, encoding: .utf8))
+    }
+    return parts.joined(separator: "\n")
+  }
 }

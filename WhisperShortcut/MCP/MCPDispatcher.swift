@@ -90,6 +90,11 @@ struct MCPDispatcher {
         result = meetingTools.call(name: name, arguments: args)
       }
       let ms = Int(Date().timeIntervalSince(start) * 1000)
+      if MCPConfigTools.writeToolNames.contains(name) {
+        TelemetryService.shared.used(.mcpChange)
+      } else {
+        TelemetryService.shared.used(.mcpRead)
+      }
       DebugLogger.log("MCP-SERVER: tools/call \(name) \(ms)ms isError=\(result.isError)")
       return ok(["content": [["type": "text", "text": result.text]], "isError": result.isError])
     case "prompts/list":

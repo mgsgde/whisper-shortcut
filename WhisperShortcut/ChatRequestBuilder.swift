@@ -33,6 +33,9 @@ enum ChatRequestBuilder {
     // the newest message backwards, so a session full of links doesn't send a dozen videos.
     let isGemini = model.provider == .gemini
     let videoLinksByMessage = isGemini ? youTubeLinksToAttach(in: toSend) : [:]
+    if !videoLinksByMessage.isEmpty {
+      TelemetryService.shared.used(.chatYouTube)
+    }
     // Every other provider is blind to the link but perfectly willing to describe the video from
     // search results — the failure this feature exists to fix. Tell the newest linking turn so the
     // model says it cannot watch the video instead of confabulating it.

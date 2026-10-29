@@ -167,6 +167,14 @@ enum DictatePromptAgent {
       },
       onDisplayText: { _, _ in })
     let result = try await runner.run(contents: contents)
+    // Denied and undeclared calls are recorded but never run. A failed call still ran.
+    let ranLookup = result.records.contains { record in
+      record.status != .denied
+        && !record.resultJSON.contains("is not available in this conversation")
+    }
+    if ranLookup {
+      TelemetryService.shared.used(.dictatePromptLookup)
+    }
     DebugLogger.log(
       "\(logPrefix): Agent finished — \(result.executedToolCalls) tool call(s) [\(result.records.map(\.name).joined(separator: ", "))]")
     if result.finalRoundText.isEmpty, result.toolLoopExhausted {

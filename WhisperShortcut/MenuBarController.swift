@@ -618,6 +618,9 @@ class MenuBarController: NSObject {
   }
 
   @objc private func showWelcomeTour() {
+    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) {
+      TelemetryService.shared.used(.welcomeTourReopened)
+    }
     WelcomeWindowController.shared.show()
   }
 
@@ -852,6 +855,11 @@ class MenuBarController: NSObject {
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
     recording?.isEditQuickAction = isEdit
+    if source == "typed" {
+      TelemetryService.shared.used(.dictatePromptTypedInstruction)
+    } else {
+      TelemetryService.shared.used(.dictatePromptQuickPrompt)
+    }
     DebugLogger.log("QUICK-ACTIONS: Running \(source) (\(text.count) chars)")
     stopRecordingAfterTailDelay()
   }
@@ -1217,6 +1225,7 @@ class MenuBarController: NSObject {
   }
 
   @objc private func retryMeetingTranscription() {
+    TelemetryService.shared.used(.meetingRetryTranscription)
     DebugLogger.log("MEETING-BACKLOG: Retry requested from the status menu")
     Task { @MainActor in await liveMeeting.retryBacklog(announce: true) }
   }
@@ -1240,6 +1249,7 @@ class MenuBarController: NSObject {
       DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Copy requested but history is empty")
       return
     }
+    TelemetryService.shared.used(.copyLastTranscription)
     copyHistoryEntry(entry)
   }
 
@@ -1251,6 +1261,7 @@ class MenuBarController: NSObject {
       DebugLogger.logWarning("TRANSCRIPTION-HISTORY: Entry \(sender.tag) no longer exists")
       return
     }
+    TelemetryService.shared.used(.recentTranscriptionCopied)
     copyHistoryEntry(entries[sender.tag])
   }
 
@@ -1853,7 +1864,9 @@ class MenuBarController: NSObject {
   @objc private func sendFeedback(_ sender: NSMenuItem) {
     guard let raw = sender.representedObject as? String,
           let channel = FeedbackLinks.Channel(rawValue: raw) else { return }
-    FeedbackLinks.open(channel)
+    if FeedbackLinks.open(channel) {
+      TelemetryService.shared.used(.sendFeedback)
+    }
     DebugLogger.log("FEEDBACK: Opened \(channel.rawValue) from the status menu")
   }
 
@@ -1865,6 +1878,7 @@ class MenuBarController: NSObject {
     let details = DictationReport.body(
       entry: entry, glossaryTerms: speechService.glossaryTermsForReport(),
       offlineMode: OfflineMode.isEnabled)
+    TelemetryService.shared.used(.reportProblemLastDictation)
     DictationReportWindowController.shared.show(details: details)
   }
 
@@ -2857,6 +2871,7 @@ class MenuBarController: NSObject {
   private func reportGlossaryAppend(_ result: SystemPromptsStore.GlossaryAppendResult) {
     switch result {
     case .added(let term):
+      TelemetryService.shared.used(.glossaryAddSelection)
       PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
     case .duplicate(let term):
       PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
@@ -3559,6 +3574,7 @@ extension MenuBarController: ShortcutDelegate {
 
   /// Copies the PNG to the clipboard and, when enabled, writes it to the screenshot folder.
   private static func deliverScreenshot(_ pngData: Data, saveToFolder: Bool) {
+    TelemetryService.shared.used(.screenshotMenu)
     if let image = NSImage(data: pngData) {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.writeObjects([image])

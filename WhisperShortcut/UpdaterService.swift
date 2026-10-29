@@ -74,6 +74,7 @@ final class UpdaterService: NSObject, ObservableObject {
 
   /// User-initiated check.
   func checkForUpdates() {
+    TelemetryService.shared.used(.checkForUpdatesManual)
     DebugLogger.log("UPDATER: user-initiated check")
     controller.checkForUpdates(nil)
   }
