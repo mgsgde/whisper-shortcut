@@ -84,7 +84,7 @@ Press **Stop** in the menu bar (or use the active mode's shortcut again) to canc
 
 To change a shortcut, open Settings → General, click **Record** next to it and press the combination once. Any key works with at least one of ⌘/⌥/⌃, and **F1–F20 can be bound on their own, without a modifier** — that is the binding to use for a programmable (QMK/VIA) keyboard with a dedicated dictation key.
 
-**Fn (Globe) key** (direct-download build only): In Settings → General, under Keyboard Shortcuts, turn on **Also dictate with 🌐 Fn**. Press Fn once to start recording, press it again to stop. It needs the Accessibility permission — the same one auto-paste uses. In System Settings → Keyboard, set “Press 🌐 key to” to “Do Nothing” so macOS does not also react to the key.
+**Fn (Globe) key** (direct-download build only): Press Fn once to start recording, press it again to stop. It is on by default when macOS leaves the key free (System Settings → Keyboard → “Press 🌐 key to” → “Do Nothing”); otherwise turn on **Also dictate with 🌐 Fn** in Settings → General, under Keyboard Shortcuts, and the app shows how to free the key so macOS does not also react to it. It needs the Accessibility permission — the same one auto-paste uses; onboarding asks for it once for both.
 
 ### Dictation
 

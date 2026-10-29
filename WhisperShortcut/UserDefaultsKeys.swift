@@ -72,7 +72,7 @@ enum UserDefaultsKeys {
   // MARK: - Fn Key Dictation
   /// Fn (Globe) key dictation: press to start the recording, press again to stop and
   /// transcribe. The raw value predates the removal of the hold-to-talk gesture and is kept
-  /// so the opt-in of existing installs survives.
+  /// so a value the user already stored still wins over the default.
   static let fnKeyDictation = "holdFnToDictate"
 
   // MARK: - Screenshot Settings

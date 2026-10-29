@@ -777,11 +777,12 @@ struct WelcomePermissionsStep: View {
         // (App Store Guideline 2.4.5: don't imply the app needs it up front).
         VStack(alignment: .leading, spacing: 14) {
           PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
-          // Accessibility appears only as the auto-paste opt-in, and only in the direct build:
-          // the App Store build has no auto-paste (Guideline 2.4.5).
+          // Accessibility appears only for the two features that need it (Fn dictation,
+          // auto-paste), and only in the direct build: the App Store build has neither
+          // (Guideline 2.4.5).
           #if !APP_STORE
           Divider()
-          OnboardingAutoPasteCard()
+          OnboardingAccessibilityCard()
           #endif
         }
         .padding(.bottom, 8)
@@ -805,60 +806,73 @@ struct WelcomePermissionsStep: View {
   }
 }
 
-/// Auto-paste opt-in, shown on the permissions step of the direct build because it is the only
-/// thing Accessibility is for. Default off — only flipping the toggle requests Accessibility (App
-/// Store Guideline 2.4.5: never imply the app needs it up front). Never gates Continue.
-struct OnboardingAutoPasteCard: View {
+/// The two direct-build features that need Accessibility, on the permissions step: Fn dictation
+/// and auto-paste. Never gates Continue, and nothing here prompts on its own — the system prompt
+/// appears only when the user flips a toggle on or taps Allow (Guideline 2.4.5 spirit: don't
+/// imply the app needs it up front).
+///
+/// Fn arrives already on when the 🌐 key is free (`SettingsDefaults.fnKeyDictation`): it is the
+/// most comfortable trigger, and here is where one grant covers both features. When macOS still
+/// uses the 🌐 key itself, Fn stays off by default and turning it on shows how to free the key.
+struct OnboardingAccessibilityCard: View {
+  @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
   @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
     SettingsDefaults.autoPasteAfterDictation
 
-  /// Live Accessibility status so the user sees here whether the grant succeeded. Refreshed on
-  /// appear and whenever the app reactivates (e.g. after returning from System Settings).
+  /// Live Accessibility status and 🌐 setting, so the card reflects what the user just changed in
+  /// System Settings. Refreshed on appear and whenever the app reactivates.
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
+  @State private var globeUsage: GlobeKeyUsage = .current
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Toggle(isOn: $autoPasteEnabled) {
-        VStack(alignment: .leading, spacing: 2) {
-          HStack(spacing: 8) {
-            Text("Accessibility — auto-paste")
-              .font(.callout)
-              .fontWeight(.semibold)
-            Text("Optional")
-              .font(.caption2)
-              .foregroundStyle(.secondary)
-          }
-          Text("Puts dictated text straight at your cursor (a simulated ⌘V). macOS asks for Accessibility when you turn this on. Without it, your text is copied and you paste it yourself.")
-            .font(.caption)
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 8) {
+          Text("Accessibility")
+            .font(.callout)
+            .fontWeight(.semibold)
+          Text("Optional")
+            .font(.caption2)
             .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
         }
-      }
-      .toggleStyle(.switch)
-      .onChange(of: autoPasteEnabled) { newValue in
-        guard newValue else { return }
-        if !AccessibilityPermissionManager.hasAccessibilityPermission() {
-          // Request now (native prompt + pre-registration), matching the Settings opt-in path.
-          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
-        }
-        refreshStatus()
+        Text("Two extras need it. macOS asks once, when you first turn one on.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
 
-      if autoPasteEnabled {
+      featureToggle(
+        $fnEnabled,
+        title: "Dictate with 🌐 Fn",
+        detail: "Press Fn once to start, again to stop. The quickest way to dictate.")
+
+      if fnEnabled, let systemAction = globeUsage.systemSettingsLabel {
+        GlobeKeyConflictNote(systemAction: systemAction)
+          .padding(.leading, 2)
+      }
+
+      featureToggle(
+        $autoPasteEnabled,
+        title: "Auto-paste",
+        detail: "Puts dictated text straight at your cursor (a simulated ⌘V). Without it, your text is copied and you paste it yourself.")
+
+      if fnEnabled || autoPasteEnabled {
         HStack(spacing: 8) {
           PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
-            ? ("Accessibility granted — auto-paste is ready." as LocalizedStringKey)
-            : "Enable WhisperShortcut in System Settings, then return here.")
+            ? ("Accessibility granted — ready." as LocalizedStringKey)
+            : "Not allowed yet. Allow WhisperShortcut in System Settings, then return here.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
           Spacer(minLength: 8)
           if axStatus != .granted {
             Button {
-              PermissionStatusChecker.openSystemSettings(for: .accessibility)
+              // Native prompt the first time, the System Settings pane once it was answered.
+              AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+              refreshStatus()
             } label: {
-              Label("Open System Settings", systemImage: "arrow.up.right.square")
+              Label("Allow Accessibility", systemImage: "arrow.up.right.square")
                 .font(.callout)
             }
             .buttonStyle(.bordered)
@@ -873,8 +887,59 @@ struct OnboardingAutoPasteCard: View {
     }
   }
 
+  private func featureToggle(
+    _ isOn: Binding<Bool>, title: LocalizedStringKey, detail: LocalizedStringKey
+  ) -> some View {
+    Toggle(isOn: isOn) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.callout)
+        Text(detail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      // Full width so both switches line up on the trailing edge, whatever the text length.
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .toggleStyle(.switch)
+    .onChange(of: isOn.wrappedValue) { newValue in
+      guard newValue else { return }
+      // Request now (native prompt + pre-registration), matching the Settings opt-in path.
+      AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+      refreshStatus()
+    }
+  }
+
   private func refreshStatus() {
     axStatus = PermissionStatusChecker.status(for: .accessibility)
+    globeUsage = .current
+  }
+}
+
+/// Shown when Fn dictation is on but macOS still reacts to the 🌐 key itself, so one press
+/// would also open the emoji picker / switch input / start Apple Dictation. The app never
+/// changes that system setting; it names the item and opens the pane.
+struct GlobeKeyConflictNote: View {
+  /// The current "Press 🌐 key to" item, from `GlobeKeyUsage.systemSettingsLabel`.
+  let systemAction: String
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(.orange)
+        .font(.caption)
+      Text("Your 🌐 key also does “\(systemAction)”. In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 8)
+      Button("Open Keyboard Settings") {
+        GlobeKeyUsage.openKeyboardSettings()
+      }
+      .controlSize(.small)
+      .pointerCursorOnHover()
+    }
   }
 }
 
