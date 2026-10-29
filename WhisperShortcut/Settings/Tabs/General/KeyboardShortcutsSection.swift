@@ -15,6 +15,13 @@ struct KeyboardShortcutsSection: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
+  #if !APP_STORE
+  /// Re-read on appear and on app reactivation (the user may have just changed either in
+  /// System Settings).
+  @State private var hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
+  @State private var globeUsage: GlobeKeyUsage = .current
+  #endif
+
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
@@ -64,33 +71,71 @@ struct KeyboardShortcutsSection: View {
 
   #if !APP_STORE
   /// Alternative trigger for Dictate. Last, so it does not break the scannable list of combinations.
+  /// On by default when the 🌐 key is free (`SettingsDefaults.fnKeyDictation`), so the notes below
+  /// say why an "on" toggle may still do nothing: no Accessibility yet, or macOS still owns 🌐.
   private var fnKeyToggle: some View {
-    // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also fires
-    // when `data` is reloaded programmatically, which must never trigger a system prompt. The
-    // setter only runs when the user flips this toggle.
-    Toggle(isOn: Binding(
-      get: { viewModel.data.fnKeyDictation },
-      set: { newValue in
-        DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
-        if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
-          // Request now (native prompt + pre-registration), not deferred to the first fn press.
-          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+    VStack(alignment: .leading, spacing: 8) {
+      // The permission prompt lives in the binding's setter, not `onChange`: `onChange` also fires
+      // when `data` is reloaded programmatically, which must never trigger a system prompt. The
+      // setter only runs when the user flips this toggle.
+      Toggle(isOn: Binding(
+        get: { viewModel.data.fnKeyDictation },
+        set: { newValue in
+          DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
+          if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
+            // Request now (native prompt + pre-registration), not deferred to the first fn press.
+            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+          }
+          viewModel.data.fnKeyDictation = newValue
+          Task { await viewModel.saveSettings() }
+          refreshFnStatus()
         }
-        viewModel.data.fnKeyDictation = newValue
-        Task { await viewModel.saveSettings() }
+      )) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Also dictate with 🌐 Fn")
+            .font(.callout)
+          Text("Press Fn once to start, again to stop. Needs Accessibility.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
-    )) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text("Also dictate with 🌐 Fn")
-          .font(.callout)
-        Text("Press Fn once to start, again to stop. Needs Accessibility. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\".")
-          .font(.caption)
-          .foregroundColor(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+      .toggleStyle(.switch)
+
+      if viewModel.data.fnKeyDictation {
+        if !hasAccessibility {
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundStyle(.orange)
+              .font(.caption)
+            Text("Fn does nothing until WhisperShortcut is allowed under Accessibility.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("Allow Accessibility") {
+              AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+              refreshFnStatus()
+            }
+            .controlSize(.small)
+            .pointerCursorOnHover()
+          }
+        }
+        if let systemAction = globeUsage.systemSettingsLabel {
+          GlobeKeyConflictNote(systemAction: systemAction)
+        }
       }
     }
-    .toggleStyle(.switch)
     .padding(.top, 4)
+    .onAppear(perform: refreshFnStatus)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      refreshFnStatus()
+    }
+  }
+
+  private func refreshFnStatus() {
+    hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
+    globeUsage = .current
   }
   #endif
 }

@@ -1859,26 +1859,6 @@
         }
       }
     },
-    "Accessibility granted — auto-paste is ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bedienungshilfen erlaubt – automatisches Einfügen ist bereit."
-          }
-        }
-      }
-    },
-    "Accessibility — auto-paste" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bedienungshilfen – automatisches Einfügen"
-          }
-        }
-      }
-    },
     "Account:" : {
       "localizations" : {
         "de" : {
@@ -14665,16 +14645,6 @@
         }
       }
     },
-    "Press Fn once to start, again to stop. Needs Accessibility. In System Settings → Keyboard, set \"Press 🌐 key to\" to \"Do Nothing\"." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einmal Fn drücken zum Starten, noch einmal zum Beenden. Braucht Bedienungshilfen. Stellen Sie in Systemeinstellungen → Tastatur „Drücken der Taste 🌐“ auf „Keine Aktion“."
-          }
-        }
-      }
-    },
     "Press the shortcut again to stop playback." : {
       "localizations" : {
         "de" : {
@@ -22998,6 +22968,116 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "🔴 Dictate Prompt wird aufgenommen …"
+          }
+        }
+      }
+    },
+    "Two extras need it. macOS asks once, when you first turn one on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwei Extras brauchen das. macOS fragt einmal, wenn Sie das erste davon einschalten."
+          }
+        }
+      }
+    },
+    "Dictate with 🌐 Fn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit 🌐 Fn diktieren"
+          }
+        }
+      }
+    },
+    "Press Fn once to start, again to stop. The quickest way to dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Der schnellste Weg zum Diktieren."
+          }
+        }
+      }
+    },
+    "Puts dictated text straight at your cursor (a simulated ⌘V). Without it, your text is copied and you paste it yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setzt diktierten Text direkt am Cursor ein (ein simuliertes ⌘V). Ohne liegt Ihr Text in der Zwischenablage und Sie fügen ihn selbst ein."
+          }
+        }
+      }
+    },
+    "Accessibility granted — ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen erlaubt – bereit."
+          }
+        }
+      }
+    },
+    "Not allowed yet. Allow WhisperShortcut in System Settings, then return here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht erlaubt. Erlauben Sie WhisperShortcut in den Systemeinstellungen und kommen Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "Allow Accessibility" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen erlauben"
+          }
+        }
+      }
+    },
+    "Your 🌐 key also does “%@”. In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre 🌐-Taste löst auch „%@“ aus. Stellen Sie in den Tastatur-Einstellungen „Drücken der 🌐-Taste“ auf „Keine Aktion“."
+          }
+        }
+      }
+    },
+    "Open Keyboard Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastatur-Einstellungen öffnen"
+          }
+        }
+      }
+    },
+    "Fn does nothing until WhisperShortcut is allowed under Accessibility." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fn bewirkt nichts, solange WhisperShortcut unter Bedienungshilfen nicht erlaubt ist."
+          }
+        }
+      }
+    },
+    "Press Fn once to start, again to stop. Needs Accessibility." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Benötigt Bedienungshilfen."
           }
         }
       }
