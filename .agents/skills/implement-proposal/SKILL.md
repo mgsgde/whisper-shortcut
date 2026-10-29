@@ -64,6 +64,10 @@ and "X is true".
   metric does not exist, add the instrumentation in this same branch (a `DebugLogger` line, an
   interaction-log field, an outcome signal) and name the exact query or log filter that will
   grade it in your reviewer notes.
+- **A new user-facing feature is a bet** (`plans/feature-bets.md`): add its `TelemetryFeature`
+  case and `used(...)` call, the case in `server/telemetry/schema.json`, its display name in
+  `FeatureUsageSection.swift` (en + de), and its ledger row with `Added = next`. `TelemetryTests`
+  fails on a case without a call site or a schema entry.
 - **User-facing changes update `README.md`.** The in-app Chat serves that file as documentation
   (`read_whisper_shortcut_doc`), so a new or renamed feature that is missing there makes the app
   deny its own feature. Shortcut *bindings* are injected at runtime — only feature prose needs

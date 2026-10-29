@@ -57,6 +57,18 @@ agent, scheduled or interactive:
   `plans/instrumentation-gaps.md`; a plan you just made untrue → its status line in
   `plans/active/`.
 
+## Every feature is a bet: unused features get reconsidered
+
+Owner ruling 2026-10-29. A change that adds a user-facing feature (or a new way to use one: a
+command, a chat tool, a provider) is finished only with its counting in the same PR: a
+`TelemetryFeature` case with its `TelemetryService.shared.used(...)` call where the user actually
+uses it, the case in `server/telemetry/schema.json`, its display name in
+`Settings/Components/FeatureUsageSection.swift`, and a row in `plans/feature-bets.md`. After 21
+days in a release, `scripts/feature-bets.py` grades it from Magnus's local counts and the opt-in
+telemetry. A feature used on fewer than 3 days becomes an `ASK` row ("Remove …?"). It comes out
+only on Magnus's word. Not bets: bug fixes, refactors, model-ID bumps, copy. Full rule:
+`plans/feature-bets.md`.
+
 ## Model tiering: Opus 5.5 thinks, cheap hands type
 
 Owner rulings, in Magnus's words. The user-level `~/.claude/CLAUDE.md` holds the full wording and
