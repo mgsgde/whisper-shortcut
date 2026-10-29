@@ -188,9 +188,16 @@ struct SystemPromptSectionEditor: View {
     }
   }
 
+  /// Our own save comes back trimmed, and an emptied field comes back as an empty body,
+  /// so neither is an outside change.
+  static func isOwnSave(onDisk: String?, lastSaved: String) -> Bool {
+    let onDiskBody = (onDisk ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    return onDiskBody == lastSaved.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
   /// `resetBaseline` is true when the page opens: the loaded text becomes what Revert returns to.
-  /// File-change notifications (including the ones our own saves post) reload with it false, and
-  /// never while edits are still waiting to be saved, so they cannot wipe out text being typed.
+  /// File-change notifications reload with it false and do nothing while edits are unsaved, when
+  /// the disk body is our own trimmed or emptied save, or when the loaded text already matches.
   private func load(resetBaseline: Bool) {
     // Treat a missing OR empty section as "not customized" and fall back to the
     // default, matching the runtime loaders in SystemPromptsStore. A header can
@@ -200,7 +207,10 @@ struct SystemPromptSectionEditor: View {
       .trimmingCharacters(in: .whitespacesAndNewlines)
     unreadableReason = SystemPromptsStore.shared.unreadableReason
     let content = (saved?.isEmpty ?? true) ? defaultContent : saved!
-    if !resetBaseline && (text != lastSavedText || content == lastSavedText) { return }
+    if !resetBaseline
+      && (text != lastSavedText
+        || Self.isOwnSave(onDisk: saved, lastSaved: lastSavedText)
+        || content == lastSavedText) { return }
     autosaveTask?.cancel()
     lastSavedText = content
     text = content
