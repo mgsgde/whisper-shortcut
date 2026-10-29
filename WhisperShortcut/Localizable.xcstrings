@@ -5031,12 +5031,12 @@
         }
       }
     },
-    "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning." : {
+    "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kommagetrennte Liste schwer zu schreibender Begriffe (Namen, Fachwörter, Produktnamen). Geht an jeden Anbieter, auf dem Weg, den er unterstützt: Offline-Parakeet achtet im Audio darauf, Offline-Whisper bekommt sie als Vorgabetext, GPT Transcribe als eigene Stichwort-Hinweise, bei Gemini, GPT-4o Transcribe und xAI Grok werden sie an die Anweisungen angehängt. Offline-Whisper nimmt höchstens 224 Tokens, etwa 150 Begriffe, und lässt den Rest weg; tragen Sie also nur Wörter ein, die wirklich falsch geschrieben werden. Leer lassen für keine Vorgabe."
+            "value" : "Kommagetrennte Liste schwer zu schreibender Begriffe (Namen, Fachwörter, Produktnamen). Geht an jeden Anbieter, auf dem Weg, den er unterstützt: Offline-Parakeet achtet im Audio darauf, Offline-Whisper bekommt sie als Vorgabetext, GPT Transcribe als eigene Stichwort-Hinweise, bei Gemini, GPT-4o Transcribe und xAI Grok werden sie an die Anweisungen angehängt. Offline-Whisper nimmt höchstens 224 Tokens — etwa 150 kurze Begriffe, weit weniger lange, zum Beispiel deutsche medizinische Fachbegriffe — und lässt den Rest weg; tragen Sie also nur Wörter ein, die wirklich falsch geschrieben werden. Leer lassen für keine Vorgabe."
           }
         }
       }
@@ -9790,12 +9790,12 @@
         }
       }
     },
-    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {
+    "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and every offline model (Whisper, Parakeet) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter und eigenen Endpunkten. GPT Transcribe und Offline-Whisper ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
+            "value" : "Anweisungen, wie transkribiert werden soll (Füllwörter, Satzzeichen, Formatierung). Genutzt von Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter und eigenen Endpunkten. GPT Transcribe und jedes Offline-Modell (Whisper, Parakeet) ignorieren sie und nehmen ihr Vokabular aus dem Glossar. Einzelne Begriffe gehören nicht hierher, sondern ins Glossar."
           }
         }
       }

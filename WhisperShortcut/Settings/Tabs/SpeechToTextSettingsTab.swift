@@ -83,7 +83,7 @@ struct SpeechToTextSettingsTab: View {
     SystemPromptSectionEditor(
       title: "System Prompt",
       systemImage: "text.alignleft",
-      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and offline Whisper ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
+      subtitle: "Instructions for how to transcribe (filler words, punctuation, formatting). Used by Gemini, GPT-4o Transcribe, xAI Grok, OpenRouter and self-hosted endpoints. GPT Transcribe and every offline model (Whisper, Parakeet) ignore it — they take vocabulary from the Glossary instead. Keep specific terms out of here; put them in the Glossary.",
       section: .dictation,
       defaultContent: AppConstants.defaultTranscriptionSystemPrompt
     )
@@ -94,7 +94,7 @@ struct SpeechToTextSettingsTab: View {
     SystemPromptSectionEditor(
       title: "Glossary",
       systemImage: "character.book.closed",
-      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
+      subtitle: "Comma-separated vocabulary of hard-to-spell terms (names, jargon, product names). Sent to every provider, by whatever route that provider supports: listened for in the audio by offline Parakeet, conditioning text for offline Whisper, dedicated keyword hints for GPT Transcribe, appended to the instructions for Gemini, GPT-4o Transcribe and xAI Grok. Offline Whisper caps its conditioning at 224 tokens — roughly 150 short terms, far fewer long ones such as German medical terms — and drops the rest, so keep it to the words that actually get misspelled. Leave empty for no conditioning.",
       section: .whisperGlossary,
       defaultContent: AppConstants.defaultWhisperGlossary
     )
