@@ -11,9 +11,11 @@
 # never leaves the machine. A cloud agent with a git checkout of this repo would see an empty
 # ledger and nothing to mine.
 #
-# It deliberately does NOT write plan files and does NOT change code. A weekly job that edits an
-# app you use daily, unattended and unreviewed, is a liability; proposals are cheap to ignore and
-# code changes are not. The ledger is the deliverable.
+# It deliberately does NOT change code. A weekly job that edits an app you use daily, unattended
+# and unreviewed, is a liability; proposals are cheap to ignore and code changes are not. The
+# ledger is the deliverable. The one write outside that ledger: a feature bet whose window has
+# closed below 3 distinct days is filed as an ASK row in plans/implementer-queue.md (a removal
+# question, never a removal — plans/feature-bets.md).
 #
 # The container data is copied into build/usage-review-staging/ before the Claude pass runs, and the
 # pass reads only that copy — bash has the Full Disk Access grant, claude's sandboxed Bash tool does
@@ -74,12 +76,20 @@ STAMP="$(date +%Y-%m-%d)"
 BUSINESS_DIR="${WS_BUSINESS_DIR:-$REPO/../business}"
 REVIEW_DIR="$BUSINESS_DIR/usage-reviews"
 DIGEST="$REVIEW_DIR/$STAMP-review.md"
+# A missing private dir must never become a directory we create. Dry-run still grades below
+# (no --write) so the bets are visible, then aborts the same way.
+BUSINESS_MISSING=0
 if [ ! -d "$BUSINESS_DIR" ]; then
   echo "ERROR: no private business dir at $BUSINESS_DIR — usage digests quote real transcripts"
   echo "and must never land in the public app repo. Aborting."
-  exit 1
+  if [ "$DRY_RUN" -eq 1 ]; then
+    BUSINESS_MISSING=1
+  else
+    exit 1
+  fi
+else
+  mkdir -p "$REVIEW_DIR"
 fi
-mkdir -p "$REVIEW_DIR"
 
 # Reporting helpers are defined up here, not next to their first use, because the earliest thing
 # that can go wrong (an unreadable container) has to be able to report loudly too.
@@ -119,6 +129,95 @@ this week of usage is lost unless you re-run it by hand (command below)."
   rm -f "$note"
   exit 1
 }
+
+# Feature bets. Bash reads the release container (it holds the Full Disk Access grant); the
+# Claude pass must not. A finished window under 3 distinct days is REVIEW: one line in the mail
+# and one ASK row. Dry-run prints both and writes nothing. A missing local file or a failed
+# BigQuery read is the grader's problem to report, not this job's to abort on.
+FEATURE_BETS_JSON=""
+FEATURE_BETS_REVIEWS=""
+FEATURE_BETS_TSV=""
+
+grade_feature_bets() {
+  local dir="$BUSINESS_DIR/feature-bets"
+  FEATURE_BETS_JSON="$(mktemp -t wsfeaturebets)"
+  FEATURE_BETS_REVIEWS="$(mktemp -t wsfeaturebetsrev)"
+  FEATURE_BETS_TSV="$(mktemp -t wsfeaturebetstsv)"
+  : > "$FEATURE_BETS_REVIEWS"
+  : > "$FEATURE_BETS_TSV"
+  echo "=== Feature bets ==="
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "feature bets: dry-run — would write $dir and append one ASK row per REVIEW feature"
+    if ! python3 "$REPO/scripts/feature-bets.py" --json > "$FEATURE_BETS_JSON"; then
+      echo "WARN: feature bets grader failed — continuing without it"
+      return 0
+    fi
+  else
+    if ! python3 "$REPO/scripts/feature-bets.py" --json --write "$dir" > "$FEATURE_BETS_JSON"; then
+      echo "WARN: feature bets grader failed — continuing without it"
+      return 0
+    fi
+  fi
+  python3 - "$FEATURE_BETS_JSON" "$FEATURE_BETS_REVIEWS" "$FEATURE_BETS_TSV" <<'PY' || echo "WARN: feature bets output could not be read — continuing without queue rows"
+import json, sys
+payload_path, reviews_path, tsv_path = sys.argv[1:4]
+data = json.load(open(payload_path, encoding="utf-8"))
+print(data.get("summary", ""))
+for note in data.get("notes") or []:
+    print(note)
+reviews = []
+tsv = []
+for row in data.get("rows") or []:
+    print(row.get("line", ""))
+    if row.get("status") != "REVIEW":
+        continue
+    reviews.append(row.get("line", ""))
+    tsv.append("\t".join([
+        str(row.get("feature", "")),
+        str(row.get("used_days", 0)),
+        str(row.get("window", "")),
+        str(row.get("own_days", 0)),
+        str(row.get("others_days", 0)),
+    ]))
+with open(reviews_path, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(reviews))
+with open(tsv_path, "w", encoding="utf-8") as handle:
+    handle.write("\n".join(tsv))
+PY
+  while IFS="$(printf '\t')" read -r feature used window own others; do
+    [ -n "$feature" ] || continue
+    if awk -F'|' -v feat="$feature" '
+      function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+      {
+        if (trim($3) != "feature-bets") next
+        if (index(trim($4), "Remove " feat "?") == 0) next
+        st = trim($7)
+        if (st != "MERGED" && st != "DROPPED") { found = 1; exit }
+      }
+      END { exit found ? 0 : 1 }
+    ' "$REPO/plans/implementer-queue.md"; then
+      echo "feature bets: skip $feature — open row from source feature-bets already"
+      continue
+    fi
+    local proposal="Remove ${feature}? Used on ${used} days in ${window} (own ${own}, others ${others}). Keep = add Decision in plans/feature-bets.md."
+    if [ "$DRY_RUN" -eq 1 ]; then
+      echo "feature bets: would append ASK — $proposal"
+    else
+      python3 "$REPO/scripts/implementer/queue-edit.py" append \
+        --source feature-bets \
+        --proposal "$proposal" \
+        --falsifier "n/a: removal decision" \
+        --flag ASK \
+        || echo "WARN: could not append ASK row for $feature"
+    fi
+  done < "$FEATURE_BETS_TSV"
+}
+
+if [ "$BUSINESS_MISSING" -eq 1 ]; then
+  grade_feature_bets
+  rm -f "$FEATURE_BETS_JSON" "$FEATURE_BETS_REVIEWS" "$FEATURE_BETS_TSV"
+  exit 1
+fi
 
 echo "=== Usage review started: $(date '+%Y-%m-%d %H:%M:%S') (window: ${DAYS}d) ==="
 
@@ -163,6 +262,10 @@ if [ "$TCC_OK" -eq 0 ]; then
     "Fix: System Settings > Privacy & Security > Full Disk Access > add /bin/bash." \
     "Then re-run with: bash scripts/usage-review-job.sh"
 fi
+
+# Before the Claude pass, and only once the container read has succeeded: the local counts
+# live next to UserContext, and bash is what holds Full Disk Access.
+grade_feature_bets
 
 # ------------------------------------------------- 1. stage the window, then count what we staged
 # Everything the review pass reads is copied out of the container first, and the pass is pointed at
@@ -233,7 +336,7 @@ fi
 # Prompt via temp file, not a nested heredoc in a command substitution: macOS ships bash 3.2, which
 # mis-parses an apostrophe in that position. Same workaround as model-audit-job.sh.
 PROMPT_FILE="$(mktemp -t wsusagereview)"
-trap 'rm -f "$PROMPT_FILE" "${KILLED_MARKER:-}"' EXIT
+trap 'rm -f "$PROMPT_FILE" "${KILLED_MARKER:-}" "${FEATURE_BETS_JSON:-}" "${FEATURE_BETS_REVIEWS:-}" "${FEATURE_BETS_TSV:-}"' EXIT
 cat > "$PROMPT_FILE" <<EOF
 You are the weekly usage-review job for WhisperShortcut (repo: $REPO).
 
@@ -422,6 +525,15 @@ bash "$REPO/scripts/loop-commit.sh" --repo "$PARENT_REPO" --message "$COMMIT_MSG
 # characters, which pushed the one thing a phone notification has to show — whether this needs you —
 # past where every mail client truncates. It still leads the mail itself ("In one line:"), and the
 # notification below still speaks it.
+if [ -s "$FEATURE_BETS_REVIEWS" ]; then
+  {
+    echo
+    echo "## Feature-Wetten zur Prüfung"
+    cat "$FEATURE_BETS_REVIEWS"
+    echo
+    echo "„andere“ ist eine Schätzung (Telemetrie-Tageszahl minus lokale Zahl, ohne Nutzerkennung)."
+  } >> "$DIGEST"
+fi
 report_out "WhisperShortcut usage review ($STAMP)" "$DIGEST" \
   --verdict proposals --proposals-file "$IMPLEMENTER_PROPOSAL_FILE" \
   --title "Usage review $STAMP" \

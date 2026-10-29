@@ -15,6 +15,36 @@ final class FeatureUsageStore: @unchecked Sendable {
     var count: Int
     var firstUsed: Date
     var lastUsed: Date
+    /// Local calendar day (`yyyy-MM-dd`) → uses on that day. Grading counts distinct keys.
+    var days: [String: Int]
+
+    init(count: Int, firstUsed: Date, lastUsed: Date, days: [String: Int] = [:]) {
+      self.count = count
+      self.firstUsed = firstUsed
+      self.lastUsed = lastUsed
+      self.days = days
+    }
+
+    private enum CodingKeys: String, CodingKey {
+      case count, firstUsed, lastUsed, days
+    }
+
+    /// Files written before `days` existed decode as an empty map.
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      count = try container.decode(Int.self, forKey: .count)
+      firstUsed = try container.decode(Date.self, forKey: .firstUsed)
+      lastUsed = try container.decode(Date.self, forKey: .lastUsed)
+      days = try container.decodeIfPresent([String: Int].self, forKey: .days) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      try container.encode(count, forKey: .count)
+      try container.encode(firstUsed, forKey: .firstUsed)
+      try container.encode(lastUsed, forKey: .lastUsed)
+      try container.encode(days, forKey: .days)
+    }
   }
 
   private struct File: Codable {
@@ -51,16 +81,37 @@ final class FeatureUsageStore: @unchecked Sendable {
     self.since = now()
   }
 
+  /// Day keys older than this are dropped on `record`. The total `count` is lifetime and stays.
+  private static let dayRetention = 120
+
+  /// Local calendar day. The string is the grading key, so the format is the contract.
+  static func dayKey(for date: Date, calendar: Calendar = .current) -> String {
+    let parts = calendar.dateComponents([.year, .month, .day], from: date)
+    return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+  }
+
+  private static func prunedDays(_ days: [String: Int], asOf date: Date, calendar: Calendar = .current) -> [String: Int] {
+    let start = calendar.startOfDay(for: date)
+    guard let cutoff = calendar.date(byAdding: .day, value: -dayRetention, to: start) else { return days }
+    let cutoffKey = dayKey(for: cutoff, calendar: calendar)
+    return days.filter { $0.key >= cutoffKey }
+  }
+
   /// Counts one use. The file is written on `queue`, at most once a second while calls keep coming.
   func record(_ feature: TelemetryFeature, at date: Date = Date()) {
     lock.lock()
     loadIfNeeded()
+    let key = Self.dayKey(for: date)
     if var entry = entries[feature] {
       entry.count += 1
       entry.lastUsed = date
+      entry.days[key, default: 0] += 1
+      entry.days = Self.prunedDays(entry.days, asOf: date)
       entries[feature] = entry
     } else {
-      entries[feature] = Entry(count: 1, firstUsed: date, lastUsed: date)
+      entries[feature] = Entry(
+        count: 1, firstUsed: date, lastUsed: date,
+        days: Self.prunedDays([key: 1], asOf: date))
     }
     scheduleWriteLocked()
     lock.unlock()

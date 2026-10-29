@@ -55,7 +55,8 @@ and "X is true".
 ## 2. Build
 
 - **Scope:** only the paths in the runner's allowlist (default: `WhisperShortcut/`,
-  `WhisperShortcutTests/`, `plans/implementer-`). The runner **rejects** a diff that leaves it —
+  `WhisperShortcutTests/`, `plans/implementer-`, `plans/feature-bets.md`,
+  `server/telemetry/schema.json`). The runner **rejects** a diff that leaves it —
   it is a gate, not a request.
 - **Tests are part of the change.** New logic gets tests in `WhisperShortcutTests/`. Follow the
   existing patterns there; the live-roundtrip tests need API keys from `.env` and skip cleanly

@@ -135,7 +135,7 @@ USAGE_WAIT_CAP_SECONDS="${IMPLEMENTER_USAGE_WAIT_CAP_SECONDS:-7200}"
 source "${SCRIPT_DIR}/usage-limit.sh"
 
 case "$SCOPE" in
-    app)      SCOPE_REGEX='^(WhisperShortcut/|WhisperShortcutTests/|plans/implementer-)' ;;
+    app)      SCOPE_REGEX='^(WhisperShortcut/|WhisperShortcutTests/|plans/implementer-|plans/feature-bets\.md$|server/telemetry/schema\.json$)' ;;
     app-docs) SCOPE_REGEX='^(WhisperShortcut/|WhisperShortcutTests/|plans/|README\.md$|\.cursor/)' ;;
     *) die "unknown IMPLEMENTER_SCOPE '${SCOPE}'" ;;
 esac

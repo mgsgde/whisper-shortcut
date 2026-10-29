@@ -81,7 +81,15 @@ MAX_INFLIGHT = int(os.environ.get("IMPLEMENTER_MAX_INFLIGHT", 3))
 
 # Same allowlist the runner enforces (IMPLEMENTER_SCOPE=app). Checked here too so a
 # hopeless row is filed as ASK rather than starting a build that dies on the scope gate.
-SCOPE_PREFIXES = ("WhisperShortcut/", "WhisperShortcutTests/", "plans/implementer-")
+# The last two are exact files: removing an unused feature has to edit the bet ledger and
+# the telemetry schema, and nothing else under plans/ or server/.
+SCOPE_PREFIXES = (
+    "WhisperShortcut/",
+    "WhisperShortcutTests/",
+    "plans/implementer-",
+    "plans/feature-bets.md",
+    "server/telemetry/schema.json",
+)
 
 
 def log(msg):
