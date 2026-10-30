@@ -238,6 +238,14 @@ enum UserDefaultsKeys {
   /// The user's own Dictate Prompt quick prompts, in display order. `[String]`. May contain
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
+  /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
+  static let dictationTemplates = "dictationTemplates"
+  /// JSON-encoded `ShortcutDefinition` for the generic template shortcut. Absent means
+  /// unassigned, so nothing is registered and Dictate Prompt is unchanged.
+  static let dictationTemplatePickerShortcut = "dictationTemplatePickerShortcut"
+  /// UUID string of the template the generic shortcut last applied. Absent until one is used;
+  /// the shortcut then starts on the first usable template.
+  static let dictationTemplateLastUsedID = "dictationTemplateLastUsedID"
   /// Also show Dictate Prompt prompts learned from usage. Bool, default true.
   static let dictatePromptLearnedQuickActionsEnabled = "dictatePromptLearnedQuickActionsEnabled"
 

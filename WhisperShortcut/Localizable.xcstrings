@@ -240,6 +240,16 @@
         }
       }
     },
+    "%@ is already used by %@. Take it from there, or record a different key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist schon für %@ vergeben. Übernehmen Sie es von dort oder nehmen Sie eine andere Taste auf."
+          }
+        }
+      }
+    },
     "%@ is larger than %@ and wasn't attached." : {
       "localizations" : {
         "de" : {
@@ -633,6 +643,16 @@
     },
     "%lld" : {
       "shouldTranslate" : false
+    },
+    "%lld  %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld  %@"
+          }
+        }
+      }
     },
     "%lld %@" : {
       "localizations" : {
@@ -1678,6 +1698,316 @@
         }
       }
     },
+    "Add a format to dictate into" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format zum Diktieren hinzufügen"
+          }
+        }
+      }
+    },
+    "Add a format with its own shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Format mit eigenem Tastenkürzel hinzufügen"
+          }
+        }
+      }
+    },
+    "Choose a template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage wählen"
+          }
+        }
+      }
+    },
+    "Delete “%@”?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ löschen?"
+          }
+        }
+      }
+    },
+    "Describe the format to use this template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreiben Sie das Format, um diese Vorlage zu nutzen."
+          }
+        }
+      }
+    },
+    "Dictate straight into a fixed format, such as a treatment note." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren Sie direkt in ein festes Format, etwa eine Behandlungsnotiz."
+          }
+        }
+      }
+    },
+    "For example a treatment note: you speak as usual, and the note comes back with Anamnese, Befund and Therapie." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel eine Behandlungsnotiz: Sie sprechen wie gewohnt, und die Notiz kommt mit Anamnese, Befund und Therapie zurück."
+          }
+        }
+      }
+    },
+    "Format" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format"
+          }
+        }
+      }
+    },
+    "Formats to dictate into, and their shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formate zum Diktieren und ihr Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Give a template instructions to use this key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreiben Sie in einer Vorlage ein Format, damit diese Taste etwas tut."
+          }
+        }
+      }
+    },
+    "If text is selected, the key edits that text instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist Text markiert, bearbeitet die Taste stattdessen diesen Text."
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        }
+      }
+    },
+    "Not active yet: add the instructions below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht aktiv: Fügen Sie unten die Anweisungen hinzu."
+          }
+        }
+      }
+    },
+    "Press %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ drücken"
+          }
+        }
+      }
+    },
+    "Press %@ again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erneut drücken"
+          }
+        }
+      }
+    },
+    "Press Tab while you speak to skip the format this time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie beim Sprechen Tab, um das Format dieses Mal wegzulassen."
+          }
+        }
+      }
+    },
+    "Press a number to choose" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Wählen eine Ziffer drücken"
+          }
+        }
+      }
+    },
+    "Press it again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut drücken"
+          }
+        }
+      }
+    },
+    "Press once to start, again to stop. They work in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmal drücken zum Starten, erneut zum Beenden. Funktioniert in jeder App."
+          }
+        }
+      }
+    },
+    "Press the key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste drücken"
+          }
+        }
+      }
+    },
+    "Separate key, e.g. for a dictation microphone (optional)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Taste, z. B. für ein Diktiermikrofon (optional)"
+          }
+        }
+      }
+    },
+    "Shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Speak" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechen"
+          }
+        }
+      }
+    },
+    "Starts this template directly, without choosing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet diese Vorlage direkt, ohne Auswahl."
+          }
+        }
+      }
+    },
+    "Tab or click: run this recording without the template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab oder Klick: diese Aufnahme ohne Vorlage ausführen"
+          }
+        }
+      }
+    },
+    "Tab: Normal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab: Normal"
+          }
+        }
+      }
+    },
+    "Take it from %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von %@ übernehmen"
+          }
+        }
+      }
+    },
+    "Template %lld: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage %lld: %@"
+          }
+        }
+      }
+    },
+    "Templates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlagen"
+          }
+        }
+      }
+    },
+    "What you say is written down as usual, then put into this format." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was Sie sagen, wird wie gewohnt aufgeschrieben und dann in dieses Format gebracht."
+          }
+        }
+      }
+    },
+    "With several templates, press 1, 2, 3 … while you speak to choose one. It starts on the one you used last." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei mehreren Vorlagen wählen Sie beim Sprechen mit 1, 2, 3 … eine aus. Vorausgewählt ist die zuletzt benutzte."
+          }
+        }
+      }
+    },
     "[Pasted content]" : {
       "localizations" : {
         "de" : {
@@ -2116,6 +2446,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zum Diktat-Glossar hinzufügen: %@"
+          }
+        }
+      }
+    },
+    "Add to Glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Glossar hinzufügen"
           }
         }
       }
@@ -7927,6 +8267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Wiederholungsversuche ohne Antwort aufgebraucht"
+          }
+        }
+      }
+    },
+    "e.g. Treatment note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Behandlungsnotiz"
           }
         }
       }
@@ -16488,6 +16838,16 @@
         }
       }
     },
+    "Run Again Without Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nochmal ohne Vorlage"
+          }
+        }
+      }
+    },
     "Run Dictate Prompt and Chat on this Mac, inside the app, with no server to install. Each model downloads once from Hugging Face and stays cached locally." : {
       "localizations" : {
         "de" : {
@@ -16634,6 +16994,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft auf Ihrem Mac · nichts zu installieren"
+          }
+        }
+      }
+    },
+    "Runs your last dictation again with your Dictate Prompt system prompt instead of “%@”. Select the formatted text first to replace it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führt Ihr letztes Diktat noch einmal mit Ihrem Dictate-Prompt-System-Prompt statt mit „%@“ aus. Markieren Sie vorher den formatierten Text, um ihn zu ersetzen."
           }
         }
       }
@@ -18910,6 +19280,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tab-Titel"
+          }
+        }
+      }
+    },
+    "Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage"
           }
         }
       }
@@ -23091,6 +23471,169 @@
           }
         }
       }
+    },
+    "Tab or click: apply “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab oder Klick: “%@” anwenden"
+          }
+        }
+      }
+    },
+    "Template “%@” is on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage “%@” ist an"
+          }
+        }
+      }
+    },
+    "No template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Vorlage"
+          }
+        }
+      }
+    },
+    "Tab" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab"
+          }
+        }
+      }
+    },
+    "Normal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        }
+      }
+    },
+    "Tab: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab: %@"
+          }
+        }
+      }
+    },
+    "↩ formats it as “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ formatiert es als “%@”"
+          }
+        }
+      }
+    },
+    "Add Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage hinzufügen"
+          }
+        }
+      }
+    },
+    "Name, e.g. Treatment note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, z. B. Behandlungsnotiz"
+          }
+        }
+      }
+    },
+    "Template name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name der Vorlage"
+          }
+        }
+      }
+    },
+    "Remove this template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Vorlage entfernen"
+          }
+        }
+      }
+    },
+    "Template instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen der Vorlage"
+          }
+        }
+      }
+    },
+    "Instructions, e.g. “The dictation is a treatment note. Write it with the sections Anamnese, Befund, Therapie. Add nothing, leave nothing out.”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen, z. B. “Das Diktat ist eine Behandlungsnotiz. Schreibe sie mit den Abschnitten Anamnese, Befund, Therapie. Ergänze nichts, lasse nichts weg.”"
+          }
+        }
+      }
+    },
+    "Sent instead of the Dictate Prompt system prompt for that run. Your speech is transcribed as usual, with your Glossary, and is the text these instructions work on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird für diesen Durchlauf statt des System-Prompts von Dictate Prompt gesendet. Ihre Sprache wird wie gewohnt mit Ihrem Glossar transkribiert und ist der Text, auf den sich diese Anweisungen beziehen."
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        }
+      }
+    },
+    "Remove %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ entfernen"
+          }
+        }
+      }
+    },
+    "·" : {
+      "shouldTranslate" : false
     }
   },
   "version" : "1.0"

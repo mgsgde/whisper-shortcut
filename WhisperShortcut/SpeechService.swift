@@ -76,9 +76,17 @@ class SpeechService {
   /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
   /// may be missing. The reply is still delivered; the UI adds a notice.
   private(set) var lastPromptReplyTruncated = false
+  /// True when this Dictate Prompt turn replaced the system prompt with a template. Reset at the
+  /// start of every turn. The status menu keeps that recording for "Run Again Without Template"
+  /// only when a template was actually applied, so a selection or a quick action is not offered.
+  private(set) var lastPromptAppliedTemplate = false
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
+  /// Template instructions for this Dictate Prompt turn, or nil when the turn uses the stored
+  /// system prompt. Set at the start of every `performPrompt` so a turn never inherits the
+  /// previous one's template.
+  private var promptTemplateInstruction: String?
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -641,13 +649,15 @@ class SpeechService {
     mode: PromptMode = .togglePrompting,
     instruction: String? = nil,
     isEditQuickAction: Bool = false,
+    templateInstruction: String? = nil,
     selectedText: String? = nil
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
       try await self.performPrompt(
         audioURL: audioURL, mode: mode, instruction: instruction,
-        isEditQuickAction: isEditQuickAction, selectedText: selectedText)
+        isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
+        selectedText: selectedText)
     }
 
     currentPromptTask = task
@@ -726,12 +736,14 @@ class SpeechService {
   /// never a fresh clipboard read — the clipboard can hold something copied long ago.
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
-    selectedText: String?
+    templateInstruction: String? = nil, selectedText: String?
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
+    lastPromptAppliedTemplate = false
     promptIsEditQuickAction = isEditQuickAction
+    promptTemplateInstruction = nil
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -774,6 +786,31 @@ class SpeechService {
 
     let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
     let textInstruction = (trimmedInstruction?.isEmpty == false) ? trimmedInstruction : nil
+    let trimmedTemplate = templateInstruction?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let givenTemplate = (trimmedTemplate?.isEmpty == false) ? trimmedTemplate : nil
+    if let givenTemplate,
+       textInstruction == nil,
+       Self.isComposeTurn(
+         usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
+      promptTemplateInstruction = givenTemplate
+      lastPromptAppliedTemplate = true
+      DebugLogger.log(
+        "PROMPT-MODE: Template (\(givenTemplate.count) chars) replaces the system prompt for this turn")
+    } else {
+      promptTemplateInstruction = nil
+      lastPromptAppliedTemplate = false
+      if givenTemplate != nil {
+        let reason: String
+        if textInstruction != nil {
+          reason = "typed or quick-prompt instruction"
+        } else if usesScreenshotSelection {
+          reason = "screenshot selection"
+        } else {
+          reason = "text is selected"
+        }
+        DebugLogger.log("PROMPT-MODE: Template not applied — \(reason)")
+      }
+    }
     if let textInstruction {
       DebugLogger.log(
         "PROMPT-MODE: Quick action — text instruction (\(textInstruction.count) chars), audio not sent")
@@ -839,8 +876,11 @@ class SpeechService {
   /// clipboard even in the App Store build, and telling it to read a highlighted region of a
   /// screenshot it never receives is how it ends up "editing" the instruction instead.
   /// `styleBlock` (the learned writing style) goes before the output rule, so that rule stays last.
+  /// `template`, when non-blank, replaces the stored prompt for this one turn. Screenshot-selection
+  /// mode ignores it: the selection lives in the image, and that prompt stays as it is.
   static func buildDictatePromptSystemPrompt(
-    logPrefix: String, usesScreenshotSelection: Bool, styleBlock: String = ""
+    logPrefix: String, usesScreenshotSelection: Bool, styleBlock: String = "",
+    template: String? = nil
   ) -> String {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
     if usesScreenshotSelection {
@@ -848,18 +888,27 @@ class SpeechService {
       return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
         + AppConstants.promptModeOutputRule
     }
-    let trimmed = SystemPromptsStore.shared
-      .loadDictatePromptSystemPrompt()
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    let base: String
-    if trimmed.isEmpty {
-      base = AppConstants.defaultPromptModeSystemPrompt
+    let stored = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
+    let base = dictatePromptBase(stored: stored, template: template)
+    let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !trimmedTemplate.isEmpty {
+      DebugLogger.log("\(logPrefix): Using dictation template")
+    } else if stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       DebugLogger.log("\(logPrefix): Using base system prompt")
     } else {
-      base = trimmed
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
     return base + styleBlock + AppConstants.promptModeOutputRule
+  }
+
+  /// The base of the Dictate Prompt system prompt: a template chosen for this turn, else the
+  /// user's stored prompt, else the built-in default. Pure, so tests can feed it what a store read.
+  static func dictatePromptBase(stored: String, template: String?) -> String {
+    let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !trimmedTemplate.isEmpty { return trimmedTemplate }
+    let trimmedStored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedStored.isEmpty { return trimmedStored }
+    return AppConstants.defaultPromptModeSystemPrompt
   }
 
   /// Shown when screenshot-selection mode (App Store build) has no screenshot to send. Shared by
@@ -973,7 +1022,8 @@ class SpeechService {
       history: history,
       systemPrompt: Self.buildDictatePromptSystemPrompt(
         logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
-        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock()))
+        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock(),
+        template: promptTemplateInstruction))
   }
 
   /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
