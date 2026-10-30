@@ -76,6 +76,10 @@ class SpeechService {
   /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
   /// may be missing. The reply is still delivered; the UI adds a notice.
   private(set) var lastPromptReplyTruncated = false
+  /// True when this Dictate Prompt turn replaced the system prompt with a template. Reset at the
+  /// start of every turn. The status menu keeps that recording for "Run Again Without Template"
+  /// only when a template was actually applied, so a selection or a quick action is not offered.
+  private(set) var lastPromptAppliedTemplate = false
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
@@ -737,6 +741,7 @@ class SpeechService {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
+    lastPromptAppliedTemplate = false
     promptIsEditQuickAction = isEditQuickAction
     promptTemplateInstruction = nil
     // Which model runs decides where the selection comes from, so it has to be known first: a
@@ -788,10 +793,12 @@ class SpeechService {
        Self.isComposeTurn(
          usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
       promptTemplateInstruction = givenTemplate
+      lastPromptAppliedTemplate = true
       DebugLogger.log(
         "PROMPT-MODE: Template (\(givenTemplate.count) chars) replaces the system prompt for this turn")
     } else {
       promptTemplateInstruction = nil
+      lastPromptAppliedTemplate = false
       if givenTemplate != nil {
         let reason: String
         if textInstruction != nil {

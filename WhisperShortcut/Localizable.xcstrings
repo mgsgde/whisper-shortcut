@@ -2120,6 +2120,16 @@
         }
       }
     },
+    "Add to Glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Glossar hinzufügen"
+          }
+        }
+      }
+    },
     "Add to Glossary shortcut" : {
       "localizations" : {
         "de" : {
@@ -16488,6 +16498,16 @@
         }
       }
     },
+    "Run Again Without Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nochmal ohne Vorlage"
+          }
+        }
+      }
+    },
     "Run Dictate Prompt and Chat on this Mac, inside the app, with no server to install. Each model downloads once from Hugging Face and stays cached locally." : {
       "localizations" : {
         "de" : {
@@ -16634,6 +16654,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft auf Ihrem Mac · nichts zu installieren"
+          }
+        }
+      }
+    },
+    "Runs your last dictation again with your Dictate Prompt system prompt instead of “%@”. Select the formatted text first to replace it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Führt Ihr letztes Diktat noch einmal mit Ihrem Dictate-Prompt-System-Prompt statt mit „%@“ aus. Markieren Sie vorher den formatierten Text, um ihn zu ersetzen."
           }
         }
       }

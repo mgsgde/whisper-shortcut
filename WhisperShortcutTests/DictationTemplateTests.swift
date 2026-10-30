@@ -1,10 +1,12 @@
+import AppKit
 import Foundation
 import Testing
 @testable import WhisperShortcut_AppStore
 
-/// Dictation templates replace the Dictate Prompt system prompt for one compose turn. With none
-/// saved, Dictate Prompt is unchanged — these tests never write a prompt file except the
-/// update-survival case, which checks a custom prompt is left byte-for-byte alone.
+/// Dictation templates replace the Dictate Prompt system prompt for one compose turn, started by
+/// the template's own shortcut. With none saved, Dictate Prompt is unchanged — these tests never
+/// write a prompt file except the update-survival case, which checks a custom prompt is left
+/// byte-for-byte alone.
 @Suite("Dictation templates", .serialized)
 struct DictationTemplateTests {
 
@@ -33,70 +35,66 @@ struct DictationTemplateTests {
     try body()
   }
 
-  @Test("Bundle id match is case-insensitive, and the first usable template wins")
-  func matchBundleAndUsable() {
-    let unusableBlank = DictationTemplate(
-      name: "Blank", instructions: "  ", appBundleIDs: ["com.practice.app"])
-    let first = DictationTemplate(
-      name: "First", instructions: "One", appBundleIDs: ["Com.Practice.App"])
-    let second = DictationTemplate(
-      name: "Second", instructions: "Two", appBundleIDs: ["com.practice.app"])
-    let otherApp = DictationTemplate(
-      name: "Other", instructions: "Three", appBundleIDs: ["com.other.app"])
-
-    let templates = [unusableBlank, otherApp, first, second]
-    #expect(DictationTemplateStore.match(
-      in: templates, bundleID: "com.practice.app", windowTitle: nil)?.id == first.id)
-    #expect(DictationTemplateStore.match(
-      in: templates, bundleID: "COM.PRACTICE.APP", windowTitle: "anything")?.id == first.id)
-    #expect(DictationTemplateStore.match(in: [unusableBlank], bundleID: "com.practice.app", windowTitle: nil) == nil)
-    #expect(DictationTemplateStore.match(in: templates, bundleID: nil, windowTitle: "anything") == nil)
+  /// A binding on the same key as `source`, with the modifiers and enabled flag under test.
+  /// Built from `ShortcutConfig.default` so the test does not invent a key the app does not use.
+  private func binding(
+    like source: ShortcutDefinition, modifiers: NSEvent.ModifierFlags, enabled: Bool = true
+  ) -> ShortcutDefinition {
+    ShortcutDefinition(key: source.key, modifiers: modifiers, isEnabled: enabled)
   }
 
-  @Test("A template without apps matches every app, ignores keywords, and list order decides")
-  func matchAllApps() {
-    let everywhere = DictationTemplate(
-      name: "All", instructions: "Format the note", windowTitleKeywords: ["Patientenakte"])
-    let limited = DictationTemplate(
-      name: "Limited", instructions: "Other", appBundleIDs: ["com.practice.app"])
-    let blank = DictationTemplate(name: "Blank", instructions: " \n")
+  @Test("Active bindings skip an empty, disabled, or taken shortcut, and the first duplicate wins")
+  func activeBindingsAndOwners() {
+    var config = ShortcutConfig.default
+    let commandTwo = binding(like: config.startPrompting, modifiers: [.command])
+    config.startPrompting = commandTwo
+    let commandOne = binding(like: config.startRecording, modifiers: [.command])
 
-    #expect(DictationTemplateStore.match(
-      in: [everywhere], bundleID: "com.any.app", windowTitle: nil)?.id == everywhere.id)
-    #expect(DictationTemplateStore.match(
-      in: [everywhere], bundleID: nil, windowTitle: nil)?.id == everywhere.id)
-    #expect(DictationTemplateStore.match(
-      in: [everywhere], bundleID: "com.any.app", windowTitle: "Inbox")?.id == everywhere.id)
-    #expect(DictationTemplateStore.match(
-      in: [limited, everywhere], bundleID: "com.practice.app", windowTitle: nil)?.id == limited.id)
-    #expect(DictationTemplateStore.match(
-      in: [everywhere, limited], bundleID: "com.practice.app", windowTitle: nil)?.id == everywhere.id)
-    #expect(DictationTemplateStore.match(
-      in: [limited, everywhere], bundleID: "com.other.app", windowTitle: nil)?.id == everywhere.id)
-    #expect(DictationTemplateStore.match(
-      in: [blank], bundleID: "com.any.app", windowTitle: nil) == nil)
-    #expect(DictationTemplateStore.match(in: [blank], bundleID: nil, windowTitle: nil) == nil)
-  }
+    let noShortcut = DictationTemplate(name: "None", instructions: "Write it")
+    let disabled = DictationTemplate(
+      name: "Off", instructions: "Write it",
+      shortcut: binding(like: config.openChat, modifiers: [.command, .shift], enabled: false))
+    let blank = DictationTemplate(name: "Blank", instructions: "  ", shortcut: commandOne)
+    let blocked = DictationTemplate(name: "Blocked", instructions: "Write it", shortcut: commandTwo)
+    let first = DictationTemplate(name: "First", instructions: "One", shortcut: commandOne)
+    let second = DictationTemplate(name: "Second", instructions: "Two", shortcut: commandOne)
+    let templates = [noShortcut, disabled, blank, blocked, first, second]
 
-  @Test("Keywords match by case-insensitive contains; a nil title fails a keyword list")
-  func matchKeywords() {
-    let web = DictationTemplate(
-      instructions: "Format the note",
-      appBundleIDs: ["com.google.Chrome"],
-      windowTitleKeywords: ["  Patientenakte ", ""])
-    let blanksOnly = DictationTemplate(
-      instructions: "Format the note",
-      appBundleIDs: ["com.apple.Safari"],
-      windowTitleKeywords: ["  ", ""])
+    let bindings = TemplateShortcuts.activeBindings(templates: templates, appConfig: config)
+    #expect(bindings.map(\.template.id) == [first.id])
+    #expect(bindings.first?.shortcut == commandOne)
 
-    #expect(DictationTemplateStore.match(
-      in: [web], bundleID: "com.google.chrome", windowTitle: "Praxis — patientenakte")?.id == web.id)
-    #expect(DictationTemplateStore.match(
-      in: [web], bundleID: "com.google.chrome", windowTitle: "Inbox") == nil)
-    #expect(DictationTemplateStore.match(
-      in: [web], bundleID: "com.google.chrome", windowTitle: nil) == nil)
-    #expect(DictationTemplateStore.match(
-      in: [blanksOnly], bundleID: "com.apple.safari", windowTitle: nil)?.id == blanksOnly.id)
+    #expect(
+      TemplateShortcuts.owner(of: blocked, in: templates, appConfig: config)
+        == .app(String(localized: "Dictate Prompt")))
+    #expect(
+      TemplateShortcuts.owner(of: second, in: templates, appConfig: config)
+        == .template(name: first.displayName))
+    #expect(TemplateShortcuts.owner(of: first, in: templates, appConfig: config) == nil)
+    #expect(TemplateShortcuts.owner(of: disabled, in: templates, appConfig: config) == nil)
+    #expect(TemplateShortcuts.owner(of: noShortcut, in: templates, appConfig: config) == nil)
+
+    // A disabled app slot does not own its combination, so the template may use it.
+    var disabledPrompt = ShortcutConfig.default
+    disabledPrompt.startPrompting = binding(like: disabledPrompt.startPrompting, modifiers: [.command], enabled: false)
+    #expect(
+      TemplateShortcuts.activeBindings(templates: [blocked], appConfig: disabledPrompt).map(\.template.id)
+        == [blocked.id])
+    #expect(TemplateShortcuts.owner(of: blocked, in: [blocked], appConfig: disabledPrompt) == nil)
+
+    #expect(
+      TemplateShortcuts.owner(
+        key: commandOne.key, modifiers: commandOne.modifiers, templates: [first, second],
+        excludingTemplateID: first.id, appConfig: config) == .template(name: second.displayName))
+    #expect(
+      TemplateShortcuts.owner(
+        key: commandOne.key, modifiers: commandOne.modifiers, templates: [first],
+        excludingTemplateID: first.id, appConfig: config) == nil)
+    #expect(
+      TemplateShortcuts.owner(
+        key: commandTwo.key, modifiers: commandTwo.modifiers, templates: [blocked],
+        excludingTemplateID: blocked.id, appConfig: config)
+        == .app(String(localized: "Dictate Prompt")))
   }
 
   @Test("Load and save round-trip; a missing key or garbage is no templates")
@@ -112,23 +110,61 @@ struct DictationTemplateTests {
 
       let id = UUID(uuidString: "7E3A1C2B-4D5E-4F60-8A71-92B3C4D5E6F7")!
       let json = """
-        [{"id":"\(id.uuidString)","name":"Praxis","instructions":"Format the note","appBundleIDs":["com.practice.app"]}]
+        [{"id":"\(id.uuidString)","name":"Praxis","instructions":"Format the note","appBundleIDs":["com.practice.app"],"windowTitleKeywords":["Patientenakte"]}]
         """
       UserDefaults.standard.set(Data(json.utf8), forKey: UserDefaultsKeys.dictationTemplates)
       let legacy = DictationTemplateStore.load()
       #expect(legacy.count == 1)
       #expect(legacy[0].id == id)
-      #expect(legacy[0].windowTitleKeywords == [])
+      #expect(legacy[0].shortcut == nil)
       #expect(legacy[0].instructions == "Format the note")
 
       let saved = [
         DictationTemplate(
           name: "Praxis", instructions: customPrompt,
-          appBundleIDs: ["com.practice.app"], windowTitleKeywords: ["Patientenakte"])
+          shortcut: binding(like: ShortcutConfig.default.openSettings, modifiers: [.command, .option]))
       ]
+      let flag = NotificationFlag()
+      let observer = NotificationCenter.default.addObserver(
+        forName: .dictationTemplatesChanged, object: nil, queue: nil
+      ) { _ in flag.posted = true }
       DictationTemplateStore.save(saved)
+      NotificationCenter.default.removeObserver(observer)
+      #expect(flag.posted)
       #expect(DictationTemplateStore.load() == saved)
+      #expect(DictationTemplateStore.template(id: saved[0].id) == saved[0])
+      #expect(DictationTemplateStore.template(id: UUID()) == nil)
     }
+  }
+
+  @Test("A shortcut round-trips, and legacy app or window keys still decode")
+  func shortcutCodable() throws {
+    let shortcut = binding(like: ShortcutConfig.default.startRecording, modifiers: [.command, .option])
+    let original = DictationTemplate(name: "Praxis", instructions: "Format the note", shortcut: shortcut)
+    let data = try JSONEncoder().encode(original)
+    let text = String(decoding: data, as: UTF8.self)
+    #expect(!text.contains("appBundleIDs"))
+    #expect(!text.contains("windowTitleKeywords"))
+    let decoded = try JSONDecoder().decode(DictationTemplate.self, from: data)
+    #expect(decoded == original)
+    #expect(decoded.shortcut == shortcut)
+
+    let id = UUID(uuidString: "7E3A1C2B-4D5E-4F60-8A71-92B3C4D5E6F7")!
+    let legacy = """
+      {"id":"\(id.uuidString)","name":"Praxis","instructions":"Format the note","appBundleIDs":["com.practice.app"],"windowTitleKeywords":["Patientenakte"]}
+      """.data(using: .utf8)!
+    let fromLegacy = try JSONDecoder().decode(DictationTemplate.self, from: legacy)
+    #expect(fromLegacy.id == id)
+    #expect(fromLegacy.name == "Praxis")
+    #expect(fromLegacy.instructions == "Format the note")
+    #expect(fromLegacy.shortcut == nil)
+
+    let withoutShortcut = """
+      {"id":"\(id.uuidString)","name":"Praxis","instructions":"Format the note"}
+      """.data(using: .utf8)!
+    let fromMissing = try JSONDecoder().decode(DictationTemplate.self, from: withoutShortcut)
+    #expect(fromMissing.id == id)
+    #expect(fromMissing.shortcut == nil)
   }
 
   @Test("A template replaces the stored prompt; a blank one leaves it")
@@ -164,8 +200,7 @@ struct DictationTemplateTests {
       let before = try Data(contentsOf: fileURL)
 
       DictationTemplateStore.save([
-        DictationTemplate(
-          name: "Praxis", instructions: customPrompt, appBundleIDs: ["com.practice.app"])
+        DictationTemplate(name: "Praxis", instructions: customPrompt)
       ])
 
       let store = SystemPromptsStore(contextDirectoryURL: dir)
@@ -181,4 +216,9 @@ struct DictationTemplateTests {
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }
   }
+}
+
+/// The notification observer's closure cannot mutate a captured boolean.
+private final class NotificationFlag: @unchecked Sendable {
+  var posted = false
 }
