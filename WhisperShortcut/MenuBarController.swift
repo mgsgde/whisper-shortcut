@@ -142,6 +142,9 @@ class MenuBarController: NSObject {
     /// segment, a screenshot-selection model, the generic Dictate Prompt shortcut, or when the
     /// template was not passed in. Resolved here so a later edit of the template cannot swap it.
     var boundTemplate: DictationTemplate?
+    /// Usable templates the generic template shortcut offers on the card, in list order.
+    /// Empty for a template's own shortcut and for Dictate Prompt, so that card stays as it is.
+    var templateChoices: [DictationTemplate] = []
     /// Tab switches the bound template off for this recording. The instructions are sent only
     /// while this stays true.
     var templateEnabled = true
@@ -692,6 +695,12 @@ class MenuBarController: NSObject {
       self?.recording?.templateEnabled = enabled
       DebugLogger.log("DICTATION-TEMPLATE: \(enabled ? "on" : "off") for this recording")
     }
+    RecordingIndicatorManager.shared.onTemplateChoice = { [weak self] index in
+      guard let choices = self?.recording?.templateChoices, choices.indices.contains(index) else { return }
+      self?.recording?.boundTemplate = choices[index]
+      self?.recording?.templateEnabled = true
+      DebugLogger.log("DICTATION-TEMPLATE: \(choices[index].displayName)")
+    }
     RecordingIndicatorManager.shared.onTypedPrompt = { [weak self] text in
       self?.runPromptInstruction(text, source: "typed")
     }
@@ -830,9 +839,22 @@ class MenuBarController: NSObject {
       DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
       return
     }
-    RecordingIndicatorManager.shared.showQuickActions(
-      actions, context: .reading, templateName: templateName)
-    DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    if let bound = recording?.boundTemplate {
+      // A quick action or typed instruction would replace the template, so the card offers
+      // the template only — and the picker when the generic shortcut has more than one choice.
+      let choices = recording?.templateChoices ?? []
+      let offersChoice = choices.count > 1
+      let index = choices.firstIndex { $0.id == bound.id } ?? 0
+      RecordingIndicatorManager.shared.showQuickActions(
+        [], context: .reading, templateName: bound.displayName,
+        templateChoices: offersChoice ? choices.map(\.displayName) : [],
+        templateChoiceIndex: offersChoice ? index : 0)
+      DebugLogger.log("QUICK-ACTIONS: Template \(bound.displayName)")
+    } else {
+      RecordingIndicatorManager.shared.showQuickActions(
+        actions, context: .reading, templateName: templateName)
+      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    }
     let fromClipboard = AppConstants.dictatePromptUsesScreenshotSelection
     Task { @MainActor [weak self] in
       let text = await capture.value()
@@ -1365,7 +1387,8 @@ class MenuBarController: NSObject {
     mode: AppState.RecordingMode,
     meetingSegment: MeetingSegment? = nil,
     promptSelection: DictatePromptSelectionCapture? = nil,
-    template: DictationTemplate? = nil
+    template: DictationTemplate? = nil,
+    templateChoices: [DictationTemplate] = []
   ) {
     if mode == .transcription || mode == .prompt {
       pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
@@ -1377,6 +1400,7 @@ class MenuBarController: NSObject {
        Self.selectedPromptModel().dictatePromptUsesScreenshotSelection == false,
        let template {
       recording?.boundTemplate = template
+      recording?.templateChoices = templateChoices
       DebugLogger.log("DICTATION-TEMPLATE: \(template.displayName) started from its shortcut")
     }
     audioRecorder.startRecording()
@@ -1523,9 +1547,10 @@ class MenuBarController: NSObject {
   }
 
   /// `template` nil is the generic Dictate Prompt shortcut, which never applies a template.
-  /// A template shortcut passes the template it starts; stopping (this shortcut or the generic
-  /// one) ignores it and just ends the recording.
-  private func togglePrompting(template: DictationTemplate?) {
+  /// A template shortcut passes the template it starts. `choices` is the generic shortcut's
+  /// list (empty for one template, or for a template's own shortcut). Stopping ignores both
+  /// and just ends the recording. A meeting ignores both, as it always has.
+  private func togglePrompting(template: DictationTemplate?, choices: [DictationTemplate] = []) {
     let isMeeting = isLiveMeetingActive
     switch availability(.dictatePrompt) {
     case .stop:
@@ -1562,7 +1587,8 @@ class MenuBarController: NSObject {
           mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
       } else {
         beginAudioCapture(
-          mode: .prompt, promptSelection: preparation.selection, template: template)
+          mode: .prompt, promptSelection: preparation.selection,
+          template: template, templateChoices: choices)
       }
     case .ignored:
       break
@@ -3416,6 +3442,7 @@ extension MenuBarController: AudioRecorderDelegate {
          intent?.quickActionInstruction == nil {
         promptInputs.templateInstruction = template.instructions
         promptInputs.templateName = template.displayName
+        DictationTemplateStore.lastUsedTemplateID = template.id
       }
       if let selection = intent?.promptSelection {
         promptInputs.selection = selection
@@ -3621,6 +3648,29 @@ extension MenuBarController: ShortcutDelegate {
       return
     }
     togglePrompting(template: template)
+  }
+
+  /// A second press, or any press that is not a fresh start, is the Dictate Prompt toggle:
+  /// it stops the recording. The first press applies the last-used template, and offers the
+  /// others on the card when more than one has instructions.
+  func toggleTemplatePicker() {
+    let promptRecording = pendingRecordingMode == .prompt
+      || pendingMeetingSegment == .prompt
+      || activeMeetingSegment == .prompt
+      || appState.recordingMode == .prompt
+    if promptRecording || availability(.dictatePrompt) != .start {
+      togglePrompting(template: nil)
+      return
+    }
+    guard let started = TemplatePicker.start(
+      templates: DictationTemplateStore.load(),
+      lastUsedID: DictationTemplateStore.lastUsedTemplateID
+    ) else {
+      DebugLogger.log("DICTATION-TEMPLATE: template shortcut ignored — no template with instructions")
+      return
+    }
+    DebugLogger.log("DICTATION-TEMPLATE: \(started.initial.displayName)")
+    togglePrompting(template: started.initial, choices: started.choices)
   }
 
   /// Whether a dictation recording is running — mirrors what `toggleTranscription` treats as

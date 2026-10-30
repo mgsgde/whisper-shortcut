@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import HotKey
 import Testing
 @testable import WhisperShortcut_AppStore
 
@@ -60,7 +61,8 @@ struct DictationTemplateTests {
     let second = DictationTemplate(name: "Second", instructions: "Two", shortcut: commandOne)
     let templates = [noShortcut, disabled, blank, blocked, first, second]
 
-    let bindings = TemplateShortcuts.activeBindings(templates: templates, appConfig: config)
+    let bindings = TemplateShortcuts.activeBindings(
+      templates: templates, appConfig: config, pickerShortcut: nil)
     #expect(bindings.map(\.template.id) == [first.id])
     #expect(bindings.first?.shortcut == commandOne)
 
@@ -78,7 +80,8 @@ struct DictationTemplateTests {
     var disabledPrompt = ShortcutConfig.default
     disabledPrompt.startPrompting = binding(like: disabledPrompt.startPrompting, modifiers: [.command], enabled: false)
     #expect(
-      TemplateShortcuts.activeBindings(templates: [blocked], appConfig: disabledPrompt).map(\.template.id)
+      TemplateShortcuts.activeBindings(
+        templates: [blocked], appConfig: disabledPrompt, pickerShortcut: nil).map(\.template.id)
         == [blocked.id])
     #expect(TemplateShortcuts.owner(of: blocked, in: [blocked], appConfig: disabledPrompt) == nil)
 
@@ -108,7 +111,8 @@ struct DictationTemplateTests {
       name: "Praxis", instructions: "Format the note", shortcut: commandTwo)
     let templates = [template]
 
-    #expect(TemplateShortcuts.activeBindings(templates: templates, appConfig: config).isEmpty)
+    #expect(TemplateShortcuts.activeBindings(
+      templates: templates, appConfig: config, pickerShortcut: nil).isEmpty)
     #expect(
       TemplateShortcuts.owner(of: template, in: templates, appConfig: config)
         == .app(String(localized: "Dictate Prompt")))
@@ -121,7 +125,8 @@ struct DictationTemplateTests {
       key: screenshot.key, modifiers: screenshot.modifiers, isEnabled: true,
       displayCharacter: screenshot.displayCharacter)
 
-    let bindings = TemplateShortcuts.activeBindings(templates: templates, appConfig: config)
+    let bindings = TemplateShortcuts.activeBindings(
+      templates: templates, appConfig: config, pickerShortcut: nil)
     #expect(bindings.map(\.template.id) == [template.id])
     #expect(bindings.first?.shortcut == commandTwo)
     #expect(TemplateShortcuts.owner(of: template, in: templates, appConfig: config) == nil)
@@ -254,6 +259,116 @@ struct DictationTemplateTests {
       #expect(try Data(contentsOf: fileURL) == before)
       #expect(!FileManager.default.fileExists(atPath: second.backupFileURL.path))
     }
+  }
+
+  @Test("The generic shortcut starts on the last-used template, and only lists a choice when there are two")
+  func templatePickerStart() throws {
+    let blank = DictationTemplate(name: "Blank", instructions: "  ")
+    #expect(TemplatePicker.start(templates: [], lastUsedID: nil) == nil)
+    #expect(TemplatePicker.start(templates: [blank], lastUsedID: nil) == nil)
+
+    let only = DictationTemplate(name: "Only", instructions: "Write it")
+    let one = try #require(TemplatePicker.start(templates: [blank, only], lastUsedID: nil))
+    #expect(one.initial == only)
+    #expect(one.choices.isEmpty)
+
+    let first = DictationTemplate(name: "First", instructions: "One")
+    let second = DictationTemplate(name: "Second", instructions: "Two")
+    let third = DictationTemplate(name: "Third", instructions: "Three")
+    let three = [first, second, third]
+    let picked = try #require(TemplatePicker.start(templates: three, lastUsedID: second.id))
+    #expect(picked.initial == second)
+    #expect(picked.choices == three)
+
+    let unknown = try #require(TemplatePicker.start(templates: three, lastUsedID: UUID()))
+    #expect(unknown.initial == first)
+    #expect(unknown.choices == three)
+    let stale = try #require(TemplatePicker.start(templates: [blank, first, second], lastUsedID: blank.id))
+    #expect(stale.initial == first)
+    #expect(stale.choices == [first, second])
+  }
+
+  @Test("An app shortcut blocks the generic one; the generic one blocks a template on the same key")
+  func pickerPrecedence() {
+    let optionCommandT = ShortcutDefinition(key: .t, modifiers: [.option, .command])
+    let template = DictationTemplate(
+      name: "Praxis", instructions: "Format the note", shortcut: optionCommandT)
+    let templates = [template]
+
+    var blocked = ShortcutConfig.default
+    blocked.startPrompting = optionCommandT
+    #expect(!TemplateShortcuts.pickerIsActive(
+      pickerShortcut: optionCommandT, templates: templates, appConfig: blocked))
+    #expect(
+      TemplateShortcuts.pickerOwner(
+        pickerShortcut: optionCommandT, templates: templates, appConfig: blocked)
+        == .app(String(localized: "Dictate Prompt")))
+
+    let free = ShortcutConfig.default
+    #expect(TemplateShortcuts.pickerIsActive(
+      pickerShortcut: optionCommandT, templates: templates, appConfig: free))
+    #expect(TemplateShortcuts.activeBindings(
+      templates: templates, appConfig: free, pickerShortcut: optionCommandT).isEmpty)
+    #expect(
+      TemplateShortcuts.owner(
+        of: template, in: templates, appConfig: free, pickerShortcut: optionCommandT) == .picker)
+    #expect(
+      TemplateShortcuts.activeBindings(
+        templates: templates, appConfig: free, pickerShortcut: nil).map(\.template.id)
+        == [template.id])
+  }
+
+  @Test("The generic shortcut and the last-used template round-trip; nil removes the shortcut")
+  func pickerShortcutAndLastUsedRoundTrip() {
+    restoringPickerDefaults {
+      let shortcut = ShortcutDefinition(key: .t, modifiers: [.option, .command])
+      let flag = NotificationFlag()
+      let observer = NotificationCenter.default.addObserver(
+        forName: .dictationTemplatesChanged, object: nil, queue: nil
+      ) { _ in flag.posted = true }
+      DictationTemplateStore.savePickerShortcut(shortcut)
+      NotificationCenter.default.removeObserver(observer)
+      #expect(flag.posted)
+      #expect(DictationTemplateStore.loadPickerShortcut() == shortcut)
+
+      flag.posted = false
+      let again = NotificationCenter.default.addObserver(
+        forName: .dictationTemplatesChanged, object: nil, queue: nil
+      ) { _ in flag.posted = true }
+      DictationTemplateStore.savePickerShortcut(nil)
+      NotificationCenter.default.removeObserver(again)
+      #expect(flag.posted)
+      #expect(DictationTemplateStore.loadPickerShortcut() == nil)
+      #expect(
+        UserDefaults.standard.data(forKey: UserDefaultsKeys.dictationTemplatePickerShortcut) == nil)
+
+      let id = UUID(uuidString: "7E3A1C2B-4D5E-4F60-8A71-92B3C4D5E6F7")!
+      DictationTemplateStore.lastUsedTemplateID = id
+      #expect(DictationTemplateStore.lastUsedTemplateID == id)
+      DictationTemplateStore.lastUsedTemplateID = nil
+      #expect(DictationTemplateStore.lastUsedTemplateID == nil)
+    }
+  }
+
+  /// UserDefaults is process-wide; put the generic shortcut and the last-used id back.
+  private func restoringPickerDefaults(_ body: () throws -> Void) rethrows {
+    let shortcutKey = UserDefaultsKeys.dictationTemplatePickerShortcut
+    let idKey = UserDefaultsKeys.dictationTemplateLastUsedID
+    let shortcut = UserDefaults.standard.data(forKey: shortcutKey)
+    let id = UserDefaults.standard.string(forKey: idKey)
+    defer {
+      if let shortcut {
+        UserDefaults.standard.set(shortcut, forKey: shortcutKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: shortcutKey)
+      }
+      if let id {
+        UserDefaults.standard.set(id, forKey: idKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: idKey)
+      }
+    }
+    try body()
   }
 }
 
