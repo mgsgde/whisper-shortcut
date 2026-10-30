@@ -238,6 +238,8 @@ enum UserDefaultsKeys {
   /// The user's own Dictate Prompt quick prompts, in display order. `[String]`. May contain
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
+  /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
+  static let dictationTemplates = "dictationTemplates"
   /// Also show Dictate Prompt prompts learned from usage. Bool, default true.
   static let dictatePromptLearnedQuickActionsEnabled = "dictatePromptLearnedQuickActionsEnabled"
 

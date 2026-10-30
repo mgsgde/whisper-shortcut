@@ -18914,6 +18914,16 @@
         }
       }
     },
+    "Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage"
+          }
+        }
+      }
+    },
     "Temperature" : {
       "localizations" : {
         "de" : {

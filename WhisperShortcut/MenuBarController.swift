@@ -137,6 +137,13 @@ class MenuBarController: NSObject {
     /// where the selection lives in the screenshot). Set when the intent is created, so it can
     /// never be lost to the copy finishing after a short recording — the job awaits it.
     var promptSelection: DictatePromptSelectionCapture?
+    /// Template matching the frontmost app when this Dictate Prompt recording was requested.
+    /// Nil for Dictate, a meeting segment, a screenshot-selection model, or when nothing matches.
+    /// Resolved here so a focus change while recording cannot swap it.
+    var boundTemplate: DictationTemplate?
+    /// Tab switches the bound template off for this recording. The instructions are sent only
+    /// while this stays true.
+    var templateEnabled = true
 
     var pendingMode: AppState.RecordingMode? {
       if case .mode(let mode) = target, !captureStarted { return mode }
@@ -182,11 +189,15 @@ class MenuBarController: NSObject {
   private var processedAudioURLs: Set<URL> = []
   /// What a finished Dictate Prompt recording ran with, keyed by its audio URL. Outlives the
   /// `RecordingIntent`: a retry sends the same quick-action text (and the silence precheck lets it
-  /// through) and edits the same selection instead of re-reading a pasteboard that has moved on.
+  /// through), edits the same selection instead of re-reading a pasteboard that has moved on,
+  /// and applies the same template.
   private struct FinishedPromptInputs {
     var quickActionInstruction: String?
     var isEditQuickAction = false
     var selection: DictatePromptSelectionCapture?
+    /// Template instructions captured with the recording, so a retry replaces the system prompt
+    /// the same way the first attempt did.
+    var templateInstruction: String?
   }
   private var finishedPromptInputs: [URL: FinishedPromptInputs] = [:]
   /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
@@ -663,6 +674,10 @@ class MenuBarController: NSObject {
     RecordingIndicatorManager.shared.onQuickAction = { [weak self] index in
       self?.runQuickAction(at: index)
     }
+    RecordingIndicatorManager.shared.onTemplateToggled = { [weak self] enabled in
+      self?.recording?.templateEnabled = enabled
+      DebugLogger.log("DICTATION-TEMPLATE: \(enabled ? "on" : "off") for this recording")
+    }
     RecordingIndicatorManager.shared.onTypedPrompt = { [weak self] text in
       self?.runPromptInstruction(text, source: "typed")
     }
@@ -790,7 +805,8 @@ class MenuBarController: NSObject {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
     let actions = QuickActionStore.shared.current()
-    guard !actions.isEmpty else {
+    let templateName = recording?.boundTemplate?.displayName
+    guard !actions.isEmpty || templateName != nil else {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
       return
     }
@@ -800,7 +816,8 @@ class MenuBarController: NSObject {
       DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
       return
     }
-    RecordingIndicatorManager.shared.showQuickActions(actions, context: .reading)
+    RecordingIndicatorManager.shared.showQuickActions(
+      actions, context: .reading, templateName: templateName)
     DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
     let fromClipboard = AppConstants.dictatePromptUsesScreenshotSelection
     Task { @MainActor [weak self] in
@@ -1340,6 +1357,13 @@ class MenuBarController: NSObject {
     }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
+    if mode == .prompt, meetingSegment == nil,
+       Self.selectedPromptModel().dictatePromptUsesScreenshotSelection == false {
+      recording?.boundTemplate = DictationTemplateStore.current()
+      if let name = recording?.boundTemplate?.displayName {
+        DebugLogger.log("DICTATION-TEMPLATE: \(name) bound to the frontmost app")
+      }
+    }
     audioRecorder.startRecording()
   }
 
@@ -2017,6 +2041,7 @@ class MenuBarController: NSObject {
               await self.performPrompting(
                 audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
                 isEditQuickAction: inputs?.isEditQuickAction ?? false,
+                templateInstruction: inputs?.templateInstruction,
                 selection: inputs?.selection)
             }
           case .liveMeeting:
@@ -2377,6 +2402,7 @@ class MenuBarController: NSObject {
     job: VoiceJob?,
     instruction: String? = nil,
     isEditQuickAction: Bool = false,
+    templateInstruction: String? = nil,
     selection: DictatePromptSelectionCapture?
   ) async {
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
@@ -2410,7 +2436,8 @@ class MenuBarController: NSObject {
         let selectedText = await selection?.value()
         let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
-          isEditQuickAction: isEditQuickAction, selectedText: selectedText)
+          isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
+          selectedText: selectedText)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
@@ -3197,10 +3224,17 @@ extension MenuBarController: AudioRecorderDelegate {
         promptInputs.quickActionInstruction = instruction
         promptInputs.isEditQuickAction = intent?.isEditQuickAction ?? false
       }
+      if self.activeMeetingSegment == nil,
+         let template = intent?.boundTemplate,
+         intent?.templateEnabled == true,
+         intent?.quickActionInstruction == nil {
+        promptInputs.templateInstruction = template.instructions
+      }
       if let selection = intent?.promptSelection {
         promptInputs.selection = selection
       }
-      if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil {
+      if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil
+          || promptInputs.templateInstruction != nil {
         self.finishedPromptInputs[audioURL] = promptInputs
       }
       let quickActionInstruction = promptInputs.quickActionInstruction
@@ -3348,7 +3382,8 @@ extension MenuBarController: AudioRecorderDelegate {
         self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
           await self.performPrompting(
             audioURL: audioURL, job: job, instruction: quickActionInstruction,
-            isEditQuickAction: promptInputs.isEditQuickAction, selection: promptSelection)
+            isEditQuickAction: promptInputs.isEditQuickAction,
+            templateInstruction: promptInputs.templateInstruction, selection: promptSelection)
         }
       case .liveMeeting:
         DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
