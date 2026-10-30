@@ -327,6 +327,7 @@ enum OpenAICompatibleStructured {
     schema: [String: Any],
     schemaName: String,
     reasoningEffort: String?,
+    maxTokensKey: String,
     session: URLSession,
     logTag: String
   ) async throws -> [String: Any] {
@@ -357,6 +358,9 @@ enum OpenAICompatibleStructured {
         ] as [String: Any],
       ] as [String: Any],
     ]
+    // Cost fuse — see AppConstants.llmMaxOutputTokens. The key differs by endpoint
+    // (`max_completion_tokens` vs `max_tokens`); the caller picks it.
+    body[maxTokensKey] = AppConstants.llmMaxOutputTokens
     if let reasoningEffort = reasoningEffort {
       body["reasoning_effort"] = reasoningEffort
     }
@@ -425,9 +429,11 @@ enum OpenAICompatibleStream {
     /// Responses API only. When set, a stream counts as a success **only** if it ends with
     /// `response.completed`: `response.failed`, `response.incomplete`, an `error` event, or a stream
     /// that closes without a terminal event throw whatever this returns (arguments: the event type,
-    /// or `stream_ended`, and the event's payload). `nil` keeps the lenient behaviour OpenAI and
-    /// Grok have always had; the ChatGPT-plan route opts in because usage-limit errors arrive
-    /// mid-stream as `response.failed`.
+    /// or `stream_ended`, and the event's payload). `nil` is the lenient OpenAI/Grok path:
+    /// `response.incomplete` finishes with `"length"` (reason `max_output_tokens`) or `"incomplete"`,
+    /// and `response.failed` / `error` throw `TranscriptionError.networkError` instead of looking
+    /// like an empty success. The ChatGPT-plan route sets this because usage-limit errors arrive
+    /// mid-stream as `response.failed` and need their own mapping.
     var terminalFailure: ((_ eventType: String, _ payload: [String: Any]) -> Error)? = nil
   }
 
@@ -502,8 +508,13 @@ enum OpenAICompatibleStream {
             let payload = String(line.dropFirst(6))
             if payload == "[DONE]" { break }
             guard let data = payload.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = obj["choices"] as? [[String: Any]],
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            // A mid-stream `{"error": ...}` has no `choices`. Dropping it used to end the reply
+            // as a normal finish with whatever text had already arrived.
+            if obj["error"] as? [String: Any] != nil || obj["error"] as? String != nil {
+              try throwLenientTerminalFailure(eventType: "error", payload: obj, logTag: config.logTag)
+            }
+            guard let choices = obj["choices"] as? [[String: Any]],
                   let choice = choices.first else { continue }
 
             if let reason = choice["finish_reason"] as? String {
@@ -674,14 +685,27 @@ enum OpenAICompatibleStream {
                 finishReason = status == "completed" ? "stop" : status
               }
 
-            case "response.failed", "response.incomplete":
-              // Strict mode only; the lenient providers keep ignoring these and end normally.
+            case "response.failed":
               if let fail = config.terminalFailure {
                 throw fail(eventType, obj["response"] as? [String: Any] ?? obj)
               }
+              try throwLenientTerminalFailure(eventType: eventType, payload: obj, logTag: config.logTag)
+
+            case "response.incomplete":
+              if let fail = config.terminalFailure {
+                throw fail(eventType, obj["response"] as? [String: Any] ?? obj)
+              }
+              // A cap (`max_output_tokens`) is a finished reply, not a transport failure. It is
+              // mapped to "length": the vocabulary ChatViewModel and Dictate Prompt already read
+              // as truncation. Strict mode never reaches this.
+              let details = (obj["response"] as? [String: Any])?["incomplete_details"] as? [String: Any]
+              let reason = details?["reason"] as? String
+              finishReason = reason == "max_output_tokens" ? "length" : "incomplete"
+              sawCompleted = true
 
             case "error":
               if let fail = config.terminalFailure { throw fail(eventType, obj) }
+              try throwLenientTerminalFailure(eventType: eventType, payload: obj, logTag: config.logTag)
 
             default:
               break
@@ -719,6 +743,34 @@ enum OpenAICompatibleStream {
   }
 
   // MARK: Helpers
+
+  /// Lenient providers used to drop `response.failed` and `error` and finish as an empty success.
+  /// `response.failed` nests the text at `response.error.message`; an `error` event (and a Chat
+  /// Completions error line) uses a top-level `message`, `error.message`, or `error` as a string.
+  private static func throwLenientTerminalFailure(
+    eventType: String, payload: [String: Any], logTag: String
+  ) throws -> Never {
+    func text(of error: Any?) -> String? {
+      if let dict = error as? [String: Any],
+         let message = dict["message"] as? String, !message.isEmpty {
+        return message
+      }
+      if let string = error as? String, !string.isEmpty { return string }
+      return nil
+    }
+    let message: String
+    if let response = payload["response"] as? [String: Any], let nested = text(of: response["error"]) {
+      message = nested
+    } else if let top = payload["message"] as? String, !top.isEmpty {
+      message = top
+    } else if let direct = text(of: payload["error"]) {
+      message = direct
+    } else {
+      message = String(localized: "\(logTag) response failed")
+    }
+    DebugLogger.logError("\(logTag): \(eventType) \(message)")
+    throw TranscriptionError.networkError(message)
+  }
 
   /// Tool-call arguments arrive as a JSON *string*; a malformed one yields no arguments rather
   /// than failing the whole stream.
