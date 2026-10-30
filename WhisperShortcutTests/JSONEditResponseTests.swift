@@ -15,7 +15,7 @@ import Foundation
 struct JSONEditResponseTests {
 
     private static func unwrap(_ text: String, selection: String? = nil) -> String {
-        TextProcessingUtility.unwrappingJSONEditResponse(text, selectedText: selection)
+        PromptReplyCleanup.unwrappingJSONEditResponse(text, selectedText: selection)
     }
 
     // MARK: - Shapes observed from the model
