@@ -37,8 +37,6 @@ struct DictationTemplateTests {
   func matchBundleAndUsable() {
     let unusableBlank = DictationTemplate(
       name: "Blank", instructions: "  ", appBundleIDs: ["com.practice.app"])
-    let unusableNoApps = DictationTemplate(
-      name: "No apps", instructions: "Format the note", appBundleIDs: [])
     let first = DictationTemplate(
       name: "First", instructions: "One", appBundleIDs: ["Com.Practice.App"])
     let second = DictationTemplate(
@@ -46,13 +44,38 @@ struct DictationTemplateTests {
     let otherApp = DictationTemplate(
       name: "Other", instructions: "Three", appBundleIDs: ["com.other.app"])
 
-    let templates = [unusableBlank, unusableNoApps, otherApp, first, second]
+    let templates = [unusableBlank, otherApp, first, second]
     #expect(DictationTemplateStore.match(
       in: templates, bundleID: "com.practice.app", windowTitle: nil)?.id == first.id)
     #expect(DictationTemplateStore.match(
       in: templates, bundleID: "COM.PRACTICE.APP", windowTitle: "anything")?.id == first.id)
-    #expect(DictationTemplateStore.match(in: [unusableBlank, unusableNoApps], bundleID: "com.practice.app", windowTitle: nil) == nil)
+    #expect(DictationTemplateStore.match(in: [unusableBlank], bundleID: "com.practice.app", windowTitle: nil) == nil)
     #expect(DictationTemplateStore.match(in: templates, bundleID: nil, windowTitle: "anything") == nil)
+  }
+
+  @Test("A template without apps matches every app, ignores keywords, and list order decides")
+  func matchAllApps() {
+    let everywhere = DictationTemplate(
+      name: "All", instructions: "Format the note", windowTitleKeywords: ["Patientenakte"])
+    let limited = DictationTemplate(
+      name: "Limited", instructions: "Other", appBundleIDs: ["com.practice.app"])
+    let blank = DictationTemplate(name: "Blank", instructions: " \n")
+
+    #expect(DictationTemplateStore.match(
+      in: [everywhere], bundleID: "com.any.app", windowTitle: nil)?.id == everywhere.id)
+    #expect(DictationTemplateStore.match(
+      in: [everywhere], bundleID: nil, windowTitle: nil)?.id == everywhere.id)
+    #expect(DictationTemplateStore.match(
+      in: [everywhere], bundleID: "com.any.app", windowTitle: "Inbox")?.id == everywhere.id)
+    #expect(DictationTemplateStore.match(
+      in: [limited, everywhere], bundleID: "com.practice.app", windowTitle: nil)?.id == limited.id)
+    #expect(DictationTemplateStore.match(
+      in: [everywhere, limited], bundleID: "com.practice.app", windowTitle: nil)?.id == everywhere.id)
+    #expect(DictationTemplateStore.match(
+      in: [limited, everywhere], bundleID: "com.other.app", windowTitle: nil)?.id == everywhere.id)
+    #expect(DictationTemplateStore.match(
+      in: [blank], bundleID: "com.any.app", windowTitle: nil) == nil)
+    #expect(DictationTemplateStore.match(in: [blank], bundleID: nil, windowTitle: nil) == nil)
   }
 
   @Test("Keywords match by case-insensitive contains; a nil title fails a keyword list")

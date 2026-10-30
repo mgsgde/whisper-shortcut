@@ -23101,6 +23101,349 @@
           }
         }
       }
+    },
+    "Tab or click: run without the template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab oder Klick: ohne Vorlage ausführen"
+          }
+        }
+      }
+    },
+    "Tab or click: apply “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab oder Klick: “%@” anwenden"
+          }
+        }
+      }
+    },
+    "Template “%@” is on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage “%@” ist an"
+          }
+        }
+      }
+    },
+    "No template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Vorlage"
+          }
+        }
+      }
+    },
+    "Tab" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab"
+          }
+        }
+      }
+    },
+    "Normal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal"
+          }
+        }
+      }
+    },
+    "Tab: no template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab: keine Vorlage"
+          }
+        }
+      }
+    },
+    "Tab: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab: %@"
+          }
+        }
+      }
+    },
+    "↩ formats it as “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ formatiert es als “%@”"
+          }
+        }
+      }
+    },
+    "Formats what you dictate, for example as a treatment note with Anamnese, Befund and Therapie. With nothing selected, stopping the recording applies it; press Tab while recording to run without it, e.g. for an email. With text selected, Dictate Prompt edits it as usual." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formatiert, was Sie diktieren, zum Beispiel als Behandlungsnotiz mit Anamnese, Befund und Therapie. Ist nichts markiert, wird sie beim Beenden der Aufnahme angewendet; drücken Sie während der Aufnahme Tab, um ohne sie zu arbeiten, z. B. für eine E-Mail. Ist Text markiert, bearbeitet Dictate Prompt ihn wie gewohnt."
+          }
+        }
+      }
+    },
+    "Add Template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage hinzufügen"
+          }
+        }
+      }
+    },
+    "Add a template that formats what you dictate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Vorlage hinzufügen, die formatiert, was Sie diktieren"
+          }
+        }
+      }
+    },
+    "Name, e.g. Treatment note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, z. B. Behandlungsnotiz"
+          }
+        }
+      }
+    },
+    "Template name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name der Vorlage"
+          }
+        }
+      }
+    },
+    "Remove this template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Vorlage entfernen"
+          }
+        }
+      }
+    },
+    "Remove template %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage %@ entfernen"
+          }
+        }
+      }
+    },
+    "Only in certain apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur in bestimmten Apps"
+          }
+        }
+      }
+    },
+    "Off: the template applies in every app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus: Die Vorlage gilt in jeder App"
+          }
+        }
+      }
+    },
+    "Only when the window title contains … (optional)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur wenn der Fenstertitel enthält … (optional)"
+          }
+        }
+      }
+    },
+    "Window title contains" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenstertitel enthält"
+          }
+        }
+      }
+    },
+    "For a desktop app. Software in a browser shares the browser with webmail; a word from the page title can tell them apart, separate several with commas." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine Desktop-App. Software im Browser teilt sich den Browser mit Webmail; ein Wort aus dem Seitentitel kann beides unterscheiden, mehrere durch Kommas trennen."
+          }
+        }
+      }
+    },
+    "Not used yet: add the instructions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht aktiv: Anweisungen ergänzen."
+          }
+        }
+      }
+    },
+    "No app chosen yet, so it applies in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine App gewählt, sie gilt daher in jeder App."
+          }
+        }
+      }
+    },
+    "Template instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen der Vorlage"
+          }
+        }
+      }
+    },
+    "Instructions, e.g. “The dictation is a treatment note. Write it with the sections Anamnese, Befund, Therapie. Add nothing, leave nothing out.”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen, z. B. “Das Diktat ist eine Behandlungsnotiz. Schreibe sie mit den Abschnitten Anamnese, Befund, Therapie. Ergänze nichts, lasse nichts weg.”"
+          }
+        }
+      }
+    },
+    "Sent instead of the Dictate Prompt system prompt for that run. Your speech is transcribed as usual, with your Glossary, and is the text these instructions work on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird für diesen Durchlauf statt des System-Prompts von Dictate Prompt gesendet. Ihre Sprache wird wie gewohnt mit Ihrem Glossar transkribiert und ist der Text, auf den sich diese Anweisungen beziehen."
+          }
+        }
+      }
+    },
+    "Applies in" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gilt in"
+          }
+        }
+      }
+    },
+    "Open apps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geöffnete Apps"
+          }
+        }
+      }
+    },
+    "Choose App…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App wählen …"
+          }
+        }
+      }
+    },
+    "Add App" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App hinzufügen"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        }
+      }
+    },
+    "Choose the app you dictate notes into" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die App wählen, in die Sie Notizen diktieren"
+          }
+        }
+      }
+    },
+    "Remove this app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese App entfernen"
+          }
+        }
+      }
+    },
+    "Remove %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ entfernen"
+          }
+        }
+      }
+    },
+    "·" : {
+      "shouldTranslate" : false
     }
   },
   "version" : "1.0"

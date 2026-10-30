@@ -2,30 +2,29 @@
 //  DictationTemplates.swift
 //  WhisperShortcut
 //
-//  A template is instructions for Dictate Prompt, bound to the apps they belong in (a practice's
-//  note format in its practice software). With nothing selected, those instructions replace the
+//  A template is instructions for Dictate Prompt (a practice's note format, say). It applies in
+//  every app unless it is limited to some. With nothing selected, those instructions replace the
 //  system prompt for that one turn; a selection or a typed instruction keeps today's prompt.
 //
 
 import AppKit
 
-/// Instructions applied to what the user dictates with Dictate Prompt in specific apps (e.g. a
-/// practice's note format in its practice software). Empty `appBundleIDs` never matches, so a
-/// half-filled template cannot change a turn.
+/// Instructions applied to what the user dictates with Dictate Prompt (e.g. a practice's note
+/// format). A template applies in every app unless limited to some via `appBundleIDs`.
 struct DictationTemplate: Codable, Equatable, Identifiable {
   var id = UUID()
   var name = ""
   /// Sent instead of the Dictate Prompt system prompt for that turn.
   var instructions = ""
-  /// Bundle identifiers of the apps it applies in. Empty: never applied.
+  /// Bundle identifiers of the apps it is limited to. Empty: every app.
   var appBundleIDs: [String] = []
   /// Optional narrowing for web apps in a browser: the focused window's title must contain one of
-  /// these (case-insensitive). Empty: any window of the app.
+  /// these (case-insensitive). Empty: any window of the app. Ignored without `appBundleIDs`.
   var windowTitleKeywords: [String] = []
 
-  /// Ready to apply: instructions are non-blank and at least one app is bound.
+  /// Ready to apply: instructions are non-blank. Apps are an optional restriction, not a requirement.
   var isUsable: Bool {
-    !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !appBundleIDs.isEmpty
+    !instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   /// Name shown on the recording card. A blank name still has a label, so the card is never empty.
@@ -90,15 +89,18 @@ enum DictationTemplateStore {
     UserDefaults.standard.set(data, forKey: UserDefaultsKeys.dictationTemplates)
   }
 
-  /// First usable template for this app and window. Bundle ids compare case-insensitively.
-  /// Keywords narrow web apps in a browser: the window title must contain one (case-insensitive);
-  /// blank keywords are ignored, and a nil title never satisfies a real keyword list.
+  /// First usable template for this app and window. A template without apps matches any app, even
+  /// an unknown one, and ignores its keywords: window titles of arbitrary apps mean nothing.
+  /// App-limited templates compare bundle ids case-insensitively. Keywords narrow web apps in a
+  /// browser: the window title must contain one (case-insensitive); blank keywords are ignored,
+  /// and a nil title never satisfies a real keyword list.
   static func match(
     in templates: [DictationTemplate], bundleID: String?, windowTitle: String?
   ) -> DictationTemplate? {
-    guard let bundleID else { return nil }
-    return templates.first { template in
+    templates.first { template in
       guard template.isUsable else { return false }
+      if template.appBundleIDs.isEmpty { return true }
+      guard let bundleID else { return false }
       guard template.appBundleIDs.contains(where: {
         $0.caseInsensitiveCompare(bundleID) == .orderedSame
       }) else { return false }
