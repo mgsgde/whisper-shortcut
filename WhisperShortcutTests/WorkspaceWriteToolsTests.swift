@@ -205,6 +205,25 @@ struct WorkspaceWriteToolsTests {
     }
   }
 
+  @Test("A symlink into a tooling directory is not writable")
+  func refusesWritingThroughSymlinkIntoToolingDirectory() throws {
+    let fixture = try Fixture()
+    defer { fixture.cleanUp() }
+    try FileManager.default.createDirectory(
+      at: fixture.root.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      at: fixture.root.appendingPathComponent("link"),
+      withDestinationURL: fixture.root.appendingPathComponent(".git"))
+
+    let result = WorkspaceWriteTools.writeTextFile(
+      path: "link/config", content: "x", overwrite: true, scope: fixture.scope)
+
+    #expect(result["error"] != nil)
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: fixture.root.appendingPathComponent(".git/config").path))
+  }
+
   @Test("A path outside the shared folder is refused")
   func refusesEscapingPath() throws {
     let fixture = try Fixture()
