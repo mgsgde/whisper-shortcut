@@ -341,7 +341,7 @@ private struct QuickActionCardView: View {
       }
       .buttonStyle(.plain)
       .help(templateEnabled
-        ? String(localized: "Tab or click: run without the template")
+        ? String(localized: "Tab or click: run this recording without the template")
         : String(localized: "Tab or click: apply \u{201C}\(templateName)\u{201D}"))
       .accessibilityLabel(templateEnabled
         ? String(localized: "Template \u{201C}\(templateName)\u{201D} is on")
@@ -353,7 +353,7 @@ private struct QuickActionCardView: View {
     }
   }
 
-  /// "Praxisnotiz · Tab: no template" / "Normal · Tab: Praxisnotiz".
+  /// "Praxisnotiz · Tab: Normal" / "Normal · Tab: Praxisnotiz". Tab only changes this recording.
   private func templateHeader(name: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: templateEnabled ? "doc.text.fill" : "text.bubble")
@@ -370,7 +370,7 @@ private struct QuickActionCardView: View {
         .font(.system(size: 11, weight: .semibold))
         .foregroundColor(.white.opacity(0.35))
       Text(templateEnabled
-        ? String(localized: "Tab: no template")
+        ? String(localized: "Tab: Normal")
         : String(localized: "Tab: \(name)"))
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.white.opacity(0.5))

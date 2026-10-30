@@ -2289,6 +2289,8 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case addToGlossaryShortcut
+  /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
+  case templateShortcut(UUID)
 }
 
 // MARK: - Shortcut Conflict Descriptor

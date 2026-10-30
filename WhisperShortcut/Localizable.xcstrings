@@ -163,6 +163,16 @@
         }
       }
     },
+    "%@ belongs to %@, so this template does not start yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ gehört zu %2$@, daher startet diese Vorlage noch nicht."
+          }
+        }
+      }
+    },
     "%@ can't use %@ attachments. Switch to a Gemini model to chat about PDFs and documents." : {
       "localizations" : {
         "de" : {
@@ -1674,6 +1684,96 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "@karpathy @simonw"
+          }
+        }
+      }
+    },
+    "Add a format with its own shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Format mit eigenem Tastenkürzel hinzufügen"
+          }
+        }
+      }
+    },
+    "Give a recurring format its own shortcut: press it, dictate, press it again, and what you said comes back in that format. Tab while recording skips the template once. With text selected, the shortcut edits it like Dictate Prompt." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie einem wiederkehrenden Format ein eigenes Tastenkürzel: drücken, diktieren, erneut drücken, und das Gesagte kommt in diesem Format zurück. Tab während der Aufnahme lässt die Vorlage einmal weg. Ist Text markiert, bearbeitet das Tastenkürzel ihn wie Dictate Prompt."
+          }
+        }
+      }
+    },
+    "Not active yet: add the instructions below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht aktiv: Fügen Sie unten die Anweisungen hinzu."
+          }
+        }
+      }
+    },
+    "Press once to start, again to stop. They work in every app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einmal drücken zum Starten, erneut zum Beenden. Funktioniert in jeder App."
+          }
+        }
+      }
+    },
+    "Record a shortcut to use this template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nehmen Sie ein Tastenkürzel auf, um diese Vorlage zu nutzen."
+          }
+        }
+      }
+    },
+    "Tab or click: run this recording without the template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab oder Klick: diese Aufnahme ohne Vorlage ausführen"
+          }
+        }
+      }
+    },
+    "Tab: Normal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tab: Normal"
+          }
+        }
+      }
+    },
+    "Take the key away from the other action and give it to this template" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Taste der anderen Aktion wegnehmen und dieser Vorlage geben"
+          }
+        }
+      }
+    },
+    "Templates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlagen"
           }
         }
       }
@@ -23132,16 +23232,6 @@
         }
       }
     },
-    "Tab or click: run without the template" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tab oder Klick: ohne Vorlage ausführen"
-          }
-        }
-      }
-    },
     "Tab or click: apply “%@”" : {
       "localizations" : {
         "de" : {
@@ -23192,16 +23282,6 @@
         }
       }
     },
-    "Tab: no template" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tab: keine Vorlage"
-          }
-        }
-      }
-    },
     "Tab: %@" : {
       "localizations" : {
         "de" : {
@@ -23222,32 +23302,12 @@
         }
       }
     },
-    "Formats what you dictate, for example as a treatment note with Anamnese, Befund and Therapie. With nothing selected, stopping the recording applies it; press Tab while recording to run without it, e.g. for an email. With text selected, Dictate Prompt edits it as usual." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Formatiert, was Sie diktieren, zum Beispiel als Behandlungsnotiz mit Anamnese, Befund und Therapie. Ist nichts markiert, wird sie beim Beenden der Aufnahme angewendet; drücken Sie während der Aufnahme Tab, um ohne sie zu arbeiten, z. B. für eine E-Mail. Ist Text markiert, bearbeitet Dictate Prompt ihn wie gewohnt."
-          }
-        }
-      }
-    },
     "Add Template" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlage hinzufügen"
-          }
-        }
-      }
-    },
-    "Add a template that formats what you dictate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eine Vorlage hinzufügen, die formatiert, was Sie diktieren"
           }
         }
       }
@@ -23292,76 +23352,6 @@
         }
       }
     },
-    "Only in certain apps" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur in bestimmten Apps"
-          }
-        }
-      }
-    },
-    "Off: the template applies in every app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus: Die Vorlage gilt in jeder App"
-          }
-        }
-      }
-    },
-    "Only when the window title contains … (optional)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur wenn der Fenstertitel enthält … (optional)"
-          }
-        }
-      }
-    },
-    "Window title contains" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fenstertitel enthält"
-          }
-        }
-      }
-    },
-    "For a desktop app. Software in a browser shares the browser with webmail; a word from the page title can tell them apart, separate several with commas." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für eine Desktop-App. Software im Browser teilt sich den Browser mit Webmail; ein Wort aus dem Seitentitel kann beides unterscheiden, mehrere durch Kommas trennen."
-          }
-        }
-      }
-    },
-    "Not used yet: add the instructions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch nicht aktiv: Anweisungen ergänzen."
-          }
-        }
-      }
-    },
-    "No app chosen yet, so it applies in every app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch keine App gewählt, sie gilt daher in jeder App."
-          }
-        }
-      }
-    },
     "Template instructions" : {
       "localizations" : {
         "de" : {
@@ -23392,72 +23382,12 @@
         }
       }
     },
-    "Applies in" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gilt in"
-          }
-        }
-      }
-    },
-    "Open apps" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geöffnete Apps"
-          }
-        }
-      }
-    },
-    "Choose App…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App wählen …"
-          }
-        }
-      }
-    },
-    "Add App" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App hinzufügen"
-          }
-        }
-      }
-    },
     "Add" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hinzufügen"
-          }
-        }
-      }
-    },
-    "Choose the app you dictate notes into" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die App wählen, in die Sie Notizen diktieren"
-          }
-        }
-      }
-    },
-    "Remove this app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese App entfernen"
           }
         }
       }

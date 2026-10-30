@@ -1,46 +1,48 @@
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// Settings → Dictate Prompt → Template. One default template: whenever nothing is selected,
-/// stopping a Dictate Prompt recording applies it to the dictation (Tab while recording runs
-/// without it). It can optionally be limited to certain apps, off by default — practice software
-/// often runs in a browser, where the app alone cannot tell a note from webmail. Kept apart from
-/// Quick Prompts on purpose: a quick prompt replaces what was said, a template works on it.
+/// Settings → Dictate Prompt → Templates. A template is a recurring format (a treatment note with
+/// Anamnese, Befund, Therapie) with its own global shortcut: press it, dictate, press again, and the
+/// dictation comes back in that format. The generic Dictate Prompt keeps its own shortcut, so the
+/// format never forces itself onto an email. Kept apart from Quick Prompts on purpose: a quick
+/// prompt replaces what was said, a template works on it.
 ///
-/// Read by `DictationTemplateStore.current()` on every ⌘2, so an edit here applies to the next
-/// recording. With no template saved the key stays absent and nothing changes for the user.
-/// Stored as a list so more templates can follow without a migration; the UI offers one.
+/// The key overview at the top is the one place a practice set-up needs: it edits Dictate Prompt's
+/// shortcut next to every template's, so "⌘2 → Praxisnotiz, ⌘3 → Dictate Prompt" is two recorder
+/// clicks, and a combination two actions share is named there instead of silently losing.
+///
+/// With no template saved the `dictationTemplates` key stays absent and nothing changes.
 struct DictationTemplatesSection: View {
-  @State private var templates: [DictationTemplate] = []
+  @ObservedObject var viewModel: SettingsViewModel
+  @FocusState.Binding var focusedField: SettingsFocusField?
 
-  /// One default template; Tab switches between it and a normal run, which only works with one.
-  private static let maxTemplates = 1
+  @State private var templates: [DictationTemplate] = []
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
-        title: "Template",
+        title: "Templates",
         systemImage: "doc.text",
-        subtitle: "Formats what you dictate, for example as a treatment note with Anamnese, Befund and Therapie. With nothing selected, stopping the recording applies it; press Tab while recording to run without it, e.g. for an email. With text selected, Dictate Prompt edits it as usual."
+        subtitle: "Give a recurring format its own shortcut: press it, dictate, press it again, and what you said comes back in that format. Tab while recording skips the template once. With text selected, the shortcut edits it like Dictate Prompt."
       )
 
       VStack(alignment: .leading, spacing: 12) {
+        if !templates.isEmpty {
+          shortcutOverview
+        }
+
         ForEach($templates) { $template in
           TemplateCard(
             template: $template,
             onRemove: { templates.removeAll { $0.id == template.id } })
         }
 
-        if templates.count < Self.maxTemplates {
-          Button(action: addTemplate) {
-            Label("Add Template", systemImage: "plus")
-              .font(.callout)
-          }
-          .buttonStyle(.bordered)
-          .help("Add a template that formats what you dictate")
-          .pointerCursorOnHover()
+        Button(action: { templates.append(DictationTemplate()) }) {
+          Label("Add Template", systemImage: "plus")
+            .font(.callout)
         }
+        .buttonStyle(.bordered)
+        .help("Add a format with its own shortcut")
+        .pointerCursorOnHover()
       }
     }
     .onAppear { templates = DictationTemplateStore.load() }
@@ -51,9 +53,169 @@ struct DictationTemplatesSection: View {
     }
   }
 
-  private func addTemplate() {
-    guard templates.count < Self.maxTemplates else { return }
-    templates.append(DictationTemplate())
+  // MARK: - Key overview
+
+  /// Dictate Prompt's shortcut and every template's, editable, with the conflicts that decide which
+  /// one a key actually starts.
+  private var shortcutOverview: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text("Shortcuts")
+        .font(.callout)
+        .fontWeight(.semibold)
+
+      ShortcutRecorderRow(
+        label: LocalizedStringKey(ShortcutAction.dictatePrompt.title),
+        shortcut: $viewModel.data.togglePrompting,
+        focusedField: .togglePrompting,
+        currentFocus: $focusedField,
+        onChanged: { Task { await viewModel.saveSettings() } },
+        findConflict: { candidate, field in
+          viewModel.findShortcutConflict(candidate, for: field)
+            ?? templateConflict(candidate, excluding: nil)
+        },
+        clearShortcut: clear
+      )
+
+      ForEach($templates) { $template in
+        VStack(alignment: .leading, spacing: 2) {
+          ShortcutRecorderRow(
+            label: LocalizedStringKey(template.displayName),
+            shortcut: $template.shortcut,
+            focusedField: .templateShortcut(template.id),
+            currentFocus: $focusedField,
+            findConflict: { candidate, _ in conflict(for: candidate, template: template.id) },
+            clearShortcut: clear
+          )
+          if let note = overviewNote(for: template) {
+            captionRow(note.text, reassign: note.reassign)
+          }
+        }
+      }
+
+      Text("Press once to start, again to stop. They work in every app.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+    }
+    .padding(SettingsConstants.rowPadding)
+    .cardChrome()
+  }
+
+  /// Why a saved template shortcut does nothing yet, or nil when it works. A key another action owns
+  /// comes with Reassign, so the practice set-up (Dictate Prompt to ⌘3, then the template to ⌘2)
+  /// never ends in a template that silently does nothing.
+  private func overviewNote(for template: DictationTemplate) -> (text: String, reassign: (() -> Void)?)? {
+    guard template.isUsable else {
+      return (String(localized: "Not active yet: add the instructions below."), nil)
+    }
+    guard let shortcut = template.shortcut, shortcut.isEnabled else {
+      return (String(localized: "Record a shortcut to use this template."), nil)
+    }
+    guard let owner = TemplateShortcuts.owner(of: template, in: templates, appConfig: appConfig) else {
+      return nil
+    }
+    let text = String(localized: "\(shortcut.displayString) belongs to \(ownerName(owner)), so this template does not start yet.")
+    let reassign: (() -> Void)?
+    switch owner {
+    case .app(let name):
+      reassign = Self.appField(named: name).map { field in { clear(field) } }
+    case .template:
+      reassign = templateConflict(shortcut, excluding: template.id).map { conflict in { clear(conflict.field) } }
+    }
+    return (text, reassign)
+  }
+
+  private func ownerName(_ owner: TemplateShortcutOwner) -> String {
+    switch owner {
+    case .app(let name): return name
+    case .template(let name): return name
+    }
+  }
+
+  private func captionRow(_ text: String, reassign: (() -> Void)?) -> some View {
+    // Same column as the recorder field above it, so the note never runs past its Record button.
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Spacer().frame(width: SettingsConstants.labelWidth + 16)
+      Image(systemName: "exclamationmark.triangle.fill")
+        .font(.caption2)
+        .foregroundColor(.orange)
+      VStack(alignment: .leading, spacing: 6) {
+        Text(text)
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+        if let reassign {
+          Button("Reassign", action: reassign)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Take the key away from the other action and give it to this template")
+        }
+      }
+      .frame(maxWidth: SettingsConstants.shortcutMaxWidth - 20, alignment: .leading)
+      Spacer(minLength: 0)
+    }
+  }
+
+  // MARK: - Conflicts
+
+  /// The app's shortcuts as they are in this form right now, saved or not.
+  private var appConfig: ShortcutConfig {
+    SettingsViewModel.shortcutConfig(from: viewModel.data)
+  }
+
+  /// A recorded key for a template: an app shortcut or another template may already own it.
+  private func conflict(for candidate: ShortcutDefinition, template id: UUID) -> ShortcutConflict? {
+    switch TemplateShortcuts.owner(
+      key: candidate.key, modifiers: candidate.modifiers, templates: templates,
+      excludingTemplateID: id, appConfig: appConfig)
+    {
+    case .app(let name)?:
+      guard let field = Self.appField(named: name) else { return nil }
+      return ShortcutConflict(field: field, label: name)
+    case .template?:
+      return templateConflict(candidate, excluding: id)
+    case nil:
+      return nil
+    }
+  }
+
+  /// The first other template using `candidate`, as a recorder conflict its Reassign can clear.
+  private func templateConflict(_ candidate: ShortcutDefinition, excluding id: UUID?) -> ShortcutConflict? {
+    guard
+      let owner = templates.first(where: { other in
+        guard other.id != id, other.isUsable, let shortcut = other.shortcut, shortcut.isEnabled else {
+          return false
+        }
+        return shortcut.key == candidate.key && shortcut.modifiers == candidate.modifiers
+      })
+    else { return nil }
+    return ShortcutConflict(field: .templateShortcut(owner.id), label: owner.displayName)
+  }
+
+  /// Reassign: frees the slot that owned the key. App slots are saved right away, because the
+  /// template recorder's own change only writes the template list.
+  private func clear(_ field: SettingsFocusField) {
+    if case .templateShortcut(let id) = field {
+      if let index = templates.firstIndex(where: { $0.id == id }) {
+        templates[index].shortcut = nil
+      }
+      return
+    }
+    viewModel.clearShortcut(for: field)
+    Task { await viewModel.saveSettings() }
+  }
+
+  /// Matches the names `TemplateShortcuts` gives app shortcuts back to their Settings fields.
+  private static func appField(named name: String) -> SettingsFocusField? {
+    let fields: [(String, SettingsFocusField)] = [
+      (String(localized: "Dictate"), .toggleDictation),
+      (String(localized: "Dictate Prompt"), .togglePrompting),
+      (String(localized: "Screenshot"), .screenshotCapture),
+      (String(localized: "Read Aloud"), .readAloudShortcut),
+      (String(localized: "Add to Glossary"), .addToGlossaryShortcut),
+      (String(localized: "Chat"), .toggleChat),
+      (String(localized: "Settings"), .toggleSettings),
+    ]
+    return fields.first { $0.0 == name }?.1
   }
 }
 
@@ -62,11 +224,6 @@ struct DictationTemplatesSection: View {
 private struct TemplateCard: View {
   @Binding var template: DictationTemplate
   let onRemove: () -> Void
-
-  /// Edited as one comma-separated line; stored as a list.
-  @State private var keywordsText = ""
-  /// The optional app restriction is shown only while on; turning it off clears it.
-  @State private var restrictsApps = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -89,67 +246,10 @@ private struct TemplateCard: View {
       }
 
       instructionsEditor
-
-      Toggle(isOn: $restrictsApps) {
-        Text("Only in certain apps")
-          .font(.callout)
-      }
-      .toggleStyle(.checkbox)
-      .help("Off: the template applies in every app")
-      .onChange(of: restrictsApps) { _, isOn in
-        guard !isOn else { return }
-        template.appBundleIDs = []
-        template.windowTitleKeywords = []
-        keywordsText = ""
-      }
-
-      if restrictsApps {
-        VStack(alignment: .leading, spacing: 10) {
-          appsRow
-          VStack(alignment: .leading, spacing: 4) {
-            TextField("Only when the window title contains … (optional)", text: $keywordsText)
-              .textFieldStyle(.roundedBorder)
-              .accessibilityLabel(String(localized: "Window title contains"))
-              .onChange(of: keywordsText) { _, newValue in
-                template.windowTitleKeywords = newValue
-                  .split(separator: ",")
-                  .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                  .filter { !$0.isEmpty }
-              }
-            Text("For a desktop app. Software in a browser shares the browser with webmail; a word from the page title can tell them apart, separate several with commas.")
-              .font(.caption)
-              .foregroundColor(.secondary)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-        .padding(.leading, 20)
-      }
-
-      if let problem = usabilityProblem {
-        Label(problem, systemImage: "exclamationmark.triangle")
-          .font(.caption)
-          .foregroundColor(.orange)
-      }
     }
     .padding(SettingsConstants.rowPadding)
     .cardChrome()
-    .onAppear {
-      keywordsText = template.windowTitleKeywords.joined(separator: ", ")
-      restrictsApps = !template.appBundleIDs.isEmpty
-    }
   }
-
-  private var usabilityProblem: String? {
-    if template.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-      return String(localized: "Not used yet: add the instructions.")
-    }
-    if restrictsApps, template.appBundleIDs.isEmpty {
-      return String(localized: "No app chosen yet, so it applies in every app.")
-    }
-    return nil
-  }
-
-  // MARK: Instructions
 
   private var instructionsEditor: some View {
     VStack(alignment: .leading, spacing: 4) {
@@ -180,174 +280,5 @@ private struct TemplateCard: View {
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
-  }
-
-  // MARK: Apps
-
-  private var appsRow: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text("Applies in")
-        .font(.callout)
-        .foregroundColor(.secondary)
-      FlowingChips(spacing: 6) {
-        ForEach(template.appBundleIDs, id: \.self) { bundleID in
-          AppChip(bundleID: bundleID) {
-            template.appBundleIDs.removeAll { $0 == bundleID }
-          }
-        }
-        addAppMenu
-      }
-    }
-  }
-
-  private var addAppMenu: some View {
-    Menu {
-      let running = Self.runningApps(excluding: template.appBundleIDs)
-      if !running.isEmpty {
-        Section("Open apps") {
-          ForEach(running, id: \.bundleID) { app in
-            Button(app.name) { addApp(app.bundleID) }
-          }
-        }
-      }
-      Button("Choose App…", action: chooseApp)
-    } label: {
-      Label("Add App", systemImage: "plus")
-        .font(.callout)
-    }
-    .menuStyle(.borderlessButton)
-    .fixedSize()
-    .help("Choose the app you dictate notes into")
-    .pointerCursorOnHover()
-  }
-
-  private func addApp(_ bundleID: String) {
-    guard !template.appBundleIDs.contains(where: { $0.caseInsensitiveCompare(bundleID) == .orderedSame })
-    else { return }
-    template.appBundleIDs.append(bundleID)
-  }
-
-  private func chooseApp() {
-    let panel = NSOpenPanel()
-    panel.allowedContentTypes = [.application]
-    panel.directoryURL = URL(fileURLWithPath: "/Applications")
-    panel.canChooseDirectories = false
-    panel.allowsMultipleSelection = false
-    panel.prompt = String(localized: "Add")
-    guard panel.runModal() == .OK, let url = panel.url,
-      let bundleID = Bundle(url: url)?.bundleIdentifier
-    else { return }
-    addApp(bundleID)
-  }
-
-  /// Regular (Dock) apps that are running now, by name; WhisperShortcut itself is left out.
-  private static func runningApps(excluding taken: [String]) -> [(bundleID: String, name: String)] {
-    let own = Bundle.main.bundleIdentifier
-    let takenLowercased = Set(taken.map { $0.lowercased() })
-    var seen = Set<String>()
-    return NSWorkspace.shared.runningApplications
-      .filter { $0.activationPolicy == .regular }
-      .compactMap { app -> (bundleID: String, name: String)? in
-        guard let id = app.bundleIdentifier, id != own,
-          !takenLowercased.contains(id.lowercased()), seen.insert(id).inserted
-        else { return nil }
-        return (id, app.localizedName ?? id)
-      }
-      .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-  }
-}
-
-// MARK: - Chips
-
-/// An app the template applies in: icon, name, and ✕. Falls back to the bundle ID for an app that
-/// is no longer installed, so a stale binding stays visible and removable.
-private struct AppChip: View {
-  let bundleID: String
-  let onRemove: () -> Void
-
-  var body: some View {
-    let info = Self.info(for: bundleID)
-    HStack(spacing: 5) {
-      if let icon = info.icon {
-        Image(nsImage: icon)
-          .resizable()
-          .frame(width: 16, height: 16)
-          .accessibilityHidden(true)
-      }
-      Text(info.name)
-        .font(.callout)
-        .lineLimit(1)
-      Button(action: onRemove) {
-        Image(systemName: "xmark")
-          .font(.system(size: 9, weight: .bold))
-          .foregroundColor(.secondary)
-      }
-      .buttonStyle(.borderless)
-      .help("Remove this app")
-      .accessibilityLabel(String(localized: "Remove \(info.name)"))
-      .pointerCursorOnHover()
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(Capsule().fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
-    .help(bundleID)
-  }
-
-  private static func info(for bundleID: String) -> (name: String, icon: NSImage?) {
-    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
-      return (bundleID, nil)
-    }
-    let name = FileManager.default.displayName(atPath: url.path)
-      .replacingOccurrences(of: ".app", with: "")
-    return (name, NSWorkspace.shared.icon(forFile: url.path))
-  }
-}
-
-/// Lays chips out left to right and wraps to the next line when the row is full.
-private struct FlowingChips: Layout {
-  var spacing: CGFloat
-
-  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-    let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-    let height = rows.map(\.height).reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
-    let width = rows.map(\.width).max() ?? 0
-    return CGSize(width: proposal.width ?? width, height: height)
-  }
-
-  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-    var y = bounds.minY
-    for row in arrange(width: bounds.width, subviews: subviews) {
-      var x = bounds.minX
-      for index in row.indices {
-        let size = subviews[index].sizeThatFits(.unspecified)
-        subviews[index].place(
-          at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: ProposedViewSize(size))
-        x += size.width + spacing
-      }
-      y += row.height + spacing
-    }
-  }
-
-  private struct Row {
-    var indices: [Int] = []
-    var width: CGFloat = 0
-    var height: CGFloat = 0
-  }
-
-  private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
-    var rows: [Row] = [Row()]
-    for index in subviews.indices {
-      let size = subviews[index].sizeThatFits(.unspecified)
-      let extra = rows[rows.count - 1].indices.isEmpty ? size.width : spacing + size.width
-      if rows[rows.count - 1].width + extra > width, !rows[rows.count - 1].indices.isEmpty {
-        rows.append(Row())
-      }
-      var row = rows[rows.count - 1]
-      row.width += row.indices.isEmpty ? size.width : spacing + size.width
-      row.height = max(row.height, size.height)
-      row.indices.append(index)
-      rows[rows.count - 1] = row
-    }
-    return rows
   }
 }
