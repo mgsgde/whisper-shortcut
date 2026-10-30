@@ -76,10 +76,10 @@ enum WorkspaceFileTools {
     let limit = min(max(maxEntries, 1), 500)
     do {
       let (target, root) = try WorkspaceFolders.locate(path, scope: scope)
-      if let component = credentialComponent(in: target, root: root.url) {
-        throw ReadError.protectedLocation(component: component)
-      }
       return try WorkspaceFolders.withAccess(to: root) {
+        if let component = credentialComponent(in: target, root: root.url) {
+          throw ReadError.protectedLocation(component: component)
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
           return ["error": "No such directory: \(target.path)"]
@@ -140,10 +140,10 @@ enum WorkspaceFileTools {
     let cap = min(max(maxBytes, 1_000), maxReadBytes)
     do {
       let (target, root) = try WorkspaceFolders.locate(path, scope: scope)
-      if let component = credentialComponent(in: target, root: root.url) {
-        throw ReadError.protectedLocation(component: component)
-      }
       return try WorkspaceFolders.withAccess(to: root) {
+        if let component = credentialComponent(in: target, root: root.url) {
+          throw ReadError.protectedLocation(component: component)
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
           return ["error": "No such file: \(target.path)"]
@@ -201,6 +201,7 @@ enum WorkspaceFileTools {
     do {
       if let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let located = try WorkspaceFolders.locate(path, scope: scope)
+        // Path-scoped pre-check stays outside the scope: a directly named `.ssh` is caught without resolution; `matchFile` re-checks each file inside the open scope.
         if let component = credentialComponent(in: located.target, root: located.root.url) {
           throw ReadError.protectedLocation(component: component)
         }
