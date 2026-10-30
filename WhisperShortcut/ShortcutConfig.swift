@@ -343,6 +343,25 @@ enum ShortcutAction: CaseIterable {
 }
 
 extension ShortcutConfig {
+  /// Read Aloud copies the selection with ⌘C, which needs Accessibility. The App Store build
+  /// has no menu item and no hotkey for it, so nothing in that build may advertise the shortcut
+  /// (`ShortcutAction.readAloud.isInThisBuild`). Add to Glossary is hidden there the same way.
+  /// Conflict checks walk every enabled slot, so a stored binding would be reported as already
+  /// used for a combination the user cannot see or free. Those two come back disabled; the
+  /// stored bindings are left as saved.
+  static func availableInThisBuild(_ config: ShortcutConfig, isAppStore: Bool) -> ShortcutConfig {
+    guard isAppStore else { return config }
+    func disabled(_ definition: ShortcutDefinition) -> ShortcutDefinition {
+      ShortcutDefinition(
+        key: definition.key, modifiers: definition.modifiers,
+        isEnabled: false, displayCharacter: definition.displayCharacter)
+    }
+    var available = config
+    available.readAloud = disabled(config.readAloud)
+    available.addToGlossary = disabled(config.addToGlossary)
+    return available
+  }
+
   /// The shortcuts both the online and the offline Chat tell the model about.
   ///
   /// `ShortcutAction.allCases` filtered to this build, in that order — the order this list
@@ -677,7 +696,7 @@ class ShortcutConfigManager {
       loadShortcut(for: Constants.readAloudKey) ?? ShortcutConfig.default.readAloud
     let addToGlossary =
       loadShortcut(for: Constants.addToGlossaryKey) ?? ShortcutConfig.default.addToGlossary
-    return ShortcutConfig(
+    let loaded = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
       openSettings: openSettings,
@@ -686,6 +705,13 @@ class ShortcutConfigManager {
       readAloud: readAloud,
       addToGlossary: addToGlossary
     )
+    // Filter the value callers read. Writing the disabled flags back would clear a binding
+    // the direct download still uses — both builds share these defaults.
+    #if APP_STORE
+    return ShortcutConfig.availableInThisBuild(loaded, isAppStore: true)
+    #else
+    return ShortcutConfig.availableInThisBuild(loaded, isAppStore: false)
+    #endif
   }
 
   func saveConfiguration(_ config: ShortcutConfig) {
