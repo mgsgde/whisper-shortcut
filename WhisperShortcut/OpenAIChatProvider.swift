@@ -225,22 +225,7 @@ final class OpenAIChatProvider: LLMChatProvider {
       let messages = OpenAIChatCompletionsConverter.messages(
         from: contents, systemInstruction: systemInstruction, stripImages: stripImages)
 
-      // Cost fuse — see AppConstants.llmMaxOutputTokens. The key differs by endpoint and both
-      // choices are load-bearing: OpenAI *rejects* `max_tokens` on its reasoning models ("Use
-      // 'max_completion_tokens' instead", HTTP 400), while OpenRouter, self-hosted llama.cpp and
-      // the other OpenAI-compatible servers behind `.customEndpoint` only reliably understand the
-      // original `max_tokens`. Sending the wrong one is a hard 400, so it is picked per endpoint
-      // rather than sent as a pair. Azure is the exception inside `.customEndpoint`: it *is* OpenAI, so
-      // its reasoning deployments reject `max_tokens` exactly the way api.openai.com does.
-      let maxTokensKey: String
-      switch route {
-      case .customEndpoint:
-        maxTokensKey = CustomEndpointAuth.maxTokensKey(forBaseURL: OpenAIChatPreferences.customEndpointBaseURL ?? "")
-      case .openRouter:
-        maxTokensKey = "max_tokens"
-      case .openAI:
-        maxTokensKey = "max_completion_tokens"
-      }
+      let maxTokensKey = Self.maxTokensKey(route: route)
       var body: [String: Any] = [
         "model": requestModel,
         "messages": messages,
@@ -282,6 +267,24 @@ final class OpenAIChatProvider: LLMChatProvider {
   }
 
   // MARK: - Shared request configuration
+
+  /// Cost fuse — see AppConstants.llmMaxOutputTokens. The key differs by endpoint and both
+  /// choices are load-bearing: OpenAI *rejects* `max_tokens` on its reasoning models ("Use
+  /// 'max_completion_tokens' instead", HTTP 400), while OpenRouter, self-hosted llama.cpp and
+  /// the other OpenAI-compatible servers behind `.customEndpoint` only reliably understand the
+  /// original `max_tokens`. Sending the wrong one is a hard 400, so it is picked per endpoint
+  /// rather than sent as a pair. Azure is the exception inside `.customEndpoint`: it *is* OpenAI, so
+  /// its reasoning deployments reject `max_tokens` exactly the way api.openai.com does.
+  private static func maxTokensKey(route: Route) -> String {
+    switch route {
+    case .customEndpoint:
+      return CustomEndpointAuth.maxTokensKey(forBaseURL: OpenAIChatPreferences.customEndpointBaseURL ?? "")
+    case .openRouter:
+      return "max_tokens"
+    case .openAI:
+      return "max_completion_tokens"
+    }
+  }
 
   /// Auth and OpenAI's error mapping — identical for every route. `route` only changes which key
   /// is resolved and how an auth failure is worded.
@@ -326,6 +329,7 @@ final class OpenAIChatProvider: LLMChatProvider {
       schema: schema,
       schemaName: schemaName,
       reasoningEffort: Self.reasoningEffort(thinkingLevel, model: requestModel, route: route),
+      maxTokensKey: Self.maxTokensKey(route: route),
       session: session,
       logTag: "OPENAI")
   }

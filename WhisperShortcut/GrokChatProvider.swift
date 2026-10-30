@@ -79,7 +79,7 @@ final class GrokChatProvider: LLMChatProvider {
         "stream": true,
         "temperature": 0.7,
         "top_p": 0.95,
-        "max_output_tokens": 8192,
+        "max_output_tokens": AppConstants.llmMaxOutputTokens,
       ]
       if let instructions = GeminiSystemInstruction.text(from: systemInstruction) {
         body["instructions"] = instructions
@@ -151,7 +151,7 @@ final class GrokChatProvider: LLMChatProvider {
         "stream": true,
         "temperature": 0.7,
         "top_p": 0.95,
-        "max_tokens": 8192,
+        "max_tokens": AppConstants.llmMaxOutputTokens,
       ]
 
       if !tools.isEmpty {
@@ -221,6 +221,7 @@ final class GrokChatProvider: LLMChatProvider {
       schema: schema,
       schemaName: schemaName,
       reasoningEffort: Self.reasoningEffort(thinkingLevel, model: model),
+      maxTokensKey: "max_tokens",
       session: session,
       logTag: "GROK")
   }
