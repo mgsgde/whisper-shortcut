@@ -920,6 +920,9 @@ final class RecordingIndicatorManager {
     self.panel = panel
     position(panel)
     panel.alphaValue = 0
+    // Re-applied on every show: the panel is reused, and anything that lowers its level once
+    // (a stray `window.level = .floating` on the key window) would otherwise stick for good.
+    panel.level = .statusBar
     panel.orderFrontRegardless()
     isVisible = true
     takeKeyFocusIfListed(panel)
