@@ -8,9 +8,10 @@ import SwiftUI
 /// - Nothing saved: one example and the Add button. A key for nothing would only confuse.
 /// - The key first, with the three steps it takes spelled out using that key ("Press ⌘3, Speak,
 ///   Press ⌘3 again"): without it a template does nothing.
-/// - The templates: a numbered dropdown picks the one being edited, so the tab stays one screen
-///   tall however many there are. A template's own key is folded away; it is for a dictation
-///   microphone's buttons, and most people never need it.
+/// - The templates: a numbered dropdown heads the card and picks the one being edited, so the tab
+///   stays one card however many there are. Name and Format follow it directly; the Format box
+///   grows with its text, so the page scrolls and the box never does. A template's own key is
+///   folded away; it is for a dictation microphone's buttons, and most people never need it.
 /// Orange is reserved for a key that does not work; everything else is plain secondary text.
 ///
 /// With no template saved the `dictationTemplates` key stays absent and nothing changes.
@@ -59,13 +60,12 @@ struct TemplatesSettingsTab: View {
 
   // MARK: - Choosing a template
 
-  /// The dropdown picks the template shown below it. Numbered like the list on the recording card,
-  /// so "press 2" means the same thing in both places.
+  /// The dropdown is the card's header and picks the template shown below it. Numbered like the
+  /// list on the recording card, so "press 2" means the same thing in both places.
   private var templatesCard: some View {
     VStack(alignment: .leading, spacing: 12) {
       templateBar
       if let index = templates.firstIndex(where: { $0.id == selectedID }) {
-        Divider()
         TemplateEditor(
           template: $templates[index],
           focusedField: $focusedField,
@@ -90,9 +90,8 @@ struct TemplatesSettingsTab: View {
   }
 
   private var templateBar: some View {
+    // No "Template" label: the picker shows the name, and a label would say it a second time.
     HStack(spacing: 16) {
-      Text("Template")
-        .frame(width: SettingsConstants.labelWidth, alignment: .leading)
       HStack(spacing: 8) {
         Picker("Template", selection: $selectedID) {
           ForEach(Array(templates.enumerated()), id: \.element.id) { index, template in
@@ -410,9 +409,20 @@ private struct TemplateEditor: View {
       Text("Format")
         .padding(.bottom, 2)
       ZStack(alignment: .topLeading) {
+        // Invisible copy of the text that sizes the box, so a 30-line prompt shows all 30 lines
+        // instead of 8 behind a second scrollbar inside the scrolling page. The extra line keeps
+        // room for the caret after a trailing newline.
+        Text(template.instructions + "\n ")
+          .font(.system(.callout))
+          .padding(.horizontal, 5)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .fixedSize(horizontal: false, vertical: true)
+          .hidden()
+          .accessibilityHidden(true)
         TextEditor(text: $template.instructions)
           .font(.system(.callout))
           .scrollContentBackground(.hidden)
+          .scrollDisabled(true)
           .accessibilityLabel(String(localized: "Template instructions"))
         if template.instructions.isEmpty {
           Text("Instructions, e.g. \u{201C}The dictation is a treatment note. Write it with the sections Anamnese, Befund, Therapie. Add nothing, leave nothing out.\u{201D}")
@@ -423,7 +433,7 @@ private struct TemplateEditor: View {
             .accessibilityHidden(true)
         }
       }
-      .frame(height: 140)
+      .frame(minHeight: 140, alignment: .topLeading)
       .padding(6)
       .background(Color(nsColor: .textBackgroundColor))
       .cornerRadius(SettingsConstants.cornerRadius)
