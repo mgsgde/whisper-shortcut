@@ -118,6 +118,7 @@ struct SpeechToTextSettingsTab: View {
       section: .whisperGlossary,
       defaultContent: AppConstants.defaultWhisperGlossary
     )
+    .id(SettingsAnchor.glossary)
 
     #if !APP_STORE
     VStack(alignment: .leading, spacing: 8) {
