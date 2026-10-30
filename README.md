@@ -13,6 +13,7 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 **[⬇️ Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-readme)** — the easiest way to install, with automatic updates.
 
 - Prefer a direct download? Get the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
+- Using Homebrew? `brew tap mgsgde/tap && brew trust mgsgde/tap && brew install --cask whisper-shortcut` installs the same direct-download build (`brew trust` is needed once on newer Homebrew versions). The app updates itself, so `brew upgrade` is not needed.
 - Cloud features use your Google Gemini API key and, optionally, an xAI API key (Grok chat and TTS), an OpenAI API key (GPT-5.x chat, transcription, GPT Audio Dictate Prompt, TTS), or an Anthropic API key (Claude chat). Offline Whisper needs no key at all.
 
 ## Features
@@ -64,6 +65,8 @@ Offline dictation (Parakeet Ultra or Whisper) works without an API key after dow
 3. Start WhisperShortcut from Applications.
 4. Open Settings from the menu bar app and add your Google Gemini API key if you want cloud features.
 5. Grant microphone and accessibility permissions when macOS asks.
+
+With Homebrew, steps 1–3 become `brew tap mgsgde/tap && brew trust mgsgde/tap && brew install --cask whisper-shortcut` followed by starting the app.
 
 ## Common Workflows
 
