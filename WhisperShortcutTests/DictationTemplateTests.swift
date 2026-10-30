@@ -97,6 +97,45 @@ struct DictationTemplateTests {
         == .app(String(localized: "Dictate Prompt")))
   }
 
+  /// A practice records its note template on ⌘2, which legacy installs already give to Dictate
+  /// Prompt. Reassign frees Screenshot's ⌘3, Dictate Prompt moves there, and only then does the
+  /// template own ⌘2. Shortcut fields are `let`, so each step is a new value.
+  @Test("Practice setup: Dictate Prompt moved to ⌘3, then the template takes ⌘2")
+  func practiceSetupMovesDictatePromptThenTemplateTakesCommandTwo() {
+    var config = ShortcutConfig.legacyCommandDigit
+    let commandTwo = binding(like: config.startPrompting, modifiers: config.startPrompting.modifiers)
+    let template = DictationTemplate(
+      name: "Praxis", instructions: "Format the note", shortcut: commandTwo)
+    let templates = [template]
+
+    #expect(TemplateShortcuts.activeBindings(templates: templates, appConfig: config).isEmpty)
+    #expect(
+      TemplateShortcuts.owner(of: template, in: templates, appConfig: config)
+        == .app(String(localized: "Dictate Prompt")))
+
+    let screenshot = config.screenshotCapture
+    config.screenshotCapture = ShortcutDefinition(
+      key: screenshot.key, modifiers: screenshot.modifiers, isEnabled: false,
+      displayCharacter: screenshot.displayCharacter)
+    config.startPrompting = ShortcutDefinition(
+      key: screenshot.key, modifiers: screenshot.modifiers, isEnabled: true,
+      displayCharacter: screenshot.displayCharacter)
+
+    let bindings = TemplateShortcuts.activeBindings(templates: templates, appConfig: config)
+    #expect(bindings.map(\.template.id) == [template.id])
+    #expect(bindings.first?.shortcut == commandTwo)
+    #expect(TemplateShortcuts.owner(of: template, in: templates, appConfig: config) == nil)
+
+    let moved = config.startPrompting
+    let ownerOfMoved = TemplateShortcuts.owner(
+      key: moved.key, modifiers: moved.modifiers, templates: templates,
+      excludingTemplateID: nil, appConfig: config)
+    #expect(ownerOfMoved == .app(String(localized: "Dictate Prompt")))
+    if case .template = ownerOfMoved {
+      Issue.record("Dictate Prompt's shortcut appeared as a template owner")
+    }
+  }
+
   @Test("Load and save round-trip; a missing key or garbage is no templates")
   func loadAndSave() {
     restoringTemplates {

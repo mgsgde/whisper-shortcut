@@ -396,6 +396,9 @@ class MenuBarController: NSObject {
     setupDelegates()
     setupNotifications()
     loadModelConfiguration()
+    // After setup, so a crash or force-quit cannot leave patient audio past the next launch.
+    // `applicationWillTerminate` only runs on a normal quit.
+    removeLeftoverTemplateRecordings()
 
     Task.detached(priority: .utility) {
       QuickActionStore.shared.refresh()
@@ -1657,10 +1660,18 @@ class MenuBarController: NSObject {
   private var cancelledRecordingURL: URL?
   /// Last Dictate Prompt recording that applied a template, so the status menu can send the same
   /// audio through the ordinary system prompt. Offline Mode is used for patient notes, so the
-  /// copy lives in the temp directory for at most ten minutes and is deleted on quit.
+  /// copy lives only in `lastTemplateRecordingDirectory` for at most ten minutes and is deleted
+  /// on quit. A crash skips that, so launch clears the folder too.
   private var lastTemplateRecording: (url: URL, templateName: String)?
   private var lastTemplateRecordingExpiry: DispatchWorkItem?
   private static let lastTemplateRecordingLifetime: TimeInterval = 10 * 60
+  /// Patient audio from a template dictation. This folder is inside the app's container / Library,
+  /// never iCloud- or Desktop-synced, so the recording does not leave the Mac through a synced
+  /// temp or Desktop folder.
+  private static var lastTemplateRecordingDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("LastTemplateRecording", isDirectory: true)
+  }
 
   private func retainCancelledRecording(_ url: URL?) {
     guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
@@ -1698,15 +1709,18 @@ class MenuBarController: NSObject {
     }
   }
 
-  /// Copies the recording a template just shaped into the temp directory, replacing any previous
+  /// Copies the recording a template just shaped into the app data directory, replacing any previous
   /// copy, and shows "Run Again Without Template" until the ten-minute lifetime (or quit) deletes it.
   private func retainLastTemplateRecording(from audioURL: URL, templateName: String?) {
+    let directory = Self.lastTemplateRecordingDirectory
+    AppSupportPaths.ensureDirectoryExists(directory)
     let ext = audioURL.pathExtension
-    var destination = FileManager.default.temporaryDirectory
-      .appendingPathComponent("whispershortcut-last-template-recording")
+    var destination = directory.appendingPathComponent("recording")
     if !ext.isEmpty { destination.appendPathExtension(ext) }
-    let staging = FileManager.default.temporaryDirectory
-      .appendingPathComponent("whispershortcut-last-template-recording-\(UUID().uuidString)")
+    // Staging stays in the same unsynced folder: a crash between copy and replace must not leave
+    // patient audio in the temp directory, and the launch sweep removes the staging file.
+    let staging = directory
+      .appendingPathComponent("staging-\(UUID().uuidString)")
       .appendingPathExtension(ext.isEmpty ? "tmp" : ext)
     do {
       try FileManager.default.copyItem(at: audioURL, to: staging)
@@ -1746,6 +1760,7 @@ class MenuBarController: NSObject {
 
   /// Deletes the replay copy and forgets it. Does not touch the menu; callers that should hide
   /// the item update visibility themselves. Also the quit path, where the menu is going away.
+  /// A crash never reaches this, so launch removes whatever is still in the folder.
   private func discardLastTemplateRecording() {
     lastTemplateRecordingExpiry?.cancel()
     lastTemplateRecordingExpiry = nil
@@ -1753,6 +1768,27 @@ class MenuBarController: NSObject {
       try? FileManager.default.removeItem(at: url)
     }
     lastTemplateRecording = nil
+  }
+
+  /// Clears every file in `lastTemplateRecordingDirectory`. Called once setup has finished, because
+  /// `cleanup()` does not run after a crash or force-quit and patient audio must not sit there
+  /// until some later quit. Logged only when a file was actually removed, and never with its path
+  /// or name — those logs are not a place for a recording of a patient note.
+  private func removeLeftoverTemplateRecordings() {
+    let directory = Self.lastTemplateRecordingDirectory
+    let fm = FileManager.default
+    guard let contents = try? fm.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    ) else { return }
+    var removed = false
+    for url in contents {
+      if (try? fm.removeItem(at: url)) != nil {
+        removed = true
+      }
+    }
+    if removed {
+      DebugLogger.log("DICTATION-TEMPLATE: removed a leftover template recording")
+    }
   }
 
   private func updateRunAgainWithoutTemplateVisibility() {
@@ -1785,8 +1821,14 @@ class MenuBarController: NSObject {
       updateRunAgainWithoutTemplateVisibility()
       return
     }
+    // A second file, not the retained one: the audio job deletes its input when it finishes, and
+    // that must not be the copy the menu still offers. Same unsynced folder — a practice note
+    // must not pass through the temp directory. The name is a UUID so a log of the job's file
+    // cannot carry the template name.
+    let directory = Self.lastTemplateRecordingDirectory
+    AppSupportPaths.ensureDirectoryExists(directory)
     let ext = saved.url.pathExtension
-    var copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    var copy = directory.appendingPathComponent(UUID().uuidString)
     if !ext.isEmpty { copy.appendPathExtension(ext) }
     do {
       try FileManager.default.copyItem(at: saved.url, to: copy)
