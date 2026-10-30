@@ -62,6 +62,11 @@ final class RecordingIndicatorModel: ObservableObject {
   /// Dictate Prompt: what the user typed into the field under the list. Non-empty text
   /// replaces the spoken instruction.
   @Published var typedPrompt = ""
+  /// Dictate Prompt: name of the dictation template bound to the app the user is dictating into,
+  /// nil when none is. Shown in the header while nothing is selected; Tab switches it on and off.
+  @Published var templateName: String?
+  /// Whether stopping applies `templateName`'s template. Starts on; Tab toggles it.
+  @Published var templateEnabled = true
 
   func pushLevel(_ normalized: CGFloat) {
     var next = levels
@@ -265,10 +270,18 @@ private enum QuickActionCardMetrics {
 /// Nothing is highlighted until ↑/↓ moves into the list, so ↩ on an empty field means the same as
 /// ✓ — stop and use what was spoken. Only ⌃digit picks an entry: a bare digit is just text, so a
 /// keystroke meant for the app underneath cannot fire an action.
+///
+/// A dictation template bound to the app underneath shows in the header instead of the "nothing
+/// selected" warning: the user is dictating into a field on purpose, and the header says what
+/// stopping will do with it and that Tab switches the template off. With a selection there is no
+/// template and no Tab hint — a template is never applied to selected text.
 private struct QuickActionCardView: View {
   let actions: [QuickAction]
   let selectedIndex: Int?
   let context: QuickActionContext
+  let templateName: String?
+  let templateEnabled: Bool
+  let onToggleTemplate: () -> Void
   let levels: [CGFloat]
   @Binding var typedText: String
   let onSelect: (Int) -> Void
@@ -316,7 +329,65 @@ private struct QuickActionCardView: View {
 
   // MARK: Header
 
-  private var header: some View {
+  /// The template header replaces the "nothing selected" one only; while the selection is still
+  /// being read, or when there is one, the header is the same as without templates.
+  private var showsTemplateHeader: Bool { templateName != nil && context == .nothingSelected }
+
+  /// The header, or — when a template is bound — the header as a button that does what Tab does.
+  @ViewBuilder private var header: some View {
+    if showsTemplateHeader, let templateName {
+      Button(action: onToggleTemplate) {
+        templateHeader(name: templateName)
+      }
+      .buttonStyle(.plain)
+      .help(templateEnabled
+        ? String(localized: "Tab or click: run without the template")
+        : String(localized: "Tab or click: apply \u{201C}\(templateName)\u{201D}"))
+      .accessibilityLabel(templateEnabled
+        ? String(localized: "Template \u{201C}\(templateName)\u{201D} is on")
+        : String(localized: "No template"))
+      .accessibilityHint("Tab")
+      .pointerCursorOnHover()
+    } else {
+      contextHeader
+    }
+  }
+
+  /// "Praxisnotiz · Tab: no template" / "Normal · Tab: Praxisnotiz".
+  private func templateHeader(name: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: templateEnabled ? "doc.text.fill" : "text.bubble")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(templateEnabled ? 0.9 : 0.6))
+        .frame(width: 16, alignment: .center)
+      Text(templateEnabled ? name : String(localized: "Normal"))
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(templateEnabled ? 1 : 0.75))
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .layoutPriority(1)
+      Text("\u{00B7}")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.35))
+      Text(templateEnabled
+        ? String(localized: "Tab: no template")
+        : String(localized: "Tab: \(name)"))
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.white.opacity(0.5))
+        .lineLimit(1)
+        .truncationMode(.tail)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 8)
+    .frame(height: QuickActionCardMetrics.headerHeight)
+    .background(
+      RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .fill(templateEnabled ? Color.accentColor.opacity(0.28) : Color.clear)
+    )
+    .contentShape(Rectangle())
+  }
+
+  private var contextHeader: some View {
     HStack(spacing: 8) {
       headerIcon
         .frame(width: 16, alignment: .center)
@@ -476,6 +547,9 @@ private struct QuickActionCardView: View {
     if let selectedIndex, actions.indices.contains(selectedIndex) {
       return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
     }
+    if showsTemplateHeader, templateEnabled, let templateName {
+      return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
+    }
     return String(localized: "Speak your instruction")
   }
 
@@ -517,6 +591,7 @@ struct RecordingIndicatorView: View {
   let onQuickAction: (Int) -> Void
   let onSubmitTyped: () -> Void
   let onDismissQuickActions: () -> Void
+  let onToggleTemplate: () -> Void
 
   /// Seconds the ⏪ / ⏩ buttons jump.
   static let skipInterval: TimeInterval = 10
@@ -531,9 +606,11 @@ struct RecordingIndicatorView: View {
   static func panelSize(
     phase: RecordingIndicatorPhase,
     quickActions: [QuickAction],
-    showsQuickActions: Bool
+    showsQuickActions: Bool,
+    hasTemplate: Bool = false
   ) -> CGSize {
-    let cardVisible = showsQuickActions && phase == .recording && !quickActions.isEmpty
+    let cardVisible = showsQuickActions && phase == .recording
+      && (!quickActions.isEmpty || hasTemplate)
     guard cardVisible else { return pillSize(for: phase) }
     return CGSize(
       width: QuickActionCardMetrics.width,
@@ -555,13 +632,17 @@ struct RecordingIndicatorView: View {
     let panel = Self.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
-      showsQuickActions: model.quickActionsVisible)
+      showsQuickActions: model.quickActionsVisible,
+      hasTemplate: model.templateName != nil)
     Group {
       if panel != pill {
         QuickActionCardView(
           actions: model.quickActions,
           selectedIndex: model.quickActionIndex,
           context: model.quickActionContext,
+          templateName: model.templateName,
+          templateEnabled: model.templateEnabled,
+          onToggleTemplate: onToggleTemplate,
           levels: model.levels,
           typedText: $model.typedPrompt,
           onSelect: onQuickAction,
@@ -667,6 +748,8 @@ private final class RecordingIndicatorPanel: NSPanel {
   var onArrow: ((Int) -> Bool)?
   /// ↩ while the card has key focus. Returns true when it ran the highlighted entry.
   var onReturn: (() -> Bool)?
+  /// ⇥ while the card has key focus. Returns true when it switched the dictation template.
+  var onTab: (() -> Bool)?
   override var canBecomeKey: Bool { acceptsKeyInput }
   override var canBecomeMain: Bool { false }
 
@@ -700,6 +783,15 @@ private final class RecordingIndicatorPanel: NSPanel {
     {
       return
     }
+    // ⇥ would only move focus out of the field; with a template bound it switches the template.
+    if event.type == .keyDown,
+      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+      event.keyCode == 48,
+      (firstResponder as? NSTextView)?.hasMarkedText() != true,
+      onTab?() == true
+    {
+      return
+    }
     super.sendEvent(event)
   }
 }
@@ -727,6 +819,9 @@ final class RecordingIndicatorManager {
   var onSkip: ((TimeInterval) -> Void)?
   /// Read Aloud: move the playhead to an absolute position in seconds. Set by MenuBarController.
   var onSeek: ((TimeInterval) -> Void)?
+  /// Dictate Prompt: the user switched the bound dictation template on (true) or off. Set by
+  /// MenuBarController, which keeps the choice on the recording.
+  var onTemplateToggled: ((Bool) -> Void)?
   /// Dictate Prompt: the user clicked a quick action. The index is into `quickActions`.
   var onQuickAction: ((Int) -> Void)?
   /// Dictate Prompt: the user pressed ↩ in the field. Carries the trimmed, non-empty text.
@@ -826,13 +921,19 @@ final class RecordingIndicatorManager {
   }
 
   /// Grows the pill into the Dictate Prompt card. Nothing starts highlighted, and the field
-  /// takes keyboard focus, so the user can type right away.
-  func showQuickActions(_ actions: [QuickAction], context: QuickActionContext) {
+  /// takes keyboard focus, so the user can type right away. `templateName`: the dictation template
+  /// bound to the app underneath; the card then shows even with no quick actions, so the header can
+  /// say what stopping does.
+  func showQuickActions(
+    _ actions: [QuickAction], context: QuickActionContext, templateName: String? = nil
+  ) {
     model.quickActions = actions
     model.quickActionIndex = nil
     model.quickActionContext = context
     model.typedPrompt = ""
-    model.quickActionsVisible = !actions.isEmpty
+    model.templateName = templateName
+    model.templateEnabled = true
+    model.quickActionsVisible = !actions.isEmpty || templateName != nil
     if isVisible, let panel {
       position(panel)
       takeKeyFocusIfListed(panel)
@@ -845,6 +946,7 @@ final class RecordingIndicatorManager {
     guard model.quickActionsVisible || !model.quickActions.isEmpty else { return }
     model.quickActionsVisible = false
     model.quickActions = []
+    model.templateName = nil
     model.quickActionIndex = nil
     if isVisible, let panel { position(panel) }
   }
@@ -863,6 +965,17 @@ final class RecordingIndicatorManager {
       ?? (delta > 0 ? 0 : count - 1)
     model.quickActionIndex = next
     DebugLogger.log("QUICK-ACTIONS: Highlight → entry \(next + 1)")
+  }
+
+  /// Tab or a click on the template header: switch the bound template off or back on. The choice
+  /// lives on the recording (`onTemplateToggled`), not here — the card is gone by the time the
+  /// finished audio is processed.
+  private func toggleTemplate() {
+    guard let name = model.templateName else { return }
+    model.templateEnabled.toggle()
+    DebugLogger.log(
+      "DICTATION-TEMPLATE: \(model.templateEnabled ? "Applying" : "Not applying") \(name) (Tab)")
+    onTemplateToggled?(model.templateEnabled)
   }
 
   var quickActions: [QuickAction] { model.quickActions }
@@ -985,7 +1098,8 @@ final class RecordingIndicatorManager {
       onSeek: { [weak self] seconds in self?.onSeek?(seconds) },
       onQuickAction: { [weak self] index in self?.onQuickAction?(index) },
       onSubmitTyped: { [weak self] in self?.submitTyped() },
-      onDismissQuickActions: { [weak self] in self?.dismissQuickActionsByUser() }
+      onDismissQuickActions: { [weak self] in self?.dismissQuickActionsByUser() },
+      onToggleTemplate: { [weak self] in self?.toggleTemplate() }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)
@@ -1014,6 +1128,13 @@ final class RecordingIndicatorManager {
       self.onQuickAction?(index)
       return true
     }
+    panel.onTab = { [weak self] in
+      guard let self, self.model.quickActionsVisible, self.model.templateName != nil,
+        self.model.quickActionContext == .nothingSelected
+      else { return false }
+      self.toggleTemplate()
+      return true
+    }
     return panel
   }
 
@@ -1021,7 +1142,8 @@ final class RecordingIndicatorManager {
     let size = RecordingIndicatorView.panelSize(
       phase: model.phase,
       quickActions: model.quickActions,
-      showsQuickActions: model.quickActionsVisible)
+      showsQuickActions: model.quickActionsVisible,
+      hasTemplate: model.templateName != nil)
     return NSSize(width: size.width, height: size.height)
   }
 

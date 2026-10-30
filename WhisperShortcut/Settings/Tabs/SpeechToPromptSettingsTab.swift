@@ -30,6 +30,10 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
+      DictationTemplatesSection()
+
+      SpacedSectionDivider()
+
       QuickPromptsSection()
 
       SpacedSectionDivider()
