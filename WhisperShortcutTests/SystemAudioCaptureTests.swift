@@ -131,6 +131,51 @@ final class SystemAudioBufferTests: XCTestCase {
     let emptyBuffer = SystemAudioBuffer()
     XCTAssertEqual(emptyBuffer.recentPowerDB(window: 0.1, now: fixedDate), -160, accuracy: 0.001)
   }
+
+  func testExtractInterpolates16kHzSineAt24kHz() {
+    assertUpsampledSine(inputRate: 16_000, maxAbsError: 0.05)
+  }
+
+  func testExtractInterpolates8kHzSineAt24kHz() {
+    assertUpsampledSine(inputRate: 8_000, maxAbsError: 0.1)
+  }
+
+  /// 1 s of a 440 Hz sine at `inputRate`, in contiguous 10 ms blocks, then 0.5 s from the middle
+  /// at 24 kHz. Call-mode rates sit below the meeting rate, so a window average zero-stuffs.
+  private func assertUpsampledSine(
+    inputRate: Double, maxAbsError: Float,
+    file: StaticString = #filePath, line: UInt = #line
+  ) {
+    let buffer = SystemAudioBuffer()
+    let blockSamples = Int(inputRate / 100)
+    for block in 0..<100 {
+      let origin = block * blockSamples
+      var samples = [Float](repeating: 0, count: blockSamples)
+      for i in 0..<blockSamples {
+        let n = origin + i
+        samples[i] = Float(sin(2 * Double.pi * 440 * Double(n) / inputRate))
+      }
+      let wallClock = fixedDate.addingTimeInterval(Double(origin) / inputRate)
+      samples.withUnsafeBufferPointer { pointer in
+        buffer.append(pointer, sampleRate: inputRate, wallClock: wallClock)
+      }
+    }
+    XCTAssertEqual(buffer.segmentCount, 1, file: file, line: line)
+
+    let outputRate = 24_000.0
+    let extracted = buffer.extract(
+      from: fixedDate.addingTimeInterval(0.25), duration: 0.5, outputRate: outputRate)
+    XCTAssertEqual(extracted.count, 12_000, file: file, line: line)
+    XCTAssertFalse(extracted.contains(0), file: file, line: line)
+
+    var maxError: Float = 0
+    for (idx, value) in extracted.enumerated() {
+      let t = 0.25 + Double(idx) / outputRate
+      let expected = Float(sin(2 * Double.pi * 440 * t))
+      maxError = max(maxError, abs(value - expected))
+    }
+    XCTAssertLessThan(maxError, maxAbsError, file: file, line: line)
+  }
 }
 
 // MARK: - MeetingAudioMixer
