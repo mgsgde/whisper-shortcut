@@ -98,7 +98,7 @@ enum OfflineChatAppContext {
     if !shortcuts.isEmpty {
       lines.append("")
       lines.append(
-        "The user's keyboard shortcuts (overview in Settings → About; each one is changed in its feature's tab): "
+        "The user's keyboard shortcuts (all of them are shown and changed in Settings → General): "
           + shortcuts.map { "\($0.action) \($0.keys)" }.joined(separator: "; ") + ".")
     }
     return lines.joined(separator: "\n")
