@@ -67,6 +67,21 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var templateName: String?
   /// Whether stopping applies `templateName`'s template. Starts on; Tab toggles it.
   @Published var templateEnabled = true
+  /// The generic template shortcut with several templates: their names, in order (1–9).
+  /// Empty when a template's own shortcut started the recording, or there is only one.
+  @Published var templateChoices: [String] = []
+  /// The highlighted choice; stopping applies it. Starts on the last-used template.
+  @Published var templateChoiceIndex = 0
+  /// Open until a digit, ↩ or a click picks a template, or Tab switches to Normal.
+  @Published var templatePickerOpen = false
+
+  /// The names the card lists right now. A selection closes the picker: selected text is never
+  /// sent to a template, so there is nothing to choose.
+  var visibleTemplateChoices: [String] {
+    guard templatePickerOpen, templateChoices.count > 1 else { return [] }
+    if case .selection = quickActionContext { return [] }
+    return templateChoices
+  }
 
   func pushLevel(_ normalized: CGFloat) {
     var next = levels
@@ -255,11 +270,13 @@ private enum QuickActionCardMetrics {
 
   static let typeFieldPlaceholder: LocalizedStringKey = "Type an instruction, or just speak"
 
-  /// Header, `count` quick actions, the text field, and the recording controls as the footer.
-  static func height(count: Int) -> CGFloat {
+  /// Header, `count` rows (quick actions or templates), the text field unless a template
+  /// recording hides it, and the recording controls as the footer.
+  static func height(count: Int, field: Bool = true) -> CGFloat {
     let divider = dividerHeight + dividerSpacing * 2
-    return padding * 2 + headerHeight + divider + CGFloat(count + 1) * rowHeight + divider
-      + footerHeight
+    let rows = count + (field ? 1 : 0)
+    return padding * 2 + headerHeight + divider + CGFloat(rows) * rowHeight
+      + (rows > 0 ? divider : 0) + footerHeight
   }
 }
 
@@ -275,6 +292,10 @@ private enum QuickActionCardMetrics {
 /// selected" warning: the user is dictating into a field on purpose, and the header says what
 /// stopping will do with it and that Tab switches the template off. With a selection there is no
 /// template and no Tab hint — a template is never applied to selected text.
+///
+/// A template recording shows neither quick actions nor the field: a typed or picked instruction
+/// would replace the template. Started by the generic template shortcut with several templates,
+/// it lists them numbered instead; there is no field, so a bare digit picks one.
 private struct QuickActionCardView: View {
   let actions: [QuickAction]
   let selectedIndex: Int?
@@ -282,6 +303,10 @@ private struct QuickActionCardView: View {
   let templateName: String?
   let templateEnabled: Bool
   let onToggleTemplate: () -> Void
+  /// Empty unless the template picker is open.
+  let templateChoices: [String]
+  let templateChoiceIndex: Int
+  let onChooseTemplate: (Int) -> Void
   let levels: [CGFloat]
   @Binding var typedText: String
   let onSelect: (Int) -> Void
@@ -295,15 +320,24 @@ private struct QuickActionCardView: View {
   // Trimmed like `submitTyped`: a lone space is not an instruction, so it must not disable ↑/↓/↩.
   private var isTyping: Bool { !typedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+  private var showsPicker: Bool { !templateChoices.isEmpty }
+  private var showsField: Bool { templateName == nil }
+
   var body: some View {
     VStack(spacing: 0) {
       header
       divider
-      ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-        actionRow(index: index, action: action)
+      if showsPicker {
+        ForEach(templateChoices.indices, id: \.self) { index in
+          templateChoiceRow(index)
+        }
+      } else {
+        ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+          actionRow(index: index, action: action)
+        }
       }
-      fieldRow
-      divider
+      if showsField { fieldRow }
+      if showsPicker || showsField || !actions.isEmpty { divider }
       footer
     }
     .padding(QuickActionCardMetrics.padding)
@@ -335,7 +369,9 @@ private struct QuickActionCardView: View {
 
   /// The header, or — when a template is bound — the header as a button that does what Tab does.
   @ViewBuilder private var header: some View {
-    if showsTemplateHeader, let templateName {
+    if showsPicker {
+      pickerHeader
+    } else if showsTemplateHeader, let templateName {
       Button(action: onToggleTemplate) {
         templateHeader(name: templateName)
       }
@@ -385,6 +421,31 @@ private struct QuickActionCardView: View {
         .fill(templateEnabled ? Color.accentColor.opacity(0.28) : Color.clear)
     )
     .contentShape(Rectangle())
+  }
+
+  /// "Choose a template · Tab: Normal". Tab works here too and closes the list.
+  private var pickerHeader: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "doc.text.fill")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.9))
+        .frame(width: 16, alignment: .center)
+      Text("Choose a template")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white)
+        .lineLimit(1)
+      Text("\u{00B7}")
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundColor(.white.opacity(0.35))
+      Text("Tab: Normal")
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(.white.opacity(0.5))
+        .lineLimit(1)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 8)
+    .frame(height: QuickActionCardMetrics.headerHeight)
+    .accessibilityElement(children: .combine)
   }
 
   private var contextHeader: some View {
@@ -502,6 +563,51 @@ private struct QuickActionCardView: View {
     .pointerCursorOnHover()
   }
 
+  /// A bare digit, not ⌃digit like the quick actions: the picker has no field to type into, and
+  /// one key per choice is what a dictation microphone's buttons can send.
+  private func templateChoiceRow(_ index: Int) -> some View {
+    let highlighted = index == templateChoiceIndex
+    let name = templateChoices[index]
+    return Button {
+      onChooseTemplate(index)
+    } label: {
+      HStack(spacing: 8) {
+        Text(index < 9 ? "\(index + 1)" : "")
+          .font(.system(size: 10, weight: .semibold).monospacedDigit())
+          .foregroundColor(.white.opacity(highlighted ? 0.95 : 0.55))
+          .frame(width: 16, height: 16)
+          .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+              .strokeBorder(Color.white.opacity(highlighted ? 0.55 : 0.2), lineWidth: 1)
+              .opacity(index < 9 ? 1 : 0)
+          )
+        Text(name)
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(.white.opacity(highlighted ? 1 : 0.8))
+          .lineLimit(1)
+          .truncationMode(.tail)
+        Spacer(minLength: 0)
+        if highlighted {
+          Text("\u{21A9}")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(.white.opacity(0.6))
+        }
+      }
+      .padding(.horizontal, 8)
+      .frame(height: QuickActionCardMetrics.rowHeight)
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(highlighted ? Color.white.opacity(0.16) : Color.clear)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(name)
+    .accessibilityLabel("Template \(index + 1): \(name)")
+    .accessibilityHint(index < 9 ? "\(index + 1)" : "")
+    .pointerCursorOnHover()
+  }
+
   private var fieldRow: some View {
     HStack(spacing: 8) {
       Image(systemName: "keyboard")
@@ -543,6 +649,7 @@ private struct QuickActionCardView: View {
   // MARK: Footer
 
   private var footerLabel: String {
+    if showsPicker { return String(localized: "Press a number to choose") }
     if isTyping { return String(localized: "\u{21A9} runs what you typed") }
     if let selectedIndex, actions.indices.contains(selectedIndex) {
       return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
@@ -565,7 +672,7 @@ private struct QuickActionCardView: View {
         .lineLimit(1)
         .truncationMode(.tail)
       Spacer(minLength: 0)
-      if !isTyping && selectedIndex == nil {
+      if !isTyping && selectedIndex == nil && !showsPicker {
         Text("\u{21A9}")
           .font(.system(size: 10, weight: .semibold))
           .foregroundColor(.white.opacity(0.4))
@@ -592,6 +699,7 @@ struct RecordingIndicatorView: View {
   let onSubmitTyped: () -> Void
   let onDismissQuickActions: () -> Void
   let onToggleTemplate: () -> Void
+  let onChooseTemplate: (Int) -> Void
 
   /// Seconds the ⏪ / ⏩ buttons jump.
   static let skipInterval: TimeInterval = 10
@@ -607,14 +715,17 @@ struct RecordingIndicatorView: View {
     phase: RecordingIndicatorPhase,
     quickActions: [QuickAction],
     showsQuickActions: Bool,
-    hasTemplate: Bool = false
+    hasTemplate: Bool = false,
+    templateChoiceCount: Int = 0
   ) -> CGSize {
     let cardVisible = showsQuickActions && phase == .recording
       && (!quickActions.isEmpty || hasTemplate)
     guard cardVisible else { return pillSize(for: phase) }
-    return CGSize(
-      width: QuickActionCardMetrics.width,
-      height: QuickActionCardMetrics.height(count: quickActions.count))
+    // A template recording lists only the picker's templates, and never the field.
+    let height = hasTemplate
+      ? QuickActionCardMetrics.height(count: templateChoiceCount, field: false)
+      : QuickActionCardMetrics.height(count: quickActions.count)
+    return CGSize(width: QuickActionCardMetrics.width, height: height)
   }
 
   /// The pill grows with a status word so the user can tell listening from transcribing
@@ -633,7 +744,8 @@ struct RecordingIndicatorView: View {
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
-      hasTemplate: model.templateName != nil)
+      hasTemplate: model.templateName != nil,
+      templateChoiceCount: model.visibleTemplateChoices.count)
     Group {
       if panel != pill {
         QuickActionCardView(
@@ -643,6 +755,9 @@ struct RecordingIndicatorView: View {
           templateName: model.templateName,
           templateEnabled: model.templateEnabled,
           onToggleTemplate: onToggleTemplate,
+          templateChoices: model.visibleTemplateChoices,
+          templateChoiceIndex: model.templateChoiceIndex,
+          onChooseTemplate: onChooseTemplate,
           levels: model.levels,
           typedText: $model.typedPrompt,
           onSelect: onQuickAction,
@@ -744,6 +859,8 @@ private final class RecordingIndicatorPanel: NSPanel {
   var acceptsKeyInput = false
   /// ⌃1–9 while the card has key focus. Returns true when the digit picked an entry.
   var onControlDigit: ((Int) -> Bool)?
+  /// A bare 1–9 while the card has key focus. Returns true when it picked a template.
+  var onDigit: ((Int) -> Bool)?
   /// ↑ (-1) / ↓ (+1) while the card has key focus. Returns true when it moved the highlight.
   var onArrow: ((Int) -> Bool)?
   /// ↩ while the card has key focus. Returns true when it ran the highlighted entry.
@@ -755,6 +872,15 @@ private final class RecordingIndicatorPanel: NSPanel {
 
   /// Caught here rather than in SwiftUI: the text field would otherwise take ⌃digit as input.
   override func sendEvent(_ event: NSEvent) {
+    // Only the template picker takes a bare digit, and it shows no field, so nothing is lost.
+    if event.type == .keyDown,
+      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+      let characters = event.charactersIgnoringModifiers, characters.count == 1,
+      let digit = Int(characters), (1...9).contains(digit),
+      onDigit?(digit) == true
+    {
+      return
+    }
     if event.type == .keyDown,
       event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
       let characters = event.charactersIgnoringModifiers, characters.count == 1,
@@ -822,6 +948,9 @@ final class RecordingIndicatorManager {
   /// Dictate Prompt: the user switched the bound dictation template on (true) or off. Set by
   /// MenuBarController, which keeps the choice on the recording.
   var onTemplateToggled: ((Bool) -> Void)?
+  /// Template shortcut with several templates: the picker changed which template stopping applies
+  /// (a digit, ↑/↓, ↩ or a click). The index is into the names passed to `showQuickActions`.
+  var onTemplateChoice: ((Int) -> Void)?
   /// Dictate Prompt: the user clicked a quick action. The index is into `quickActions`.
   var onQuickAction: ((Int) -> Void)?
   /// Dictate Prompt: the user pressed ↩ in the field. Carries the trimmed, non-empty text.
@@ -923,9 +1052,11 @@ final class RecordingIndicatorManager {
   /// Grows the pill into the Dictate Prompt card. Nothing starts highlighted, and the field
   /// takes keyboard focus, so the user can type right away. `templateName`: the dictation template
   /// bound to the app underneath; the card then shows even with no quick actions, so the header can
-  /// say what stopping does.
+  /// say what stopping does. `templateChoices`: with two or more, the card opens the template
+  /// picker on `templateChoiceIndex`, whose name `templateName` must be.
   func showQuickActions(
-    _ actions: [QuickAction], context: QuickActionContext, templateName: String? = nil
+    _ actions: [QuickAction], context: QuickActionContext, templateName: String? = nil,
+    templateChoices: [String] = [], templateChoiceIndex: Int = 0
   ) {
     model.quickActions = actions
     model.quickActionIndex = nil
@@ -933,6 +1064,10 @@ final class RecordingIndicatorManager {
     model.typedPrompt = ""
     model.templateName = templateName
     model.templateEnabled = true
+    model.templateChoices = templateChoices
+    model.templateChoiceIndex = templateChoices.indices.contains(templateChoiceIndex)
+      ? templateChoiceIndex : 0
+    model.templatePickerOpen = templateChoices.count > 1
     model.quickActionsVisible = !actions.isEmpty || templateName != nil
     if isVisible, let panel {
       position(panel)
@@ -947,6 +1082,8 @@ final class RecordingIndicatorManager {
     model.quickActionsVisible = false
     model.quickActions = []
     model.templateName = nil
+    model.templateChoices = []
+    model.templatePickerOpen = false
     model.quickActionIndex = nil
     if isVisible, let panel { position(panel) }
   }
@@ -973,9 +1110,28 @@ final class RecordingIndicatorManager {
   private func toggleTemplate() {
     guard let name = model.templateName else { return }
     model.templateEnabled.toggle()
+    closeTemplatePicker()
     DebugLogger.log(
       "DICTATION-TEMPLATE: \(model.templateEnabled ? "Applying" : "Not applying") \(name) (Tab)")
     onTemplateToggled?(model.templateEnabled)
+  }
+
+  /// Highlights a template in the picker and tells the recording; `close` collapses the list into
+  /// the "Praxisnotiz · Tab: Normal" header.
+  private func chooseTemplate(_ index: Int, close: Bool) {
+    guard model.templateChoices.indices.contains(index) else { return }
+    model.templateChoiceIndex = index
+    model.templateName = model.templateChoices[index]
+    model.templateEnabled = true
+    DebugLogger.log("DICTATION-TEMPLATE: Picker → choice \(index + 1)\(close ? ", closed" : "")")
+    onTemplateChoice?(index)
+    if close { closeTemplatePicker() }
+  }
+
+  private func closeTemplatePicker() {
+    guard model.templatePickerOpen else { return }
+    model.templatePickerOpen = false
+    if isVisible, let panel { position(panel) }
   }
 
   var quickActions: [QuickAction] { model.quickActions }
@@ -1099,7 +1255,8 @@ final class RecordingIndicatorManager {
       onQuickAction: { [weak self] index in self?.onQuickAction?(index) },
       onSubmitTyped: { [weak self] in self?.submitTyped() },
       onDismissQuickActions: { [weak self] in self?.dismissQuickActionsByUser() },
-      onToggleTemplate: { [weak self] in self?.toggleTemplate() }
+      onToggleTemplate: { [weak self] in self?.toggleTemplate() },
+      onChooseTemplate: { [weak self] index in self?.chooseTemplate(index, close: true) }
     )
     let hostingView = FirstMouseHostingView(rootView: view)
     hostingView.frame = NSRect(origin: .zero, size: size)
@@ -1112,7 +1269,19 @@ final class RecordingIndicatorManager {
       self.onQuickAction?(digit - 1)
       return true
     }
+    panel.onDigit = { [weak self] digit in
+      guard let self, self.model.quickActionsVisible,
+        self.model.visibleTemplateChoices.indices.contains(digit - 1)
+      else { return false }
+      self.chooseTemplate(digit - 1, close: true)
+      return true
+    }
     panel.onArrow = { [weak self] delta in
+      if let self, self.model.quickActionsVisible, !self.model.visibleTemplateChoices.isEmpty {
+        let count = self.model.templateChoices.count
+        self.chooseTemplate(((self.model.templateChoiceIndex + delta) % count + count) % count, close: false)
+        return true
+      }
       guard let self, self.model.quickActionsVisible,
         self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       else { return false }
@@ -1120,6 +1289,16 @@ final class RecordingIndicatorManager {
       return true
     }
     panel.onReturn = { [weak self] in
+      if let self, self.model.quickActionsVisible, self.model.templateName != nil {
+        // The picker: ↩ takes the highlighted template and keeps recording. Without it the
+        // card has no field to submit, so ↩ stops, as the footer says.
+        if !self.model.visibleTemplateChoices.isEmpty {
+          self.chooseTemplate(self.model.templateChoiceIndex, close: true)
+        } else {
+          self.onConfirm?()
+        }
+        return true
+      }
       guard let self, self.model.quickActionsVisible,
         self.model.typedPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
         let index = self.model.quickActionIndex, self.model.quickActions.indices.contains(index)
@@ -1131,6 +1310,7 @@ final class RecordingIndicatorManager {
     panel.onTab = { [weak self] in
       guard let self, self.model.quickActionsVisible, self.model.templateName != nil,
         self.model.quickActionContext == .nothingSelected
+          || !self.model.visibleTemplateChoices.isEmpty
       else { return false }
       self.toggleTemplate()
       return true
@@ -1143,7 +1323,8 @@ final class RecordingIndicatorManager {
       phase: model.phase,
       quickActions: model.quickActions,
       showsQuickActions: model.quickActionsVisible,
-      hasTemplate: model.templateName != nil)
+      hasTemplate: model.templateName != nil,
+      templateChoiceCount: model.visibleTemplateChoices.count)
     return NSSize(width: size.width, height: size.height)
   }
 

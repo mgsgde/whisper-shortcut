@@ -30,10 +30,6 @@ struct SpeechToPromptSettingsTab: View {
 
       SpacedSectionDivider()
 
-      DictationTemplatesSection(viewModel: viewModel, focusedField: $focusedField)
-
-      SpacedSectionDivider()
-
       QuickPromptsSection()
 
       SpacedSectionDivider()

@@ -163,16 +163,6 @@
         }
       }
     },
-    "%@ belongs to %@, so this template does not start yet." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ gehört zu %2$@, daher startet diese Vorlage noch nicht."
-          }
-        }
-      }
-    },
     "%@ can't use %@ attachments. Switch to a Gemini model to chat about PDFs and documents." : {
       "localizations" : {
         "de" : {
@@ -246,6 +236,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ ignoriert den System-Prompt unten, es ist ein reines Spracherkennungsmodell und nimmt keine Anweisungen an. Regeln zu Füllwörtern, Satzzeichen und Formatierung wirken nicht; Ihr Glossar gilt weiterhin, als Stichwort-Hinweise. Wählen Sie ein Gemini-Modell oder GPT-4o Transcribe, wenn der Prompt beachtet werden soll."
+          }
+        }
+      }
+    },
+    "%@ is already used by %@. Take it from there, or record a different key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist schon für %@ vergeben. Übernehmen Sie es von dort oder nehmen Sie eine andere Taste auf."
           }
         }
       }
@@ -643,6 +643,16 @@
     },
     "%lld" : {
       "shouldTranslate" : false
+    },
+    "%lld  %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld  %@"
+          }
+        }
+      }
     },
     "%lld %@" : {
       "localizations" : {
@@ -1688,6 +1698,16 @@
         }
       }
     },
+    "Add a format to dictate into" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format zum Diktieren hinzufügen"
+          }
+        }
+      }
+    },
     "Add a format with its own shortcut" : {
       "localizations" : {
         "de" : {
@@ -1698,12 +1718,102 @@
         }
       }
     },
-    "Give a recurring format its own shortcut: press it, dictate, press it again, and what you said comes back in that format. Tab while recording skips the template once. With text selected, the shortcut edits it like Dictate Prompt." : {
+    "Choose a template" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geben Sie einem wiederkehrenden Format ein eigenes Tastenkürzel: drücken, diktieren, erneut drücken, und das Gesagte kommt in diesem Format zurück. Tab während der Aufnahme lässt die Vorlage einmal weg. Ist Text markiert, bearbeitet das Tastenkürzel ihn wie Dictate Prompt."
+            "value" : "Vorlage wählen"
+          }
+        }
+      }
+    },
+    "Delete “%@”?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ löschen?"
+          }
+        }
+      }
+    },
+    "Describe the format to use this template." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreiben Sie das Format, um diese Vorlage zu nutzen."
+          }
+        }
+      }
+    },
+    "Dictate straight into a fixed format, such as a treatment note." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren Sie direkt in ein festes Format, etwa eine Behandlungsnotiz."
+          }
+        }
+      }
+    },
+    "For example a treatment note: you speak as usual, and the note comes back with Anamnese, Befund and Therapie." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Beispiel eine Behandlungsnotiz: Sie sprechen wie gewohnt, und die Notiz kommt mit Anamnese, Befund und Therapie zurück."
+          }
+        }
+      }
+    },
+    "Format" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format"
+          }
+        }
+      }
+    },
+    "Formats to dictate into, and their shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formate zum Diktieren und ihr Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Give a template instructions to use this key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreiben Sie in einer Vorlage ein Format, damit diese Taste etwas tut."
+          }
+        }
+      }
+    },
+    "If text is selected, the key edits that text instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist Text markiert, bearbeitet die Taste stattdessen diesen Text."
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
           }
         }
       }
@@ -1718,6 +1828,56 @@
         }
       }
     },
+    "Press %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ drücken"
+          }
+        }
+      }
+    },
+    "Press %@ again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erneut drücken"
+          }
+        }
+      }
+    },
+    "Press Tab while you speak to skip the format this time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücken Sie beim Sprechen Tab, um das Format dieses Mal wegzulassen."
+          }
+        }
+      }
+    },
+    "Press a number to choose" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Wählen eine Ziffer drücken"
+          }
+        }
+      }
+    },
+    "Press it again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut drücken"
+          }
+        }
+      }
+    },
     "Press once to start, again to stop. They work in every app." : {
       "localizations" : {
         "de" : {
@@ -1728,12 +1888,52 @@
         }
       }
     },
-    "Record a shortcut to use this template." : {
+    "Press the key" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nehmen Sie ein Tastenkürzel auf, um diese Vorlage zu nutzen."
+            "value" : "Taste drücken"
+          }
+        }
+      }
+    },
+    "Separate key, e.g. for a dictation microphone (optional)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Taste, z. B. für ein Diktiermikrofon (optional)"
+          }
+        }
+      }
+    },
+    "Shortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel"
+          }
+        }
+      }
+    },
+    "Speak" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechen"
+          }
+        }
+      }
+    },
+    "Starts this template directly, without choosing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet diese Vorlage direkt, ohne Auswahl."
           }
         }
       }
@@ -1758,12 +1958,22 @@
         }
       }
     },
-    "Take the key away from the other action and give it to this template" : {
+    "Take it from %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Taste der anderen Aktion wegnehmen und dieser Vorlage geben"
+            "value" : "Von %@ übernehmen"
+          }
+        }
+      }
+    },
+    "Template %lld: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlage %lld: %@"
           }
         }
       }
@@ -1774,6 +1984,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlagen"
+          }
+        }
+      }
+    },
+    "What you say is written down as usual, then put into this format." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was Sie sagen, wird wie gewohnt aufgeschrieben und dann in dieses Format gebracht."
+          }
+        }
+      }
+    },
+    "With several templates, press 1, 2, 3 … while you speak to choose one. It starts on the one you used last." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei mehreren Vorlagen wählen Sie beim Sprechen mit 1, 2, 3 … eine aus. Vorausgewählt ist die zuletzt benutzte."
           }
         }
       }
@@ -8037,6 +8267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Wiederholungsversuche ohne Antwort aufgebraucht"
+          }
+        }
+      }
+    },
+    "e.g. Treatment note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Behandlungsnotiz"
           }
         }
       }
@@ -23338,16 +23578,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Vorlage entfernen"
-          }
-        }
-      }
-    },
-    "Remove template %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorlage %@ entfernen"
           }
         }
       }

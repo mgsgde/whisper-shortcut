@@ -1477,12 +1477,14 @@ enum WhisperLanguage: String, CaseIterable {
 }
 
 // MARK: - Settings Tab Definition
-// Order mirrors the menu-bar dropdown (Dictate ⌘1 → Dictate Prompt ⌘2 → Read Aloud ⌘4 → Chat ⌥Space).
+// Order mirrors the menu-bar dropdown (Dictate ⌘1 → Dictate Prompt ⌘2 → Read Aloud ⌘4 → Chat ⌥Space);
+// Templates sits next to Dictate Prompt, whose pipeline it shares.
 enum SettingsTab: String, CaseIterable {
   case general = "General"
   case accounts = "Accounts"
   case speechToText = "Dictate"
   case speechToPrompt = "Dictate Prompt"
+  case templates = "Templates"
   case screenshot = "Screenshot"
   case readAloud = "Read Aloud"
   case chat = "Chat"
@@ -1501,6 +1503,7 @@ enum SettingsTab: String, CaseIterable {
     case .accounts: return "Accounts"
     case .speechToText: return "Dictate"
     case .speechToPrompt: return "Dictate Prompt"
+    case .templates: return "Templates"
     case .screenshot: return "Screenshot"
     case .readAloud: return "Read Aloud"
     case .chat: return "Chat"
@@ -2291,6 +2294,8 @@ enum SettingsFocusField: Hashable {
   case addToGlossaryShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
   case templateShortcut(UUID)
+  /// The generic template shortcut that starts the last-used template (same section).
+  case templatePickerShortcut
 }
 
 // MARK: - Shortcut Conflict Descriptor
