@@ -374,20 +374,30 @@ class LiveMeetingRecorder: NSObject {
     // guard simply skips the handful of ticks before `isRecording` flips true.
     let startingChunkIndex = chunkIndex
     audioQueue.async { [weak self] in
-      guard !recorder.record() else {
-        DebugLogger.logAudio("LIVE-MEETING: Started recording chunk \(startingChunkIndex) with recorder \(isRecorderA ? "A" : "B")")
+      guard recorder.record() else {
+        DispatchQueue.main.async {
+          guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
+          let error = LiveMeetingRecorderError.recordingFailed(reason: String(localized: "Failed to start recording"))
+          DebugLogger.logError("LIVE-MEETING: Recorder failed to start, tearing down session")
+          self.isSessionActive = false
+          self.chunkTimer?.invalidate()
+          self.chunkTimer = nil
+          self.meteringTimer?.invalidate()
+          self.meteringTimer = nil
+          self.delegate?.liveMeetingRecorder(didFailWithError: error)
+        }
         return
       }
+      // The provisional wall start was taken on main before this queue ran. `record()` can
+      // sit here for seconds, and system audio is extracted from that stamp, so replace it
+      // with the time capture actually began. Recorder identity, not chunk index:
+      // `rotateAndDeliver` increments the index after `startRecording` returns, so an index
+      // captured here never matches a rotated chunk.
+      let started = Date()
+      DebugLogger.logAudio("LIVE-MEETING: Started recording chunk \(startingChunkIndex) with recorder \(isRecorderA ? "A" : "B")")
       DispatchQueue.main.async {
-        guard let self, self.activeRecorder === recorder, self.isSessionActive else { return }
-        let error = LiveMeetingRecorderError.recordingFailed(reason: String(localized: "Failed to start recording"))
-        DebugLogger.logError("LIVE-MEETING: Recorder failed to start, tearing down session")
-        self.isSessionActive = false
-        self.chunkTimer?.invalidate()
-        self.chunkTimer = nil
-        self.meteringTimer?.invalidate()
-        self.meteringTimer = nil
-        self.delegate?.liveMeetingRecorder(didFailWithError: error)
+        guard let self, self.activeRecorder === recorder else { return }
+        self.currentChunkWallStart = started
       }
     }
   }

@@ -62,8 +62,8 @@ final class SystemAudioBuffer {
     return segments.count
   }
 
-  /// Appends mono float samples whose first sample starts at `wallClock`. Real-time: no
-  /// allocation beyond array growth, and growth is pre-reserved.
+  /// Appends mono float samples whose first sample starts at `wallClock`. Real-time: amortised
+  /// Array growth, no per-callback reallocation.
   func append(_ samples: UnsafeBufferPointer<Float>, sampleRate: Double, wallClock: Date) {
     guard samples.baseAddress != nil, samples.count > 0, sampleRate > 0 else { return }
 
@@ -81,7 +81,6 @@ final class SystemAudioBuffer {
       let lastIndex = segments.count - 1
       let last = segments[lastIndex]
       if last.sampleRate == sampleRate, abs(wallClock.timeIntervalSince(last.endDate)) <= 0.05 {
-        segments[lastIndex].samples.reserveCapacity(last.samples.count + samples.count)
         segments[lastIndex].samples.append(contentsOf: samples)
         trimIfNeeded()
         return
@@ -95,10 +94,13 @@ final class SystemAudioBuffer {
     trimIfNeeded()
   }
 
-  /// Produces `Int(duration * outputRate)` samples resampled to `outputRate`, each the average
-  /// of whatever input samples fall inside its `[t, t + 1/outputRate)` window. Windows with no
-  /// covering sample (before any segment, in a gap between segments, or past the newest
-  /// segment) read as 0; a window straddling two adjacent segments averages across both.
+  /// Produces `Int(duration * outputRate)` samples resampled to `outputRate`. At an input rate
+  /// of at least `outputRate`, each output sample is the average of the input samples inside
+  /// its `[t, t + 1/outputRate)` window. Below `outputRate` that window can contain no sample
+  /// (Bluetooth call mode is 16 kHz or 8 kHz into a 24 kHz meeting), so the sample is the linear
+  /// interpolation of the input at `t` instead — or the single sample at `t` when the next one
+  /// lies outside the slice. A time with no covering sample reads as 0; a time covered by two
+  /// slices averages their contributions.
   func extract(from start: Date, duration: TimeInterval, outputRate: Double = 24_000) -> [Float] {
     let count = Int(duration * outputRate)
     guard count > 0 else { return [] }
@@ -117,7 +119,9 @@ final class SystemAudioBuffer {
     lock.lock()
     var slices: [Slice] = []
     for segment in segments {
-      guard let range = sampleRange(in: segment, from: start, to: end) else { continue }
+      // One sample of margin so a lower-rate slice can interpolate at the first and last
+      // output time. The window average ignores samples that fall outside its own [t, t+dt).
+      guard let range = sampleRange(in: segment, from: start, to: end, pad: 1) else { continue }
       slices.append(
         Slice(
           startDate: segment.startDate, sampleRate: segment.sampleRate,
@@ -135,16 +139,34 @@ final class SystemAudioBuffer {
       var sum: Double = 0
       var n = 0
       for slice in slices {
-        let loRaw = t.timeIntervalSince(slice.startDate) * slice.sampleRate
-        let hiRaw = tEnd.timeIntervalSince(slice.startDate) * slice.sampleRate
-        let lo = max(Int((loRaw - Self.timeEpsilon).rounded(.up)), slice.firstIndex)
-        let hi = min(
-          Int((hiRaw - Self.timeEpsilon).rounded(.up)) - 1,
-          slice.firstIndex + slice.samples.count - 1)
-        guard lo <= hi else { continue }
-        for i in lo...hi {
-          sum += Double(slice.samples[i - slice.firstIndex])
-          n += 1
+        if slice.sampleRate < outputRate {
+          let x = t.timeIntervalSince(slice.startDate) * slice.sampleRate
+          let i0 = Int(floor(x))
+          let frac = x - Double(i0)
+          let lastIndex = slice.firstIndex + slice.samples.count - 1
+          let i0Inside = i0 >= slice.firstIndex && i0 <= lastIndex
+          let i1Inside = i0 + 1 >= slice.firstIndex && i0 + 1 <= lastIndex
+          if i0Inside && i1Inside {
+            let s0 = Double(slice.samples[i0 - slice.firstIndex])
+            let s1 = Double(slice.samples[i0 + 1 - slice.firstIndex])
+            sum += s0 * (1 - frac) + s1 * frac
+            n += 1
+          } else if i0Inside {
+            sum += Double(slice.samples[i0 - slice.firstIndex])
+            n += 1
+          }
+        } else {
+          let loRaw = t.timeIntervalSince(slice.startDate) * slice.sampleRate
+          let hiRaw = tEnd.timeIntervalSince(slice.startDate) * slice.sampleRate
+          let lo = max(Int((loRaw - Self.timeEpsilon).rounded(.up)), slice.firstIndex)
+          let hi = min(
+            Int((hiRaw - Self.timeEpsilon).rounded(.up)) - 1,
+            slice.firstIndex + slice.samples.count - 1)
+          guard lo <= hi else { continue }
+          for i in lo...hi {
+            sum += Double(slice.samples[i - slice.firstIndex])
+            n += 1
+          }
         }
       }
       if n > 0 {
@@ -186,8 +208,10 @@ final class SystemAudioBuffer {
   // MARK: - Private
 
   /// Half-open sample index range `[lo, hi)` within `segment` whose timestamps fall in
-  /// `[from, to)`, or nil if the segment has no sample in that window. Call with the lock held.
-  private func sampleRange(in segment: Segment, from: Date, to: Date) -> Range<Int>? {
+  /// `[from, to)`, or nil if the segment has no sample in that window. `pad` extends each end
+  /// by that many samples so interpolation at the window edges still has a neighbour. Call
+  /// with the lock held.
+  private func sampleRange(in segment: Segment, from: Date, to: Date, pad: Int = 0) -> Range<Int>? {
     guard segment.endDate > from, segment.validStartDate < to else { return nil }
 
     let loRaw = from.timeIntervalSince(segment.startDate) * segment.sampleRate
@@ -195,8 +219,8 @@ final class SystemAudioBuffer {
     var lo = Int((loRaw - Self.timeEpsilon).rounded(.up))
     var hi = Int((hiRaw - Self.timeEpsilon).rounded(.up)) - 1
 
-    lo = max(lo, segment.startIndex)
-    hi = min(hi, segment.samples.count - 1)
+    lo = max(lo - pad, segment.startIndex)
+    hi = min(hi + pad, segment.samples.count - 1)
     guard lo <= hi else { return nil }
     return lo..<(hi + 1)
   }
