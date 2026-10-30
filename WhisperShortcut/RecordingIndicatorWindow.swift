@@ -736,6 +736,8 @@ final class RecordingIndicatorManager {
 
   private let model = RecordingIndicatorModel()
   private var panel: RecordingIndicatorPanel?
+  /// Observers that re-raise the pill when another app or Space comes forward.
+  private var frontObservers: [NSObjectProtocol] = []
 
   private enum Constants {
     static let bottomMargin: CGFloat = 28
@@ -806,6 +808,7 @@ final class RecordingIndicatorManager {
 
   func hide() {
     releaseKeyFocus()
+    stopKeepingInFront()
     guard isVisible, let panel else {
       isVisible = false
       return
@@ -917,13 +920,42 @@ final class RecordingIndicatorManager {
     self.panel = panel
     position(panel)
     panel.alphaValue = 0
-    panel.orderFront(nil)
+    // Re-applied on every show: the panel is reused, and anything that lowers its level once
+    // (a stray `window.level = .floating` on the key window) would otherwise stick for good.
+    panel.level = .statusBar
+    panel.orderFrontRegardless()
     isVisible = true
     takeKeyFocusIfListed(panel)
     NSAnimationContext.runAnimationGroup { context in
       context.duration = Constants.fadeDuration
       panel.animator().alphaValue = 1
     }
+    startKeepingInFront()
+  }
+
+  /// Re-raises the pill while it is visible when another app activates or the Space changes.
+  private func startKeepingInFront() {
+    guard frontObservers.isEmpty else { return }
+    let center = NSWorkspace.shared.notificationCenter
+    let raise: (Notification) -> Void = { [weak self] _ in
+      guard let self, self.isVisible, let panel = self.panel else { return }
+      panel.orderFrontRegardless()
+    }
+    frontObservers = [
+      center.addObserver(
+        forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main, using: raise),
+      center.addObserver(
+        forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main, using: raise),
+    ]
+  }
+
+  /// Stops re-raising the pill once it is hidden.
+  private func stopKeepingInFront() {
+    let center = NSWorkspace.shared.notificationCenter
+    for observer in frontObservers {
+      center.removeObserver(observer)
+    }
+    frontObservers.removeAll()
   }
 
   private func makePanel() -> RecordingIndicatorPanel {
@@ -938,7 +970,7 @@ final class RecordingIndicatorManager {
     panel.backgroundColor = .clear
     panel.hasShadow = true
     panel.level = .statusBar
-    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+    panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
     panel.hidesOnDeactivate = false
     panel.isMovable = false
     panel.ignoresMouseEvents = false

@@ -32,9 +32,6 @@ struct SettingsView: View {
     .onAppear {
       setupWindow()
     }
-    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-      setupFloatingWindow()
-    }
     .onReceive(NotificationCenter.default.publisher(for: .openPrivacyPermissionsTab)) { _ in
       selectedTabRaw = SettingsTab.permissions.rawValue
     }
@@ -211,12 +208,6 @@ struct SettingsView: View {
     // would trap users who work offline or through OpenRouter.
     if selectedTab == .accounts && !GeminiCredentialProvider.shared.hasCredential() {
       focusedField = .googleAPIKey
-    }
-  }
-
-  private func setupFloatingWindow() {
-    if let window = NSApp.windows.first(where: { $0.isKeyWindow }) {
-      window.level = .floating
     }
   }
 }
