@@ -3678,15 +3678,17 @@ extension MenuBarController: ShortcutDelegate {
       clipboardManager.discardRestorePoint()
       return
     }
-    let copiedText = clipboardManager.getCleanedClipboardText()
+    // Spoken as copied. The old clipboard cleaner cut runs of identical characters
+    // ("1000000" became "1000"); whitespace is the only normalization left.
+    let copiedText = clipboardManager.getClipboardText()?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     // The selection is in hand: give the user their previous clipboard back (no paste follows, so
     // there is no receiving app to wait for).
     if clipboardManager.restorePendingSnapshot(afterForeignWriteAt: NSPasteboard.general.changeCount) {
       DebugLogger.log("READ-ALOUD: Restored the clipboard contents from before the selection copy")
     }
-    guard let selectedText = copiedText,
-          !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty after cleaning")
+    guard let selectedText = copiedText, !selectedText.isEmpty else {
+      DebugLogger.logWarning("READ-ALOUD: Pasteboard changed but text is empty")
       showNoTextSelectedForReadAloud()
       return
     }

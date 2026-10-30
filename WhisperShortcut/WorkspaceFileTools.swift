@@ -23,6 +23,21 @@ enum WorkspaceFileTools {
   /// Files that are pure noise in a listing.
   private static let prunedFiles: Set<String> = [".DS_Store", ".localized"]
 
+  /// Credential stores. Build-output directories stay readable when named explicitly; these
+  /// never do, on read or on search, even through a symlink whose own name is innocent.
+  static let credentialDirectories: Set<String> = [".ssh", ".gnupg", ".aws", ".kube", ".docker"]
+
+  /// The first path component of `target` below `root` that names a credential store, after
+  /// both sides are symlink-resolved. Nil when `target` is outside `root` or stays clear of them.
+  static func credentialComponent(in target: URL, root: URL) -> String? {
+    let targetParts = target.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    let rootParts = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    guard targetParts.count >= rootParts.count,
+      Array(targetParts.prefix(rootParts.count)) == rootParts
+    else { return nil }
+    return targetParts.dropFirst(rootParts.count).first { credentialDirectories.contains($0) }
+  }
+
   /// Whether an entry should be hidden from `list_directory` and skipped by `search_files`.
   /// `.tmp.*` is matched by prefix: cloud-sync clients (Google Drive, Dropbox) litter shared
   /// folders with those and they are never content.
@@ -62,6 +77,9 @@ enum WorkspaceFileTools {
     do {
       let (target, root) = try WorkspaceFolders.locate(path, scope: scope)
       return try WorkspaceFolders.withAccess(to: root) {
+        if let component = credentialComponent(in: target, root: root.url) {
+          throw ReadError.protectedLocation(component: component)
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
           return ["error": "No such directory: \(target.path)"]
@@ -123,6 +141,9 @@ enum WorkspaceFileTools {
     do {
       let (target, root) = try WorkspaceFolders.locate(path, scope: scope)
       return try WorkspaceFolders.withAccess(to: root) {
+        if let component = credentialComponent(in: target, root: root.url) {
+          throw ReadError.protectedLocation(component: component)
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: target.path, isDirectory: &isDirectory) else {
           return ["error": "No such file: \(target.path)"]
@@ -180,6 +201,10 @@ enum WorkspaceFileTools {
     do {
       if let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         let located = try WorkspaceFolders.locate(path, scope: scope)
+        // Path-scoped pre-check stays outside the scope: a directly named `.ssh` is caught without resolution; `matchFile` re-checks each file inside the open scope.
+        if let component = credentialComponent(in: located.target, root: located.root.url) {
+          throw ReadError.protectedLocation(component: component)
+        }
         scopes = [(located.target, located.root)]
       } else {
         let roots = WorkspaceFolders.roots(scope: scope)
@@ -222,7 +247,7 @@ enum WorkspaceFileTools {
 
           if let match = matchFile(
             url, query: trimmedQuery, searchContent: searchContent,
-            fileSize: values?.fileSize ?? 0) {
+            fileSize: values?.fileSize ?? 0, root: scope.root.url) {
             matches.append(match)
             if matches.count >= limit { return false }
           }
@@ -251,9 +276,18 @@ enum WorkspaceFileTools {
 
   /// Returns a match entry for `url`, or nil. Filename matching is always applied; content
   /// matching additionally scans the head of text files so the model can find a phrase without
-  /// reading every candidate in full.
-  private static func matchFile(_ url: URL, query: String, searchContent: Bool, fileSize: Int)
-    -> [String: Any]? {
+  /// reading every candidate in full. A symlink that resolves outside `root`, or into a
+  /// credential store, is skipped before the file is opened.
+  private static func matchFile(
+    _ url: URL, query: String, searchContent: Bool, fileSize: Int, root: URL
+  ) -> [String: Any]? {
+    let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
+    let resolvedParts = resolved.pathComponents
+    let rootParts = root.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    guard resolvedParts.count >= rootParts.count,
+      Array(resolvedParts.prefix(rootParts.count)) == rootParts
+    else { return nil }
+    if credentialComponent(in: url, root: root) != nil { return nil }
     if url.lastPathComponent.localizedCaseInsensitiveContains(query) {
       return ["path": url.path, "name": url.lastPathComponent, "matched": "name"]
     }
@@ -312,5 +346,16 @@ enum WorkspaceFileTools {
     let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     DebugLogger.logError("WORKSPACE-TOOL: \(context) failed: \(message)")
     return ["error": message]
+  }
+
+  enum ReadError: Error, LocalizedError {
+    case protectedLocation(component: String)
+
+    var errorDescription: String? {
+      switch self {
+      case .protectedLocation(let component):
+        return "\(component) holds credentials and is not shared with the chat."
+      }
+    }
   }
 }
