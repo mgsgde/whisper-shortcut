@@ -225,10 +225,10 @@ Output rules (CRITICAL):
     }
     return nil
   }()
-  /// Latest update channel: every published GitHub release.
+  /// Single multi-item Sparkle appcast for the direct build (an asset of the newest GitHub
+  /// release). Channels are per item: Stable reads the untagged items, Latest also reads
+  /// items tagged `latest`.
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
-  /// Stable update channel: only releases promoted onto the permanent `stable` prerelease.
-  static let sparkleStableFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/download/stable/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).
   static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"

@@ -1,11 +1,25 @@
 #!/usr/bin/env python3
-"""Write a single-item Sparkle 2 appcast for one release (stdlib only)."""
+"""Write a Sparkle 2 appcast for one release and append older items (stdlib only).
+
+The feed is one multi-item appcast. Pass ``--channel latest`` so the new item is
+visible only to clients that allow that channel. Untagged items are visible to
+everyone (Stable). ``--previous`` is an existing appcast; its ``<item>`` blocks are
+kept in order, up to 60 items total. A previous item with the same build is
+replaced. If that previous item had no ``<sparkle:channel>`` (it was already
+promoted), the new item is written without one too, so re-driving a release
+cannot demote it back onto Latest.
+"""
 import argparse
 import html
 import re
 from datetime import datetime, timezone
 from email.utils import format_datetime
 from xml.sax.saxutils import quoteattr
+
+MAX_ITEMS = 60
+ITEM_RE = re.compile(r"<item\b[^>]*>.*?</item>", re.DOTALL)
+VERSION_RE = re.compile(r"<sparkle:version>([^<]*)</sparkle:version>")
+CHANNEL_RE = re.compile(r"<sparkle:channel\b")
 
 
 def inline(text):
@@ -60,6 +74,77 @@ def markdown_to_html(md):
     return "\n".join(out)
 
 
+def previous_items(path):
+    """Item blocks from an existing appcast. Missing, unreadable, or empty → none."""
+    if not path:
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except (OSError, UnicodeError):
+        return []
+    if not text.strip():
+        return []
+    return ITEM_RE.findall(text)
+
+
+def item_build(item):
+    match = VERSION_RE.search(item)
+    return match.group(1).strip() if match else None
+
+
+def render_item(version, build, url, length, signature, notes_html, min_system, pub, channel):
+    lines = [
+        "    <item>",
+        "      <title>%s</title>" % html.escape("WhisperShortcut %s" % version, quote=False),
+        "      <pubDate>%s</pubDate>" % pub,
+        "      <sparkle:version>%s</sparkle:version>" % html.escape(build, quote=False),
+        "      <sparkle:shortVersionString>%s</sparkle:shortVersionString>"
+        % html.escape(version, quote=False),
+    ]
+    if channel:
+        lines.append(
+            "      <sparkle:channel>%s</sparkle:channel>" % html.escape(channel, quote=False)
+        )
+    lines.extend(
+        [
+            "      <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>"
+            % html.escape(min_system, quote=False),
+            "      <description><![CDATA[%s]]></description>" % notes_html,
+            "      <enclosure url=%s length=%s type=\"application/octet-stream\" sparkle:edSignature=%s/>"
+            % (quoteattr(url), quoteattr(length), quoteattr(signature)),
+            "    </item>",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_appcast(version, build, url, length, signature, notes_html, min_system, pub, channel, previous_path):
+    build = build.strip()
+    channel = (channel or "").strip() or None
+    kept = []
+    for item in previous_items(previous_path):
+        if item_build(item) == build:
+            # Already promoted: re-driving this build must not put the tag back.
+            if not CHANNEL_RE.search(item):
+                channel = None
+            continue
+        kept.append(item)
+    items = [
+        render_item(version, build, url, length, signature, notes_html, min_system, pub, channel)
+    ] + kept
+    items = items[:MAX_ITEMS]
+    body = "\n".join(items)
+    return """<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>WhisperShortcut</title>
+%s
+  </channel>
+</rss>
+""" % body
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", required=True)
@@ -70,6 +155,16 @@ def main():
     ap.add_argument("--notes", required=True)
     ap.add_argument("--min-system", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument(
+        "--previous",
+        default=None,
+        help="Existing appcast.xml. Missing, unreadable, or empty is ignored.",
+    )
+    ap.add_argument(
+        "--channel",
+        default=None,
+        help="When set, the new item carries <sparkle:channel>NAME</sparkle:channel>.",
+    )
     a = ap.parse_args()
 
     try:
@@ -79,24 +174,18 @@ def main():
         notes_html = ""
     notes_html = notes_html.replace("]]>", "]]&gt;")
     pub = format_datetime(datetime.now(timezone.utc), usegmt=True)
-    title = html.escape("WhisperShortcut %s" % a.version, quote=False)
-
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>WhisperShortcut</title>
-    <item>
-      <title>{title}</title>
-      <pubDate>{pub}</pubDate>
-      <sparkle:version>{html.escape(a.build, quote=False)}</sparkle:version>
-      <sparkle:shortVersionString>{html.escape(a.version, quote=False)}</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>{html.escape(a.min_system, quote=False)}</sparkle:minimumSystemVersion>
-      <description><![CDATA[{notes_html}]]></description>
-      <enclosure url={quoteattr(a.url)} length={quoteattr(a.length)} type="application/octet-stream" sparkle:edSignature={quoteattr(a.signature)}/>
-    </item>
-  </channel>
-</rss>
-"""
+    xml = build_appcast(
+        a.version,
+        a.build,
+        a.url,
+        a.length,
+        a.signature,
+        notes_html,
+        a.min_system,
+        pub,
+        a.channel,
+        a.previous,
+    )
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(xml)
 

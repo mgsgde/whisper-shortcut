@@ -3,7 +3,7 @@ import Foundation
 @testable import WhisperShortcut_AppStore
 
 /// The direct build's Sparkle channel. A missing or unknown preference must stay on Stable:
-/// that is the feed a practice is handed until someone explicitly chooses Latest.
+/// that choice sees only untagged appcast items until someone explicitly chooses Latest.
 @Suite("Update channel")
 struct UpdateChannelTests {
 
@@ -34,11 +34,10 @@ struct UpdateChannelTests {
     #expect(UpdateChannel.current(defaults) == .latest)
   }
 
-  @Test("Each channel points at its own feed")
-  func feedURLs() {
-    #expect(UpdateChannel.stable.feedURL == AppConstants.sparkleStableFeedURL)
-    #expect(UpdateChannel.latest.feedURL == AppConstants.sparkleFeedURL)
-    #expect(UpdateChannel.stable.feedURL != UpdateChannel.latest.feedURL)
-    #expect(UpdateChannel.stable.feedURL.contains("/releases/download/stable/appcast.xml"))
+  @Test("Stable allows no channel; Latest allows the latest channel")
+  func allowedChannels() {
+    #expect(UpdateChannel.sparkleLatestChannel == "latest")
+    #expect(UpdateChannel.stable.allowedSparkleChannels == Set<String>())
+    #expect(UpdateChannel.latest.allowedSparkleChannels == Set([UpdateChannel.sparkleLatestChannel]))
   }
 }

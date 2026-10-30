@@ -1,20 +1,28 @@
 import Foundation
 
-/// The two Sparkle feeds of the direct (GitHub) build. Stable, the default, only offers releases
-/// that were explicitly promoted. Latest offers every published release, so a practice that works
-/// with the app all day is not handed each version the day it ships.
+/// Channels on the single Sparkle appcast (`AppConstants.sparkleFeedURL`).
+/// An item tagged `<sparkle:channel>latest</sparkle:channel>` is visible only when that
+/// channel is allowed. Untagged items are visible to every client, including copies that
+/// do not understand channels, so Stable is the untagged items and needs no bootstrap.
+/// Promotion removes the tag from one item. Latest is for people who want each release
+/// the day it ships; Stable, the default, waits until a release has been promoted.
 enum UpdateChannel: String, CaseIterable, Identifiable {
   case stable
   case latest
 
   var id: String { rawValue }
 
-  var feedURL: String {
+  /// Name of the Sparkle channel a release carries until it is promoted.
+  static let sparkleLatestChannel = "latest"
+
+  /// Extra channels this choice may see, besides the untagged items every client sees.
+  /// Stable allows none. Latest allows `latest`.
+  var allowedSparkleChannels: Set<String> {
     switch self {
     case .stable:
-      return AppConstants.sparkleStableFeedURL
+      return []
     case .latest:
-      return AppConstants.sparkleFeedURL
+      return [Self.sparkleLatestChannel]
     }
   }
 

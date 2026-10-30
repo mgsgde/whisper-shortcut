@@ -62,11 +62,11 @@ final class UpdaterService: NSObject, ObservableObject {
         Task { @MainActor in self?.lastUpdateCheckDate = value }
       },
     ]
-    DebugLogger.log("UPDATER: started (channel \(channel.rawValue), feed \(channel.feedURL))")
+    DebugLogger.log("UPDATER: started (channel \(channel.rawValue))")
   }
 
   /// Persists the channel and, once Sparkle is running, reschedules the check so the next cycle
-  /// reads the new feed.
+  /// reads the new channel.
   func setChannel(_ newValue: UpdateChannel) {
     UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.updateChannel)
     channel = newValue
@@ -100,7 +100,12 @@ extension UpdaterService: SPUUpdaterDelegate {
       return override
     }
     #endif
-    return UpdateChannel.current().feedURL
+    return AppConstants.sparkleFeedURL
+  }
+
+  /// Stable allows no extra channel (untagged items only). Latest also allows `latest`.
+  nonisolated func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+    UpdateChannel.current().allowedSparkleChannels
   }
 
   nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {

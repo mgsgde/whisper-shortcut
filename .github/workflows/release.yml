@@ -272,6 +272,18 @@ jobs:
           LENGTH=$(stat -f%z "$DMG_PATH")
           BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" WhisperShortcut/Info.plist)
 
+          # One multi-item appcast at releases/latest/download/appcast.xml. The new item is
+          # tagged sparkle:channel latest, so it reaches only Latest users until
+          # scripts/promote-stable.sh removes that tag.
+          curl -fsL "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml" \
+            -o "$RUNNER_TEMP/previous-appcast.xml" || rm -f "$RUNNER_TEMP/previous-appcast.xml"
+          if [ -f "$RUNNER_TEMP/previous-appcast.xml" ]; then
+            echo "Previous appcast shortVersionString values:"
+            grep shortVersionString "$RUNNER_TEMP/previous-appcast.xml" | head -3 || true
+          else
+            echo "No previous appcast; the new item will be the only one."
+          fi
+
           python3 scripts/make-appcast.py \
             --version "$VERSION" \
             --build "$BUILD" \
@@ -280,6 +292,8 @@ jobs:
             --signature "$SIGNATURE" \
             --notes .github/RELEASE_NOTES.md \
             --min-system 15.5 \
+            --previous "$RUNNER_TEMP/previous-appcast.xml" \
+            --channel latest \
             --out "$RUNNER_TEMP/appcast.xml"
 
           echo "APPCAST_PATH=$RUNNER_TEMP/appcast.xml" >> $GITHUB_ENV
