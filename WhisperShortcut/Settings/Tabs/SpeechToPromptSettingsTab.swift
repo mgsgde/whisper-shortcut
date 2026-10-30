@@ -58,6 +58,14 @@ struct SpeechToPromptSettingsTab: View {
   // MARK: - Model Selection Section
   @ViewBuilder
   private var modelSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      promptModelPicker
+      speechRecognitionNote
+    }
+  }
+
+  @ViewBuilder
+  private var promptModelPicker: some View {
     PromptModelSelectionView(
       title: "Dictate Prompt Model",
       systemImage: "cpu",
@@ -70,6 +78,43 @@ struct SpeechToPromptSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Speech recognition note
+  /// Dictate Prompt has no transcription picker of its own, and the Glossary lives on the Dictate
+  /// tab, so users read the Glossary as Dictate-only (the pilot practice did). Text-only prompt
+  /// models transcribe the spoken instruction first (`executePromptWithLocal`): local and MLX with
+  /// the Dictate model, the own server with its speech model, both with the Glossary. Gemini and
+  /// GPT take the audio directly and never see the Glossary.
+  @ViewBuilder
+  private var speechRecognitionNote: some View {
+    let provider = viewModel.data.selectedPromptModel.provider
+    let transcribesFirst = [.local, .localMLX, .customOpenAI].contains(provider)
+    HStack(alignment: .firstTextBaseline, spacing: 6) {
+      Image(systemName: "character.book.closed")
+      Group {
+        switch provider {
+        case .local, .localMLX:
+          Text("Speech recognition: \(viewModel.data.selectedTranscriptionModel.displayName) with your Glossary, both set in Dictate.")
+        case .customOpenAI:
+          Text("Speech recognition uses your server's speech model and your Glossary.")
+        default:
+          Text("This model hears your voice directly, so the Glossary isn't applied.")
+        }
+      }
+      .fixedSize(horizontal: false, vertical: true)
+      if transcribesFirst {
+        Button("Edit Glossary") {
+          NotificationCenter.default.post(
+            name: .openSettingsTab, object: SettingsTab.speechToText.rawValue,
+            userInfo: [SettingsAnchor.userInfoKey: SettingsAnchor.glossary])
+        }
+        .buttonStyle(.link)
+        .pointerCursorOnHover()
+      }
+    }
+    .font(.callout)
+    .foregroundColor(.secondary)
   }
 
   // MARK: - Screen context (voice Dictate Prompt)

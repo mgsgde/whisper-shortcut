@@ -7641,6 +7641,16 @@
         }
       }
     },
+    "Edit Glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar bearbeiten"
+          }
+        }
+      }
+    },
     "Edit profile…" : {
       "localizations" : {
         "de" : {
@@ -18328,6 +18338,26 @@
         }
       }
     },
+    "Speech recognition: %@ with your Glossary, both set in Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spracherkennung: %@ mit Ihrem Glossar, beides unter Diktieren eingestellt."
+          }
+        }
+      }
+    },
+    "Speech recognition uses your server's speech model and your Glossary." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Spracherkennung nutzt das Sprachmodell Ihres Servers und Ihr Glossar."
+          }
+        }
+      }
+    },
     "Speech service was deallocated" : {
       "localizations" : {
         "de" : {
@@ -19646,6 +19676,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieses Meeting wird seit über %lld Minuten transkribiert. Beenden oder weitermachen?"
+          }
+        }
+      }
+    },
+    "This model hears your voice directly, so the Glossary isn't applied." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Modell hört Ihre Stimme direkt, daher wird das Glossar nicht angewendet."
           }
         }
       }
