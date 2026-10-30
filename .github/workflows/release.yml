@@ -275,14 +275,16 @@ jobs:
           # One multi-item appcast at releases/latest/download/appcast.xml. The new item is
           # tagged sparkle:channel latest, so it reaches only Latest users until
           # scripts/promote-stable.sh removes that tag.
-          curl -fsL "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml" \
-            -o "$RUNNER_TEMP/previous-appcast.xml" || rm -f "$RUNNER_TEMP/previous-appcast.xml"
-          if [ -f "$RUNNER_TEMP/previous-appcast.xml" ]; then
-            echo "Previous appcast shortVersionString values:"
-            grep shortVersionString "$RUNNER_TEMP/previous-appcast.xml" | head -3 || true
-          else
-            echo "No previous appcast; the new item will be the only one."
+          # Fail rather than continue without it: a feed holding only the new (tagged) item
+          # would leave Stable users with nothing and drop every promotion so far.
+          if ! curl -fsL --retry 3 --retry-delay 5 \
+              "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml" \
+              -o "$RUNNER_TEMP/previous-appcast.xml"; then
+            echo "::error::Could not download the current appcast.xml - refusing to publish a feed without the earlier releases"
+            exit 1
           fi
+          echo "Previous appcast shortVersionString values:"
+          grep shortVersionString "$RUNNER_TEMP/previous-appcast.xml" | head -3 || true
 
           python3 scripts/make-appcast.py \
             --version "$VERSION" \

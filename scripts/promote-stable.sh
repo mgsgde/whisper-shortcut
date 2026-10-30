@@ -66,6 +66,19 @@ if [[ "$running" != "0" ]]; then
 fi
 
 LATEST_TAG=$(gh release view --json tagName -q .tagName)
+# A draft newer than the published release carries an appcast.xml built from the feed as it
+# was then. Publishing it after this promotion would put the old feed back and silently undo
+# the promotion. Older drafts (held-back releases) can never become "latest" and do not matter.
+newer_drafts=""
+for d in $(gh release list --json tagName,isDraft -q '.[] | select(.isDraft and (.tagName | startswith("v"))) | .tagName'); do
+  if [[ "$(printf '%s\n%s\n' "${LATEST_TAG#v}" "${d#v}" | sort -V | tail -n 1)" == "${d#v}" && "$d" != "$LATEST_TAG" ]]; then
+    newer_drafts="$newer_drafts $d"
+  fi
+done
+if [[ -n "$newer_drafts" ]]; then
+  echo "Refusing: draft release(s)$newer_drafts would undo this promotion when published. Publish or delete them first." >&2
+  exit 1
+fi
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 

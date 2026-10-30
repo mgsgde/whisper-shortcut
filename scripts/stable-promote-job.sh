@@ -284,8 +284,10 @@ if [ -n "$CAND_TAG" ] && [ "$CAND_AGE" -ge 6 ]; then
     else
       set +e
       (
+        # Hermetic: a gate must not depend on live API keys (an expired Gemini key would block
+        # every promotion). The Parakeet env still runs the local offline-dictation tests.
         export TEST_RUNNER_WHISPERSHORTCUT_BENCH_PARAKEET=1
-        bash "$WT/scripts/run-tests.sh"
+        bash "$WT/scripts/run-tests.sh" --hermetic
       ) >"$LOG" 2>&1
       test_rc=$?
       set +e
