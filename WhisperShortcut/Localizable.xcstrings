@@ -23091,6 +23091,56 @@
           }
         }
       }
+    },
+    "Update channel" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update-Kanal"
+          }
+        }
+      }
+    },
+    "Stable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stabil"
+          }
+        }
+      }
+    },
+    "Latest" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste"
+          }
+        }
+      }
+    },
+    "Recommended for work. You get a new version only after it has run in daily use for about a week, at most every two weeks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empfohlen für die Arbeit. Eine neue Version kommt erst, wenn sie etwa eine Woche im Alltag gelaufen ist, höchstens alle zwei Wochen."
+          }
+        }
+      }
+    },
+    "Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

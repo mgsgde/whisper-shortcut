@@ -12,6 +12,8 @@ final class UpdaterService: NSObject, ObservableObject {
 
   @Published private(set) var canCheckForUpdates: Bool = false
   @Published private(set) var lastUpdateCheckDate: Date?
+  /// Feed the direct build checks. Stable until the user picks Latest. See `UpdateChannel`.
+  @Published private(set) var channel: UpdateChannel = UpdateChannel.current()
 
   /// Bridges `SPUUpdater.automaticallyChecksForUpdates` for the Settings toggle.
   var automaticallyChecksForUpdates: Bool {
@@ -60,7 +62,18 @@ final class UpdaterService: NSObject, ObservableObject {
         Task { @MainActor in self?.lastUpdateCheckDate = value }
       },
     ]
-    DebugLogger.log("UPDATER: started (feed \(AppConstants.sparkleFeedURL))")
+    DebugLogger.log("UPDATER: started (channel \(channel.rawValue))")
+  }
+
+  /// Persists the channel and, once Sparkle is running, reschedules the check so the next cycle
+  /// reads the new channel.
+  func setChannel(_ newValue: UpdateChannel) {
+    UserDefaults.standard.set(newValue.rawValue, forKey: UserDefaultsKeys.updateChannel)
+    channel = newValue
+    DebugLogger.log("UPDATER: channel \(newValue.rawValue)")
+    if started {
+      controller.updater.resetUpdateCycleAfterShortDelay()
+    }
   }
 
   /// Called when a live meeting has finished. A held-back scheduled update is brought up now;
@@ -88,6 +101,11 @@ extension UpdaterService: SPUUpdaterDelegate {
     }
     #endif
     return AppConstants.sparkleFeedURL
+  }
+
+  /// Stable allows no extra channel (untagged items only). Latest also allows `latest`.
+  nonisolated func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+    UpdateChannel.current().allowedSparkleChannels
   }
 
   nonisolated func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {

@@ -1,0 +1,43 @@
+import Testing
+import Foundation
+@testable import WhisperShortcut_AppStore
+
+/// The direct build's Sparkle channel. A missing or unknown preference must stay on Stable:
+/// that choice sees only untagged appcast items until someone explicitly chooses Latest.
+@Suite("Update channel")
+struct UpdateChannelTests {
+
+  private func freshDefaults() -> (UserDefaults, String) {
+    let suite = "UpdateChannelTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    return (defaults, suite)
+  }
+
+  @Test("Missing key defaults to stable")
+  func missingKeyIsStable() {
+    let (defaults, suite) = freshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    #expect(UpdateChannel.current(defaults) == .stable)
+    #expect(UpdateChannel.defaultChannel == .stable)
+  }
+
+  @Test("Unknown stored value falls back to stable; latest is latest")
+  func unknownAndLatest() {
+    let (defaults, suite) = freshDefaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    defaults.set("beta", forKey: UserDefaultsKeys.updateChannel)
+    #expect(UpdateChannel.current(defaults) == .stable)
+
+    defaults.set("latest", forKey: UserDefaultsKeys.updateChannel)
+    #expect(UpdateChannel.current(defaults) == .latest)
+  }
+
+  @Test("Stable allows no channel; Latest allows the latest channel")
+  func allowedChannels() {
+    #expect(UpdateChannel.sparkleLatestChannel == "latest")
+    #expect(UpdateChannel.stable.allowedSparkleChannels == Set<String>())
+    #expect(UpdateChannel.latest.allowedSparkleChannels == Set([UpdateChannel.sparkleLatestChannel]))
+  }
+}
