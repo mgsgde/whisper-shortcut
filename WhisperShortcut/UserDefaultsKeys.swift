@@ -300,4 +300,8 @@ enum UserDefaultsKeys {
   static let mcpShareRecentInteractions = "mcpShareRecentInteractions"
   /// MCP clients that have connected to the local server, as JSON. See `MCPClientRegistry`.
   static let mcpConnectedClients = "mcpConnectedClients"
+
+  // MARK: - Updates
+  /// Sparkle channel for the direct build: "stable" (default) or "latest". See UpdateChannel.
+  static let updateChannel = "updateChannel"
 }

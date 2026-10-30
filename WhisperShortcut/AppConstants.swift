@@ -205,7 +205,6 @@ Output rules (CRITICAL):
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
-  /// Sparkle appcast for the direct (GitHub) build; always points at the newest release asset.
   /// Local Debug builds run as `com.magnusgoedde.whispershortcut.dev` ("WhisperShortcut Dev"), so
   /// macOS TCC and the keychain keep them apart from the installed release. Drives the DEV badge.
   static let isDevBuild = Bundle.main.bundleIdentifier?.hasSuffix(".dev") == true
@@ -226,7 +225,10 @@ Output rules (CRITICAL):
     }
     return nil
   }()
+  /// Latest update channel: every published GitHub release.
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
+  /// Stable update channel: only releases promoted onto the permanent `stable` prerelease.
+  static let sparkleStableFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/download/stable/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
   /// Tip link: compare Gemini models (speed, intelligence, pricing).
   static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
