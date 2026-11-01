@@ -398,6 +398,131 @@ struct DictationTemplateTests {
     }
     try body()
   }
+
+  private func praxisTurn(_ instructions: String = "Format the note.") -> SpeechService.PromptTurnKind {
+    .template(SpeechService.DictationTemplateTurn(instructions: instructions, displayName: "Praxis"))
+  }
+
+  @Test("A passed template is always a template turn; Dictate Prompt stays edit or compose")
+  func promptTurnKindDecision() {
+    let instructions = "Format the note."
+    let withSelection = SpeechService.decidePromptTurnKind(
+      templateInstruction: instructions, templateName: "Praxis",
+      usesScreenshotSelection: false, selectedText: "Befund", textInstruction: nil)
+    let expected = SpeechService.PromptTurnKind.template(
+      SpeechService.DictationTemplateTurn(instructions: instructions, displayName: "Praxis"))
+    #expect(withSelection == expected)
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: instructions, templateName: "Praxis",
+      usesScreenshotSelection: true, selectedText: nil, textInstruction: nil) == expected)
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: instructions, templateName: "Praxis",
+      usesScreenshotSelection: false, selectedText: "Befund", textInstruction: "Korrigiere") == expected)
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: nil, templateName: nil,
+      usesScreenshotSelection: false, selectedText: "Befund", textInstruction: nil) == .edit)
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: nil, templateName: nil,
+      usesScreenshotSelection: false, selectedText: nil, textInstruction: nil) == .compose)
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: "  \n", templateName: "Praxis",
+      usesScreenshotSelection: false, selectedText: nil, textInstruction: nil) == .compose)
+    // Screenshot Dictate Prompt with nothing copied is an edit: the selection is in the image.
+    #expect(SpeechService.decidePromptTurnKind(
+      templateInstruction: nil, templateName: nil,
+      usesScreenshotSelection: true, selectedText: nil, textInstruction: nil) == .edit)
+  }
+
+  @Test("A template turn's system prompt is the instructions and the output rule")
+  func templateTurnSystemPromptOmitsStyle() {
+    let instructions = "Gliedere das Diktat in Procedere."
+    let prompt = SpeechService.templateTurnSystemPrompt(instructions: instructions)
+    #expect(prompt == instructions + AppConstants.promptModeOutputRule)
+    #expect(!prompt.contains(AppConstants.defaultPromptModeSystemPrompt))
+    #expect(!prompt.contains(AppConstants.dictatePromptScreenshotSelectionSystemPrompt))
+  }
+
+  @Test("A template turn sends no history and records none")
+  func templateTurnHasNoHistory() {
+    let turn = praxisTurn()
+    #expect(!SpeechService.includesPromptHistory(
+      turnKind: turn, isComposeTurn: false, offlineMode: false))
+    #expect(!SpeechService.recordsPromptHistory(turnKind: turn, offlineMode: false))
+    #expect(SpeechService.includesPromptHistory(
+      turnKind: .edit, isComposeTurn: false, offlineMode: false))
+    #expect(!SpeechService.includesPromptHistory(
+      turnKind: .compose, isComposeTurn: true, offlineMode: false))
+    #expect(SpeechService.recordsPromptHistory(turnKind: .edit, offlineMode: false))
+    #expect(SpeechService.recordsPromptHistory(turnKind: .compose, offlineMode: false))
+    #expect(!SpeechService.recordsPromptHistory(turnKind: .edit, offlineMode: true))
+    #expect(SpeechService.promptHistoryContents(
+      mode: .togglePrompting, isComposeTurn: false, offlineMode: false, turnKind: turn).isEmpty)
+  }
+
+  @Test("A template turn gets no tools")
+  func templateTurnGetsNoTools() {
+    let tools = ["list_directory", "gmail_search"]
+    #expect(SpeechService.agentTools(tools, for: praxisTurn()).isEmpty)
+    #expect(SpeechService.agentTools(tools, for: .edit) == tools)
+    #expect(SpeechService.agentTools(tools, for: .compose) == tools)
+  }
+
+  @Test("A template turn is not refused for a bare edit command")
+  func templateTurnSkipsEditRefusal() {
+    #expect(!DictatePromptSelectionDecision.refusesEditWithoutSelection(
+      hasSelection: false, hadScreenshot: false, instruction: "Korrigiere",
+      isEditQuickAction: false, isTemplateTurn: true))
+    #expect(DictatePromptSelectionDecision.refusesEditWithoutSelection(
+      hasSelection: false, hadScreenshot: false, instruction: "Korrigiere",
+      isEditQuickAction: false))
+  }
+
+  @Test("A template formats a selection; Dictate Prompt still labels it as text to edit")
+  func templateSelectionEnvelope() {
+    let turn = praxisTurn()
+    #expect(SpeechService.promptSelectionBlock(
+      turnKind: turn, clipboardContext: "Befund links", isComposeTurn: false)
+      == "Content to put into the format (the user selected it):\n\nBefund links")
+    #expect(SpeechService.additionalDictationHeader(turnKind: turn, hasSelection: true)
+      == "Additional content the user dictated:")
+    #expect(SpeechService.additionalDictationHeader(turnKind: turn, hasSelection: false) == nil)
+    #expect(SpeechService.additionalDictationHeader(turnKind: .edit, hasSelection: true) == nil)
+    #expect(SpeechService.promptSelectionBlock(
+      turnKind: .edit, clipboardContext: "Befund links", isComposeTurn: false)
+      == "\(AppConstants.clipboardSelectionHeader)\n\nBefund links")
+    #expect(SpeechService.acceptsEmptyTranscript(turnKind: turn, selection: "Befund links"))
+    #expect(!SpeechService.acceptsEmptyTranscript(turnKind: turn, selection: nil))
+    #expect(!SpeechService.acceptsEmptyTranscript(turnKind: turn, selection: "  "))
+    #expect(!SpeechService.acceptsEmptyTranscript(turnKind: .edit, selection: "Befund links"))
+  }
+
+  @Test("A template turn does not rewrite dashes")
+  func templateTurnSkipsDashBackstop() {
+    let dashed = "Note — done"
+    #expect(SpeechService.applyingDashBackstop(
+      dashed, selection: nil, turnKind: praxisTurn(), prefersShortDashes: true) == dashed)
+    #expect(SpeechService.applyingDashBackstop(
+      dashed, selection: nil, turnKind: .edit, prefersShortDashes: false) == dashed)
+    #expect(SpeechService.applyingDashBackstop(
+      dashed, selection: nil, turnKind: .edit, prefersShortDashes: true) != dashed)
+  }
+
+  @Test("A prompt log gains a template name and keeps the prompt mode")
+  func templateLogField() throws {
+    let legacy = #"{"ts":"t","mode":"prompt"}"#.data(using: .utf8)!
+    let decoded = try JSONDecoder().decode(InteractionLogEntry.self, from: legacy)
+    #expect(decoded.mode == "prompt")
+    #expect(decoded.template == nil)
+
+    let entry = InteractionLogEntry(
+      ts: "t", mode: "prompt", model: nil, result: nil, selectedText: nil,
+      userInstruction: "note", modelResponse: "formatted", text: nil, voice: nil,
+      audioRef: nil, transcriptionModel: nil, hadScreenshot: false, latencyMs: 1,
+      provider: "gemini", loadMs: nil, template: "Praxis")
+    let again = try JSONDecoder().decode(InteractionLogEntry.self, from: JSONEncoder().encode(entry))
+    #expect(again.mode == "prompt")
+    #expect(again.template == "Praxis")
+  }
 }
 
 /// The notification observer's closure cannot mutate a captured boolean.

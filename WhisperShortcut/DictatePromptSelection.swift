@@ -53,9 +53,12 @@ enum DictatePromptSelectionDecision {
   /// nothing selected, no screenshot standing in for the selection, and the instruction is an edit
   /// quick action or only a bare edit command. The timeout placeholder is not judged.
   static func refusesEditWithoutSelection(
-    hasSelection: Bool, hadScreenshot: Bool, instruction: String, isEditQuickAction: Bool
+    hasSelection: Bool, hadScreenshot: Bool, instruction: String, isEditQuickAction: Bool,
+    isTemplateTurn: Bool = false
   ) -> Bool {
-    !hasSelection && !hadScreenshot
+    // A template note that starts with "Korrigiere …" is content for the format, not an edit command.
+    if isTemplateTurn { return false }
+    return !hasSelection && !hadScreenshot
       && instruction != SpeechService.voiceInstructionPlaceholder
       && (isEditQuickAction || isBareEditCommand(instruction))
   }
