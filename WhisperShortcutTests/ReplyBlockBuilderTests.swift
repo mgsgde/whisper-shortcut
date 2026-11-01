@@ -31,6 +31,16 @@ struct ReplyBlockBuilderTests {
     blocks.compactMap { if case .codeBlock(let c, let l) = $0 { return (c, l) } else { return nil } }
   }
 
+  private static func textBlocks(_ blocks: [ReplyContentBlock]) -> [AttributedString] {
+    blocks.compactMap { if case .text(let attr) = $0 { return attr } else { return nil } }
+  }
+
+  /// Text of every prose block, in order. Source rows and other non-text blocks are omitted
+  /// so a grounded reply's chip row does not add a trailing break.
+  private static func joinedText(_ blocks: [ReplyContentBlock]) -> String {
+    textBlocks(blocks).map { String($0.characters) }.joined(separator: "\n")
+  }
+
   private static func plainText(_ blocks: [ReplyContentBlock]) -> String {
     blocks.map { block -> String in
       switch block {
@@ -244,6 +254,81 @@ struct ReplyBlockBuilderTests {
     let content = "Example:\n\n```\nlet a = b[[1]](x)\n```"
     let blocks = ReplyBlockBuilder.buildBlocks(content: content, sources: [], groundingSupports: [])
     #expect(Self.codeBlocks(blocks).first?.0 == "let a = b[[1]](x)")
+  }
+
+  // MARK: - Line breaks
+
+  /// `.full` markdown collapses a single newline into a space. Grounded replies never reach
+  /// `normalizeMarkdownParagraphBreaks`, so the break has to survive in the shared renderer.
+  @Test("Single newlines in a reply stay line breaks, grounded or not")
+  func singleNewlinesStayLineBreaks() {
+    let content = "Hi Tom,\nthanks…\nBest,\nMagnus"
+    let ungrounded = ReplyBlockBuilder.buildBlocks(
+      content: content, sources: [], groundingSupports: [])
+    #expect(Self.joinedText(ungrounded) == content)
+
+    let grounded = ReplyBlockBuilder.buildBlocks(
+      content: content,
+      sources: [GroundingSource(uri: "https://example.com/a", title: "A")],
+      groundingSupports: [GroundingSupport(startIndex: 0, endIndex: content.count, groundingChunkIndices: [0])])
+    #expect(Self.joinedText(grounded) == content)
+  }
+
+  @Test("Inline markdown still applies on a line that keeps its break")
+  func inlineMarkdownSurvivesLineBreaks() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "**Hi** Tom,\nthanks", sources: [], groundingSupports: [])
+    #expect(Self.joinedText(blocks) == "Hi Tom,\nthanks")
+  }
+
+  @Test("A heading on its own line is not glued to the surrounding prose")
+  func headingKeepsSurroundingLineBreaks() {
+    let content = "Here is the plan:\n### Step one\nDo the thing."
+    for blocks in [
+      ReplyBlockBuilder.buildBlocks(content: content, sources: [], groundingSupports: []),
+      ReplyBlockBuilder.buildBlocks(
+        content: content,
+        sources: [GroundingSource(uri: "https://example.com/a", title: "A")],
+        groundingSupports: [GroundingSupport(startIndex: 0, endIndex: content.count, groundingChunkIndices: [0])]),
+    ] {
+      let texts = Self.textBlocks(blocks)
+      #expect(texts.count == 1)
+      guard let attr = texts.first else { continue }
+      #expect(String(attr.characters) == "Here is the plan:\nStep one\nDo the thing.")
+      let heading = attr.runs.contains { run in
+        run[ProseFontHint.self] != nil && String(attr[run.range].characters).contains("Step one")
+      }
+      #expect(heading)
+    }
+  }
+
+  @Test("A paragraph that opens with a heading still renders the heading above its body")
+  func leadingHeadingStillRenders() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "### Step one\nDo the thing.", sources: [], groundingSupports: [])
+    #expect(Self.joinedText(blocks) == "Step one\n\nDo the thing.")
+  }
+
+  @Test("A reply keeps prices, inline-code dollars, Windows paths, and real math")
+  func replyKeepsDollarsPathsAndMath() {
+    let content = """
+    costs $5 per month, or $50
+    `echo $HOME and $PATH`
+    C:\\Users\\tom\\index.txt
+    $x^2$
+    $\\alpha \\to \\beta$
+    $$x^2$$
+    """
+    let expected = """
+    costs $5 per month, or $50
+    echo $HOME and $PATH
+    C:\\Users\\tom\\index.txt
+    x²
+    α → β
+    x²
+    """
+    #expect(Self.joinedText(ReplyBlockBuilder.buildBlocks(
+      content: content, sources: [], groundingSupports: [])) == expected)
   }
 
   @Test("Code blocks and separators never take a citation marker")
