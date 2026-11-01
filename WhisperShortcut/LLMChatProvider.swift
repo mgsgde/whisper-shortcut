@@ -1090,7 +1090,7 @@ enum ChatProviderHTTPError {
       // problem with a top-up link, not a rate limit to wait out (same rule as the transcription
       // path and the classic Dictate Prompt request).
       if body.contains("insufficient_quota") {
-        return TranscriptionError.billingRequired()
+        return TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
       return TranscriptionError.rateLimited(retryAfter: nil)
     }

@@ -111,6 +111,15 @@ struct SpeechErrorFormatter {
     case .billingRequired(let topUpURL):
       // When the provider told us unambiguously which balance is empty, say so and let the popup's
       // "Top up" button do the rest — listing three unrelated dashboards would be noise.
+      if topUpURL == TranscriptionError.openAIBillingURL {
+        return String(localized: """
+          💳 Out of Credit
+
+          Your OpenAI API key works, but the API account behind it has no credit left (insufficient_quota).
+
+          A ChatGPT subscription does not include API credit. Use the "Top up" button below to add credit, then try again.
+          """)
+      }
       if topUpURL != nil {
         return String(localized: """
           💳 Out of Credit
@@ -120,17 +129,16 @@ struct SpeechErrorFormatter {
           Add credit to continue. Use the "Top up" button below to open your OpenRouter dashboard.
           """)
       }
+      // Links first: the popup caps its height, and text below the fold reads as missing.
       return String(localized: """
         💳 Billing Required
 
-        Your API account has no usable credit, or this model requires billing to be enabled.
-
-        Note: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately.
-
-        Set up billing for the provider whose key you are using:
+        Your API account has no usable credit, or this model requires billing to be enabled. Set up billing for the provider whose key you are using:
         • Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)
         • OpenAI: https://platform.openai.com/settings/organization/billing — add credit
         • xAI: https://console.x.ai — add credit
+
+        Note: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately.
         """)
 
     case .quotaExceeded(let retryAfter):

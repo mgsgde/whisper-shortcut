@@ -1584,7 +1584,7 @@ class SpeechService {
         // "No credit on the API account" arrives as 429 insufficient_quota — a billing
         // problem, not a rate limit (same mapping as the transcription path).
         if bodyString.contains("insufficient_quota") {
-          throw TranscriptionError.billingRequired()
+          throw TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
         }
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
@@ -2858,7 +2858,7 @@ class SpeechService {
       // OpenAI reports "no credit on the API account" as a 429 with code insufficient_quota.
       // Surface that as a billing problem, not a rate limit — the fix is topping up, not waiting.
       if let bodyString = String(data: data, encoding: .utf8), bodyString.contains("insufficient_quota") {
-        throw TranscriptionError.billingRequired()
+        throw TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
       throw TranscriptionError.rateLimited(retryAfter: nil)
     default:
