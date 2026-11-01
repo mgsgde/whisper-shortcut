@@ -75,21 +75,38 @@ enum OfflineMode {
     return isLocalHost(url.host)
   }
 
-  /// True for hosts that cannot be reached from outside the user's own machine or network:
-  /// loopback, `.local` (Bonjour), link-local, and the three RFC 1918 private IPv4 ranges.
+  /// True for hosts that stay on the user's own machine or network: loopback, single-label
+  /// names (`praxis-server`), `.local` (Bonjour), `.lan`, `.home.arpa`, `.internal`,
+  /// `.localdomain`, link-local, the three RFC 1918 private IPv4 ranges, CGNAT
+  /// 100.64.0.0/10 (Tailscale), IPv6 unique-local (fc00::/7) and IPv6 link-local (fe80::/10).
   ///
   /// Pure and host-only on purpose — it is the one rule the whole mode rests on, so it is
-  /// unit-tested rather than inferred from behaviour.
+  /// unit-tested rather than inferred from behaviour. Public names such as `.ts.net` are
+  /// not local: a tailnet machine is reached by its CGNAT address, not by that suffix.
   static func isLocalHost(_ host: String?) -> Bool {
     guard var host = host?.lowercased(), !host.isEmpty else { return false }
     // Strip an IPv6 literal's brackets and a fully-qualified name's trailing dot.
     host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
     if host.hasSuffix(".") { host.removeLast() }
+    guard !host.isEmpty else { return false }
 
     if host == "localhost" || host.hasSuffix(".localhost") { return true }
     if host == "::1" || host == "0:0:0:0:0:0:0:1" { return true }
-    // Bonjour names (`praxis-server.local`) resolve only inside the local network.
-    if host.hasSuffix(".local") { return true }
+    // Names that resolve only inside the local network. `.localdomain` is not covered by
+    // `.local` — the longer suffix has to be matched on its own.
+    if host.hasSuffix(".local")
+      || host.hasSuffix(".lan")
+      || host.hasSuffix(".home.arpa")
+      || host.hasSuffix(".internal")
+      || host.hasSuffix(".localdomain")
+    {
+      return true
+    }
+    // Before the single-label rule: an IPv6 address has no dot, and a public one
+    // (`2001:db8::1`) must not become "local" for that reason.
+    if host.contains(":") { return isUniqueLocalOrLinkLocalIPv6(host) }
+    // `praxis-server`: a public DNS name has a dot. One label is a LAN name.
+    if !host.contains(".") { return true }
 
     guard let octets = ipv4Octets(host) else { return false }
     switch (octets[0], octets[1]) {
@@ -98,8 +115,19 @@ enum OfflineMode {
     case (192, 168): return true  // RFC 1918
     case (172, 16...31): return true  // RFC 1918
     case (169, 254): return true  // link-local
+    case (100, 64...127): return true  // CGNAT 100.64.0.0/10 (Tailscale)
     default: return false
     }
+  }
+
+  /// `fc00::/7` (leading hextet `fc00`–`fdff`) and `fe80::/10` (`fe80`–`febf`), read from
+  /// the first hex group. A compressed form such as `fc::1` is `00fc::1`, which is neither.
+  private static func isUniqueLocalOrLinkLocalIPv6(_ host: String) -> Bool {
+    let head = host.prefix { $0 != ":" }
+    guard !head.isEmpty, let value = UInt16(head, radix: 16) else { return false }
+    if value & 0xfe00 == 0xfc00 { return true }
+    if value & 0xffc0 == 0xfe80 { return true }
+    return false
   }
 
   /// Parses a dotted-quad IPv4 literal. Returns nil for anything that is not one — including

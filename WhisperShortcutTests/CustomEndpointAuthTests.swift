@@ -74,6 +74,35 @@ struct CustomEndpointAuthTests {
     #expect(Auth.endpointURL(appending: "chat/completions", to: full) == full)
   }
 
+  @Test("A pasted full endpoint is stripped before the other route is appended")
+  func pastedFullEndpointIsRewritten() throws {
+    // The bug: only `hasSuffix` was checked, so a chat URL became
+    // `…/v1/chat/completions/audio/transcriptions`.
+    #expect(
+      Auth.endpointURL(
+        appending: "audio/transcriptions",
+        to: "http://localhost:4000/v1/chat/completions")
+        == "http://localhost:4000/v1/audio/transcriptions")
+    #expect(
+      Auth.endpointURL(
+        appending: "chat/completions",
+        to: "http://localhost:4000/v1/audio/transcriptions")
+        == "http://localhost:4000/v1/chat/completions")
+    #expect(
+      Auth.endpointURL(
+        appending: "audio/transcriptions",
+        to: "http://localhost:4000/v1/completions")
+        == "http://localhost:4000/v1/audio/transcriptions")
+
+    let shaped = try #require(
+      Auth.endpointURL(
+        appending: "audio/transcriptions",
+        to: "https://my-resource.openai.azure.com/openai/deployments/d/chat/completions?api-version=2025-01-01-preview"))
+    let components = try #require(URLComponents(string: shaped))
+    #expect(components.path == "/openai/deployments/d/audio/transcriptions")
+    #expect(components.queryItems?.first { $0.name == "api-version" }?.value == "2025-01-01-preview")
+  }
+
   @Test("A bare Azure resource host expands to the /openai/v1 surface")
   func bareAzureHostExpands() {
     // This is the form Azure's own portal shows, so it is the form users paste.

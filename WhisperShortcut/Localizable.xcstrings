@@ -22086,6 +22086,16 @@
         }
       }
     },
+    "Your server has no speech-to-text endpoint (HTTP 404 at /audio/transcriptions). Chat can still use it. For dictation, choose another Dictate model, or set a separate Dictate URL under Settings → Dictate → Advanced." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr Server hat keinen Endpunkt für die Spracherkennung (HTTP 404 bei /audio/transcriptions). Der Chat kann ihn weiterhin nutzen. Wählen Sie zum Diktieren ein anderes Diktiermodell, oder legen Sie unter Einstellungen → Diktieren → Erweitert eine eigene Diktier-URL fest."
+          }
+        }
+      }
+    },
     "Your own server's base URL is missing. Set it in Settings → Chat, then pick Own server as the chat model." : {
       "localizations" : {
         "de" : {

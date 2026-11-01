@@ -19,6 +19,14 @@ struct NetworkDeadlineTests {
     #expect(NetworkDeadline.transcriptionRequestTimeout <= 120)
   }
 
+  @Test("Self-hosted transcription timeout scales with the recording and stays capped")
+  func selfHostedTimeoutScalesWithAudio() {
+    #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 10) == 60)
+    #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 120) == 150)
+    #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: 900) == 600)
+    #expect(NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: nil) == 60)
+  }
+
   // MARK: - Hang → timeout
 
   /// Never delivers a response. Cancellation arrives via `stopLoading`.
