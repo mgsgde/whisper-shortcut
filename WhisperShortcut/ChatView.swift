@@ -1087,6 +1087,7 @@ class ChatViewModel: ObservableObject {
       // A send can target a background session (the user switched chats mid-stream), so per-session
       // knobs come from that session, not whichever one is on screen.
       let sendingSession = sessionId == session.id ? session : store.session(by: sessionId)
+      Self.countSentChatTurn(provider: selectedModel.provider, isMeeting: sendingSession?.isMeeting == true)
       let thinkingLevel = sendingSession?.thinkingLevel ?? .default
       let placeholderId = UUID()
       // The agent loop itself (rounds, tools, guards) lives in `ChatAgentRunner`; this method is
@@ -1871,6 +1872,26 @@ class ChatViewModel: ObservableObject {
       text = "\(text)\n\n---\n\n\(extra)"
     }
     return ["parts": [["text": text]]]
+  }
+
+  /// Route of a chat turn that was sent, plus a meeting-chat turn. Built-in cloud providers stay
+  /// on the existing `chat.completed` count.
+  private static func countSentChatTurn(provider: ChatModelProvider, isMeeting: Bool) {
+    switch provider {
+    case .openRouter:
+      TelemetryService.shared.count(.chat, .viaOpenRouter)
+    case .chatGPTPlan:
+      TelemetryService.shared.count(.chat, .viaChatGPTPlan)
+    case .customOpenAI:
+      TelemetryService.shared.count(.chat, .viaOwnServer)
+    case .local, .localMLX:
+      TelemetryService.shared.count(.chat, .viaLocal)
+    case .gemini, .grok, .openai, .anthropic:
+      break
+    }
+    if isMeeting {
+      TelemetryService.shared.count(.meeting, .meetingChat)
+    }
   }
 
   /// Current chat model with migration applied. Falls back to the default for audio-only

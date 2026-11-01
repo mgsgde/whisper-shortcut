@@ -1046,8 +1046,10 @@ class SpeechService {
     guard provider != .local, provider != .localMLX else { return "" }
     let requested = WritingContextResolver.current()
     guard let block = WritingStyleStore.shared.promptBlock(
-      for: requested, incoming: incoming, maxChars: WritingStyleStore.maxChars)
+      for: requested, incoming: incoming, maxChars: WritingStyleStore.maxChars),
+      !block.text.isEmpty
     else { return "" }
+    TelemetryService.shared.count(.writingStyle, .used)
     DebugLogger.log(
       "WRITING-STYLE: requested=\(requested.rawValue) used=\(block.context.rawValue) "
         + "examples=\(block.exampleCount) blockChars=\(block.text.count)")

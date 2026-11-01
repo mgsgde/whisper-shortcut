@@ -368,7 +368,10 @@ struct TelemetryTests {
     var counts: [String: Int] = [:]
     var errors: [String: Int] = [:]
     for area in TelemetryArea.allCases {
-      for name in TelemetryCountName.allCases { counts[TelemetryDay.key(area, name)] = 99_999 }
+      // The full area×name matrix no longer fits in 4096 bytes once counts are kept, so this
+      // stress ping uses two names per area. Errors and models are what get shed.
+      counts[TelemetryDay.key(area, .completed)] = 99_999
+      counts[TelemetryDay.key(area, .used)] = 99_999
       for e in TelemetryErrorClass.allCases { errors[TelemetryDay.key(area, e)] = 99_999 }
     }
     let models = Dictionary(uniqueKeysWithValues: TelemetryModelKind.allCases.map { kind in
@@ -398,6 +401,21 @@ struct TelemetryTests {
     #expect(TelemetryModelID.normalize(nil) == nil)
   }
 
+  @Test("Setup flags added later decode as false when an older ping omits them")
+  func setupDecodesMissingFlagsAsFalse() throws {
+    let json = Data(
+      #"{"providers":["gemini"],"offlineWhisperModel":false,"smartImprovement":true,"autoPaste":false}"#
+        .utf8)
+    let setup = try JSONDecoder().decode(TelemetrySetup.self, from: json)
+    #expect(setup.smartImprovement)
+    #expect(!setup.writingStyle)
+    #expect(!setup.mcpEnabled)
+    #expect(!setup.googleConnected)
+    #expect(!setup.trelloConnected)
+    #expect(!setup.mailConnected)
+    #expect(!setup.chatGPTPlanConnected)
+  }
+
   @Test("The Swift vocabulary matches the server's schema.json exactly")
   func schemaParity() throws {
     let url = URL(fileURLWithPath: #filePath)
@@ -415,7 +433,11 @@ struct TelemetryTests {
     #expect(set("milestones") == Set(TelemetryMilestone.allCases.map(\.rawValue)))
     #expect(set("providers") == Set(TelemetryProvider.allCases.map(\.rawValue)))
     #expect(set("modelKinds") == Set(TelemetryModelKind.allCases.map(\.rawValue)))
-    #expect(set("setupFlags") == ["offlineWhisperModel", "smartImprovement", "autoPaste"])
+    #expect(set("setupFlags") == [
+      "offlineWhisperModel", "smartImprovement", "autoPaste",
+      "writingStyle", "mcpEnabled", "googleConnected", "trelloConnected",
+      "mailConnected", "chatGPTPlanConnected",
+    ])
     #expect(schema["modelIdPattern"] as? String == "^[a-z0-9][a-z0-9._:-]{0,47}$")
     #expect(TelemetryModelID.maxLength == 48)
   }

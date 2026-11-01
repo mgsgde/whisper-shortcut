@@ -33,6 +33,11 @@ enum ChatRequestBuilder {
     // the newest message backwards, so a session full of links doesn't send a dozen videos.
     let isGemini = model.provider == .gemini
     let videoLinksByMessage = isGemini ? youTubeLinksToAttach(in: toSend) : [:]
+    // Once per send: only the message just sent, not videos re-attached from earlier turns.
+    if let latestUser = toSend.last(where: { $0.role == .user }),
+       videoLinksByMessage[latestUser.id]?.isEmpty == false {
+      TelemetryService.shared.count(.youtube, .used)
+    }
     // Every other provider is blind to the link but perfectly willing to describe the video from
     // search results — the failure this feature exists to fix. Tell the newest linking turn so the
     // model says it cannot watch the video instead of confabulating it.

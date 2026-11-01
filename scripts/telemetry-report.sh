@@ -116,3 +116,18 @@ WITH p AS ($BASE)
 SELECT provider, COUNT(*) AS daily_pings
 FROM p, UNNEST(JSON_VALUE_ARRAY(j, '\$.setup.providers')) AS provider WHERE kind = 'daily'
 GROUP BY 1 ORDER BY 2 DESC"
+
+q "Setup flags (daily pings with flag true)" "
+WITH p AS ($BASE)
+SELECT flag, COUNTIF(v = 'true') AS daily_pings FROM (
+  SELECT 'offlineWhisperModel' AS flag, JSON_VALUE(j, '\$.setup.offlineWhisperModel') AS v FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'smartImprovement', JSON_VALUE(j, '\$.setup.smartImprovement') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'autoPaste', JSON_VALUE(j, '\$.setup.autoPaste') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'writingStyle', JSON_VALUE(j, '\$.setup.writingStyle') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'mcpEnabled', JSON_VALUE(j, '\$.setup.mcpEnabled') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'googleConnected', JSON_VALUE(j, '\$.setup.googleConnected') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'trelloConnected', JSON_VALUE(j, '\$.setup.trelloConnected') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'mailConnected', JSON_VALUE(j, '\$.setup.mailConnected') FROM p WHERE kind = 'daily'
+  UNION ALL SELECT 'chatGPTPlanConnected', JSON_VALUE(j, '\$.setup.chatGPTPlanConnected') FROM p WHERE kind = 'daily'
+)
+GROUP BY 1 ORDER BY 1"

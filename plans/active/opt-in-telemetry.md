@@ -1,5 +1,7 @@
 # Opt-in Anonymous Usage Statistics — Counts From Real Users, Off by Default
 
+Feature-level counters (gap 14) added 2026-11-01, branch feat/telemetry-feature-counters; server schema must be deployed before the client ships or the new keys are dropped.
+
 **Status:** **Slices A–E implemented (2026-09-29); ships with 8.30, submitted to App Store review 2026-10-02.** Server deployed
 (`whisper-telemetry`, europe-west1; request-log exclusion and BigQuery sink live, verified end to
 end with test pings `app: "0.0"`). Client in `WhisperShortcut/Telemetry/`, UI in

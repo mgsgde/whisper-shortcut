@@ -537,7 +537,21 @@ struct TelemetryEnvironment {
       providers: providers,
       offlineWhisperModel: OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) },
       smartImprovement: ContextLoggingPreference.storedFlag,
-      autoPaste: UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
+      autoPaste: UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation),
+      writingStyle: UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled),
+      mcpEnabled: UserDefaults.standard.bool(forKey: UserDefaultsKeys.mcpServerEnabled),
+      googleConnected: KeychainManager.shared.has(.googleCalendarRefreshToken),
+      trelloConnected: KeychainManager.shared.has(.trelloToken),
+      mailConnected: mailAccountsConnected(),
+      chatGPTPlanConnected: ChatGPTPlanPreferences.isConfigured
     )
+  }
+
+  /// `MailAccountStore` is main-actor isolated; the daily snapshot is taken off the main thread.
+  private static func mailAccountsConnected() -> Bool {
+    if Thread.isMainThread {
+      return MainActor.assumeIsolated { MailAccountStore.hasAccounts }
+    }
+    return DispatchQueue.main.sync { MainActor.assumeIsolated { MailAccountStore.hasAccounts } }
   }
 }

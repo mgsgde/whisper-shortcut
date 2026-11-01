@@ -16,6 +16,16 @@ enum TelemetryArea: String, CaseIterable, Codable {
   case meeting
   case smartImprovement
   case other
+  case mcp
+  case screenshot
+  case copyLastTranscription
+  case glossaryAdd
+  case quickPrompt
+  case writingStyle
+  case googleTool
+  case trelloTool
+  case mailTool
+  case youtube
 
   /// Maps `InteractionLogEntry.mode` / `SignalLogEntry.mode` strings onto an area.
   /// `smartImprovement` is a `RequestOrigin`, not an interaction mode: timeouts on that
@@ -54,6 +64,19 @@ enum TelemetryCountName: String, CaseIterable, Codable {
   case noSpeechDetected
   case noInputSignal
   case glossaryEchoRemoved
+  /// Feature use that is not an `OutcomeSignal`. `init(signal:)` stays exhaustive over signals only.
+  case used
+  case meetingRead
+  case liveTranscriptRead
+  case configRead
+  case configChange
+  case settingsChange
+  case problemReport
+  case meetingChat
+  case viaOpenRouter
+  case viaChatGPTPlan
+  case viaOwnServer
+  case viaLocal
 
   init(signal: OutcomeSignal) {
     switch signal {
@@ -183,11 +206,75 @@ enum TelemetryProvider: String, CaseIterable, Codable {
 // MARK: - Wire format
 
 /// Setup snapshot sent with each daily ping. Booleans and provider names only.
+/// Flags added after the first release decode as `false` when an older queued ping omits them.
 struct TelemetrySetup: Codable, Equatable {
   var providers: [TelemetryProvider]
   var offlineWhisperModel: Bool
   var smartImprovement: Bool
   var autoPaste: Bool
+  var writingStyle: Bool
+  var mcpEnabled: Bool
+  var googleConnected: Bool
+  var trelloConnected: Bool
+  var mailConnected: Bool
+  var chatGPTPlanConnected: Bool
+
+  init(
+    providers: [TelemetryProvider],
+    offlineWhisperModel: Bool,
+    smartImprovement: Bool,
+    autoPaste: Bool,
+    writingStyle: Bool = false,
+    mcpEnabled: Bool = false,
+    googleConnected: Bool = false,
+    trelloConnected: Bool = false,
+    mailConnected: Bool = false,
+    chatGPTPlanConnected: Bool = false
+  ) {
+    self.providers = providers
+    self.offlineWhisperModel = offlineWhisperModel
+    self.smartImprovement = smartImprovement
+    self.autoPaste = autoPaste
+    self.writingStyle = writingStyle
+    self.mcpEnabled = mcpEnabled
+    self.googleConnected = googleConnected
+    self.trelloConnected = trelloConnected
+    self.mailConnected = mailConnected
+    self.chatGPTPlanConnected = chatGPTPlanConnected
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case providers, offlineWhisperModel, smartImprovement, autoPaste
+    case writingStyle, mcpEnabled, googleConnected, trelloConnected, mailConnected, chatGPTPlanConnected
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    providers = try c.decode([TelemetryProvider].self, forKey: .providers)
+    offlineWhisperModel = try c.decode(Bool.self, forKey: .offlineWhisperModel)
+    smartImprovement = try c.decode(Bool.self, forKey: .smartImprovement)
+    autoPaste = try c.decode(Bool.self, forKey: .autoPaste)
+    writingStyle = try c.decodeIfPresent(Bool.self, forKey: .writingStyle) ?? false
+    mcpEnabled = try c.decodeIfPresent(Bool.self, forKey: .mcpEnabled) ?? false
+    googleConnected = try c.decodeIfPresent(Bool.self, forKey: .googleConnected) ?? false
+    trelloConnected = try c.decodeIfPresent(Bool.self, forKey: .trelloConnected) ?? false
+    mailConnected = try c.decodeIfPresent(Bool.self, forKey: .mailConnected) ?? false
+    chatGPTPlanConnected = try c.decodeIfPresent(Bool.self, forKey: .chatGPTPlanConnected) ?? false
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: CodingKeys.self)
+    try c.encode(providers, forKey: .providers)
+    try c.encode(offlineWhisperModel, forKey: .offlineWhisperModel)
+    try c.encode(smartImprovement, forKey: .smartImprovement)
+    try c.encode(autoPaste, forKey: .autoPaste)
+    try c.encode(writingStyle, forKey: .writingStyle)
+    try c.encode(mcpEnabled, forKey: .mcpEnabled)
+    try c.encode(googleConnected, forKey: .googleConnected)
+    try c.encode(trelloConnected, forKey: .trelloConnected)
+    try c.encode(mailConnected, forKey: .mailConnected)
+    try c.encode(chatGPTPlanConnected, forKey: .chatGPTPlanConnected)
+  }
 }
 
 /// One ping, exactly as it is POSTed. `schemaVersion` 1 is `server/telemetry/schema.json`.
