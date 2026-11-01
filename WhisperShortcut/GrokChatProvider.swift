@@ -93,7 +93,7 @@ final class GrokChatProvider: LLMChatProvider {
       // xAI runs both server-side and picks per question, so the extra tool only
       // costs a round trip when the model actually decides X is worth searching.
       body["tools"] =
-        [["type": "web_search"] as [String: Any], Self.xSearchTool(handles: options.xHandles)]
+        [["type": "web_search"] as [String: Any], Self.xSearchTool()]
         + tools.map(\.responsesDeclaration)
 
       // Per-session `/think` override → Responses API nested `reasoning.effort`.
@@ -102,8 +102,7 @@ final class GrokChatProvider: LLMChatProvider {
         body["reasoning"] = ["effort": effort]
       }
 
-      let handleTag = options.xHandles.isEmpty ? "" : "(\(options.xHandles.count) handles)"
-      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search\(handleTag)+\(tools.count)func effort=\(effort ?? "default")")
+      DebugLogger.logNetwork("GROK-RESPONSES: POST \(endpoint) model=\(model) tools=web_search+x_search+\(tools.count)func effort=\(effort ?? "default")")
       return OpenAICompatibleStream.responses(
         try Self.streamConfig(endpoint: endpoint, logTag: "GROK-RESPONSES", cacheKey: options.cacheKey),
         body: body,
@@ -113,18 +112,9 @@ final class GrokChatProvider: LLMChatProvider {
     }
   }
 
-  /// The `x_search` tool object, optionally narrowed to specific accounts.
-  ///
-  /// `allowed_x_handles` is a hard filter — with it set, Grok cannot see any other account — so an
-  /// empty list must omit the key entirely rather than send `[]`, which would restrict the search
-  /// to no accounts at all. The list is capped by `XSearchHandles.parse`; xAI rejects requests
-  /// carrying more than `XSearchHandles.maxHandles`.
-  static func xSearchTool(handles: [String]) -> [String: Any] {
-    var tool: [String: Any] = ["type": "x_search"]
-    if !handles.isEmpty {
-      tool["allowed_x_handles"] = Array(handles.prefix(XSearchHandles.maxHandles))
-    }
-    return tool
+  /// The `x_search` tool. Grok searches all of X.
+  static func xSearchTool() -> [String: Any] {
+    ["type": "x_search"]
   }
 
   // MARK: - Chat Completions API (without search)

@@ -42,7 +42,7 @@ tree disagree, the tree wins; fix the row.
 | OpenRouter connect (PKCE)               | `OpenRouterOAuthService.swift`, `OpenRouterOAuthConfig.swift`, `OpenRouterModelCatalog.swift`, `LoopbackOAuthListener.swift`, `OAuthCSRF.swift` |
 | Google account (Calendar/Tasks/Gmail)   | `GoogleAccountOAuthService.swift`, `GoogleCalendarOAuthConfig.swift`, `GoogleCalendarAPIClient.swift`, `GoogleTasksAPIClient.swift`, `GmailAPIClient.swift` |
 | Trello                                  | `TrelloOAuthService.swift`, `TrelloOAuthConfig.swift`, `TrelloAPIClient.swift`                                      |
-| Grounding links (YouTube, X)            | `YouTubeVideoLink.swift`, `XSearchHandles.swift`                                                                    |
+| Grounding links (YouTube)               | `YouTubeVideoLink.swift`                                                                                            |
 
 ## Models, prompts, credentials
 

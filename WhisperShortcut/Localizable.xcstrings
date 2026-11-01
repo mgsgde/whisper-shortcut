@@ -1688,16 +1688,6 @@
         }
       }
     },
-    "@karpathy @simonw" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "@karpathy @simonw"
-          }
-        }
-      }
-    },
     "Add a format to dictate into" : {
       "localizations" : {
         "de" : {
@@ -2216,16 +2206,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Konten"
-          }
-        }
-      }
-    },
-    "Accounts:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Konten:"
           }
         }
       }
@@ -9518,58 +9498,12 @@
         }
       }
     },
-    "Grok models search X.com posts alongside the web. Listing accounts here limits that search to them — useful when you follow a specific crowd's opinions. Leave empty to search all of X." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok-Modelle durchsuchen neben dem Web auch Beiträge auf X.com. Wenn Sie hier Konten eintragen, beschränkt sich die Suche auf diese – nützlich, wenn Sie den Meinungen bestimmter Leute folgen. Leer lassen, um ganz X zu durchsuchen."
-          }
-        }
-      }
-    },
     "Grok only supports image attachments — %@ isn't supported. Switch to a Gemini model to chat about PDFs and documents." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grok nimmt nur Bilder als Anhang – %@ wird nicht unterstützt. Wechseln Sie zu einem Gemini-Modell, um über PDFs und Dokumente zu chatten."
-          }
-        }
-      }
-    },
-    "Grok only: limit X search to these accounts, e.g. /x @karpathy @simonw (`/x off` = all of X)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur Grok: X-Suche auf diese Konten beschränken, z. B. /x @karpathy @simonw (`/x off` = ganz X)"
-          }
-        }
-      }
-    },
-    "Grok will now search **only** %@ on X in this chat — posts from anyone else stay invisible to it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok durchsucht in diesem Chat auf X jetzt **nur** %@ – Beiträge anderer sieht es nicht."
-          }
-        }
-      }
-    },
-    "Grok will read only these %lld account(s) on X: %@ — posts from anyone else stay invisible to it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grok liest auf X nur diese %1$lld Konten: %2$@. Beiträge aller anderen sieht es nicht."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Grok will read only these %1$lld account(s) on X: %2$@ — posts from anyone else stay invisible to it."
           }
         }
       }
@@ -12872,22 +12806,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Transkriptionsergebnis"
-          }
-        }
-      }
-    },
-    "No usable X handles in \"%@\". %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine brauchbaren X-Namen in „%1$@“. %2$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No usable X handles in \"%1$@\". %2$@"
           }
         }
       }
@@ -17809,16 +17727,6 @@
         }
       }
     },
-    "Separate with spaces or commas. Pasted profile URLs work too. Applies to new chats; type `/x` in a chat to change it there, `/x off` to search all of X." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mit Leerzeichen oder Kommas trennen. Eingefügte Profil-URLs gehen auch. Gilt für neue Chats; mit `/x` ändern Sie es in einem Chat, mit `/x off` wird ganz X durchsucht."
-          }
-        }
-      }
-    },
     "Server" : {
       "localizations" : {
         "de" : {
@@ -17885,16 +17793,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einrichten: %@"
-          }
-        }
-      }
-    },
-    "Set with `/x @karpathy @simonw`, clear with `/x off`." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Festlegen mit `/x @karpathy @simonw`, aufheben mit `/x off`."
           }
         }
       }
@@ -22010,88 +21908,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei geschrieben"
-          }
-        }
-      }
-    },
-    "X accounts for Grok" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "X-Konten für Grok"
-          }
-        }
-      }
-    },
-    "X Accounts for Grok" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "X-Konten für Grok"
-          }
-        }
-      }
-    },
-    "X search covers **all of X** in this chat." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die X-Suche umfasst in diesem Chat **ganz X**."
-          }
-        }
-      }
-    },
-    "X search in this chat is limited to **%@**." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die X-Suche ist in diesem Chat auf **%@** beschränkt."
-          }
-        }
-      }
-    },
-    "X search now covers **all of X** in this chat." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die X-Suche umfasst in diesem Chat jetzt **ganz X**."
-          }
-        }
-      }
-    },
-    "xAI accepts at most %lld accounts — the last %lld will be ignored." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI nimmt höchstens %1$lld Konten an – die letzten %2$lld werden ignoriert."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "xAI accepts at most %1$lld accounts — the last %2$lld will be ignored."
-          }
-        }
-      }
-    },
-    "xAI accepts at most %lld accounts, so the last %lld were dropped." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "xAI nimmt höchstens %1$lld Konten, deshalb wurden die letzten %2$lld weggelassen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "xAI accepts at most %1$lld accounts, so the last %2$lld were dropped."
           }
         }
       }
