@@ -3197,15 +3197,17 @@ class MenuBarController: NSObject {
     // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
     // audio-playing path the prior state is `.speaking` and it won't post on its own.
     let transitionWillPostStop = transitionToIdle && isTTSRunning
-    // Whatever brought us here, this session is over: refuse chunks that are still in flight even
-    // when playback itself isn't being torn down (the cancellation paths pass stopPlayback: false).
+    // Stop first when playback is being torn down. `refuseFurtherChunks` closes the stream once
+    // chunks have been scheduled, so a producer error or cancel can let those buffers finish and
+    // then end the session. After `stop()` nothing is scheduled, so an explicit Stop stays a
+    // teardown and does not take that completion path.
+    if stopPlayback {
+      ttsPlayback.stop()
+    }
     ttsPlayback.refuseFurtherChunks()
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
-    }
-    if stopPlayback {
-      ttsPlayback.stop()
     }
     if transitionToIdle {
       transitionToIdleAndCleanup()

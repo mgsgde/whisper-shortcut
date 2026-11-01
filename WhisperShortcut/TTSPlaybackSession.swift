@@ -329,10 +329,17 @@ final class TTSPlaybackSession {
     completeIfDrained(token: token)
   }
 
-  /// Refuses chunks that are still in flight without tearing playback down. Used by the cancel
-  /// paths that leave the audio alone but must stop new work from reviving the session.
+  /// Refuses chunks that are still in flight without tearing playback down. Used when synthesis
+  /// fails or is cancelled after audio has already started: the owner leaves the engine up
+  /// (`stopPlayback: false`) but nothing further will arrive. Buffers already scheduled have to
+  /// finish and then end the session the same way a normal `closeStream` does — otherwise
+  /// `completeIfDrained` never sees `streamClosed` and `isPlaying` stays true. A refusal before
+  /// any audio is not a failure; the owner reports that error itself (or the user stopped
+  /// during processing).
   func refuseFurtherChunks() {
     acceptingChunks = false
+    guard hasScheduledChunks else { return }
+    closeStream()
   }
 
   // MARK: - Transport controls (driven by the pill)
