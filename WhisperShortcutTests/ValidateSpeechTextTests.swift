@@ -64,4 +64,41 @@ struct ValidateSpeechTextTests {
       TextProcessingUtility.normalizeTranscriptionText("Please remove filler words")
         == "Please")
   }
+
+  @Test("A short German assistant refusal is no speech")
+  func germanRefusalIsNoSpeech() {
+    #expect(throws: TranscriptionError.noSpeechDetected) {
+      try TextProcessingUtility.validateSpeechText(
+        "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
+        mode: "TRANSCRIPTION-MODE")
+    }
+    #expect(throws: TranscriptionError.noSpeechDetected) {
+      try TextProcessingUtility.validateSpeechText(
+        "Gib mir die Audiodatei zum Transkribieren.",
+        mode: "TRANSCRIPTION-MODE")
+    }
+  }
+
+  @Test("A German refusal is only treated as no-speech in transcription modes")
+  func germanRefusalSkippedOutsideTranscription() throws {
+    try TextProcessingUtility.validateSpeechText(
+      "Bitte geben Sie mir die Audiodatei, den ich transkribieren soll.",
+      mode: "PROMPT-MODE")
+  }
+
+  @Test("Three or more prompt keywords are a leak")
+  func threePromptKeywordsAreALeak() {
+    #expect(throws: TranscriptionError.promptLeakDetected) {
+      try TextProcessingUtility.validateSpeechText(
+        "Please convert speech to text and clean text with proper punctuation afterwards.",
+        mode: "TRANSCRIPTION-MODE")
+    }
+  }
+
+  @Test("Two prompt keywords are not enough to count as a leak")
+  func twoPromptKeywordsAreKept() throws {
+    try TextProcessingUtility.validateSpeechText(
+      "Please convert speech to text and use proper punctuation when you can.",
+      mode: "TRANSCRIPTION-MODE")
+  }
 }
