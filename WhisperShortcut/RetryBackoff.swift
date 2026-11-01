@@ -36,6 +36,64 @@ enum RetryBackoff {
     responseBody.contains("insufficient_quota")
   }
 
+  /// Seconds to wait before retrying, taken from a rate-limit response.
+  ///
+  /// `Retry-After` wins (delta-seconds or an HTTP-date). Otherwise `retry-after-ms`, otherwise
+  /// the soonest `anthropic-ratelimit-*-reset` timestamp. Nothing parseable returns nil, and a
+  /// nil delay stays a permanent block (`isPermanentRateLimit`). The value is the server's own
+  /// number — callers clamp the sleep to `maxAutomaticRetryWait`.
+  static func retryAfter(from response: HTTPURLResponse, now: Date = Date()) -> TimeInterval? {
+    if let header = response.value(forHTTPHeaderField: "Retry-After")?
+      .trimmingCharacters(in: .whitespacesAndNewlines), !header.isEmpty {
+      if let seconds = nonNegativeSeconds(header) { return seconds }
+      if let date = httpDate(from: header) {
+        return max(0, date.timeIntervalSince(now))
+      }
+    }
+    if let header = response.value(forHTTPHeaderField: "retry-after-ms"),
+       let milliseconds = nonNegativeSeconds(header) {
+      return milliseconds / 1000
+    }
+    return soonestAnthropicReset(in: response, now: now)
+  }
+
+  private static func nonNegativeSeconds(_ raw: String) -> TimeInterval? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let value = TimeInterval(trimmed), value >= 0, value.isFinite else { return nil }
+    return value
+  }
+
+  /// IMF-fixdate, the only HTTP-date form current APIs send (`Sun, 06 Nov 1994 08:49:37 GMT`).
+  private static func httpDate(from raw: String) -> Date? {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    return formatter.date(from: raw)
+  }
+
+  /// Soonest Anthropic bucket reset. `Retry-After` is authoritative when the server sent one;
+  /// these timestamps are the fallback, and the earliest is the first moment any window opens.
+  private static func soonestAnthropicReset(in response: HTTPURLResponse, now: Date) -> TimeInterval? {
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime]
+    let isoFractional = ISO8601DateFormatter()
+    isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let prefix = "anthropic-ratelimit-"
+    let suffix = "-reset"
+    var soonest: TimeInterval?
+    for (key, value) in response.allHeaderFields {
+      guard let name = (key as? String)?.lowercased(),
+            name.hasPrefix(prefix), name.hasSuffix(suffix),
+            let raw = value as? String else { continue }
+      let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard let date = iso.date(from: trimmed) ?? isoFractional.date(from: trimmed) else { continue }
+      let delta = max(0, date.timeIntervalSince(now))
+      if soonest.map({ delta < $0 }) ?? true { soonest = delta }
+    }
+    return soonest
+  }
+
   /// How long to wait before the next attempt.
   ///
   /// An API-supplied `retryAfter` always wins — it is the server telling us when it will be ready,
@@ -65,11 +123,21 @@ enum RetryBackoff {
   /// cover a Wi-Fi blip or 5xx before the first byte.
   static let preFirstTokenMaxAttempts = 3
 
+  /// Longest a chat stream will automatically sit on a rate limit before the first token.
+  /// The same 120s ceiling `RateLimitCoordinator` uses when it has to guess a backoff: a
+  /// longer server delay is a quota window, and blocking the reply for it is worse than
+  /// showing the error (the full delay stays on the error for the message).
+  static let maxAutomaticRetryWait: TimeInterval = 120
+
   /// Pre-first-token stream failures that are worth retrying (Wi-Fi blip, 5xx, transient
-  /// rate limits). Auth, cancel, and permanent spending-cap 429s are not.
+  /// rate limits). Auth, cancel, permanent spending-cap 429s, and a delay past
+  /// `maxAutomaticRetryWait` are not.
   static func isTransientPreFirstToken(_ error: Error) -> Bool {
     if error is CancellationError { return false }
     if isPermanentRateLimit(error) { return false }
+    if let wait = (error as? TranscriptionError)?.retryAfter, wait > maxAutomaticRetryWait {
+      return false
+    }
     if let urlError = error as? URLError {
       switch urlError.code {
       case .cancelled:
@@ -115,11 +183,13 @@ enum RetryBackoff {
           throw error
         }
         let te = error as? TranscriptionError
-        let delaySeconds = delay(
-          attempt: attempt,
-          retryAfter: te?.retryAfter,
-          base: (te?.isServerOrUnavailable ?? false) ? 2.0 : 1.0,
-          exponential: te?.isServerOrUnavailable ?? false)
+        let delaySeconds = min(
+          maxAutomaticRetryWait,
+          delay(
+            attempt: attempt,
+            retryAfter: te?.retryAfter,
+            base: (te?.isServerOrUnavailable ?? false) ? 2.0 : 1.0,
+            exponential: te?.isServerOrUnavailable ?? false))
         DebugLogger.log(
           "\(logTag)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delaySeconds))s: \(error.logDescription)")
         await sleep(delaySeconds)

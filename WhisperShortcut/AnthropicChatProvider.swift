@@ -149,7 +149,7 @@ final class AnthropicChatProvider: LLMChatProvider {
                 if includesSearch, Self.isWebSearchRejection(status: http.statusCode, body: text) {
                   throw WebSearchRejected()
                 }
-                throw Self.mapHTTPError(status: http.statusCode, body: text)
+                throw Self.mapHTTPError(response: http, body: text)
               }
               return bytes
             }
@@ -420,7 +420,7 @@ final class AnthropicChatProvider: LLMChatProvider {
     if http.statusCode < 200 || http.statusCode >= 300 {
       let text = String(data: data, encoding: .utf8) ?? ""
       DebugLogger.logError("ANTHROPIC-STRUCTURED: HTTP \(http.statusCode) body=\(text.prefix(500))")
-      throw Self.mapHTTPError(status: http.statusCode, body: text)
+      throw Self.mapHTTPError(response: http, body: text)
     }
 
     guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -459,11 +459,12 @@ final class AnthropicChatProvider: LLMChatProvider {
     request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
   }
 
-  private static func mapHTTPError(status: Int, body: String) -> Error {
+  static func mapHTTPError(response: HTTPURLResponse, body: String) -> Error {
     ChatProviderHTTPError.map(
       provider: "Claude",
-      status: status,
+      status: response.statusCode,
       body: body,
+      response: response,
       invalidKey: TranscriptionError.networkError(
         String(localized: "Anthropic API key is invalid. Check the key in Settings → Accounts.")))
   }

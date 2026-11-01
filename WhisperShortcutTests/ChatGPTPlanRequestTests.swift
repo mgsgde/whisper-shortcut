@@ -128,7 +128,9 @@ struct ChatGPTPlanRequestTests {
     configuration.protocolClasses = [OpenAICompatibleStreamTests.StubProtocol.self]
     let config = OpenAICompatibleStream.Config(
       endpoint: endpoint, headers: [:], logTag: "TEST",
-      mapHTTPError: { status, text in ChatGPTPlanError.fromHTTP(status: status, body: text) },
+      mapHTTPError: { response, text in
+        ChatGPTPlanError.fromHTTP(status: response.statusCode, body: text)
+      },
       session: URLSession(configuration: configuration),
       terminalFailure: strict ? { type, payload in ChatGPTPlanError.fromStreamFailure(type: type, payload: payload) } : nil)
     var count = 0

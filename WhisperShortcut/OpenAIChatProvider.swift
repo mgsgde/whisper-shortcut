@@ -296,11 +296,12 @@ final class OpenAIChatProvider: LLMChatProvider {
       endpoint: endpoint,
       headers: Self.authHeaders(apiKey: apiKey, route: route),
       logTag: logTag,
-      mapHTTPError: { status, body in
+      mapHTTPError: { response, body in
         ChatProviderHTTPError.map(
           provider: route.providerLabel,
-          status: status,
+          status: response.statusCode,
           body: body,
+          response: response,
           invalidKey: TranscriptionError.networkError(invalidKeyMessage(route: route)))
       })
   }

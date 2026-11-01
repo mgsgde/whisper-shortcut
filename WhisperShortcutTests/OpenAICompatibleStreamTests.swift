@@ -74,8 +74,8 @@ struct OpenAICompatibleStreamTests {
       endpoint: endpoint,
       headers: [:],
       logTag: "TEST",
-      mapHTTPError: { status, body in
-        TranscriptionError.networkError("mapped \(status): \(body.prefix(40))")
+      mapHTTPError: { response, body in
+        TranscriptionError.networkError("mapped \(response.statusCode): \(body.prefix(40))")
       },
       session: URLSession(configuration: configuration))
   }

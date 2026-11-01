@@ -105,7 +105,9 @@ final class ChatGPTPlanChatProvider: LLMChatProvider {
               endpoint: ChatGPTPlanOAuthConfig.responsesEndpoint,
               headers: ["Authorization": "Bearer \(token)"],
               logTag: "CHATGPT-PLAN-RESPONSES",
-              mapHTTPError: { status, text in ChatGPTPlanError.fromHTTP(status: status, body: text) },
+              mapHTTPError: { response, text in
+                ChatGPTPlanError.fromHTTP(status: response.statusCode, body: text)
+              },
               terminalFailure: { type, payload in
                 ChatGPTPlanError.fromStreamFailure(type: type, payload: payload)
               })

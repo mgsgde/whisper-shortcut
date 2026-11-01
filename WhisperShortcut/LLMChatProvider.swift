@@ -414,9 +414,11 @@ enum OpenAICompatibleStream {
     let headers: [String: String]
     /// Prefix for this provider's `DebugLogger` lines, e.g. `OPENAI-CHAT-STREAM`.
     let logTag: String
-    /// Maps a non-2xx status + body to the error the user should see. Providers differ sharply
+    /// Maps a non-2xx response + body to the error the user should see. Providers differ sharply
     /// here — xAI folds "out of credits" into 429, a local server's 404 means "model not pulled".
-    let mapHTTPError: (Int, String) -> Error
+    /// The response is how a 429 keeps its `Retry-After`; without one the delay stays nil and
+    /// the pre-first-token loop treats the limit as permanent.
+    let mapHTTPError: (HTTPURLResponse, String) -> Error
     /// Maps a transport failure (connection refused, host unreachable) before any HTTP status
     /// exists. Only the local provider needs this; the default rethrows unchanged.
     var mapTransportError: (Error) -> Error = { $0 }
@@ -475,7 +477,7 @@ enum OpenAICompatibleStream {
       for try await b in bytes { errData.append(b) }
       let text = String(data: errData, encoding: .utf8) ?? ""
       DebugLogger.logError("\(config.logTag): HTTP \(http.statusCode) body=\(text.prefix(500))")
-      throw config.mapHTTPError(http.statusCode, text)
+      throw config.mapHTTPError(http, text)
     }
     return bytes
   }
@@ -1075,7 +1077,7 @@ enum OpenAIResponsesAPIConverter {
 /// Maps a provider HTTP error into a typed `TranscriptionError` without leaking raw JSON.
 enum ChatProviderHTTPError {
   static func map(
-    provider: String, status: Int, body: String, invalidKey: Error? = nil
+    provider: String, status: Int, body: String, response: HTTPURLResponse? = nil, invalidKey: Error? = nil
   ) -> Error {
     if (status == 401 || status == 403), let invalidKey {
       return invalidKey
@@ -1083,11 +1085,14 @@ enum ChatProviderHTTPError {
     if status == 429 {
       // OpenAI reports "no credit on the account" as 429 insufficient_quota. That is a billing
       // problem with a top-up link, not a rate limit to wait out (same rule as the transcription
-      // path and the classic Dictate Prompt request).
+      // path and the classic Dictate Prompt request) — a `Retry-After` on that body changes nothing.
+      // Any other 429 keeps the server's delay. Nil means "no delay advertised", which the
+      // pre-first-token loop treats as a permanent cap and does not retry.
       if body.contains("insufficient_quota") {
         return TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
-      return TranscriptionError.rateLimited(retryAfter: nil)
+      let retryAfter = response.flatMap { RetryBackoff.retryAfter(from: $0) }
+      return TranscriptionError.rateLimited(retryAfter: retryAfter)
     }
     if (500...599).contains(status) {
       return TranscriptionError.serverError(status)
