@@ -41,11 +41,68 @@ enum MeetingAudioBacklog {
     return TimeInterval(ms) / 1000
   }
 
+  /// Transcript folder `finish()` writes and, after a rename, the file `Meeting-<ts>-Name.txt`.
+  static func meetingsDirectory() -> URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
+  }
+
+  /// Follows a `finish()` rename (`Meeting-<ts>` → `Meeting-<ts>-Name`) so a late retry does
+  /// not recreate the original stem as a fragment meeting.
+  ///
+  /// If `stem.txt` still exists, the meeting was not renamed (or this *is* the new name).
+  /// Otherwise the longest `stem-*.txt` in `meetingsDirectory` is the renamed file.
+  static func resolvedStem(_ stem: String, meetingsDirectory: URL? = nil) -> String {
+    let dir = meetingsDirectory ?? Self.meetingsDirectory()
+    let own = dir.appendingPathComponent("\(stem).txt")
+    if FileManager.default.fileExists(atPath: own.path) { return stem }
+    let files = (try? FileManager.default.contentsOfDirectory(
+      at: dir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []
+    let successors = files
+      .filter { $0.pathExtension == "txt" }
+      .map { $0.deletingPathExtension().lastPathComponent }
+      .filter { $0.hasPrefix(stem + "-") }
+      .sorted { $0.count > $1.count }
+    return successors.first ?? stem
+  }
+
+  /// Every backlog folder that belongs to `resolved` — the renamed stem itself plus any
+  /// pre-rename folder still holding late-failed chunks.
+  static func sourceStems(forResolved resolved: String, meetingsDirectory: URL? = nil) -> [String] {
+    let dir = meetingsDirectory ?? Self.meetingsDirectory()
+    var stems: Set<String> = [resolved]
+    for candidate in stemsWithBacklog() {
+      if resolvedStem(candidate, meetingsDirectory: dir) == resolved {
+        stems.insert(candidate)
+      }
+    }
+    return stems.sorted()
+  }
+
+  /// Splices recovered chunks into the resolved transcript (follows a rename) and returns
+  /// that stem. Pure I/O helper so a retry can be tested without a live session.
+  @discardableResult
+  static func spliceRecovered(
+    _ chunks: [LiveMeetingChunk],
+    recordedStem: String,
+    meetingsDirectory: URL
+  ) throws -> String {
+    let resolved = resolvedStem(recordedStem, meetingsDirectory: meetingsDirectory)
+    let url = meetingsDirectory.appendingPathComponent("\(resolved).txt")
+    let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    let merged = merge(chunks, into: LiveMeetingTranscriptStore.parseTranscript(existing))
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try transcriptText(merged).write(to: url, atomically: true, encoding: .utf8)
+    return resolved
+  }
+
   /// Moves a chunk that failed to transcribe into the backlog. Returns false when the move failed;
   /// the caller then still owns `audioURL`.
   @discardableResult
   static func retain(_ audioURL: URL, stem: String, startTime: TimeInterval) -> Bool {
-    let dir = directory(stem: stem)
+    let resolved = resolvedStem(stem)
+    let dir = directory(stem: resolved)
     let target = dir.appendingPathComponent(filename(startTime: startTime))
     do {
       try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -53,10 +110,12 @@ enum MeetingAudioBacklog {
         try FileManager.default.removeItem(at: target)
       }
       try FileManager.default.moveItem(at: audioURL, to: target)
-      DebugLogger.log("MEETING-BACKLOG: Kept untranscribed chunk \(target.lastPathComponent) for \(stem)")
+      DebugLogger.log(
+        "MEETING-BACKLOG: Kept untranscribed chunk \(target.lastPathComponent) for \(resolved)"
+          + (resolved == stem ? "" : " (followed rename from \(stem))"))
       return true
     } catch {
-      DebugLogger.logError("MEETING-BACKLOG: Failed to keep chunk for \(stem): \(error.logDescription)")
+      DebugLogger.logError("MEETING-BACKLOG: Failed to keep chunk for \(resolved): \(error.logDescription)")
       return false
     }
   }

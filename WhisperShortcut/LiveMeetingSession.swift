@@ -724,13 +724,18 @@ final class LiveMeetingSession: NSObject {
   /// deleted, so a failed write never costs audio.
   @MainActor
   private func retryBacklog(stem: String) async -> (recovered: Int, error: Error?) {
-    let transcriptURL = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-      .appendingPathComponent("\(stem).txt")
+    let meetingsDir = MeetingAudioBacklog.meetingsDirectory()
+    let resolved = MeetingAudioBacklog.resolvedStem(stem, meetingsDirectory: meetingsDir)
+    if resolved != stem {
+      DebugLogger.log("MEETING-BACKLOG: Following rename \(stem) → \(resolved)")
+    }
+    let sourceStems = MeetingAudioBacklog.sourceStems(
+      forResolved: resolved, meetingsDirectory: meetingsDir)
+    let transcriptURL = meetingsDir.appendingPathComponent("\(resolved).txt")
     var recoveredChunks: [LiveMeetingChunk] = []
     var consumed: [URL] = []
     var failure: Error?
-    for item in MeetingAudioBacklog.items(stem: stem) {
+    for item in sourceStems.flatMap({ MeetingAudioBacklog.items(stem: $0) }) {
       do {
         let text = try await transcribeChunk(item.url)
           .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -752,28 +757,28 @@ final class LiveMeetingSession: NSObject {
     }
 
     let store = LiveMeetingTranscriptStore.shared
-    let isShownMeeting = store.currentMeetingFilenameStem == stem
+    let isShownMeeting = store.currentMeetingFilenameStem == resolved
+      || store.currentMeetingFilenameStem == stem
     var merged: [LiveMeetingChunk] = []
     if !recoveredChunks.isEmpty {
-      let existingText = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
-      merged = MeetingAudioBacklog.merge(
-        recoveredChunks, into: LiveMeetingTranscriptStore.parseTranscript(existingText))
       do {
-        try FileManager.default.createDirectory(
-          at: transcriptURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try MeetingAudioBacklog.transcriptText(merged).write(
-          to: transcriptURL, atomically: true, encoding: .utf8)
+        _ = try MeetingAudioBacklog.spliceRecovered(
+          recoveredChunks, recordedStem: stem, meetingsDirectory: meetingsDir)
+        let existingText = (try? String(contentsOf: transcriptURL, encoding: .utf8)) ?? ""
+        merged = LiveMeetingTranscriptStore.parseTranscript(existingText)
       } catch {
-        DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(stem): \(error)")
+        DebugLogger.logError("MEETING-BACKLOG: Failed to write transcript for \(resolved): \(error)")
         return (0, error)
       }
       if isShownMeeting { store.replaceChunks(merged) }
       MeetingListService.shared.invalidateCache(for: nil)
       MeetingListService.shared.refresh()
-      DebugLogger.log("MEETING-BACKLOG: Spliced \(recoveredChunks.count) chunk(s) into \(stem)")
+      DebugLogger.log("MEETING-BACKLOG: Spliced \(recoveredChunks.count) chunk(s) into \(resolved)")
     }
     consumed.forEach { try? FileManager.default.removeItem(at: $0) }
-    MeetingAudioBacklog.removeIfEmpty(stem: stem)
+    for source in sourceStems {
+      MeetingAudioBacklog.removeIfEmpty(stem: source)
+    }
 
     // The summary is only worth writing once the transcript is whole (see `finish()`).
     if failure == nil {
@@ -1176,12 +1181,19 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         }()
         // Keep the audio: losing a meeting because the Wi-Fi dropped is not acceptable, and the
         // chunk can be transcribed later at its original timestamp.
-        let kept = stem.map {
+        let keptStem = stem.map { MeetingAudioBacklog.resolvedStem($0) }
+        let kept = keptStem.map {
           MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
           if kept { self.onBacklogChanged() }
+          // The 30 s finish safety net can rename and finalize while this call is still
+          // out. Retain already followed the rename; kick retry so the chunk lands in
+          // the renamed transcript instead of waiting for a manual retry.
+          if kept, self.finalized, let keptStem {
+            Task { @MainActor in await self.retryBacklog(stems: [keptStem], announce: false) }
+          }
           if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
               self.didShowRateLimitAlert = true
