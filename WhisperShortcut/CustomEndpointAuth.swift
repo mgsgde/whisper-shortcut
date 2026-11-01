@@ -107,6 +107,10 @@ enum CustomEndpointAuth {
   ///     exactly as Azure's portal shows it (`https://my-res.openai.azure.com`) works.
   ///   - **Adds a missing `api-version`** on a classic Azure deployment URL, which is required
   ///     there and is the single most common way that URL is pasted wrong.
+  ///   - **Treats a pasted full endpoint as a base.** A trailing `/chat/completions`,
+  ///     `/audio/transcriptions` or `/completions` is removed before the new suffix is
+  ///     appended, so Dictate and Chat do not stack paths. The query string stays
+  ///     (Azure `api-version`).
   ///
   /// Returns `nil` for a URL that cannot be parsed, so the caller can surface a real error rather
   /// than POST to a mangled string.
@@ -126,6 +130,14 @@ enum CustomEndpointAuth {
     // needs no api-version and takes the deployment name as the `model` field.
     if isAzure && path.isEmpty {
       path = "/openai/v1"
+    }
+
+    // Longer suffixes first: `/chat/completions` also ends in `/completions`, and trimming
+    // only the short one would leave `/v1/chat` in front of the new route.
+    let pastedEndpointSuffixes = ["/chat/completions", "/audio/transcriptions", "/completions"]
+    if let pasted = pastedEndpointSuffixes.first(where: { path.hasSuffix($0) }) {
+      path.removeLast(pasted.count)
+      while path.hasSuffix("/") { path.removeLast() }
     }
 
     if !path.hasSuffix("/\(pathSuffix)") {

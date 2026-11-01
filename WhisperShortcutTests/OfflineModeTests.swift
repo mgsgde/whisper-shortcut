@@ -38,12 +38,35 @@ struct OfflineModeTests {
       // 172.32 is outside the private range even though 172.16–31 is inside it.
       "172.32.0.1", "172.15.255.255",
       // Hostnames that merely *contain* a private-looking label are not private.
-      "127.0.0.1.evil.com", "not-local", "10.0.0.5.example.com",
+      // A single label (`not-local`) is a LAN name and is covered with the other local cases.
+      "127.0.0.1.evil.com", "not-local.example.com", "10.0.0.5.example.com",
       "", "999.1.1.1", "10.0.0",
     ] {
       #expect(!OfflineMode.isLocalHost(host), "\(host) should not count as local")
     }
     #expect(!OfflineMode.isLocalHost(nil))
+  }
+
+  @Test("Single-label names, LAN suffixes, CGNAT and local IPv6 stay on this network")
+  func lanHostsAndLocalIPv6AreAllowed() {
+    for host in [
+      "praxis-server", "not-local",
+      "praxis.lan", "nas.home.arpa", "printer.internal", "server.localdomain",
+      "100.64.0.1", "100.64.0.0", "100.127.255.255",
+      "fc00::1", "fd12:3456::1",
+      "fe80::1", "fe9a::1", "fea0::1", "febf::1", "[fe80::1]",
+    ] {
+      #expect(OfflineMode.isLocalHost(host), "\(host) should count as local")
+    }
+    for host in [
+      "example.com",
+      "100.128.0.1", "100.63.255.255",
+      "2001:db8::1", "fe00::1",
+      // Public Tailscale MagicDNS. The CGNAT address is local; this suffix is not.
+      "box.ts.net",
+    ] {
+      #expect(!OfflineMode.isLocalHost(host), "\(host) should not count as local")
+    }
   }
 
   @Test("Only http(s) is judged by host; other schemes pass through")

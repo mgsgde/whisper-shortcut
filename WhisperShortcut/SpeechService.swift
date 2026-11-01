@@ -2515,9 +2515,10 @@ class SpeechService {
     let audioData = try Data(contentsOf: audioURL)
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
-    let session = makeTranscriptionURLSession()
     let modelID = CustomEndpointPreferences.transcriptionModelID
     let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+    let requestTimeout = NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: audioDuration)
+    let session = Self.selfHostedTranscriptionSession
 
     // A legacy URL that is not `{base}/audio/transcriptions` keeps today's attempt list.
     if let configuredEndpoint = CustomEndpointPreferences.transcriptionURLOverride {
@@ -2562,7 +2563,7 @@ class SpeechService {
         attempts.append((baseURL, "audio_file"))
       }
 
-      var lastError: Error = TranscriptionError.networkError(String(localized: "All request attempts failed"))
+      var lastError = TranscriptionError.networkError(String(localized: "All request attempts failed"))
       for (attemptURL, fieldName) in attempts {
         do {
           return try await sendOpenAICompatibleTranscriptionRequest(
@@ -2576,14 +2577,22 @@ class SpeechService {
             extraHeaders: extraHeaders,
             session: session,
             logPrefix: "SELF-HOSTED-TRANSCRIPTION",
-            audioDurationSeconds: audioDuration
+            audioDurationSeconds: audioDuration,
+            requestTimeout: requestTimeout
           )
-        } catch TranscriptionError.serverError(let code) where code == 404 || code == 422 {
-          DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
-          lastError = TranscriptionError.serverError(code)
+        } catch let error as TranscriptionError {
+          // 404/422 still try the next shape (OpenAI layout, then whisper-asr). A 404 that
+          // survives every attempt is "this server has no speech-to-text", not a generic
+          // server error. No other provider is tried — the user chose this server.
+          if case .serverError(let code) = error, code == 404 || code == 422 {
+            DebugLogger.log("SELF-HOSTED-TRANSCRIPTION: \(code) on \(attemptURL.path) — trying next")
+            lastError = error
+            continue
+          }
+          throw Self.mappedSelfHostedTranscriptionError(error)
         }
       }
-      throw lastError
+      throw Self.mappedSelfHostedTranscriptionError(lastError)
     }
 
     // Shared base: one OpenAI-layout attempt. Azure authenticates with `api-key`; everyone else
@@ -2602,19 +2611,44 @@ class SpeechService {
         requestBearerToken = String(authorization.dropFirst("Bearer ".count))
       }
     }
-    return try await sendOpenAICompatibleTranscriptionRequest(
-      url: attemptURL,
-      fieldName: "file",
-      modelID: modelID,
-      audioData: audioData,
-      fileExtension: fileExtension,
-      mimeType: mimeType,
-      bearerToken: requestBearerToken,
-      extraHeaders: extraHeaders,
-      session: session,
-      logPrefix: "SELF-HOSTED-TRANSCRIPTION",
-      audioDurationSeconds: audioDuration
-    )
+    do {
+      return try await sendOpenAICompatibleTranscriptionRequest(
+        url: attemptURL,
+        fieldName: "file",
+        modelID: modelID,
+        audioData: audioData,
+        fileExtension: fileExtension,
+        mimeType: mimeType,
+        bearerToken: requestBearerToken,
+        extraHeaders: extraHeaders,
+        session: session,
+        logPrefix: "SELF-HOSTED-TRANSCRIPTION",
+        audioDurationSeconds: audioDuration,
+        requestTimeout: requestTimeout
+      )
+    } catch let error as TranscriptionError {
+      throw Self.mappedSelfHostedTranscriptionError(error)
+    }
+  }
+
+  /// Status codes that mean something different on the user's own server than they do
+  /// at OpenAI or xAI. Nil leaves the shared mapper's error in place (422, 429, 5xx).
+  /// 404 and 405 are "no `/audio/transcriptions` here" — Chat can still use the server,
+  /// and dictation must not fall through to another provider.
+  static func selfHostedTranscriptionError(forHTTPStatus statusCode: Int) -> TranscriptionError? {
+    switch statusCode {
+    case 401, 403:
+      return .invalidAPIKey
+    case 404, 405:
+      return .networkError(String(localized: "Your server has no speech-to-text endpoint (HTTP 404 at /audio/transcriptions). Chat can still use it. For dictation, choose another Dictate model, or set a separate Dictate URL under Settings → Dictate → Advanced."))
+    default:
+      return nil
+    }
+  }
+
+  private static func mappedSelfHostedTranscriptionError(_ error: TranscriptionError) -> TranscriptionError {
+    guard case .serverError(let code) = error else { return error }
+    return selfHostedTranscriptionError(forHTTPStatus: code) ?? error
   }
 
   /// Shared extra headers as the `{key, value}` pairs the multipart helper already accepts.
@@ -2762,7 +2796,8 @@ class SpeechService {
     session: URLSession,
     logPrefix: String,
     dictationHint: String? = nil,
-    audioDurationSeconds: Double? = nil
+    audioDurationSeconds: Double? = nil,
+    requestTimeout: TimeInterval = NetworkDeadline.transcriptionRequestTimeout
   ) async throws -> String {
     var requestURL = url
     if fieldName == "audio_file",
@@ -2861,12 +2896,11 @@ class SpeechService {
     var request = URLRequest(url: requestURL)
     request.httpMethod = "POST"
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-    // Idle timeout: 60s, not the 300s resourceTimeout this used to copy. Setting
-    // URLRequest.timeoutInterval to 300 overrode the session's 60s request timer
-    // and, combined with HTTP/2 keep-alive, let GPT-Transcribe sit in
-    // `transcribing` for minutes (I2). The Task deadline below is the real
-    // backstop — URLSession timers do not reliably fire on this path.
-    request.timeoutInterval = NetworkDeadline.transcriptionRequestTimeout
+    // Idle timeout matches the Task deadline below. Cloud providers stay at 60s
+    // (I2: a 300s request timeout let GPT-Transcribe sit in `transcribing`).
+    // The self-hosted path passes a longer budget that scales with the recording.
+    // URLSession timers are not the backstop — see `NetworkDeadline`.
+    request.timeoutInterval = requestTimeout
     for header in extraHeaders {
       if let k = header["key"], let v = header["value"], !k.isEmpty {
         request.setValue(v, forHTTPHeaderField: k)
@@ -2882,13 +2916,13 @@ class SpeechService {
       (data, response) = try await NetworkDeadline.dataWithOneNetworkRetry(
         for: request,
         session: session,
-        timeout: NetworkDeadline.transcriptionRequestTimeout,
+        timeout: requestTimeout,
         logPrefix: logPrefix)
     } catch TranscriptionError.requestTimeout {
       DebugLogger.logError(
-        "\(logPrefix): stalled round-trip aborted after \(Int(NetworkDeadline.transcriptionRequestTimeout))s (NetworkDeadline)")
+        "\(logPrefix): stalled round-trip aborted after \(Int(requestTimeout))s (NetworkDeadline)")
       ContextLogger.shared.logRequestTimedOut(
-        timeoutSeconds: Int(NetworkDeadline.transcriptionRequestTimeout),
+        timeoutSeconds: Int(requestTimeout),
         logPrefix: logPrefix,
         origin: .transcription)
       throw TranscriptionError.requestTimeout
@@ -2950,6 +2984,20 @@ class SpeechService {
   private func makeTranscriptionURLSession() -> URLSession {
     LLMHTTPSession.shared
   }
+
+  /// Own-server transcription only. The shared session's 300s resource timeout
+  /// would still cut a long LAN dictation after the Task deadline was raised
+  /// (a 5-minute recording needs 330s). Cloud providers keep `LLMHTTPSession.shared`.
+  /// The Task deadline remains the precise cap; this session only raises the ceiling
+  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`.
+  private static let selfHostedTranscriptionSession: URLSession = {
+    let config = URLSessionConfiguration.default
+    let cap = NetworkDeadline.selfHostedTranscriptionTimeoutCap
+    config.timeoutIntervalForRequest = cap
+    config.timeoutIntervalForResource = cap
+    OfflineModeURLProtocol.install(on: config)
+    return URLSession(configuration: config)
+  }()
 
   /// POSTs `request` and retries once on HTTP 429 with exponential backoff. Returns the
   /// final response (data + HTTPURLResponse) without interpreting the status code —

@@ -13,8 +13,21 @@ enum NetworkDeadline {
   /// Cap for one OpenAI-compatible transcription POST. 60s is well under the I2
   /// falsifier (`gapMs > 120000`) and far above typical GPT-Transcribe latency
   /// (1–5s for a dictation). Matches Gemini's request-timeout copy so the user
-  /// sees the same "over 60 seconds" message on either provider.
+  /// sees the same "over 60 seconds" message on either provider. Cloud providers
+  /// stay on this value. A self-hosted box uses `selfHostedTranscriptionTimeout`.
   static let transcriptionRequestTimeout: TimeInterval = 60
+
+  /// Ceiling for one self-hosted transcription round-trip. A CPU Whisper box on the
+  /// LAN can take about as long as the recording; cloud providers do not use this.
+  static let selfHostedTranscriptionTimeoutCap: TimeInterval = 600
+
+  /// `max(60, audioDurationSeconds + 30)`, capped at `selfHostedTranscriptionTimeoutCap`.
+  /// A missing or non-finite duration stays on the 60s floor.
+  static func selfHostedTranscriptionTimeout(audioDurationSeconds: TimeInterval?) -> TimeInterval {
+    let duration = audioDurationSeconds ?? 0
+    let scaled = (duration.isFinite ? duration : 0) * 1.0 + 30
+    return min(selfHostedTranscriptionTimeoutCap, max(transcriptionRequestTimeout, scaled))
+  }
 
   private enum Race {
     case completed(Data, URLResponse)
