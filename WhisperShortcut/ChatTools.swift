@@ -1249,7 +1249,12 @@ enum ChatToolRegistry {
     return defaultValue
   }
 
-  // Internal (not private): ChatView's generate_image interception reuses it for its args.
+  /// `all_day` for `google_calendar_create_event`. Providers often send the JSON string `"true"`
+  /// rather than a boolean; `as? Bool` then silently created a timed event.
+  static func createEventAllDay(_ args: [String: Any]) -> Bool {
+    boolArgument(args, "all_day", default: false)
+  }
+
   /// `all_day` for `google_calendar_update_event`. The description promises that omitting it leaves
   /// the event's timing type unchanged; defaulting to `false` turned a re-dated all-day event into a
   /// midnight-to-midnight timed one. Without the event at hand, the new start/end is the evidence:
@@ -1261,6 +1266,7 @@ enum ChatToolRegistry {
       of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
   }
 
+  // Internal (not private): ChatView's generate_image interception reuses it for its args.
   static func boolArgument(_ args: [String: Any], _ key: String, default defaultValue: Bool) -> Bool {
     if let value = args[key] as? Bool { return value }
     if let value = args[key] as? NSNumber { return value.boolValue }
@@ -1490,7 +1496,7 @@ enum ChatToolRegistry {
       let timeZone = args["time_zone"] as? String ?? TimeZone.current.identifier
       let location = args["location"] as? String
       let description = args["description"] as? String
-      let allDay = args["all_day"] as? Bool ?? false
+      let allDay = createEventAllDay(args)
       let recurrence = args["recurrence"] as? [String]
       do {
         let result = try await GoogleCalendarAPIClient.shared.createEvent(

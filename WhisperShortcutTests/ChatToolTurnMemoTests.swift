@@ -91,6 +91,18 @@ struct ChatToolTurnMemoTests {
     #expect(memo.cachedResponse(name: "list_directory", args: args) == nil)
   }
 
+  @Test("Read-only IMAP tools are cached like Gmail so a turn does not open a second session")
+  func mailToolsAreCached() {
+    let memo = ChatToolTurnMemo()
+    for name in ["mail_search", "mail_read", "mail_list_accounts"] {
+      let args: [String: Any] = ["q": "inbox"]
+      memo.record(name: name, args: args, response: ["count": 1])
+      #expect(
+        memo.cachedResponse(name: name, args: args) != nil,
+        "\(name) should be treated as read-only")
+    }
+  }
+
   @Test("Mutating tools are never served from the cache")
   func mutatingToolsAreNotCached() {
     let memo = ChatToolTurnMemo()
