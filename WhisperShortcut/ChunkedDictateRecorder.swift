@@ -152,6 +152,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     recorderB = nil
     activeRecorder = nil
     for url in chunkURLs {
+      AudioTranscoder.discardPrefetch(for: url)
       try? FileManager.default.removeItem(at: url)
     }
     chunkURLs = []
@@ -180,6 +181,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     // the delegate, so nobody else cleans them up). The delivered file is no longer in this list. Any in-flight streaming reads of these
     // files finished long before a new recording can start.
     for url in chunkURLs {
+      AudioTranscoder.discardPrefetch(for: url)
       try? FileManager.default.removeItem(at: url)
     }
     chunkURLs = []
@@ -391,9 +393,12 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       guard let self else { return }
       do {
         let deliveredURL = try self.mergeChunks(urls)
+        // Encode while the main-thread finish path does duration/silence/state work.
+        AudioTranscoder.prefetch(for: deliveredURL)
         let fileSize =
           (try FileManager.default.attributesOfItem(atPath: deliveredURL.path)[.size] as? Int64) ?? 0
         guard fileSize > 0 else {
+          AudioTranscoder.discardPrefetch(for: deliveredURL)
           throw NSError(
             domain: Constants.errorDomain, code: Constants.emptyFileCode,
             userInfo: [NSLocalizedDescriptionKey: String(localized: "Recording file is empty")])

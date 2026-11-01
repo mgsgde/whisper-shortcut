@@ -223,6 +223,7 @@ class AudioRecorder: NSObject, DictationAudioRecording {
 
     // Clean up temporary recording files
     if let url = recordingURL {
+      AudioTranscoder.discardPrefetch(for: url)
       try? FileManager.default.removeItem(at: url)
     }
     recordingURL = nil
@@ -258,6 +259,7 @@ extension AudioRecorder: AVAudioRecorderDelegate {
         let fileSize = attributes[.size] as? Int64 ?? 0
         DebugLogger.logDebug("Audio file size check - fileSize: \(fileSize), isEmpty: \(fileSize == 0)")
         if fileSize > 0 {
+          AudioTranscoder.prefetch(for: url)
           delegate?.audioRecorderDidFinishRecording(audioURL: url)
         } else {
           let error = NSError(

@@ -294,6 +294,16 @@ Output rules (CRITICAL):
   /// live-meeting value: dictation pauses are briefer than meeting turn-taking.
   static let dictateChunkSilenceDuration: TimeInterval = 1.0
 
+  /// `NSPasteboard.setString` is synchronous. A settle sleep before ⌘V only postponed paste.
+  static let autoPasteClipboardReadyDelay: TimeInterval = 0
+
+  /// `ChatWindowController` builds the full SwiftUI chat tree. Delay this past launch and
+  /// the first dictation so that work does not compete for CPU or dirty RAM.
+  static let chatWindowPreWarmDelay: TimeInterval = 20
+
+  /// Cloud TLS only (never offline weights) so the first dictation after launch is warm.
+  static let launchCloudPreWarmDelay: TimeInterval = 1.0
+
   // MARK: - Local Dictate Prompt
   /// Output ceiling for the local Dictate Prompt request.
   ///

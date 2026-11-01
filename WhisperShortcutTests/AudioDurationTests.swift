@@ -47,4 +47,12 @@ struct AudioDurationTests {
   func missingFileIsNilFromSpeechService() {
     #expect(SpeechService().getAudioDuration(url: Self.missingAudioURL) == nil)
   }
+
+  @Test("Recorded WAV duration uses the header, not AVURLAsset")
+  func recordedWavUsesAudioFile() async throws {
+    let url = Self.sampleAudioURL
+    let fileSeconds = try AudioDuration.avAudioFileSeconds(url)
+    let recordedSeconds = try await AudioDuration.secondsForRecordedAudio(url)
+    #expect(recordedSeconds == fileSeconds)
+  }
 }

@@ -1526,7 +1526,7 @@ class SpeechService {
           url: nil
         ))
       } else {
-        let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+        let (audioData, mimeType) = try await AudioTranscoder.payload(for: audioURL) { ext in
           geminiClient.getMimeType(for: ext)
         }
         userParts.append(GeminiChatRequest.GeminiChatPart(
@@ -2170,7 +2170,7 @@ class SpeechService {
   /// Uses a lightweight transcription call to get the user's voice instruction as text.
   private func transcribeAudioForHistory(audioURL: URL, credential: GeminiCredential) async throws -> String {
     // Use the existing transcription logic but with a simpler prompt
-    let (audioData, mimeType) = try AudioTranscoder.payload(for: audioURL) { ext in
+    let (audioData, mimeType) = try await AudioTranscoder.payload(for: audioURL) { ext in
       geminiClient.getMimeType(for: ext)
     }
     let base64Audio = audioData.base64EncodedString()
@@ -2689,7 +2689,7 @@ class SpeechService {
     let mimeType = mimeTypeForAudioExtension(fileExtension)
 
     let session = makeTranscriptionURLSession()
-    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+    let audioDuration = try? await AudioDuration.secondsForRecordedAudio(audioURL)
     return try await sendOpenAICompatibleTranscriptionRequest(
       url: endpoint,
       fieldName: "file",
@@ -2722,7 +2722,7 @@ class SpeechService {
     let mimeType = mimeTypeForAudioExtension(fileExtension)
 
     let session = makeTranscriptionURLSession()
-    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+    let audioDuration = try? await AudioDuration.secondsForRecordedAudio(audioURL)
     return try await sendOpenAICompatibleTranscriptionRequest(
       url: endpoint,
       fieldName: "file",
@@ -2746,7 +2746,7 @@ class SpeechService {
     let fileExtension = audioURL.pathExtension.lowercased()
     let mimeType = mimeTypeForAudioExtension(fileExtension)
     let modelID = CustomEndpointPreferences.transcriptionModelID
-    let audioDuration = try? await AudioDuration.avURLAssetSeconds(audioURL)
+    let audioDuration = try? await AudioDuration.secondsForRecordedAudio(audioURL)
     let requestTimeout = NetworkDeadline.selfHostedTranscriptionTimeout(audioDurationSeconds: audioDuration)
     let session = Self.selfHostedTranscriptionSession
 
@@ -2908,7 +2908,7 @@ class SpeechService {
 
     // Same FLAC transcode the Gemini path uses: a raw .wav recording is ~1.5 MB per minute, and this
     // body is JSON with the audio base64'd inside it.
-    let (audioData, format) = try AudioTranscoder.payload(for: audioURL, compressedLabel: "flac") { ext in
+    let (audioData, format) = try await AudioTranscoder.payload(for: audioURL, compressedLabel: "flac") { ext in
       Self.openRouterAudioFormat(forExtension: ext)
     }
 
@@ -3349,7 +3349,7 @@ class SpeechService {
     DebugLogger.log("GEMINI-TRANSCRIPTION: Starting transcription, file size: \(audioSize) bytes")
 
     // Check audio duration for chunking decision
-    let audioDuration = try await getAudioDuration(audioURL)
+    let audioDuration = try await AudioDuration.secondsForRecordedAudio(audioURL)
     DebugLogger.log("GEMINI-TRANSCRIPTION: Audio duration: \(String(format: "%.1f", audioDuration))s")
 
     let result: String
@@ -3385,11 +3385,6 @@ class SpeechService {
     )
   }
 
-  // MARK: - Audio Duration Helper
-  private func getAudioDuration(_ url: URL) async throws -> TimeInterval {
-    try await AudioDuration.avURLAssetSeconds(url)
-  }
-  
   /// - Parameter suppressGlossary: set by the internal retry below. Callers leave it false.
   private func transcribeWithGeminiInline(audioURL: URL, credential: GeminiCredential, model: TranscriptionModel, promptOverride: String? = nil, audioDuration: TimeInterval, suppressGlossary: Bool = false) async throws -> String {
     let inlineStartTime = CFAbsoluteTimeGetCurrent()

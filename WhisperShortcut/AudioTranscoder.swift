@@ -12,11 +12,81 @@ enum AudioTranscoder {
   /// MIME type for the transcoded payload.
   static let flacMimeType = "audio/flac"
 
+  private static let cacheLock = NSLock()
+  /// In-flight or completed encodes keyed by the source WAV. Consumed by `flacData(for:)`.
+  private static var prefetchTasks: [URL: Prefetch] = [:]
+
+  private struct Prefetch {
+    let id: UUID
+    let task: Task<Data?, Never>
+  }
+
+  /// Starts a FLAC encode on a background task so it can run while the stop path does
+  /// duration / silence / state-machine work. A later `flacData(for:)` joins this task
+  /// instead of encoding again. No-op for non-WAV sources.
+  static func prefetch(for sourceURL: URL) {
+    guard sourceURL.pathExtension.lowercased() == "wav" else { return }
+    cacheLock.lock()
+    defer { cacheLock.unlock() }
+    guard prefetchTasks[sourceURL] == nil else { return }
+    prefetchTasks[sourceURL] = Prefetch(
+      id: UUID(),
+      task: Task.detached(priority: .userInitiated) { encodeFlac(sourceURL) })
+  }
+
+  /// Drops a prefetch so a discarded recording does not keep encoded bytes around.
+  static func discardPrefetch(for sourceURL: URL) {
+    cacheLock.lock()
+    let prefetch = prefetchTasks.removeValue(forKey: sourceURL)
+    cacheLock.unlock()
+    prefetch?.task.cancel()
+  }
+
   /// Returns the audio at `sourceURL` re-encoded as FLAC bytes for inline upload,
   /// or nil when the source isn't WAV or transcoding fails — callers then upload the
-  /// original bytes unchanged.
-  static func flacData(for sourceURL: URL) -> Data? {
+  /// original bytes unchanged. Joins an in-flight `prefetch(for:)` when one exists.
+  static func flacData(for sourceURL: URL) async -> Data? {
     guard sourceURL.pathExtension.lowercased() == "wav" else { return nil }
+    let prefetch: Prefetch
+    cacheLock.lock()
+    if let existing = prefetchTasks[sourceURL] {
+      prefetch = existing
+      cacheLock.unlock()
+    } else {
+      prefetch = Prefetch(
+        id: UUID(),
+        task: Task.detached(priority: .userInitiated) { encodeFlac(sourceURL) })
+      prefetchTasks[sourceURL] = prefetch
+      cacheLock.unlock()
+    }
+    let data = await prefetch.task.value
+    cacheLock.lock()
+    if prefetchTasks[sourceURL]?.id == prefetch.id {
+      prefetchTasks[sourceURL] = nil
+    }
+    cacheLock.unlock()
+    return data
+  }
+
+  /// FLAC bytes labelled `compressedLabel` when transcoding succeeds, otherwise the file's own
+  /// bytes labelled by `mimeForExtension` of the lowercased path extension.
+  /// Gemini passes `flacMimeType` (the default) and its MIME table; OpenRouter passes
+  /// `"flac"` and `openRouterAudioFormat` — those vocabularies stay separate.
+  static func payload(
+    for url: URL,
+    compressedLabel: String = flacMimeType,
+    mimeForExtension: (String) -> String
+  ) async throws -> (data: Data, mime: String) {
+    if let flacData = await flacData(for: url) {
+      return (flacData, compressedLabel)
+    }
+    let data = try Data(contentsOf: url)
+    return (data, mimeForExtension(url.pathExtension.lowercased()))
+  }
+
+  // MARK: - Encode
+
+  private static func encodeFlac(_ sourceURL: URL) -> Data? {
     let startTime = CFAbsoluteTimeGetCurrent()
     let outputURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("upload_\(UUID().uuidString).flac")
@@ -44,13 +114,13 @@ enum AudioTranscoder {
         return nil
       }
       while source.framePosition < source.length {
+        try Task.checkCancellation()
         try source.read(into: buffer)
         guard buffer.frameLength > 0 else { break }
         try output.write(from: buffer)
       }
-      // AVAudioFile only finalizes the m4a container (moov atom) on close. Reading the
-      // bytes before closing yields a file audio decoders reject — Gemini 3.1 then answers
-      // "please provide the audio" instead of transcribing.
+      // AVAudioFile only finalizes the container on close. Reading the bytes before
+      // closing yields a file audio decoders reject.
       output.close()
 
       let data = try Data(contentsOf: outputURL)
@@ -65,26 +135,12 @@ enum AudioTranscoder {
         "SPEED: FLAC transcode \(sourceSize) → \(data.count) bytes in \(String(format: "%.0f", elapsedMs))ms"
       )
       return data
+    } catch is CancellationError {
+      return nil
     } catch {
       DebugLogger.logWarning(
         "AUDIO: FLAC transcode failed, uploading original WAV — \(error.localizedDescription)")
       return nil
     }
-  }
-
-  /// FLAC bytes labelled `compressedLabel` when transcoding succeeds, otherwise the file's own
-  /// bytes labelled by `mimeForExtension` of the lowercased path extension.
-  /// Gemini passes `flacMimeType` (the default) and its MIME table; OpenRouter passes
-  /// `"flac"` and `openRouterAudioFormat` — those vocabularies stay separate.
-  static func payload(
-    for url: URL,
-    compressedLabel: String = flacMimeType,
-    mimeForExtension: (String) -> String
-  ) throws -> (data: Data, mime: String) {
-    if let flacData = flacData(for: url) {
-      return (flacData, compressedLabel)
-    }
-    let data = try Data(contentsOf: url)
-    return (data, mimeForExtension(url.pathExtension.lowercased()))
   }
 }

@@ -170,6 +170,8 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
+  /// Wall time of the last successful `stopRecording()`, for `SPEED: stop-to-*` logs.
+  private var recordingStopTime: CFAbsoluteTime?
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
@@ -408,8 +410,14 @@ class MenuBarController: NSObject {
       QuickActionStore.shared.refresh()
     }
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.chatWindowPreWarmDelay) {
       ChatWindowManager.shared.preWarm()
+    }
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.launchCloudPreWarmDelay) {
+      let model = TranscriptionModel.loadSelected()
+      guard !model.isOffline else { return }
+      ConnectionPrewarmer.prewarm(for: model)
     }
   }
 
@@ -1388,7 +1396,7 @@ class MenuBarController: NSObject {
     recording?.stopRequested = true
     if audioRecorder.hasRecentlyBeenSilent {
       DebugLogger.logAudio("AUDIO: Skipping tail-capture delay — recent audio was silent")
-      handleStopRecordingResult(audioRecorder.stopRecording())
+      markRecordingStopped(audioRecorder.stopRecording())
       return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + Constants.audioTailCaptureDelay) { [weak self] in
@@ -1396,7 +1404,7 @@ class MenuBarController: NSObject {
       // ✕ / Fn-discard during the tail already stopped the recorder and marked it for discarding;
       // a second stop would find nothing running and let the audio escape the discard.
       if self.recording?.discardOnFinish == true { return }
-      self.handleStopRecordingResult(self.audioRecorder.stopRecording())
+      self.markRecordingStopped(self.audioRecorder.stopRecording())
     }
   }
 
@@ -1415,6 +1423,7 @@ class MenuBarController: NSObject {
     }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
+    recordingStopTime = nil
     if mode == .prompt, meetingSegment == nil, let template {
       recording?.boundTemplate = template
       recording?.templateChoices = templateChoices
@@ -1427,6 +1436,13 @@ class MenuBarController: NSObject {
     recording = nil
     clipboardManager.discardRestorePoint()
     _ = audioRecorder.stopRecording()
+  }
+
+  private func markRecordingStopped(_ didStop: Bool) {
+    if didStop {
+      recordingStopTime = CFAbsoluteTimeGetCurrent()
+    }
+    handleStopRecordingResult(didStop)
   }
 
   private func handleStopRecordingResult(_ didStop: Bool) {
@@ -2379,10 +2395,23 @@ class MenuBarController: NSObject {
       // Prompt already captured it before its synthetic ⌘C; this covers plain dictation.
       await MainActor.run { self.captureClipboardRestorePointIfEnabled() }
       spec.copyResult(result)
-      if spec.mode == .transcription, !duringMeeting {
-        await self.recordDictatedWritingSample(result)
+      if let stop = recordingStopTime {
+        let ms = (CFAbsoluteTimeGetCurrent() - stop) * 1000
+        DebugLogger.logSpeech("SPEED: stop-to-clipboard \(String(format: "%.0f", ms))ms")
       }
       let didAutoPaste = await self.autoPasteIfEnabled(logMode: spec.interactionLogMode)
+      if let stop = recordingStopTime {
+        let ms = (CFAbsoluteTimeGetCurrent() - stop) * 1000
+        DebugLogger.logSpeech(
+          "SPEED: stop-to-paste \(String(format: "%.0f", ms))ms pasted=\(didAutoPaste)")
+      }
+      // Writing-style samples rewrite samples.jsonl. Keep that off the paste path.
+      if spec.mode == .transcription, !duringMeeting {
+        let text = result
+        Task { @MainActor [weak self] in
+          self?.recordDictatedWritingSample(text)
+        }
+      }
       await afterCopy(result)
 
       await MainActor.run { [weak self] in
@@ -2568,7 +2597,7 @@ class MenuBarController: NSObject {
       audioURL: audioURL,
       job: job,
       produce: {
-        let stopTime = CFAbsoluteTimeGetCurrent()
+        let stopTime = recordingStopTime ?? CFAbsoluteTimeGetCurrent()
         let transcript: String
         if let streamed = try await streamingSession?.finalTranscript() {
           let waitMs = (CFAbsoluteTimeGetCurrent() - stopTime) * 1000
@@ -2807,6 +2836,7 @@ class MenuBarController: NSObject {
   /// outcome (cancel and completion paths can both try to clean the same recording).
   private func cleanupAudioFile(at url: URL?) {
     if let url {
+      AudioTranscoder.discardPrefetch(for: url)
       let forget = {
         _ = self.finishedPromptInputs.removeValue(forKey: url)
       }
@@ -3274,8 +3304,10 @@ class MenuBarController: NSObject {
         clipboardManager.discardRestorePoint()
         return false
       }
-      // Small delay to ensure clipboard is ready
-      try? await Task.sleep(for: .milliseconds(50))
+      // NSPasteboard.setString is synchronous; a settle sleep only postponed ⌘V.
+      if AppConstants.autoPasteClipboardReadyDelay > 0 {
+        try? await Task.sleep(for: .seconds(AppConstants.autoPasteClipboardReadyDelay))
+      }
 
       // The result can arrive minutes after the recording started, with another app (or this one)
       // in front. ⌘V there replaces whatever that app has selected, so paste only into the app the
@@ -3374,7 +3406,9 @@ extension MenuBarController: AudioRecorderDelegate {
     let recordingModeStr = String(describing: appState.recordingMode ?? .none)
     DebugLogger.logDebug("audioRecorderDidFinishRecording called - audioURL: \(audioURL.lastPathComponent), fileSize: \(fileSize), appState: \(appState), recordingMode: \(recordingModeStr)")
 
-    DispatchQueue.main.async { [weak self] in
+    // ChunkedDictateRecorder already hops here on main after merge. A second async
+    // would wait a full run-loop turn before transcription starts.
+    let handle: () -> Void = { [weak self] in
       guard let self else { return }
       // Prevent processing the same audio file multiple times (race condition protection)
       guard !self.processedAudioURLs.contains(audioURL) else {
@@ -3602,6 +3636,11 @@ extension MenuBarController: AudioRecorderDelegate {
       self.startProcessingFinishedRecording(
         audioURL: audioURL, recordingMode: recordingMode,
         quickActionInstruction: quickActionInstruction, promptInputs: promptInputs)
+    }
+    if Thread.isMainThread {
+      handle()
+    } else {
+      DispatchQueue.main.async(execute: handle)
     }
   }
 
