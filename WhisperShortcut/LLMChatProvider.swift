@@ -6,12 +6,10 @@ import Foundation
 /// paths. URLSession is thread-safe and pools connections per host, so one instance is
 /// strictly better than each call site spinning up its own with identical config.
 enum LLMHTTPSession {
+  private static let redirectGuard = LLMHTTPRedirectGuard()
+
   static let shared: URLSession = {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 60
-    config.timeoutIntervalForResource = 300
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    makeSession(requestTimeout: 60, resourceTimeout: 300)
   }()
 
   /// Session for the non-LLM integrations (Google, Trello, the OpenRouter catalog and OAuth
@@ -19,10 +17,72 @@ enum LLMHTTPSession {
   /// Offline Mode guard — a session the app configures itself can. Default timeouts are kept:
   /// these are short REST calls, not the long-running model requests `shared` is tuned for.
   static let integrations: URLSession = {
-    let config = URLSessionConfiguration.default
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    makeSession(requestTimeout: nil, resourceTimeout: nil)
   }()
+
+  private static func makeSession(requestTimeout: TimeInterval?, resourceTimeout: TimeInterval?) -> URLSession {
+    let config = URLSessionConfiguration.default
+    if let requestTimeout { config.timeoutIntervalForRequest = requestTimeout }
+    if let resourceTimeout { config.timeoutIntervalForResource = resourceTimeout }
+    OfflineModeURLProtocol.install(on: config)
+    return URLSession(configuration: config, delegate: redirectGuard, delegateQueue: nil)
+  }
+}
+
+/// Cross-host redirects must not carry API credentials. A 307 from a LiteLLM box (or a
+/// compromised tenant) to another host would otherwise forward `Authorization`, `api-key`
+/// and Cloudflare Access secrets in the follow-up request.
+enum LLMHTTPRedirectPolicy {
+  static let secretHeaderNames: Set<String> = [
+    "authorization",
+    "api-key",
+    "x-api-key",
+    "x-goog-api-key",
+    "cf-access-client-id",
+    "cf-access-client-secret",
+  ]
+
+  /// The request to follow. Same host and port keeps headers; a host (or port) change strips
+  /// credential headers, including any extra names the caller configured.
+  static func follow(
+    original: URLRequest,
+    proposed: URLRequest,
+    extraSecretHeaderNames: [String] = []
+  ) -> URLRequest {
+    let from = original.url
+    let to = proposed.url
+    let sameHost = from?.host?.lowercased() == to?.host?.lowercased()
+      && from?.port == to?.port
+    if sameHost { return proposed }
+    return strippingSecrets(proposed, extraNames: extraSecretHeaderNames)
+  }
+
+  static func strippingSecrets(_ request: URLRequest, extraNames: [String] = []) -> URLRequest {
+    var names = secretHeaderNames
+    for name in extraNames { names.insert(name.lowercased()) }
+    var next = request
+    for (key, _) in request.allHTTPHeaderFields ?? [:] where names.contains(key.lowercased()) {
+      next.setValue(nil, forHTTPHeaderField: key)
+    }
+    return next
+  }
+}
+
+private final class LLMHTTPRedirectGuard: NSObject, URLSessionTaskDelegate {
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    let original = task.originalRequest ?? request
+    completionHandler(
+      LLMHTTPRedirectPolicy.follow(
+        original: original,
+        proposed: request,
+        extraSecretHeaderNames: Array(CustomEndpointPreferences.extraHeaders.keys)))
+  }
 }
 
 // MARK: - Chat Stream Event (provider-agnostic)

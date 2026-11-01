@@ -182,11 +182,34 @@ struct CustomEndpointAuthTests {
         == false)
   }
 
-  @Test("A generic proxy keeps the OpenAI fallback it has always had")
+  @Test("A generic https proxy keeps the OpenAI fallback it has always had")
   func proxiesKeepTheOpenAIFallback() {
     #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://openinference.de/api/v1"))
-    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://localhost:4000/v1"))
+    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "https://litellm.example/v1"))
     #expect(Auth.acceptsOpenAIAPIKey(baseURL: ""))
+  }
+
+  @Test("A plain-http host never falls back to the user's OpenAI key")
+  func httpHostsRefuseTheOpenAIFallback() {
+    // Cleartext LAN Whisper box: the OpenAI key must not ride along. Same for localhost —
+    // paste the key into the server's own field if LiteLLM actually needs it.
+    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://192.168.1.5/v1") == false)
+    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://localhost:4000/v1") == false)
+    #expect(Auth.acceptsOpenAIAPIKey(baseURL: "http://10.0.0.8/v1") == false)
+    #expect(
+      OpenAIChatPreferences.resolveCredential(
+        proxyKey: nil, openAIKey: "sk-openai", allowsOpenAIKeyFallback: false) == nil)
+    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "") == [:])
+    #expect(Auth.headers(baseURL: "http://192.168.1.5/v1", apiKey: "   ") == [:])
+  }
+
+  @Test("A local host can run Chat and Dictate Prompt without any key")
+  func localHostsAllowKeylessRequests() {
+    #expect(OpenAIChatPreferences.allowsKeylessRequests(baseURL: "http://192.168.1.5/v1"))
+    #expect(OpenAIChatPreferences.allowsKeylessRequests(baseURL: "http://localhost:4000/v1"))
+    #expect(OpenAIChatPreferences.allowsKeylessRequests(baseURL: "http://127.0.0.1:8080/v1"))
+    #expect(!OpenAIChatPreferences.allowsKeylessRequests(baseURL: "https://litellm.example/v1"))
+    #expect(!OpenAIChatPreferences.allowsKeylessRequests(baseURL: ""))
   }
 
   @Test("With the fallback denied, an OpenAI key alone is not a usable credential")

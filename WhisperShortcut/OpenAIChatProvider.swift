@@ -87,11 +87,13 @@ final class OpenAIChatProvider: LLMChatProvider {
         throw TranscriptionError.networkError(
           String(localized: "Your own server's base URL is missing. Set it in Settings → Chat, then pick Own server as the chat model."))
       }
-      guard let apiKey = OpenAIChatPreferences.resolvedAPIKey else {
-        throw TranscriptionError.networkError(
-          String(localized: "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI."))
+      if let apiKey = OpenAIChatPreferences.resolvedAPIKey { return apiKey }
+      if let base = OpenAIChatPreferences.customEndpointBaseURL,
+         OpenAIChatPreferences.allowsKeylessRequests(baseURL: base) {
+        return ""
       }
-      return apiKey
+      throw TranscriptionError.networkError(
+        String(localized: "No API key for your custom endpoint. Enter the server's key in Settings → Chat, or add an OpenAI key in Settings → Accounts if the server forwards to OpenAI."))
     case .openRouter:
       guard let apiKey = OpenRouterChatPreferences.apiKey else {
         throw TranscriptionError.networkError(
