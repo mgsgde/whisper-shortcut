@@ -24,7 +24,7 @@ struct APIKeyEntrySection: View {
 
   @State private var isKeyVisible: Bool = false
   @State private var keychainSaveError: OSStatus?
-  @State private var saveCommit: DebouncedAsyncCommit<String>?
+  @State private var saveTask: Task<Void, Never>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -60,7 +60,6 @@ struct APIKeyEntrySection: View {
           if let stored = KeychainManager.shared.get(provider.credential), !stored.isEmpty {
             key = stored
           }
-          ensureSaveCommit()
         }
         .onDisappear { flushSave() }
         .onChange(of: key) { _, newValue in
@@ -68,8 +67,7 @@ struct APIKeyEntrySection: View {
           // otherwise merely opening Settings → Accounts rewrites every key and pops the
           // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
           guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
-          ensureSaveCommit()
-          saveCommit?.schedule(newValue)
+          scheduleSave(newValue)
         }
 
         Button(action: { isKeyVisible.toggle() }) {
@@ -108,21 +106,23 @@ struct APIKeyEntrySection: View {
     }
   }
 
-  private func ensureSaveCommit() {
-    guard saveCommit == nil else { return }
-    saveCommit = DebouncedAsyncCommit(delay: Self.saveDelay) { value in
+  private func scheduleSave(_ value: String) {
+    saveTask?.cancel()
+    saveTask = Task { @MainActor in
+      try? await Task.sleep(for: Self.saveDelay)
+      guard !Task.isCancelled else { return }
       keychainSaveError = await provider.store(value)
     }
   }
 
   private func flushSave() {
+    saveTask?.cancel()
+    saveTask = nil
     let value = key
-    guard value != (KeychainManager.shared.get(provider.credential) ?? "") else {
-      saveCommit?.cancel()
-      return
+    guard value != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
+    Task { @MainActor in
+      keychainSaveError = await provider.store(value)
     }
-    ensureSaveCommit()
-    Task { await saveCommit?.flush(value) }
   }
 
   /// Applies the shared field styling, plus focus binding for the one provider that has one.
