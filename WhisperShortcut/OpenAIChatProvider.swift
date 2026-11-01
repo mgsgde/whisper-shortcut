@@ -258,13 +258,18 @@ final class OpenAIChatProvider: LLMChatProvider {
       }
 
       DebugLogger.logNetwork("OPENAI-CHAT-STREAM: POST \(endpoint) model=\(requestModel) messages=\(messages.count) tools=\(tools.count) effort=\(effort ?? "default")")
-      return OpenAICompatibleStream.chatCompletions(
-        try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-CHAT-STREAM", route: route),
-        body: body)
+      var config = try Self.streamConfig(endpoint: endpoint, logTag: "OPENAI-CHAT-STREAM", route: route)
+      if route == .customEndpoint {
+        config.stripKeysOnHTTP400 = Self.ownServer400StripKeys
+      }
+      return OpenAICompatibleStream.chatCompletions(config, body: body)
     } catch {
       return AsyncThrowingStream { $0.finish(throwing: error) }
     }
   }
+
+  /// Dropped on a single HTTP 400 retry for an own server that does not accept them.
+  static let ownServer400StripKeys: Set<String> = ["tools", "prompt_cache_key"]
 
   // MARK: - Shared request configuration
 

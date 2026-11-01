@@ -421,6 +421,11 @@ enum OpenAICompatibleStream {
     /// exists. Only the local provider needs this; the default rethrows unchanged.
     var mapTransportError: (Error) -> Error = { $0 }
     var session: URLSession = LLMHTTPSession.shared
+    /// Own-server compatibility: Azure classic, Vertex, and vLLM without
+    /// `--enable-auto-tool-choice` reject `tools` and/or `prompt_cache_key` with HTTP 400.
+    /// When a request that still carries any of these keys gets a 400, it is retried once
+    /// with them stripped. Empty for OpenAI / OpenRouter / Grok.
+    var stripKeysOnHTTP400: Set<String> = []
     /// Responses API only. When set, a stream counts as a success **only** if it ends with
     /// `response.completed`: `response.failed`, `response.incomplete`, an `error` event, or a stream
     /// that closes without a terminal event throw whatever this returns (arguments: the event type,
@@ -444,7 +449,7 @@ enum OpenAICompatibleStream {
   }
 
   private static func openStreamOnce(
-    _ config: Config, body: [String: Any]
+    _ config: Config, body: [String: Any], didStripRetry: Bool = false
   ) async throws -> URLSession.AsyncBytes {
     guard let url = URL(string: config.endpoint) else {
       throw TranscriptionError.networkError(String(localized: "Invalid \(config.logTag) endpoint URL"))
@@ -474,10 +479,22 @@ enum OpenAICompatibleStream {
       var errData = Data()
       for try await b in bytes { errData.append(b) }
       let text = String(data: errData, encoding: .utf8) ?? ""
+      if http.statusCode == 400, !didStripRetry, shouldStripKeys(body, keys: config.stripKeysOnHTTP400) {
+        var stripped = body
+        for key in config.stripKeysOnHTTP400 { stripped.removeValue(forKey: key) }
+        DebugLogger.logWarning(
+          "\(config.logTag): HTTP 400 — retrying without \(config.stripKeysOnHTTP400.sorted().joined(separator: ", "))")
+        return try await openStreamOnce(config, body: stripped, didStripRetry: true)
+      }
       DebugLogger.logError("\(config.logTag): HTTP \(http.statusCode) body=\(text.prefix(500))")
       throw config.mapHTTPError(http.statusCode, text)
     }
     return bytes
+  }
+
+  /// True when the body still carries any key we are willing to drop after a 400.
+  static func shouldStripKeys(_ body: [String: Any], keys: Set<String>) -> Bool {
+    !keys.isEmpty && keys.contains(where: { body[$0] != nil })
   }
 
   // MARK: Chat Completions

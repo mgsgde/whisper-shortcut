@@ -336,4 +336,137 @@ struct OpenAICompatibleStreamTests {
       in: [["role": "user", "parts": [["inline_data": ["mime_type": "image/png", "data": "AAAA"]]]]],
       provider: "OpenAI", allowedPrefixes: ["image/", "audio/"]) == nil)
   }
+
+  // MARK: - Own-server 400 retry
+
+  /// 400 while the body still has `tools` / `prompt_cache_key`; 200 once they are gone.
+  final class OwnServer400Stub: URLProtocol {
+    struct Recorded {
+      let keys: Set<String>
+    }
+
+    nonisolated(unsafe) private static var endpoints: Set<String> = []
+    nonisolated(unsafe) private static var recorded: [String: [Recorded]] = [:]
+    private static let lock = NSLock()
+
+    static func register() -> String {
+      let endpoint = "https://own-server.invalid/\(UUID().uuidString)/v1/chat/completions"
+      lock.lock()
+      endpoints.insert(endpoint)
+      recorded[endpoint] = []
+      lock.unlock()
+      return endpoint
+    }
+
+    static func recordedBodies(for endpoint: String) -> [Recorded] {
+      lock.lock()
+      defer { lock.unlock() }
+      return recorded[endpoint] ?? []
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+      guard let key = request.url?.absoluteString else { return false }
+      lock.lock()
+      defer { lock.unlock() }
+      return endpoints.contains(key)
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+      guard let url = request.url else {
+        client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+        return
+      }
+      let object = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
+      let keys = Set((object ?? [:]).keys)
+      Self.lock.lock()
+      recorded[url.absoluteString, default: []].append(Recorded(keys: keys))
+      Self.lock.unlock()
+
+      let hasRejectedKeys = keys.contains("tools") || keys.contains("prompt_cache_key")
+      let status = hasRejectedKeys ? 400 : 200
+      let body = hasRejectedKeys
+        ? #"{"error":{"message":"tools not supported"}}"#
+        : "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+      let response = HTTPURLResponse(
+        url: url, statusCode: status, httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Type": status == 200 ? "text/event-stream" : "application/json"])!
+      client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: Data(body.utf8))
+      client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+  }
+
+  private static func ownServerConfig(endpoint: String) -> OpenAICompatibleStream.Config {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [OwnServer400Stub.self]
+    var config = OpenAICompatibleStream.Config(
+      endpoint: endpoint,
+      headers: [:],
+      logTag: "OWN-SERVER",
+      mapHTTPError: { status, body in
+        ChatProviderHTTPError.map(provider: "Own server", status: status, body: body)
+      },
+      session: URLSession(configuration: configuration))
+    config.stripKeysOnHTTP400 = OpenAIChatProvider.ownServer400StripKeys
+    return config
+  }
+
+  @Test("HTTP 400 on a body with tools retries once without tools and prompt_cache_key")
+  func ownServer400RetriesWithoutTools() async throws {
+    #expect(
+      OpenAICompatibleStream.shouldStripKeys(
+        ["tools": [], "prompt_cache_key": "chat-1", "model": "x"],
+        keys: OpenAIChatProvider.ownServer400StripKeys))
+    let endpoint = OwnServer400Stub.register()
+    let config = Self.ownServerConfig(endpoint: endpoint)
+    let events = try await Self.collect(
+      OpenAICompatibleStream.chatCompletions(
+        config,
+        body: [
+          "model": "local-model",
+          "tools": [["type": "function"]],
+          "prompt_cache_key": "chat-1",
+          "messages": [["role": "user", "content": "hi"]],
+        ]))
+    #expect(Self.text(in: events) == "ok")
+    let recorded = OwnServer400Stub.recordedBodies(for: endpoint)
+    #expect(recorded.count == 2)
+    #expect(recorded[0].keys.contains("tools"))
+    #expect(recorded[0].keys.contains("prompt_cache_key"))
+    #expect(!recorded[1].keys.contains("tools"))
+    #expect(!recorded[1].keys.contains("prompt_cache_key"))
+    #expect(recorded[1].keys.contains("model"))
+  }
+
+  @Test("A second HTTP 400 surfaces the server message")
+  func ownServerSecond400SurfacesMessage() async {
+    let endpoint = StubProtocol.register(
+      status: 400, body: #"{"error":{"message":"context_length_exceeded"}}"#)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [StubProtocol.self]
+    var config = OpenAICompatibleStream.Config(
+      endpoint: endpoint,
+      headers: [:],
+      logTag: "OWN-SERVER",
+      mapHTTPError: { status, body in
+        ChatProviderHTTPError.map(provider: "Own server", status: status, body: body)
+      },
+      session: URLSession(configuration: configuration))
+    config.stripKeysOnHTTP400 = OpenAIChatProvider.ownServer400StripKeys
+    do {
+      _ = try await Self.collect(
+        OpenAICompatibleStream.chatCompletions(
+          config,
+          body: ["tools": [["type": "function"]], "prompt_cache_key": "chat-1"]))
+      Issue.record("expected the second 400 to throw")
+    } catch let error as TranscriptionError {
+      #expect(error == .networkError("Own server API error: context_length_exceeded"))
+    } catch {
+      Issue.record("unexpected error \(error)")
+    }
+  }
 }
