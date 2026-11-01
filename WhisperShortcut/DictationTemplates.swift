@@ -2,10 +2,11 @@
 //  DictationTemplates.swift
 //  WhisperShortcut
 //
-//  A template is instructions for Dictate Prompt (a practice's note format, say) with its own
-//  global shortcut. Pressing it starts one Dictate Prompt recording that uses those instructions
-//  instead of the system prompt. Text selected in the target app keeps today's prompt. The
-//  generic Dictate Prompt shortcut never applies a template. A separate template shortcut,
+//  A template is a fixed format (a practice's note format, say) with its own global shortcut.
+//  Pressing it starts a recording that runs as its own turn kind (`SpeechService.PromptTurnKind`):
+//  the template's instructions are the whole system prompt, and none of Dictate Prompt's stored
+//  prompt, writing style, history or tools apply. Selected text is formatted into the template.
+//  The Dictate Prompt shortcut never applies a template. A separate template shortcut,
 //  unassigned until the user sets one, applies the last-used template (or the only one).
 //
 
@@ -18,9 +19,8 @@ extension Notification.Name {
   static let dictationTemplatesChanged = Notification.Name("dictationTemplatesChanged")
 }
 
-/// Instructions for one Dictate Prompt recording, started by the template's own shortcut.
-/// With nothing selected, those instructions replace the system prompt for that recording.
-/// A selection keeps today's prompt: the template is never applied to selected text.
+/// One fixed format, started by the template's own shortcut (or the generic Template shortcut).
+/// Its instructions are the system prompt for that recording; a selection is formatted into it.
 /// `shortcut` nil means the template is saved but nothing starts it.
 struct DictationTemplate: Codable, Equatable, Identifiable {
   var id = UUID()
