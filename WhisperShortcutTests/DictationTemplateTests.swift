@@ -211,6 +211,34 @@ struct DictationTemplateTests {
     #expect(fromMissing.shortcut == nil)
   }
 
+  /// Pins the exact Dictate Prompt system prompt. A later split of template turns must not move
+  /// these strings: a custom `system-prompts.md`, the built-in default, and screenshot selection
+  /// stay byte-for-byte what they are today, with or without a writing-style block.
+  @Test("Dictate Prompt system prompt is the stored prompt, the default, or the screenshot prompt")
+  func dictatePromptSystemPromptGolden() {
+    let stored = "Custom prompt the user wrote"
+    let style = "\n\nLearned writing style."
+    let outputRule = AppConstants.promptModeOutputRule
+
+    func prompt(screenshot: Bool, styleBlock: String, stored: String) -> String {
+      SpeechService.buildDictatePromptSystemPrompt(
+        usesScreenshotSelection: screenshot, styleBlock: styleBlock, template: nil, stored: stored)
+    }
+
+    #expect(prompt(screenshot: false, styleBlock: "", stored: stored) == stored + outputRule)
+    #expect(prompt(screenshot: false, styleBlock: style, stored: stored) == stored + style + outputRule)
+    #expect(
+      prompt(screenshot: false, styleBlock: "", stored: "")
+        == AppConstants.defaultPromptModeSystemPrompt + outputRule)
+    #expect(
+      prompt(screenshot: false, styleBlock: style, stored: "  \n")
+        == AppConstants.defaultPromptModeSystemPrompt + style + outputRule)
+    let screenshotBase = AppConstants.dictatePromptScreenshotSelectionSystemPrompt
+    #expect(prompt(screenshot: true, styleBlock: "", stored: stored) == screenshotBase + outputRule)
+    #expect(
+      prompt(screenshot: true, styleBlock: style, stored: stored) == screenshotBase + style + outputRule)
+  }
+
   @Test("A template replaces the stored prompt; a blank one leaves it")
   func dictatePromptBase() {
     let stored = "Custom prompt the user wrote"
