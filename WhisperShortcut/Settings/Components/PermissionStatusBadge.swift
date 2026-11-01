@@ -17,6 +17,8 @@ struct PermissionStatusBadge: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 3)
     .background(Capsule().fill(color.opacity(0.12)))
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(Self.spokenLabel(for: status))
   }
 
   private var color: Color {
@@ -31,9 +33,18 @@ struct PermissionStatusBadge: View {
   private var label: LocalizedStringKey {
     switch status {
     case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
+    case .denied: return "Not allowed"
+    case .notDetermined: return "Not asked yet"
     case .notApplicable: return "Not applicable"
+    }
+  }
+
+  static func spokenLabel(for status: PermissionStatus) -> String {
+    switch status {
+    case .granted: return String(localized: "Granted")
+    case .denied: return String(localized: "Not allowed")
+    case .notDetermined: return String(localized: "Not asked yet")
+    case .notApplicable: return String(localized: "Not applicable")
     }
   }
 }

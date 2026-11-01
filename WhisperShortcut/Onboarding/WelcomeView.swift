@@ -68,6 +68,8 @@ struct WelcomeView: View {
   /// Key codes (layout-independent, NSEvent.keyCode).
   private static let keyCodeLeftArrow: UInt16 = 123
   private static let keyCodeRightArrow: UInt16 = 124
+  private static let keyCodeReturn: UInt16 = 36
+  private static let keyCodeKeypadEnter: UInt16 = 76
 
   /// Resume on the step the user last reached. Persisted in `onboardingCurrentStep` so a
   /// mid-tour app restart (e.g. macOS "Quit & Reopen" after granting a permission) continues
@@ -150,6 +152,10 @@ struct WelcomeView: View {
         guard canAdvance, step != .done else { return nil }
         advance()
         return nil
+      case Self.keyCodeReturn, Self.keyCodeKeypadEnter:
+        guard canAdvance else { return nil }
+        advance()
+        return nil
       default:
         return event
       }
@@ -179,6 +185,7 @@ struct WelcomeView: View {
       Button(nextButtonTitle, action: advance)
         .buttonStyle(.borderedProminent)
         .disabled(!canAdvance)
+        .accessibilityHint(continueHint)
         .pointerCursorOnHover()
     }
     .padding(.horizontal, 40)
@@ -187,16 +194,39 @@ struct WelcomeView: View {
   }
 
   private var stepIndicator: some View {
-    HStack(spacing: 6) {
-      ForEach(WelcomeStep.activeSteps, id: \.rawValue) { s in
-        Circle()
-          .fill(s.rawValue <= step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
-          .frame(width: 7, height: 7)
+    VStack(spacing: 4) {
+      HStack(spacing: 6) {
+        ForEach(WelcomeStep.activeSteps, id: \.rawValue) { s in
+          Circle()
+            .fill(s.rawValue <= step.rawValue ? Color.accentColor : Color.secondary.opacity(0.3))
+            .frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+        }
+        Text(step.indexLabel)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .padding(.leading, 8)
       }
-      Text(step.indexLabel)
+      Text("Arrow keys move between steps. Return continues.")
         .font(.caption2)
-        .foregroundStyle(.secondary)
-        .padding(.leading, 8)
+        .foregroundStyle(.tertiary)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(step.indexLabel)
+    .accessibilityHint("Arrow keys move between steps. Return continues.")
+  }
+
+  private var continueHint: LocalizedStringKey {
+    guard !canAdvance else {
+      return step == .done ? "Return finishes the tour." : "Return continues."
+    }
+    switch step {
+    case .dictationSetup:
+      return "Choose Offline or Cloud and finish setup first."
+    case .permissions:
+      return "Grant microphone access to continue."
+    default:
+      return ""
     }
   }
 

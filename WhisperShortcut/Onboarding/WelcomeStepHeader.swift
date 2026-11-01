@@ -22,5 +22,6 @@ struct WelcomeStepHeader: View {
           .fixedSize(horizontal: false, vertical: true)
       }
     }
+    .accessibilityElement(children: .combine)
   }
 }

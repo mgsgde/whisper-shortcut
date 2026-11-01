@@ -7,6 +7,7 @@ struct WelcomeIntroStep: View {
       Image(systemName: "waveform.and.mic")
         .font(.system(size: 64))
         .foregroundStyle(.tint)
+        .accessibilityHidden(true)
       VStack(spacing: 10) {
         Text("Welcome to WhisperShortcut")
           .font(.largeTitle)
@@ -15,6 +16,7 @@ struct WelcomeIntroStep: View {
           .font(.title3)
           .foregroundStyle(.secondary)
       }
+      .accessibilityElement(children: .combine)
       Text("Three quick steps: choose offline or cloud dictation, allow the microphone, and try it once. About a minute.")
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -83,6 +85,8 @@ struct OpenSourceBanner: View {
     .buttonStyle(.plain)
     .pointerCursorOnHover()
     .help("Open the WhisperShortcut source code on GitHub")
+    .accessibilityLabel(Text(PrivacyCopy.openSourceHeadline))
+    .accessibilityHint("Opens the WhisperShortcut source code on GitHub")
   }
 }
 
@@ -254,6 +258,9 @@ struct WelcomeDictationSetupStep: View {
     }
     .buttonStyle(.plain)
     .pointerCursorOnHover()
+    .accessibilityLabel(title)
+    .accessibilityValue(selected ? ("Selected" as LocalizedStringKey) : "Not selected")
+    .accessibilityHint(tagline)
     .accessibilityAddTraits(selected ? .isSelected : [])
   }
 
@@ -1053,6 +1060,7 @@ struct WelcomeDoneStep: View {
       Image(systemName: dictationReady ? "checkmark.seal.fill" : "exclamationmark.circle.fill")
         .font(.system(size: 40))
         .foregroundStyle(dictationReady ? .green : .orange)
+        .accessibilityHidden(true)
       VStack(spacing: 8) {
         Text(dictationReady ? ("You're ready" as LocalizedStringKey) : "Almost ready")
           .font(.largeTitle)
@@ -1180,6 +1188,7 @@ struct WelcomeDoneStep: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 10)
+    .accessibilityElement(children: .contain)
   }
 
   /// Green "Ready" when every required permission is granted; otherwise a red, tappable badge

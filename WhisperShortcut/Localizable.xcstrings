@@ -312,12 +312,12 @@
         }
       }
     },
-    "%@ Recording AI prompt — meeting still recording" : {
+    "%@ Recording Dictate Prompt — meeting still recording" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ KI-Anweisung wird aufgenommen – Meeting wird weiter aufgenommen"
+            "value" : "%@ Dictate Prompt wird aufgenommen – Meeting wird weiter aufgenommen"
           }
         }
       }
@@ -2270,12 +2270,12 @@
         }
       }
     },
-    "Add an API key or use an offline model - click to configure" : {
+    "Add an API key or download an offline model — click to open Settings" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "API-Schlüssel hinzufügen oder Offline-Modell nutzen – zum Einrichten klicken"
+            "value" : "API-Schlüssel hinzufügen oder Offline-Modell laden – klicken Sie, um die Einstellungen zu öffnen"
           }
         }
       }
@@ -7185,12 +7185,12 @@
         }
       }
     },
-    "Denied" : {
+    "Not allowed" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abgelehnt"
+            "value" : "Nicht erlaubt"
           }
         }
       }
@@ -8367,22 +8367,12 @@
         }
       }
     },
-    "Failed to create audio buffer" : {
+    "Read Aloud could not start. Please try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audiopuffer konnte nicht angelegt werden"
-          }
-        }
-      }
-    },
-    "Failed to create audio format" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audioformat konnte nicht angelegt werden"
+            "value" : "Vorlesen konnte nicht starten. Bitte versuchen Sie es erneut."
           }
         }
       }
@@ -9954,12 +9944,12 @@
         }
       }
     },
-    "Improve prompts from your usage and manage context data" : {
+    "Learn from your usage history" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prompts aus Ihrer Nutzung verbessern und Kontextdaten verwalten"
+            "value" : "Aus Ihrem Nutzungsverlauf lernen"
           }
         }
       }
@@ -10926,12 +10916,12 @@
         }
       }
     },
-    "Live meeting transcription... Click menu to stop" : {
+    "Live meeting... Click menu to stop" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live-Meeting wird transkribiert … Zum Beenden das Menü öffnen"
+            "value" : "Live-Meeting … Zum Beenden das Menü öffnen"
           }
         }
       }
@@ -11873,22 +11863,22 @@
         }
       }
     },
-    "Model, system prompt, and shortcut" : {
+    "How speech becomes text — model and shortcut" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modell, System-Prompt und Tastenkürzel"
+            "value" : "Wie Sprache zu Text wird – Modell und Tastenkürzel"
           }
         }
       }
     },
-    "Model, system prompt, commands, and memory" : {
+    "Chat model, commands, and memory" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modell, System-Prompt, Befehle und Gedächtnis"
+            "value" : "Chat-Modell, Befehle und Gedächtnis"
           }
         }
       }
@@ -12166,12 +12156,12 @@
         }
       }
     },
-    "Network error: %@" : {
+    "Network error. Please try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Netzwerkfehler: %@"
+            "value" : "Netzwerkfehler. Bitte versuchen Sie es erneut."
           }
         }
       }
@@ -12370,12 +12360,12 @@
         }
       }
     },
-    "No audio was generated for this text" : {
+    "Read Aloud produced no audio for this text." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für diesen Text wurde kein Audio erzeugt"
+            "value" : "Vorlesen hat für diesen Text kein Audio erzeugt."
           }
         }
       }
@@ -12956,12 +12946,12 @@
         }
       }
     },
-    "Not requested" : {
+    "Not asked yet" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nicht angefragt"
+            "value" : "Noch nicht gefragt"
           }
         }
       }
@@ -15075,12 +15065,12 @@
         }
       }
     },
-    "Processing AI prompt... Please wait" : {
+    "Processing Dictate Prompt... Please wait" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Anweisung wird verarbeitet … Bitte warten"
+            "value" : "Dictate Prompt wird verarbeitet … Bitte warten"
           }
         }
       }
@@ -15115,12 +15105,12 @@
         }
       }
     },
-    "Processing text-to-speech... Please wait" : {
+    "Preparing Read Aloud... Please wait" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprachausgabe wird erzeugt … Bitte warten"
+            "value" : "Vorlesen wird vorbereitet … Bitte warten"
           }
         }
       }
@@ -18024,12 +18014,12 @@
         }
       }
     },
-    "Shortcut and smart-rewrite settings" : {
+    "Voice and how selected text is spoken" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tastenkürzel und intelligentes Umschreiben"
+            "value" : "Stimme und wie markierter Text vorgelesen wird"
           }
         }
       }
@@ -20188,28 +20178,28 @@
         }
       }
     },
-    "Transcribing [%lld/%lld] - %lld active" : {
+    "Transcribing %lld of %lld — %lld still in progress" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Transkription [%lld/%lld] – %lld aktiv"
+            "value" : "%lld von %lld werden transkribiert – %lld noch in Arbeit"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+            "value" : "Transcribing %1$lld of %2$lld — %3$lld still in progress"
           }
         }
       }
     },
-    "Transcribing audio... Please wait" : {
+    "Transcribing... Please wait" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audio wird transkribiert … Bitte warten"
+            "value" : "Transkription … Bitte warten"
           }
         }
       }
@@ -21542,12 +21532,12 @@
         }
       }
     },
-    "WhisperShortcut - Click to record" : {
+    "WhisperShortcut — Click to open the menu" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut – zum Aufnehmen klicken"
+            "value" : "WhisperShortcut – Klicken Sie, um das Menü zu öffnen"
           }
         }
       }
@@ -22420,12 +22410,12 @@
     "⌃%lld" : {
       "shouldTranslate" : false
     },
-    "⏰ Generic Timeout\n\nThe request timed out for an unknown reason.\n\nError: %@\n\nPlease try again or use a shorter recording." : {
+    "⏰ Request Timed Out\n\nThe request did not finish in time. This usually means a slow connection or a busy provider.\nWait a moment and try again, or use a shorter recording." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏰ Zeitüberschreitung\n\nDie Anfrage ist aus unbekanntem Grund abgelaufen.\n\nFehler: %@\n\nBitte erneut versuchen oder eine kürzere Aufnahme verwenden."
+            "value" : "⏰ Zeitüberschreitung\n\nDie Anfrage wurde nicht rechtzeitig abgeschlossen. Meist liegt das an einer langsamen Verbindung oder einem ausgelasteten Anbieter.\nWarten Sie einen Moment und versuchen Sie es erneut, oder verwenden Sie eine kürzere Aufnahme."
           }
         }
       }
@@ -22562,22 +22552,22 @@
         }
       }
     },
-    "⏳ Processing AI prompt..." : {
+    "⏳ Processing Dictate Prompt..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏳ KI-Anweisung wird verarbeitet …"
+            "value" : "⏳ Dictate Prompt wird verarbeitet …"
           }
         }
       }
     },
-    "⏳ Processing text-to-speech..." : {
+    "⏳ Preparing Read Aloud..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏳ Sprachausgabe wird erzeugt …"
+            "value" : "⏳ Vorlesen wird vorbereitet …"
           }
         }
       }
@@ -22632,12 +22622,12 @@
         }
       }
     },
-    "⏳ Transcribing audio..." : {
+    "⏳ Transcribing..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏳ Audio wird transkribiert …"
+            "value" : "⏳ Transkription …"
           }
         }
       }
@@ -22752,12 +22742,12 @@
         }
       }
     },
-    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {
+    "❌ Invalid API Key\n\nThe API key for the selected provider is invalid or has expired.\nOpen Settings → Accounts, check the key, then try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Anmeldung fehlgeschlagen\n\nIhr API-Schlüssel ist ungültig oder abgelaufen.\nPrüfen Sie in den Einstellungen den API-Schlüssel für den gewählten Anbieter."
+            "value" : "❌ Ungültiger API-Schlüssel\n\nDer API-Schlüssel für den gewählten Anbieter ist ungültig oder abgelaufen.\nÖffnen Sie Einstellungen → Konten, prüfen Sie den Schlüssel und versuchen Sie es erneut."
           }
         }
       }
@@ -22862,22 +22852,22 @@
         }
       }
     },
-    "❌ Invalid Authentication" : {
+    "❌ Invalid API Key" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Ungültige Anmeldung"
+            "value" : "❌ Ungültiger API-Schlüssel"
           }
         }
       }
     },
-    "❌ Invalid Request\n\nThe request was malformed or contained invalid parameters.\nPlease check your audio file format and try again." : {
+    "❌ Couldn't Process the Recording\n\nThe transcription service rejected this request.\nTry again with a shorter recording. If it keeps failing, pick another model in Settings → Dictate." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Ungültige Anfrage\n\nDie Anfrage war fehlerhaft oder enthielt ungültige Parameter.\nPrüfen Sie das Format der Audiodatei und versuchen Sie es erneut."
+            "value" : "❌ Aufnahme konnte nicht verarbeitet werden\n\nDer Transkriptionsdienst hat diese Anfrage abgelehnt.\nVersuchen Sie es mit einer kürzeren Aufnahme. Wenn es weiter scheitert, wählen Sie unter Einstellungen → Diktieren ein anderes Modell."
           }
         }
       }
@@ -22902,32 +22892,32 @@
         }
       }
     },
-    "❌ Network Error\n\nError: %@\n\nPlease check your internet connection and try again." : {
+    "❌ Network Error\n\nCheck your internet connection and try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Netzwerkfehler\n\nFehler: %@\n\nBitte prüfen Sie Ihre Internetverbindung und versuchen Sie es erneut."
+            "value" : "❌ Netzwerkfehler\n\nPrüfen Sie Ihre Internetverbindung und versuchen Sie es erneut."
           }
         }
       }
     },
-    "❌ Permission Denied\n\nYou don't have permission to access this resource.\nPlease check your API key permissions." : {
+    "❌ API Access Denied\n\nThis API key cannot use the selected model.\nCheck the key in Settings → Accounts, or pick another model in Settings → Dictate." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Zugriff verweigert\n\nSie haben keine Berechtigung für diese Ressource.\nPrüfen Sie die Berechtigungen Ihres API-Schlüssels."
+            "value" : "❌ API-Zugriff verweigert\n\nDieser API-Schlüssel kann das gewählte Modell nicht nutzen.\nPrüfen Sie den Schlüssel unter Einstellungen → Konten, oder wählen Sie unter Einstellungen → Diktieren ein anderes Modell."
           }
         }
       }
     },
-    "❌ Resource Not Found\n\nThe requested resource was not found.\nPlease try again." : {
+    "❌ Model Unavailable\n\nThe selected model or endpoint could not be found.\nChoose a different model in Settings → Dictate, then try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Ressource nicht gefunden\n\nDie angefragte Ressource wurde nicht gefunden.\nBitte versuchen Sie es erneut."
+            "value" : "❌ Modell nicht verfügbar\n\nDas gewählte Modell oder der Endpunkt wurde nicht gefunden.\nWählen Sie unter Einstellungen → Diktieren ein anderes Modell und versuchen Sie es erneut."
           }
         }
       }
@@ -23042,12 +23032,12 @@
         }
       }
     },
-    "📝 Live transcription..." : {
+    "📝 Live meeting..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "📝 Live-Transkription …"
+            "value" : "📝 Live-Meeting …"
           }
         }
       }
@@ -23517,6 +23507,156 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+          }
+        }
+      }
+    },
+    "❌ Couldn't Process Recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Aufnahme konnte nicht verarbeitet werden"
+          }
+        }
+      }
+    },
+    "❌ API Access Denied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ API-Zugriff verweigert"
+          }
+        }
+      }
+    },
+    "❌ Model Unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Modell nicht verfügbar"
+          }
+        }
+      }
+    },
+    "Arrow keys move between steps. Return continues." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit den Pfeiltasten wechseln Sie die Schritte. Return geht weiter."
+          }
+        }
+      }
+    },
+    "Return continues." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return geht weiter."
+          }
+        }
+      }
+    },
+    "Return finishes the tour." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return beendet die Einführung."
+          }
+        }
+      }
+    },
+    "Choose Offline or Cloud and finish setup first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie zuerst Offline oder Cloud und schließen Sie die Einrichtung ab."
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewählt"
+          }
+        }
+      }
+    },
+    "Not selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht ausgewählt"
+          }
+        }
+      }
+    },
+    "Opens the WhisperShortcut source code on GitHub" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet den Quellcode von WhisperShortcut auf GitHub"
+          }
+        }
+      }
+    },
+    "Opens System Settings to Language & Region" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet die Systemeinstellungen unter Sprache & Region"
+          }
+        }
+      }
+    },
+    "Escape discards. Return stops and processes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escape verwirft. Return beendet und verarbeitet."
+          }
+        }
+      }
+    },
+    "Escape cancels." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escape bricht ab."
+          }
+        }
+      }
+    },
+    "Escape stops reading aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escape beendet das Vorlesen."
+          }
+        }
+      }
+    },
+    "How spoken instructions rewrite or write text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie gesprochene Anweisungen Text umschreiben oder schreiben"
           }
         }
       }

@@ -84,6 +84,9 @@ class MenuBarController: NSObject {
 
   // MARK: - UI Components
   private var statusItem: NSStatusItem?
+  /// Last VoiceOver announcement key for the status item. Chunk-count ticks share one
+  /// key so VoiceOver is not spoken on every progress update.
+  private var lastAnnouncedMenuBarPhase: String?
   /// Live in the Send Feedback submenu, which `menu.item(withTag:)` does not search.
   private var reportDictationItem: NSMenuItem?
   private var reportDictationSeparator: NSMenuItem?
@@ -369,7 +372,7 @@ class MenuBarController: NSObject {
       }
       return segment == .dictation
         ? String(localized: "\(presentedState.icon) Dictating — meeting still recording")
-        : String(localized: "\(presentedState.icon) Recording AI prompt — meeting still recording")
+        : String(localized: "\(presentedState.icon) Recording Dictate Prompt — meeting still recording")
     }
     if meetingIsFinishing { return String(localized: "⏳ Finishing meeting — saving the last seconds…") }
     return appState.statusText
@@ -1116,12 +1119,36 @@ class MenuBarController: NSObject {
     if case .processing(.processingChunks(let statuses, _)) = presentedState {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
-      button.toolTip = String(localized: "Transcribing [\(done)/\(statuses.count)] - \(active) active")
+      button.toolTip = String(localized: "Transcribing \(done) of \(statuses.count) — \(active) still in progress")
     } else if activeMeetingSegment != nil || meetingIsFinishing {
       button.toolTip = presentedStatusText
     } else {
       button.toolTip = appState.tooltip
     }
+    updateMenuBarAccessibility(on: button)
+  }
+
+  /// VoiceOver reads the same sentence as the tooltip (what is happening, and what a click does).
+  /// State changes are announced once so a recording or transcribe step is not silent.
+  private func updateMenuBarAccessibility(on button: NSStatusBarButton) {
+    let spoken = button.toolTip ?? presentedStatusText
+    button.setAccessibilityTitle(spoken)
+    button.setAccessibilityHelp(spoken)
+    let phaseKey: String
+    if case .processing(.processingChunks) = presentedState {
+      phaseKey = "processingChunks"
+    } else {
+      phaseKey = spoken
+    }
+    guard phaseKey != lastAnnouncedMenuBarPhase else { return }
+    let isInitialIdle = lastAnnouncedMenuBarPhase == nil && !appState.isBusy
+    lastAnnouncedMenuBarPhase = phaseKey
+    guard !isInitialIdle else { return }
+    NSAccessibility.post(
+      element: button,
+      notification: .announcementRequested,
+      userInfo: [NSAccessibility.NotificationUserInfoKey.announcement: spoken]
+    )
   }
 
   /// Renders `presentedState` on the status item button: an SF Symbol template image
@@ -1228,7 +1255,8 @@ class MenuBarController: NSObject {
       button.image = nil
       button.title = "⚠️"
       applyDevBadge(to: button)
-      button.toolTip = String(localized: "Add an API key or use an offline model - click to configure")
+      button.toolTip = String(localized: "Add an API key or download an offline model — click to open Settings")
+      updateMenuBarAccessibility(on: button)
     }
   }
 

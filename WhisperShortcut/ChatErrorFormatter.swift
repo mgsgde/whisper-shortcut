@@ -33,8 +33,14 @@ enum ChatErrorFormatter {
           }
           return String(localized: "\(name) request failed. Please try again.")
         }
+        if SpeechErrorFormatter.looksTechnical(msg) {
+          return String(localized: "\(name) request failed. Please try again.")
+        }
         return msg
       case .fileError(let msg), .localModelFailed(let msg):
+        if SpeechErrorFormatter.looksTechnical(msg) {
+          return String(localized: "Request failed. Please try again.")
+        }
         return msg
       default:
         return String(localized: "Request failed. Please try again.")
@@ -47,10 +53,14 @@ enum ChatErrorFormatter {
       case .timedOut:
         return String(localized: "Request timed out. Please try again.")
       default:
-        return String(localized: "Network error: \(urlError.localizedDescription)")
+        return String(localized: "Network error. Please try again.")
       }
     }
-    return error.localizedDescription
+    let description = error.localizedDescription
+    if description.isEmpty || SpeechErrorFormatter.looksTechnical(description) {
+      return String(localized: "Request failed. Please try again.")
+    }
+    return description
   }
 
   static func chatProviderDisplayName(_ provider: ChatModelProvider) -> String {

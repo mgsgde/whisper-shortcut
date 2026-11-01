@@ -22,10 +22,10 @@ struct SpeechErrorFormatter {
 
     case .invalidAPIKey:
       return String(localized: """
-        ❌ Authentication Error
+        ❌ Invalid API Key
 
-        Your API key is invalid or has expired.
-        Please check the API key for the selected provider in Settings.
+        The API key for the selected provider is invalid or has expired.
+        Open Settings → Accounts, check the key, then try again.
         """)
 
     case .incorrectAPIKey:
@@ -46,26 +46,26 @@ struct SpeechErrorFormatter {
 
     case .invalidRequest:
       return String(localized: """
-        ❌ Invalid Request
+        ❌ Couldn't Process the Recording
 
-        The request was malformed or contained invalid parameters.
-        Please check your audio file format and try again.
+        The transcription service rejected this request.
+        Try again with a shorter recording. If it keeps failing, pick another model in Settings → Dictate.
         """)
 
     case .permissionDenied:
       return String(localized: """
-        ❌ Permission Denied
+        ❌ API Access Denied
 
-        You don't have permission to access this resource.
-        Please check your API key permissions.
+        This API key cannot use the selected model.
+        Check the key in Settings → Accounts, or pick another model in Settings → Dictate.
         """)
 
     case .notFound:
       return String(localized: """
-        ❌ Resource Not Found
+        ❌ Model Unavailable
 
-        The requested resource was not found.
-        Please try again.
+        The selected model or endpoint could not be found.
+        Choose a different model in Settings → Dictate, then try again.
         """)
 
     case .modelDeprecated:
@@ -257,21 +257,16 @@ struct SpeechErrorFormatter {
     case .networkError(let details):
       if details.lowercased().contains("timeout") {
         return String(localized: """
-          ⏰ Generic Timeout
+          ⏰ Request Timed Out
 
-          The request timed out for an unknown reason.
-
-          Error: \(details)
-
-          Please try again or use a shorter recording.
+          The request did not finish in time. This usually means a slow connection or a busy provider.
+          Wait a moment and try again, or use a shorter recording.
           """)
       } else {
         return String(localized: """
           ❌ Network Error
 
-          Error: \(details)
-
-          Please check your internet connection and try again.
+          Check your internet connection and try again.
           """)
       }
 
@@ -420,7 +415,7 @@ struct SpeechErrorFormatter {
     case .noGoogleAPIKey:
       return String(localized: "⚠️ No Google API Key")
     case .invalidAPIKey:
-      return String(localized: "❌ Invalid Authentication")
+      return String(localized: "❌ Invalid API Key")
     case .incorrectAPIKey:
       return String(localized: "❌ Incorrect API Key")
     case .countryNotSupported:
@@ -445,6 +440,12 @@ struct SpeechErrorFormatter {
       return String(localized: "🔄 Service Unavailable")
     case .slowDown:
       return String(localized: "🔄 Slow Down")
+    case .invalidRequest:
+      return String(localized: "❌ Couldn't Process Recording")
+    case .permissionDenied:
+      return String(localized: "❌ API Access Denied")
+    case .notFound:
+      return String(localized: "❌ Model Unavailable")
     case .fileTooLarge:
       return String(localized: "❌ File Too Large")
     case .emptyFile:
@@ -482,10 +483,19 @@ struct SpeechErrorFormatter {
       return format(transcriptionError)
     }
     let message = error.localizedDescription
-    if message.isEmpty {
+    if message.isEmpty || looksTechnical(message) {
       return String(localized: "An error occurred. Please try again.")
     }
     return message
+  }
+
+  /// JSON bodies, NSError dumps, and long stack-like text do not help in a popup.
+  static func looksTechnical(_ message: String) -> Bool {
+    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return true }
+    if trimmed.contains("Error Domain=") || trimmed.contains("NSLocalizedDescription") { return true }
+    if trimmed.count > 240 { return true }
+    return false
   }
 
   /// Short status for any error (menu bar / popup title). Uses TranscriptionError when available; otherwise returns a generic title.

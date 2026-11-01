@@ -39,6 +39,7 @@ struct LanguageSection: View {
         Button("Change in System Settings…") {
           NSWorkspace.shared.open(Self.languageSettingsURL)
         }
+        .accessibilityHint("Opens System Settings to Language & Region")
       }
 
       Text("To use a different language for this app only, add WhisperShortcut under System Settings → General → Language & Region → Applications, then quit and reopen it.")

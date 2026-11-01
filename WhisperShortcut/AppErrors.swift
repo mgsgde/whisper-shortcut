@@ -10,9 +10,9 @@ enum TTSPlaybackError: Error, LocalizedError {
 
   var errorDescription: String? {
     switch self {
-    case .failedToCreateAudioFormat: return String(localized: "Failed to create audio format")
-    case .failedToCreateBuffer: return String(localized: "Failed to create audio buffer")
-    case .noAudioProduced: return String(localized: "No audio was generated for this text")
+    case .failedToCreateAudioFormat: return String(localized: "Read Aloud could not start. Please try again.")
+    case .failedToCreateBuffer: return String(localized: "Read Aloud could not start. Please try again.")
+    case .noAudioProduced: return String(localized: "Read Aloud produced no audio for this text.")
     }
   }
 }

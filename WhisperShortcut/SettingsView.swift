@@ -62,6 +62,8 @@ struct SettingsView: View {
         .padding(.vertical, 2)
       }
       .help(Text(description(for: tab)))
+      .accessibilityLabel(Text(tab.displayName))
+      .accessibilityHint(description(for: tab))
       .pointerCursorOnHover()
     }
     .listStyle(.sidebar)
@@ -171,21 +173,21 @@ struct SettingsView: View {
     case .accounts:
       return "API keys, OpenRouter, and connected services"
     case .speechToText:
-      return "Model, system prompt, and shortcut"
+      return "How speech becomes text — model and shortcut"
     case .speechToPrompt:
-      return "Model, system prompt, and shortcut"
+      return "How spoken instructions rewrite or write text"
     case .templates:
       return "Formats to dictate into, and their shortcut"
     case .screenshot:
       return "Shortcut and save-to-folder settings"
     case .chat:
-      return "Model, system prompt, commands, and memory"
+      return "Chat model, commands, and memory"
     case .meetings:
       return "Meeting transcription and summaries"
     case .readAloud:
-      return "Shortcut and smart-rewrite settings"
+      return "Voice and how selected text is spoken"
     case .improvement:
-      return "Improve prompts from your usage and manage context data"
+      return "Learn from your usage history"
     case .aiApps:
       return "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings"
     case .permissions:

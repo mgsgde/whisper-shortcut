@@ -171,6 +171,7 @@ class PopupNotificationWindow: NSWindow {
     setupCloseButton()
     setupIcon()
     setupLabels(title: title, text: text, modelInfo: modelInfo)
+    applyAccessibility(title: title, text: text)
     setupScrollView()
     if kind == .error {
       var buttons: [NSButton] = []
@@ -292,6 +293,7 @@ class PopupNotificationWindow: NSWindow {
     // Set action
     closeButton.target = self
     closeButton.action = #selector(closeButtonClicked)
+    closeButton.setAccessibilityLabel(String(localized: "Close"))
     
     // Size constraints
     closeButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -346,6 +348,19 @@ class PopupNotificationWindow: NSWindow {
       alignment: .center,
       truncates: false,
       hugHorizontally: true
+    )
+  }
+
+  /// VoiceOver treats the popup as a dialog and hears the title when it appears.
+  private func applyAccessibility(title: String, text: String) {
+    setAccessibilityRole(.dialog)
+    setAccessibilityTitle(title)
+    setAccessibilityLabel(title)
+    if !text.isEmpty { setAccessibilityHelp(text) }
+    NSAccessibility.post(
+      element: self,
+      notification: .announcementRequested,
+      userInfo: [NSAccessibility.NotificationUserInfoKey.announcement: title]
     )
   }
 
@@ -1181,6 +1196,7 @@ extension PopupNotificationWindow {
 
     popup.titleLabel?.stringValue = String(localized: title)
     popup.setProcessingMessage(message)
+    popup.applyAccessibility(title: String(localized: title), text: message)
   }
 
   /// Dismiss the current processing popup.

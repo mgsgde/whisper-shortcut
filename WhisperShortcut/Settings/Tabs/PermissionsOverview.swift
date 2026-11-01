@@ -274,5 +274,12 @@ struct PermissionsOverview: View {
       Spacer(minLength: 8)
       actions
     }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(permissionAccessibilityLabel(name: name, required: required, status: status))
+  }
+
+  private func permissionAccessibilityLabel(name: String, required: Bool, status: PermissionStatus) -> String {
+    let requirement = required ? String(localized: "Required") : String(localized: "Optional")
+    return "\(name), \(requirement), \(PermissionStatusBadge.spokenLabel(for: status))"
   }
 }

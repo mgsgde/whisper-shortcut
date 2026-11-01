@@ -840,6 +840,7 @@ struct RecordingIndicatorView: View {
     .background(Capsule().fill(Color.black.opacity(0.92)))
     .accessibilityElement(children: .contain)
     .accessibilityLabel(accessibilityTitle)
+    .accessibilityHint(accessibilityHint)
   }
 
   private var accessibilityTitle: String {
@@ -849,6 +850,17 @@ struct RecordingIndicatorView: View {
       if model.isPaused { return String(localized: "Read Aloud paused") }
       if model.isBuffering { return String(localized: "Reading aloud — loading") }
       return String(localized: "Reading aloud")
+    }
+  }
+
+  private var accessibilityHint: LocalizedStringKey {
+    switch model.phase {
+    case .recording:
+      return "Escape discards. Return stops and processes."
+    case .processing:
+      return "Escape cancels."
+    case .speaking:
+      return "Escape stops reading aloud."
     }
   }
 }
