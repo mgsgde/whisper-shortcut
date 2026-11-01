@@ -838,11 +838,14 @@ class MenuBarController: NSObject {
       // A quick action or typed instruction would replace the template, so the card offers
       // the template only — and the picker when the generic shortcut has more than one choice.
       // This is also the screenshot-selection card: a template turn does not show quick actions.
+      // With no capture (screenshot-selection model) there is nothing to read: the template
+      // formats what is said, so the card starts there instead of on "Reading selection…".
       let choices = recording?.templateChoices ?? []
       let offersChoice = choices.count > 1
       let index = choices.firstIndex { $0.id == bound.id } ?? 0
+      let context: QuickActionContext = recording?.promptSelection == nil ? .nothingSelected : .reading
       RecordingIndicatorManager.shared.showQuickActions(
-        [], context: .reading, templateName: bound.displayName,
+        [], context: context, templateName: bound.displayName,
         templateChoices: offersChoice ? choices.map(\.displayName) : [],
         templateChoiceIndex: offersChoice ? index : 0)
       DebugLogger.log("QUICK-ACTIONS: Template \(bound.displayName)")
