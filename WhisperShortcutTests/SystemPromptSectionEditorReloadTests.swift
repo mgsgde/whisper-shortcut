@@ -27,4 +27,14 @@ struct SystemPromptSectionEditorReloadTests {
   func diskTextAgainstEmptyField() {
     #expect(!SystemPromptSectionEditor.isOwnSave(onDisk: "abc", lastSaved: ""))
   }
+
+  @Test("Save keeps a glossary term appended during the autosave window and honours deletions")
+  func saveKeepsAppendedLine() {
+    let loaded = "Metoprolol\nBisoprolol"
+    let edited = "Metoprolol"
+    let onDisk = "Metoprolol\nBisoprolol\nHbA1c"
+    #expect(
+      SystemPromptSectionEditor.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
+        == "Metoprolol\nHbA1c")
+  }
 }
