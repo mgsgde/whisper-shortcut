@@ -1069,10 +1069,11 @@ extension PopupNotificationWindow {
 
   /// `showError` for text that is already final (a formatted error, user content).
   static func showError(verbatim error: String, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+    let titleText = String(localized: title)
     present(ignoresPreference: true) {
       PopupNotificationWindow(
-        title: String(localized: title),
-        text: error,
+        title: titleText,
+        text: SpeechErrorFormatter.bodyWithoutHeading(error, title: titleText),
         kind: .error,
         retryAction: retryAction,
         retryActionTitle: String(localized: retryActionTitle),

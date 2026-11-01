@@ -501,15 +501,18 @@ struct SpeechErrorFormatter {
   /// Returns (shortTitle, body) for popup display. For TranscriptionError, body is the formatted message with the short title stripped from the start.
   static func titleAndBodyForPopup(_ error: TranscriptionError) -> (shortTitle: String, body: String) {
     let shortTitle = shortStatus(error)
-    let formattedMessage = format(error)
-    let trimmedFormatted = formattedMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-    let titleToRemove = shortTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    return (shortTitle, bodyWithoutHeading(format(error), title: shortTitle))
+  }
+
+  /// Drops the heading a formatted message opens with when the popup already shows it as its
+  /// title, so "❌ Incorrect API Key" is not printed twice. Applied to every error popup.
+  static func bodyWithoutHeading(_ message: String, title: String) -> String {
+    let trimmedFormatted = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    let titleToRemove = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !titleToRemove.isEmpty else { return trimmedFormatted }
     if trimmedFormatted.hasPrefix(titleToRemove) {
-      let titleLength = titleToRemove.count
-      let afterTitle = trimmedFormatted.dropFirst(titleLength)
-      var body = String(afterTitle).trimmingCharacters(in: .whitespacesAndNewlines)
-      if body.isEmpty { body = trimmedFormatted }
-      return (shortTitle, body)
+      let body = String(trimmedFormatted.dropFirst(titleToRemove.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+      return body.isEmpty ? trimmedFormatted : body
     }
     // The long form often opens with its own, differently worded heading ("⚠️ No Gemini
     // Credential" under the title "⚠️ No Google API Key"). Same leading symbol + a short first
@@ -518,9 +521,9 @@ struct SpeechErrorFormatter {
     if split.count == 2, let first = split.first, first.count <= 60,
        let symbol = titleToRemove.first, !symbol.isLetter, !symbol.isNumber, first.first == symbol {
       let body = String(split[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-      if !body.isEmpty { return (shortTitle, body) }
+      if !body.isEmpty { return body }
     }
-    return (shortTitle, trimmedFormatted)
+    return trimmedFormatted
   }
 
   /// Returns (shortTitle, body) for popup display for any error.
