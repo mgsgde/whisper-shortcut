@@ -883,13 +883,13 @@ class SpeechService {
     template: String? = nil
   ) -> String {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
+    // The stored prompt is not read: this mode never uses it.
     if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
-      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
-        + AppConstants.promptModeOutputRule
+      return buildDictatePromptSystemPrompt(
+        usesScreenshotSelection: true, styleBlock: styleBlock, template: template, stored: "")
     }
     let stored = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-    let base = dictatePromptBase(stored: stored, template: template)
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
@@ -898,6 +898,21 @@ class SpeechService {
     } else {
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
+    return buildDictatePromptSystemPrompt(
+      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored)
+  }
+
+  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored prompt passed in.
+  /// Pure: no store read and no logging, so tests can pin the exact string a custom prompt,
+  /// the built-in default, and screenshot-selection mode produce.
+  static func buildDictatePromptSystemPrompt(
+    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String
+  ) -> String {
+    if usesScreenshotSelection {
+      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
+        + AppConstants.promptModeOutputRule
+    }
+    let base = dictatePromptBase(stored: stored, template: template)
     return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
