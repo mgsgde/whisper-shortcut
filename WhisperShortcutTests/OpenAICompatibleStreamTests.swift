@@ -346,14 +346,14 @@ struct OpenAICompatibleStreamTests {
     }
 
     nonisolated(unsafe) private static var endpoints: Set<String> = []
-    nonisolated(unsafe) private static var recorded: [String: [Recorded]] = [:]
+    nonisolated(unsafe) private static var bodies: [String: [Recorded]] = [:]
     private static let lock = NSLock()
 
     static func register() -> String {
       let endpoint = "https://own-server.invalid/\(UUID().uuidString)/v1/chat/completions"
       lock.lock()
       endpoints.insert(endpoint)
-      recorded[endpoint] = []
+      bodies[endpoint] = []
       lock.unlock()
       return endpoint
     }
@@ -361,7 +361,7 @@ struct OpenAICompatibleStreamTests {
     static func recordedBodies(for endpoint: String) -> [Recorded] {
       lock.lock()
       defer { lock.unlock() }
-      return recorded[endpoint] ?? []
+      return bodies[endpoint] ?? []
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -381,7 +381,7 @@ struct OpenAICompatibleStreamTests {
       let object = (try? JSONSerialization.jsonObject(with: request.httpBody ?? Data())) as? [String: Any]
       let keys = Set((object ?? [:]).keys)
       Self.lock.lock()
-      recorded[url.absoluteString, default: []].append(Recorded(keys: keys))
+      Self.bodies[url.absoluteString, default: []].append(Recorded(keys: keys))
       Self.lock.unlock()
 
       let hasRejectedKeys = keys.contains("tools") || keys.contains("prompt_cache_key")
