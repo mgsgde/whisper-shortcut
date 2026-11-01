@@ -165,10 +165,21 @@ struct GeminiErrorMappingTests {
 
   @Test("400 plus voice/allowlist language is voiceRequiresAPIKey")
   func voiceRequiresAPIKey() throws {
+    // Must not also contain "api key" — that substring is checked first and becomes
+    // `.incorrectAPIKey` on a non-401 (see `voicePhraseAlsoContainingAPIKey`).
+    let data = try geminiError(
+      code: 400,
+      message: "Audio output is allowlist-only.")
+    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .voiceRequiresAPIKey)
+  }
+
+  @Test("A voice error that also says 'api key' currently maps to incorrectAPIKey")
+  func voicePhraseAlsoContainingAPIKey() throws {
+    // Current contract: the api-key branch runs before the voice/allowlist branch.
     let data = try geminiError(
       code: 400,
       message: "Audio output requires an API key and allowlist access.")
-    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .voiceRequiresAPIKey)
+    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .incorrectAPIKey)
   }
 
   @Test("A typed-decode miss still reads error.message from loose JSON")

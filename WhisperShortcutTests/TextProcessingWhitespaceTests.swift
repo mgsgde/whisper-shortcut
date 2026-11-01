@@ -28,11 +28,20 @@ struct TextProcessingWhitespaceTests {
         == "para one\n\npara two")
   }
 
-  @Test("Internal spaces and tabs collapse; leading indentation is kept")
+  @Test("Internal spaces and tabs collapse; later-line indentation is kept")
   func preservesIndentationAndCollapsesRest() {
-    let input = "  - first   item\n\t- second\t\titem  "
+    // Outer trim drops leading whitespace on the *first* line (current contract).
+    // A later line's leading tab is preserved so nested bullets stay indented.
+    let input = "- first   item\n\t- second\t\titem  "
     let output = TextProcessingUtility.normalizingWhitespace(input)
-    #expect(output == "  - first item\n\t- second item")
+    #expect(output == "- first item\n\t- second item")
+  }
+
+  @Test("Leading spaces on the first line are stripped by the outer trim")
+  func firstLineIndentIsTrimmed() {
+    #expect(
+      TextProcessingUtility.normalizingWhitespace("  - first item\n  - second item")
+        == "- first item\n  - second item")
   }
 
   @Test("A line of only whitespace stays empty after trailing trim")
