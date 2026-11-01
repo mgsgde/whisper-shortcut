@@ -4,6 +4,10 @@ import HotKey
 protocol ShortcutDelegate: AnyObject {
   func toggleDictation()
   func togglePrompting()
+  /// A template's own shortcut.
+  func toggleTemplatePrompting(id: UUID)
+  /// The generic template shortcut: record, then format with a template.
+  func toggleTemplatePicker()
   func openSettings()
   func openChat()
   func takeScreenshot()
@@ -33,6 +37,15 @@ class Shortcuts {
   #if !APP_STORE
   private var addToGlossaryKey: HotKey?
   #endif
+  /// Hotkeys for templates that have their own shortcut. Empty when nothing is saved, so a user
+  /// without templates pays for one UserDefaults read and no extra registration.
+  private var templateKeys: [HotKey] = []
+  /// The generic template shortcut. Nil when it is unassigned, or when no usable template
+  /// exists, so the key does nothing rather than start a recording with no format.
+  private var templatePickerKey: HotKey?
+  /// True while the Settings recorder has asked the global hotkeys to step aside. A template-list
+  /// save during that pause must not register them again, or the recorder never sees the key.
+  private var hotkeysSuspended = false
   private var currentConfig: ShortcutConfig
 
   init() {
@@ -62,14 +75,36 @@ class Shortcuts {
       name: .shortcutRecordingStopped,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(dictationTemplatesChanged),
+      name: .dictationTemplatesChanged,
+      object: nil
+    )
   }
 
   @objc private func recordingStarted(_ notification: Notification) {
+    hotkeysSuspended = true
     cleanup()
   }
 
   @objc private func recordingStopped(_ notification: Notification) {
+    hotkeysSuspended = false
     setupShortcuts(with: currentConfig)
+  }
+
+  /// Re-register on the main thread. Ignored while the Settings recorder is open: stopping that
+  /// recording calls `setupShortcuts`, which reads the list just saved.
+  @objc private func dictationTemplatesChanged() {
+    let apply = { [weak self] in
+      guard let self, !self.hotkeysSuspended else { return }
+      self.setupShortcuts(with: self.currentConfig)
+    }
+    if Thread.isMainThread {
+      apply()
+    } else {
+      DispatchQueue.main.async(execute: apply)
+    }
   }
 
   func setup() {
@@ -154,6 +189,48 @@ class Shortcuts {
       }
     }
     #endif
+
+    registerTemplateShortcuts(config)
+  }
+
+  /// With no saved templates the list is empty and nothing is registered — the generic template
+  /// shortcut stays off too, so a key saved for it does nothing until a template exists.
+  private func registerTemplateShortcuts(_ config: ShortcutConfig) {
+    let templates = DictationTemplateStore.load()
+    guard !templates.isEmpty else { return }
+    let pickerShortcut = DictationTemplateStore.loadPickerShortcut()
+    let bindings = TemplateShortcuts.activeBindings(
+      templates: templates, appConfig: config, pickerShortcut: pickerShortcut)
+    var boundIDs = Set<UUID>()
+    for (template, shortcut) in bindings {
+      let hotKey = HotKey(key: shortcut.key, modifiers: shortcut.modifiers)
+      let templateID = template.id
+      hotKey.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleTemplatePrompting(id: templateID)
+      }
+      templateKeys.append(hotKey)
+      boundIDs.insert(template.id)
+      DebugLogger.log("SHORTCUTS: template shortcut \(shortcut.displayString) registered")
+    }
+    let skipped = templates.contains { template in
+      guard template.isUsable, let shortcut = template.shortcut, shortcut.isEnabled else { return false }
+      return !boundIDs.contains(template.id)
+    }
+    if skipped {
+      DebugLogger.log("SHORTCUTS: template shortcut skipped — key already used")
+    }
+    // No usable template, or an app shortcut already has the key: leave it unregistered so
+    // the press cannot start a recording that has nothing to format.
+    if let pickerShortcut,
+       TemplateShortcuts.pickerIsActive(
+        pickerShortcut: pickerShortcut, templates: templates, appConfig: config)
+    {
+      templatePickerKey = HotKey(key: pickerShortcut.key, modifiers: pickerShortcut.modifiers)
+      templatePickerKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleTemplatePicker()
+      }
+      DebugLogger.log("SHORTCUTS: template shortcut \(pickerShortcut.displayString) registered")
+    }
   }
 
   @objc private func shortcutsChanged(_ notification: Notification) {
@@ -174,6 +251,8 @@ class Shortcuts {
     #if !APP_STORE
     addToGlossaryKey = nil
     #endif
+    templateKeys = []
+    templatePickerKey = nil
   }
 
   deinit {

@@ -33,6 +33,7 @@ class MenuBarController: NSObject {
     case recentTranscriptions = 118
     case sendFeedback = 119
     case transcribeCancelledRecording = 120
+    case runAgainWithoutTemplate = 131
     case addToGlossary = 121
     case finishSetup = 122
     case finishSetupSeparator = 126
@@ -137,6 +138,16 @@ class MenuBarController: NSObject {
     /// where the selection lives in the screenshot). Set when the intent is created, so it can
     /// never be lost to the copy finishing after a short recording — the job awaits it.
     var promptSelection: DictatePromptSelectionCapture?
+    /// Template whose shortcut started this Dictate Prompt recording. Nil for Dictate, a meeting
+    /// segment, a screenshot-selection model, the generic Dictate Prompt shortcut, or when the
+    /// template was not passed in. Resolved here so a later edit of the template cannot swap it.
+    var boundTemplate: DictationTemplate?
+    /// Usable templates the generic template shortcut offers on the card, in list order.
+    /// Empty for a template's own shortcut and for Dictate Prompt, so that card stays as it is.
+    var templateChoices: [DictationTemplate] = []
+    /// Tab switches the bound template off for this recording. The instructions are sent only
+    /// while this stays true.
+    var templateEnabled = true
 
     var pendingMode: AppState.RecordingMode? {
       if case .mode(let mode) = target, !captureStarted { return mode }
@@ -182,11 +193,17 @@ class MenuBarController: NSObject {
   private var processedAudioURLs: Set<URL> = []
   /// What a finished Dictate Prompt recording ran with, keyed by its audio URL. Outlives the
   /// `RecordingIntent`: a retry sends the same quick-action text (and the silence precheck lets it
-  /// through) and edits the same selection instead of re-reading a pasteboard that has moved on.
+  /// through), edits the same selection instead of re-reading a pasteboard that has moved on,
+  /// and applies the same template.
   private struct FinishedPromptInputs {
     var quickActionInstruction: String?
     var isEditQuickAction = false
     var selection: DictatePromptSelectionCapture?
+    /// Template instructions captured with the recording, so a retry replaces the system prompt
+    /// the same way the first attempt did.
+    var templateInstruction: String?
+    /// `displayName` of that template, for the replay menu item. Nil when no template was bound.
+    var templateName: String?
   }
   private var finishedPromptInputs: [URL: FinishedPromptInputs] = [:]
   /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
@@ -382,6 +399,9 @@ class MenuBarController: NSObject {
     setupDelegates()
     setupNotifications()
     loadModelConfiguration()
+    // After setup, so a crash or force-quit cannot leave patient audio past the next launch.
+    // `applicationWillTerminate` only runs on a normal quit.
+    removeLeftoverTemplateRecordings()
 
     Task.detached(priority: .utility) {
       QuickActionStore.shared.refresh()
@@ -464,6 +484,13 @@ class MenuBarController: NSObject {
       createMenuItem(
         "Transcribe Cancelled Recording", action: #selector(transcribeCancelledRecording),
         tag: .transcribeCancelledRecording))
+    // Only present for a few minutes after a template shaped a dictation, so the same audio can
+    // be run through the ordinary system prompt. Hidden until that copy exists.
+    let runAgainItem = createMenuItem(
+      "Run Again Without Template", action: #selector(runAgainWithoutTemplate),
+      tag: .runAgainWithoutTemplate)
+    runAgainItem.isHidden = true
+    menu.addItem(runAgainItem)
     // Only present while a meeting has audio that failed to transcribe (e.g. recorded offline).
     // Holding ⌥ swaps it for the folder the audio is kept in.
     menu.addItem(
@@ -566,7 +593,8 @@ class MenuBarController: NSObject {
         mode: .dictate),
       ModeRow(
         tag: .dictatePrompt, title: ShortcutAction.dictatePrompt.localizedTitle, stopTitle: "Stop Dictate Prompt",
-        action: #selector(togglePrompting), shortcut: ShortcutAction.dictatePrompt.keyPath,
+        action: #selector(togglePrompting as (MenuBarController) -> () -> Void),
+        shortcut: ShortcutAction.dictatePrompt.keyPath,
         mode: .dictatePrompt),
       ModeRow(
         tag: .screenshot, title: ShortcutAction.screenshot.localizedTitle, stopTitle: nil,
@@ -662,6 +690,16 @@ class MenuBarController: NSObject {
     }
     RecordingIndicatorManager.shared.onQuickAction = { [weak self] index in
       self?.runQuickAction(at: index)
+    }
+    RecordingIndicatorManager.shared.onTemplateToggled = { [weak self] enabled in
+      self?.recording?.templateEnabled = enabled
+      DebugLogger.log("DICTATION-TEMPLATE: \(enabled ? "on" : "off") for this recording")
+    }
+    RecordingIndicatorManager.shared.onTemplateChoice = { [weak self] index in
+      guard let choices = self?.recording?.templateChoices, choices.indices.contains(index) else { return }
+      self?.recording?.boundTemplate = choices[index]
+      self?.recording?.templateEnabled = true
+      DebugLogger.log("DICTATION-TEMPLATE: \(choices[index].displayName)")
     }
     RecordingIndicatorManager.shared.onTypedPrompt = { [weak self] text in
       self?.runPromptInstruction(text, source: "typed")
@@ -790,7 +828,8 @@ class MenuBarController: NSObject {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
     let actions = QuickActionStore.shared.current()
-    guard !actions.isEmpty else {
+    let templateName = recording?.boundTemplate?.displayName
+    guard !actions.isEmpty || templateName != nil else {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
       return
     }
@@ -800,8 +839,22 @@ class MenuBarController: NSObject {
       DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
       return
     }
-    RecordingIndicatorManager.shared.showQuickActions(actions, context: .reading)
-    DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    if let bound = recording?.boundTemplate {
+      // A quick action or typed instruction would replace the template, so the card offers
+      // the template only — and the picker when the generic shortcut has more than one choice.
+      let choices = recording?.templateChoices ?? []
+      let offersChoice = choices.count > 1
+      let index = choices.firstIndex { $0.id == bound.id } ?? 0
+      RecordingIndicatorManager.shared.showQuickActions(
+        [], context: .reading, templateName: bound.displayName,
+        templateChoices: offersChoice ? choices.map(\.displayName) : [],
+        templateChoiceIndex: offersChoice ? index : 0)
+      DebugLogger.log("QUICK-ACTIONS: Template \(bound.displayName)")
+    } else {
+      RecordingIndicatorManager.shared.showQuickActions(
+        actions, context: .reading, templateName: templateName)
+      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    }
     let fromClipboard = AppConstants.dictatePromptUsesScreenshotSelection
     Task { @MainActor [weak self] in
       let text = await capture.value()
@@ -1175,6 +1228,7 @@ class MenuBarController: NSObject {
       FileManager.default.fileExists(atPath: $0.path)
     } ?? false
     menu.item(withTag: MenuTag.transcribeCancelledRecording.rawValue)?.isHidden = !hasCancelled
+    updateRunAgainWithoutTemplateItem(in: menu)
 
     guard let recentItem = menu.item(withTag: MenuTag.recentTranscriptions.rawValue) else { return }
     // A single entry is already covered by "Copy Last Transcription" — a submenu with one row
@@ -1332,7 +1386,9 @@ class MenuBarController: NSObject {
   private func beginAudioCapture(
     mode: AppState.RecordingMode,
     meetingSegment: MeetingSegment? = nil,
-    promptSelection: DictatePromptSelectionCapture? = nil
+    promptSelection: DictatePromptSelectionCapture? = nil,
+    template: DictationTemplate? = nil,
+    templateChoices: [DictationTemplate] = []
   ) {
     if mode == .transcription || mode == .prompt {
       pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
@@ -1340,6 +1396,13 @@ class MenuBarController: NSObject {
     }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
+    if mode == .prompt, meetingSegment == nil,
+       Self.selectedPromptModel().dictatePromptUsesScreenshotSelection == false,
+       let template {
+      recording?.boundTemplate = template
+      recording?.templateChoices = templateChoices
+      DebugLogger.log("DICTATION-TEMPLATE: \(template.displayName) started from its shortcut")
+    }
     audioRecorder.startRecording()
   }
 
@@ -1480,6 +1543,14 @@ class MenuBarController: NSObject {
   }
 
   @objc internal func togglePrompting() {
+    togglePrompting(template: nil)
+  }
+
+  /// `template` nil is the generic Dictate Prompt shortcut, which never applies a template.
+  /// A template shortcut passes the template it starts. `choices` is the generic shortcut's
+  /// list (empty for one template, or for a template's own shortcut). Stopping ignores both
+  /// and just ends the recording. A meeting ignores both, as it always has.
+  private func togglePrompting(template: DictationTemplate?, choices: [DictationTemplate] = []) {
     let isMeeting = isLiveMeetingActive
     switch availability(.dictatePrompt) {
     case .stop:
@@ -1509,10 +1580,15 @@ class MenuBarController: NSObject {
       ConnectionPrewarmer.prewarm(for: promptModel)
       discardStreamingSession()  // prompt recordings never stream
       if isMeeting {
+        if template != nil {
+          DebugLogger.log("DICTATION-TEMPLATE: ignored during a meeting")
+        }
         beginAudioCapture(
           mode: .prompt, meetingSegment: .prompt, promptSelection: preparation.selection)
       } else {
-        beginAudioCapture(mode: .prompt, promptSelection: preparation.selection)
+        beginAudioCapture(
+          mode: .prompt, promptSelection: preparation.selection,
+          template: template, templateChoices: choices)
       }
     case .ignored:
       break
@@ -1608,6 +1684,20 @@ class MenuBarController: NSObject {
   /// The last cancelled dictation, kept on disk so it can still be transcribed. Only ever one:
   /// this is an undo affordance, not a history, and dictations can be tens of megabytes.
   private var cancelledRecordingURL: URL?
+  /// Last Dictate Prompt recording that applied a template, so the status menu can send the same
+  /// audio through the ordinary system prompt. Offline Mode is used for patient notes, so the
+  /// copy lives only in `lastTemplateRecordingDirectory` for at most ten minutes and is deleted
+  /// on quit. A crash skips that, so launch clears the folder too.
+  private var lastTemplateRecording: (url: URL, templateName: String)?
+  private var lastTemplateRecordingExpiry: DispatchWorkItem?
+  private static let lastTemplateRecordingLifetime: TimeInterval = 10 * 60
+  /// Patient audio from a template dictation. This folder is inside the app's container / Library,
+  /// never iCloud- or Desktop-synced, so the recording does not leave the Mac through a synced
+  /// temp or Desktop folder.
+  private static var lastTemplateRecordingDirectory: URL {
+    AppSupportPaths.whisperShortcutApplicationSupportURL()
+      .appendingPathComponent("LastTemplateRecording", isDirectory: true)
+  }
 
   private func retainCancelledRecording(_ url: URL?) {
     guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
@@ -1642,6 +1732,141 @@ class MenuBarController: NSObject {
     appState = .processing(.transcribing)
     startVoiceJob(mode: .transcription, audioURL: url) { job in
       await self.performTranscription(audioURL: url, job: job)
+    }
+  }
+
+  /// Copies the recording a template just shaped into the app data directory, replacing any previous
+  /// copy, and shows "Run Again Without Template" until the ten-minute lifetime (or quit) deletes it.
+  private func retainLastTemplateRecording(from audioURL: URL, templateName: String?) {
+    let directory = Self.lastTemplateRecordingDirectory
+    AppSupportPaths.ensureDirectoryExists(directory)
+    let ext = audioURL.pathExtension
+    var destination = directory.appendingPathComponent("recording")
+    if !ext.isEmpty { destination.appendPathExtension(ext) }
+    // Staging stays in the same unsynced folder: a crash between copy and replace must not leave
+    // patient audio in the temp directory, and the launch sweep removes the staging file.
+    let staging = directory
+      .appendingPathComponent("staging-\(UUID().uuidString)")
+      .appendingPathExtension(ext.isEmpty ? "tmp" : ext)
+    do {
+      try FileManager.default.copyItem(at: audioURL, to: staging)
+      if FileManager.default.fileExists(atPath: destination.path) {
+        _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
+      } else {
+        try FileManager.default.moveItem(at: staging, to: destination)
+      }
+    } catch {
+      try? FileManager.default.removeItem(at: staging)
+      DebugLogger.logError(error, context: "DICTATION-TEMPLATE: Could not keep the recording to run again")
+      return
+    }
+    if let previous = lastTemplateRecording?.url, previous != destination {
+      try? FileManager.default.removeItem(at: previous)
+    }
+    let trimmed = templateName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    let name = trimmed.isEmpty ? String(localized: "Template") : trimmed
+    lastTemplateRecording = (destination, name)
+    scheduleLastTemplateRecordingExpiry()
+    updateRunAgainWithoutTemplateVisibility()
+  }
+
+  private func scheduleLastTemplateRecordingExpiry() {
+    lastTemplateRecordingExpiry?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      self?.expireLastTemplateRecording()
+    }
+    lastTemplateRecordingExpiry = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.lastTemplateRecordingLifetime, execute: work)
+  }
+
+  private func expireLastTemplateRecording() {
+    discardLastTemplateRecording()
+    updateRunAgainWithoutTemplateVisibility()
+  }
+
+  /// Deletes the replay copy and forgets it. Does not touch the menu; callers that should hide
+  /// the item update visibility themselves. Also the quit path, where the menu is going away.
+  /// A crash never reaches this, so launch removes whatever is still in the folder.
+  private func discardLastTemplateRecording() {
+    lastTemplateRecordingExpiry?.cancel()
+    lastTemplateRecordingExpiry = nil
+    if let url = lastTemplateRecording?.url {
+      try? FileManager.default.removeItem(at: url)
+    }
+    lastTemplateRecording = nil
+  }
+
+  /// Clears every file in `lastTemplateRecordingDirectory`. Called once setup has finished, because
+  /// `cleanup()` does not run after a crash or force-quit and patient audio must not sit there
+  /// until some later quit. Logged only when a file was actually removed, and never with its path
+  /// or name — those logs are not a place for a recording of a patient note.
+  private func removeLeftoverTemplateRecordings() {
+    let directory = Self.lastTemplateRecordingDirectory
+    let fm = FileManager.default
+    guard let contents = try? fm.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    ) else { return }
+    var removed = false
+    for url in contents {
+      if (try? fm.removeItem(at: url)) != nil {
+        removed = true
+      }
+    }
+    if removed {
+      DebugLogger.log("DICTATION-TEMPLATE: removed a leftover template recording")
+    }
+  }
+
+  private func updateRunAgainWithoutTemplateVisibility() {
+    guard let menu = statusItem?.menu else { return }
+    updateRunAgainWithoutTemplateItem(in: menu)
+  }
+
+  private func updateRunAgainWithoutTemplateItem(in menu: NSMenu) {
+    guard let item = menu.item(withTag: MenuTag.runAgainWithoutTemplate.rawValue) else { return }
+    let saved = lastTemplateRecording
+    let exists = saved.map { FileManager.default.fileExists(atPath: $0.url.path) } ?? false
+    item.isHidden = !exists
+    if exists, let name = saved?.templateName {
+      item.toolTip = String(
+        localized: "Runs your last dictation again with your Dictate Prompt system prompt instead of “\(name)”. Select the formatted text first to replace it.")
+    }
+  }
+
+  /// Sends the saved template recording through Dictate Prompt with no template and no selection,
+  /// so the pasted result replaces whatever the user selected in the target app.
+  @objc private func runAgainWithoutTemplate() {
+    guard !appState.isBusy else {
+      PopupNotificationWindow.showInfo(
+        "Finish the current recording first, then try again.", title: "Busy")
+      return
+    }
+    guard let saved = lastTemplateRecording,
+          FileManager.default.fileExists(atPath: saved.url.path) else {
+      discardLastTemplateRecording()
+      updateRunAgainWithoutTemplateVisibility()
+      return
+    }
+    // A second file, not the retained one: the audio job deletes its input when it finishes, and
+    // that must not be the copy the menu still offers. Same unsynced folder — a practice note
+    // must not pass through the temp directory. The name is a UUID so a log of the job's file
+    // cannot carry the template name.
+    let directory = Self.lastTemplateRecordingDirectory
+    AppSupportPaths.ensureDirectoryExists(directory)
+    let ext = saved.url.pathExtension
+    var copy = directory.appendingPathComponent(UUID().uuidString)
+    if !ext.isEmpty { copy.appendPathExtension(ext) }
+    do {
+      try FileManager.default.copyItem(at: saved.url, to: copy)
+    } catch {
+      DebugLogger.logError(error, context: "DICTATION-TEMPLATE: Could not copy the recording to run again")
+      return
+    }
+    DebugLogger.log("DICTATION-TEMPLATE: Running the last template dictation again without its template")
+    processedAudioURLs.insert(copy)
+    appState = .processing(.prompting)
+    startVoiceJob(mode: .prompt, audioURL: copy) { job in
+      await self.performPrompting(audioURL: copy, job: job, selection: nil)
     }
   }
 
@@ -2017,6 +2242,8 @@ class MenuBarController: NSObject {
               await self.performPrompting(
                 audioURL: audioURL, job: job, instruction: inputs?.quickActionInstruction,
                 isEditQuickAction: inputs?.isEditQuickAction ?? false,
+                templateInstruction: inputs?.templateInstruction,
+                templateName: inputs?.templateName,
                 selection: inputs?.selection)
             }
           case .liveMeeting:
@@ -2377,6 +2604,8 @@ class MenuBarController: NSObject {
     job: VoiceJob?,
     instruction: String? = nil,
     isEditQuickAction: Bool = false,
+    templateInstruction: String? = nil,
+    templateName: String? = nil,
     selection: DictatePromptSelectionCapture?
   ) async {
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
@@ -2410,13 +2639,22 @@ class MenuBarController: NSObject {
         let selectedText = await selection?.value()
         let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
-          isEditQuickAction: isEditQuickAction, selectedText: selectedText)
+          isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
+          selectedText: selectedText)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
           await MainActor.run { PopupNotificationWindow.showReplyTruncated() }
         }
         return result
+      },
+      afterCopy: { _ in
+        // Keep the audio only when a template actually replaced the system prompt. A meeting
+        // segment has no job, and a selection or a quick action keeps today's prompt.
+        guard templateInstruction != nil, job != nil, self.speechService.lastPromptAppliedTemplate else {
+          return
+        }
+        self.retainLastTemplateRecording(from: audioURL, templateName: templateName)
       })
   }
 
@@ -3089,6 +3327,7 @@ class MenuBarController: NSObject {
 
   func cleanup() {
     liveMeeting.preserveForTermination()
+    discardLastTemplateRecording()
     stopBlinking()
     shortcuts.cleanup()
     audioRecorder.cleanup()
@@ -3197,10 +3436,19 @@ extension MenuBarController: AudioRecorderDelegate {
         promptInputs.quickActionInstruction = instruction
         promptInputs.isEditQuickAction = intent?.isEditQuickAction ?? false
       }
+      if self.activeMeetingSegment == nil,
+         let template = intent?.boundTemplate,
+         intent?.templateEnabled == true,
+         intent?.quickActionInstruction == nil {
+        promptInputs.templateInstruction = template.instructions
+        promptInputs.templateName = template.displayName
+        DictationTemplateStore.lastUsedTemplateID = template.id
+      }
       if let selection = intent?.promptSelection {
         promptInputs.selection = selection
       }
-      if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil {
+      if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil
+          || promptInputs.templateInstruction != nil {
         self.finishedPromptInputs[audioURL] = promptInputs
       }
       let quickActionInstruction = promptInputs.quickActionInstruction
@@ -3348,7 +3596,9 @@ extension MenuBarController: AudioRecorderDelegate {
         self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
           await self.performPrompting(
             audioURL: audioURL, job: job, instruction: quickActionInstruction,
-            isEditQuickAction: promptInputs.isEditQuickAction, selection: promptSelection)
+            isEditQuickAction: promptInputs.isEditQuickAction,
+            templateInstruction: promptInputs.templateInstruction,
+            templateName: promptInputs.templateName, selection: promptSelection)
         }
       case .liveMeeting:
         DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
@@ -3391,6 +3641,37 @@ extension MenuBarController: AudioRecorderDelegate {
 // MARK: - ShortcutDelegate (Simple Forwarding)
 extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
+
+  func toggleTemplatePrompting(id: UUID) {
+    guard let template = DictationTemplateStore.template(id: id), template.isUsable else {
+      DebugLogger.log("DICTATION-TEMPLATE: Shortcut ignored — template is missing or has no instructions")
+      return
+    }
+    togglePrompting(template: template)
+  }
+
+  /// A second press, or any press that is not a fresh start, is the Dictate Prompt toggle:
+  /// it stops the recording. The first press applies the last-used template, and offers the
+  /// others on the card when more than one has instructions.
+  func toggleTemplatePicker() {
+    let promptRecording = pendingRecordingMode == .prompt
+      || pendingMeetingSegment == .prompt
+      || activeMeetingSegment == .prompt
+      || appState.recordingMode == .prompt
+    if promptRecording || availability(.dictatePrompt) != .start {
+      togglePrompting(template: nil)
+      return
+    }
+    guard let started = TemplatePicker.start(
+      templates: DictationTemplateStore.load(),
+      lastUsedID: DictationTemplateStore.lastUsedTemplateID
+    ) else {
+      DebugLogger.log("DICTATION-TEMPLATE: template shortcut ignored — no template with instructions")
+      return
+    }
+    DebugLogger.log("DICTATION-TEMPLATE: \(started.initial.displayName)")
+    togglePrompting(template: started.initial, choices: started.choices)
+  }
 
   /// Whether a dictation recording is running — mirrors what `toggleTranscription` treats as
   /// active, including a parallel segment during a live meeting. Used by the Fn toggle.

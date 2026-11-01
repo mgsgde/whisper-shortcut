@@ -89,6 +89,8 @@ struct SettingsView: View {
             SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .speechToPrompt:
             SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+          case .templates:
+            TemplatesSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .screenshot:
             ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
           case .chat:
@@ -141,6 +143,8 @@ struct SettingsView: View {
       return "mic"
     case .speechToPrompt:
       return "text.bubble"
+    case .templates:
+      return "doc.text"
     case .screenshot:
       return "camera.viewfinder"
     case .chat:
@@ -170,6 +174,8 @@ struct SettingsView: View {
       return "Model, system prompt, and shortcut"
     case .speechToPrompt:
       return "Model, system prompt, and shortcut"
+    case .templates:
+      return "Formats to dictate into, and their shortcut"
     case .screenshot:
       return "Shortcut and save-to-folder settings"
     case .chat:
