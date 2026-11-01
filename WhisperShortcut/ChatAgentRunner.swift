@@ -61,6 +61,17 @@ final class ChatAgentRunner {
   /// What the turn has shown so far, for a caller that keeps the partial after a throw.
   var partialText: String { ChatViewModel.stripLeakedThoughtTokens(markerPrefix + streamed) }
 
+  /// Most providers drop tools on the final synthesis round so the model must answer.
+  /// Anthropic 400s if history still has `tool_use`/`tool_result` and `tools` is omitted, so
+  /// that provider keeps the declarations and sends `tool_choice: none` instead.
+  static func declarationsForRound(
+    _ tools: [LLMToolDeclaration],
+    isFinalRound: Bool,
+    provider: LLMChatProvider
+  ) -> [LLMToolDeclaration] {
+    (isFinalRound && !(provider is AnthropicChatProvider)) ? [] : tools
+  }
+
   init(
     provider: LLMChatProvider,
     model: String,
@@ -117,6 +128,7 @@ final class ChatAgentRunner {
       // this, a model that keeps searching (e.g. re-querying Gmail with reworded terms) ends the
       // loop on an unanswered batch of function calls and the user is shown nothing.
       let isFinalRound = (round == maxToolRounds)
+      let roundTools = Self.declarationsForRound(tools, isFinalRound: isFinalRound, provider: provider)
       var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
       // Narration the model emits in THIS round; echoed back in the model turn that carries
       // the round's function calls so the re-sent history is faithful (see executeToolCalls).
@@ -128,7 +140,7 @@ final class ChatAgentRunner {
         model: model,
         contents: currentContents,
         systemInstruction: systemInstruction(),
-        tools: isFinalRound ? [] : tools,
+        tools: roundTools,
         options: options(isFinalRound))
       for try await event in stream {
         try Task.checkCancellation()
