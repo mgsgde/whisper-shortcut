@@ -11,6 +11,9 @@ struct ImprovementSettingsTab: View {
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
   @AppStorage(UserDefaultsKeys.writingStyleEnabled) private var writingStyleEnabled = false
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
+  // Offline Mode keeps no usage log and blocks the cloud model, so learning is paused, not off:
+  // the switch keeps its value and comes back when Offline Mode is turned off.
+  @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
   @State private var queuedJobCount = 0
@@ -87,11 +90,15 @@ struct ImprovementSettingsTab: View {
       VStack(alignment: .leading, spacing: 10) {
         Toggle("Learn from how I use WhisperShortcut", isOn: learningEnabled)
           .toggleStyle(.switch)
+          .disabled(offlineMode)
           .help("Keeps your dictations and prompts on this Mac and lets the Smart Improvement model suggest better prompts and learn your writing style. Off by default.")
 
         HStack(spacing: 8) {
           if isImprovementRunning {
             ProgressView().controlSize(.small)
+          } else if offlineMode {
+            Image(systemName: "wifi.slash")
+              .foregroundColor(.secondary)
           } else {
             Image(systemName: learningEnabled.wrappedValue ? "checkmark.circle.fill" : "pause.circle")
               .foregroundColor(learningEnabled.wrappedValue ? .green : .secondary)
@@ -112,6 +119,9 @@ struct ImprovementSettingsTab: View {
 
   private var learningStatusText: String {
     if isImprovementRunning { return String(localized: "Learning from your recent usage…") }
+    if offlineMode {
+      return String(localized: "Paused while Offline Mode is on. Nothing is stored or sent, and learning resumes when you turn Offline Mode off.")
+    }
     return learningEnabled.wrappedValue
       ? String(localized: "On. You get a notification when there is something to review.")
       : String(localized: "Off. Nothing is learned or stored.")
@@ -182,7 +192,7 @@ struct ImprovementSettingsTab: View {
                 .font(.callout)
             }
             .buttonStyle(.bordered)
-            .disabled(isImprovementRunning || !saveUsageData)
+            .disabled(isImprovementRunning || !saveUsageData || offlineMode)
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
 
@@ -217,7 +227,7 @@ struct ImprovementSettingsTab: View {
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .disabled(!saveUsageData)
+        .disabled(!saveUsageData || offlineMode)
 
         let improvementSubscriptionMode = false
         PromptModelSelectionView(
