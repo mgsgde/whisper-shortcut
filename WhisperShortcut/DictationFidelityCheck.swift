@@ -15,7 +15,9 @@ enum DictationFidelityCheck {
   /// Content words of `output` with no counterpart in any of `sources` (the transcript, plus the
   /// selected text when there is one). Deduplicated by normalized form, in order of first
   /// occurrence, original spelling from `output`.
-  static func unsupportedWords(in output: String, sources: [String]) -> [String] {
+  static func unsupportedWords(
+    in output: String, sources: [String], templateInstructions: String? = nil
+  ) -> [String] {
     let sourceTokenLists = sources.map { tokens(in: $0).map { normalize($0) } }
     var sourceForms = Set<String>()
     var sourceStems = Set<String>()
@@ -34,9 +36,10 @@ enum DictationFidelityCheck {
       }
     }
 
+    let extraHeadings = templateInstructions.map(labelWords(in:)) ?? []
     var seen = Set<String>()
     var result: [String] = []
-    for token in outputContentTokens(of: output) {
+    for token in outputContentTokens(of: output, extraHeadingWords: extraHeadings) {
       let form = normalize(token)
       let supported =
         sourceForms.contains(form)
@@ -58,16 +61,42 @@ enum DictationFidelityCheck {
   /// diagnosis has to be flagged.
   private static let headingWords: Set<String> = ["anamnese", "befund", "therapie", "verlauf"]
 
+  /// Label words from a template's instructions. A line that ends in ":", starts with "#", or is
+  /// written "Label:" at the start contributes the words of that label. Words after the colon
+  /// stay out: example content in the template is not a heading and must still be flagged.
+  static func labelWords(in instructions: String) -> Set<String> {
+    var words = Set<String>()
+    for raw in instructions.components(separatedBy: .newlines) {
+      let line = raw.trimmingCharacters(in: .whitespaces)
+      guard !line.isEmpty else { continue }
+      let hashHeading = line.hasPrefix("#")
+      guard hashHeading || line.contains(":") else { continue }
+      let labelSource: String
+      if let colon = line.firstIndex(of: ":") {
+        labelSource = String(line[..<colon])
+      } else {
+        labelSource = line
+      }
+      for token in tokens(in: labelSource) {
+        let form = normalize(token)
+        if !form.isEmpty { words.insert(form) }
+      }
+    }
+    return words
+  }
+
   /// Original-spelling tokens of `output` that count as content words: no markers, no heading
   /// lines, no heading words, no stopwords, no short noise.
-  private static func outputContentTokens(of output: String) -> [String] {
+  private static func outputContentTokens(
+    of output: String, extraHeadingWords: Set<String> = []
+  ) -> [String] {
     var text = output
     for marker in markers {
       text = text.replacingOccurrences(of: marker, with: " ", options: .caseInsensitive)
     }
     var result: [String] = []
     for line in text.components(separatedBy: .newlines) where !isHeadingLine(line) {
-      for token in tokens(in: line) where isContent(token) {
+      for token in tokens(in: line) where isContent(token, extraHeadingWords: extraHeadingWords) {
         result.append(token)
       }
     }
@@ -97,9 +126,9 @@ enum DictationFidelityCheck {
   }
 
   /// Whether a raw token is worth checking at all.
-  private static func isContent(_ token: String) -> Bool {
+  private static func isContent(_ token: String, extraHeadingWords: Set<String> = []) -> Bool {
     let form = normalize(token)
-    if headingWords.contains(form) { return false }
+    if headingWords.contains(form) || extraHeadingWords.contains(form) { return false }
     if token.contains(where: { $0.isNumber }) { return true }
     if stopwords.contains(form) { return false }
     // Short words are noise ("zu", "bd"), but an uppercase "M" is an abbreviation someone added.

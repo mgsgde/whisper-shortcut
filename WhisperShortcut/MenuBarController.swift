@@ -139,8 +139,9 @@ class MenuBarController: NSObject {
     /// never be lost to the copy finishing after a short recording — the job awaits it.
     var promptSelection: DictatePromptSelectionCapture?
     /// Template whose shortcut started this Dictate Prompt recording. Nil for Dictate, a meeting
-    /// segment, a screenshot-selection model, the generic Dictate Prompt shortcut, or when the
-    /// template was not passed in. Resolved here so a later edit of the template cannot swap it.
+    /// segment, the generic Dictate Prompt shortcut, or when no template was passed in.
+    /// Resolved here so a later edit of the template cannot swap it. A screenshot-selection model
+    /// still binds it: the template turn does not use the screenshot.
     var boundTemplate: DictationTemplate?
     /// Usable templates the generic template shortcut offers on the card, in list order.
     /// Empty for a template's own shortcut and for Dictate Prompt, so that card stays as it is.
@@ -833,15 +834,10 @@ class MenuBarController: NSObject {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
       return
     }
-    // No capture means screenshot-selection mode: the model reads the selection off the screen.
-    guard let capture = recording?.promptSelection else {
-      RecordingIndicatorManager.shared.showQuickActions(actions, context: .screenshot)
-      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
-      return
-    }
     if let bound = recording?.boundTemplate {
       // A quick action or typed instruction would replace the template, so the card offers
       // the template only — and the picker when the generic shortcut has more than one choice.
+      // This is also the screenshot-selection card: a template turn does not show quick actions.
       let choices = recording?.templateChoices ?? []
       let offersChoice = choices.count > 1
       let index = choices.firstIndex { $0.id == bound.id } ?? 0
@@ -850,11 +846,25 @@ class MenuBarController: NSObject {
         templateChoices: offersChoice ? choices.map(\.displayName) : [],
         templateChoiceIndex: offersChoice ? index : 0)
       DebugLogger.log("QUICK-ACTIONS: Template \(bound.displayName)")
-    } else {
-      RecordingIndicatorManager.shared.showQuickActions(
-        actions, context: .reading, templateName: templateName)
-      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+      if let capture = recording?.promptSelection {
+        observePromptSelection(capture)
+      }
+      return
     }
+    // No capture means screenshot-selection mode: the model reads the selection off the screen.
+    guard let capture = recording?.promptSelection else {
+      RecordingIndicatorManager.shared.showQuickActions(actions, context: .screenshot)
+      DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
+      return
+    }
+    RecordingIndicatorManager.shared.showQuickActions(
+      actions, context: .reading, templateName: templateName)
+    DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
+    observePromptSelection(capture)
+  }
+
+  /// Fills the card's selection line once the copy for this recording has settled.
+  private func observePromptSelection(_ capture: DictatePromptSelectionCapture) {
     let fromClipboard = AppConstants.dictatePromptUsesScreenshotSelection
     Task { @MainActor [weak self] in
       let text = await capture.value()
@@ -1402,9 +1412,7 @@ class MenuBarController: NSObject {
     }
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
-    if mode == .prompt, meetingSegment == nil,
-       Self.selectedPromptModel().dictatePromptUsesScreenshotSelection == false,
-       let template {
+    if mode == .prompt, meetingSegment == nil, let template {
       recording?.boundTemplate = template
       recording?.templateChoices = templateChoices
       DebugLogger.log("DICTATION-TEMPLATE: \(template.displayName) started from its shortcut")
@@ -2646,7 +2654,8 @@ class MenuBarController: NSObject {
         let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
-          selectedText: selectedText)
+          templateName: templateName, selectedText: selectedText,
+          recordingWasSilent: self.audioRecorder.lastRecordingWasSilent)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
@@ -2655,8 +2664,7 @@ class MenuBarController: NSObject {
         return result
       },
       afterCopy: { _ in
-        // Keep the audio only when a template actually replaced the system prompt. A meeting
-        // segment has no job, and a selection or a quick action keeps today's prompt.
+        // Keep the audio when this run was a template turn. A meeting segment has no job.
         guard templateInstruction != nil, job != nil, self.speechService.lastPromptAppliedTemplate else {
           return
         }
@@ -3459,7 +3467,6 @@ extension MenuBarController: AudioRecorderDelegate {
         self.finishedPromptInputs[audioURL] = promptInputs
       }
       let quickActionInstruction = promptInputs.quickActionInstruction
-      let promptSelection = promptInputs.selection
 
       // Recording safeguard: confirm above duration (same pattern as AccessibilityPermissionManager).
       // A quick action never sends the audio, so the cost warning does not apply.
@@ -3558,27 +3565,29 @@ extension MenuBarController: AudioRecorderDelegate {
         }()
 
         if usesCloudAPI {
-          DebugLogger.log("AUDIO: Skipping API call — recording was silent")
-          let durationMs = Self.audioDurationMs(of: audioURL)
-          ContextLogger.shared.logNoSpeechDetected(
-            source: "localSilenceGate",
-            peakDb: String(format: "%.1f", self.audioRecorder.lastPeakPowerDb),
-            durationMs: String(durationMs),
-            logPrefix: "DICTATION",
-            origin: .dictation)
-          self.discardStreamingSession()
-          self.clipboardManager.discardRestorePoint()
-          // Mirror the explicit-remove pattern used by every other early-return path; without
-          // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
-          self.processedAudioURLs.remove(audioURL)
-          self.cleanupAudioFile(at: audioURL)
-          self.appState = self.appState.stopRecording()
-          self.appState = self.appState.finish()
-          PopupNotificationWindow.showInfo(
-            "Nothing to transcribe. Check the microphone and try again.",
-            title: "Didn't catch that",
-            customDisplayDuration: Self.noSpeechInfoDuration
-          )
+          // A template turn that already has a selection may be a press-and-stop: the selection
+          // is the content. Wait for the copy, and reject only when nothing was selected.
+          if promptInputs.templateInstruction != nil, let selection = promptInputs.selection {
+            let url = audioURL
+            let mode = recordingMode
+            let inputs = promptInputs
+            let instruction = quickActionInstruction
+            Task {
+              let text = await selection.value()
+              DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if text == nil {
+                  self.rejectSilentCloudRecording(audioURL: url)
+                } else {
+                  self.startProcessingFinishedRecording(
+                    audioURL: url, recordingMode: mode,
+                    quickActionInstruction: instruction, promptInputs: inputs)
+                }
+              }
+            }
+            return
+          }
+          self.rejectSilentCloudRecording(audioURL: audioURL)
           return
         } else {
           DebugLogger.logWarning("AUDIO: Recording flagged silent, but proceeding with offline transcription")
@@ -3587,30 +3596,68 @@ extension MenuBarController: AudioRecorderDelegate {
         DebugLogger.log("AUDIO: Quick action — skipping silence precheck for \(audioURL.lastPathComponent)")
       }
 
-      if !self.appState.isProcessing {
-        self.appState = self.appState.stopRecording()
-      }
+      self.startProcessingFinishedRecording(
+        audioURL: audioURL, recordingMode: recordingMode,
+        quickActionInstruction: quickActionInstruction, promptInputs: promptInputs)
+    }
+  }
 
-      switch recordingMode {
-      case .transcription:
-        // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
-        // actually happening (downloading N%, preparing, transcribing) from inside the
-        // transcription path, instead of one static "can take several minutes" line.
-        self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
-          await self.performTranscription(audioURL: audioURL, job: job)
-        }
-      case .prompt:
-        self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
-          await self.performPrompting(
-            audioURL: audioURL, job: job, instruction: quickActionInstruction,
-            isEditQuickAction: promptInputs.isEditQuickAction,
-            templateInstruction: promptInputs.templateInstruction,
-            templateName: promptInputs.templateName, selection: promptSelection)
-        }
-      case .liveMeeting:
-        DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
-        self.cleanupAudioFile(at: audioURL)
+  /// Cloud silence gate: nothing was said and there is no selection for a template to format.
+  private func rejectSilentCloudRecording(audioURL: URL) {
+    DebugLogger.log("AUDIO: Skipping API call — recording was silent")
+    let durationMs = Self.audioDurationMs(of: audioURL)
+    ContextLogger.shared.logNoSpeechDetected(
+      source: "localSilenceGate",
+      peakDb: String(format: "%.1f", self.audioRecorder.lastPeakPowerDb),
+      durationMs: String(durationMs),
+      logPrefix: "DICTATION",
+      origin: .dictation)
+    self.discardStreamingSession()
+    self.clipboardManager.discardRestorePoint()
+    // Mirror the explicit-remove pattern used by every other early-return path; without
+    // this line the URL stayed in `processedAudioURLs` forever for each silent recording.
+    self.processedAudioURLs.remove(audioURL)
+    self.cleanupAudioFile(at: audioURL)
+    self.appState = self.appState.stopRecording()
+    self.appState = self.appState.finish()
+    PopupNotificationWindow.showInfo(
+      "Nothing to transcribe. Check the microphone and try again.",
+      title: "Didn't catch that",
+      customDisplayDuration: Self.noSpeechInfoDuration
+    )
+  }
+
+  /// Hands a finished recording to transcription or Dictate Prompt. The URL is already in
+  /// `processedAudioURLs`.
+  private func startProcessingFinishedRecording(
+    audioURL: URL,
+    recordingMode: AppState.RecordingMode,
+    quickActionInstruction: String?,
+    promptInputs: FinishedPromptInputs
+  ) {
+    if !self.appState.isProcessing {
+      self.appState = self.appState.stopRecording()
+    }
+
+    switch recordingMode {
+    case .transcription:
+      // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
+      // actually happening (downloading N%, preparing, transcribing) from inside the
+      // transcription path, instead of one static "can take several minutes" line.
+      self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
+        await self.performTranscription(audioURL: audioURL, job: job)
       }
+    case .prompt:
+      self.startVoiceJob(mode: .prompt, audioURL: audioURL) { job in
+        await self.performPrompting(
+          audioURL: audioURL, job: job, instruction: quickActionInstruction,
+          isEditQuickAction: promptInputs.isEditQuickAction,
+          templateInstruction: promptInputs.templateInstruction,
+          templateName: promptInputs.templateName, selection: promptInputs.selection)
+      }
+    case .liveMeeting:
+      DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
+      self.cleanupAudioFile(at: audioURL)
     }
   }
 
@@ -3650,6 +3697,7 @@ extension MenuBarController: ShortcutDelegate {
   func toggleDictation() { toggleTranscription() }
 
   func toggleTemplatePrompting(id: UUID) {
+    if templateShortcutShouldYieldToDictatePrompt() { return }
     guard let template = DictationTemplateStore.template(id: id), template.isUsable else {
       DebugLogger.log("DICTATION-TEMPLATE: Shortcut ignored — template is missing or has no instructions")
       return
@@ -3661,6 +3709,7 @@ extension MenuBarController: ShortcutDelegate {
   /// it stops the recording. The first press applies the last-used template, and offers the
   /// others on the card when more than one has instructions.
   func toggleTemplatePicker() {
+    if templateShortcutShouldYieldToDictatePrompt() { return }
     let promptRecording = pendingRecordingMode == .prompt
       || pendingMeetingSegment == .prompt
       || activeMeetingSegment == .prompt
@@ -3678,6 +3727,18 @@ extension MenuBarController: ShortcutDelegate {
     }
     DebugLogger.log("DICTATION-TEMPLATE: \(started.initial.displayName)")
     togglePrompting(template: started.initial, choices: started.choices)
+  }
+
+  /// A template key must not stop a Dictate Prompt (⌘2) recording. It still stops a recording
+  /// that a template key started. There is no on-card hint yet; the log is the signal.
+  private func templateShortcutShouldYieldToDictatePrompt() -> Bool {
+    let promptRecording = pendingRecordingMode == .prompt
+      || pendingMeetingSegment == .prompt
+      || activeMeetingSegment == .prompt
+      || appState.recordingMode == .prompt
+    guard promptRecording, recording?.boundTemplate == nil else { return false }
+    DebugLogger.log("DICTATION-TEMPLATE: ignored, Dictate Prompt recording active")
+    return true
   }
 
   /// Whether a dictation recording is running — mirrors what `toggleTranscription` treats as
