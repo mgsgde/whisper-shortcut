@@ -66,6 +66,18 @@ struct ShortcutDefaultsTests {
       key: .four, modifiers: [.control, .option], in: direct, excluding: "Toggle Dictation") == "Read Aloud")
   }
 
+  @Test("App Store save does not write the hidden Read Aloud and Glossary shortcuts")
+  func appStoreSaveSkipsHiddenShortcutKeys() {
+    let skipped = ShortcutConfigManager.appStoreSkippedShortcutKeys
+    #expect(skipped == Set(["shortcut_read_aloud", "shortcut_add_to_glossary"]))
+    for key in skipped {
+      #expect(!ShortcutConfigManager.persistsShortcutKey(key, isAppStore: true))
+      #expect(ShortcutConfigManager.persistsShortcutKey(key, isAppStore: false))
+    }
+    #expect(ShortcutConfigManager.persistsShortcutKey("shortcut_start_recording", isAppStore: true))
+    #expect(ShortcutConfigManager.persistsShortcutKey("shortcut_open_gemini", isAppStore: true))
+  }
+
   @Test("Legacy defaults are the ⌘-digit set existing installs were running on")
   func legacyDefaults() {
     let legacy = ShortcutConfig.legacyCommandDigit

@@ -208,6 +208,12 @@ enum ContextLoggingPreference {
     return storedFlag
   }
 
+  /// Retained dictation audio exists only while learning is on. Offline Mode pauses writes
+  /// without turning the switch off, so it must not clear the pool.
+  static func shouldClearAudioSamples(learningEnabled: Bool) -> Bool {
+    !learningEnabled
+  }
+
   /// The user's own preference, ignoring Offline Mode — for settings UI that has to show what
   /// the toggle is set to, not what the app is currently doing.
   static var storedFlag: Bool {

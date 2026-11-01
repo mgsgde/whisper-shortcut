@@ -685,8 +685,10 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
-  /// Deletes all UserDefaults, context data, chat sessions, and meeting transcripts, then terminates
-  /// the app so the user can relaunch with defaults. API keys and Google OAuth tokens (Keychain) are preserved.
+  /// Deletes UserDefaults, context data, chat sessions, meeting transcripts, the meeting-audio
+  /// backlog, recent transcriptions, raw model responses, pending telemetry and the live-meeting
+  /// marker, then terminates the app so the user can relaunch with defaults. Downloaded models
+  /// and Keychain items (API keys, OAuth tokens) are preserved.
   func resetAllDataAndRestart() {
     do {
       try ContextLogger.shared.deleteAllContextData()
@@ -696,14 +698,8 @@ class SettingsViewModel: ObservableObject {
 
     ChatSessionStore.shared.deleteAllSessions()
 
-    let fm = FileManager.default
     let appSupport = AppSupportPaths.whisperShortcutApplicationSupportURL()
-    let meetingsDir = appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory)
-    try? fm.removeItem(at: meetingsDir)
-
-    let systemPromptsFile = appSupport.appendingPathComponent("UserContext")
-      .appendingPathComponent(SystemPromptsStore.fileName)
-    try? fm.removeItem(at: systemPromptsFile)
+    Self.removeResetAllPrivateData(appSupport: appSupport)
 
     let bundleID = Bundle.main.bundleIdentifier ?? ""
     UserDefaults.standard.removePersistentDomain(forName: bundleID)
@@ -711,6 +707,27 @@ class SettingsViewModel: ObservableObject {
     UserDefaults.standard.synchronize()
     DebugLogger.log("RESET: Cleared all app data; terminating app")
     NSApplication.shared.terminate(nil)
+  }
+
+  /// On-disk private data "Reset all to defaults" removes, besides the context folder
+  /// (`ContextLogger.deleteAllContextData`) and the UserDefaults domain. Downloaded models
+  /// (WhisperKit, MLXModels, FluidAudio) are not in this list.
+  nonisolated static func resetAllPrivateDataURLs(appSupport: URL) -> [URL] {
+    [
+      appSupport.appendingPathComponent(AppConstants.liveMeetingTranscriptDirectory),
+      appSupport.appendingPathComponent("UserContext").appendingPathComponent(SystemPromptsStore.fileName),
+      appSupport.appendingPathComponent(MeetingAudioBacklog.directoryName),
+      appSupport.appendingPathComponent(TranscriptionHistoryStore.fileName),
+      AppSupportPaths.debugRawResponsesURL(in: appSupport),
+      appSupport.appendingPathComponent(TelemetryService.pendingFileName),
+      appSupport.appendingPathComponent(LiveMeetingRecordingMarker.fileName),
+    ]
+  }
+
+  nonisolated static func removeResetAllPrivateData(appSupport: URL, fileManager: FileManager = .default) {
+    for url in resetAllPrivateDataURLs(appSupport: appSupport) {
+      try? fileManager.removeItem(at: url)
+    }
   }
 
 }

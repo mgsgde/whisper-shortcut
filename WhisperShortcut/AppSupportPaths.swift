@@ -61,7 +61,11 @@ enum AppSupportPaths {
   /// `UserDefaultsKeys.saveRawAssistantResponses`. Files written here are 1:1 model output
   /// (post image-marker strip) — meant for diagnosing markdown rendering, not telemetry.
   static func debugRawResponsesURL() -> URL {
-    whisperShortcutApplicationSupportURL()
+    debugRawResponsesURL(in: whisperShortcutApplicationSupportURL())
+  }
+
+  static func debugRawResponsesURL(in appSupport: URL) -> URL {
+    appSupport
       .appendingPathComponent("Debug")
       .appendingPathComponent("raw-responses")
   }

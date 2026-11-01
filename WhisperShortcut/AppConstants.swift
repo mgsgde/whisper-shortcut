@@ -602,8 +602,9 @@ Transcript:
   /// so a file-count cap alone can let the pool grow to hundreds of MB; the oldest samples are evicted
   /// until the pool fits under both caps.
   static let audioSampleMaxTotalBytes: Int = 200_000_000
-  /// Audio older than this many days is pruned at the start of each Smart Improvement run. Matches the
-  /// text-analysis window (`contextTier3Days`) so audio and text cover the same period.
+  /// Audio older than this many days is pruned on every launch (`ContextLogger.performRotation`)
+  /// and at the start of each Smart Improvement run. Matches the text-analysis window
+  /// (`contextTier3Days`) so audio and text cover the same period.
   static let audioSampleRetentionDays: Int = 30
   /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement. Clips
   /// are chosen content-aware: one representative clip per recurring candidate term (newest first),

@@ -8,6 +8,11 @@ final class ImproveFromUsageAutoRunCoordinator {
 
   private static let timerInterval: TimeInterval = 24 * 60 * 60  // 24 hours
 
+  /// How far short of `days × 86400` a check may still count as due. The launch check and the
+  /// 24 h timer are not aligned to the second the run started; `dateComponents([.day])` used to
+  /// drop that remainder, so a check a few seconds early waited a full extra day.
+  nonisolated static let dueSlack: TimeInterval = 60
+
   private var dailyTimer: Timer?
 
   private init() {}
@@ -39,21 +44,23 @@ final class ImproveFromUsageAutoRunCoordinator {
 
     let lastRun = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastAutoImprovementRunDate) as? Date
     let now = Date()
-    let calendar = Calendar.current
-    let due: Bool
+    let due = Self.isDue(lastRun: lastRun, now: now, intervalDays: days)
     if let last = lastRun {
-      let elapsed = calendar.dateComponents([.day], from: last, to: now).day ?? 0
-      due = elapsed >= days
-      DebugLogger.log("AUTO-RUN: Interval \(days) days, last run \(elapsed) days ago, due: \(due)")
+      let elapsedDays = Int(now.timeIntervalSince(last) / 86_400)
+      DebugLogger.log("AUTO-RUN: Interval \(days) days, last run \(elapsedDays) days ago, due: \(due)")
     } else {
-      due = true
       DebugLogger.log("AUTO-RUN: Interval \(days) days, no previous run, running now")
     }
 
     guard due else { return }
 
-    guard GeminiCredentialProvider.shared.hasCredential() else {
-      DebugLogger.log("AUTO-RUN: No credential (no API key, not signed in), skipping Improve from usage")
+    // The run calls whatever improvement model is selected. A Gemini-only check skipped GPT,
+    // Claude and local models that `runImprovementNow` already accepts.
+    let improvementModel = PromptModel.loadPromptModel(
+      forKey: UserDefaultsKeys.selectedImprovementModel,
+      default: SettingsDefaults.selectedImprovementModel)
+    guard Self.providerAllowsAutoRun(model: improvementModel, hasCredential: { $0.hasCredential }) else {
+      DebugLogger.log("AUTO-RUN: No credential for \(improvementModel.displayName), skipping Improve from usage")
       return
     }
 
@@ -72,5 +79,23 @@ final class ImproveFromUsageAutoRunCoordinator {
       }
     }
     DebugLogger.log("AUTO-RUN: Daily check timer started")
+  }
+
+  /// True when `intervalDays` have elapsed since `lastRun`, with `dueSlack` so a check that
+  /// lands a few seconds early still runs. A missing last run is due.
+  nonisolated static func isDue(
+    lastRun: Date?, now: Date, intervalDays: Int, slack: TimeInterval? = nil
+  ) -> Bool {
+    guard let lastRun else { return true }
+    let allowedShortfall = slack ?? dueSlack
+    return now.timeIntervalSince(lastRun) >= Double(intervalDays) * 86_400 - allowedShortfall
+  }
+
+  /// The selected improvement model's own provider is what the run authenticates with.
+  /// `hasCredential` is passed in so the rule can be tested without the Keychain.
+  nonisolated static func providerAllowsAutoRun(
+    model: PromptModel, hasCredential: (ChatModelProvider) -> Bool
+  ) -> Bool {
+    hasCredential(model.provider)
   }
 }

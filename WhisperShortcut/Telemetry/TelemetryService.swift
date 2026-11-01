@@ -21,6 +21,9 @@ final class TelemetryService: @unchecked Sendable {
   /// Where pings go. Source of the receiving service: `server/telemetry/`.
   static let endpoint = URL(string: "https://t.whispershortcut.com/v1/ping")!
 
+  /// Unsent pings, under Application Support. Removed by "Reset all to defaults".
+  static let pendingFileName = "telemetry-pending.json"
+
   /// Completed days older than this that were never delivered are dropped, not piled up.
   static let maxPendingDays = 7
   private static let flushInterval: TimeInterval = 60 * 60
@@ -515,7 +518,7 @@ struct TelemetryEnvironment {
       now: Date.init,
       calendar: .current,
       storeURL: AppSupportPaths.whisperShortcutApplicationSupportURL()
-        .appendingPathComponent("telemetry-pending.json"),
+        .appendingPathComponent(TelemetryService.pendingFileName),
       transport: URLSessionTelemetryTransport(endpoint: TelemetryService.endpoint),
       offlineMode: { OfflineMode.isEnabled },
       setup: liveSetup,

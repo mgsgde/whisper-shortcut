@@ -177,7 +177,10 @@ class AutoPromptImprovementScheduler {
 
     // Burn the session-cooldown only once eligibility passes and real work is about to start,
     // otherwise a no-op early return above would block the next manual click for `smartImprovementCooldownSeconds`.
-    lastRunStartedAt = Date()
+    // The auto-run interval is measured from this instant. Stamping after the review panels
+    // (they can sit open indefinitely) pushed the next run out by however long that took.
+    let startedAt = Date()
+    lastRunStartedAt = startedAt
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -289,12 +292,18 @@ class AutoPromptImprovementScheduler {
     // failures (bad key, billing) still stamp, so they surface once per interval, not every day.
     let everyFocusFailedTransiently =
       !results.isEmpty && results.allSatisfy { $0.error.map(Self.isTransient) ?? false }
-    if everyFocusFailedTransiently {
+    if let stamp = Self.autoRunStamp(startedAt: startedAt, everyFocusFailedTransiently: everyFocusFailedTransiently) {
+      UserDefaults.standard.set(stamp, forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
+    } else {
       DebugLogger.log(
         "AUTO-IMPROVEMENT: Every focus failed on a transient error — lastRun date not set so we retry next check")
-    } else {
-      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
     }
+  }
+
+  /// Date written to `lastAutoImprovementRunDate`, or nil when every focus failed transiently
+  /// and the daily check should retry. The stamp is the start of the run, not when review closed.
+  nonisolated static func autoRunStamp(startedAt: Date, everyFocusFailedTransiently: Bool) -> Date? {
+    everyFocusFailedTransiently ? nil : startedAt
   }
 
   private static func isTransient(_ error: Error) -> Bool {

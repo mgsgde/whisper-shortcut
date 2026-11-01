@@ -72,6 +72,11 @@ struct ImprovementSettingsTab: View {
         writingStyleEnabled = enabled
         // The Writing Style section that normally fires this sits collapsed under Details.
         WritingStyleSettingsSection.handleToggle(enabled: enabled)
+        // Samples are kept across runs. Once learning is off they are a leftover recording
+        // of the user's voice, so the pool is deleted with the switch.
+        if ContextLoggingPreference.shouldClearAudioSamples(learningEnabled: enabled) {
+          ContextLogger.shared.clearAudioSamples()
+        }
         if enabled && autoRunIntervalRaw == ImproveFromUsageAutoRunInterval.off.rawValue {
           autoRunIntervalRaw = ImproveFromUsageAutoRunInterval.every7Days.rawValue
         }
