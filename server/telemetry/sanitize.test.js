@@ -49,6 +49,18 @@ test('rejects non-integer and huge counts', () => {
   assert.deepStrictEqual(doc.counts, { 'chat.completed': 2 });
 });
 
+test('keeps a new feature count and setup flag, and drops an unknown key', () => {
+  const doc = sanitize({
+    ...base,
+    kind: 'daily',
+    setup: { providers: [], mcpEnabled: true },
+    counts: { 'mcp.meetingRead': 2, 'mcp.whatever': 4 },
+  });
+  assert.deepStrictEqual(doc.counts, { 'mcp.meetingRead': 2 });
+  assert.strictEqual(doc.setup.mcpEnabled, true);
+  assert.ok(!Object.prototype.hasOwnProperty.call(doc.counts, 'mcp.whatever'));
+});
+
 test('storage shape turns keyed maps into rows', () => {
   const stored = toStorage({ ...base, kind: 'daily', counts: { 'dictation.completed': 3 }, errors: { 'chat.network': 1 }, models: { chat: { custom: 2 } } });
   assert.deepStrictEqual(stored.counts, [{ key: 'dictation.completed', n: 3 }]);

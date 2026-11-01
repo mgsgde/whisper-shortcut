@@ -16,7 +16,17 @@
     "readAloud",
     "meeting",
     "smartImprovement",
-    "other"
+    "other",
+    "mcp",
+    "screenshot",
+    "copyLastTranscription",
+    "glossaryAdd",
+    "quickPrompt",
+    "writingStyle",
+    "googleTool",
+    "trelloTool",
+    "mailTool",
+    "youtube"
   ],
   "countNames": [
     "started",
@@ -34,7 +44,19 @@
     "requestTimedOut",
     "noSpeechDetected",
     "noInputSignal",
-    "glossaryEchoRemoved"
+    "glossaryEchoRemoved",
+    "used",
+    "meetingRead",
+    "liveTranscriptRead",
+    "configRead",
+    "configChange",
+    "settingsChange",
+    "problemReport",
+    "meetingChat",
+    "viaOpenRouter",
+    "viaChatGPTPlan",
+    "viaOwnServer",
+    "viaLocal"
   ],
   "errorClasses": [
     "noAPIKey",
@@ -74,7 +96,13 @@
   "setupFlags": [
     "offlineWhisperModel",
     "smartImprovement",
-    "autoPaste"
+    "autoPaste",
+    "writingStyle",
+    "mcpEnabled",
+    "googleConnected",
+    "trelloConnected",
+    "mailConnected",
+    "chatGPTPlanConnected"
   ],
   "providers": [
     "gemini",

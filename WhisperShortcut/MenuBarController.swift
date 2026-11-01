@@ -891,13 +891,15 @@ class MenuBarController: NSObject {
     guard actions.indices.contains(index) else { return }
     runPromptInstruction(
       actions[index].text, source: "entry \(index + 1)",
-      isEdit: actions[index].isEdit)
+      isEdit: actions[index].isEdit, fromQuickAction: true)
   }
 
   /// Shared by list entries and the "Type a prompt…" field: the text replaces the audio
   /// as the Dictate Prompt instruction.
   /// `isEdit`: a quick action that edits a selection. Free typed text never is — it may compose.
-  private func runPromptInstruction(_ text: String, source: String, isEdit: Bool = false) {
+  private func runPromptInstruction(
+    _ text: String, source: String, isEdit: Bool = false, fromQuickAction: Bool = false
+  ) {
     guard recording?.quickActionRan == false else { return }
     guard activeMeetingSegment == nil else { return }
     let recordingPrompt = appState.recordingMode == .prompt || pendingRecordingMode == .prompt
@@ -905,6 +907,9 @@ class MenuBarController: NSObject {
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
     recording?.isEditQuickAction = isEdit
+    if fromQuickAction {
+      TelemetryService.shared.count(.quickPrompt, .used)
+    }
     DebugLogger.log("QUICK-ACTIONS: Running \(source) (\(text.count) chars)")
     stopRecordingAfterTailDelay()
   }
@@ -1310,6 +1315,7 @@ class MenuBarController: NSObject {
 
   private func copyHistoryEntry(_ entry: TranscriptionHistoryStore.Entry) {
     clipboardManager.copyToClipboard(text: entry.text)
+    TelemetryService.shared.count(.copyLastTranscription, .used)
     DebugLogger.log("TRANSCRIPTION-HISTORY: Re-copied \(entry.text.count) chars from \(entry.ts)")
     // No auto-paste here on purpose. This action exists precisely because a paste went somewhere
     // unintended; putting it on the clipboard and letting the user place it is the whole point.
@@ -3095,6 +3101,7 @@ class MenuBarController: NSObject {
   private func reportGlossaryAppend(_ result: SystemPromptsStore.GlossaryAppendResult) {
     switch result {
     case .added(let term):
+      TelemetryService.shared.count(.glossaryAdd, .used)
       PopupNotificationWindow.showInfo("\"\(term)\" added to your Glossary.", title: "Glossary")
     case .duplicate(let term):
       PopupNotificationWindow.showInfo("\"\(term)\" is already in your Glossary.", title: "Glossary")
@@ -3840,6 +3847,7 @@ extension MenuBarController: ShortcutDelegate {
 
   /// Copies the PNG to the clipboard and, when enabled, writes it to the screenshot folder.
   private static func deliverScreenshot(_ pngData: Data, saveToFolder: Bool) {
+    TelemetryService.shared.count(.screenshot, .used)
     if let image = NSImage(data: pngData) {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.writeObjects([image])

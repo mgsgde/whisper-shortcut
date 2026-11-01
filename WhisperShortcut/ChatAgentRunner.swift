@@ -344,6 +344,7 @@ final class ChatAgentRunner {
       } else {
         let outcome = await ChatToolRegistry.execute(
           name: call.name, args: call.args, context: context)
+        Self.countIntegrationTool(call.name)
         imageMarkers.append(contentsOf: outcome.imageMarkers)
         response = memo.record(name: call.name, args: call.args, response: outcome.response)
       }
@@ -366,6 +367,23 @@ final class ChatAgentRunner {
       ["role": "user", "parts": responseParts],
     ]
     return (turns, imageMarkers)
+  }
+
+  /// One count per tool the registry actually ran. Prefixes are the app's own tool names.
+  private static func countIntegrationTool(_ name: String) {
+    let area: TelemetryArea?
+    if name.hasPrefix("google_") || name.hasPrefix("gmail_") {
+      area = .googleTool
+    } else if name.hasPrefix("trello_") {
+      area = .trelloTool
+    } else if name.hasPrefix("mail_") || name == ChatToolRegistry.connectMailAccountToolName {
+      area = .mailTool
+    } else {
+      area = nil
+    }
+    if let area {
+      TelemetryService.shared.count(area, .used)
+    }
   }
 
   /// Keys and size of tool-call args/results for the log, never their values: those carry email

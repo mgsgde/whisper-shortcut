@@ -72,6 +72,7 @@ struct MCPDispatcher {
       return ok(["tools": MCPMeetingTools.toolDefinitions + configTools.toolDefinitions(access: access)])
     case "tools/call":
       guard let params, let name = params["name"] as? String else { return fail(-32602, "Missing params.name") }
+      recordToolUse(name)
       let args = params["arguments"] as? [String: Any] ?? [:]
       let start = Date()
       let result: MCPToolResult
@@ -136,6 +137,31 @@ struct MCPDispatcher {
       return ok(["contents": [["uri": uri, "mimeType": "text/markdown", "text": text]]])
     default:
       return fail(-32601, "Method not found: \(method)")
+    }
+  }
+
+  /// One count per `tools/call`, keyed by the fixed tool name. Anything else counts nothing.
+  private func recordToolUse(_ tool: String) {
+    let countName: TelemetryCountName?
+    switch tool {
+    case "get_meeting", "list_meetings", "search_meetings":
+      countName = .meetingRead
+    case "get_live_transcript":
+      countName = .liveTranscriptRead
+    case "get_configuration", "get_settings", "get_recent_interactions", "get_proposal_status":
+      countName = .configRead
+    case "add_glossary_terms", "save_command", "delete_command", "update_system_prompt",
+      "update_writing_style_profile":
+      countName = .configChange
+    case "update_settings":
+      countName = .settingsChange
+    case "report_problem":
+      countName = .problemReport
+    default:
+      countName = nil
+    }
+    if let countName {
+      TelemetryService.shared.count(.mcp, countName)
     }
   }
 }
