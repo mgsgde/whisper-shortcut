@@ -78,6 +78,7 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 - GitHub release notes (incremental list of changes since previous tag for `.github/RELEASE_NOTES.md`)
 - Test run result (pass / fail — release aborts on fail)
 - Confirmation of rebuilt app, commit, branch push, created tag, and tag push
+- Stable: not promoted (weekly Tuesday job, or `scripts/promote-stable.sh` for a hotfix; hold with `build/stable-channel/hold`)
 
 ## Release Notes Note
 
@@ -92,8 +93,12 @@ The GitHub Actions workflow automatically creates a release when a tag is pushed
 
 ## Draft first: test the DMG before it goes out
 
-A published release reaches every direct-download user through Sparkle (the feed is
-`releases/latest/download/appcast.xml`). To test a build first, keep it a draft:
+New releases are tagged `latest` in the one appcast (`releases/latest/download/appcast.xml`)
+and reach only **Latest** users. **Stable** (the default, including the pilot practice) gets
+a release once `scripts/stable-promote-job.sh` (weekly, Tuesday) promotes the candidate frozen
+a week earlier, after its tests are green, or by hand via `scripts/promote-stable.sh` for a
+hotfix. Veto the job with `build/stable-channel/hold` in the main checkout. To test a build
+first, keep it a draft:
 
 1. Build as draft, either
    - set the repo variable once: `gh variable set RELEASE_AS_DRAFT --body true`, then push the tag as usual

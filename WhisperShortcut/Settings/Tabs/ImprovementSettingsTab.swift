@@ -1,32 +1,49 @@
 import SwiftUI
 
-/// Smart Improvement Settings Tab — usage-data collection, the "Improve from usage" runner,
-/// auto-run scheduling, the model used for improvement, and context-data management.
-/// Split out of the General tab so each screen stays focused and scannable.
+/// Smart Improvement Settings Tab — one switch that lets the app learn from how it is used
+/// (usage logs for Improve from usage + the writing style), plus a collapsed Details group with
+/// the knobs, the scorecard, the writing style profile and context-data management.
+/// Magnus, 2026-10-30: "Ich will einfach, dass das Ding selbstständig herausbekommt, wie es am
+/// besten funktioniert … aber ich will mich nicht mit irgendeinem Writing Style selbst beschäftigen."
 struct ImprovementSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
   @AppStorage(UserDefaultsKeys.contextLoggingEnabled) private var saveUsageData = false
+  @AppStorage(UserDefaultsKeys.writingStyleEnabled) private var writingStyleEnabled = false
   @AppStorage(UserDefaultsKeys.improveFromUsageAutoRunInterval) private var autoRunIntervalRaw: Int = ImproveFromUsageAutoRunInterval.every7Days.rawValue
   @State private var showDeleteInteractionConfirmation = false
   @State private var isImprovementRunning = false
   @State private var queuedJobCount = 0
+  @State private var showDetails = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      smartImprovementSection
+      learningSection
 
       SpacedSectionDivider()
 
-      SmartImprovementScorecardSection()
+      DisclosureGroup(isExpanded: $showDetails) {
+        VStack(alignment: .leading, spacing: 0) {
+          improveFromUsageControls
+            .padding(.top, 16)
 
-      SpacedSectionDivider()
+          SpacedSectionDivider()
 
-      WritingStyleSettingsSection()
+          SmartImprovementScorecardSection()
 
-      SpacedSectionDivider()
+          SpacedSectionDivider()
 
-      contextDataSection
+          WritingStyleSettingsSection()
+
+          SpacedSectionDivider()
+
+          contextDataSection
+        }
+      } label: {
+        Text("Details")
+          .font(.callout)
+          .fontWeight(.medium)
+      }
     }
     .confirmationDialog("Delete context data?", isPresented: $showDeleteInteractionConfirmation, titleVisibility: .visible) {
       Button("Delete", role: .destructive) {
@@ -39,6 +56,65 @@ struct ImprovementSettingsTab: View {
     .onAppear {
       refreshImprovementState()
     }
+  }
+
+  // MARK: - Learning (the one switch)
+
+  /// On when either half is on, so a user who enabled only one of them earlier still sees "on".
+  private var learningEnabled: Binding<Bool> {
+    Binding(
+      get: { saveUsageData || writingStyleEnabled },
+      set: { enabled in
+        saveUsageData = enabled
+        writingStyleEnabled = enabled
+        // The Writing Style section that normally fires this sits collapsed under Details.
+        WritingStyleSettingsSection.handleToggle(enabled: enabled)
+        if enabled && autoRunIntervalRaw == ImproveFromUsageAutoRunInterval.off.rawValue {
+          autoRunIntervalRaw = ImproveFromUsageAutoRunInterval.every7Days.rawValue
+        }
+      }
+    )
+  }
+
+  private var learningSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Smart Improvement",
+        systemImage: "wand.and.stars",
+        subtitle: "WhisperShortcut learns from how you use it and gets better on its own: spellings, prompts, and the way you write messages. There is nothing to set up."
+      )
+
+      VStack(alignment: .leading, spacing: 10) {
+        Toggle("Learn from how I use WhisperShortcut", isOn: learningEnabled)
+          .toggleStyle(.switch)
+          .help("Keeps your dictations and prompts on this Mac and lets the Smart Improvement model suggest better prompts and learn your writing style. Off by default.")
+
+        HStack(spacing: 8) {
+          if isImprovementRunning {
+            ProgressView().controlSize(.small)
+          } else {
+            Image(systemName: learningEnabled.wrappedValue ? "checkmark.circle.fill" : "pause.circle")
+              .foregroundColor(learningEnabled.wrappedValue ? .green : .secondary)
+          }
+          Text(learningStatusText)
+            .font(.callout)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        Text("Your usage data stays on this Mac. When it learns, a sample goes to your Smart Improvement model, and you review every change before it is saved.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var learningStatusText: String {
+    if isImprovementRunning { return String(localized: "Learning from your recent usage…") }
+    return learningEnabled.wrappedValue
+      ? String(localized: "On. You get a notification when there is something to review.")
+      : String(localized: "Off. Nothing is learned or stored.")
   }
 
   // MARK: - Context Data Section
@@ -87,21 +163,12 @@ struct ImprovementSettingsTab: View {
     return String(localized: "Improve from usage")
   }
 
+  /// Manual run, schedule and model — the knobs behind the one switch.
   @ViewBuilder
-  private var smartImprovementSection: some View {
+  private var improveFromUsageControls: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Smart Improvement",
-        systemImage: "wand.and.stars",
-        subtitle: "Improve prompts from your usage logs"
-      )
-
       VStack(alignment: .leading, spacing: 16) {
         VStack(alignment: .leading, spacing: 8) {
-          Toggle("Save usage data", isOn: $saveUsageData)
-            .toggleStyle(.switch)
-            .help("When enabled, interaction logs (dictation, dictate prompt, chat) are stored so \"Improve from usage\" can suggest better prompts. Off by default.")
-
           Button(action: {
               guard !isImprovementRunning else { return }
               isImprovementRunning = true
@@ -119,7 +186,7 @@ struct ImprovementSettingsTab: View {
             .help("Improve prompts and context from your usage")
             .pointerCursorOnHover()
 
-          Text("Needs \"Save usage data\". Runs in the background; you get a notification when it is done.")
+          Text("Runs in the background; you get a notification when it is done. Needs learning to be on.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

@@ -1071,9 +1071,10 @@ enum TranscriptionError: Error, Equatable {
   case quotaExceeded(retryAfter: TimeInterval?)
   /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
   ///
-  /// `topUpURL` is set when we know exactly where the user tops up — currently OpenRouter, whose
-  /// 402 means "this balance is empty" and nothing else. Providers whose billing errors are
-  /// ambiguous leave it nil and fall back to the list of dashboards in the message.
+  /// `topUpURL` is set when we know exactly where the user tops up — OpenRouter, whose 402 means
+  /// "this balance is empty" and nothing else, and OpenAI's 429 `insufficient_quota`
+  /// (`openAIBillingURL`). Providers whose billing errors are ambiguous leave it nil and fall back
+  /// to the list of dashboards in the message.
   case billingRequired(topUpURL: URL? = nil)
   case serverError(Int)
   case serviceUnavailable
@@ -1158,6 +1159,9 @@ enum TranscriptionError: Error, Equatable {
       return nil
     }
   }
+
+  /// Where an OpenAI API account adds credit — the fix for 429 `insufficient_quota`.
+  static let openAIBillingURL = URL(string: "https://platform.openai.com/settings/organization/billing")!
 
   var topUpURL: URL? {
     if case .rateLimited(_, let url) = self { return url }

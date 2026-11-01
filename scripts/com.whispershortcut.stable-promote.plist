@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly Stable-channel promotion (scripts/stable-promote-job.sh). Fires daily; the
+  script's Tuesday gate makes it weekly, and it promotes only a candidate frozen
+  about a week earlier. StartInterval rather than StartCalendarInterval because a
+  calendar slot that falls while the laptop lid is shut is simply lost.
+
+  Install:
+      cp scripts/com.whispershortcut.stable-promote.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.whispershortcut.stable-promote.plist
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.stable-promote</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/scripts/stable-promote-job.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>86400</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/stable-promote.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/mgsgde/whisper-shortcut-private/whisper-shortcut/build/logs/stable-promote-error.log</string>
+  </dict>
+</plist>

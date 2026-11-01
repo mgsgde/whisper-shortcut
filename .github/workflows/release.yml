@@ -272,6 +272,20 @@ jobs:
           LENGTH=$(stat -f%z "$DMG_PATH")
           BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" WhisperShortcut/Info.plist)
 
+          # One multi-item appcast at releases/latest/download/appcast.xml. The new item is
+          # tagged sparkle:channel latest, so it reaches only Latest users until
+          # scripts/promote-stable.sh removes that tag.
+          # Fail rather than continue without it: a feed holding only the new (tagged) item
+          # would leave Stable users with nothing and drop every promotion so far.
+          if ! curl -fsL --retry 3 --retry-delay 5 \
+              "https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml" \
+              -o "$RUNNER_TEMP/previous-appcast.xml"; then
+            echo "::error::Could not download the current appcast.xml - refusing to publish a feed without the earlier releases"
+            exit 1
+          fi
+          echo "Previous appcast shortVersionString values:"
+          grep shortVersionString "$RUNNER_TEMP/previous-appcast.xml" | head -3 || true
+
           python3 scripts/make-appcast.py \
             --version "$VERSION" \
             --build "$BUILD" \
@@ -280,6 +294,8 @@ jobs:
             --signature "$SIGNATURE" \
             --notes .github/RELEASE_NOTES.md \
             --min-system 15.5 \
+            --previous "$RUNNER_TEMP/previous-appcast.xml" \
+            --channel latest \
             --out "$RUNNER_TEMP/appcast.xml"
 
           echo "APPCAST_PATH=$RUNNER_TEMP/appcast.xml" >> $GITHUB_ENV

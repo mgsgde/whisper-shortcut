@@ -6,21 +6,23 @@ class SettingsWindowController: NSWindowController {
   // MARK: - Constants
   private enum Constants {
     // Responsive sizing based on Apple's HIG
-    static let preferredWidth: CGFloat = 900
-    static let preferredHeight: CGFloat = 700
+    static let preferredWidth: CGFloat = 1100
+    static let preferredHeight: CGFloat = 800
 
     // Size constraints following macOS patterns
     static let minWidth: CGFloat = 800
     static let minHeight: CGFloat = 600
     static let maxWidth: CGFloat = 1200
-    static let maxHeight: CGFloat = 900
+    static let maxHeight: CGFloat = 1000
 
     // Responsive percentages (more flexible than fixed)
     static let widthPercentage: CGFloat = 0.75  // 75% of screen width
-    static let heightPercentage: CGFloat = 0.70  // 70% of screen height
+    static let heightPercentage: CGFloat = 0.85  // 85% of screen height
 
     static var windowTitle: String { String(localized: "Settings", comment: "Settings window and menu item") }
-    static let frameAutosaveName = "SettingsWindow"
+    // v2: frames saved under "SettingsWindow" were stuck at the 800×632 minimum because the
+    // hosting controller shrank the window to SwiftUI's fitting size; drop them once.
+    static let frameAutosaveName = "SettingsWindow.v2"
   }
 
   /// Center only on first open. Recenter-on-every-show fights the autosaved frame
@@ -31,6 +33,9 @@ class SettingsWindowController: NSWindowController {
     // Create SwiftUI hosting window
     let settingsView = SettingsView()
     let hostingController = NSHostingController(rootView: settingsView)
+    // Like the chat window: without this the hosting controller resizes the window to the
+    // SwiftUI minimum, which then gets autosaved and every later open starts at 800×632.
+    hostingController.sizingOptions = []
 
     // Calculate optimal window size using best practices
     let windowSize = Self.calculateOptimalWindowSize()
@@ -45,6 +50,7 @@ class SettingsWindowController: NSWindowController {
     // Configure window following macOS best practices
     Self.configureWindow(window)
     window.contentViewController = hostingController
+    window.setContentSize(windowSize)
 
     super.init(window: window)
     shouldCascadeWindows = false

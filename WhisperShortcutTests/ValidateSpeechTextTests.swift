@@ -48,15 +48,20 @@ struct ValidateSpeechTextTests {
     }
   }
 
-  @Test("An empty Dictate Prompt reply is a retryable model failure, not 'no speech'")
-  func emptyPromptReplyIsEmptyModelReply() {
-    for mode in ["PROMPT-MODE-GEMINI", "PROMPT-MODE-OPENAI", "PROMPT-MODE-LOCAL"] {
-      #expect(throws: TranscriptionError.emptyModelReply) {
-        try TextProcessingUtility.validateSpeechText("  \n ", mode: mode)
-      }
+  @Test("A context leak is rejected regardless of capitalization")
+  func contextPrefixIsPromptLeak() {
+    #expect(throws: TranscriptionError.promptLeakDetected) {
+      try TextProcessingUtility.validateSpeechText("Context: foo", mode: "TRANSCRIPTION-MODE")
     }
-    #expect(TranscriptionError.emptyModelReply.isRetryable)
-    let popup = SpeechErrorFormatter.titleAndBodyForPopup(.emptyModelReply)
-    #expect(popup.body == "The model returned no text. Your recording was kept – try Retry or another model.")
+  }
+
+  @Test("A prompt suffix is stripped only at a word boundary")
+  func suffixStripsOnlyAtWordBoundary() {
+    #expect(
+      TextProcessingUtility.normalizeTranscriptionText("helps you unremove filler words")
+        == "helps you unremove filler words")
+    #expect(
+      TextProcessingUtility.normalizeTranscriptionText("Please remove filler words")
+        == "Please")
   }
 }

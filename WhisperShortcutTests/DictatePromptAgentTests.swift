@@ -78,10 +78,13 @@ struct DictatePromptAgentTests {
     let error = ChatProviderHTTPError.map(
       provider: "OpenAI", status: 429,
       body: #"{"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}"#)
-    guard case TranscriptionError.billingRequired = error else {
+    guard case TranscriptionError.billingRequired(let topUpURL) = error else {
       Issue.record("expected billingRequired, got \(error)")
       return
     }
+    // The popup's "Top up" button needs to know which billing page to open.
+    #expect(topUpURL == TranscriptionError.openAIBillingURL)
+    #expect(SpeechErrorFormatter.formatForUser(error).contains("OpenAI"))
   }
 
   @Test("OpenAI quick actions use a text model, never the audio-only one")

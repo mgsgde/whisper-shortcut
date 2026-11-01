@@ -1171,8 +1171,8 @@ class SpeechService {
       }
     }
 
-    let normalizedText = TextProcessingUtility.normalizeTranscriptionText(textContent)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: logPrefix)
+    let normalizedText = PromptReplyCleanup.normalize(textContent)
+    try PromptReplyCleanup.validate(normalizedText, mode: logPrefix)
     return normalizedText
   }
 
@@ -1379,8 +1379,8 @@ class SpeechService {
           logPrefix: "PROMPT-MODE-GEMINI")
       }
       normalizedText = applyingDashBackstop(
-        TextProcessingUtility.normalizeTranscriptionText(raw), selection: clipboardContext)
-      try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-GEMINI")
+        PromptReplyCleanup.normalize(raw), selection: clipboardContext)
+      try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-GEMINI")
     } else {
       normalizedText = try await performGeminiPromptRequest(
         model: model,
@@ -1549,11 +1549,11 @@ class SpeechService {
     // gpt-audio-1.5 sometimes answers an edit instruction with a JSON edit object rather than the
     // edited text. Unwrap it before anything else touches the string, or the JSON is what the user
     // pastes. No-op for the plain-text replies that are the norm.
-    let unwrappedText = TextProcessingUtility.unwrappingJSONEditResponse(
+    let unwrappedText = PromptReplyCleanup.unwrappingJSONEditResponse(
       rawText, selectedText: clipboardContext)
     let normalizedText = applyingDashBackstop(
-      TextProcessingUtility.normalizeTranscriptionText(unwrappedText), selection: clipboardContext)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-OPENAI")
+      PromptReplyCleanup.normalize(unwrappedText), selection: clipboardContext)
+    try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-OPENAI")
 
     let instructionSource: PromptInstructionSource
     if let textInstruction {
@@ -1634,7 +1634,7 @@ class SpeechService {
         // "No credit on the API account" arrives as 429 insufficient_quota — a billing
         // problem, not a rate limit (same mapping as the transcription path).
         if bodyString.contains("insufficient_quota") {
-          throw TranscriptionError.billingRequired()
+          throw TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
         }
         throw TranscriptionError.rateLimited(retryAfter: nil)
       default:
@@ -1829,8 +1829,8 @@ class SpeechService {
         "SPEED: [\(providerTag):\(modelLabel)] transcription \(String(format: "%.2f", transcriptionTime))s + agent \(String(format: "%.2f", now - agentStart))s = \(String(format: "%.2f", now - startTime))s total (\(raw.count) chars)")
       let agentReply = LocalLLMChatProvider.strippingReasoningBlocks(raw)
       let agentText = Self.applyingSpokenLayout(
-        TextProcessingUtility.normalizeTranscriptionText(agentReply), when: spokenOffline)
-      try TextProcessingUtility.validateSpeechText(agentText, mode: "PROMPT-MODE-LOCAL")
+        PromptReplyCleanup.normalize(agentReply), when: spokenOffline)
+      try PromptReplyCleanup.validate(agentText, mode: "PROMPT-MODE-LOCAL")
       if offlineMode {
         flagUnsupportedWords(in: agentText, instruction: instruction, selection: clipboardContext)
       }
@@ -1900,8 +1900,8 @@ class SpeechService {
     }
 
     let normalizedText = Self.applyingSpokenLayout(
-      TextProcessingUtility.normalizeTranscriptionText(reply), when: spokenOffline)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "PROMPT-MODE-LOCAL")
+      PromptReplyCleanup.normalize(reply), when: spokenOffline)
+    try PromptReplyCleanup.validate(normalizedText, mode: "PROMPT-MODE-LOCAL")
     if offlineMode {
       flagUnsupportedWords(in: normalizedText, instruction: instruction, selection: clipboardContext)
     }
@@ -2908,7 +2908,7 @@ class SpeechService {
       // OpenAI reports "no credit on the API account" as a 429 with code insufficient_quota.
       // Surface that as a billing problem, not a rate limit — the fix is topping up, not waiting.
       if let bodyString = String(data: data, encoding: .utf8), bodyString.contains("insufficient_quota") {
-        throw TranscriptionError.billingRequired()
+        throw TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
       throw TranscriptionError.rateLimited(retryAfter: nil)
     default:

@@ -47,6 +47,8 @@ struct UpdatesSection: View {
         .pointerCursorOnHover()
       }
 
+      channelPicker
+
       Toggle("Check for updates automatically", isOn: automaticChecks)
         .toggleStyle(.switch)
         .controlSize(.small)
@@ -73,6 +75,46 @@ struct UpdatesSection: View {
       RoundedRectangle(cornerRadius: SettingsConstants.cornerRadius)
         .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
     )
+  }
+
+  /// Stable is the default so a practice that works with the app all day only sees versions that
+  /// already ran a week in daily use; Latest is for people who want every release the day it ships.
+  private var channelPicker: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Picker(
+        "Update channel",
+        selection: Binding(
+          get: { updater.channel },
+          set: { updater.setChannel($0) }
+        )
+      ) {
+        Text("Stable").tag(UpdateChannel.stable)
+        Text("Latest").tag(UpdateChannel.latest)
+      }
+      .pickerStyle(.segmented)
+      .fixedSize()
+      .font(.callout)
+
+      Text(channelExplanation)
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var channelExplanation: String {
+    switch updater.channel {
+    case .stable:
+      return String(
+        localized:
+          "Recommended for work. You get a new version only after it has run in daily use for about a week, at most every two weeks."
+      )
+    case .latest:
+      return String(
+        localized:
+          "Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer."
+      )
+    }
   }
 
   private var statusLine: String {

@@ -242,16 +242,56 @@ enum WorkspaceWriteTools {
       throw WriteError.writeAccessDisabled
     }
     let located = try WorkspaceFolders.locate(path, scope: scope)
-    let rootComponentCount = located.root.url.standardizedFileURL.pathComponents.count
-    let inside = located.target.standardizedFileURL.pathComponents.dropFirst(rootComponentCount)
-    for (index, component) in inside.enumerated() {
-      // The last component is the file being written; everything before it is a directory.
-      let isDirectory = index < inside.count - 1
-      if WorkspaceFileTools.isPruned(name: component, isDirectory: isDirectory) {
-        throw WriteError.protectedLocation(component: component)
+    // The scope has to be open: a sandboxed stat of the shared folder fails without it, and the
+    // walk below needs to see which components exist. Callers open it again around the write.
+    try WorkspaceFolders.withAccess(to: located.root) {
+      let resolvedRoot = located.root.url.standardizedFileURL.resolvingSymlinksInPath()
+      let resolvedTarget = resolvingExistingPrefix(located.target)
+      let rootParts = resolvedRoot.pathComponents
+      let targetParts = resolvedTarget.pathComponents
+      // A symlink whose target is not created yet is invisible to one
+      // `resolvingSymlinksInPath` on the full path (`link/new` stays `link/new`). The prefix
+      // resolution above follows it, so a link out of the folder is rejected here too.
+      guard targetParts.count >= rootParts.count,
+        Array(targetParts.prefix(rootParts.count)) == rootParts
+      else {
+        throw WorkspaceFolders.AccessError.outsideWorkspace(
+          path: located.target.path, roots: [located.root.displayPath])
+      }
+      let inside = targetParts.dropFirst(rootParts.count)
+      for (index, component) in inside.enumerated() {
+        // The last component is the file being written; everything before it is a directory.
+        let isDirectory = index < inside.count - 1
+        if WorkspaceFileTools.isPruned(name: component, isDirectory: isDirectory) {
+          throw WriteError.protectedLocation(component: component)
+        }
       }
     }
     return located
+  }
+
+  /// Symlink-resolved URL, including when the final component does not exist yet.
+  ///
+  /// `URL.resolvingSymlinksInPath` returns a missing path unchanged, so `link/new-file` stays
+  /// `link/new-file` even when `link` points at `.git`. Resolve the longest existing prefix,
+  /// then put the not-yet-created tail back on.
+  private static func resolvingExistingPrefix(_ url: URL) -> URL {
+    let standardized = url.standardizedFileURL
+    var pending: [String] = []
+    var current = standardized
+    while !FileManager.default.fileExists(atPath: current.path) {
+      let name = current.lastPathComponent
+      if name.isEmpty || name == "/" { break }
+      pending.append(name)
+      let parent = current.deletingLastPathComponent()
+      if parent.path == current.path { break }
+      current = parent
+    }
+    var resolved = current.standardizedFileURL.resolvingSymlinksInPath()
+    for name in pending.reversed() {
+      resolved.appendPathComponent(name)
+    }
+    return resolved
   }
 
   private static func writeUTF8(_ content: String, to target: URL) throws {
