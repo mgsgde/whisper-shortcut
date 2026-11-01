@@ -46,7 +46,7 @@ final class OpenAIChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    options: ChatRequestOptions  // `disableBuiltInTools` / `xHandles` don't apply here; ignored.
+    options: ChatRequestOptions  // `disableBuiltInTools` doesn't apply here; ignored.
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     let route = Route(model: model)
     if let attachmentError = ChatAttachmentGuard.rejectUnsupported(

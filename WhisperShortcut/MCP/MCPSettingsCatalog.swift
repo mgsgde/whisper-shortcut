@@ -100,10 +100,9 @@ struct MCPSetting {
   /// nil = valid. Runs before any `apply`, so a batch with one invalid change writes nothing.
   let validate: (Any) -> String?
   let apply: (Any) throws -> Void
-  /// What a proposal/change-log `toLabel` should show for a raw value headed into `apply` —
-  /// identity for almost everything, but `chat.x_search_handles` normalizes (lowercases, dedupes,
-  /// caps) before storing, so the label must show what will actually be stored, not the AI's raw
-  /// input verbatim.
+  /// What a proposal/change-log `toLabel` should show for a raw value headed into `apply`.
+  /// Identity unless a setting stores a normalized form, in which case the label shows what
+  /// will actually be stored.
   let normalizeForLabel: (Any) -> Any
 
   init(
@@ -278,7 +277,6 @@ enum MCPSettingsCatalog {
     case "Meeting chunk interval": return String(localized: "Meeting chunk interval")
     case "Ask when meeting longer than": return String(localized: "Ask when meeting longer than")
     case "Screenshot context": return String(localized: "Screenshot context")
-    case "X accounts for Grok": return String(localized: "X accounts for Grok")
     case "Run Improve from usage automatically": return String(localized: "Run Improve from usage automatically")
     case "Launch at login": return String(localized: "Launch at login")
     case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
@@ -1148,33 +1146,6 @@ enum MCPSettingsCatalog {
         deps.hasScreenRecordingPermission()
           ? nil
           : "Grant Screen Recording in Settings → Permissions first."
-      }))
-
-    // MARK: chat.x_search_handles — same bytes `XSearchHandles.defaultHandles`'s setter writes:
-    // normalized, lowercased, capped, space-joined. Empty means search all of X.
-    settings.append(MCPSetting(
-      id: "chat.x_search_handles", title: "X accounts for Grok", category: "chat",
-      kind: .string(maxLength: 2000),
-      read: {
-        XSearchHandles.normalize(defaults.string(forKey: UserDefaultsKeys.grokXSearchHandles) ?? "")
-          .joined(separator: " ")
-      },
-      validate: { value in
-        guard let s = value as? String, s.count <= 2000 else {
-          return "X accounts must be at most 2000 characters."
-        }
-        return nil
-      },
-      apply: { value in
-        guard let s = value as? String else { throw MCPConfigError(message: "Expected a string.") }
-        let stored = XSearchHandles.normalize(s).joined(separator: " ")
-        defaults.set(stored, forKey: UserDefaultsKeys.grokXSearchHandles)
-      },
-      // The proposal/change-log `toLabel` must show what will actually be stored (normalized),
-      // not the AI's raw input verbatim.
-      normalizeForLabel: { value in
-        guard let s = value as? String else { return value }
-        return XSearchHandles.normalize(s).joined(separator: " ")
       }))
 
     // MARK: improvement.auto_run_interval — picker stores the Int raw value (days; 0 = off).

@@ -14,7 +14,7 @@ final class GeminiChatProvider: LLMChatProvider {
     contents: [[String: Any]],
     systemInstruction: [String: Any]?,
     tools: [LLMToolDeclaration],
-    // `cacheKey` and `xHandles` don't apply: Gemini caches implicitly and has no X search.
+    // `cacheKey` doesn't apply: Gemini caches implicitly.
     options: ChatRequestOptions
   ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
     AsyncThrowingStream { continuation in

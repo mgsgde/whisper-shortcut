@@ -173,11 +173,6 @@ struct ChatRequestOptions {
   /// transforms with no conversation continuity. Gemini caches implicitly and ignores it.
   var cacheKey: String? = nil
 
-  /// X accounts to restrict Grok's `x_search` to (`/x` in chat, default in Settings → Chat).
-  /// Empty = search all of X. Grok-only; every other provider ignores it. See `XSearchHandles` —
-  /// this is a hard filter on xAI's side, not a ranking preference.
-  var xHandles: [String] = []
-
   /// Whether this request's system prompt is stable enough that a provider may keep the prefill
   /// of it across requests.
   ///
@@ -223,7 +218,7 @@ protocol LLMChatProvider {
   ///     Each provider translates this into its native message format.
   ///   - systemInstruction: System instruction dict in Gemini format, or nil.
   ///   - tools: Tool declarations for function calling.
-  ///   - options: Per-request knobs (grounding, reasoning depth, cache key, X handles). Providers
+  ///   - options: Per-request knobs (grounding, reasoning depth, cache key). Providers
   ///     read the ones their API supports and ignore the rest — see `ChatRequestOptions`.
   func sendChatStream(
     model: String,

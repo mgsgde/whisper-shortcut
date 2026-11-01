@@ -160,20 +160,16 @@ struct ChatSession: Codable {
   /// Per-session reasoning intensity set via `/think`. `.default` keeps each model's built-in
   /// thinking config; other levels override it per provider. Persisted so it survives restarts.
   var thinkingLevel: ThinkingLevel
-  /// Per-session X accounts Grok's `x_search` is restricted to, set via `/x`.
-  /// `nil` = inherit the Settings → Chat default; `[]` = explicitly search all of X even when a
-  /// default is configured. The distinction is what lets `/x off` beat a non-empty default.
-  var xHandles: [String]?
   /// Per-session narrowing of the shared workspace folders, set via `/workspace`.
   /// `nil` = every shared folder (the default); `[]` = no file access and no context files in
-  /// this chat; a non-empty list = only those display paths. Same nil-vs-empty distinction as
-  /// `xHandles`, and for the same reason: `/workspace off` has to beat the global default.
+  /// this chat; a non-empty list = only those display paths. The nil-vs-empty distinction
+  /// matters because `/workspace off` has to beat the global default.
   var workspaceFolders: [String]?
   /// Last send failure for this session, shown as a failed-turn row even if the user
   /// switched tabs before the error arrived. Cleared on the next successful send or retry.
   var lastSendError: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, xHandles: [String]? = nil, workspaceFolders: [String]? = nil, lastSendError: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, workspaceFolders: [String]? = nil, lastSendError: String? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
     self.messages = messages
@@ -183,14 +179,13 @@ struct ChatSession: Codable {
     self.isMeeting = isMeeting
     self.meetingStem = meetingStem
     self.thinkingLevel = thinkingLevel
-    self.xHandles = xHandles
     self.workspaceFolders = workspaceFolders
     self.lastSendError = lastSendError
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
-    case xHandles, workspaceFolders, lastSendError
+    case workspaceFolders, lastSendError
   }
 
   init(from decoder: Decoder) throws {
@@ -204,8 +199,6 @@ struct ChatSession: Codable {
     isMeeting = try c.decodeIfPresent(Bool.self, forKey: .isMeeting) ?? false
     meetingStem = try c.decodeIfPresent(String.self, forKey: .meetingStem)
     thinkingLevel = try c.decodeIfPresent(ThinkingLevel.self, forKey: .thinkingLevel) ?? .default
-    // Absent (every chat written before `/x` existed) stays nil = inherit the Settings default.
-    xHandles = try c.decodeIfPresent([String].self, forKey: .xHandles)
     // Absent (every chat written before `/workspace` existed) stays nil = all shared folders.
     workspaceFolders = try c.decodeIfPresent([String].self, forKey: .workspaceFolders)
     lastSendError = try c.decodeIfPresent(String.self, forKey: .lastSendError)
@@ -222,7 +215,6 @@ struct ChatSession: Codable {
     try c.encode(isMeeting, forKey: .isMeeting)
     try c.encodeIfPresent(meetingStem, forKey: .meetingStem)
     try c.encode(thinkingLevel, forKey: .thinkingLevel)
-    try c.encodeIfPresent(xHandles, forKey: .xHandles)
     try c.encodeIfPresent(workspaceFolders, forKey: .workspaceFolders)
     try c.encodeIfPresent(lastSendError, forKey: .lastSendError)
   }

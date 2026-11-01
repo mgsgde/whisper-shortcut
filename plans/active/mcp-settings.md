@@ -100,7 +100,7 @@ conflict check, both extracted from `SettingsViewModel`/`ShortcutRecorderRow` in
 `dictation.fn_key`, `window.settings_close_on_focus_loss`, `chat.close_on_focus_loss`,
 `recording.confirm_above_duration`, `meetings.chunk_interval`, `meetings.safeguard_duration`,
 `read_aloud.smart_rewrite`, `dictate_prompt.screenshot_context`, `screenshot.save_enabled`
-(refused if no folder is chosen), `chat.x_search_handles` (via the `XSearchHandles` setter),
+(refused if no folder is chosen),
 `improvement.auto_run_interval` (apply also calls `checkAndRunIfDue()`, like the view).
 
 **Permission-gated:** `clipboard.auto_paste` and `dictation.fn_key` need Accessibility,
