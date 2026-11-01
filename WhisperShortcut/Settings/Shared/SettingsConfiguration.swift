@@ -1476,6 +1476,13 @@ enum WhisperLanguage: String, CaseIterable {
   }
 }
 
+// MARK: - Settings Scroll Anchors
+/// Section ids a `.openSettingsTab` post can scroll to: pass one under `userInfoKey`.
+enum SettingsAnchor {
+  static let userInfoKey = "anchor"
+  static let glossary = "settings.glossary"
+}
+
 // MARK: - Settings Tab Definition
 // Order mirrors the menu-bar dropdown (Dictate ⌘1 → Dictate Prompt ⌘2 → Read Aloud ⌘4 → Chat ⌥Space).
 enum SettingsTab: String, CaseIterable {

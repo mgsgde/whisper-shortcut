@@ -78,40 +78,49 @@ struct SettingsView: View {
   @ViewBuilder
   private var contentSection: some View {
     VStack(spacing: 0) {
-      ScrollView {
-        VStack(spacing: SettingsConstants.spacing) {
-          switch selectedTab {
-          case .general:
-            GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .accounts:
-            AccountsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .speechToText:
-            SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .speechToPrompt:
-            SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .screenshot:
-            ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .chat:
-            ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .meetings:
-            MeetingsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .readAloud:
-            ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .improvement:
-            ImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
-          case .aiApps:
-            AIAppsSettingsTab()
-          case .permissions:
-            PermissionsTab()
-          case .about:
-            AboutSettingsTab(viewModel: viewModel)
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(spacing: SettingsConstants.spacing) {
+            switch selectedTab {
+            case .general:
+              GeneralSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .accounts:
+              AccountsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .speechToText:
+              SpeechToTextSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .speechToPrompt:
+              SpeechToPromptSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .screenshot:
+              ScreenshotSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .chat:
+              ChatSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .meetings:
+              MeetingsSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .readAloud:
+              ReadAloudSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .improvement:
+              ImprovementSettingsTab(viewModel: viewModel, focusedField: $focusedField)
+            case .aiApps:
+              AIAppsSettingsTab()
+            case .permissions:
+              PermissionsTab()
+            case .about:
+              AboutSettingsTab(viewModel: viewModel)
+            }
+          }
+          .padding(.horizontal, SettingsConstants.horizontalPadding)
+          .padding(.top, SettingsConstants.topPadding)
+          .padding(.bottom, SettingsConstants.bottomPadding)
+        }
+        .settingsSoftTopScrollEdge()
+        .onReceive(NotificationCenter.default.publisher(for: .openSettingsTab)) { note in
+          guard let anchor = note.userInfo?[SettingsAnchor.userInfoKey] as? String else { return }
+          // The tab switch from the same post renders on the next pass; scroll once it has.
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation { proxy.scrollTo(anchor, anchor: .top) }
           }
         }
-        .padding(.horizontal, SettingsConstants.horizontalPadding)
-        .padding(.top, SettingsConstants.topPadding)
-        .padding(.bottom, SettingsConstants.bottomPadding)
       }
-      .settingsSoftTopScrollEdge()
 
       versionFooter
     }
