@@ -130,7 +130,6 @@ class PopupNotificationWindow: NSWindow {
   private var modelInfoLabel: NSTextField!
   private var textLabel: NSTextField!
   private var scrollView: NSScrollView!
-  private var whatsappIcon: NSImageView?
   private var closeButton: NSButton!
   /// Sign in, Retry, Top up, Contact Support — visual order, left to right. Empty unless `.error`.
   private var actionButtons: [NSButton] = []

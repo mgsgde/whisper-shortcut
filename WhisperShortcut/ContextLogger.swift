@@ -209,15 +209,6 @@ enum RequestOrigin: String {
 }
 
 // MARK: - System Prompt History Entry
-struct SystemPromptHistoryEntry: Codable {
-  let ts: String
-  let source: String
-  let previousLength: Int
-  let newLength: Int
-  let content: String
-  /// Gemini model used for this improvement (e.g. "Gemini 3.1 Pro"). Optional for backward compatibility with existing JSONL lines.
-  let model: String?
-}
 
 /// Single history file entry for any system prompt section (system-prompts-history.jsonl).
 struct UnifiedSystemPromptHistoryEntry: Codable {
@@ -758,22 +749,6 @@ class ContextLogger {
 
   // MARK: - Data Management
 
-  func deleteAllData() {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let fm = FileManager.default
-      do {
-        let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
-        for fileURL in contents {
-          try fm.removeItem(at: fileURL)
-        }
-        DebugLogger.log("USER-CONTEXT: Deleted all context data")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to delete context data: \(error.logDescription)")
-      }
-    }
-  }
-
   func performRotation() {
     queue.async { [weak self] in
       guard let self else { return }
@@ -835,13 +810,6 @@ class ContextLogger {
     }
   }
 
-  // MARK: - User Context Loading (deprecated; User Context section removed)
-
-  /// No longer used; User Context section was removed from system prompts. Returns nil.
-  func loadUserContext() -> String? {
-    nil
-  }
-
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
   /// `source` distinguishes who made the change — "auto" for Smart Improvement, "chat" for an
   /// `update_app_instructions` tool call. Both write the same sections, so without it the history
@@ -871,19 +839,6 @@ class ContextLogger {
         DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.logDescription)")
       }
     }
-  }
-
-  /// Truncates at the last sentence or word boundary before maxChars so text is never cut mid-phrase.
-  private static func truncateAtBoundary(_ text: String, maxChars: Int) -> String {
-    let prefix = String(text.prefix(maxChars))
-    let sentenceEnds: Set<Character> = [".", "!", "?", "\n"]
-    if let i = prefix.lastIndex(where: { sentenceEnds.contains($0) }) {
-      return String(prefix[...i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    if let i = prefix.lastIndex(of: " ") {
-      return String(prefix[..<i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   // MARK: - File Listing (for derivation)
@@ -919,7 +874,6 @@ class ContextLogger {
     contextDirectoryURL
   }
 
-  /// Removes the suggested system prompt file so it does not reappear after Apply.
   /// Removes all suggested-*.txt files (and rationale sidecars). Called at start of a Smart Improvement run to discard stale suggestions from prior crashed/aborted runs.
   func deleteAllSuggestedFiles() {
     let fm = FileManager.default
@@ -932,14 +886,9 @@ class ContextLogger {
     }
   }
 
+  /// Removes the suggested system prompt file so it does not reappear after Apply.
   func deleteSuggestedSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested user context file so it does not reappear after Apply.
-  func deleteSuggestedUserContextFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-user-context.md")
     try? FileManager.default.removeItem(at: url)
   }
 
@@ -959,61 +908,6 @@ class ContextLogger {
   func deleteSuggestedChatSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription) or Dictate Prompt).
-  /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode).
-  /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
-  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "system-prompt-history-\(historyFileSuffix).jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.logDescription)")
-      }
-    }
-  }
-
-  /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
-  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when context data is deleted.
-  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "user-context-history.jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended user context history")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.logDescription)")
-      }
-    }
   }
 
   // MARK: - Private Helpers

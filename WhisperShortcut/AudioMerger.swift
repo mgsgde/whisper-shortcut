@@ -20,7 +20,6 @@ class AudioMerger {
     /// Expected PCM format: 16-bit signed little-endian, 24kHz, mono
     private static let expectedSampleRate: Double = 24000
     private static let expectedChannels: UInt32 = 1
-    private static let expectedBitsPerChannel: UInt32 = 16
     private static let bytesPerSample: Int = 2 // 16-bit = 2 bytes
 
     /// Merge multiple audio chunks into a single PCM audio data stream.

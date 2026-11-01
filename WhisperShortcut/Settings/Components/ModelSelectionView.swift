@@ -40,12 +40,6 @@ struct ModelSelectionView: View {
         description: selectedTranscriptionModel.description,
         costLevel: selectedTranscriptionModel.costLevel,
         showsCompareLink: true)
-
-      if selectedTranscriptionModel.isDeprecated {
-        Label("Deprecated – no longer available to new users. Consider switching to \(SettingsDefaults.selectedTranscriptionModel.displayName).", systemImage: "exclamationmark.triangle.fill")
-          .font(.callout)
-          .foregroundColor(.secondary)
-      }
     }
   }
 

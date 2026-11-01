@@ -212,11 +212,6 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
-  /// Every in-process MLX model offered on this Mac (Chat; Dictate Prompt narrows it via `supportsDictatePrompt`).
-  static var localMLXModels: [PromptModel] {
-    LocalLLMModelType.offerable.map(\.promptModel)
-  }
-
   var displayName: String {
     switch self {
     case .gemini4Argon:

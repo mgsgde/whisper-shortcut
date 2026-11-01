@@ -35,7 +35,6 @@ struct OwnServerEndpointSection: View {
   /// parse half-way through would otherwise fold the form away under the cursor.
   @State private var showsSummary = false
   @State private var showsAdvanced = false
-  @State private var showsTenantNotes = false
 
   private struct HeaderEntry: Identifiable {
     var id = UUID()

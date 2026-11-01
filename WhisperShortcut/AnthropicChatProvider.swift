@@ -11,7 +11,6 @@ final class AnthropicChatProvider: LLMChatProvider {
 
   private static let apiVersion = "2023-06-01"
   private static let messagesURL = "https://api.anthropic.com/v1/messages"
-  private static let modelsURL = "https://api.anthropic.com/v1/models"
 
   private var session: URLSession { LLMHTTPSession.shared }
 
