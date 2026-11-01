@@ -18,6 +18,10 @@ protocol DictationAudioRecording: AnyObject {
   var lastRecordingWasSilent: Bool { get }
   /// Peak average power in dB of the last completed recording (−160…0).
   var lastPeakPowerDb: Float { get }
+  /// Audio captured in the current session (active file plus any completed chunks).
+  var currentRecordingURLs: [URL] { get }
+  /// True when CoreAudio is actually capturing (not merely waiting on permission).
+  var isActivelyRecording: Bool { get }
   func startRecording()
   /// Returns false when nothing was recording (permission dialog still up, or already idle).
   @discardableResult
@@ -30,6 +34,11 @@ class AudioRecorder: NSObject, DictationAudioRecording {
 
   private var audioRecorder: AVAudioRecorder?
   private var recordingURL: URL?
+  /// Prevents an encode-error + unsuccessful-finish pair from delivering (or failing) twice.
+  private var didDeliverCurrentRecording = false
+
+  var currentRecordingURLs: [URL] { [recordingURL].compactMap { $0 } }
+  var isActivelyRecording: Bool { audioRecorder?.isRecording ?? false }
 
   private var meteringTimer: Timer?
   private var peakPowerDuringRecording: Float = -160
@@ -138,13 +147,15 @@ class AudioRecorder: NSObject, DictationAudioRecording {
   }
 
   private func beginRecording() {
-    // Create temporary file for recording in app's container
-    let documentsPath =
-      FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-      ?? FileManager.default.temporaryDirectory
-    let audioFilename = documentsPath.appendingPathComponent(
-      "recording_\(Date().timeIntervalSince1970).wav")
+    let audioFilename = RecordingRobustness.makeRecordingURL()
+    do {
+      try DiskSpace.requireForRecording(at: audioFilename)
+    } catch {
+      delegate?.audioRecorderDidFailWithError(error)
+      return
+    }
     recordingURL = audioFilename
+    didDeliverCurrentRecording = false
 
     // Audio settings optimized for speech recognition
     let settings: [String: Any] = [
@@ -250,41 +261,53 @@ extension AudioRecorder: AVAudioRecorderDelegate {
       }
     }
 
-    if flag, let url = url {
-
-      // Verify the file has content
-      do {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        let fileSize = attributes[.size] as? Int64 ?? 0
-        DebugLogger.logDebug("Audio file size check - fileSize: \(fileSize), isEmpty: \(fileSize == 0)")
-        if fileSize > 0 {
-          delegate?.audioRecorderDidFinishRecording(audioURL: url)
-        } else {
-          let error = NSError(
-            domain: Constants.errorDomain, code: Constants.emptyFileCode,
-            userInfo: [
-              NSLocalizedDescriptionKey: String(localized: "Recording file is empty")
-            ])
-          delegate?.audioRecorderDidFailWithError(error)
-        }
-      } catch {
-
-        delegate?.audioRecorderDidFailWithError(error)
-      }
-    } else {
-      let error = NSError(
-        domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
-        userInfo: [
-          NSLocalizedDescriptionKey: String(localized: "Recording finished unsuccessfully")
-        ])
-      delegate?.audioRecorderDidFailWithError(error)
-    }
+    deliverFinishedRecording(url: url, finishedSuccessfully: flag)
   }
 
   func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-    if let error = error {
-
-      delegate?.audioRecorderDidFailWithError(error)
+    let url = recordingURL
+    if let url, RecordingRobustness.shouldDeliver(
+      fileSize: RecordingRobustness.fileSize(at: url), finishedSuccessfully: false)
+    {
+      DebugLogger.logWarning(
+        "AUDIO: Encode error with salvageable file (\(error?.logDescription ?? "unknown")) — delivering")
+      deliverFinishedRecording(url: url, finishedSuccessfully: false)
+      return
     }
+    if let error {
+      if RecordingRobustness.isOutOfSpace(error) {
+        delegate?.audioRecorderDidFailWithError(RecordingRobustness.diskFullError())
+      } else {
+        delegate?.audioRecorderDidFailWithError(error)
+      }
+    }
+  }
+
+  private func deliverFinishedRecording(url: URL?, finishedSuccessfully: Bool) {
+    guard !didDeliverCurrentRecording else { return }
+    let fileSize = url.map { RecordingRobustness.fileSize(at: $0) } ?? 0
+    DebugLogger.logDebug(
+      "Audio file size check - fileSize: \(fileSize), finishedSuccessfully: \(finishedSuccessfully)")
+    if let url, RecordingRobustness.shouldDeliver(
+      fileSize: fileSize, finishedSuccessfully: finishedSuccessfully)
+    {
+      if !finishedSuccessfully {
+        DebugLogger.logWarning(
+          "AUDIO: Recorder reported failure but the file has \(fileSize) bytes — delivering it")
+      }
+      didDeliverCurrentRecording = true
+      delegate?.audioRecorderDidFinishRecording(audioURL: url)
+      return
+    }
+    didDeliverCurrentRecording = true
+    let error = NSError(
+      domain: Constants.errorDomain,
+      code: fileSize == 0 ? Constants.emptyFileCode : Constants.recordingUnsuccessfulCode,
+      userInfo: [
+        NSLocalizedDescriptionKey: fileSize == 0
+          ? String(localized: "Recording file is empty")
+          : String(localized: "Recording finished unsuccessfully")
+      ])
+    delegate?.audioRecorderDidFailWithError(error)
   }
 }

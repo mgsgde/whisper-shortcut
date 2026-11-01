@@ -12916,6 +12916,16 @@
         }
       }
     },
+    "Not enough disk space to start a recording. About %lld MB should be free, but only %lld MB is available. Free some space and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht genug Speicherplatz, um eine Aufnahme zu starten. Es sollten etwa %lld MB frei sein, verfügbar sind nur %lld MB. Geben Sie Speicher frei und versuchen Sie es erneut."
+          }
+        }
+      }
+    },
     "Not enough per-mode usage yet. Use the app a bit more and try again." : {
       "localizations" : {
         "de" : {
@@ -15875,6 +15885,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufnahme ohne Erfolg beendet"
+          }
+        }
+      }
+    },
+    "Recording Recovered" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme wiederhergestellt"
           }
         }
       }
@@ -19382,6 +19402,16 @@
         }
       }
     },
+    "The disk is full, so recording stopped. What was captured so far was kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Speicher ist voll, die Aufnahme wurde beendet. Was bis dahin erfasst wurde, bleibt erhalten."
+          }
+        }
+      }
+    },
     "The email address is not valid." : {
       "localizations" : {
         "de" : {
@@ -21568,6 +21598,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut kann Ihre gesicherten Prompts nicht lesen"
+          }
+        }
+      }
+    },
+    "WhisperShortcut closed while a dictation was being recorded. The audio was kept. Choose Transcribe Cancelled Recording in the status menu to transcribe it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut wurde beendet, während eine Diktataufnahme lief. Das Audio wurde behalten. Wählen Sie im Statusmenü „Abgebrochene Aufnahme transkribieren“, um sie zu transkribieren."
           }
         }
       }

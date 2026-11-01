@@ -129,6 +129,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
+    menuBarController?.recoverInterruptedDictationIfNeeded()
 
     // Accessibility permissions will be checked when user actually tries to use prompt features
 

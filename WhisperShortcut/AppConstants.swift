@@ -294,6 +294,11 @@ Output rules (CRITICAL):
   /// live-meeting value: dictation pauses are briefer than meeting turn-taking.
   static let dictateChunkSilenceDuration: TimeInterval = 1.0
 
+  /// Hard cap on one Dictate chunk when the user never pauses. Silence-only rotation would
+  /// otherwise grow a single WAV without bound (disk, crash-loss window, 20 MB API limit).
+  /// Matches `chunkDurationSeconds` so a continuous monologue still streams in-flight.
+  static let dictateChunkMaxDuration: TimeInterval = 45.0
+
   // MARK: - Local Dictate Prompt
   /// Output ceiling for the local Dictate Prompt request.
   ///

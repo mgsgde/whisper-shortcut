@@ -331,6 +331,14 @@ class LiveMeetingRecorder: NSObject {
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
 
+      do {
+        try DiskSpace.requireForRecording(at: RecordingRobustness.recordingsDirectory())
+      } catch {
+        DebugLogger.logError("LIVE-MEETING: Failed to start session: \(error)")
+        self.delegate?.liveMeetingRecorder(didFailWithError: error)
+        return
+      }
+
       self.sessionStartTime = Date()
       self.chunkIndex = 0
       self.currentChunkStartTime = self.resumeTimeOffset
@@ -344,10 +352,6 @@ class LiveMeetingRecorder: NSObject {
         try self.startRecording(isRecorderA: true)
         self.scheduleTimers()
       } catch {
-        DebugLogger.logError("LIVE-MEETING: Failed to start session: \(error)")
-        self.delegate?.liveMeetingRecorder(didFailWithError: error)
-        return
-      }
     }
   }
 
@@ -581,16 +585,19 @@ extension LiveMeetingRecorder: AVAudioRecorderDelegate {
       }
       self.finalRecorder = nil
       var deliver = false
-      if flag {
-        let fileSize =
-          ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64) ?? 0
-        if fileSize > 0 {
+      let fileSize =
+        ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int64) ?? 0
+      if RecordingRobustness.shouldDeliver(fileSize: fileSize, finishedSuccessfully: flag) {
+        if flag {
           DebugLogger.log("LIVE-MEETING: Final chunk recorded successfully (\(fileSize) bytes)")
-          deliver = true
         } else {
-          DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")
-          try? FileManager.default.removeItem(at: url)
+          DebugLogger.logWarning(
+            "LIVE-MEETING: Final chunk reported failure but has \(fileSize) bytes — delivering it")
         }
+        deliver = true
+      } else if flag {
+        DebugLogger.logWarning("LIVE-MEETING: Final chunk is empty, skipping")
+        try? FileManager.default.removeItem(at: url)
       } else {
         DebugLogger.logError("LIVE-MEETING: Final chunk recording failed")
       }

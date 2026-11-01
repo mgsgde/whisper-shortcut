@@ -3,11 +3,11 @@ import Foundation
 
 /// Chunk-capable Dictate recorder — slice 1 of plans/active/streaming-dictate.md.
 ///
-/// Records through double-buffered AVAudioRecorders that rotate ONLY at silence
+/// Records through double-buffered AVAudioRecorders that rotate at silence
 /// boundaries (≥ `AppConstants.dictateChunkSilenceDuration` below the threshold, after
 /// `AppConstants.dictateChunkMinDuration`), mirroring LiveMeetingRecorder's proven
-/// pattern. There is deliberately no max-duration cut: continuous speech simply keeps
-/// growing the current chunk, so seams only ever sit inside real pauses.
+/// pattern. Continuous speech hits `AppConstants.dictateChunkMaxDuration` so a long
+/// monologue cannot grow one WAV without bound (disk, crash-loss window, API size).
 ///
 /// In this slice the chunks are merged back into a single WAV on stop and delivered
 /// through the same `AudioRecorderDelegate` contract as `AudioRecorder` — externally
@@ -40,6 +40,8 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     static let recordingFailedCode = 1002
     static let recordingUnsuccessfulCode = 1003
     static let emptyFileCode = 1004
+    /// How many 20 Hz metering ticks between mid-recording disk-space checks (~5 s).
+    static let diskCheckEveryTicks = 100
   }
 
   private static let silenceThresholdDB: Float = -45
@@ -86,6 +88,20 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
 
   private(set) var lastRecordingWasSilent: Bool = false
   private(set) var lastPeakPowerDb: Float = -160
+  /// Prevents an encode-error + unsuccessful-finish pair from delivering (or failing) twice.
+  private var didDeliverCurrentRecording = false
+
+  var currentRecordingURLs: [URL] {
+    var urls = chunkURLs
+    if let active = activeRecorder?.url, !urls.contains(active) {
+      urls.append(active)
+    }
+    return urls
+  }
+
+  var isActivelyRecording: Bool {
+    isSessionActive && (activeRecorder?.isRecording ?? false)
+  }
 
   var hasRecentlyBeenSilent: Bool {
     meterSampleCount >= 2
@@ -176,6 +192,12 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   private func beginSession() {
+    do {
+      try DiskSpace.requireForRecording(at: RecordingRobustness.recordingsDirectory())
+    } catch {
+      delegate?.audioRecorderDidFailWithError(error)
+      return
+    }
     // Remove the previous session's leftover chunk files (chunks aren't individually delivered to
     // the delegate, so nobody else cleans them up). The delivered file is no longer in this list. Any in-flight streaming reads of these
     // files finished long before a new recording can start.
@@ -183,6 +205,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       try? FileManager.default.removeItem(at: url)
     }
     chunkURLs = []
+    didDeliverCurrentRecording = false
     peakPowerDuringRecording = -160
     peakPowerDuringChunk = -160
     lastTwoMeterSamples = (-160, -160)
@@ -211,11 +234,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   /// callers can still recover from, so it stays synchronous and keeps throwing; only the
   /// blocking `record()` moves to `audioQueue` (see `startChunkRecorder`).
   private func makeChunkRecorder() throws -> AVAudioRecorder {
-    let documentsPath =
-      FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-      ?? FileManager.default.temporaryDirectory
-    let url = documentsPath.appendingPathComponent(
-      "recording_\(Date().timeIntervalSince1970)_chunk\(chunkURLs.count).wav")
+    let url = RecordingRobustness.makeRecordingURL(suffix: "_chunk\(chunkURLs.count)")
 
     let settings: [String: Any] = [
       AVFormatIDKey: Int(kAudioFormatLinearPCM),
@@ -295,9 +314,23 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       consecutiveSilenceSamples += 1
       if consecutiveSilenceSamples >= Self.rotationSilenceSamplesNeeded {
         rotateChunk()
+        return
       }
     } else {
       consecutiveSilenceSamples = 0
+    }
+
+    if Date().timeIntervalSince(wallStart) >= AppConstants.dictateChunkMaxDuration {
+      DebugLogger.logAudio(
+        "AUDIO: Max dictate chunk duration (\(Int(AppConstants.dictateChunkMaxDuration))s) reached, rotating")
+      rotateChunk()
+    }
+
+    if meteringTickCount % Constants.diskCheckEveryTicks == 0,
+      DiskSpace.isCriticallyLow(at: recorder.url)
+    {
+      DebugLogger.logError("AUDIO: Disk critically low during dictation — stopping to salvage")
+      _ = stopRecording()
     }
   }
 
@@ -344,8 +377,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private func mergeChunks(_ urls: [URL]) throws -> URL {
     guard urls.count > 1 else { return urls[0] }
 
-    let outputURL = (urls[0].deletingLastPathComponent())
-      .appendingPathComponent("recording_\(Date().timeIntervalSince1970)_merged.wav")
+    let outputURL = RecordingRobustness.makeRecordingURL(suffix: "_merged")
     guard let firstFile = try? AVAudioFile(forReading: urls[0]) else {
       throw NSError(
         domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
@@ -436,20 +468,56 @@ extension ChunkedDictateRecorder: AVAudioRecorderDelegate {
     let url = recorder.url
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
-      if flag {
-        self.finalizeSession(finalChunkURL: url)
-      } else {
-        let error = NSError(
-          domain: Constants.errorDomain, code: Constants.recordingUnsuccessfulCode,
-          userInfo: [NSLocalizedDescriptionKey: String(localized: "Recording finished unsuccessfully")])
-        self.delegate?.audioRecorderDidFailWithError(error)
-      }
+      self.deliverFinishedRecording(url: url, finishedSuccessfully: flag)
     }
   }
 
   func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-    if let error {
-      delegate?.audioRecorderDidFailWithError(error)
+    guard recorder === activeRecorder else { return }
+    isSessionActive = false
+    meteringTimer?.invalidate()
+    meteringTimer = nil
+    let url = recorder.url
+    if RecordingRobustness.shouldDeliver(
+      fileSize: RecordingRobustness.fileSize(at: url), finishedSuccessfully: false)
+    {
+      DebugLogger.logWarning(
+        "AUDIO: Encode error with salvageable chunk (\(error?.logDescription ?? "unknown")) — delivering")
+      deliverFinishedRecording(url: url, finishedSuccessfully: false)
+      return
     }
+    if let error {
+      if RecordingRobustness.isOutOfSpace(error) {
+        delegate?.audioRecorderDidFailWithError(RecordingRobustness.diskFullError())
+      } else {
+        delegate?.audioRecorderDidFailWithError(error)
+      }
+    }
+  }
+
+  private func deliverFinishedRecording(url: URL, finishedSuccessfully: Bool) {
+    guard !didDeliverCurrentRecording else { return }
+    let fileSize = RecordingRobustness.fileSize(at: url)
+    if RecordingRobustness.shouldDeliver(
+      fileSize: fileSize, finishedSuccessfully: finishedSuccessfully)
+    {
+      if !finishedSuccessfully {
+        DebugLogger.logWarning(
+          "AUDIO: Recorder reported failure but the chunk has \(fileSize) bytes — delivering it")
+      }
+      didDeliverCurrentRecording = true
+      finalizeSession(finalChunkURL: url)
+      return
+    }
+    didDeliverCurrentRecording = true
+    let error = NSError(
+      domain: Constants.errorDomain,
+      code: fileSize == 0 ? Constants.emptyFileCode : Constants.recordingUnsuccessfulCode,
+      userInfo: [
+        NSLocalizedDescriptionKey: fileSize == 0
+          ? String(localized: "Recording file is empty")
+          : String(localized: "Recording finished unsuccessfully")
+      ])
+    delegate?.audioRecorderDidFailWithError(error)
   }
 }

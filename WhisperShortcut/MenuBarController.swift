@@ -787,7 +787,9 @@ class MenuBarController: NSObject {
       RecordingIndicatorManager.shared.hide()
       if audioRecorder.stopRecording() {
         recording?.discardOnFinish = true
+        DictationRecordingMarker.markDiscarded()
       } else {
+        DictationRecordingMarker.markDiscarded()
         cancelPendingRecordingStart()
         if case .recording = appState { appState = appState.finish() }
         if activeMeetingSegment != nil { clearMeetingSegment() }
@@ -1026,6 +1028,14 @@ class MenuBarController: NSObject {
       name: .onboardingStatusDidChange,
       object: nil
     )
+
+    let workspace = NSWorkspace.shared.notificationCenter
+    workspace.addObserver(
+      self, selector: #selector(systemWillSleep),
+      name: NSWorkspace.willSleepNotification, object: nil)
+    workspace.addObserver(
+      self, selector: #selector(systemDidWake),
+      name: NSWorkspace.didWakeNotification, object: nil)
 
     // Installed rather than posted as a notification because the caller has to *await* it: the meeting
     // chat cuts the pending audio chunk and waits for its transcript before sending a question about
@@ -1984,6 +1994,88 @@ class MenuBarController: NSObject {
     liveMeeting.setFastChunking(ChatWindowManager.shared.isWindowOpen())
   }
 
+  /// Sleep / lid-close while a Dictate take is running: stop now so CoreAudio can close the WAV
+  /// before the machine powers down. Live meetings keep running — their chunks already land on
+  /// disk, and stopping the meeting on a brief sleep would be worse than a short gap.
+  @objc private func systemWillSleep() {
+    let dictating = isDictationCaptureActive
+    guard RecordingRobustness.actionForInterruption(
+      .willSleep, isRecording: dictating, recorderStillRunning: true) == .stopAndSalvage
+    else { return }
+    DebugLogger.log("AUDIO: System will sleep — stopping dictation to salvage audio")
+    stopRecordingForSystemInterruption()
+  }
+
+  @objc private func systemDidWake() {
+    let dictating = isDictationCaptureActive
+    guard dictating else { return }
+    let stillRunning = audioRecorder.isActivelyRecording
+    guard RecordingRobustness.actionForInterruption(
+      .didWake, isRecording: dictating, recorderStillRunning: stillRunning) == .stopAndSalvage
+    else { return }
+    DebugLogger.log("AUDIO: System woke — recorder already stopped, salvaging audio")
+    salvageOrClearRecording()
+  }
+
+  /// True while a Dictate / Dictate Prompt take (including a meeting segment) is pending or live.
+  /// Does not include the meeting itself.
+  private var isDictationCaptureActive: Bool {
+    pendingRecordingMode != nil
+      || pendingMeetingSegment != nil
+      || activeMeetingSegment != nil
+      || appState.recordingMode == .transcription
+      || appState.recordingMode == .prompt
+  }
+
+  private func stopRecordingForSystemInterruption() {
+    if audioRecorder.stopRecording() { return }
+    salvageOrClearRecording()
+  }
+
+  private func salvageOrClearRecording() {
+    if let url = RecordingRobustness.bestSalvage(urls: audioRecorder.currentRecordingURLs) {
+      DebugLogger.log("AUDIO: Salvaging \(url.lastPathComponent) after interruption")
+      audioRecorderDidFinishRecording(audioURL: url)
+    } else {
+      handleStopRecordingResult(false)
+    }
+  }
+
+  /// At launch: leftover `recording_*.wav` from a crash or force-quit become the cancelled
+  /// recording so the user can still transcribe them. See `DictationRecordingMarker`.
+  func recoverInterruptedDictationIfNeeded() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+      guard let self else { return }
+      if AppConstants.isSidecarInstance { return }
+      let directory = RecordingRobustness.recordingsDirectory()
+      let candidates = RecordingRobustness.listRecordingArtifacts(in: directory)
+      let marker = DictationRecordingMarker.read()
+      let ownerAlive = marker.map {
+        DictationRecordingMarker.ownerIsAlive(pid: $0.payload.pid)
+      } ?? false
+      let action = DictationRecordingMarker.launchAction(
+        payload: marker?.payload, candidates: candidates, ownerIsAlive: ownerAlive)
+      switch action {
+      case .none:
+        DebugLogger.log("DICTATION-MARKER: Nothing to recover at launch")
+        if !ownerAlive { DictationRecordingMarker.clear() }
+      case .deleteLeftovers(let names):
+        DebugLogger.log("DICTATION-MARKER: Deleting \(names.count) discarded leftover(s)")
+        RecordingRobustness.deleteArtifacts(named: names, in: directory)
+        DictationRecordingMarker.clear()
+      case .recover(let keep, let delete):
+        RecordingRobustness.deleteArtifacts(named: delete, in: directory)
+        let url = directory.appendingPathComponent(keep)
+        self.retainCancelledRecording(url)
+        DictationRecordingMarker.clear()
+        DebugLogger.log("DICTATION-MARKER: Recovered leftover \(keep)")
+        PopupNotificationWindow.showInfo(
+          "WhisperShortcut closed while a dictation was being recorded. The audio was kept. Choose Transcribe Cancelled Recording in the status menu to transcribe it.",
+          title: "Recording Recovered", customDisplayDuration: 10)
+      }
+    }
+  }
+
   /// At launch: if the previous run died (or was quit by a script) while a meeting was recording,
   /// either pick the meeting up again or tell the user it stopped. See `LiveMeetingRecordingMarker`.
   func resumeInterruptedMeetingIfNeeded() {
@@ -2827,6 +2919,7 @@ class MenuBarController: NSObject {
     do {
       try FileManager.default.removeItem(at: url)
       DebugLogger.logDebug("Cleaned up audio file: \(url.lastPathComponent)")
+      DictationRecordingMarker.clear()
     } catch {
       DebugLogger.logWarning("Failed to clean up audio file \(url.lastPathComponent): \(error.logDescription)")
     }
@@ -3351,6 +3444,7 @@ class MenuBarController: NSObject {
     audioRecorder.cleanup()
     statusItem = nil
     NotificationCenter.default.removeObserver(self)
+    NSWorkspace.shared.notificationCenter.removeObserver(self)
   }
 
 }
@@ -3367,6 +3461,12 @@ extension MenuBarController: AudioRecorderDelegate {
     case .mode(let mode):
       appState = appState.startRecording(mode)
     }
+    let markerMode: String
+    switch intent.target {
+    case .mode(.prompt), .meetingSegment(.prompt): markerMode = "prompt"
+    default: markerMode = "transcription"
+    }
+    DictationRecordingMarker.write(mode: markerMode)
   }
 
   func audioRecorderDidFinishRecording(audioURL: URL) {
@@ -4096,7 +4196,9 @@ extension MenuBarController: FnDictationToggleDelegate {
     RecordingIndicatorManager.shared.hide()
     if audioRecorder.stopRecording() {
       recording?.discardOnFinish = true
+      DictationRecordingMarker.markDiscarded()
     } else {
+      DictationRecordingMarker.markDiscarded()
       cancelPendingRecordingStart()
       if case .recording = appState { appState = appState.finish() }
     }
