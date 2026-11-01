@@ -195,6 +195,13 @@ struct SystemPromptSectionEditor: View {
     return onDiskBody == lastSaved.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  /// Save rule for a section Chat may append to while the user is typing (glossary via
+  /// `remember_dictation_term`). The user's deletions win; lines added on disk since the last
+  /// load or save are kept. Same merge as Chat memory / folder map.
+  static func textToSave(edited: String, loaded: String, onDisk: String) -> String {
+    LineListMerge.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
+  }
+
   /// `resetBaseline` is true when the page opens: the loaded text becomes what Revert returns to.
   /// File-change notifications reload with it false and do nothing while edits are unsaved, when
   /// the disk body is our own trimmed or emptied save, or when the loaded text already matches.
@@ -236,11 +243,14 @@ struct SystemPromptSectionEditor: View {
 
   private func save() {
     guard text != lastSavedText, unreadableReason == nil else { return }
-    let toSave = text
+    let onDisk = SystemPromptsStore.shared.loadSection(section) ?? ""
+    let toSave = Self.textToSave(edited: text, loaded: lastSavedText, onDisk: onDisk)
     let previous = lastSavedText
     // Set before writing: the store posts `.contextFileDidUpdate` synchronously, and `load` must
-    // see this text as already saved rather than reload over it.
+    // see this text as already saved rather than reload over it. Assign `lastSavedText` first
+    // so a merge that updates `text` does not schedule another autosave.
     lastSavedText = toSave
+    if toSave != text { text = toSave }
     if SystemPromptsStore.shared.updateSection(section, content: toSave) {
       saveFailed = false
     } else {
