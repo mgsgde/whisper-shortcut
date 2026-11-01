@@ -56,7 +56,7 @@ struct LiveMeetingNote: Identifiable, Sendable {
 final class LiveMeetingTranscriptStore: ObservableObject {
   static let shared = LiveMeetingTranscriptStore()
 
-  /// Transcript chunks (newest appended). Bounded by `maxChunks` to limit RAM for long meetings.
+  /// Transcript chunks in speaking order (earliest start time first). Bounded by `maxChunks`.
   @Published private(set) var chunks: [LiveMeetingChunk] = []
 
   /// Append-only live notes for the running meeting, oldest first.
@@ -205,18 +205,24 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     return result
   }
 
-  /// Append a transcribed chunk. Call from main thread or from the same place as appendToTranscript.
+  /// Inserts a transcribed chunk in start-time order.
+  ///
+  /// Chunks transcribe concurrently, so completion order is not speaking order. `chunks.last`
+  /// (elapsed time, the resume offset, the live-transcript cursor) is the latest start time.
   func appendChunk(startTime: TimeInterval, text: String) {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return }
 
     let chunk = LiveMeetingChunk(startTime: startTime, text: trimmed)
-    DispatchQueue.main.async { [weak self] in
+    let apply = { [weak self] in
       guard let self else { return }
-      self.chunks.append(chunk)
-      if self.chunks.count > self.maxChunks {
-        self.chunks.removeFirst(self.chunks.count - self.maxChunks)
-      }
+      let merged = MeetingAudioBacklog.merge([chunk], into: self.chunks)
+      self.chunks = Array(merged.suffix(self.maxChunks))
+    }
+    if Thread.isMainThread {
+      apply()
+    } else {
+      DispatchQueue.main.async(execute: apply)
     }
   }
 
@@ -295,6 +301,7 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   }
 
   /// Elapsed meeting time covered by the transcript, in seconds.
+  /// Chunks are in start-time order, so this is the latest spoken chunk, not the one that finished last.
   var elapsedSeconds: TimeInterval { chunks.last?.startTime ?? 0 }
 
   /// Context string for the meeting chat system instruction: the live notes plus the FULL transcript.

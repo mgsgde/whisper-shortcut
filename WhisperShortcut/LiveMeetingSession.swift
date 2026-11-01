@@ -181,6 +181,11 @@ final class LiveMeetingSession: NSObject {
   private var transcriptURL: URL?
   private var pendingChunks: Int = 0
   private var safeguardTimer: Timer?
+  /// Armed by `stop()`. A chunk still transcribing is not cut off by it; tests fire a stale one
+  /// without waiting out the delay.
+  private var stopSafetyNet: DispatchWorkItem?
+  /// How long `stop()` waits for the recorder's final chunk before finishing the session anyway.
+  var stopSafetyNetDelay: TimeInterval = 30
   /// ID of the last chunk already covered by a live note. Robust against chunk trimming.
   private var lastNotedChunkID: UUID? = nil
   /// When non-nil, `finish()` renames the transcript file to this stem (or timestamp-suffix) before ending.
@@ -211,9 +216,9 @@ final class LiveMeetingSession: NSObject {
   /// in, two bullets out) so calls are fast, but a slow response must not let a second call start
   /// and race on `lastNotedChunkID` — that would either duplicate or skip a segment.
   private var noteUpdateInFlight: Bool = false
-  /// Bumped on every session start. A live-note Task captures the generation it launched under so a
-  /// straggler from a previous meeting (its API call can outlive a stop+restart) no-ops instead of
-  /// clearing the in-flight flag — or writing note/chunk state — for the newer session.
+  /// Bumped on every session start. A Task that can outlive the meeting (live notes, a chunk
+  /// transcription, the stop safety net) captures the generation it launched under and leaves the
+  /// newer session alone instead of writing into it or finishing it.
   private var sessionGeneration = 0
   /// Minimum new transcript characters before a live note is generated. Below this a segment is
   /// usually a greeting or a stray sentence and produces a note not worth its API call.
@@ -231,6 +236,12 @@ final class LiveMeetingSession: NSObject {
   /// True while this session holds a recorder. Combined with `appState` by the owner to decide
   /// whether a meeting is active.
   var isRecording: Bool { recorder != nil }
+
+  /// Chunks whose transcription has not finished.
+  var pendingChunkCount: Int { pendingChunks }
+
+  /// The stop safety net `stop()` armed, so a test can fire one from an earlier meeting.
+  var stopSafetyNetForTesting: DispatchWorkItem? { stopSafetyNet }
 
   /// True when a meeting is active (recording, or stopping with pending chunks).
   private var isActive: Bool { appStateIsRecordingMeeting() || recorder != nil }
@@ -331,8 +342,22 @@ final class LiveMeetingSession: NSObject {
     return true
   }
 
+  /// Points the session at `url` and bumps the generation, without opening a microphone.
+  /// Tests deliver chunks through the recorder delegate; production goes through `start()`.
+  func beginSessionWithoutRecorder(transcriptFile url: URL) {
+    transcriptURL = url
+    stopping = false
+    finalized = false
+    awaitingFinalChunk = false
+    pendingChunks = 0
+    discard = false
+    preferredName = nil
+    sessionGeneration += 1
+  }
+
   /// Records the user's meeting name / discard choice, then stops. Posted by the in-window
-  /// "end meeting" affordance.
+  /// "end meeting" affordance. The name and discard are stored before `stop()`, so a second
+  /// press still updates them when `stop()` itself no-ops.
   func end(preferredName name: String?, discard shouldDiscard: Bool) {
     preferredName = name
     discard = shouldDiscard
@@ -363,6 +388,13 @@ final class LiveMeetingSession: NSObject {
   }
 
   func stop() {
+    // A second Stop while the final chunk is still draining re-arms the recorder. No second
+    // finish callback arrives, so the meeting sits until the safety net. The name and discard
+    // choice are applied by `end()` before this returns.
+    guard !stopping else {
+      DebugLogger.log("LIVE-MEETING: Stop ignored (already stopping)")
+      return
+    }
     DebugLogger.log("LIVE-MEETING: User requested stop")
     LiveMeetingRecordingMarker.clear()
 
@@ -381,17 +413,19 @@ final class LiveMeetingSession: NSObject {
     stopOutputRouteMonitor()
     tearDownSystemCapture()
 
-    // Safety net: if the final chunk never arrives within 30s, finish anyway so the UI
-    // doesn't get stuck in "stopping" forever.
-    DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-      guard let self = self else { return }
-      if self.stopping && !self.finalized {
-        DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
-        self.awaitingFinalChunk = false
-        self.pendingChunks = 0
-        self.finish()
-      }
+    // Safety net: if the final chunk never arrives, finish anyway so the UI doesn't stay on
+    // "stopping". Tied to this generation — a later meeting must not be finished by it.
+    let generation = sessionGeneration
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, generation == self.sessionGeneration else { return }
+      guard self.stopping, !self.finalized else { return }
+      DebugLogger.logWarning("LIVE-MEETING: Final chunk timeout; finishing session anyway")
+      self.awaitingFinalChunk = false
+      self.pendingChunks = 0
+      self.finish()
     }
+    stopSafetyNet = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + stopSafetyNetDelay, execute: work)
   }
 
   private func showSafeguardAlert(thresholdMinutes: Int) {
@@ -863,33 +897,37 @@ final class LiveMeetingSession: NSObject {
     return fileURL
   }
 
-  private func appendToTranscript(_ text: String, chunkStartTime: TimeInterval) {
-    guard let url = transcriptURL else { return }
-
-    var finalText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let timestamp = Self.formatTimestamp(elapsedSeconds: chunkStartTime)
-    finalText = "\(timestamp) \(finalText)"
-    finalText = "\(finalText)\n\n"
-
-    do {
-      let handle = try FileHandle(forWritingTo: url)
-      handle.seekToEndOfFile()
-      if let data = finalText.data(using: .utf8) {
-        handle.write(data)
-      }
-      try handle.close()
-      DebugLogger.log("LIVE-MEETING: Appended chunk to transcript")
-    } catch {
-      DebugLogger.logError("LIVE-MEETING: Failed to append to transcript: \(error)")
-    }
-
+  /// Writes `text` into `url` at `chunkStartTime`'s place in speaking order.
+  ///
+  /// `url` and `generation` are the meeting the chunk was recorded for. A transcription can still
+  /// be in flight after `finish()` clears `transcriptURL` (the stop safety net fires at 30s; a
+  /// request may take 60s plus retries). The text is written to that meeting's file anyway. The
+  /// in-memory store is updated only while this is still the current meeting, so a late chunk
+  /// cannot show up in the next one.
+  private func appendToTranscript(
+    _ text: String, chunkStartTime: TimeInterval, url: URL?, generation: Int
+  ) {
+    guard let url else { return }
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmedText.isEmpty {
-      LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
-      // `appendChunk` hops to the main queue, so the new chunk isn't visible yet — evaluate the
-      // note threshold after it lands.
-      DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
+    guard !trimmedText.isEmpty else { return }
+
+    let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    let merged = MeetingAudioBacklog.merge(
+      [LiveMeetingChunk(startTime: chunkStartTime, text: trimmedText)],
+      into: LiveMeetingTranscriptStore.parseTranscript(existing))
+    do {
+      try MeetingAudioBacklog.transcriptText(merged).write(to: url, atomically: true, encoding: .utf8)
+      DebugLogger.log(
+        "LIVE-MEETING: Wrote chunk to transcript at \(Self.formatTimestamp(elapsedSeconds: chunkStartTime))"
+      )
+    } catch {
+      DebugLogger.logError("LIVE-MEETING: Failed to write transcript: \(error)")
     }
+
+    guard generation == sessionGeneration else { return }
+    LiveMeetingTranscriptStore.shared.appendChunk(startTime: chunkStartTime, text: trimmedText)
+    // Notes run on the next turn so they see the chunk just inserted.
+    DispatchQueue.main.async { [weak self] in self?.refreshLiveNotes() }
   }
 
   static func formatTimestamp(elapsedSeconds: TimeInterval) -> String {
@@ -1139,9 +1177,13 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
     }
 
     pendingChunks += 1
-    // Captured now: the backlog folder must match the stem this chunk belongs to, even if the
-    // session finishes (and clears `transcriptURL`) while the call is still out.
+    // Captured now: the backlog folder, the transcript file, and the bookkeeping all belong to
+    // this meeting. The call can outlive `finish()` (which clears `transcriptURL`) and a later
+    // `start()` (which reuses this object). A late success must not write into the new meeting
+    // or decrement its pending count.
     let stem = transcriptURL?.deletingPathExtension().lastPathComponent
+    let generation = sessionGeneration
+    let chunkTranscriptURL = transcriptURL
 
     Task {
       do {
@@ -1154,7 +1196,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         } else {
           await MainActor.run {
             // Appending also evaluates whether the accumulated segment is worth a live note.
-            self.appendToTranscript(trimmedText, chunkStartTime: startTime)
+            self.appendToTranscript(
+              trimmedText, chunkStartTime: startTime, url: chunkTranscriptURL, generation: generation)
           }
         }
 
@@ -1181,6 +1224,8 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
+          // A failure from the previous meeting must not consume this meeting's one-shot alerts.
+          guard generation == self.sessionGeneration else { return }
           if kept { self.onBacklogChanged() }
           if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
@@ -1205,6 +1250,12 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       }
 
       await MainActor.run {
+        guard generation == self.sessionGeneration else {
+          DebugLogger.log(
+            "LIVE-MEETING: Chunk \(chunkIndex) finished after its meeting; leaving the current session's pending count alone"
+          )
+          return
+        }
         self.pendingChunks -= 1
         // Transcribed, empty, or failed — either way this chunk is settled, so a flush waiting on it
         // may proceed with whatever landed.
