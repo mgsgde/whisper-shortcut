@@ -8,6 +8,10 @@ import SwiftUI
 /// files, so every fix to the reveal button, the Keychain-failure warning, or the
 /// don't-blank-on-failed-read rule had to be made four times.
 struct APIKeyEntrySection: View {
+  /// Long enough that a paste or typed key is one Keychain write, short enough
+  /// that leaving the field still persists before the user dictates.
+  static let saveDelay: Duration = .milliseconds(500)
+
   let provider: APIKeyProvider
 
   /// Where the typed key lives. Google binds `viewModel.data.googleAPIKey` because
@@ -20,6 +24,7 @@ struct APIKeyEntrySection: View {
 
   @State private var isKeyVisible: Bool = false
   @State private var keychainSaveError: OSStatus?
+  @State private var saveCommit: DebouncedAsyncCommit<String>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -55,15 +60,16 @@ struct APIKeyEntrySection: View {
           if let stored = KeychainManager.shared.get(provider.credential), !stored.isEmpty {
             key = stored
           }
+          ensureSaveCommit()
         }
+        .onDisappear { flushSave() }
         .onChange(of: key) { _, newValue in
           // `onAppear` loading the stored key also fires this. Treat that as a load, not a save:
           // otherwise merely opening Settings → Accounts rewrites every key and pops the
           // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
           guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
-          Task {
-            keychainSaveError = await provider.store(newValue)
-          }
+          ensureSaveCommit()
+          saveCommit?.schedule(newValue)
         }
 
         Button(action: { isKeyVisible.toggle() }) {
@@ -100,6 +106,23 @@ struct APIKeyEntrySection: View {
         .fixedSize(horizontal: false, vertical: true)
       }
     }
+  }
+
+  private func ensureSaveCommit() {
+    guard saveCommit == nil else { return }
+    saveCommit = DebouncedAsyncCommit(delay: Self.saveDelay) { value in
+      keychainSaveError = await provider.store(value)
+    }
+  }
+
+  private func flushSave() {
+    let value = key
+    guard value != (KeychainManager.shared.get(provider.credential) ?? "") else {
+      saveCommit?.cancel()
+      return
+    }
+    ensureSaveCommit()
+    Task { await saveCommit?.flush(value) }
   }
 
   /// Applies the shared field styling, plus focus binding for the one provider that has one.
