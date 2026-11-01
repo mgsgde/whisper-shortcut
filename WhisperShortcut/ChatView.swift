@@ -274,7 +274,6 @@ class ChatViewModel: ObservableObject {
   private static let copyCommand = "/copy"
   private static let feedbackCommand = "/feedback"
   static let thinkCommand = "/think"
-  static let xHandlesCommand = "/x"
   static let workspaceCommand = "/workspace"
 
   /// Slash commands that take an inline argument (e.g. `/model 3.1 flash`, `/think high`).
@@ -282,7 +281,7 @@ class ChatViewModel: ObservableObject {
   /// the whole line (not just the token) so multi-word args leave no residue. Single source so
   /// the three call sites in `ChatInputAreaView` can't drift.
   static let argumentCommands: Set<String> = [
-    modelCommand, thinkCommand, xHandlesCommand, workspaceCommand,
+    modelCommand, thinkCommand, workspaceCommand,
   ]
 
   /// Model-switch slash commands, generated from `PromptModel` so adding a model auto-adds its
@@ -334,7 +333,6 @@ class ChatViewModel: ObservableObject {
   ]
   private static let specsAfterModels: [(command: String, description: LocalizedStringResource)] = [
     ("/think", "Set reasoning depth for this chat: minimal | low | medium | high | default"),
-    ("/x", "Grok only: limit X search to these accounts, e.g. /x @karpathy @simonw (`/x off` = all of X)"),
     ("/settings", "Open Settings"),
     ("/pin", "Toggle whether the window stays open when losing focus"),
     ("/unpin", "Make the window close when losing focus"),
@@ -1090,7 +1088,6 @@ class ChatViewModel: ObservableObject {
       // knobs come from that session, not whichever one is on screen.
       let sendingSession = sessionId == session.id ? session : store.session(by: sessionId)
       let thinkingLevel = sendingSession?.thinkingLevel ?? .default
-      let xHandles = sendingSession.map(effectiveXHandles(for:)) ?? XSearchHandles.defaultHandles
       let placeholderId = UUID()
       // The agent loop itself (rounds, tools, guards) lives in `ChatAgentRunner`; this method is
       // the chat window's adapter around it. Held outside `do` so a Stop or a provider error can
@@ -1138,7 +1135,6 @@ class ChatViewModel: ObservableObject {
               // Stable per-session key → provider prompt-cache hits across turns
               // (OpenAI prompt_cache_key, Grok x-grok-conv-id). Gemini ignores it.
               cacheKey: sessionId.uuidString,
-              xHandles: xHandles,
               showsModelReadinessPopup: false)
           },
           toolContext: { self.makeToolContext(sessionId: sessionId) },
@@ -1421,7 +1417,7 @@ class ChatViewModel: ObservableObject {
   /// properties — so it lives here; the registry still owns dispatch.
   @MainActor
   private func makeToolContext(sessionId: UUID) -> ChatToolContext {
-    // Same background-session rule as `/x` and thinkingLevel: scope follows the sending chat.
+    // Same background-session rule as thinkingLevel: scope follows the sending chat.
     let target = sessionId == session.id ? session : (store.session(by: sessionId) ?? session)
     return ChatToolContext(
       workspaceScope: workspaceScope(for: target),
@@ -1602,16 +1598,6 @@ class ChatViewModel: ObservableObject {
         ? ""
         : String(lower.dropFirst(Self.thinkCommand.count + 1)).trimmingCharacters(in: .whitespaces)
       handleThinkCommand(argument: arg)
-      return
-    }
-
-    // /x command (restrict Grok's X search to specific accounts, per session)
-    if lower == Self.xHandlesCommand || lower.hasPrefix(Self.xHandlesCommand + " ") {
-      inputText = ""
-      let arg = lower == Self.xHandlesCommand
-        ? ""
-        : String(lower.dropFirst(Self.xHandlesCommand.count + 1)).trimmingCharacters(in: .whitespaces)
-      handleXHandlesCommand(argument: arg)
       return
     }
 
@@ -2296,52 +2282,6 @@ class ChatViewModel: ObservableObject {
       : String(localized: "Reasoning depth set to **\(level.rawValue)** for this chat. Higher = more thorough but slower and pricier.")
     appendModelMessage(verbatim: note)
     DebugLogger.log("GEMINI-CHAT: /think level=\(level.rawValue) session=\(session.id)")
-  }
-
-  /// Handles the `/x` command. Restricts Grok's `x_search` to specific accounts for this chat
-  /// (persisted across restarts), layered over the Settings → Chat default.
-  ///
-  /// `allowed_x_handles` is a hard filter on xAI's side, so the confirmations say "only" rather
-  /// than "prefer" — a user who reads it as a ranking hint would blame the model for missing
-  /// posts the filter never let it see. Bare `/x` reports the effective list; `/x off` searches
-  /// all of X even when a default is configured.
-  @MainActor
-  private func handleXHandlesCommand(argument: String) {
-    let usage = String(localized: "Set with `/x @karpathy @simonw`, clear with `/x off`.")
-    guard !argument.isEmpty else {
-      let effective = effectiveXHandles(for: session)
-      let state = effective.isEmpty
-        ? String(localized: "X search covers **all of X** in this chat.")
-        : String(localized: "X search in this chat is limited to **\(XSearchHandles.describe(effective))**.")
-      appendModelMessage(verbatim: "\(state) \(usage)")
-      return
-    }
-    if ["off", "all", "clear", "none", "reset"].contains(argument) {
-      session.xHandles = []  // explicit empty beats a non-empty Settings default
-      appendModelMessage("X search now covers **all of X** in this chat.")
-      DebugLogger.log("GEMINI-CHAT: /x cleared session=\(session.id)")
-      return
-    }
-    let (handles, droppedOverCap) = XSearchHandles.parse(argument)
-    guard !handles.isEmpty else {
-      appendModelMessage("No usable X handles in \"\(argument)\". \(usage)")
-      return
-    }
-    session.xHandles = handles  // persisted by appendModelMessage's store.save(session)
-    var note =
-      String(localized: "Grok will now search **only** \(XSearchHandles.describe(handles)) on X in this chat — posts from anyone else stay invisible to it.") + " " + usage
-    if droppedOverCap > 0 {
-      note += "\n\n" + String(localized: "xAI accepts at most \(XSearchHandles.maxHandles) accounts, so the last \(droppedOverCap) were dropped.")
-    }
-    appendModelMessage(verbatim: note)
-    DebugLogger.log("GEMINI-CHAT: /x handles=\(handles.count) dropped=\(droppedOverCap) session=\(session.id)")
-  }
-
-  /// The X handles a send should actually use: the session's own list when `/x` has set one,
-  /// otherwise the Settings → Chat default. `[]` from `/x off` is a real value, not "unset",
-  /// which is why this is an optional check rather than an `isEmpty` fallback.
-  private func effectiveXHandles(for session: ChatSession) -> [String] {
-    session.xHandles ?? XSearchHandles.defaultHandles
   }
 
   /// The folders this chat may read. `nil` = every shared folder; `[]` = none. A selection that

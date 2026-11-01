@@ -223,11 +223,6 @@ enum UserDefaultsKeys {
   /// Model tag for the Custom endpoint chat model (e.g. `zai-org/GLM-5.2`).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
 
-  // MARK: - Grok X search
-  /// Default X accounts new chats restrict Grok's `x_search` to, stored space-separated
-  /// (see `XSearchHandles`). Empty → search all of X. Per-chat override: `/x` in the chat window.
-  static let grokXSearchHandles = "grokXSearchHandles"
-
   // MARK: - Claude web search
   /// Whether Claude models get Anthropic's server-side web search (billed per search on the
   /// user's key). Unset → on. Settings → Chat → "Web Search for Claude".

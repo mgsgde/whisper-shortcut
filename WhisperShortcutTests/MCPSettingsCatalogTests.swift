@@ -506,7 +506,6 @@ struct MCPSettingsCatalogTests {
       "meetings.chunk_interval",
       "meetings.safeguard_duration",
       "dictate_prompt.screenshot_context",
-      "chat.x_search_handles",
       "improvement.auto_run_interval",
     ]
     for id in expected {
@@ -526,20 +525,6 @@ struct MCPSettingsCatalogTests {
     #expect(r.isError)
     #expect(r.text.contains("Grant Screen Recording in Settings → Permissions first."))
     #expect(env.testDefaults.bool(forKey: UserDefaultsKeys.screenshotInPromptMode) == false)
-  }
-
-  @Test("chat.x_search_handles change-log toLabel shows the normalized form, not the raw input")
-  func xSearchHandlesToLabelNormalized() {
-    let env = MCPTestEnv(level: .apply)
-    let r = env.tools().call(
-      name: "update_settings",
-      arguments: ["changes": ["chat.x_search_handles": "@ElonMusk @elonmusk"], "rationale": "r"],
-      access: .write)
-    #expect(!r.isError)
-    let changeID = obj(r)["change_id"] as? String ?? ""
-    let change = env.changeLog.changes.first { $0.id == changeID }
-    let toLabel = change?.settingsChanges?.first { $0.id == "chat.x_search_handles" }?.toLabel
-    #expect(toLabel == "elonmusk", "must show the normalized/deduped form, not the raw \"@ElonMusk @elonmusk\"")
   }
 
   @Test("notifications.duration round-trips through update_settings and get_settings")

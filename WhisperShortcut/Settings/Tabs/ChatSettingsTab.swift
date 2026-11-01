@@ -62,7 +62,6 @@ struct ChatSettingsTab: View {
       // Knobs most people never touch: the defaults are the tuned choice, and every visible row is
       // one more thing a new user has to read past. Values are unchanged — only where they live.
       AdvancedSettingsGroup {
-        XSearchHandlesSection()
         windowBehaviorSection
       }
     }
