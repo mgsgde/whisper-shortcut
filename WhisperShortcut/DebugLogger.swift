@@ -80,6 +80,12 @@ struct DebugLogger {
   // MARK: - File Logging
   private static let fileLogger = FileLogger.shared
   private static let errorFileWriter = ErrorFileWriter.shared
+
+  /// Closes cached error-log handles. Call after deleting the UserContext directory so later
+  /// error lines create a new `errors-*.log` instead of writing to an unlinked inode.
+  static func closeContextErrorLogHandles() {
+    errorFileWriter.resetHandles()
+  }
   
   // MARK: - Modern os_log Methods
   
@@ -385,6 +391,14 @@ struct DebugLogger {
   
 }
 
+/// A cached `FileHandle` is invalid once its path is gone (Delete context data removes
+/// `UserContext/` under the handle). Pure so the reopen rule is pinned by a test.
+enum CachedWritableFile {
+  static func isStillOnDisk(path: String) -> Bool {
+    FileManager.default.fileExists(atPath: path)
+  }
+}
+
 // MARK: - File Logger
 /// Private file logger for writing logs to daily files
 private class FileLogger {
@@ -643,9 +657,22 @@ private class ErrorFileWriter {
     }
   }
 
+  fileprivate func resetHandles() {
+    fileQueue.sync {
+      closeAllHandles()
+      currentDate = nil
+    }
+  }
+
   private func getFileHandle(for date: String) -> FileHandle? {
-    if let existingHandle = fileHandles[date] { return existingHandle }
     let logFile = logDirectory.appendingPathComponent("errors-\(date).log")
+    if let existingHandle = fileHandles[date] {
+      if CachedWritableFile.isStillOnDisk(path: logFile.path) {
+        return existingHandle
+      }
+      existingHandle.closeFile()
+      fileHandles.removeValue(forKey: date)
+    }
     if !FileManager.default.fileExists(atPath: logFile.path) {
       FileManager.default.createFile(atPath: logFile.path, contents: nil, attributes: nil)
     }
