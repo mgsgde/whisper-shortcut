@@ -54,6 +54,57 @@
 	<string>This app needs keychain access to securely store your Google API key.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs microphone access to record audio for transcription.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMessage</key>
+			<string>readAloudService</string>
+			<key>NSPortName</key>
+			<string>$(APP_DISPLAY_NAME)</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Read Aloud with WhisperShortcut</string>
+			</dict>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMessage</key>
+			<string>addToGlossaryService</string>
+			<key>NSPortName</key>
+			<string>$(APP_DISPLAY_NAME)</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Add to WhisperShortcut Glossary</string>
+			</dict>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSMessage</key>
+			<string>dictatePromptService</string>
+			<key>NSPortName</key>
+			<string>$(APP_DISPLAY_NAME)</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Dictate Prompt with WhisperShortcut</string>
+			</dict>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

@@ -47,6 +47,10 @@ final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
 
+  /// `NSApp.servicesProvider` is not guaranteed to retain its object. Held for the process lifetime
+  /// so the three selection Services stay registered.
+  private var selectionServices: SelectionServicesProvider?
+
   /// POSIX signal handlers held for the lifetime of the app. Without these, a
   /// default `pkill` / `kill` (which sends SIGTERM) terminates the process
   /// immediately and `applicationWillTerminate` never runs — meaning
@@ -129,6 +133,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
+
+    if let controller = menuBarController {
+      selectionServices = SelectionServicesProvider(controller: controller)
+      NSApp.servicesProvider = selectionServices
+      NSUpdateDynamicServices()
+    }
 
     // Accessibility permissions will be checked when user actually tries to use prompt features
 

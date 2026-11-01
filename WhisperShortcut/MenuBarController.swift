@@ -1664,6 +1664,30 @@ class MenuBarController: NSObject {
     }
   }
 
+  /// Starts Dictate Prompt with text a macOS Service already supplied. Skips the synthetic Cmd+C
+  /// and the Screen Recording check: a service selection is never read from a screenshot.
+  /// Invoking it again while recording stops the recording, the same way the shortcut does.
+  func dictatePromptFromService(text: String) {
+    switch availability(.dictatePrompt) {
+    case .start:
+      let isMeeting = isLiveMeetingActive
+      let promptModel = Self.selectedPromptModel()
+      DebugLogger.log("PROMPT-MODE: Selection from Services (\(text.count) chars)")
+      let selection = DictatePromptSelectionCapture.fromService(text)
+      if isMeeting { DebugLogger.log("MEETING-SEGMENT: Starting prompt segment during meeting") }
+      ConnectionPrewarmer.prewarm(for: promptModel)
+      discardStreamingSession()
+      if isMeeting {
+        beginAudioCapture(
+          mode: .prompt, meetingSegment: .prompt, promptSelection: selection)
+      } else {
+        beginAudioCapture(mode: .prompt, promptSelection: selection)
+      }
+    default:
+      togglePrompting()
+    }
+  }
+
   @objc private func stopCurrentOperation() {
     // Active meeting segment: stop the segment first, keep meeting running.
     // `activeMeetingSegment` stays set so the async `audioRecorderDidFinishRecording`
@@ -3016,7 +3040,8 @@ class MenuBarController: NSObject {
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
           templateName: templateName, selectedText: selectedText,
-          recordingWasSilent: recordingWasSilent)
+          recordingWasSilent: recordingWasSilent,
+          selectionIsFromService: selection?.isFromService ?? false)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
@@ -3485,6 +3510,7 @@ class MenuBarController: NSObject {
         title: "Nothing Selected")
     }
   }
+  #endif
 
   private func reportGlossaryAppend(_ result: SystemPromptsStore.GlossaryAppendResult) {
     switch result {
@@ -3504,7 +3530,10 @@ class MenuBarController: NSObject {
         title: "Glossary Full")
     }
   }
-  #endif
+
+  func addToGlossaryFromService(text: String) {
+    reportGlossaryAppend(SystemPromptsStore.shared.appendToWhisperGlossary(text))
+  }
 
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   private func simulateCopy() {
@@ -4427,10 +4456,34 @@ extension MenuBarController: ShortcutDelegate {
     )
   }
 
+  /// Read Aloud for text a macOS Service already supplied. No clipboard snapshot: the pasteboard
+  /// was never touched. Pressing the service again while playback is running stops it.
+  func readAloudFromService(text: String) {
+    if attemptReadAloudToggleOff() { return }
+    switch availability(.readAloudSelection) {
+    case .ignored(.liveMeetingActive):
+      DebugLogger.logWarning("READ-ALOUD-SERVICE: ignoring during live meeting")
+      return
+    case .ignored(.otherModeRecording):
+      DebugLogger.logWarning("READ-ALOUD-SERVICE: ignoring while another recording is active")
+      return
+    case .blocked(let reason):
+      presentBlocked(reason)
+      return
+    case .start:
+      break
+    default:
+      return
+    }
+    beginReadAloudProcessing(text: text) { [speechService] onChunkReady in
+      try await speechService.readSelectionAloud(text, onChunkReady: onChunkReady)
+    }
+  }
+
   // Selection-based Read Aloud (HotKey + menu item + everything it needs) copies via ⌘C, which
   // requires Accessibility. The App Store build omits the menu item, the hotkey wiring, and the
   // settings row — so these entry points have no caller there. Compile them out too rather than
-  // keep an unreachable error-popup branch.
+  // keep an unreachable error-popup branch. The Services entry point above stays in both builds.
   #if !APP_STORE
   /// HotKey entry point: copies the user's selection, then runs Read Aloud on it. Pressing the
   /// shortcut again while a TTS phase is running cancels playback (mirrors the chat read-aloud

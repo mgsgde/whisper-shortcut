@@ -2612,6 +2612,16 @@
         }
       }
     },
+    "Add a term from anywhere: select it, then right-click → Services → Add to WhisperShortcut Glossary. No model is involved, so this also works while Offline Mode is on. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie einen Begriff von überall hinzu: Markieren Sie ihn und wählen Sie dann Rechtsklick → Dienste → Add to WhisperShortcut Glossary. Dabei ist kein Modell beteiligt, daher funktioniert das auch, wenn der Offline-Modus eingeschaltet ist. Um ein Tastenkürzel festzulegen, öffnen Sie Systemeinstellungen → Tastatur → Tastaturkurzbefehle → Dienste → Text."
+          }
+        }
+      }
+    },
     "Add an Anthropic API key to use Claude models in the chat window. Get a key from the Anthropic Console (link below)." : {
       "localizations" : {
         "de" : {
@@ -10412,6 +10422,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Chatfenster öffnet Anhängen zuerst diesen Ordner, damit neue Bildschirmfotos nur einen Klick entfernt sind."
+          }
+        }
+      }
+    },
+    "In this version, select text, then right-click → Services → Read Aloud with WhisperShortcut. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Markieren Sie in dieser Version einen Text und wählen Sie dann Rechtsklick → Dienste → Read Aloud with WhisperShortcut. Um ein Tastenkürzel festzulegen, öffnen Sie Systemeinstellungen → Tastatur → Tastaturkurzbefehle → Dienste → Text."
           }
         }
       }
