@@ -76,17 +76,18 @@ class SpeechService {
   /// True when the last on-device Dictate Prompt reply stopped at the output-token cap, so its end
   /// may be missing. The reply is still delivered; the UI adds a notice.
   private(set) var lastPromptReplyTruncated = false
-  /// True when this Dictate Prompt turn replaced the system prompt with a template. Reset at the
-  /// start of every turn. The status menu keeps that recording for "Run Again Without Template"
-  /// only when a template was actually applied, so a selection or a quick action is not offered.
-  private(set) var lastPromptAppliedTemplate = false
+  /// Kind of the turn inside `performPrompt`. Set at the start of every turn so a recording never
+  /// inherits the previous one's template. MenuBarController reads `lastPromptAppliedTemplate`.
+  private var promptTurnKind: PromptTurnKind = .compose
+  /// The recorder flagged this take silent. A template turn that already has a selection formats
+  /// that selection and does not reject the empty audio.
+  private var promptRecordingWasSilent = false
+  /// True when this turn is a template. The status menu keeps that recording for
+  /// "Run Again Without Template".
+  var lastPromptAppliedTemplate: Bool { promptTurnKind.isTemplate }
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
-  /// Template instructions for this Dictate Prompt turn, or nil when the turn uses the stored
-  /// system prompt. Set at the start of every `performPrompt` so a turn never inherits the
-  /// previous one's template.
-  private var promptTemplateInstruction: String?
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -650,14 +651,17 @@ class SpeechService {
     instruction: String? = nil,
     isEditQuickAction: Bool = false,
     templateInstruction: String? = nil,
-    selectedText: String? = nil
+    templateName: String? = nil,
+    selectedText: String? = nil,
+    recordingWasSilent: Bool = false
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
       try await self.performPrompt(
         audioURL: audioURL, mode: mode, instruction: instruction,
         isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
-        selectedText: selectedText)
+        templateName: templateName, selectedText: selectedText,
+        recordingWasSilent: recordingWasSilent)
     }
 
     currentPromptTask = task
@@ -695,6 +699,128 @@ class SpeechService {
   }
 
   // MARK: - Prompt Modes (Private Implementation)
+
+  /// One dictation-template recording: the instructions that replace the system prompt, and the
+  /// name shown on the card and in the usage log.
+  struct DictationTemplateTurn: Equatable {
+    var instructions: String
+    var displayName: String
+  }
+
+  /// What this recording is. Decided once at the start of `performPrompt`. A template that was
+  /// passed is always `.template`: a selection, a screenshot-selection model, or a typed
+  /// instruction does not turn it into an edit or a compose turn.
+  enum PromptTurnKind: Equatable {
+    case edit
+    case compose
+    case template(DictationTemplateTurn)
+
+    var isTemplate: Bool {
+      if case .template = self { return true }
+      return false
+    }
+
+    /// Name written on the usage-log row. Nil for Dictate Prompt, and when the template has no name.
+    var templateLogName: String? {
+      guard case .template(let turn) = self else { return nil }
+      let name = turn.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+      return name.isEmpty ? nil : name
+    }
+  }
+
+  /// Introduces the selection on a template turn: content to put into the format, not text to edit.
+  static let templateSelectionHeader = "Content to put into the format (the user selected it):"
+  /// Introduces a non-empty transcript on a template turn that also has a selection.
+  static let templateDictationHeader = "Additional content the user dictated:"
+
+  /// A blank template is no template. `textInstruction` is part of the decision so a typed or
+  /// quick instruction is visible at this site; it never changes the kind.
+  static func decidePromptTurnKind(
+    templateInstruction: String?,
+    templateName: String?,
+    usesScreenshotSelection: Bool,
+    selectedText: String?,
+    textInstruction _: String?
+  ) -> PromptTurnKind {
+    let trimmedTemplate = templateInstruction?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !trimmedTemplate.isEmpty {
+      let name = templateName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      return .template(DictationTemplateTurn(instructions: trimmedTemplate, displayName: name))
+    }
+    if isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: selectedText) {
+      return .compose
+    }
+    return .edit
+  }
+
+  /// Template system prompt: the template instructions and the output rule. No stored prompt,
+  /// no writing-style block, no memory style block.
+  static func templateTurnSystemPrompt(instructions: String) -> String {
+    instructions + AppConstants.promptModeOutputRule
+  }
+
+  /// The selection block for this turn. Dictate Prompt keeps today's header and compose marker.
+  /// A template with a selection introduces that selection as content for the format.
+  static func promptSelectionBlock(
+    turnKind: PromptTurnKind, clipboardContext: String?, isComposeTurn: Bool
+  ) -> String? {
+    if case .template = turnKind, let context = clipboardContext, !context.isEmpty {
+      return "\(templateSelectionHeader)\n\n\(context)"
+    }
+    if let context = clipboardContext, !context.isEmpty {
+      return "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
+    }
+    if isComposeTurn { return AppConstants.dictatePromptComposeMarker }
+    return nil
+  }
+
+  /// Header for dictated words that accompany a selection on a template turn. Nil for Dictate
+  /// Prompt, and for a template turn that has no selection (that one still says VOICE INSTRUCTION,
+  /// which the compose marker names).
+  static func additionalDictationHeader(turnKind: PromptTurnKind, hasSelection: Bool) -> String? {
+    guard turnKind.isTemplate, hasSelection else { return nil }
+    return templateDictationHeader
+  }
+
+  /// A template turn may format a selection with no speech. Every other empty transcript is a miss.
+  static func acceptsEmptyTranscript(turnKind: PromptTurnKind, selection: String?) -> Bool {
+    if case .template = turnKind,
+       let selection = selection?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !selection.isEmpty { return true }
+    return false
+  }
+
+  /// Whether earlier turns are sent with this one. A template turn never sends them. Dictate
+  /// Prompt keeps today's rule: none on a compose turn, and none in Offline Mode.
+  static func includesPromptHistory(
+    turnKind: PromptTurnKind, isComposeTurn: Bool, offlineMode: Bool
+  ) -> Bool {
+    if turnKind.isTemplate { return false }
+    return !isComposeTurn && !offlineMode
+  }
+
+  /// Whether this turn is appended to Dictate Prompt history. A template turn never is.
+  /// Offline Mode still records nothing; a compose turn still records, as it does today.
+  static func recordsPromptHistory(turnKind: PromptTurnKind, offlineMode: Bool) -> Bool {
+    if turnKind.isTemplate { return false }
+    return !offlineMode
+  }
+
+  /// Tools for this turn. A template turn gets none, including shared-folder tools.
+  static func agentTools<T>(_ tools: [T], for turnKind: PromptTurnKind) -> [T] {
+    if turnKind.isTemplate { return [] }
+    return tools
+  }
+
+  /// Dash backstop. A template turn is returned unchanged, before any memory preference is applied.
+  static func applyingDashBackstop(
+    _ text: String, selection: String?, turnKind: PromptTurnKind, prefersShortDashes: Bool
+  ) -> String {
+    if turnKind.isTemplate { return text }
+    guard prefersShortDashes else { return text }
+    return DashBackstop.apply(to: text, selection: selection)
+  }
+
   /// Whether a Dictate Prompt turn has nothing to edit. Screenshot-selection runs never compose:
   /// there the selection lives in the screenshot, so having no text selection is the normal case.
   static func isComposeTurn(usesScreenshotSelection: Bool, selectedText: String?) -> Bool {
@@ -736,14 +862,15 @@ class SpeechService {
   /// never a fresh clipboard read — the clipboard can hold something copied long ago.
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
-    templateInstruction: String? = nil, selectedText: String?
+    templateInstruction: String? = nil, templateName: String? = nil, selectedText: String?,
+    recordingWasSilent: Bool = false
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
     lastPromptReplyTruncated = false
-    lastPromptAppliedTemplate = false
-    promptIsEditQuickAction = isEditQuickAction
-    promptTemplateInstruction = nil
+    promptTurnKind = .compose
+    promptRecordingWasSilent = recordingWasSilent
+    promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
     // reaches it as nothing at all.
@@ -753,10 +880,31 @@ class SpeechService {
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
     // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
     // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
-    // corrupts the text the user asked to edit.
+    // corrupts the text the user asked to edit. A template turn does not use that mode; the
+    // selection captured for a non-screenshot model is still the text it formats.
     let clipboardContext: String? = usesScreenshotSelection
       ? nil
       : DictatePromptSelectionDecision.selectionText(from: selectedText)
+
+    let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
+    var textInstruction = (trimmedInstruction?.isEmpty == false) ? trimmedInstruction : nil
+    // One decision for the whole turn. A template that was passed stays a template: it is not
+    // dropped because text is selected, because the model reads a screenshot, or because a typed
+    // instruction arrived with it.
+    promptTurnKind = Self.decidePromptTurnKind(
+      templateInstruction: templateInstruction, templateName: templateName,
+      usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext,
+      textInstruction: textInstruction)
+    promptIsEditQuickAction = isEditQuickAction && !promptTurnKind.isTemplate
+    if case .template(let turn) = promptTurnKind {
+      DebugLogger.log(
+        "PROMPT-MODE: Template \(turn.displayName) (\(turn.instructions.count) chars) for this turn")
+      if let ignored = textInstruction {
+        DebugLogger.log(
+          "PROMPT-MODE: Typed or quick-prompt instruction ignored — this turn stays a template (\(ignored.count) chars)")
+        textInstruction = nil
+      }
+    }
 
     // Nothing selected used to be refused (`TranscriptionError.noSelectedText`): the model, told to
     // edit a selection that wasn't there, "edited" the instruction instead — a user who said
@@ -765,8 +913,9 @@ class SpeechService {
     // output rule tells the model to carry out the spoken request and write the requested text
     // (pasted at the cursor) rather than echo it. That is what dictating a note into an empty
     // field needs. Compose turns send no earlier turns as history — those may belong to a
-    // different document (in a practice: a different patient).
-    if Self.isComposeTurn(usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
+    // different document (in a practice: a different patient). A template turn is not a compose
+    // turn, even with nothing selected.
+    if case .compose = promptTurnKind {
       DebugLogger.log("PROMPT-MODE: No selection captured for this recording — compose turn, no history")
       ContextLogger.shared.logSignal(
         .promptNoSelection, mode: InteractionMode.prompt.rawValue,
@@ -784,33 +933,6 @@ class SpeechService {
       throw TranscriptionError.networkError(String(localized: "Selected Dictate Prompt model does not accept direct audio input. Pick a Gemini model or OpenAI's GPT-4o Audio."))
     }
 
-    let trimmedInstruction = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let textInstruction = (trimmedInstruction?.isEmpty == false) ? trimmedInstruction : nil
-    let trimmedTemplate = templateInstruction?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let givenTemplate = (trimmedTemplate?.isEmpty == false) ? trimmedTemplate : nil
-    if let givenTemplate,
-       textInstruction == nil,
-       Self.isComposeTurn(
-         usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext) {
-      promptTemplateInstruction = givenTemplate
-      lastPromptAppliedTemplate = true
-      DebugLogger.log(
-        "PROMPT-MODE: Template (\(givenTemplate.count) chars) replaces the system prompt for this turn")
-    } else {
-      promptTemplateInstruction = nil
-      lastPromptAppliedTemplate = false
-      if givenTemplate != nil {
-        let reason: String
-        if textInstruction != nil {
-          reason = "typed or quick-prompt instruction"
-        } else if usesScreenshotSelection {
-          reason = "screenshot selection"
-        } else {
-          reason = "text is selected"
-        }
-        DebugLogger.log("PROMPT-MODE: Template not applied — \(reason)")
-      }
-    }
     if let textInstruction {
       DebugLogger.log(
         "PROMPT-MODE: Quick action — text instruction (\(textInstruction.count) chars), audio not sent")
@@ -883,13 +1005,13 @@ class SpeechService {
     template: String? = nil
   ) -> String {
     // Screenshot-selection mode: use the screenshot-based prompt (edit the highlighted region).
+    // The stored prompt is not read: this mode never uses it.
     if usesScreenshotSelection {
       DebugLogger.log("\(logPrefix): [SCREENSHOT-SELECTION] Using screenshot-based system prompt")
-      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
-        + AppConstants.promptModeOutputRule
+      return buildDictatePromptSystemPrompt(
+        usesScreenshotSelection: true, styleBlock: styleBlock, template: template, stored: "")
     }
     let stored = SystemPromptsStore.shared.loadDictatePromptSystemPrompt()
-    let base = dictatePromptBase(stored: stored, template: template)
     let trimmedTemplate = template?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if !trimmedTemplate.isEmpty {
       DebugLogger.log("\(logPrefix): Using dictation template")
@@ -898,6 +1020,21 @@ class SpeechService {
     } else {
       DebugLogger.log("\(logPrefix): Using custom system prompt")
     }
+    return buildDictatePromptSystemPrompt(
+      usesScreenshotSelection: false, styleBlock: styleBlock, template: template, stored: stored)
+  }
+
+  /// Same composition as `buildDictatePromptSystemPrompt`, with the stored prompt passed in.
+  /// Pure: no store read and no logging, so tests can pin the exact string a custom prompt,
+  /// the built-in default, and screenshot-selection mode produce.
+  static func buildDictatePromptSystemPrompt(
+    usesScreenshotSelection: Bool, styleBlock: String = "", template: String? = nil, stored: String
+  ) -> String {
+    if usesScreenshotSelection {
+      return AppConstants.dictatePromptScreenshotSelectionSystemPrompt + styleBlock
+        + AppConstants.promptModeOutputRule
+    }
+    let base = dictatePromptBase(stored: stored, template: template)
     return base + styleBlock + AppConstants.promptModeOutputRule
   }
 
@@ -963,7 +1100,9 @@ class SpeechService {
     usesScreenshotSelection: Bool,
     logPrefix: String
   ) async throws -> DictatePromptEnvelope {
-    let screenshotSelectionMode = usesScreenshotSelection
+    // A template turn never captures or sends a screenshot, and never uses the screenshot-selection
+    // system prompt. Dictate Prompt keeps today's screenshot decision.
+    let screenshotSelectionMode = usesScreenshotSelection && !promptTurnKind.isTemplate
 
     // An audio-only model can't receive the screenshot at all, so in screenshot-selection mode the
     // request would carry neither the selection nor an image. Reject with something actionable.
@@ -974,8 +1113,8 @@ class SpeechService {
     }
 
     // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
-    // since it is the sole source of the selected text.
-    let wantsScreenshot = supportsScreenshot
+    // since it is the sole source of the selected text. A template turn sends none at all.
+    let wantsScreenshot = !promptTurnKind.isTemplate && supportsScreenshot
       && (screenshotSelectionMode || screenshotInPromptModeEnabled())
     var screenshot: Data?
     if wantsScreenshot && modelAcceptsImages {
@@ -993,19 +1132,21 @@ class SpeechService {
 
     let isComposeTurn = Self.isComposeTurn(
       usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
-    let selectionBlock: String?
-    if let context = clipboardContext, !context.isEmpty {
+    let selectionBlock = Self.promptSelectionBlock(
+      turnKind: promptTurnKind, clipboardContext: clipboardContext, isComposeTurn: isComposeTurn)
+    if case .template = promptTurnKind, let context = clipboardContext, !context.isEmpty {
+      DebugLogger.log(
+        "\(logPrefix): Template turn — selection is content for the format (\(context.count) chars)")
+    } else if let context = clipboardContext, !context.isEmpty {
       DebugLogger.log("\(logPrefix): Adding clipboard context (length: \(context.count) chars)")
-      selectionBlock = "\(AppConstants.clipboardSelectionHeader)\n\n\(context)"
     } else if isComposeTurn {
       DebugLogger.log("\(logPrefix): Compose turn — no selected text, sending the compose marker")
-      selectionBlock = AppConstants.dictatePromptComposeMarker
     } else {
       DebugLogger.log("\(logPrefix): No clipboard context to add")
-      selectionBlock = nil
     }
 
-    let historyContents = Self.promptHistoryContents(mode: mode, isComposeTurn: isComposeTurn)
+    let historyContents = Self.promptHistoryContents(
+      mode: mode, isComposeTurn: isComposeTurn, turnKind: promptTurnKind)
     if historyContents.count / 2 > 0 {
       DebugLogger.log("\(logPrefix): Including \(historyContents.count / 2) previous turns from conversation history")
     }
@@ -1020,21 +1161,37 @@ class SpeechService {
         : "Current screen:",
       selectionBlock: selectionBlock,
       history: history,
-      systemPrompt: Self.buildDictatePromptSystemPrompt(
-        logPrefix: logPrefix, usesScreenshotSelection: screenshotSelectionMode,
-        styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock(),
-        template: promptTemplateInstruction))
+      systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
+        usesScreenshotSelection: screenshotSelectionMode))
   }
 
-  /// Earlier Dictate Prompt turns to send with this one. None on a compose turn: with nothing
-  /// selected the turn starts a new text, and the previous turns may be about something else
-  /// entirely (in a practice: the previous patient). None at all in Offline Mode: it exists for
-  /// practices, where an edit turn a few minutes after the last one may be the next patient, and
-  /// a follow-up edit still has its text in the selection.
+  /// Dictate Prompt: stored prompt (or the screenshot prompt) plus style blocks, as today.
+  /// A template turn is only the template instructions and the output rule — `writingStyleBlock`
+  /// and `memoryStyleBlock` are not called.
+  private func systemPrompt(
+    logPrefix: String, clipboardContext: String?, usesScreenshotSelection: Bool
+  ) -> String {
+    if case .template(let turn) = promptTurnKind {
+      return Self.templateTurnSystemPrompt(instructions: turn.instructions)
+    }
+    return Self.buildDictatePromptSystemPrompt(
+      logPrefix: logPrefix, usesScreenshotSelection: usesScreenshotSelection,
+      styleBlock: writingStyleBlock(incoming: clipboardContext) + memoryStyleBlock(),
+      template: nil)
+  }
+
+  /// Earlier Dictate Prompt turns to send with this one. None on a template turn. None on a
+  /// compose turn: with nothing selected the turn starts a new text, and the previous turns may
+  /// be about something else entirely (in a practice: the previous patient). None at all in
+  /// Offline Mode: it exists for practices, where an edit turn a few minutes after the last one
+  /// may be the next patient, and a follow-up edit still has its text in the selection.
   static func promptHistoryContents(
-    mode: PromptMode, isComposeTurn: Bool, offlineMode: Bool = OfflineMode.isEnabled
+    mode: PromptMode, isComposeTurn: Bool, offlineMode: Bool = OfflineMode.isEnabled,
+    turnKind: PromptTurnKind = .edit
   ) -> [GeminiChatRequest.GeminiChatContent] {
-    guard !isComposeTurn, !offlineMode else { return [] }
+    guard includesPromptHistory(
+      turnKind: turnKind, isComposeTurn: isComposeTurn, offlineMode: offlineMode)
+    else { return [] }
     return PromptConversationHistory.shared.getContentsForAPI(mode: mode)
   }
 
@@ -1070,10 +1227,20 @@ class SpeechService {
     return MemoryStyleRules.promptBlock(styleFacts: facts)
   }
 
+  /// A silent template turn that already has a selection sends no audio: the selection is the content.
+  private func omitsSilentAudio(selection: String?) -> Bool {
+    promptRecordingWasSilent
+      && Self.acceptsEmptyTranscript(turnKind: promptTurnKind, selection: selection)
+  }
+
   /// Deterministic backstop for "plain hyphens only": models keep emitting em dashes anyway.
+  /// A template turn is returned unchanged and does not read memory.
   private func applyingDashBackstop(_ text: String, selection: String?) -> String {
-    guard MemoryStyleRules.prefersShortDashes(styleFacts: memoryStyleFacts()) else { return text }
-    let result = DashBackstop.apply(to: text, selection: selection)
+    let prefersShortDashes = promptTurnKind.isTemplate
+      ? false
+      : MemoryStyleRules.prefersShortDashes(styleFacts: memoryStyleFacts())
+    let result = Self.applyingDashBackstop(
+      text, selection: selection, turnKind: promptTurnKind, prefersShortDashes: prefersShortDashes)
     if result != text {
       let before = text.filter { $0 == "—" || $0 == "–" }.count
       let after = result.filter { $0 == "—" || $0 == "–" }.count
@@ -1231,7 +1398,8 @@ class SpeechService {
     // evidence the user asked for an edit.
     if DictatePromptSelectionDecision.refusesEditWithoutSelection(
       hasSelection: clipboardContext != nil, hadScreenshot: hadScreenshot,
-      instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction)
+      instruction: userInstruction, isEditQuickAction: promptIsEditQuickAction,
+      isTemplateTurn: promptTurnKind.isTemplate)
     {
       DebugLogger.logWarning(
         "\(logPrefix): Edit command with nothing selected — not pasting invented text")
@@ -1242,8 +1410,9 @@ class SpeechService {
 
     let latencyMs = Self.milliseconds(since: promptStarted)
     // Offline Mode never replays earlier turns (see the history guard above), so recording them
-    // would only keep a patient's selection and reply in memory for no purpose.
-    if !OfflineMode.isEnabled {
+    // would only keep a patient's selection and reply in memory for no purpose. A template turn
+    // is not recorded either: its history would be another patient's note in the same format.
+    if Self.recordsPromptHistory(turnKind: promptTurnKind, offlineMode: OfflineMode.isEnabled) {
       PromptConversationHistory.shared.append(
         mode: mode,
         selectedText: clipboardContext,
@@ -1260,7 +1429,8 @@ class SpeechService {
       hadScreenshot: hadScreenshot,
       latencyMs: latencyMs,
       provider: providerLabel,
-      loadMs: loadMs
+      loadMs: loadMs,
+      template: promptTurnKind.templateLogName
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
     // The append is queued; refresh runs behind it on the same queue so the new row is on disk.
@@ -1310,7 +1480,7 @@ class SpeechService {
     // A quick action already has the instruction as text, so it never starts this call.
     var transcriptionTask: Task<String, Never>?
     defer { transcriptionTask?.cancel() }
-    if textInstruction == nil {
+    if textInstruction == nil, !omitsSilentAudio(selection: clipboardContext) {
       transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-GEMINI", audioURL: audioURL) {
         try await self.transcribeAudioForHistory(audioURL: audioURL, credential: credential)
       }
@@ -1328,13 +1498,22 @@ class SpeechService {
       mode: mode,
       isComposeTurn: Self.isComposeTurn(
         usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
-        selectedText: clipboardContext))
+        selectedText: clipboardContext),
+      turnKind: promptTurnKind)
 
     if let textInstruction {
       userParts.append(GeminiChatRequest.GeminiChatPart(
         text: "VOICE INSTRUCTION:\n\(textInstruction)",
         inlineData: nil, fileData: nil, url: nil))
+    } else if omitsSilentAudio(selection: clipboardContext) {
+      DebugLogger.log(
+        "PROMPT-MODE-GEMINI: Template turn with a selection — silent recording formats the selection")
     } else {
+      if Self.additionalDictationHeader(
+        turnKind: promptTurnKind, hasSelection: clipboardContext != nil) != nil {
+        userParts.append(GeminiChatRequest.GeminiChatPart(
+          text: Self.templateDictationHeader, inlineData: nil, fileData: nil, url: nil))
+      }
       // Audio goes after context so the model has the surrounding intent before processing speech.
       let audioSize = getAudioFileSize(at: audioURL)
       if audioSize > AppConstants.maxFileSizeBytes {
@@ -1361,7 +1540,7 @@ class SpeechService {
 
     // With a connected integration, run on the chat's agent core so the instruction can look
     // things up (read-only). Otherwise the single request below, unchanged.
-    let agentTools = await DictatePromptAgent.availableTools()
+    let agentTools = Self.agentTools(await DictatePromptAgent.availableTools(), for: promptTurnKind)
     var normalizedText: String
     if !agentTools.isEmpty {
       // Encoded here, off the main actor: the inline audio can be megabytes of base64.
@@ -1441,7 +1620,7 @@ class SpeechService {
     // has the instruction as text, so it never starts this call.
     var transcriptionTask: Task<String, Never>?
     defer { transcriptionTask?.cancel() }
-    if textInstruction == nil {
+    if textInstruction == nil, !omitsSilentAudio(selection: clipboardContext) {
       transcriptionTask = transcribeForHistoryInParallel(logPrefix: "PROMPT-MODE-OPENAI", audioURL: audioURL) {
         try await self.transcribeWithOpenAI(audioURL: audioURL, modelID: "gpt-4o-mini-transcribe")
       }
@@ -1466,7 +1645,14 @@ class SpeechService {
         "type": "text",
         "text": "VOICE INSTRUCTION:\n\(textInstruction)",
       ])
+    } else if omitsSilentAudio(selection: clipboardContext) {
+      DebugLogger.log(
+        "PROMPT-MODE-OPENAI: Template turn with a selection — silent recording formats the selection")
     } else {
+      if Self.additionalDictationHeader(
+        turnKind: promptTurnKind, hasSelection: clipboardContext != nil) != nil {
+        userContent.append(["type": "text", "text": Self.templateDictationHeader])
+      }
       // OpenAI's Chat Completions API embeds audio inline (base64). Reject oversized audio up
       // front with an actionable error — Gemini falls back to the Files API for >20 MB inputs,
       // but OpenAI's audio-preview endpoint has no equivalent here, so the request would simply
@@ -1509,10 +1695,15 @@ class SpeechService {
     // key: faster and cheaper than the audio model, and nothing for it to mishear.
     let requestModel = audioPayload == nil ? Self.openAIQuickActionModel : model
     if requestModel != model {
-      DebugLogger.log("PROMPT-MODE-OPENAI: Quick action — using \(requestModel.rawValue) (\(model.rawValue) needs audio)")
+      if omitsSilentAudio(selection: clipboardContext) {
+        DebugLogger.log(
+          "PROMPT-MODE-OPENAI: Template turn with a selection — formatting on \(requestModel.rawValue)")
+      } else {
+        DebugLogger.log("PROMPT-MODE-OPENAI: Quick action — using \(requestModel.rawValue) (\(model.rawValue) needs audio)")
+      }
     }
     let rawText: String
-    let agentTools = await DictatePromptAgent.availableTools()
+    let agentTools = Self.agentTools(await DictatePromptAgent.availableTools(), for: promptTurnKind)
     if !agentTools.isEmpty {
       var parts: [[String: Any]] = []
       if let screenshot = envelope.screenshot {
@@ -1525,6 +1716,10 @@ class SpeechService {
       if let textInstruction {
         parts.append(["text": "VOICE INSTRUCTION:\n\(textInstruction)"])
       } else if let audioPayload {
+        if Self.additionalDictationHeader(
+          turnKind: promptTurnKind, hasSelection: clipboardContext != nil) != nil {
+          parts.append(["text": Self.templateDictationHeader])
+        }
         let mime = audioPayload.format == "mp3" ? "audio/mpeg" : "audio/wav"
         parts.append(["inline_data": ["mime_type": mime, "data": audioPayload.base64]])
       }
@@ -1729,7 +1924,12 @@ class SpeechService {
     // Set when the instruction came from an offline engine; the reply then gets the same layout
     // pass (see `applyingSpokenLayout`).
     var spokenOffline = false
-    if let textInstruction {
+    if omitsSilentAudio(selection: clipboardContext) {
+      instruction = ""
+      transcriptionTime = 0
+      DebugLogger.log(
+        "PROMPT-MODE-LOCAL: Template turn with a selection — silent recording formats the selection")
+    } else if let textInstruction {
       instruction = textInstruction
       transcriptionTime = 0
       DebugLogger.log("PROMPT-MODE-LOCAL: Using text instruction (\(instruction.count) chars)")
@@ -1765,12 +1965,18 @@ class SpeechService {
       instruction = (spokenOffline ? SpokenPunctuation.apply(to: transcript) : transcript)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       transcriptionTime = CFAbsoluteTimeGetCurrent() - startTime
-      guard !instruction.isEmpty else {
+      if instruction.isEmpty {
         // Nothing left after transcription (e.g. only "Punkt" spoken): a miss, not a network error —
-        // the offline practice must not be told to check its internet connection.
-        throw TranscriptionError.noSpeechDetected
+        // the offline practice must not be told to check its internet connection. A template turn
+        // that already has a selection is the exception: the selection is the content.
+        guard Self.acceptsEmptyTranscript(turnKind: promptTurnKind, selection: clipboardContext) else {
+          throw TranscriptionError.noSpeechDetected
+        }
+        DebugLogger.log(
+          "PROMPT-MODE-LOCAL: Template turn with a selection — empty transcript formats the selection")
+      } else {
+        DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
       }
-      DebugLogger.log("PROMPT-MODE-LOCAL: Transcribed instruction (\(instruction.count) chars)")
     }
 
     // Step 2: build the user turn (clipboard context + instruction) and prior history, in the
@@ -1785,11 +1991,21 @@ class SpeechService {
       usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-LOCAL")
 
+    let dictationHeader = Self.additionalDictationHeader(
+      turnKind: promptTurnKind, hasSelection: clipboardContext != nil)
     var userText = ""
     if let selectionBlock = envelope.selectionBlock {
-      userText += "\(selectionBlock)\n\n"
+      userText += selectionBlock
     }
-    userText += "VOICE INSTRUCTION:\n\(instruction)"
+    if let dictationHeader {
+      if !instruction.isEmpty {
+        if !userText.isEmpty { userText += "\n\n" }
+        userText += "\(dictationHeader)\n\(instruction)"
+      }
+    } else {
+      if !userText.isEmpty { userText += "\n\n" }
+      userText += "VOICE INSTRUCTION:\n\(instruction)"
+    }
 
     var contents: [[String: Any]] = envelope.history.map {
       ["role": $0.isUser ? "user" : "model", "parts": [["text": $0.text]]]
@@ -1804,7 +2020,9 @@ class SpeechService {
     // `DictatePromptAgent.supportsAgent`.
     let offlineMode = OfflineMode.isEnabled
     let requestOptions = Self.localPromptOptions(offlineMode: offlineMode)
-    let agentTools = await DictatePromptAgent.localAgentTools(for: model, requestModel: requestModel)
+    let agentTools = Self.agentTools(
+      await DictatePromptAgent.localAgentTools(for: model, requestModel: requestModel),
+      for: promptTurnKind)
     var agentRaw: String?
     let agentStart = CFAbsoluteTimeGetCurrent()
     if !agentTools.isEmpty {
@@ -1928,8 +2146,18 @@ class SpeechService {
   /// Runs the deterministic word check on an on-device reply and keeps the result for the UI.
   /// The reply itself is returned untouched: the check informs, it never edits or blocks.
   private func flagUnsupportedWords(in reply: String, instruction: String, selection: String?) {
+    let templateInstructions: String?
+    if case .template(let turn) = promptTurnKind {
+      templateInstructions = turn.instructions
+    } else {
+      templateInstructions = nil
+    }
+    // Sources are the transcript and the selection. The template text is not a source: example
+    // content written in the template must still be flagged. Only the template's label words
+    // are additionally allowed.
     let words = DictationFidelityCheck.unsupportedWords(
-      in: reply, sources: [instruction] + (selection.map { [$0] } ?? []))
+      in: reply, sources: [instruction] + (selection.map { [$0] } ?? []),
+      templateInstructions: templateInstructions)
     lastPromptUnsupportedWords = words
     if !words.isEmpty {
       // Count only: the words are patient data and stay out of the log.

@@ -23358,6 +23358,16 @@
         }
       }
     },
+    "↩ formats the selection (%@ chars) as “%@”" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ formatiert die Markierung (%1$@ Zeichen) als “%2$@”"
+          }
+        }
+      }
+    },
     "↩ formats it as “%@”" : {
       "localizations" : {
         "de" : {

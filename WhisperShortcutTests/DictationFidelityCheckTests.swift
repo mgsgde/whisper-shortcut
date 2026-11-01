@@ -91,4 +91,24 @@ struct DictationFidelityCheckTests {
   func headingWordWithContent() {
     #expect(check("Befund: Psoas rechts", ["Psoas links"]) == ["rechts"])
   }
+
+  @Test("A template label is allowed; a drug named only in the template is flagged")
+  func templateLabelIsAllowedButExampleDrugIsFlagged() {
+    let template = """
+      Procedere:
+      Ibuprofen 600 bei Bedarf.
+      # Nachsorge
+      Dosis: Ibuprofen
+      """
+    let output = "Procedere: Ibuprofen. Nachsorge bleibt."
+    let flagged = DictationFidelityCheck.unsupportedWords(
+      in: output, sources: ["bleibt"], templateInstructions: template)
+    #expect(!flagged.contains("Procedere"))
+    #expect(!flagged.contains("Nachsorge"))
+    #expect(flagged.contains("Ibuprofen"))
+    // Without the template, the custom label is an ordinary word.
+    let without = check(output, ["bleibt"])
+    #expect(without.contains("Procedere"))
+    #expect(without.contains("Ibuprofen"))
+  }
 }

@@ -363,9 +363,9 @@ private struct QuickActionCardView: View {
 
   // MARK: Header
 
-  /// The template header replaces the "nothing selected" one only; while the selection is still
-  /// being read, or when there is one, the header is the same as without templates.
-  private var showsTemplateHeader: Bool { templateName != nil && context == .nothingSelected }
+  /// A template recording shows the template header whatever it will format: the selection, or
+  /// what is said. Only while the selection is still being read does the reading header show.
+  private var showsTemplateHeader: Bool { templateName != nil && context != .reading }
 
   /// The header, or — when a template is bound — the header as a button that does what Tab does.
   @ViewBuilder private var header: some View {
@@ -655,6 +655,10 @@ private struct QuickActionCardView: View {
       return String(localized: "\u{21A9} runs \u{201C}\(actions[selectedIndex].text)\u{201D}")
     }
     if showsTemplateHeader, templateEnabled, let templateName {
+      // The header names the template; the footer says what goes into it.
+      if case .selection(let text, _) = context {
+        return String(localized: "\u{21A9} formats the selection (\(text.count.formatted()) chars) as \u{201C}\(templateName)\u{201D}")
+      }
       return String(localized: "\u{21A9} formats it as \u{201C}\(templateName)\u{201D}")
     }
     return String(localized: "Speak your instruction")
@@ -1309,7 +1313,7 @@ final class RecordingIndicatorManager {
     }
     panel.onTab = { [weak self] in
       guard let self, self.model.quickActionsVisible, self.model.templateName != nil,
-        self.model.quickActionContext == .nothingSelected
+        self.model.quickActionContext != .reading
           || !self.model.visibleTemplateChoices.isEmpty
       else { return false }
       self.toggleTemplate()

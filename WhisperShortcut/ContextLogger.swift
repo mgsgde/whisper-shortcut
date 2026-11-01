@@ -27,6 +27,34 @@ struct InteractionLogEntry: Codable {
   /// Milliseconds spent loading the in-process MLX model for this prompt. 0 when it was already
   /// in memory. Nil for other providers and other modes.
   let loadMs: Int?
+  /// Display name of the dictation template this prompt turn applied. Nil for Dictate Prompt
+  /// (⌘2) and for every other mode. `mode` stays `prompt` so older readers keep working.
+  /// No default on the property: a default would keep synthesized `Codable` from reading it.
+  let template: String?
+
+  init(
+    ts: String, mode: String, model: String?, result: String?, selectedText: String?,
+    userInstruction: String?, modelResponse: String?, text: String?, voice: String?,
+    audioRef: String?, transcriptionModel: String?, hadScreenshot: Bool?, latencyMs: Int?,
+    provider: String?, loadMs: Int?, template: String? = nil
+  ) {
+    self.ts = ts
+    self.mode = mode
+    self.model = model
+    self.result = result
+    self.selectedText = selectedText
+    self.userInstruction = userInstruction
+    self.modelResponse = modelResponse
+    self.text = text
+    self.voice = voice
+    self.audioRef = audioRef
+    self.transcriptionModel = transcriptionModel
+    self.hadScreenshot = hadScreenshot
+    self.latencyMs = latencyMs
+    self.provider = provider
+    self.loadMs = loadMs
+    self.template = template
+  }
 
   /// Known mode, or nil when an older row used a spelling this build does not list.
   /// `mode` stays a `String` so that unknown spelling still decodes: a strict enum would
@@ -327,7 +355,7 @@ class ContextLogger {
   func logPrompt(
     mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String,
     model: String? = nil, hadScreenshot: Bool? = nil, latencyMs: Int? = nil, provider: String? = nil,
-    loadMs: Int? = nil
+    loadMs: Int? = nil, template: String? = nil
   ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
@@ -358,7 +386,8 @@ class ContextLogger {
       hadScreenshot: hadScreenshot,
       latencyMs: latencyMs,
       provider: provider,
-      loadMs: loadMs
+      loadMs: loadMs,
+      template: template
     )
     writeEntry(entry)
   }
