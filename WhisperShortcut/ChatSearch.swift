@@ -64,7 +64,9 @@ enum ChatSearch {
       } else {
         var built: [String] = []
         if let t = session.title { built.append(t) }
-        built.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
+        // Index the visible text. The raw wrappers (`<typed_by_user>`, `<pasted_content>`)
+        // made "user", "typed", "pasted", and "content" match every chat.
+        built.append(contentsOf: session.messages.map { searchableText(of: $0.content) })
         if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
           built.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
         }
@@ -113,6 +115,38 @@ enum ChatSearch {
 
     results.sort { $0.score != $1.score ? $0.score > $1.score : $0.date > $1.date }
     return Array(results.prefix(maxResults))
+  }
+
+  /// Text that should be matched and shown in snippets.
+  ///
+  /// User messages are stored with the wrappers `parseUserMessagePastedXML` strips for display
+  /// (`<typed_by_user>`, `<pasted_content>`, `<pasted_selection>`, `<quoted_from_meeting>`).
+  /// The tags themselves are not part of what the user wrote, so they are removed before
+  /// indexing. The parser only keeps leading paste blocks plus one trailing typed block;
+  /// deleting the tags keeps a typed block that sits before a paste searchable as well.
+  static func searchableText(of content: String) -> String {
+    var text = GeminiAPIClient.stripImageMarkers(content)
+    let parsed = parseUserMessagePastedXML(text)
+    var pieces = parsed.sections.map(\.body)
+    if !parsed.userText.isEmpty { pieces.append(parsed.userText) }
+    let fromParser = pieces.joined(separator: "\n")
+    let wrappers = [
+      "<typed_by_user>", "</typed_by_user>",
+      "<pasted_content>", "</pasted_content>",
+      "<pasted_selection>", "</pasted_selection>",
+      "<quoted_from_meeting>", "</quoted_from_meeting>",
+    ]
+    for tag in wrappers {
+      text = text.replacingOccurrences(of: tag, with: "\n")
+    }
+    let parserTrimmed = fromParser.trimmingCharacters(in: .whitespacesAndNewlines)
+    let strippedTrimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    // The parser drops a typed block that precedes a paste, and leaves wrappers it does not
+    // know (`<quoted_from_meeting>`) in `userText`. Tag-stripping keeps those words and still
+    // removes the tags. When the parser already returned just the visible text, use that.
+    let parserKeptTags = wrappers.contains { fromParser.contains($0) }
+    if parserKeptTags || strippedTrimmed.count > parserTrimmed.count { return text }
+    return fromParser.isEmpty ? text : fromParser
   }
 
   /// Relevance score: total term occurrences across the (lowercased) haystack, plus a bonus

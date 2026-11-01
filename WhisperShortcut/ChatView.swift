@@ -755,11 +755,14 @@ class ChatViewModel: ObservableObject {
   /// match `maxPendingScreenshots` and to bound request size / token cost.
   private static let maxFileAttachments = 10
 
+  /// Types the attach panel offers. Finder paste uses the same list (`ComposerFilePaste`).
+  static let attachableContentTypes: [UTType] = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
+
   func attachFile() {
     let panel = NSOpenPanel()
     panel.allowsMultipleSelection = true
     panel.canChooseDirectories = false
-    panel.allowedContentTypes = [.pdf, .png, .jpeg, .gif, .webP, .plainText]
+    panel.allowedContentTypes = Self.attachableContentTypes
     panel.message = String(localized: "Select files to attach to your next message")
     // C2: reopen wherever we last attached from; first time fall back to the screenshot folder.
     if let lastPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.lastAttachDirectoryPath) {
@@ -820,6 +823,16 @@ class ChatViewModel: ObservableObject {
       return String(localized: "\(names) is larger than \(limit) and wasn't attached.")
     }
     return String(localized: "\(names) are larger than \(limit) and weren't attached.")
+  }
+
+  /// Paste-from-Finder rejection for a type the attach panel does not offer. HEIC and TIFF
+  /// are not in that list, so they are rejected here rather than relabeled as PNG.
+  static func attachmentUnsupportedMessage(filenames: [String]) -> String {
+    let names = filenames.map { "\"\($0)\"" }.joined(separator: ", ")
+    if filenames.count == 1 {
+      return String(localized: "\(names) can't be attached. Use a PDF, PNG, JPEG, GIF, WebP, or text file.")
+    }
+    return String(localized: "\(names) can't be attached. Use PDF, PNG, JPEG, GIF, WebP, or text files.")
   }
 
   // MARK: - Workspace folders
@@ -1742,6 +1755,16 @@ class ChatViewModel: ObservableObject {
       .first { !$0.isEmpty } ?? ""
   }
 
+  /// A generated title may replace an empty title or the automatic first-message fallback.
+  /// Any other title is a manual rename and must be left alone — the title request returns
+  /// after the user may already have renamed the chat.
+  static func mayApplyGeneratedTitle(current: String?, firstMessageFallback: String?) -> Bool {
+    let trimmed = current?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if trimmed.isEmpty { return true }
+    guard let firstMessageFallback, !firstMessageFallback.isEmpty else { return false }
+    return current == firstMessageFallback
+  }
+
   /// The first-message fallback title a meeting may have been wrongly stamped with before we stopped
   /// titling meetings from chat messages (see `appendMessage`). Mirrors that old logic exactly so we
   /// can recognise — and discard — such a stale title and let the summary-based titler run. Returns
@@ -2096,14 +2119,17 @@ class ChatViewModel: ObservableObject {
       User: \(userText)
       Assistant: \(modelText)
       """
-    // overwriteExisting: replaces the first-message fallback title set in appendMessage.
+    // Replace the first-message fallback from appendMessage only while the title is still that
+    // fallback. generateAndApplyTitle refuses the write once the user has renamed the chat.
     await generateAndApplyTitle(targetId: sessionId, prompt: prompt, overwriteExisting: true, logLabel: "AI")
   }
 
   /// Generates a short title via the title model and applies it to `targetId`. With
-  /// `overwriteExisting` false the title is only set while the session is still untitled, so a
-  /// manual rename (or a competing generator) is never clobbered. Shared by the chat and
-  /// meeting title paths so the model id, length cap, and UI sync stay in one place.
+  /// `overwriteExisting` true (chat titles) the generated title replaces the session title only
+  /// while it is still empty or the first-message fallback `appendMessage` stamped. A manual
+  /// rename is kept. With `overwriteExisting` false (meetings) the title is only set while the
+  /// session is still untitled or holding the stale first-message fallback. Shared by both
+  /// paths so the model id, length cap, and UI sync stay in one place.
   private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
     // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
     if OfflineMode.isEnabled {
@@ -2139,7 +2165,17 @@ class ChatViewModel: ObservableObject {
       // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
       let isStaleMeetingFallback =
         updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
-      if !overwriteExisting, !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback { return }
+      if overwriteExisting {
+        guard Self.mayApplyGeneratedTitle(
+          current: updated.title,
+          firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
+        ) else {
+          DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
+          return
+        }
+      } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback {
+        return
+      }
       updated.title = String(title.prefix(Self.maxSessionTitleLength))
       store.save(updated)
       if updated.id == session.id { session.title = updated.title }

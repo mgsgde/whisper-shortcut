@@ -19,7 +19,9 @@ enum ChatRequestBuilder {
     // Local command notices are UI-only; the model never said them.
     let history = (sessionId == currentSessionId
       ? messages
-      : (store.session(by: sessionId)?.messages ?? [])).filter { !$0.isLocalNotice }
+      : (store.session(by: sessionId)?.messages ?? [])).filter {
+        !$0.isLocalNotice && !$0.isEmptyAssistantPlaceholder
+      }
     // Send the full conversation history. Gemini 2.x has a 1M–2M token context window,
     // so truncation is only a safeguard against pathological sessions.
     let maxMessages = AppConstants.chatFullHistoryMaxMessages
@@ -52,7 +54,9 @@ enum ChatRequestBuilder {
     // was attached and is stripped to text afterwards — so a follow-up like
     // "look at the screenshot" sees no image at all. All providers (Gemini,
     // OpenAI, Grok) convert inline_data on any message, so this is safe.
-    return toSend.map { msg in
+    // Never emit an empty text part. An empty model turn is what makes Gemini reject the
+    // next send after a quit mid-stream; an empty user turn is the same shape of payload.
+    return toSend.compactMap { msg -> [String: Any]? in
       // Assistant turns that generated an image carry a ⟦GEMINI_IMG:…⟧ marker with the full
       // base64 inline. Strip it to a short placeholder before re-sending as history: the blob
       // would otherwise bloat every subsequent request and is useless to the model as text.
@@ -89,8 +93,10 @@ enum ChatRequestBuilder {
       }
       if replayedToolCallIDs.contains(msg.id),
          let toolText = ChatToolHistory.historyText(for: msg.toolCalls) {
-        return ["role": msg.role.rawValue, "parts": [["text": toolText + "\n\n" + text]]]
+        let body = text.isEmpty ? toolText : toolText + "\n\n" + text
+        return ["role": msg.role.rawValue, "parts": [["text": body]]]
       }
+      guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
       return ["role": msg.role.rawValue, "parts": [["text": text]]]
     }
   }

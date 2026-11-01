@@ -163,6 +163,26 @@
         }
       }
     },
+    "%@ can't be attached. Use PDF, PNG, JPEG, GIF, WebP, or text files." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ können nicht angehängt werden. Verwenden Sie PDF-, PNG-, JPEG-, GIF- oder WebP-Dateien oder Textdateien."
+          }
+        }
+      }
+    },
+    "%@ can't be attached. Use a PDF, PNG, JPEG, GIF, WebP, or text file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kann nicht angehängt werden. Verwenden Sie eine PDF-, PNG-, JPEG-, GIF- oder WebP-Datei oder eine Textdatei."
+          }
+        }
+      }
+    },
     "%@ can't use %@ attachments. Switch to a Gemini model to chat about PDFs and documents." : {
       "localizations" : {
         "de" : {
