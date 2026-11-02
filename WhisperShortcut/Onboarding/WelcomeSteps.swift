@@ -133,6 +133,12 @@ struct WelcomeDictationSetupStep: View {
   @Binding var choice: DictationChoice?
   @ObservedObject var setup: OnboardingSetupState
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  /// Shown and changeable under Offline, so the language the app just picked from the Mac's is
+  /// visible right where it was set (`DictationLanguagePreselect`).
+  @AppStorage(UserDefaultsKeys.whisperLanguage) private var dictationLanguage: WhisperLanguage =
+    SettingsDefaults.whisperLanguage
+  /// The language on screen came from the Mac's language on this visit, not from the user.
+  @State private var languageFromMac = false
   @State private var showOtherProviders = false
   @State private var showPrivacyDetails = false
 
@@ -266,6 +272,10 @@ struct WelcomeDictationSetupStep: View {
       OfflineMode.switchTo(false, reason: "onboarding chose Cloud")
     }
     if value == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    // Only while the language is still Auto, and only to one the offline model can transcribe.
+    if value == .offline, DictationLanguagePreselect.applyForOfflineOnboarding() != nil {
+      languageFromMac = true
+    }
     setup.refresh()
   }
 
@@ -274,6 +284,8 @@ struct WelcomeDictationSetupStep: View {
   @ViewBuilder
   private var offlineDetails: some View {
     OnboardingOfflineRow(onReady: { setup.refresh() })
+
+    dictationLanguageRow
 
     // For regulated dictation (patient findings, case notes): the recording may not leave the
     // device, and neither may Chat or anything else. Offered here, where the user just said
@@ -292,6 +304,38 @@ struct WelcomeDictationSetupStep: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 4)
+  }
+
+  /// "Dictation language: German", changeable on the spot. Lists only what the offline model can
+  /// transcribe (plus whatever is stored, so the picker never shows an empty selection).
+  private var dictationLanguageRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(spacing: 8) {
+        Text("Dictation language:")
+          .font(.callout)
+        Picker("Dictation language", selection: $dictationLanguage) {
+          ForEach(offlineLanguageOptions, id: \.self) { language in
+            Text(language.displayName).tag(language)
+          }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .fixedSize()
+        Spacer(minLength: 0)
+      }
+      if languageFromMac && dictationLanguage != .auto {
+        Text("Taken from your Mac’s language. Choose Auto-detect if you switch languages while dictating.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(.horizontal, 14)
+  }
+
+  private var offlineLanguageOptions: [WhisperLanguage] {
+    let model = DictationLanguagePreselect.onboardingOfflineModel
+    return WhisperLanguage.allCases.filter { $0 == dictationLanguage || model.supports($0) }
   }
 
   @ViewBuilder

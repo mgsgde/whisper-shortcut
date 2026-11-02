@@ -23650,6 +23650,26 @@
           }
         }
       }
+    },
+    "Dictation language:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache:"
+          }
+        }
+      }
+    },
+    "Taken from your Mac’s language. Choose Auto-detect if you switch languages while dictating." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus der Sprache Ihres Macs übernommen. Wählen Sie „Automatisch erkennen“, wenn Sie beim Diktieren die Sprache wechseln."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
