@@ -217,6 +217,8 @@ final class LiveMeetingSession: NSObject {
     case saved(URL)
   }
   private var finishedMeetings: [Int: FinishedMeeting] = [:]
+  /// Generations whose late-failure alert was shown; one per ended meeting, however many chunks fail.
+  private var endedMeetingAlertShown: Set<Int> = []
   /// Bumped per transcript stem on every write to its transcript (a chunk, recovered audio). A pass
   /// whose number is no longer current was overtaken: its view of the transcript is stale, so it
   /// stops before the next LLM call and must not overwrite the file, the summary or alert.
@@ -517,6 +519,9 @@ final class LiveMeetingSession: NSObject {
 
     if shouldDiscard {
       if let url = transcriptURL {
+        // A summary pass still running for this meeting (it ended, was resumed, now discarded)
+        // must not write the transcript back.
+        noteTranscriptWrite(stem: url.deletingPathExtension().lastPathComponent)
         try? FileManager.default.removeItem(at: url)
         let summaryURL = url.deletingPathExtension().appendingPathExtension("summary.md")
         try? FileManager.default.removeItem(at: summaryURL)
@@ -547,6 +552,7 @@ final class LiveMeetingSession: NSObject {
       finishedMeetings[sessionGeneration] = .saved(url)
     }
     finishedMeetings = finishedMeetings.filter { $0.key > sessionGeneration - 16 }
+    endedMeetingAlertShown = endedMeetingAlertShown.filter { $0 > sessionGeneration - 16 }
 
     preferredName = nil
     safeguardTimer?.invalidate()
@@ -616,7 +622,9 @@ final class LiveMeetingSession: NSObject {
   private func writeConsolidatedTranscript(
     _ text: String, to url: URL, stem: String, epoch: Int
   ) throws -> Bool {
-    guard postProcessingEpoch(for: stem) == epoch else { return false }
+    guard postProcessingEpoch(for: stem) == epoch,
+      FileManager.default.fileExists(atPath: url.path)
+    else { return false }
     try text.write(to: url, atomically: true, encoding: .utf8)
     MeetingListService.shared.invalidateCache(for: nil)
     return true
@@ -653,8 +661,12 @@ final class LiveMeetingSession: NSObject {
   private func performPostProcessing(
     transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], stem: String, epoch: Int
   ) async {
+    // Overtaken by a newer write, or the meeting was discarded, renamed or deleted meanwhile.
     func isCurrent() async -> Bool {
-      await MainActor.run { self.postProcessingEpoch(for: stem) == epoch }
+      await MainActor.run {
+        self.postProcessingEpoch(for: stem) == epoch
+          && FileManager.default.fileExists(atPath: transcriptURL.path)
+      }
     }
     let injected = postProcessingCalls != nil
     func superseded() {
@@ -966,6 +978,8 @@ final class LiveMeetingSession: NSObject {
     let newStem = "\(currentStem)-\(sanitized)"
     let dir = url.deletingLastPathComponent()
     let newURL = dir.appendingPathComponent("\(newStem).txt")
+    // A pass still running under the old name would write its copy back to the old file.
+    noteTranscriptWrite(stem: currentStem)
     do {
       if FileManager.default.fileExists(atPath: newURL.path) {
         try FileManager.default.removeItem(at: newURL)
@@ -1423,7 +1437,9 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
           // tell the user "Recording continues" or consume the current meeting's one-shot alerts.
           // The kept audio still needs a word: nothing else will mention it.
           guard self.isLive(generation) else {
-            if kept { self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error)) }
+            if kept, self.endedMeetingAlertShown.insert(generation).inserted {
+              self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error))
+            }
             return
           }
           if isRateLimitOrQuota {

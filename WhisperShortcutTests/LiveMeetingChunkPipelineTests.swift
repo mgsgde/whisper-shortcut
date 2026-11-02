@@ -187,7 +187,7 @@ struct LiveMeetingChunkPipelineTests {
       let transcripts = ChunkTranscripts()
       defer { transcripts.resumeOutstanding(returning: "") }
       let box = Counters()
-      box.holdConsolidation = true
+      box.holdFirstConsolidation()
       box.consolidatedReply = "[0:05] Speaker A: CONSOLIDATED hello\n\n[0:20] Speaker B: CONSOLIDATED hi"
       let session = makeSession(transcripts: transcripts, box: box, realPass: true)
       session.beginSessionWithoutRecorder(transcriptFile: file)
@@ -209,6 +209,123 @@ struct LiveMeetingChunkPipelineTests {
       #expect(!summarised)
       #expect(text(at: file).contains("late words"))
       #expect(!text(at: file).contains("CONSOLIDATED"))
+    }
+  }
+
+  @Test("A pass still running when the resumed meeting is discarded does not bring it back")
+  func runningPassDoesNotUndoDiscard() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      try "[0:05] Speaker A: hello\n\n[0:20] Speaker B: hi\n\n".write(
+        to: file, atomically: true, encoding: .utf8)
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      box.holdFirstConsolidation()
+      box.consolidatedReply = "[0:05] Speaker A: CONSOLIDATED hello\n\n[0:20] Speaker B: CONSOLIDATED hi"
+      let session = makeSession(transcripts: transcripts, box: box, realPass: true)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+      #expect(await waitUntil { box.consolidationHeld() == true })
+
+      // Resume, then throw the meeting away while the first pass is still consolidating.
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      session.end(preferredName: nil, discard: true)
+      session.stopSafetyNetForTesting?.perform()
+      #expect(!FileManager.default.fileExists(atPath: file.path))
+
+      box.releaseConsolidation()
+      let summarised = await waitForSummary(box, timeout: 0.5)
+      #expect(!summarised)
+      #expect(!FileManager.default.fileExists(atPath: file.path))
+      #expect(!FileManager.default.fileExists(
+        atPath: MeetingListService.summaryURL(transcriptFileURL: file).path))
+    }
+  }
+
+  @Test("A pass still running when the resumed meeting is named does not leave an orphan")
+  func runningPassDoesNotOrphanRenamedMeeting() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      let renamed = dir.appendingPathComponent("\(stem)-Board.txt")
+      try "[0:05] Speaker A: hello\n\n[0:20] Speaker B: hi\n\n".write(
+        to: file, atomically: true, encoding: .utf8)
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      box.holdFirstConsolidation()
+      box.consolidatedReply = "[0:05] Speaker A: CONSOLIDATED hello\n\n[0:20] Speaker B: CONSOLIDATED hi"
+      let session = makeSession(transcripts: transcripts, box: box, realPass: true)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+      #expect(await waitUntil { box.consolidationHeld() == true })
+
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      session.end(preferredName: "Board", discard: false)
+      session.stopSafetyNetForTesting?.perform()
+      #expect(FileManager.default.fileExists(atPath: renamed.path))
+
+      // The pass for the new name summarises once; the old pass must add nothing.
+      #expect(await waitUntil { box.summaryCount == 1 })
+      box.releaseConsolidation()
+      let extra = await waitUntil(timeout: 0.5) { box.summaryCount > 1 }
+      #expect(!extra)
+      #expect(!FileManager.default.fileExists(atPath: file.path))
+      #expect(!FileManager.default.fileExists(
+        atPath: MeetingListService.summaryURL(transcriptFileURL: file).path))
+    }
+  }
+
+  @Test("Chunks failing after the meeting ended raise one alert, not one each")
+  func lateFailuresAlertOncePerMeeting() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      defer { MeetingAudioBacklog.remove(stem: stem) }
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+      let audioA = dir.appendingPathComponent("a.wav")
+      let audioB = dir.appendingPathComponent("b.wav")
+      FileManager.default.createFile(atPath: audioA.path, contents: Data([0]))
+      FileManager.default.createFile(atPath: audioB.path, contents: Data([0]))
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      let session = makeSession(transcripts: transcripts, box: box)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      deliver(session, index: 0, start: 15, audio: audioA)
+      deliver(session, index: 1, start: 45, audio: audioB)
+      #expect(await waitUntil { transcripts.waiterCount == 2 })
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+
+      transcripts.fail(at: 0)
+      transcripts.fail(at: 1)
+      #expect(await waitUntil { box.backlogChanged == 2 })
+      #expect(box.alerts.count == 1)
     }
   }
 
@@ -537,7 +654,8 @@ private final class Counters: @unchecked Sendable {
   private let llmLock = NSLock()
   private var summaries: [String] = []
   private var consolidationGate: CheckedContinuation<Void, Never>?
-  var holdConsolidation = false
+  private var holdConsolidation = false
+  func holdFirstConsolidation() { holdConsolidation = true }
   var consolidatedReply = ""
   var summaryCount: Int {
     llmLock.lock()
@@ -556,7 +674,11 @@ private final class Counters: @unchecked Sendable {
     return consolidationGate != nil
   }
   func consolidate(_ text: String) async -> String {
-    if holdConsolidation {
+    llmLock.lock()
+    let hold = holdConsolidation
+    holdConsolidation = false  // only the first request waits
+    llmLock.unlock()
+    if hold {
       await withCheckedContinuation { continuation in
         llmLock.lock()
         consolidationGate = continuation
