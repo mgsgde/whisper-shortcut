@@ -370,6 +370,7 @@ struct TemplatesSettingsTab: View {
       (String(localized: "Screenshot"), .screenshotCapture),
       (String(localized: "Read Aloud"), .readAloudShortcut),
       (String(localized: "Add to Glossary"), .addToGlossaryShortcut),
+      (String(localized: "Dictate Live"), .liveDictateShortcut),
       (String(localized: "Chat"), .toggleChat),
       (String(localized: "Settings"), .toggleSettings),
     ]

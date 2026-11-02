@@ -34,6 +34,7 @@ class MenuBarController: NSObject {
     case sendFeedback = 119
     case transcribeCancelledRecording = 120
     case runAgainWithoutTemplate = 131
+    case liveDictate = 132
     case addToGlossary = 121
     case finishSetup = 122
     case finishSetupSeparator = 126
@@ -119,6 +120,8 @@ class MenuBarController: NSObject {
     /// Set when the user hits ✕ on the indicator (or discards an Fn dictation): the finished audio
     /// is thrown away instead of processed.
     var discardOnFinish = false
+    /// Dictate Live: pieces go to the cursor while the user speaks (`liveDictationSession`).
+    var isLiveDictation = false
     /// Set by the first stop press (before the tail delay). Until the recorder delivers the audio a
     /// further press must not stop again: the recorder answers "nothing running", which used to
     /// reset the app to idle while the finished audio was still on its way, and the audio was then
@@ -170,6 +173,10 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
+  /// Dictate Live (plans/active/live-dictate-insert.md): non-nil from the start of a live recording
+  /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
+  /// chunks, cut at every short pause.
+  private var liveDictationSession: LiveDictationSession?
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
@@ -617,6 +624,11 @@ class MenuBarController: NSObject {
       ModeRow(
         tag: .addToGlossary, title: "Add Selection to Glossary", stopTitle: nil,
         action: #selector(addSelectionToGlossary), shortcut: \.addToGlossary, mode: nil))
+    // Pastes at the cursor while recording, so not in the App Store build either.
+    rows.append(
+      ModeRow(
+        tag: .liveDictate, title: "Dictate Live", stopTitle: nil,
+        action: #selector(toggleLiveDictation), shortcut: \.liveDictate, mode: nil))
     #endif
     return rows
   }()
@@ -666,10 +678,19 @@ class MenuBarController: NSObject {
     if let chunkedRecorder = audioRecorder as? ChunkedDictateRecorder {
       chunkedRecorder.onChunkFinalized = { [weak self] url, index, isSilent in
         self?.dictateStreamingSession?.addChunk(url: url, index: index, isSilent: isSilent)
+        self?.liveDictationSession?.add(url, isSilent: isSilent)
       }
       chunkedRecorder.onFinalChunk = { [weak self] url, index, isSilent in
         self?.dictateStreamingSession?.addFinalChunk(url: url, index: index, isSilent: isSilent)
+        self?.liveDictationSession?.add(url, isSilent: isSilent)
       }
+    }
+    // Dictate Live holds pieces while another app is in front; try again when one comes forward.
+    // A no-op without a live session.
+    NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      self?.liveDictationSession?.retryHeld()
     }
     RecordingIndicatorManager.shared.onCancel = { [weak self] in
       self?.handleIndicatorCancel()
@@ -739,7 +760,8 @@ class MenuBarController: NSObject {
       indicator.showRecording(label: AppState.RecordingMode.prompt.pillLabel)
     case .recording(let mode) where mode != .liveMeeting:
       dismissQuickActions()
-      indicator.showRecording(label: mode.pillLabel)
+      let label = recording?.isLiveDictation == true ? String(localized: "Live") : mode.pillLabel
+      indicator.showRecording(label: label)
     case .processing(let mode):
       dismissQuickActions()
       // TTS has no recording phase, so summon the processing pill directly;
@@ -1407,8 +1429,12 @@ class MenuBarController: NSObject {
     meetingSegment: MeetingSegment? = nil,
     promptSelection: DictatePromptSelectionCapture? = nil,
     template: DictationTemplate? = nil,
-    templateChoices: [DictationTemplate] = []
+    templateChoices: [DictationTemplate] = [],
+    rotation: ChunkedDictateRecorder.RotationPolicy = .standard
   ) {
+    // Set on every start, so a live recording whose start failed (mic permission denied) cannot
+    // leave its short-pause cutting behind for the next normal Dictate.
+    (audioRecorder as? ChunkedDictateRecorder)?.rotationPolicy = rotation
     if mode == .transcription || mode == .prompt {
       pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
       ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
@@ -1659,6 +1685,10 @@ class MenuBarController: NSObject {
   private func discardStreamingSession() {
     dictateStreamingSession?.cancel()
     dictateStreamingSession = nil
+    // Every discard, cancel and failure path comes through here, so Dictate Live ends on all of
+    // them too. Text it already inserted stays: it is in another app.
+    liveDictationSession?.cancel()
+    liveDictationSession = nil
   }
 
   /// `detail` for a cancel signal: the phase, how long processing had run, and — on the
@@ -2489,6 +2519,192 @@ class MenuBarController: NSObject {
           self.processedAudioURLs.remove(audioURL)
         }
       }
+    }
+  }
+
+  // MARK: - Dictate Live
+
+  /// Dictate Live's shortcut and menu item (plans/active/live-dictate-insert.md): text at the
+  /// cursor after every short pause, Dragon-style. Starting needs offline Parakeet (downloaded, Apple
+  /// Silicon) and the Accessibility permission; stopping, cancelling and "busy" behave exactly like
+  /// the Dictate shortcut, so either key ends either recording.
+  @objc func toggleLiveDictation() {
+    #if APP_STORE
+    return
+    #else
+    guard case .start = availability(.dictate) else {
+      toggleTranscription()
+      return
+    }
+    let model = TranscriptionModel.loadSelected()
+    if let reason = LiveDictation.unavailableReason(
+      model: model, downloaded: model.isOfflineModelAvailable(),
+      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: isLiveMeetingActive)
+    {
+      DebugLogger.log("LIVE-DICTATE: Not started (\(reason))")
+      PopupNotificationWindow.showInfo(verbatim: reason.message, title: "Dictate Live", customDisplayDuration: 6)
+      return
+    }
+    guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
+      DebugLogger.logWarning("LIVE-DICTATE: Not started — Accessibility permission missing")
+      AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+      return
+    }
+    ContextLogger.shared.noteDictationStart(autoPasteAvailable: true)
+    ConnectionPrewarmer.prewarm(for: model)
+    discardStreamingSession()  // also drops any earlier live session
+    beginAudioCapture(mode: .transcription, rotation: .live)
+    recording?.isLiveDictation = true
+    captureClipboardRestorePointIfEnabled()
+    let target = pasteTargetAtRecordStart
+    let ownWindowAtStart = ownTextWindowAtRecordStart
+    let speechService = self.speechService
+    liveDictationSession = LiveDictationSession(
+      decode: { url in try await Self.decodeLivePiece(url, speechService: speechService) },
+      insert: { [weak self] text in
+        guard let self else { return false }
+        return await self.insertLivePiece(text, target: target, ownWindowAtStart: ownWindowAtStart)
+      })
+    DebugLogger.log("LIVE-DICTATE: Started (target \(target?.bundleId ?? "none"))")
+    #endif
+  }
+
+  /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
+  /// check, then the spoken layout commands. "" when the piece held no speech.
+  private static func decodeLivePiece(_ url: URL, speechService: SpeechService) async throws -> String {
+    do {
+      let text = try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
+        try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+      }
+      return SpokenPunctuation.apply(to: text)
+    } catch TranscriptionError.noSpeechDetected {
+      return ""
+    }
+  }
+
+  /// Puts one Dictate Live piece at the cursor, or returns false when it has to wait: only into the
+  /// app that was in front when the recording started (`PasteTargetPolicy`), never by pulling
+  /// that app forward mid-dictation, and never into another app — that could be another patient's
+  /// record. Held text goes in when the app is back (`retryHeld`) or ends on the clipboard.
+  @MainActor
+  private func insertLivePiece(_ text: String, target: PasteTarget?, ownWindowAtStart: Int?) async -> Bool {
+    let front = NSWorkspace.shared.frontmostApplication
+    let ownTextWindow = Self.ownFocusedTextWindowNumber()
+    let action = PasteTargetPolicy.action(
+      frontmost: Self.pasteTarget(of: front), recorded: target, own: Self.ownPasteTarget,
+      ownTextFieldStillFocused: ownTextWindow != nil && ownTextWindow == ownWindowAtStart)
+    guard action == .pasteNow, AccessibilityPermissionManager.hasAccessibilityPermission() else {
+      return false
+    }
+    clipboardManager.copyToClipboard(text: text)
+    try? await Task.sleep(for: .milliseconds(50))
+    simulatePaste()
+    // The receiving app reads the pasteboard when it handles ⌘V; the next piece must not replace
+    // it before that.
+    try? await Task.sleep(for: .milliseconds(250))
+    DebugLogger.log(
+      "LIVE-DICTATE: Inserted \(text.count) chars into \(front?.bundleIdentifier ?? "unknown")")
+    return true
+  }
+
+  /// After Stop: insert the rest, then finish the dictation like Dictate does — history, usage
+  /// log, success pill — without pasting the whole text a second time.
+  @MainActor
+  private func performLiveDictation(audioURL: URL, job: VoiceJob, session: LiveDictationSession) async {
+    defer {
+      if liveDictationSession === session { liveDictationSession = nil }
+    }
+    let model = TranscriptionModel.loadSelected()
+    let outcome: LiveDictationSession.Outcome
+    do {
+      outcome = try await session.finish(deliveredAudio: audioURL)
+    } catch {
+      // Only a cancel ends here. The cancel path reset the state and kept the recording.
+      DebugLogger.log("LIVE-DICTATE: Ended by cancellation")
+      if isSuperseded(job) {
+        processedAudioURLs.remove(audioURL)
+      } else {
+        transitionToIdleAndCleanup(cleanupAudioURL: audioURL, clearChunkStatuses: true)
+        if currentJob === job { currentJob = nil }
+      }
+      return
+    }
+    if isSuperseded(job) {
+      processedAudioURLs.remove(audioURL)
+      return
+    }
+
+    var finalText = outcome.text
+    var notice: String?
+    if outcome.failedPieces > 0 {
+      // A piece is missing from the document. The whole recording, decoded once, is the full copy.
+      clipboardManager.discardRestorePoint()
+      if let whole = try? await Self.decodeLivePiece(audioURL, speechService: speechService),
+        !whole.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        finalText = whole
+        clipboardManager.copyToClipboard(text: whole)
+        notice = String(
+          localized: "Part of the dictation could not be inserted live. The complete text is on the clipboard.")
+      }
+    } else if !outcome.heldText.isEmpty {
+      clipboardManager.discardRestorePoint()
+      clipboardManager.copyToClipboard(text: outcome.heldText.trimmingCharacters(in: .whitespaces))
+      notice = String(
+        localized: "The end of the dictation was not inserted because another app was in front. It is on the clipboard.")
+    } else if !outcome.text.isEmpty {
+      if Self.restoreClipboardEnabled {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) { [weak self] in
+          if self?.clipboardManager.restorePendingSnapshot() == true {
+            DebugLogger.log("LIVE-DICTATE: Restored the clipboard contents from before dictation")
+          }
+        }
+      } else {
+        // Like Dictate: the whole result stays on the clipboard for a second ⌘V.
+        clipboardManager.copyToClipboard(text: outcome.text)
+      }
+    } else {
+      clipboardManager.discardRestorePoint()
+    }
+
+    let hasText = !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if hasText {
+      let modelName = await speechService.getTranscriptionModelInfo()
+      TranscriptionHistoryStore.shared.record(
+        finalText, mode: "Dictation", transcriptionModel: model.rawValue, transcriptionModelName: modelName)
+      ContextLogger.shared.logTranscription(
+        result: finalText, model: modelName, transcriptionModel: model.rawValue)
+      let insertedChars = outcome.text.count - outcome.heldText.count
+      if insertedChars > 0 {
+        ContextLogger.shared.logSignal(
+          .pasted, mode: InteractionMode.transcription.rawValue,
+          detail: ["chars": String(insertedChars), "targetBundleId": pasteTargetAtRecordStart?.bundleId ?? "unknown"])
+      }
+      reviewPrompter.recordSuccessfulOperation()
+    }
+
+    if let notice {
+      PopupNotificationWindow.showInfo(verbatim: notice, title: "Dictate Live", customDisplayDuration: 10)
+    }
+    appState = hasText ? appState.showSuccess(String(localized: "Inserted at the cursor")) : appState.finish()
+    chunkStatuses = []
+    if currentJob === job { currentJob = nil }
+    processedAudioURLs.remove(audioURL)
+
+    // How much did cutting at pauses cost against decoding the whole file? Counts only. Runs after
+    // the user is done, offline (~0.5 s per minute), and skipped when the fallback above already
+    // decoded the whole file.
+    let inserted = outcome.text
+    let measure = outcome.failedPieces == 0 && !inserted.isEmpty
+    let speechService = self.speechService
+    Task { [weak self] in
+      if measure, let whole = try? await Self.decodeLivePiece(audioURL, speechService: speechService) {
+        let drift = LiveDictation.drift(inserted: inserted, wholeFile: whole)
+        DebugLogger.log(
+          "LIVE-DICTATE: drift insertedWords=\(drift.insertedWords) wholeFileWords=\(drift.wholeFileWords) "
+            + "wordEditDistance=\(drift.editDistance)")
+      }
+      self?.cleanupAudioFile(at: audioURL)
     }
   }
 
@@ -3644,6 +3860,13 @@ extension MenuBarController: AudioRecorderDelegate {
 
     switch recordingMode {
     case .transcription:
+      if let live = liveDictationSession {
+        // Dictate Live: most of the text is already at the cursor; insert the rest.
+        self.startVoiceJob(mode: .transcription, audioURL: audioURL) { job in
+          await self.performLiveDictation(audioURL: audioURL, job: job, session: live)
+        }
+        return
+      }
       // No pre-emptive popup here any more: `ModelManager.ensureReady` reports what is
       // actually happening (downloading N%, preparing, transcribing) from inside the
       // transcription path, instead of one static "can take several minutes" line.

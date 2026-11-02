@@ -1738,12 +1738,78 @@
         }
       }
     },
+    "Dictate Live" : {
+      "comment" : "Menu item, shortcut label and popup title: dictation that inserts text at the cursor while speaking",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren"
+          }
+        }
+      }
+    },
+    "Dictate Live is not available during a meeting." : {
+      "comment" : "Dictate Live cannot start",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren ist während eines Meetings nicht verfügbar."
+          }
+        }
+      }
+    },
+    "Dictate Live requires a Mac with Apple silicon." : {
+      "comment" : "Dictate Live cannot start on an Intel Mac",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren erfordert einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
+    "Dictate Live works with the offline Parakeet Ultra model. Select it in Settings → Dictate." : {
+      "comment" : "Dictate Live cannot start with another model",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra. Wählen Sie es unter Einstellungen → Diktieren."
+          }
+        }
+      }
+    },
+    "Dictate Live:" : {
+      "comment" : "Settings → General → Keyboard Shortcuts row label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren:"
+          }
+        }
+      }
+    },
     "Dictate straight into a fixed format, such as a treatment note." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren Sie direkt in ein festes Format, etwa eine Behandlungsnotiz."
+          }
+        }
+      }
+    },
+    "Download Parakeet Ultra in Settings → Dictate to use Dictate Live." : {
+      "comment" : "Dictate Live cannot start: model not downloaded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laden Sie Parakeet Ultra unter Einstellungen → Diktieren, um Live diktieren zu nutzen."
           }
         }
       }
@@ -1798,6 +1864,28 @@
         }
       }
     },
+    "Inserted at the cursor" : {
+      "comment" : "Success pill after Dictate Live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Am Cursor eingefügt"
+          }
+        }
+      }
+    },
+    "Live" : {
+      "comment" : "Recording pill status word during Dictate Live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live"
+          }
+        }
+      }
+    },
     "Name" : {
       "localizations" : {
         "de" : {
@@ -1814,6 +1902,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch nicht aktiv: Fügen Sie unten die Anweisungen hinzu."
+          }
+        }
+      }
+    },
+    "Part of the dictation could not be inserted live. The complete text is on the clipboard." : {
+      "comment" : "Dictate Live: a piece failed, whole-file text on the clipboard",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil des Diktats konnte nicht live eingefügt werden. Der vollständige Text liegt in der Zwischenablage."
           }
         }
       }
@@ -1974,6 +2073,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorlagen"
+          }
+        }
+      }
+    },
+    "The end of the dictation was not inserted because another app was in front. It is on the clipboard." : {
+      "comment" : "Dictate Live: held text at Stop",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ende des Diktats wurde nicht eingefügt, weil eine andere App im Vordergrund war. Es liegt in der Zwischenablage."
           }
         }
       }

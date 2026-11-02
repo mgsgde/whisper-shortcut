@@ -2040,6 +2040,7 @@ struct SettingsDefaults {
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
+  static let liveDictate: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
@@ -2200,6 +2201,7 @@ struct SettingsData: Equatable {
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
+  var liveDictate: ShortcutDefinition? = SettingsDefaults.liveDictate
 
   // MARK: - Transcription tuning
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
@@ -2292,6 +2294,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case addToGlossaryShortcut
+  case liveDictateShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
   case templateShortcut(UUID)
   /// The generic template shortcut that starts the last-used template (same section).
