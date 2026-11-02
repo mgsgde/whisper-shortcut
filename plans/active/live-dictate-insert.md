@@ -89,19 +89,23 @@ Known gaps, deliberately not in v1:
   the pieces already inserted.
 - A ⌘C made mid-dictation is overwritten by the next piece.
 
-## Fn option (branch `feat/live-dictate-fn`, 2026-11-02: both schemes build, unit tests pass, not yet tried by hand)
+## Dictate mode (2026-11-03: both schemes build, unit tests pass; pilot test 2026-11-03)
 
-The pilot user only uses Fn (press to start, press again to stop), so Settings → General →
-Keyboard Shortcuts has a second row under the Fn toggle: **Fn key starts** = Dictate (default,
-unchanged) | Dictate Live. With Live chosen, Fn starts a Live session through the same entry as the
-Dictate Live shortcut (`toggleLiveDictation`); the second Fn press stops it like the shortcut or ✓,
-a press while processing cancels as before, and Fn used as a modifier right after the start discards
-the recording (text already inserted stays). If Live cannot start right now (model not downloaded,
-meeting running, Intel Mac) Fn shows the same notice as the shortcut and starts nothing: no silent
-fallback to normal Dictate. Fn only ends the kind of recording it started (`fnStartedLive`), so a
-recording begun by the other shortcut is never stopped by an Fn session of the other kind. The row's
-Live choice is refused in Settings while Live is unavailable (reason shown); the meeting condition is
-only checked at the press. Not in the App Store build. Pure decision: `LiveDictation.fnStartDecision`.
+Settings → Dictate starts with **Mode** = Dictate (default, unchanged) | Dictate Live. It applies to
+the Dictate shortcut and to Fn (the pilot only uses Fn); the Dictate Live shortcut and both menu
+items keep their own meaning. With Live chosen, a press starts a session through the Live entry
+(`toggleLiveDictation`); a second press stops it, a press while processing cancels, and Fn used as a
+modifier right after the start discards (text already inserted stays). If Live cannot start (model
+not Parakeet, not downloaded, Intel Mac) the key shows the same notice as the Live shortcut and
+starts nothing: no silent fallback. During a live meeting the Dictate key records a meeting segment
+as before. Live stays selectable while unavailable; the tab shows the reason in an orange note with
+"Use Parakeet Ultra" when that model is on disk. Fn compares the running recording's kind with the
+kind it started (`fnStartedLive`). Pure decision: `LiveDictation.startDecision`. Direct build only.
+
+With "Only when spoken" punctuation the joiner never holds a piece's final period (it was said), a
+spoken paragraph or line break at the end of a piece survives, and "/" joins pieces without spaces.
+Known gap: Parakeet capitalises the word after a pause, so with its own period stripped a word can
+start upper-case mid-sentence ("klagt Über Schmerzen").
 
 ## Open questions (measure or decide)
 
