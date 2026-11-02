@@ -67,13 +67,30 @@ run_with_timeout() {
 # or session (xctest, the test host app, swift-frontend, LaunchServices-launched processes). A
 # call site runs this when run_with_timeout returned 124, with the directory it built in —
 # `<dir>/` is in every one of those command lines (derivedDataPath, the test host's path), and
-# scoping by it leaves the operator's own xcodebuilds and the installed release alone.
-# Needs kill_unprotected from daily-app.sh (both callers source it).
+# scoping by it leaves the operator's own xcodebuilds alone.
+#
+# Not kill_unprotected: that spares everything under /Applications, which is exactly where the
+# toolchain orphans live (/Applications/Xcode.app/…/xctest, swift-frontend). Only the installed
+# release (/Applications/WhisperShortcut*) is spared here, as everywhere in the dev scripts.
 reap_timed_out_orphans() { # reap_timed_out_orphans <build-dir>
-    local dir="$1" pattern
+    local dir="$1" pattern pid cmd pids=() alive=()
     [[ -n "$dir" && "$dir" != "/" ]] || return 0
     pattern=$(printf '%s' "${dir%/}/" | sed 's/[][\\.*^$+?(){}|]/\\&/g')
-    kill_unprotected -f "$pattern"
+    for pid in $(pgrep -f "$pattern" 2>/dev/null || true); do
+        [[ "$pid" == "$$" ]] && continue
+        cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+        [[ -z "$cmd" || "$cmd" == /Applications/WhisperShortcut* ]] && continue
+        echo "  • reaping orphan pid $pid (${cmd:0:100})"
+        kill "$pid" 2>/dev/null && pids+=("$pid")
+    done
+    (( ${#pids[@]} )) || return 0
+    for _ in 1 2 3 4 5; do
+        sleep 1
+        alive=()
+        for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive+=("$pid"); done
+        (( ${#alive[@]} )) || return 0
+    done
+    kill -9 "${alive[@]}" 2>/dev/null || true
 }
 
 # run_with_timeout for the gates: on a timeout, also reap the orphans of the current directory

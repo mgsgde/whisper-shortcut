@@ -44,6 +44,20 @@ reap_timed_out_orphans "$WORK" >/dev/null
 sleep 1
 pgrep -f "hostsleep 777" >/dev/null; check "setpgrp child is dead after reap_timed_out_orphans" 1 $?
 
+# Toolchain orphans live under /Applications (/Applications/Xcode.app/…/xctest, swift-frontend)
+# and carry the worktree path in their command line: they must die, while the installed release
+# must survive. Fake argv0s via perl's indirect exec; nothing is written under /Applications.
+perl -e 'exec {"/bin/sleep"} $ARGV[0], "779"' "/Applications/Xcode.app/Contents/Developer/usr/bin/xctest ${WORK}/build/x" & disown
+perl -e 'exec {"/bin/sleep"} $ARGV[0], "780"' "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut ${WORK}/build/y" & disown
+sleep 1
+pgrep -f "xctest ${WORK}" >/dev/null; check "fake /Applications/Xcode.app xctest is running" 0 $?
+reap_timed_out_orphans "$WORK" >/dev/null
+sleep 1
+pgrep -f "xctest ${WORK}" >/dev/null; check "xctest under /Applications/Xcode.app is reaped" 1 $?
+pgrep -f "WhisperShortcut.app/Contents/MacOS/WhisperShortcut ${WORK}" >/dev/null
+check "installed release (/Applications/WhisperShortcut*) is spared" 0 $?
+pkill -f "WhisperShortcut.app/Contents/MacOS/WhisperShortcut ${WORK}" 2>/dev/null
+
 # the call-site wrapper does both in one go
 ( cd "$WORK" && run_gate_with_timeout 1 "$WORK/f.log" bash -c \
     "perl -e 'setpgrp(0,0); exec \"${WORK}/build/hostsleep\",\"778\"' & wait" ) >/dev/null
