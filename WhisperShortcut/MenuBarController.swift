@@ -3397,7 +3397,16 @@ class MenuBarController: NSObject {
           // A newer job owns the clipboard and its restore point now.
           return
         case .discard:
-          DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
+          // Clipboard managers and Citrix/RDP sync rewrite the pasteboard right after a paste, which
+          // moves the count without changing the text. If it is still our text, clear anyway.
+          if clearInsteadOfRestore, writtenText != nil,
+            NSPasteboard.general.string(forType: .string) == writtenText
+          {
+            NSPasteboard.general.clearContents()
+            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste (count moved, text still ours)")
+          } else {
+            DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
+          }
           self.clipboardManager.discardRestorePoint()
         case .restore:
           if clearInsteadOfRestore {
