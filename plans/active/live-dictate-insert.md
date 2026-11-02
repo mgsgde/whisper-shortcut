@@ -89,7 +89,7 @@ Known gaps, deliberately not in v1:
   the pieces already inserted.
 - A ⌘C made mid-dictation is overwritten by the next piece.
 
-## Fn option (branch `feat/live-dictate-fn`, written 2026-11-02, not yet compiled on a Mac)
+## Fn option (branch `feat/live-dictate-fn`, 2026-11-02: both schemes build, unit tests pass, not yet tried by hand)
 
 The pilot user only uses Fn (press to start, press again to stop), so Settings → General →
 Keyboard Shortcuts has a second row under the Fn toggle: **Fn key starts** = Dictate (default,
