@@ -874,6 +874,11 @@ struct OnboardingAccessibilityCard: View {
   /// Settings. Refreshed on appear and whenever the app reactivates. The 🌐 setting is
   /// `GlobeKeyStatus`, which the conflict card refreshes itself.
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
+  /// The user asked for Accessibility from here (toggle or button), so macOS showed its prompt or
+  /// System Settings.
+  @State private var requestedAccessibility = false
+  /// …and came back (or asked a second time) without the grant: time for the drag fallback.
+  @State private var returnedWithoutGrant = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -922,6 +927,8 @@ struct OnboardingAccessibilityCard: View {
           if axStatus != .granted {
             Button {
               // Native prompt the first time, the System Settings pane once it was answered.
+              if requestedAccessibility { returnedWithoutGrant = true }
+              requestedAccessibility = true
               AccessibilityPermissionManager.requestAccessibilityAtOptIn()
               refreshStatus()
             } label: {
@@ -932,10 +939,15 @@ struct OnboardingAccessibilityCard: View {
             .pointerCursorOnHover()
           }
         }
+
+        if returnedWithoutGrant && axStatus != .granted {
+          AccessibilityDragFallback()
+        }
       }
     }
     .onAppear(perform: refreshStatus)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      if requestedAccessibility { returnedWithoutGrant = true }
       refreshStatus()
     }
   }
@@ -959,6 +971,7 @@ struct OnboardingAccessibilityCard: View {
     .onChange(of: isOn.wrappedValue) { newValue in
       guard newValue else { return }
       // Request now (native prompt + pre-registration), matching the Settings opt-in path.
+      if axStatus != .granted { requestedAccessibility = true }
       AccessibilityPermissionManager.requestAccessibilityAtOptIn()
       refreshStatus()
     }
@@ -967,6 +980,39 @@ struct OnboardingAccessibilityCard: View {
   private func refreshStatus() {
     axStatus = PermissionStatusChecker.status(for: .accessibility)
     GlobeKeyStatus.shared.refresh()
+  }
+}
+
+/// Shown on the permissions step when the user went to System Settings for Accessibility and came
+/// back without the grant. Usually WhisperShortcut is simply missing from the list — a pilot user
+/// (2026-11-02) had to find it with "+" and a file picker, then met a Touch ID prompt she did not
+/// trust. Dragging the icon into the list adds the app in one move.
+struct AccessibilityDragFallback: View {
+  var body: some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(nsImage: NSApp.applicationIconImage)
+        .resizable()
+        .frame(width: 48, height: 48)
+        // A file URL of the running bundle — what System Settings accepts when an app is dropped
+        // on its Accessibility list.
+        .onDrag { NSItemProvider(object: Bundle.main.bundleURL as NSURL) }
+        .help(Text("Drag into the Accessibility list"))
+        .accessibilityLabel(Text("WhisperShortcut app icon, draggable"))
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Don’t see WhisperShortcut in the list? Drag this icon into the list.")
+          .font(.callout)
+          .fontWeight(.medium)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("If macOS then asks for your password or Touch ID, that request comes from macOS itself — WhisperShortcut never sees it.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .cardChrome()
   }
 }
 

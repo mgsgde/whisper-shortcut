@@ -23780,6 +23780,46 @@
           }
         }
       }
+    },
+    "Drag into the Accessibility list" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Liste der Bedienungshilfen ziehen"
+          }
+        }
+      }
+    },
+    "WhisperShortcut app icon, draggable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut-App-Symbol, ziehbar"
+          }
+        }
+      }
+    },
+    "Don’t see WhisperShortcut in the list? Drag this icon into the list." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut fehlt in der Liste? Ziehen Sie dieses Symbol in die Liste."
+          }
+        }
+      }
+    },
+    "If macOS then asks for your password or Touch ID, that request comes from macOS itself — WhisperShortcut never sees it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt macOS danach nach Ihrem Passwort oder Touch ID, kommt diese Abfrage von macOS selbst – WhisperShortcut sieht sie nie."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
