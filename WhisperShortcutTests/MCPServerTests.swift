@@ -223,4 +223,16 @@ struct MCPServerTests {
     await MainActor.run {}
     #expect(box.ran == false)
   }
+
+  @Test("meetingTitlesFromSessions falls back to no titles while main is held by a modal")
+  func meetingTitlesMainBusy() async throws {
+    let gate = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async { gate.wait() }
+
+    let titles = await Task.detached { MCPServer.meetingTitlesFromSessions(timeout: 0.2) }.value
+    #expect(titles.isEmpty)
+
+    gate.signal()
+    await MainActor.run {}
+  }
 }
