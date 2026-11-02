@@ -72,7 +72,7 @@ struct ChatRateLimitRetryTests {
     #expect(RetryBackoff.retryAfter(from: secondsWin) == 4)
   }
 
-  @Test("Anthropic's soonest ratelimit reset is the delay; a non-reset header is ignored")
+  @Test("Anthropic reset: a lone bucket, the latest when none reports remaining, non-reset ignored")
   func anthropicReset() {
     let now = Self.utc(2026, 11, 1, 0, 0, 0)
     let one = Self.http(["anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z"])
@@ -81,9 +81,35 @@ struct ChatRateLimitRetryTests {
       "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:20Z",
       "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
     ])
-    #expect(RetryBackoff.retryAfter(from: two, now: now) == 5)
+    #expect(RetryBackoff.retryAfter(from: two, now: now) == 20)
     let notAReset = Self.http(["anthropic-ratelimit-requests-limit": "2026-11-01T00:00:05Z"])
     #expect(RetryBackoff.retryAfter(from: notAReset, now: now) == nil)
+  }
+
+  @Test("Anthropic reset waits for the exhausted bucket, not the soonest one")
+  func anthropicResetUsesExhaustedBucket() {
+    let now = Self.utc(2026, 11, 1, 0, 0, 0)
+    let tokensBlocked = Self.http([
+      "anthropic-ratelimit-requests-remaining": "5",
+      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+      "anthropic-ratelimit-tokens-remaining": "0",
+      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+    ])
+    #expect(RetryBackoff.retryAfter(from: tokensBlocked, now: now) == 40)
+    let requestsBlocked = Self.http([
+      "anthropic-ratelimit-requests-remaining": "0",
+      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+      "anthropic-ratelimit-tokens-remaining": "9000",
+      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+    ])
+    #expect(RetryBackoff.retryAfter(from: requestsBlocked, now: now) == 5)
+    let both = Self.http([
+      "anthropic-ratelimit-requests-remaining": "0",
+      "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
+      "anthropic-ratelimit-tokens-remaining": "0",
+      "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
+    ])
+    #expect(RetryBackoff.retryAfter(from: both, now: now) == 40)
   }
 
   // MARK: - Classification
@@ -156,6 +182,30 @@ struct ChatRateLimitRetryTests {
       return
     }
     #expect(!RetryBackoff.isTransientPreFirstToken(exhausted))
+  }
+
+  // MARK: - Retry delay
+
+  @Test("Retry-After: 0 is floored instead of retrying hot")
+  func zeroRetryAfterIsFloored() {
+    let err = TranscriptionError.rateLimited(retryAfter: 0)
+    #expect(RetryBackoff.isTransientPreFirstToken(err))
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.minAutomaticRetryWait)
+  }
+
+  @Test("A server delay inside the ceiling is used as given")
+  func retryAfterInsideCeilingIsUsed() {
+    let err = TranscriptionError.rateLimited(retryAfter: 7)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 7)
+  }
+
+  @Test("The automatic wait ceiling is short enough not to stall a chat reply")
+  func ceilingIsChatFriendly() {
+    #expect(RetryBackoff.maxAutomaticRetryWait <= 60)
+    let atCeiling = TranscriptionError.rateLimited(retryAfter: RetryBackoff.maxAutomaticRetryWait)
+    #expect(RetryBackoff.isTransientPreFirstToken(atCeiling))
+    let pastCeiling = TranscriptionError.rateLimited(retryAfter: RetryBackoff.maxAutomaticRetryWait + 1)
+    #expect(!RetryBackoff.isTransientPreFirstToken(pastCeiling))
   }
 
   // MARK: - Pre-first-token retry
@@ -265,7 +315,7 @@ struct ChatRateLimitRetryTests {
     }
   }
 
-  @Test("A 429 with Retry-After is retried once before the first token")
+  @Test("A 429 with Retry-After: 0 is retried once, after the minimum wait")
   func transient429IsRetriedOnce() async throws {
     let endpoint = SequencedStub.register([
       .init(status: 429, body: #"{"error":{"message":"Rate limit reached"}}"#, headers: ["Retry-After": "0"]),
@@ -278,8 +328,8 @@ struct ChatRateLimitRetryTests {
 
     #expect(Self.text(in: events) == "ok")
     #expect(SequencedStub.hits(for: endpoint) == 2)
-    // The no-header path does not retry; a retry that ignored the header would sleep the 1s base.
-    #expect(started.duration(to: clock.now) < .seconds(1))
+    // `Retry-After: 0` is floored at `minAutomaticRetryWait`, not retried hot.
+    #expect(started.duration(to: clock.now) >= .milliseconds(900))
   }
 
   @Test("An insufficient_quota 429 is not retried, header or not")
