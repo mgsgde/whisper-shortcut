@@ -1,5 +1,7 @@
 # Outcome Signals — Record Whether an Interaction Actually Worked
 
+**Update 2026-11-02:** Smart Improvement was removed (owner decision; branch `remove-smart-improvement`). References below to `ContextDerivation`, `AutoPromptImprovementScheduler`, `SmartImprovementReviewPanel` / `SmartImprovementReviewView` and Settings → Smart Improvement are historical: the review window is now `ProposalReviewView.swift` (`ProposalReviewPanel`), usage data lives in Settings → Privacy & Permissions, and tuning from the log goes through the Chat (`read_recent_interactions`, `update_app_instructions`) or MCP.
+
 **Status:** **Slice 1 implemented (2026-08-02)** — `SignalLogEntry` + `OutcomeSignal` + `logSignal` / `noteDictationStart` / `signalLogFiles` in `ContextLogger.swift`, `AppConstants.outcomeSignalRestartWindow` (20 s), `AppState.signalPhase`, and the three dictation call sites in `MenuBarController`. Build and 97 tests pass. Stream lands in `UserContext/signals-YYYY-MM-DD.jsonl`. Slices 2–4 open.
 
 Two deviations from the plan as written, both deliberate:

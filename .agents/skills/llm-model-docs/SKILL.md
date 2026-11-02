@@ -57,7 +57,7 @@ Domination is an **AND across all axes** — quality, speed, price (input *and* 
 - **Same price + newer generation IS domination.** This is the pattern that actually justifies pruning: gpt-5.6-sol is priced exactly like gpt-5.5 ($5/$30) and gpt-5.6-terra exactly like gpt-5.4 ($2.50/$15), so 5.5 and 5.4 are dominated. Likewise grok-4.20-* cost exactly what grok-4.3 costs at the same 1M context. (as of 2026-09; illustrative)
 - **A model missing from our lineup is also a violation** — a frontier point we simply never added (grok-4.5, claude-fable-5, the gpt-5.6 family were all found this way). (as of 2026-09; illustrative)
 
-Mechanically: set `chatReplacement` on the dominated case in `PromptModel` (SettingsConfiguration.swift). That one property removes it from every chat-facing list — chat-window picker, Settings → Chat, meeting summary, Smart Improvement — and forwards persisted selections to the replacement, same provider. Keep the enum case if a non-chat role still uses it (Dictate Prompt audio, `speakerConsolidationModel`); delete it only when nothing references it.
+Mechanically: set `chatReplacement` on the dominated case in `PromptModel` (SettingsConfiguration.swift). That one property removes it from every chat-facing list — chat-window picker, Settings → Chat, meeting summary, Writing Style — and forwards persisted selections to the replacement, same provider. Keep the enum case if a non-chat role still uses it (Dictate Prompt audio, `speakerConsolidationModel`); delete it only when nothing references it.
 
 **You cannot do this from memory.** Domination is a claim about *current* prices — fetch the provider's pricing page every time, and quote the numbers in the reasoning. Anything you didn't just read is a guess.
 
@@ -77,7 +77,7 @@ When deciding between "Flash"/"mini"/"lite" variants and the flagship variant, p
 
 - **Transcription default** → cheap-fast Flash/Lite tier (it runs on every dictation). Flagship is overkill.
 - **Dictate Prompt / Chat default** → Flash tier (price-performance balance, the role most users interact with).
-- **Meeting summary / Smart Improvement** → Flash or Pro tier depending on context length and reasoning needs (long meetings benefit from Pro; quick summaries don't).
+- **Meeting summary / Writing Style profile** → Flash or Pro tier depending on context length and reasoning needs (long meetings benefit from Pro; quick summaries don't).
 - **TTS** → whichever variant is documented as TTS-capable in current docs.
 
 For each suggestion, name the **exact replacement model ID**, link the doc URL where you confirmed it, and call out GA vs Preview clearly.

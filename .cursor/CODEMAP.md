@@ -33,7 +33,7 @@ tree disagree, the tree wins; fix the row.
 | MCP server for AI apps                  | `MCP/`                                                                                                              |
 | Mail                                    | `Mail/`                                                                                                             |
 | Telemetry                               | `Telemetry/`                                                                                                        |
-| Writing Style                           | `WritingStyle*.swift`, `WritingContextResolver.swift`                                                               |
+| Writing Style                           | `WritingStyle*.swift` (`WritingStyleAutoUpdater` owns its daily check), `WritingContextResolver.swift`; settings in the Dictate Prompt tab |
 | Updates (Sparkle)                       | `UpdaterService.swift`                                                                                              |
 | Chat UI                                 | `ChatRootView.swift`, `ChatView.swift`, `ChatSidebar.swift`, `ChatComposerTextView.swift`, `ChatTheme.swift`, `ChatWindowController.swift`, `ChatWindowManager.swift`, `MessageActionButton.swift`, `MarkdownParsing.swift` |
 | Sessions, memory, search                | `ChatSessionStore.swift`, `ChatMemoryStore.swift`, `ChatSearch.swift`, `PromptConversationHistory.swift`            |
@@ -56,12 +56,13 @@ tree disagree, the tree wins; fix the row.
 | Networking resilience                   | `NetworkDeadline.swift`, `RetryBackoff.swift`, `RateLimitCoordinator.swift`, `ConnectionPrewarmer.swift`, `OfflineMode.swift` |
 | Local models (Ollama / LM Studio / MLX) | `LocalLLMModelManager.swift`, `MLXPromptCache.swift`, `MLXTransformersAdapters.swift`                               |
 
-## Smart Improvement & usage data
+## Usage data & tuning
 
 | Topic                                   | Start here                                                                                                          |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Interaction / signal logging            | `ContextLogger.swift`, `ContextDerivation.swift`, `DebugRawResponses.swift`; paths in `AppSupportPaths.swift`, `Docs/data-directories.md` |
-| Smart Improvement                       | `SmartImprovementTypes.swift`, `SmartImprovementReviewView.swift`, `AutoPromptImprovementScheduler.swift`, `ImproveFromUsageAutoRunCoordinator.swift` |
+| Interaction / signal logging            | `ContextLogger.swift` (`InteractionLogEntry`, `InteractionContext`, `OutcomeSignal`), `UserContextLog.swift`, `DebugRawResponses.swift`; paths in `AppSupportPaths.swift`, `Docs/data-directories.md` |
+| Reading the log (Chat + MCP)            | `InteractionLogQuery.swift` (`InteractionLogReader`, `InteractionLogTool`) → chat `read_recent_interactions` / `update_app_instructions` in `ChatTools.swift`, MCP `get_recent_interactions` in `MCP/MCPConfigTools.swift`, recipe `MCP/MCPTuneRecipe.swift` |
+| Review window for proposed changes      | `ProposalReviewView.swift` (MCP proposals, Writing Style profile)                                                    |
 | Glossary learning                       | `GlossaryFastLearner.swift` (NSSpellChecker, main-thread only)                                                      |
 | Transcription history, usage report     | `TranscriptionHistoryStore.swift`, `UsageReport.swift`                                                              |
 | Review prompt (App Store rating)        | `ReviewPrompter.swift`                                                                                              |

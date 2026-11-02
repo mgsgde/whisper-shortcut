@@ -8,7 +8,7 @@
 #   - UserDefaults (all settings: prompts, shortcuts, notifications, etc.)
 #   - Application Support: WhisperShortcut/UserContext/
 #     (user-context.md, suggested prompts, and all historical interaction data:
-#      interactions-YYYY-MM-DD.jsonl used for Smart Improvement / "Generate with AI")
+#      interactions-YYYY-MM-DD.jsonl, read by the Chat / AI apps when asked to tune the app)
 #
 # What is NOT touched:
 #   - Keychain (Google API key is kept)

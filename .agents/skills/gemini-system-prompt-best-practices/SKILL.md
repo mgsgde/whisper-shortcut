@@ -17,7 +17,7 @@ When writing or editing **system prompts** for Gemini, apply these practices. Th
 `UserContext/system-prompts.md` (sections `dictation`, `whisperGlossary`, `promptMode`,
 `geminiChat`, `readAloudRewrite`) and falls back to `AppConstants.default*SystemPrompt` **only
 when the user has no override**. Editing the constants alone is a no-op for anyone with an
-override or an applied Smart Improvement suggestion, so check the store first.
+override or a change applied through the Chat or an AI app, so check the store first.
 
 ## Structure of a Good System Prompt (Order Matters)
 

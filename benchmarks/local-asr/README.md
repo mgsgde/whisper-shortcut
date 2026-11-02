@@ -38,7 +38,9 @@ Whisper uses the model the app already downloaded — the run fails that engine 
   to ~70 s, reference = the source text. Clean TTS, so absolute WER is optimistic; the ranking
   and the latency are what it is for. Term recall is scored on 15 medical/osteopathy terms,
   which are also the vocabulary the `+glossary`/`+vocab`/`+ctx` arms receive.
-- **real** — `--real-limit` recordings from `UserContext/audio-samples`, spread evenly across the
+- **real** — `--real-limit` recordings from `UserContext/audio-samples` (written by Smart Improvement
+  until it was removed on 2026-11-02; the app now only ages them out 30 days after capture, so copy
+  the folder elsewhere if you want to keep a corpus), spread evenly across the
   duration range, each paired with the transcript the cloud model (GPT-4o Transcribe / GPT
   Transcribe) produced for it at the time. That reference is not ground truth, so "WER real" reads
   as *distance from the cloud transcript the user accepted*. Numbers written as digits by one side

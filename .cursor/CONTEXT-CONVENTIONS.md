@@ -77,7 +77,6 @@ Each is invocable as `/<name>` **and** auto-invoked when its `description:` matc
 | `/analyze-chat-freeze [--file …] [--since …]`        | analyze  | Triage a main-thread hang capture          |
 | `/review-refactors [target]`                         | review   | Deep structural simplification + ledger    |
 | `/review-llm-state-of-the-art`                       | review   | LLM architecture vs current provider practice |
-| `/validate-audio-verification`                       | validate | Smart Improvement audio path, end to end   |
 | `/run-whisper-shortcut`                              | workflow | Build / launch / drive / screenshot via `driver.sh` |
 | `/view-logs-via-bash`                                | workflow | Run `bash scripts/logs.sh` for log queries |
 | `/debugging-workflow`                                | workflow | `DebugLogger` instrumentation + repro plan |
@@ -125,4 +124,4 @@ Note: the rebuild rule lives in `.cursor/rules/index.mdc` with `alwaysApply: tru
 Claude Code's commands-are-skills merge made these command files unreachable — the same-named skill
 won `/name`. Their unique sections were folded into the skill and the command files deleted:
 `analyze-chat-freeze`, `analyze-user-interactions`, `audit-llm-context`,
-`review-llm-state-of-the-art`, `review-refactors`, `validate-audio-verification`.
+`review-llm-state-of-the-art`, `review-refactors`, `validate-audio-verification` (that skill was deleted with Smart Improvement on 2026-11-02).
