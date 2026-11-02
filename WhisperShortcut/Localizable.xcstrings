@@ -2160,6 +2160,26 @@
         }
       }
     },
+    "Until then, Fn starts nothing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis dahin startet Fn nichts."
+          }
+        }
+      }
+    },
+    "Use Parakeet Ultra" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra verwenden"
+          }
+        }
+      }
+    },
     "What you say is written down as usual, then put into this format." : {
       "localizations" : {
         "de" : {

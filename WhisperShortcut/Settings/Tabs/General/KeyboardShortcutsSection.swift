@@ -115,9 +115,9 @@ struct KeyboardShortcutsSection: View {
           Picker("", selection: Binding(
             get: { viewModel.data.fnKeyStartMode },
             set: { newValue in
-              if newValue == .live && liveUnavailable != nil { return }
               viewModel.data.fnKeyStartMode = newValue
               Task { await viewModel.saveSettings() }
+              refreshFnStatus()
             }
           )) {
             ForEach(FnStartMode.allCases, id: \.self) { mode in
@@ -129,17 +129,17 @@ struct KeyboardShortcutsSection: View {
           .accessibilityLabel("Fn key starts")
           .fixedSize()
         }
-        if let liveUnavailable {
-          Text(verbatim: liveUnavailable.message)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
         if viewModel.data.fnKeyStartMode == .live {
-          Text("Fn starts Dictate Live: text appears at the cursor after each pause.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+          if let liveUnavailable {
+            // Selectable anyway: refusing the click silently looked like a broken control. Fn then
+            // shows this same reason as a notice and starts nothing, never plain Dictate.
+            liveUnavailableWarning(liveUnavailable)
+          } else {
+            Text("Fn starts Dictate Live: text appears at the cursor after each pause.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
         if !hasAccessibility {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -168,6 +168,35 @@ struct KeyboardShortcutsSection: View {
     .onAppear(perform: refreshFnStatus)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       refreshFnStatus()
+    }
+  }
+
+  private func liveUnavailableWarning(_ reason: LiveDictation.Unavailable) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(.orange)
+        .font(.caption)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(verbatim: reason.message)
+          .font(.caption)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("Until then, Fn starts nothing.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 8)
+      if reason == .notParakeet && TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
+        Button("Use Parakeet Ultra") {
+          DebugLogger.log("SHORTCUTS: Fn Live warning — switched Dictate model to Parakeet Ultra")
+          viewModel.data.selectedTranscriptionModel = .parakeetUltra
+          Task {
+            await viewModel.saveSettings()
+            refreshFnStatus()
+          }
+        }
+        .controlSize(.small)
+        .pointerCursorOnHover()
+      }
     }
   }
 
