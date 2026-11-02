@@ -962,6 +962,10 @@ final class RecordingIndicatorManager {
 
   private(set) var isVisible = false
 
+  /// The pill's window while it is on screen, for a panel that rides along with it as a child
+  /// window (`LiveDictatePanel`).
+  var visibleWindow: NSWindow? { isVisible ? panel : nil }
+
   private let model = RecordingIndicatorModel()
   private var panel: RecordingIndicatorPanel?
   /// Observers that re-raise the pill when another app or Space comes forward.

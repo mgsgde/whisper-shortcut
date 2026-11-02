@@ -1943,6 +1943,17 @@
         }
       }
     },
+    "Requires a Mac with Apple silicon." : {
+      "comment" : "Why the live text toggle is disabled on an Intel Mac",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erfordert einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
     "Separate key, e.g. for a dictation microphone (optional)" : {
       "localizations" : {
         "de" : {
@@ -22395,17 +22406,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihre Tastenkürzel – grün ist bereit, rot braucht noch eine Berechtigung."
-          }
-        }
-      }
-    },
-    "Your words appear here a few seconds after you start speaking." : {
-      "comment" : "Live text panel placeholder before the first words arrive",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ihre Worte erscheinen hier wenige Sekunden, nachdem Sie zu sprechen beginnen."
           }
         }
       }

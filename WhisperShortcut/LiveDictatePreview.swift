@@ -17,93 +17,111 @@ enum LiveDictatePreviewSetting {
     return defaults.bool(forKey: UserDefaultsKeys.liveDictatePreview)
   }
 
-  /// Whether the option can work at all: the Dictate model is offline Parakeet and its files are
-  /// on disk. The preview reuses the weights the final decode loads, so an absent download must
-  /// never be what a recording start triggers — the same rule `DictateStreamingSession` follows.
+  /// The preview decodes a 15 s window every few seconds. On the Neural Engine that is a few
+  /// percent of one core's worth of work; an Intel Mac would run it on the CPU next to the
+  /// recording, so the option is not offered there.
+  static var isAppleSilicon: Bool {
+    #if arch(arm64)
+    return true
+    #else
+    return false
+    #endif
+  }
+
+  /// Whether the option can work at all: an Apple Silicon Mac, offline Parakeet as the Dictate
+  /// model, and its files on disk. The preview reuses the weights the final decode loads, so an
+  /// absent download must never be what a recording start triggers — the same rule
+  /// `DictateStreamingSession` follows.
   ///
-  /// Pure, with the download state passed in, like `DictateStreamingSession.isEligible`.
-  static func isLivePreviewAvailable(model: TranscriptionModel, downloaded: Bool) -> Bool {
-    guard model.isOffline, model.offlineModelType?.engine == .parakeet else { return false }
+  /// Pure, with the machine and download state passed in, like `DictateStreamingSession.isEligible`.
+  static func isLivePreviewAvailable(
+    model: TranscriptionModel, downloaded: Bool, appleSilicon: Bool = isAppleSilicon
+  ) -> Bool {
+    guard appleSilicon, model.isOffline, model.offlineModelType?.engine == .parakeet else { return false }
     return downloaded
   }
 
   /// The whole start decision for one recording.
-  static func shouldStart(enabled: Bool, model: TranscriptionModel, downloaded: Bool) -> Bool {
-    enabled && isLivePreviewAvailable(model: model, downloaded: downloaded)
+  static func shouldStart(
+    enabled: Bool, model: TranscriptionModel, downloaded: Bool, appleSilicon: Bool = isAppleSilicon
+  ) -> Bool {
+    enabled && isLivePreviewAvailable(model: model, downloaded: downloaded, appleSilicon: appleSilicon)
   }
 }
 
-/// Turns FluidAudio's stream of sliding-window hypotheses into the two pieces the panel shows:
-/// `committed` text (normal colour) and the still-changing `tentative` tail (dimmed).
-///
-/// Each window carries the text of its *new* audio. Two things make a naive append repeat words
-/// at the seams, and this type removes both:
-///
-/// - The engine re-decodes the previous window's last word in full at the start of the next
-///   window (FluidAudio #897) and retires it from its own transcript, but the update stream does
-///   not say so. The next window therefore usually starts with that word again.
-/// - The re-decode can come back longer (`Pat` → `Patienten`) when the previous window cut the
-///   word off.
-///
-/// So the leading words of a window that repeat the end of the text so far (compared without case
-/// and punctuation) **replace** those words — the newer decode had right-hand context and has the
-/// better punctuation — and a first word that extends the last word replaces it.
-///
-/// Confirmation mirrors the engine's own two-tier state: a confirmed window promotes the current
-/// tentative tail to committed and becomes the new tail; an unconfirmed window extends the tail.
-///
-/// Pure value type; no FluidAudio types, so it is unit-tested directly.
-struct LiveTranscriptMerger: Equatable {
-  private(set) var committed: [String] = []
-  private(set) var tentative: [String] = []
-
-  /// Longest run of words a window may repeat from the text before it. The engine re-emits one
-  /// word; a few more cover a re-segmented boundary without letting a genuine repeated phrase far
-  /// back be mistaken for overlap.
-  static let maxOverlapWords = 8
-
-  var committedText: String { committed.joined(separator: " ") }
-  var tentativeText: String { tentative.joined(separator: " ") }
-  var isEmpty: Bool { committed.isEmpty && tentative.isEmpty }
-
-  mutating func ingest(_ text: String, isConfirmed: Bool) {
-    let incoming = text.split(whereSeparator: \.isWhitespace).map(String.init)
-    retire(Self.wordsToRetire(existingTail: Array((committed + tentative).suffix(Self.maxOverlapWords)), incoming: incoming))
-    if isConfirmed {
-      committed.append(contentsOf: tentative)
-      tentative = incoming
-    } else {
-      tentative.append(contentsOf: incoming)
+/// Text handling for the panel and the drift log. The text itself is not assembled here: FluidAudio
+/// keeps `confirmedTranscript` / `volatileTranscript` with the window seams already repaired from
+/// the real token positions (FluidAudio #897) and Glossary replacements applied, which no
+/// text-only merge can reproduce. The app reads those two strings and only shapes them for display.
+enum LiveDictatePreviewText {
+  /// What the panel shows: the end of the text, at most `maxCharacters` long, cut at a word
+  /// boundary with a leading ellipsis. Only ~6 lines are visible, and laying out a 5-minute
+  /// report on every update would cost more than the window it shows.
+  ///
+  /// The cut takes from the committed part first, so the dimmed tail is always shown whole.
+  static func displayTail(
+    committed: String, tentative: String, maxCharacters: Int = 800
+  ) -> (committed: String, tentative: String) {
+    let committed = normalized(committed)
+    let tentative = normalized(tentative)
+    let separator = committed.isEmpty || tentative.isEmpty ? 0 : 1
+    let overflow = committed.count + separator + tentative.count - maxCharacters
+    guard overflow > 0 else { return (committed, tentative) }
+    if overflow < committed.count {
+      return ("…" + wordAlignedSuffix(of: committed, dropping: overflow), tentative)
     }
+    // The tentative tail alone is too long (it rarely is: one or two windows of speech).
+    let tentativeOverflow = overflow - committed.count - separator
+    return ("", "…" + wordAlignedSuffix(of: tentative, dropping: max(0, tentativeOverflow)))
   }
 
-  /// How many trailing words of the text so far the incoming window replaces.
-  static func wordsToRetire(existingTail: [String], incoming: [String]) -> Int {
-    guard !existingTail.isEmpty, !incoming.isEmpty else { return 0 }
-    let maxK = min(maxOverlapWords, existingTail.count, incoming.count)
-    for k in stride(from: maxK, through: 1, by: -1) {
-      let tail = existingTail.suffix(k).map(fold)
-      let head = incoming.prefix(k).map(fold)
-      if tail == head, tail.contains(where: { !$0.isEmpty }) { return k }
+  /// Word-level difference between the last preview text and the pasted transcript, as counts
+  /// only — never the words, since dictations are patient notes. Tells whether the preview is a
+  /// fair picture of the result (plan, Design 6). Case and surrounding punctuation are ignored.
+  ///
+  /// The preview has not decoded the last few seconds before Stop, so a few missing words at the
+  /// end are expected; `editDistance` counts them.
+  static func drift(preview: String, final: String) -> (previewWords: Int, finalWords: Int, editDistance: Int) {
+    let a = words(preview)
+    let b = words(final)
+    return (a.count, b.count, editDistance(a, b))
+  }
+
+  static func words(_ text: String) -> [String] {
+    text.split(whereSeparator: \.isWhitespace)
+      .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.symbols)) }
+      .filter { !$0.isEmpty }
+  }
+
+  /// Levenshtein distance over words, two rows of memory.
+  static func editDistance(_ a: [String], _ b: [String]) -> Int {
+    if a.isEmpty { return b.count }
+    if b.isEmpty { return a.count }
+    var previous = Array(0...b.count)
+    var current = Array(repeating: 0, count: b.count + 1)
+    for i in 1...a.count {
+      current[0] = i
+      for j in 1...b.count {
+        let substitution = previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)
+        current[j] = min(previous[j] + 1, current[j - 1] + 1, substitution)
+      }
+      swap(&previous, &current)
     }
-    // The re-decoded last word came back longer than the cut-off version.
-    let last = fold(existingTail[existingTail.count - 1])
-    let first = fold(incoming[0])
-    if !last.isEmpty, first.count > last.count, first.hasPrefix(last) { return 1 }
-    return 0
+    return previous[b.count]
   }
 
-  /// Removes `count` words from the end, tentative first.
-  private mutating func retire(_ count: Int) {
-    var remaining = count
-    let fromTentative = min(remaining, tentative.count)
-    tentative.removeLast(fromTentative)
-    remaining -= fromTentative
-    committed.removeLast(min(remaining, committed.count))
+  private static func normalized(_ text: String) -> String {
+    text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
   }
 
-  /// A word as compared at the seams: no case, no surrounding punctuation.
-  static func fold(_ word: String) -> String {
-    word.lowercased().trimmingCharacters(in: .punctuationCharacters.union(.symbols))
+  /// `text` without its first `count` characters, moved forward to the next word start.
+  private static func wordAlignedSuffix(of text: String, dropping count: Int) -> String {
+    let rest = text.dropFirst(count)
+    guard let space = rest.firstIndex(of: " ") else { return String(rest) }
+    // Already at a word start: keep it.
+    if rest.startIndex == text.startIndex || text[text.index(before: rest.startIndex)] == " " {
+      return String(rest)
+    }
+    return String(rest[rest.index(after: space)...])
   }
 }

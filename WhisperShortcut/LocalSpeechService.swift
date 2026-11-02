@@ -306,8 +306,15 @@ actor LocalSpeechService {
   /// (`LiveDictatePreviewController`). Loads through the same single-flight `initializeModel` the
   /// prewarmer and the final decode use, so the preview never holds a second copy of the weights;
   /// an absent download throws here like everywhere else instead of starting one.
+  ///
+  /// The load runs in its own unstructured task. Whoever starts a load owns it and cancelling the
+  /// owner cancels it (`initializeModel`), so a preview stopped during a cold load would otherwise
+  /// fail the prewarmer waiting on the same load and leave the final decode to load a second copy.
+  /// Awaiting `.value` does not forward cancellation: the preview can give up waiting, the load
+  /// carries on for the dictation.
   func parakeetBackendForLivePreview(_ modelType: OfflineModelType) async throws -> ParakeetBackend {
-    try await initializeModel(modelType)
+    try await Task { try await self.initializeModel(modelType) }.value
+    try Task.checkCancellation()
     guard let parakeet, currentModelType == modelType else { throw ParakeetBackendError.notLoaded }
     return parakeet
   }

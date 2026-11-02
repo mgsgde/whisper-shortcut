@@ -1,8 +1,8 @@
 import Testing
 @testable import WhisperShortcut_AppStore
 
-/// Slice S1 of plans/active/live-dictate-preview.md: who gets the live text panel, and how
-/// sliding-window hypotheses become committed + tentative text without repeated words.
+/// Slice S1 of plans/active/live-dictate-preview.md: who gets the live text panel, how its text is
+/// cut for display, and how the preview's drift from the pasted text is counted.
 @Suite("Live dictate preview")
 struct LiveDictatePreviewTests {
 
@@ -13,10 +13,14 @@ struct LiveDictatePreviewTests {
     #expect(SettingsDefaults.liveDictatePreview == false)
   }
 
-  @Test("Available for a downloaded Parakeet only")
+  @Test("Available for a downloaded Parakeet on Apple Silicon only")
   func availableForDownloadedParakeet() {
-    #expect(LiveDictatePreviewSetting.isLivePreviewAvailable(model: .parakeetUltra, downloaded: true))
-    #expect(!LiveDictatePreviewSetting.isLivePreviewAvailable(model: .parakeetUltra, downloaded: false))
+    #expect(
+      LiveDictatePreviewSetting.isLivePreviewAvailable(model: .parakeetUltra, downloaded: true, appleSilicon: true))
+    #expect(
+      !LiveDictatePreviewSetting.isLivePreviewAvailable(model: .parakeetUltra, downloaded: false, appleSilicon: true))
+    #expect(
+      !LiveDictatePreviewSetting.isLivePreviewAvailable(model: .parakeetUltra, downloaded: true, appleSilicon: false))
   }
 
   @Test("Never available for Whisper or any cloud model, downloaded or not")
@@ -24,7 +28,8 @@ struct LiveDictatePreviewTests {
     for model in TranscriptionModel.allCases where model.offlineModelType?.engine != .parakeet {
       for downloaded in [true, false] {
         #expect(
-          !LiveDictatePreviewSetting.isLivePreviewAvailable(model: model, downloaded: downloaded),
+          !LiveDictatePreviewSetting.isLivePreviewAvailable(
+            model: model, downloaded: downloaded, appleSilicon: true),
           "\(model.rawValue) must not offer live text")
       }
     }
@@ -32,118 +37,88 @@ struct LiveDictatePreviewTests {
 
   @Test("Starts only when the toggle is on and the model is available")
   func startDecision() {
-    #expect(LiveDictatePreviewSetting.shouldStart(enabled: true, model: .parakeetUltra, downloaded: true))
-    #expect(!LiveDictatePreviewSetting.shouldStart(enabled: false, model: .parakeetUltra, downloaded: true))
-    #expect(!LiveDictatePreviewSetting.shouldStart(enabled: true, model: .parakeetUltra, downloaded: false))
+    #expect(
+      LiveDictatePreviewSetting.shouldStart(
+        enabled: true, model: .parakeetUltra, downloaded: true, appleSilicon: true))
+    #expect(
+      !LiveDictatePreviewSetting.shouldStart(
+        enabled: false, model: .parakeetUltra, downloaded: true, appleSilicon: true))
+    #expect(
+      !LiveDictatePreviewSetting.shouldStart(
+        enabled: true, model: .parakeetUltra, downloaded: false, appleSilicon: true))
     for model in TranscriptionModel.allCases where model.offlineModelType?.engine != .parakeet {
-      #expect(!LiveDictatePreviewSetting.shouldStart(enabled: true, model: model, downloaded: true))
+      #expect(
+        !LiveDictatePreviewSetting.shouldStart(enabled: true, model: model, downloaded: true, appleSilicon: true))
     }
   }
 
-  // MARK: - Merger
+  // MARK: - Display tail
 
-  @Test("Unconfirmed windows extend the tentative tail")
-  func unconfirmedWindowsAppend() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Der Patient", isConfirmed: false)
-    merger.ingest("klagt über Schmerzen", isConfirmed: false)
-    #expect(merger.committedText == "")
-    #expect(merger.tentativeText == "Der Patient klagt über Schmerzen")
+  @Test("Short text is shown whole, with whitespace tidied")
+  func shortTextUnchanged() {
+    let shown = LiveDictatePreviewText.displayTail(
+      committed: "Der  Patient\nklagt", tentative: " über Schmerzen ", maxCharacters: 800)
+    #expect(shown.committed == "Der Patient klagt")
+    #expect(shown.tentative == "über Schmerzen")
   }
 
-  @Test("A confirmed window commits the previous tail and becomes the new tail")
-  func confirmedWindowPromotes() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Der Patient", isConfirmed: false)
-    merger.ingest("klagt über", isConfirmed: false)
-    merger.ingest("Schmerzen im Knie.", isConfirmed: true)
-    #expect(merger.committedText == "Der Patient klagt über")
-    #expect(merger.tentativeText == "Schmerzen im Knie.")
-    merger.ingest("Seit drei Tagen.", isConfirmed: true)
-    #expect(merger.committedText == "Der Patient klagt über Schmerzen im Knie.")
-    #expect(merger.tentativeText == "Seit drei Tagen.")
+  @Test("Long text keeps its end, cut at a word boundary, tentative part whole")
+  func longTextKeepsTheEnd() {
+    let committed = (1...200).map { "Wort\($0)" }.joined(separator: " ")
+    let shown = LiveDictatePreviewText.displayTail(
+      committed: committed, tentative: "noch offen", maxCharacters: 100)
+    #expect(shown.tentative == "noch offen")
+    #expect(shown.committed.hasPrefix("…Wort"))
+    #expect(shown.committed.hasSuffix("Wort200"))
+    // At most one character over the budget: the ellipsis.
+    #expect(shown.committed.count + 1 + shown.tentative.count <= 101)
+    // Whole words only: every word after the ellipsis is a real one.
+    let words = shown.committed.dropFirst().split(separator: " ")
+    #expect(words.allSatisfy { $0.hasPrefix("Wort") && Int($0.dropFirst(4)) != nil })
   }
 
-  @Test("The re-decoded last word is not repeated, and the newer form wins")
-  func reDecodedWordIsNotRepeated() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Der Befund ist", isConfirmed: false)
-    merger.ingest("ist unauffällig", isConfirmed: false)
-    #expect(merger.tentativeText == "Der Befund ist unauffällig")
-
-    // Case and punctuation do not hide the overlap; the newer punctuation is kept.
-    merger.ingest("Unauffällig. Keine Schwellung", isConfirmed: false)
-    #expect(merger.tentativeText == "Der Befund ist Unauffällig. Keine Schwellung")
+  @Test("A tentative part longer than the budget is cut too")
+  func longTentativeIsCut() {
+    let tentative = (1...100).map { "w\($0)" }.joined(separator: " ")
+    let shown = LiveDictatePreviewText.displayTail(committed: "Anfang", tentative: tentative, maxCharacters: 50)
+    #expect(shown.committed == "")
+    #expect(shown.tentative.hasPrefix("…w"))
+    #expect(shown.tentative.hasSuffix("w100"))
+    #expect(shown.tentative.count <= 51)
   }
 
-  @Test("An overlap of several words is removed once")
-  func multiWordOverlap() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Röntgen des rechten Kniegelenks", isConfirmed: false)
-    merger.ingest("rechten Kniegelenks in zwei Ebenen", isConfirmed: false)
-    #expect(merger.tentativeText == "Röntgen des rechten Kniegelenks in zwei Ebenen")
+  @Test("Empty text stays empty")
+  func emptyText() {
+    let shown = LiveDictatePreviewText.displayTail(committed: "", tentative: "  ")
+    #expect(shown.committed.isEmpty && shown.tentative.isEmpty)
   }
 
-  @Test("A cut-off last word is replaced by its longer re-decode")
-  func cutOffWordIsReplaced() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Der Pat", isConfirmed: false)
-    merger.ingest("Patient wurde aufgenommen", isConfirmed: false)
-    #expect(merger.tentativeText == "Der Patient wurde aufgenommen")
+  // MARK: - Drift
+
+  @Test("Identical text has no drift, ignoring case and punctuation")
+  func noDrift() {
+    let drift = LiveDictatePreviewText.drift(
+      preview: "der patient klagt über schmerzen", final: "Der Patient klagt über Schmerzen.")
+    #expect(drift.previewWords == 5)
+    #expect(drift.finalWords == 5)
+    #expect(drift.editDistance == 0)
   }
 
-  @Test("Overlap is removed before a confirmed window promotes the tail")
-  func overlapBeforePromotion() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Diagnose", isConfirmed: false)
-    merger.ingest("Gonarthrose rechts", isConfirmed: true)
-    // committed: "Diagnose", tentative: "Gonarthrose rechts"
-    merger.ingest("rechts. Therapie", isConfirmed: true)
-    #expect(merger.committedText == "Diagnose Gonarthrose")
-    #expect(merger.tentativeText == "rechts. Therapie")
+  @Test("Missing tail words and a changed word are counted")
+  func countsEdits() {
+    // The preview lacks the last words before Stop and heard one word differently.
+    let drift = LiveDictatePreviewText.drift(
+      preview: "Röntgen des rechten Knies", final: "Röntgen des rechten Kniegelenks in zwei Ebenen")
+    #expect(drift.previewWords == 4)
+    #expect(drift.finalWords == 7)
+    #expect(drift.editDistance == 4)  // 1 substitution + 3 insertions
   }
 
-  @Test("Retiring reaches into committed text when the tail is shorter than the overlap")
-  func retireIntoCommitted() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("eins zwei", isConfirmed: false)
-    merger.ingest("drei", isConfirmed: true)
-    // committed: "eins zwei", tentative: "drei"
-    merger.ingest("zwei drei vier", isConfirmed: false)
-    #expect(merger.committedText == "eins")
-    #expect(merger.tentativeText == "zwei drei vier")
-  }
-
-  @Test("Text without overlap is appended unchanged")
-  func noFalseOverlap() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("Wir sehen uns", isConfirmed: false)
-    merger.ingest("in Innsbruck", isConfirmed: false)
-    #expect(merger.tentativeText == "Wir sehen uns in Innsbruck")
-  }
-
-  @Test("Empty windows change nothing but still confirm")
-  func emptyWindows() {
-    var merger = LiveTranscriptMerger()
-    merger.ingest("", isConfirmed: false)
-    #expect(merger.isEmpty)
-    merger.ingest("Hallo", isConfirmed: false)
-    merger.ingest("   ", isConfirmed: false)
-    #expect(merger.tentativeText == "Hallo")
-    merger.ingest("", isConfirmed: true)
-    #expect(merger.committedText == "Hallo")
-    #expect(merger.tentativeText == "")
-  }
-
-  @Test("Overlap is capped, so a phrase repeated long ago is kept")
-  func overlapIsCapped() {
-    let phrase = (1...LiveTranscriptMerger.maxOverlapWords + 1).map { "w\($0)" }
-    // The whole phrase repeats, but only an overlap longer than the cap would match it.
-    #expect(LiveTranscriptMerger.wordsToRetire(existingTail: phrase, incoming: phrase) == 0)
-  }
-
-  @Test("Pure punctuation never counts as overlap")
-  func punctuationIsNotOverlap() {
-    #expect(LiveTranscriptMerger.wordsToRetire(existingTail: ["Knie", "–"], incoming: ["–", "rechts"]) == 0)
+  @Test("Word edit distance basics")
+  func editDistanceBasics() {
+    #expect(LiveDictatePreviewText.editDistance([], ["a", "b"]) == 2)
+    #expect(LiveDictatePreviewText.editDistance(["a", "b"], []) == 2)
+    #expect(LiveDictatePreviewText.editDistance(["a", "b", "c"], ["a", "c"]) == 1)
+    #expect(LiveDictatePreviewText.editDistance(["die", "die"], ["die"]) == 1)
   }
 }

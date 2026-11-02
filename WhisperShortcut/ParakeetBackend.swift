@@ -27,7 +27,7 @@ import FluidAudio
 final class ParakeetBackend: @unchecked Sendable {
   // `@unchecked`: every stored property is an actor or `Sendable`, and none is reassigned.
   private let manager: AsrManager
-  /// Kept so the live preview can decode with the same weights (`makeLivePreview`): handing
+  /// Kept so the live preview can decode with the same weights (`makeSlidingWindowEngine`): handing
   /// `AsrModels` to another manager shares the loaded `MLModel`s, it does not load or download.
   private let models: AsrModels
   private let vocabulary = VocabularyBooster()
@@ -162,17 +162,14 @@ final class ParakeetBackend: @unchecked Sendable {
 
   /// A sliding-window engine on this backend's weights, for the live text panel while dictating
   /// (`plans/active/live-dictate-preview.md`). No second download and no second copy of the
-  /// model: FluidAudio's manager keeps references to the `MLModel`s already loaded here.
+  /// model: FluidAudio's manager keeps references to the `MLModel`s already loaded here, and its
+  /// decoder state is its own.
   ///
   /// Same language hint and Glossary as `transcribe`. A Glossary that cannot be applied (CTC
   /// model missing, no usable term) costs the preview its boosting, never the preview itself.
-  ///
-  /// - Parameter onWindow: each decoded window's new text and whether FluidAudio confirmed it.
-  ///   Called on a background task; `LiveTranscriptMerger` turns these into panel text.
-  func makeLivePreview(
-    language: String?, vocabulary terms: [String],
-    onWindow: @escaping @Sendable (_ text: String, _ isConfirmed: Bool) -> Void
-  ) async throws -> ParakeetLivePreview {
+  fileprivate func makeSlidingWindowEngine(
+    language: String?, vocabulary terms: [String]
+  ) async throws -> SlidingWindowAsrManager {
     let hint = language.flatMap(Language.init(rawValue:))
     let engine = SlidingWindowAsrManager(config: ParakeetLivePreview.windowConfig.applying(language: hint))
     try await engine.loadModels(models)
@@ -186,74 +183,122 @@ final class ParakeetBackend: @unchecked Sendable {
           "LIVE-PREVIEW: Glossary boosting skipped for the preview (\(error.localizedDescription))")
       }
     }
-    // Subscribed before the engine starts, so not even the first window's update is missed.
-    let updates = await engine.transcriptionUpdates
-    try await engine.startStreaming(source: .microphone)
-    return ParakeetLivePreview(engine: engine, updates: updates, onWindow: onWindow)
+    return engine
   }
 }
 
-/// One dictation's live preview: microphone buffers in, window texts out.
+/// One dictation's live preview: 16 kHz mono buffers in, the engine's text out.
+///
+/// Created before the engine exists, so the audio tap can start with the recording: buffers queue
+/// in `input` while the model loads and the engine is built, and `connect` drains them. Without
+/// that, the first seconds of every dictation never reached the preview.
 ///
 /// Never part of the result. Stopping does not flush or finish the engine — the pasted text comes
 /// from `ParakeetBackend.transcribe` on the complete recording, so the preview's tail is simply
 /// dropped.
 final class ParakeetLivePreview: @unchecked Sendable {
-  // `@unchecked`: every stored property is an actor, a continuation or a task, none reassigned.
+  // `@unchecked`: the continuation and stream are thread-safe; `engine`, `tasks` and `stopped`
+  // are only touched under `lock`.
 
   /// New audio per window. FluidAudio's default layout (2 s left + 11 s + 2 s right) updates once
-  /// every 11 s, far too slowly to read along. 9 + 4 + 2 still fills the model's fixed 15 s input:
-  /// the first text appears ~6 s after the start, then every 4 s, and the longer left context gives
-  /// each window's fresh decoder state more audio to settle in. Cost guard (plan, Design 6): when
-  /// the `LIVE-PREVIEW:` summary shows window latency above ~30 % of this hop, raise it.
+  /// every 11 s, far too slowly to read along. 9 + 4 + 2 still fills the model's fixed 15 s input
+  /// (`validate()` passes at exactly 240 000 samples): text arrives at 6 s, 10 s, 14 s, … Each
+  /// window decodes from a fresh decoder state and suppresses audio earlier windows covered, so the
+  /// left context only warms the decoder up; FluidAudio itself considers ~4 s enough. Cost: the
+  /// full 15 s window every 4 s (3.75× the audio, against 1.36× for the default) — the cost guard
+  /// (plan, Design 6) decides whether 4 s holds or the hop must grow.
   static let hopSeconds: TimeInterval = 4
   static let rightContextSeconds: TimeInterval = 2
   static let windowConfig = SlidingWindowAsrConfig(
     chunkSeconds: hopSeconds,
-    hypothesisChunkSeconds: 1,
     leftContextSeconds: 9,
     rightContextSeconds: rightContextSeconds,
     minContextForConfirmation: 10,
     confirmationThreshold: 0.85)
+  /// The format `append` expects. Converting in the app with one long-lived converter lets
+  /// FluidAudio take its fast path; its own `resampleBuffer` builds a new converter per buffer and
+  /// resets the resampler state each time.
+  static let sampleRate: Double = 16_000
 
-  private let engine: SlidingWindowAsrManager
+  private let input: AsyncStream<AVAudioPCMBuffer>
   private let audioInput: AsyncStream<AVAudioPCMBuffer>.Continuation
-  private let feedTask: Task<Void, Never>
-  private let updatesTask: Task<Void, Never>
+  private let lock = NSLock()
+  private var engine: SlidingWindowAsrManager?
+  private var tasks: [Task<Void, Never>] = []
+  private var stopped = false
 
-  fileprivate init(
-    engine: SlidingWindowAsrManager,
-    updates: AsyncStream<SlidingWindowTranscriptionUpdate>,
-    onWindow: @escaping @Sendable (String, Bool) -> Void
-  ) {
-    self.engine = engine
-    let (input, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+  init() {
+    let (stream, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+    input = stream
     audioInput = continuation
-    // One consumer, so buffers reach the engine in capture order. A `Task` per buffer would not
-    // guarantee that.
-    feedTask = Task {
-      for await buffer in input {
-        await engine.streamAudio(buffer)
-      }
-    }
-    updatesTask = Task {
-      for await update in updates {
-        onWindow(update.text, update.isConfirmed)
-      }
-    }
   }
 
-  /// From any thread (the audio tap calls it on its render thread). Never blocks.
+  /// From any thread (the audio tap calls it on its render thread). Never blocks; queues until
+  /// `connect` has built the engine.
   func append(_ buffer: AVAudioPCMBuffer) {
     audioInput.yield(buffer)
   }
 
+  /// Builds the engine on `backend`'s weights and starts decoding, beginning with the audio queued
+  /// so far. `onText` receives FluidAudio's own `confirmedTranscript` / `volatileTranscript` after
+  /// every window, on a background task. Throws `CancellationError` when stopped meanwhile.
+  func connect(
+    to backend: ParakeetBackend, language: String?, vocabulary terms: [String],
+    onText: @escaping @Sendable (_ confirmed: String, _ volatile: String) -> Void
+  ) async throws {
+    let engine = try await backend.makeSlidingWindowEngine(language: language, vocabulary: terms)
+    // Subscribed before the engine starts, so not even the first window's update is missed.
+    let updates = await engine.transcriptionUpdates
+    try await engine.startStreaming(source: .microphone)
+    let input = self.input
+    let attached = lock.withLock { () -> Bool in
+      guard !stopped else { return false }
+      self.engine = engine
+      // One consumer, so buffers reach the engine in capture order.
+      tasks = [
+        Task {
+          for await buffer in input {
+            await engine.streamAudio(buffer)
+          }
+        },
+        Task {
+          // The update only signals "a window was decoded"; the text is read from the engine,
+          // which has already repaired the seam the update cannot describe.
+          for await _ in updates {
+            let snapshot = await engine.livePreviewSnapshot()
+            onText(snapshot.confirmed, snapshot.volatile)
+          }
+        },
+      ]
+      return true
+    }
+    guard attached else {
+      await engine.cancel()
+      throw CancellationError()
+    }
+  }
+
   /// Idempotent. Drops whatever audio is still queued.
   func stop() {
+    let (engine, tasks) = lock.withLock { () -> (SlidingWindowAsrManager?, [Task<Void, Never>]) in
+      stopped = true
+      let running = (self.engine, self.tasks)
+      self.engine = nil
+      self.tasks = []
+      return running
+    }
     audioInput.finish()
-    feedTask.cancel()
-    updatesTask.cancel()
-    Task { [engine] in await engine.cancel() }
+    tasks.forEach { $0.cancel() }
+    if let engine {
+      Task { await engine.cancel() }
+    }
+  }
+}
+
+private extension SlidingWindowAsrManager {
+  /// Both texts in one actor turn, so no window lands between the two reads.
+  func livePreviewSnapshot() -> (confirmed: String, volatile: String) {
+    (confirmedTranscript, volatileTranscript)
   }
 }
 

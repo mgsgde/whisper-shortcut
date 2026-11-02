@@ -3,13 +3,16 @@ import SwiftUI
 
 /// The live text panel while dictating (plans/active/live-dictate-preview.md, S3).
 ///
-/// Sits just above the recording pill, bottom center, in the same dark card style as the Dictate
+/// Sits just above the recording pill as its child window — so it moves, layers and hides with
+/// it, and the pill's own re-raising covers it too — in the same dark card style as the Dictate
 /// Prompt card (`RecordingIndicatorWindow.swift`): black at 92 %, 16 pt corners, a hairline
 /// border. It is dark in light and dark mode alike, like the pill it belongs to.
 ///
 /// Read-only by design: non-activating, never key, ignores the mouse, no buttons. Focus and every
-/// click stay with the app the user dictates into. Confirmed words are white, the tail that may
-/// still change is dimmed, and the newest line stays in view; at most ~6 lines show.
+/// click stay with the app the user dictates into. Text FluidAudio has confirmed is white, the
+/// newest part is dimmed (confirmed means "decoded with high confidence", not "final": the pasted
+/// text comes from the decode after Stop), and the newest line stays in view; at most ~6 lines
+/// show. It appears with the first words, never empty.
 final class LiveDictatePanel {
   static let shared = LiveDictatePanel()
 
@@ -22,20 +25,28 @@ final class LiveDictatePanel {
     /// Room for the caption plus `LiveDictatePanelView.maxTextHeight`. The card itself only grows
     /// as tall as its text; the rest of the frame is transparent and click-through.
     static let height: CGFloat = 170
-    /// The recording pill sits 28 pt above the bottom of the visible frame and is 40 pt tall
-    /// (`RecordingIndicatorManager`, `RecordingIndicatorView.pillSize`); 10 pt gap above it.
-    static let bottomOffset: CGFloat = 28 + 40 + 10
+    /// Gap between the pill's top edge and this panel.
+    static let gapAbovePill: CGFloat = 10
+    /// Fallback when the pill is not on screen: where its top edge normally is (28 pt margin +
+    /// 40 pt pill, `RecordingIndicatorManager`, `RecordingIndicatorView.pillSize`).
+    static let fallbackBottomOffset: CGFloat = 28 + 40 + 10
     static let fadeDuration: TimeInterval = 0.18
   }
 
   private init() {}
 
   func show() {
-    model.committed = ""
-    model.tentative = ""
     let panel = self.panel ?? makePanel()
     self.panel = panel
-    position(panel)
+    if let pill = RecordingIndicatorManager.shared.visibleWindow {
+      place(panel, above: pill.frame, on: pill.screen)
+      if panel.parent !== pill {
+        panel.parent?.removeChildWindow(panel)
+        pill.addChildWindow(panel, ordered: .above)
+      }
+    } else {
+      place(panel, above: nil, on: NSScreen.main)
+    }
     panel.alphaValue = 0
     panel.orderFrontRegardless()
     isVisible = true
@@ -62,7 +73,10 @@ final class LiveDictatePanel {
     }) { [weak self] in
       // A show within the fade sets isVisible again; ordering out then would hide the new panel.
       guard let self, !self.isVisible else { return }
+      panel.parent?.removeChildWindow(panel)
       panel.orderOut(nil)
+      self.model.committed = ""
+      self.model.tentative = ""
     }
   }
 
@@ -88,11 +102,15 @@ final class LiveDictatePanel {
     return panel
   }
 
-  private func position(_ panel: NSPanel) {
-    guard let screen = NSScreen.main else { return }
+  /// Centred over the pill, its bottom edge `gapAbovePill` above the pill's top. Without a pill,
+  /// where the pill's top edge normally is.
+  private func place(_ panel: NSPanel, above pillFrame: NSRect?, on screen: NSScreen?) {
+    guard let screen = screen ?? NSScreen.main else { return }
     let visible = screen.visibleFrame
     let width = min(Metrics.width, visible.width - 32)
-    let origin = NSPoint(x: visible.midX - width / 2, y: visible.minY + Metrics.bottomOffset)
+    let midX = pillFrame?.midX ?? visible.midX
+    let bottom = pillFrame.map { $0.maxY + Metrics.gapAbovePill } ?? visible.minY + Metrics.fallbackBottomOffset
+    let origin = NSPoint(x: midX - width / 2, y: bottom)
     panel.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: Metrics.height)), display: true)
   }
 }
@@ -118,8 +136,6 @@ struct LiveDictatePanelView: View {
   private static let cornerRadius: CGFloat = 16
   private static let bottomID = "live-dictate-bottom"
 
-  private var isEmpty: Bool { model.committed.isEmpty && model.tentative.isEmpty }
-
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 5) {
@@ -129,7 +145,9 @@ struct LiveDictatePanelView: View {
           .font(.system(size: 10, weight: .semibold))
           .lineLimit(1)
       }
-      .foregroundColor(.white.opacity(0.45))
+      // 60 %: the 45 % the pill uses for hints is below 4.5:1 contrast at this size.
+      .foregroundColor(.white.opacity(0.6))
+      .accessibilityHidden(true)
 
       // Hugs short text; past ~6 lines it scrolls and keeps the newest line in view.
       ViewThatFits(in: .vertical) {
@@ -161,27 +179,27 @@ struct LiveDictatePanelView: View {
     .padding(.horizontal, 8)
     .padding(.bottom, 4)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-    .accessibilityElement(children: .combine)
+    // One element whose value is the visible text, so VoiceOver can read it on demand. No live
+    // announcements: speech output while dictating would talk over the user and could end up in
+    // the recording.
+    .accessibilityElement(children: .ignore)
     .accessibilityLabel("Live dictation preview")
+    .accessibilityValue(Text(verbatim: accessibilityText))
   }
 
-  @ViewBuilder
+  private var accessibilityText: String {
+    [model.committed, model.tentative].filter { !$0.isEmpty }.joined(separator: " ")
+  }
+
   private var transcript: some View {
-    Group {
-      if isEmpty {
-        Text("Your words appear here a few seconds after you start speaking.")
-          .foregroundColor(.white.opacity(0.45))
-      } else {
-        styledText
-      }
-    }
-    .font(.system(size: Self.fontSize))
-    .lineSpacing(Self.lineSpacing)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .fixedSize(horizontal: false, vertical: true)
+    styledText
+      .font(.system(size: Self.fontSize))
+      .lineSpacing(Self.lineSpacing)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .fixedSize(horizontal: false, vertical: true)
   }
 
-  /// Confirmed words in white, the still-changing tail dimmed, as one flowing paragraph.
+  /// Confirmed text in white, the newest part dimmed, as one flowing paragraph.
   private var styledText: Text {
     let committed = Text(verbatim: model.committed).foregroundColor(.white)
     guard !model.tentative.isEmpty else { return committed }

@@ -29,7 +29,11 @@ struct LiveDictatePreviewSection: View {
         subtitle: "While you dictate, a small panel above the recording pill shows what you have said so far. It is a preview: the text that gets pasted is still transcribed from the whole recording after Stop, so it can differ slightly."
       )
 
-      Toggle("Show live text while dictating", isOn: $isOn)
+      // Shown off while unavailable: a stored "on" that cannot be switched off would only confuse.
+      // The stored value is kept and applies again once Parakeet is back.
+      Toggle(
+        "Show live text while dictating",
+        isOn: Binding(get: { isOn && isAvailable }, set: { isOn = $0 }))
         .toggleStyle(SwitchToggleStyle())
         .disabled(!isAvailable)
         .onChange(of: isOn) { _, newValue in
@@ -39,7 +43,9 @@ struct LiveDictatePreviewSection: View {
       if !isAvailable {
         Group {
           // Two literals, not a ternary: a ternary types as String and would skip localization.
-          if isParakeet {
+          if !LiveDictatePreviewSetting.isAppleSilicon {
+            Text("Requires a Mac with Apple silicon.")
+          } else if isParakeet {
             Text("Download Parakeet Ultra under Offline Models to use this.")
           } else {
             Text("Available with the offline Parakeet model.")

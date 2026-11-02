@@ -7,10 +7,11 @@ import Foundation
 /// leaves Dictate recording — Stop, ✕, Fn-discard, a failed recording. Everything here is a
 /// preview and fails closed: any error logs, hides the panel and ends the preview, and nothing it
 /// does reaches the dictation. The recorder (`ChunkedDictateRecorder`) and the final transcript
-/// path do not know it exists.
+/// path do not know it exists. The one shared resource, the model load, is shielded from the
+/// preview's cancellation (`LocalSpeechService.parakeetBackendForLivePreview`).
 ///
 /// With the setting off, `startIfEnabled` returns at its first line: no model call, no
-/// `AVAudioEngine`, no panel.
+/// `AVAudioEngine`, no panel, and the Glossary is not even read.
 ///
 /// Main thread only.
 final class LiveDictatePreviewController {
@@ -19,8 +20,12 @@ final class LiveDictatePreviewController {
   private var startTask: Task<Void, Never>?
   /// Identifies the running session; callbacks from an older one are dropped. Nil when idle.
   private var session: UUID?
-  private var merger = LiveTranscriptMerger()
+  private var confirmed = ""
+  private var volatile = ""
   private var stats = Stats()
+  /// The last preview text of a stopped session, kept until the pasted transcript arrives so the
+  /// drift between the two can be logged (`noteFinalTranscript`). Cleared by the next start.
+  private var pendingDriftText: String?
 
   /// What the `LIVE-PREVIEW:` summary line reports (plan, Design 6).
   private struct Stats {
@@ -31,47 +36,47 @@ final class LiveDictatePreviewController {
     var totalLagMs: Double = 0
     var maxLagMs: Double = 0
     var errors = 0
+    var tapRestarts = 0
   }
 
   /// - Parameters:
   ///   - vocabulary: the Glossary terms the final Parakeet decode boosts (`SpeechService.glossaryKeywords`).
   func startIfEnabled(vocabulary: @autoclosure () -> [String]) {
+    pendingDriftText = nil  // a new recording: an older preview has nothing to compare with
     guard LiveDictatePreviewSetting.isEnabled else { return }
     stop()
+    pendingDriftText = nil
     let model = TranscriptionModel.loadSelected()
     guard
       LiveDictatePreviewSetting.shouldStart(
         enabled: true, model: model, downloaded: model.isOfflineModelAvailable()),
       let modelType = model.offlineModelType
     else {
-      DebugLogger.log("LIVE-PREVIEW: Not started — needs a downloaded Parakeet as the Dictate model")
+      DebugLogger.log("LIVE-PREVIEW: Not started — needs Apple Silicon and a downloaded Parakeet as the Dictate model")
       return
     }
 
     let session = UUID()
     self.session = session
-    merger = LiveTranscriptMerger()
+    confirmed = ""
+    volatile = ""
     stats = Stats()
     let language = Self.dictateLanguageCode()
     let terms = vocabulary()
     DebugLogger.log(
       "LIVE-PREVIEW: Starting (language=\(language ?? "auto"), glossaryTerms=\(terms.count), hop=\(ParakeetLivePreview.hopSeconds)s)")
 
+    // Audio first: buffers queue in the preview while the model loads and the engine is built,
+    // so the opening words are not lost.
+    let preview = ParakeetLivePreview()
+    self.preview = preview
+    startTap(feeding: preview, session: session)
+
     startTask = Task { [weak self] in
       do {
         let backend = try await LocalSpeechService.shared.parakeetBackendForLivePreview(modelType)
-        let preview = try await backend.makeLivePreview(language: language, vocabulary: terms) {
-          text, isConfirmed in
-          DispatchQueue.main.async { self?.handleWindow(text, isConfirmed: isConfirmed, session: session) }
-        }
-        let cancelled = Task.isCancelled  // read on this task, not inside MainActor.run
-        await MainActor.run {
-          guard let self, self.session == session, !cancelled else {
-            preview.stop()
-            return
-          }
-          self.preview = preview
-          self.startTap(feeding: preview, session: session)
+        try await preview.connect(to: backend, language: language, vocabulary: terms) { confirmed, volatile in
+          DispatchQueue.main.async { self?.handleText(confirmed: confirmed, volatile: volatile, session: session) }
         }
       } catch {
         await MainActor.run { self?.fail(stage: "load", error: error, session: session) }
@@ -94,6 +99,23 @@ final class LiveDictatePreviewController {
     preview = nil
     LiveDictatePanel.shared.hide()
     logSummary(session: session)
+    let text = [confirmed, volatile].filter { !$0.isEmpty }.joined(separator: " ")
+    pendingDriftText = text.isEmpty ? nil : text
+  }
+
+  /// The pasted Dictate transcript. Logs how far the last preview was from it, as word counts
+  /// only, and forgets both. A no-op when no preview ran for this recording.
+  func noteFinalTranscript(_ text: String) {
+    guard Thread.isMainThread else {
+      DispatchQueue.main.async { [weak self] in self?.noteFinalTranscript(text) }
+      return
+    }
+    guard let preview = pendingDriftText else { return }
+    pendingDriftText = nil
+    let drift = LiveDictatePreviewText.drift(preview: preview, final: text)
+    DebugLogger.log(
+      "LIVE-PREVIEW: drift previewWords=\(drift.previewWords) finalWords=\(drift.finalWords) "
+        + "wordEditDistance=\(drift.editDistance)")
   }
 
   // MARK: - Steps
@@ -105,27 +127,33 @@ final class LiveDictatePreviewController {
         self.stats.audioStarted = Date()
       },
       onBuffer: { buffer in preview.append(buffer) },
-      completion: { [weak self] error in
+      onRestart: { [weak self] in
         guard let self, self.session == session else { return }
-        if let error {
-          self.fail(stage: "audio", error: error, session: session)
-          return
-        }
-        LiveDictatePanel.shared.show()
+        self.stats.tapRestarts += 1
+      },
+      onFailure: { [weak self] error in
+        self?.fail(stage: "audio", error: error, session: session)
       })
   }
 
-  private func handleWindow(_ text: String, isConfirmed: Bool, session: UUID) {
+  private func handleText(confirmed: String, volatile: String, session: UUID) {
     guard self.session == session else { return }
-    merger.ingest(text, isConfirmed: isConfirmed)
+    self.confirmed = confirmed
+    self.volatile = volatile
     recordLag()
-    LiveDictatePanel.shared.update(committed: merger.committedText, tentative: merger.tentativeText)
+    let shown = LiveDictatePreviewText.displayTail(committed: confirmed, tentative: volatile)
+    guard !shown.committed.isEmpty || !shown.tentative.isEmpty else { return }
+    // Shown with the first words, not at the start: most short dictations end before the first
+    // window (~6 s) and would only flash an empty panel.
+    if !LiveDictatePanel.shared.isVisible { LiveDictatePanel.shared.show() }
+    LiveDictatePanel.shared.update(committed: shown.committed, tentative: shown.tentative)
   }
 
   /// Window `n` (0-based) can be decoded once `(n + 1) × hop + right context` seconds of audio
   /// exist. The time past that moment until its text arrived is the user-visible lag: the decode
   /// itself, plus any backlog when decoding falls behind the speaker. Approximate (it takes the
-  /// tap's start as audio time zero), which is enough to tell "keeps up" from "falls behind".
+  /// tap's first buffer as audio time zero and FluidAudio's updates carry no decode time), which is
+  /// enough to tell "keeps up" from "falls behind".
   private func recordLag() {
     defer { stats.windows += 1 }
     guard let audioStarted = stats.audioStarted else { return }
@@ -150,8 +178,8 @@ final class LiveDictatePreviewController {
     let meanLag = stats.windows > 0 ? stats.totalLagMs / Double(stats.windows) : 0
     DebugLogger.log(
       "LIVE-PREVIEW: summary windows=\(stats.windows) meanLagMs=\(Int(meanLag)) maxLagMs=\(Int(stats.maxLagMs)) "
-        + "hopMs=\(Int(ParakeetLivePreview.hopSeconds * 1000)) errors=\(stats.errors) "
-        + "durationS=\(String(format: "%.1f", seconds)) chars=\(merger.committedText.count + merger.tentativeText.count)")
+        + "hopMs=\(Int(ParakeetLivePreview.hopSeconds * 1000)) errors=\(stats.errors) tapRestarts=\(stats.tapRestarts) "
+        + "durationS=\(String(format: "%.1f", seconds)) chars=\(confirmed.count + volatile.count)")
   }
 
   /// The Dictate language the final offline decode uses (`SpeechService`, offline branch): the ISO
@@ -163,87 +191,143 @@ final class LiveDictatePreviewController {
 }
 
 /// A second, read-only listener on the microphone for the preview. `ChunkedDictateRecorder` keeps
-/// recording to files through `AVAudioRecorder` exactly as before; this engine only copies PCM
-/// buffers out for the preview, and is never created while the setting is off.
+/// recording to files through `AVAudioRecorder` exactly as before; this engine only hands 16 kHz
+/// mono buffers to the preview, and is never created while the setting is off.
 ///
 /// `AVAudioEngine.start()` and `stop()` block on CoreAudio like `AVAudioRecorder.record()` does
-/// (see the recorder's `audioQueue`), so both run on a serial queue of their own.
+/// (see the recorder's `audioQueue`), so all engine work runs on a serial queue of its own.
+///
+/// A device or format change stops an engine silently. Bluetooth headsets cause one right at the
+/// start (opening their microphone switches them to the hands-free profile), so the tap is rebuilt
+/// once with the new format; only a second change ends the preview.
 final class LiveDictateAudioTap {
   enum TapError: LocalizedError {
     case noInputDevice
-    case configurationChanged
+    case converterUnavailable
+    case configurationChangedAgain
 
     var errorDescription: String? {
       switch self {
       case .noInputDevice: return "No usable input format on the default input device"
-      case .configurationChanged: return "The audio input changed while recording"
+      case .converterUnavailable: return "Cannot convert the input format to 16 kHz mono"
+      case .configurationChangedAgain: return "The audio input changed again while recording"
       }
     }
   }
 
-  private final class FirstBufferFlag: @unchecked Sendable {
-    var seen = false
+  /// Reference boxes, not captured `var`s: the SDK types the tap and converter blocks
+  /// `@Sendable`, and mutating a captured var there does not compile. Only the render thread
+  /// touches them.
+  private final class Flag: @unchecked Sendable {
+    var isSet = false
   }
 
+  private struct Handlers {
+    let onFirstBuffer: () -> Void
+    let onBuffer: (AVAudioPCMBuffer) -> Void
+    let onRestart: () -> Void
+    let onFailure: (Error) -> Void
+  }
+
+  private static let maxRestarts = 1
+
   private let queue = DispatchQueue(label: "com.whispershortcut.live-dictate-tap", qos: .userInitiated)
-  /// Only touched on `queue`.
+  // Everything below is only touched on `queue`.
   private var engine: AVAudioEngine?
   private var configurationObserver: NSObjectProtocol?
+  private var handlers: Handlers?
+  private var restarts = 0
 
-  /// `onBuffer` runs on the audio render thread with a private copy of each buffer. `completion`
-  /// and `onFirstBuffer` run on the main thread; a later device change reports through
-  /// `completion` again with `.configurationChanged`.
+  /// `onBuffer` runs on the audio render thread. `onFirstBuffer`, `onRestart` and `onFailure` run
+  /// on the main thread.
   func start(
     onFirstBuffer: @escaping () -> Void,
     onBuffer: @escaping (AVAudioPCMBuffer) -> Void,
-    completion: @escaping (Error?) -> Void
+    onRestart: @escaping () -> Void,
+    onFailure: @escaping (Error) -> Void
   ) {
     queue.async { [weak self] in
       guard let self else { return }
-      self.stopOnQueue()
-      let engine = AVAudioEngine()
-      let input = engine.inputNode
-      let format = input.outputFormat(forBus: 0)
-      // `installTap` raises an Objective-C exception on a zero format (no input device).
-      guard format.sampleRate > 0, format.channelCount > 0 else {
-        DispatchQueue.main.async { completion(TapError.noInputDevice) }
-        return
-      }
-      // A box, not a captured `var`: the SDK types the tap block `@Sendable`, and mutating a
-      // captured var there does not compile. Only the render thread touches it.
-      let firstBuffer = FirstBufferFlag()
-      input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
-        guard let copy = Self.copy(buffer) else { return }
-        if !firstBuffer.seen {
-          firstBuffer.seen = true
-          DispatchQueue.main.async(execute: onFirstBuffer)
-        }
-        onBuffer(copy)
-      }
-      engine.prepare()
-      do {
-        try engine.start()
-      } catch {
-        input.removeTap(onBus: 0)
-        DispatchQueue.main.async { completion(error) }
-        return
-      }
-      self.engine = engine
-      // A device switch stops the engine silently; end the preview instead of showing a frozen one.
-      self.configurationObserver = NotificationCenter.default.addObserver(
-        forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-      ) { _ in completion(TapError.configurationChanged) }
-      DebugLogger.logAudio(
-        "LIVE-PREVIEW: Audio tap started (\(Int(format.sampleRate)) Hz, \(format.channelCount) ch)")
-      DispatchQueue.main.async { completion(nil) }
+      self.handlers = Handlers(
+        onFirstBuffer: onFirstBuffer, onBuffer: onBuffer, onRestart: onRestart, onFailure: onFailure)
+      self.restarts = 0
+      self.startEngineOnQueue()
     }
   }
 
   func stop() {
-    queue.async { [weak self] in self?.stopOnQueue() }
+    queue.async { [weak self] in
+      self?.stopEngineOnQueue()
+      self?.handlers = nil
+    }
   }
 
-  private func stopOnQueue() {
+  private func startEngineOnQueue() {
+    stopEngineOnQueue()
+    guard let handlers else { return }
+    let engine = AVAudioEngine()
+    let input = engine.inputNode
+    let format = input.outputFormat(forBus: 0)
+    // `installTap` raises an Objective-C exception on a zero format (no input device).
+    guard format.sampleRate > 0, format.channelCount > 0 else {
+      report(TapError.noInputDevice)
+      return
+    }
+    guard
+      let target = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: ParakeetLivePreview.sampleRate, channels: 1,
+        interleaved: false),
+      let converter = AVAudioConverter(from: format, to: target)
+    else {
+      report(TapError.converterUnavailable)
+      return
+    }
+    // The first input channel, not a mix of all: on a multi-channel interface the microphone is
+    // usually on input 1, and averaging in silent channels would only lower its level.
+    converter.channelMap = [0]
+    let ratio = target.sampleRate / format.sampleRate
+    let firstBuffer = Flag()
+    let onBuffer = handlers.onBuffer
+    let onFirstBuffer = handlers.onFirstBuffer
+    input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+      guard let converted = Self.convert(buffer, with: converter, to: target, ratio: ratio) else { return }
+      if !firstBuffer.isSet {
+        firstBuffer.isSet = true
+        DispatchQueue.main.async { onFirstBuffer() }
+      }
+      onBuffer(converted)
+    }
+    engine.prepare()
+    do {
+      try engine.start()
+    } catch {
+      input.removeTap(onBus: 0)
+      report(error)
+      return
+    }
+    self.engine = engine
+    configurationObserver = NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+    ) { [weak self] _ in
+      self?.queue.async { self?.handleConfigurationChange() }
+    }
+    DebugLogger.logAudio(
+      "LIVE-PREVIEW: Audio tap started (\(Int(format.sampleRate)) Hz, \(format.channelCount) ch → 16 kHz mono)")
+  }
+
+  private func handleConfigurationChange() {
+    guard engine != nil, let handlers else { return }
+    guard restarts < Self.maxRestarts else {
+      report(TapError.configurationChangedAgain)
+      return
+    }
+    restarts += 1
+    DebugLogger.logAudio("LIVE-PREVIEW: Audio input changed; rebuilding the tap with the new format")
+    DispatchQueue.main.async { handlers.onRestart() }
+    startEngineOnQueue()
+  }
+
+  private func stopEngineOnQueue() {
     if let configurationObserver {
       NotificationCenter.default.removeObserver(configurationObserver)
       self.configurationObserver = nil
@@ -255,20 +339,35 @@ final class LiveDictateAudioTap {
     DebugLogger.logAudio("LIVE-PREVIEW: Audio tap stopped")
   }
 
-  /// The engine may reuse a tap buffer once the block returns, and the preview reads it later on
-  /// another thread, so each one is copied.
-  private static func copy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-    guard buffer.frameLength > 0,
-      let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength)
-    else { return nil }
-    copy.frameLength = buffer.frameLength
-    let source = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: buffer.audioBufferList))
-    let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-    for (from, to) in zip(source, destination) {
-      guard let fromData = from.mData, let toData = to.mData else { return nil }
-      let bytes = min(Int(from.mDataByteSize), Int(to.mDataByteSize))
-      memcpy(toData, fromData, bytes)
+  /// Stops the engine and tells the controller. On `queue`.
+  private func report(_ error: Error) {
+    stopEngineOnQueue()
+    guard let onFailure = handlers?.onFailure else { return }
+    handlers = nil
+    DispatchQueue.main.async { onFailure(error) }
+  }
+
+  /// One input buffer through the session's long-lived converter, so the resampler keeps its
+  /// state across buffers. The result is a new buffer; the tap's own may be reused by the engine.
+  private static func convert(
+    _ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter, to target: AVAudioFormat, ratio: Double
+  ) -> AVAudioPCMBuffer? {
+    guard buffer.frameLength > 0 else { return nil }
+    let capacity = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up)) + 32
+    guard let output = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
+    let consumed = Flag()
+    var error: NSError?
+    let status = converter.convert(to: output, error: &error) { _, inputStatus in
+      if consumed.isSet {
+        // `.noDataNow`, not `.endOfStream`: the stream goes on with the next tap buffer.
+        inputStatus.pointee = .noDataNow
+        return nil
+      }
+      consumed.isSet = true
+      inputStatus.pointee = .haveData
+      return buffer
     }
-    return copy
+    guard status != .error, error == nil, output.frameLength > 0 else { return nil }
+    return output
   }
 }

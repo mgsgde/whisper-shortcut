@@ -2607,6 +2607,8 @@ class MenuBarController: NSObject {
           result, mode: "Dictation", transcriptionModel: transcriptionModelForCapture.rawValue,
           transcriptionModelName: modelDisplayName,
           glossaryEchoRemoved: self.speechService.glossaryEchoStrips(since: dictationStart))
+        // Counts only: how far the live preview (if one ran) was from what got pasted.
+        if !duringMeeting { self.liveDictatePreview.noteFinalTranscript(result) }
         pendingAudioRef = await captureTask?.value
         audioRefCommitted = true
         ContextLogger.shared.logTranscription(
