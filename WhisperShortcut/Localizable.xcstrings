@@ -1708,6 +1708,17 @@
         }
       }
     },
+    "Available with the offline Parakeet model." : {
+      "comment" : "Why the live text toggle is disabled: another model is selected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbar mit dem Offline-Modell Parakeet."
+          }
+        }
+      }
+    },
     "Choose a template" : {
       "localizations" : {
         "de" : {
@@ -1744,6 +1755,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktieren Sie direkt in ein festes Format, etwa eine Behandlungsnotiz."
+          }
+        }
+      }
+    },
+    "Download Parakeet Ultra under Offline Models to use this." : {
+      "comment" : "Why the live text toggle is disabled: Parakeet selected but not downloaded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laden Sie dazu Parakeet Ultra unter Offline-Modelle."
           }
         }
       }
@@ -1794,6 +1816,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ist Text markiert, bearbeitet die Taste stattdessen diesen Text."
+          }
+        }
+      }
+    },
+    "Live dictation preview" : {
+      "comment" : "Accessibility label of the live text panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau des Diktats"
+          }
+        }
+      }
+    },
+    "Live preview — the final text follows after Stop" : {
+      "comment" : "Caption at the top of the live text panel while dictating",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau – der endgültige Text folgt nach Stopp"
+          }
+        }
+      }
+    },
+    "Live Text" : {
+      "comment" : "Settings → Dictate section title for the live text panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Text"
           }
         }
       }
@@ -1908,6 +1963,17 @@
         }
       }
     },
+    "Show live text while dictating" : {
+      "comment" : "Settings → Dictate toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Text beim Diktieren anzeigen"
+          }
+        }
+      }
+    },
     "Speak" : {
       "localizations" : {
         "de" : {
@@ -1984,6 +2050,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Was Sie sagen, wird wie gewohnt aufgeschrieben und dann in dieses Format gebracht."
+          }
+        }
+      }
+    },
+    "While you dictate, a small panel above the recording pill shows what you have said so far. It is a preview: the text that gets pasted is still transcribed from the whole recording after Stop, so it can differ slightly." : {
+      "comment" : "Settings → Dictate, Live Text section subtitle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Während Sie diktieren, zeigt ein kleines Feld über der Aufnahmeanzeige, was Sie bisher gesagt haben. Es ist eine Vorschau: Der eingefügte Text wird weiterhin nach Stopp aus der gesamten Aufnahme transkribiert und kann daher leicht abweichen."
           }
         }
       }
@@ -22318,6 +22395,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ihre Tastenkürzel – grün ist bereit, rot braucht noch eine Berechtigung."
+          }
+        }
+      }
+    },
+    "Your words appear here a few seconds after you start speaking." : {
+      "comment" : "Live text panel placeholder before the first words arrive",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Worte erscheinen hier wenige Sekunden, nachdem Sie zu sprechen beginnen."
           }
         }
       }

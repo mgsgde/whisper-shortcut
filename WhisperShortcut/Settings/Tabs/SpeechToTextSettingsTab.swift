@@ -21,6 +21,10 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
 
+      LiveDictatePreviewSection(selectedModel: viewModel.data.selectedTranscriptionModel)
+
+      SpacedSectionDivider()
+
       // Language Section (only for Whisper)
       if !viewModel.data.selectedTranscriptionModel.isGemini {
         languageSection

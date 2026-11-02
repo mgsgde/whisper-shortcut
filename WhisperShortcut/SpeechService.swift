@@ -315,7 +315,8 @@ class SpeechService {
   /// in the audio, so feeding it both sides of a near-homophone pair would cancel the correction
   /// out. Settling a pair the model still gets wrong stays the job of
   /// `correctingRejectedSpellings`, which runs on the transcript afterwards.
-  private func glossaryKeywords() -> [String] {
+  /// Internal (not private) so the live dictate preview boosts the same terms as the final decode.
+  func glossaryKeywords() -> [String] {
     let parsed = parsedGlossary()
     var seen = Set<String>()
     var keywords: [String] = []

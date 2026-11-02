@@ -67,6 +67,11 @@ class MenuBarController: NSObject {
       }
       updateUI()
       updateRecordingIndicator()
+      // The live text panel lives exactly as long as a Dictate recording: Stop, ✕, Esc and a
+      // failed recording all leave this state. A no-op when no preview runs.
+      if appState != .recording(.transcription) {
+        liveDictatePreview.stop()
+      }
 
       // Auto-reset feedback states after their duration
       feedbackResetTask?.cancel()
@@ -170,6 +175,9 @@ class MenuBarController: NSObject {
   /// active/processing; prompt recordings, offline Whisper, and self-hosted endpoints
   /// leave it nil (single-shot path).
   private var dictateStreamingSession: DictateStreamingSession?
+  /// Live text panel while dictating with offline Parakeet (opt-in, plans/active/live-dictate-preview.md).
+  /// Display only; the transcript still comes from the single-shot decode after Stop.
+  private let liveDictatePreview = LiveDictatePreviewController()
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
@@ -785,6 +793,7 @@ class MenuBarController: NSObject {
       dismissQuickActions()
       DebugLogger.log("AUDIO: Recording discarded via indicator ✕")
       RecordingIndicatorManager.shared.hide()
+      liveDictatePreview.stop()
       if audioRecorder.stopRecording() {
         recording?.discardOnFinish = true
       } else {
@@ -3366,6 +3375,11 @@ extension MenuBarController: AudioRecorderDelegate {
       beginMeetingSegment(segment)
     case .mode(let mode):
       appState = appState.startRecording(mode)
+      // After the recorder started (plan, Design 3). Meeting segments take the branch above and
+      // never get a preview. Returns at once when the setting is off.
+      if mode == .transcription, appState == .recording(.transcription) {
+        liveDictatePreview.startIfEnabled(vocabulary: speechService.glossaryKeywords())
+      }
     }
   }
 
@@ -4094,6 +4108,7 @@ extension MenuBarController: FnDictationToggleDelegate {
     }
     DebugLogger.log("AUDIO: Discarding Fn dictation recording")
     RecordingIndicatorManager.shared.hide()
+    liveDictatePreview.stop()
     if audioRecorder.stopRecording() {
       recording?.discardOnFinish = true
     } else {

@@ -300,6 +300,18 @@ actor LocalSpeechService {
     }
   }
 
+  // MARK: - Live preview
+
+  /// The resident Parakeet backend, for the live text panel while dictating
+  /// (`LiveDictatePreviewController`). Loads through the same single-flight `initializeModel` the
+  /// prewarmer and the final decode use, so the preview never holds a second copy of the weights;
+  /// an absent download throws here like everywhere else instead of starting one.
+  func parakeetBackendForLivePreview(_ modelType: OfflineModelType) async throws -> ParakeetBackend {
+    try await initializeModel(modelType)
+    guard let parakeet, currentModelType == modelType else { throw ParakeetBackendError.notLoaded }
+    return parakeet
+  }
+
   // MARK: - Unload Model
   func unloadModel() {
     unloadModel(reason: "explicit")

@@ -7,6 +7,7 @@
 //  of the rest of the app's namespace.
 //
 
+import AVFoundation
 import Foundation
 import FluidAudio
 
@@ -26,12 +27,16 @@ import FluidAudio
 final class ParakeetBackend: @unchecked Sendable {
   // `@unchecked`: every stored property is an actor or `Sendable`, and none is reassigned.
   private let manager: AsrManager
+  /// Kept so the live preview can decode with the same weights (`makeLivePreview`): handing
+  /// `AsrModels` to another manager shares the loaded `MLModel`s, it does not load or download.
+  private let models: AsrModels
   private let vocabulary = VocabularyBooster()
   private static let version: AsrModelVersion = .ultra
   private let converter = AudioConverter()
 
-  private init(manager: AsrManager) {
+  private init(manager: AsrManager, models: AsrModels) {
     self.manager = manager
+    self.models = models
   }
 
   // MARK: - Files
@@ -98,7 +103,7 @@ final class ParakeetBackend: @unchecked Sendable {
     let models = try await loadModelsOffline(from: ultraDirectory)
     let manager = AsrManager(config: .default)
     try await manager.loadModels(models)
-    return ParakeetBackend(manager: manager)
+    return ParakeetBackend(manager: manager, models: models)
   }
 
   /// The FluidAudio load call with the network switch shut. Separate so a test can point it at
@@ -152,6 +157,104 @@ final class ParakeetBackend: @unchecked Sendable {
       }
     }
   }
+
+  // MARK: - Live preview
+
+  /// A sliding-window engine on this backend's weights, for the live text panel while dictating
+  /// (`plans/active/live-dictate-preview.md`). No second download and no second copy of the
+  /// model: FluidAudio's manager keeps references to the `MLModel`s already loaded here.
+  ///
+  /// Same language hint and Glossary as `transcribe`. A Glossary that cannot be applied (CTC
+  /// model missing, no usable term) costs the preview its boosting, never the preview itself.
+  ///
+  /// - Parameter onWindow: each decoded window's new text and whether FluidAudio confirmed it.
+  ///   Called on a background task; `LiveTranscriptMerger` turns these into panel text.
+  func makeLivePreview(
+    language: String?, vocabulary terms: [String],
+    onWindow: @escaping @Sendable (_ text: String, _ isConfirmed: Bool) -> Void
+  ) async throws -> ParakeetLivePreview {
+    let hint = language.flatMap(Language.init(rawValue:))
+    let engine = SlidingWindowAsrManager(config: ParakeetLivePreview.windowConfig.applying(language: hint))
+    try await engine.loadModels(models)
+    if !terms.isEmpty {
+      do {
+        let ctcModels = try await vocabulary.ctcModels()
+        let context = CustomVocabularyContext(terms: terms.map { CustomVocabularyTerm(text: $0) })
+        try await engine.configureVocabularyBoosting(vocabulary: context, ctcModels: ctcModels)
+      } catch {
+        DebugLogger.logWarning(
+          "LIVE-PREVIEW: Glossary boosting skipped for the preview (\(error.localizedDescription))")
+      }
+    }
+    // Subscribed before the engine starts, so not even the first window's update is missed.
+    let updates = await engine.transcriptionUpdates
+    try await engine.startStreaming(source: .microphone)
+    return ParakeetLivePreview(engine: engine, updates: updates, onWindow: onWindow)
+  }
+}
+
+/// One dictation's live preview: microphone buffers in, window texts out.
+///
+/// Never part of the result. Stopping does not flush or finish the engine — the pasted text comes
+/// from `ParakeetBackend.transcribe` on the complete recording, so the preview's tail is simply
+/// dropped.
+final class ParakeetLivePreview: @unchecked Sendable {
+  // `@unchecked`: every stored property is an actor, a continuation or a task, none reassigned.
+
+  /// New audio per window. FluidAudio's default layout (2 s left + 11 s + 2 s right) updates once
+  /// every 11 s, far too slowly to read along. 9 + 4 + 2 still fills the model's fixed 15 s input:
+  /// the first text appears ~6 s after the start, then every 4 s, and the longer left context gives
+  /// each window's fresh decoder state more audio to settle in. Cost guard (plan, Design 6): when
+  /// the `LIVE-PREVIEW:` summary shows window latency above ~30 % of this hop, raise it.
+  static let hopSeconds: TimeInterval = 4
+  static let rightContextSeconds: TimeInterval = 2
+  static let windowConfig = SlidingWindowAsrConfig(
+    chunkSeconds: hopSeconds,
+    hypothesisChunkSeconds: 1,
+    leftContextSeconds: 9,
+    rightContextSeconds: rightContextSeconds,
+    minContextForConfirmation: 10,
+    confirmationThreshold: 0.85)
+
+  private let engine: SlidingWindowAsrManager
+  private let audioInput: AsyncStream<AVAudioPCMBuffer>.Continuation
+  private let feedTask: Task<Void, Never>
+  private let updatesTask: Task<Void, Never>
+
+  fileprivate init(
+    engine: SlidingWindowAsrManager,
+    updates: AsyncStream<SlidingWindowTranscriptionUpdate>,
+    onWindow: @escaping @Sendable (String, Bool) -> Void
+  ) {
+    self.engine = engine
+    let (input, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+    audioInput = continuation
+    // One consumer, so buffers reach the engine in capture order. A `Task` per buffer would not
+    // guarantee that.
+    feedTask = Task {
+      for await buffer in input {
+        await engine.streamAudio(buffer)
+      }
+    }
+    updatesTask = Task {
+      for await update in updates {
+        onWindow(update.text, update.isConfirmed)
+      }
+    }
+  }
+
+  /// From any thread (the audio tap calls it on its render thread). Never blocks.
+  func append(_ buffer: AVAudioPCMBuffer) {
+    audioInput.yield(buffer)
+  }
+
+  /// Idempotent. Drops whatever audio is still queued.
+  func stop() {
+    audioInput.finish()
+    feedTask.cancel()
+    updatesTask.cancel()
+    Task { [engine] in await engine.cancel() }
+  }
 }
 
 /// CTC vocabulary boosting for one glossary at a time.
@@ -184,21 +287,25 @@ private actor VocabularyBooster {
     }
   }
 
-  private func session(for terms: [String]) async throws -> VocabularyBoostingSession {
-    if let cached = session, cached.terms == terms { return cached.session }
+  /// The CTC model, loaded once and shared by the final rescore and the live preview.
+  func ctcModels() async throws -> CtcModels {
     let load = ctcLoad ?? Task {
       // Same network rule as the transcriber: the CTC model goes through FluidAudio's ModelHub.
       _ = ParakeetBackend.networkShutByDefault
       return try await CtcModels.load(from: CtcModels.defaultCacheDirectory(for: .ctc110m))
     }
     ctcLoad = load
-    let ctcModels: CtcModels
     do {
-      ctcModels = try await load.value
+      return try await load.value
     } catch {
       ctcLoad = nil  // retry on the next dictation rather than caching the failure
       throw error
     }
+  }
+
+  private func session(for terms: [String]) async throws -> VocabularyBoostingSession {
+    if let cached = session, cached.terms == terms { return cached.session }
+    let ctcModels = try await self.ctcModels()
     let context = CustomVocabularyContext(terms: terms.map { CustomVocabularyTerm(text: $0) })
     let built = try await VocabularyBoostingSession(vocabulary: context, ctcModels: ctcModels)
     session = (terms, built)
