@@ -35,6 +35,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.confirmAboveDurationSeconds,
     UserDefaultsKeys.autoPasteAfterDictation,
     UserDefaultsKeys.restoreClipboardAfterPaste,
+    UserDefaultsKeys.clearClipboardAfterAutoPaste,
     UserDefaultsKeys.fnKeyDictation,
     UserDefaultsKeys.screenshotInPromptMode,
     UserDefaultsKeys.screenshotSaveEnabled,
@@ -95,6 +96,7 @@ struct SettingsSlotRoundTripTests {
     data.confirmAboveDuration = .tenMinutes
     data.autoPasteAfterDictation = !SettingsDefaults.autoPasteAfterDictation
     data.restoreClipboardAfterPaste = !SettingsDefaults.restoreClipboardAfterPaste
+    data.clearClipboardAfterAutoPaste = !SettingsDefaults.clearClipboardAfterAutoPaste
     data.fnKeyDictation = !SettingsDefaults.fnKeyDictation
     data.screenshotInPromptMode = !SettingsDefaults.screenshotInPromptMode
     data.screenshotSaveEnabled = !SettingsDefaults.screenshotSaveEnabled

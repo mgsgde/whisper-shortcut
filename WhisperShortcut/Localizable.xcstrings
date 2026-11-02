@@ -2710,6 +2710,16 @@
         }
       }
     },
+    "After the text is inserted, the clipboard is emptied so a later ⌘V cannot paste an earlier dictation. Copy Last Transcription still works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Einfügen wird die Zwischenablage geleert, damit ein späteres ⌘V kein früheres Diktat einfügen kann. „Letzte Transkription kopieren“ funktioniert weiterhin."
+          }
+        }
+      }
+    },
     "AI app (MCP)" : {
       "localizations" : {
         "de" : {
@@ -5217,6 +5227,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat leeren"
+          }
+        }
+      }
+    },
+    "Clear clipboard after auto-paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage nach dem Einfügen leeren"
+          }
+        }
+      }
+    },
+    "Clear clipboard:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage leeren:"
           }
         }
       }

@@ -96,4 +96,24 @@ struct ClipboardPasteGuardTests {
     #expect(ClipboardPasteGuard.restoreAllowed(changeCountAtWrite: 7, currentChangeCount: 7))
     #expect(!ClipboardPasteGuard.restoreAllowed(changeCountAtWrite: 7, currentChangeCount: 9))
   }
+
+  @Test("Delayed action: a stale closure does nothing, the newest restores or discards")
+  func delayedAction() {
+    // Stale (a newer paste started meanwhile): never touches the pasteboard or restore point,
+    // whether or not the count moved.
+    #expect(
+      ClipboardPasteGuard.delayedAction(
+        generation: 1, latestGeneration: 2, changeCountAtWrite: 7, currentChangeCount: 9) == .ignore)
+    #expect(
+      ClipboardPasteGuard.delayedAction(
+        generation: 1, latestGeneration: 2, changeCountAtWrite: 7, currentChangeCount: 7) == .ignore)
+    // Newest, pasteboard unchanged: restore.
+    #expect(
+      ClipboardPasteGuard.delayedAction(
+        generation: 2, latestGeneration: 2, changeCountAtWrite: 7, currentChangeCount: 7) == .restore)
+    // Newest, something else wrote: discard.
+    #expect(
+      ClipboardPasteGuard.delayedAction(
+        generation: 2, latestGeneration: 2, changeCountAtWrite: 7, currentChangeCount: 9) == .discard)
+  }
 }

@@ -203,6 +203,8 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.autoPasteAfterDictation),
     .bool(\.restoreClipboardAfterPaste, key: UserDefaultsKeys.restoreClipboardAfterPaste,
           default: SettingsDefaults.restoreClipboardAfterPaste),
+    .bool(\.clearClipboardAfterAutoPaste, key: UserDefaultsKeys.clearClipboardAfterAutoPaste,
+          default: SettingsDefaults.clearClipboardAfterAutoPaste),
     .bool(\.fnKeyDictation, key: UserDefaultsKeys.fnKeyDictation,
           default: SettingsDefaults.fnKeyDictation),
 

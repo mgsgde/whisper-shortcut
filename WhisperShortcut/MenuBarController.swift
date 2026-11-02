@@ -3194,6 +3194,20 @@ class MenuBarController: NSObject {
     #endif
   }
 
+  private static var clearClipboardEnabled: Bool {
+    #if APP_STORE
+    return false
+    #else
+    return UserDefaults.standard.object(forKey: UserDefaultsKeys.clearClipboardAfterAutoPaste) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.clearClipboardAfterAutoPaste)
+      : SettingsDefaults.clearClipboardAfterAutoPaste
+    #endif
+  }
+
+  /// Incremented by every `autoPasteIfEnabled` call; a delayed restore only acts if it still holds
+  /// the latest value (see `ClipboardPasteGuard.delayedAction`).
+  private var pasteGeneration = 0
+
   /// Set by menu re-runs that run from idle (no recording start, so no recorded paste target):
   /// their result is copied only, never pasted into whatever app got the last dictation.
   private var clipboardOnlyForNextResult = false
@@ -3282,6 +3296,10 @@ class MenuBarController: NSObject {
     return false
     #else
     if Self.autoPasteAvailable {
+      // Every job is a generation, pasting or not: a delayed restore from an earlier job must not
+      // touch the restore point of this one.
+      pasteGeneration += 1
+      let generation = pasteGeneration
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
         AccessibilityPermissionManager.showAccessibilityPermissionDialog()
@@ -3365,20 +3383,29 @@ class MenuBarController: NSObject {
         ])
 
       // Non-destructive paste: give the receiving app time to read the pasteboard, then put
-      // the user's previous clipboard back.
+      // the user's previous clipboard back. With restore off, the optional "clear" setting empties
+      // the pasteboard instead, so a later manual ⌘V cannot paste this dictation.
+      let clearInsteadOfRestore = !Self.restoreClipboardEnabled && Self.clearClipboardEnabled
       DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) { [weak self] in
         guard let self else { return }
-        guard
-          ClipboardPasteGuard.restoreAllowed(
-            changeCountAtWrite: writtenChangeCount,
-            currentChangeCount: NSPasteboard.general.changeCount)
-        else {
+        switch ClipboardPasteGuard.delayedAction(
+          generation: generation, latestGeneration: self.pasteGeneration,
+          changeCountAtWrite: writtenChangeCount,
+          currentChangeCount: NSPasteboard.general.changeCount)
+        {
+        case .ignore:
+          // A newer job owns the clipboard and its restore point now.
+          return
+        case .discard:
           DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
           self.clipboardManager.discardRestorePoint()
-          return
-        }
-        if self.clipboardManager.restorePendingSnapshot() {
-          DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+        case .restore:
+          if clearInsteadOfRestore {
+            NSPasteboard.general.clearContents()
+            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste")
+          } else if self.clipboardManager.restorePendingSnapshot() {
+            DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+          }
         }
       }
       return true

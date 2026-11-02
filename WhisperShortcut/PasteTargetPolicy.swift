@@ -79,4 +79,23 @@ enum ClipboardPasteGuard {
   static func restoreAllowed(changeCountAtWrite: Int, currentChangeCount: Int) -> Bool {
     currentChangeCount == changeCountAtWrite
   }
+
+  enum DelayedAction: Equatable {
+    /// A newer paste owns the pasteboard and its restore point: touch nothing.
+    case ignore
+    /// Newest paste, pasteboard still ours: put the old clipboard back (or clear it).
+    case restore
+    /// Newest paste, something else wrote meanwhile: drop the restore point, leave the pasteboard.
+    case discard
+  }
+
+  /// What the closure scheduled after a paste may do once its delay is over. Only the closure of
+  /// the newest paste acts; a stale one must not discard a newer job's restore point.
+  static func delayedAction(
+    generation: Int, latestGeneration: Int, changeCountAtWrite: Int, currentChangeCount: Int
+  ) -> DelayedAction {
+    guard generation == latestGeneration else { return .ignore }
+    return restoreAllowed(changeCountAtWrite: changeCountAtWrite, currentChangeCount: currentChangeCount)
+      ? .restore : .discard
+  }
 }

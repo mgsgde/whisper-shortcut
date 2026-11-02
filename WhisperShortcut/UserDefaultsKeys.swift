@@ -69,6 +69,9 @@ enum UserDefaultsKeys {
   /// After auto-paste, put back whatever was on the clipboard before dictation
   /// ("non-destructive paste"). Only has an effect while auto-paste is on.
   static let restoreClipboardAfterPaste = "restoreClipboardAfterPaste"
+  /// After auto-paste, empty the clipboard so a later manual ⌘V cannot paste the dictation.
+  /// Only has an effect while auto-paste is on and restore is off (restore wins).
+  static let clearClipboardAfterAutoPaste = "clearClipboardAfterAutoPaste"
 
   // MARK: - Fn Key Dictation
   /// Fn (Globe) key dictation: press to start the recording, press again to stop and

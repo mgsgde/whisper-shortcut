@@ -2127,6 +2127,9 @@ struct SettingsDefaults {
   /// still reach for ⌘V afterwards (pasting the same dictation into a second window). Putting
   /// the old clipboard back would break that, so restoring stays a deliberate choice.
   static let restoreClipboardAfterPaste = false
+  /// OFF by default: emptying the clipboard breaks the habit of pasting the same dictation a second
+  /// time. Practices where a stale ⌘V could paste one patient's text into another's note turn it on.
+  static let clearClipboardAfterAutoPaste = false
 
   // MARK: - Fn Key Dictation
   // Off in the App Store build: observing the Fn key needs Accessibility (Guideline 2.4.5).
@@ -2281,6 +2284,7 @@ struct SettingsData: Equatable {
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
   var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
+  var clearClipboardAfterAutoPaste: Bool = SettingsDefaults.clearClipboardAfterAutoPaste
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
