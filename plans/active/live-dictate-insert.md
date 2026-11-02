@@ -64,6 +64,31 @@ and an append-only design never needs it.
    edit distance between the inserted text and the single-shot text — counts only, never words.
    That answers "how much do pieces cost against the whole file" on real dictations.
 
+## As built after the independent review (2026-11-02)
+
+- A live session exists only for a live recording: created before the recorder starts, ended on
+  every discard/cancel/failure path, on a cancelled or empty start, and at every normal Dictate
+  start; rotated chunks reach it only while the recording is flagged live.
+- The paste target is checked again right before ⌘V (a ⌘Tab in between must not redirect a piece);
+  no recorded target or a secure (password) field → the piece waits.
+- Pieces go through the clipboard marked transient/concealed and current-host-only (no clipboard
+  history apps, no Universal Clipboard), 0.4 s apart. With "Restore clipboard" on, the clipboard
+  from before the recording comes back at the end and on every cancel.
+- A failed piece never leaves a silent gap: the whole file is decoded onto the clipboard with a
+  notice; if that fails too, the notice says so and the recording is kept.
+- The drift measurement waits until the app has been idle for 10 s and is skipped otherwise.
+- The auto-paste setting is not required: pressing Dictate Live is the request to type at the cursor.
+
+Known gaps, deliberately not in v1:
+- Switching to another window **inside the same app** (another patient in the same EHR) is not
+  detected; the guard is per app. Next step: record the focused AX window at start and hold if it
+  changes.
+- A recording error at Stop (merge failed) drops held text and the tail piece.
+- Live dictations add no audio sample for Smart Improvement and no Writing Style sample.
+- "Transcribe Cancelled Recording" after a cancelled live dictation pastes the whole text, on top of
+  the pieces already inserted.
+- A ⌘C made mid-dictation is overwritten by the next piece.
+
 ## Open questions (measure or decide)
 
 - **Punctuation at mid-sentence pauses.** Parakeet punctuates each piece on its own and may end a
