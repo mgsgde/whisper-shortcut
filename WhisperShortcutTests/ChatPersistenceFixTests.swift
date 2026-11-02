@@ -77,6 +77,8 @@ struct ChatEmptyAssistantTests {
       store: store,
       model: .gemini38Flash)
 
+    // Dropping the empty reply leaves two user turns in a row. Current Gemini, OpenAI and
+    // Anthropic APIs accept consecutive same-role turns.
     let roles = contents.compactMap { $0["role"] as? String }
     #expect(roles == ["user", "user"])
     for turn in contents {
@@ -192,28 +194,93 @@ struct ChatComposerPasteTests {
     #expect(txtName == "notes.txt")
   }
 
-  @Test("HEIC, TIFF, and other types the attach panel hides are rejected")
+  private func bitmap(alpha: Bool) -> NSBitmapImageRep {
+    let info: CGImageAlphaInfo = alpha ? .premultipliedLast : .noneSkipLast
+    let ctx = CGContext(
+      data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info.rawValue)!
+    ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: alpha ? 0.5 : 1)
+    ctx.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+    return NSBitmapImageRep(cgImage: ctx.makeImage()!)
+  }
+
+  @Test("A pasted TIFF without alpha is converted to JPEG")
+  func tiffWithoutAlphaBecomesJpeg() throws {
+    let tiff = try #require(bitmap(alpha: false).tiffRepresentation)
+    let url = try writeTemp(name: "scan.tiff", bytes: tiff)
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
+    guard case .attach(let data, let mime, let filename) = decision else {
+      Issue.record("expected attach, got \(decision)")
+      return
+    }
+    #expect(mime == "image/jpeg")
+    #expect(filename == "scan.jpg")
+    #expect(data.starts(with: [0xFF, 0xD8]))
+    #expect(NSImage(data: data) != nil)
+  }
+
+  @Test("A pasted TIFF with alpha is converted to PNG")
+  func tiffWithAlphaBecomesPng() throws {
+    let tiff = try #require(bitmap(alpha: true).tiffRepresentation)
+    let url = try writeTemp(name: "logo.tif", bytes: tiff)
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
+    guard case .attach(let data, let mime, let filename) = decision else {
+      Issue.record("expected attach, got \(decision)")
+      return
+    }
+    #expect(mime == "image/png")
+    #expect(filename == "logo.png")
+    #expect(data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+  }
+
+  @Test("A pasted HEIC is converted to JPEG")
+  func heicBecomesJpeg() throws {
+    let rep = bitmap(alpha: false)
+    let cg = try #require(rep.cgImage)
+    let out = NSMutableData()
+    let dest = try #require(
+      CGImageDestinationCreateWithData(out, "public.heic" as CFString, 1, nil))
+    CGImageDestinationAddImage(dest, cg, nil)
+    try #require(CGImageDestinationFinalize(dest))
+    let url = try writeTemp(name: "IMG_0001.HEIC", bytes: out as Data)
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
+    guard case .attach(let data, let mime, let filename) = decision else {
+      Issue.record("expected attach, got \(decision)")
+      return
+    }
+    #expect(mime == "image/jpeg")
+    #expect(filename == "IMG_0001.jpg")
+    #expect(data.starts(with: [0xFF, 0xD8]))
+  }
+
+  @Test("An undecodable HEIC is unreadable, not attached")
+  func corruptHeicIsUnreadable() throws {
+    let url = try writeTemp(name: "broken.heic", bytes: Data("not an image".utf8))
+    defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+    let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
+    guard case .reject(_, let reason) = decision else {
+      Issue.record("expected reject, got \(decision)")
+      return
+    }
+    #expect(reason == .unreadable)
+  }
+
+  @Test("Types the attach panel hides are rejected")
   func disallowedTypesAreRejected() throws {
-    let heic = try writeTemp(name: "photo.heic", bytes: Data("heic".utf8))
-    let tiff = try writeTemp(name: "photo.tiff", bytes: Data("tiff".utf8))
     let zip = try writeTemp(name: "archive.zip", bytes: Data("zip".utf8))
-    defer {
-      try? FileManager.default.removeItem(at: heic.deletingLastPathComponent())
-      try? FileManager.default.removeItem(at: tiff.deletingLastPathComponent())
-      try? FileManager.default.removeItem(at: zip.deletingLastPathComponent())
+    defer { try? FileManager.default.removeItem(at: zip.deletingLastPathComponent()) }
+    let decision = ComposerFilePaste.decision(for: zip, maxBytes: AppConstants.maxFileSizeBytes)
+    guard case .reject(let filename, let reason) = decision else {
+      Issue.record("archive.zip was attached: \(decision)")
+      return
     }
-    for url in [heic, tiff, zip] {
-      let decision = ComposerFilePaste.decision(for: url, maxBytes: AppConstants.maxFileSizeBytes)
-      guard case .reject(let filename, let reason) = decision else {
-        Issue.record("\(url.lastPathComponent) was attached: \(decision)")
-        continue
-      }
-      #expect(filename == url.lastPathComponent)
-      #expect(reason == .unsupportedType)
-    }
-    let message = ChatViewModel.attachmentUnsupportedMessage(filenames: ["photo.heic"])
-    #expect(message.contains("photo.heic"))
-    #expect(message.contains("wasn't attached") == false)
+    #expect(filename == "archive.zip")
+    #expect(reason == .unsupportedType)
+    let message = ChatViewModel.attachmentUnsupportedMessage(filenames: ["archive.zip"])
+    #expect(message.contains("archive.zip"))
   }
 
   @Test("An oversized paste is rejected with the same message as the attach panel")

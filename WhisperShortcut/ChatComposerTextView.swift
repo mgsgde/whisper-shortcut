@@ -595,7 +595,8 @@ final class GeminiComposerController: ObservableObject {
 /// Decides what a pasted file URL becomes. Images are not routed through `insertScreenshot`,
 /// which would label every one `image/png` / `screenshot.png`. The allow-list is
 /// `ChatViewModel.attachableContentTypes` — the same types the attach panel offers.
-/// HEIC and TIFF are not in that list, so they are rejected rather than converted.
+/// HEIC and TIFF are not in that list (the APIs do not accept them), so they are converted
+/// through `NSImage` to JPEG, or PNG when the image has an alpha channel.
 enum ComposerFilePaste {
   enum Rejection: Equatable {
     case tooLarge
@@ -624,13 +625,41 @@ enum ComposerFilePaste {
     if data.count > maxBytes {
       return .reject(filename: filename, reason: .tooLarge)
     }
-    guard let type = UTType(filenameExtension: url.pathExtension),
+    let fileType = UTType(filenameExtension: url.pathExtension)
+    if let fileType, fileType.conforms(to: .heic) || fileType.conforms(to: .tiff) {
+      guard let converted = convertToSupportedImage(data, originalFilename: filename) else {
+        return .reject(filename: filename, reason: .unreadable)
+      }
+      if converted.data.count > maxBytes {
+        return .reject(filename: filename, reason: .tooLarge)
+      }
+      return .attach(data: converted.data, mimeType: converted.mimeType, filename: converted.filename)
+    }
+    guard let type = fileType,
           ChatViewModel.attachableContentTypes.contains(where: { type.conforms(to: $0) }),
           let mime = type.preferredMIMEType
     else {
       return .reject(filename: filename, reason: .unsupportedType)
     }
     return .attach(data: data, mimeType: mime, filename: filename)
+  }
+
+  /// Re-encodes an image the chat APIs do not accept (HEIC, TIFF) as JPEG, or PNG when it has
+  /// alpha. Returns nil when the data cannot be decoded.
+  static func convertToSupportedImage(
+    _ data: Data, originalFilename: String
+  ) -> (data: Data, mimeType: String, filename: String)? {
+    guard let image = NSImage(data: data),
+          let tiff = image.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff)
+    else { return nil }
+    let usePNG = rep.hasAlpha
+    let fileType: NSBitmapImageRep.FileType = usePNG ? .png : .jpeg
+    let properties: [NSBitmapImageRep.PropertyKey: Any] = usePNG ? [:] : [.compressionFactor: 0.9]
+    guard let out = rep.representation(using: fileType, properties: properties) else { return nil }
+    let base = (originalFilename as NSString).deletingPathExtension
+    let ext = usePNG ? "png" : "jpg"
+    return (out, usePNG ? "image/png" : "image/jpeg", "\(base).\(ext)")
   }
 }
 
