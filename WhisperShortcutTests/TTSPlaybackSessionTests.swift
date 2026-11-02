@@ -133,4 +133,31 @@ struct TTSPlaybackSessionTests {
     #expect(events.completed == 1)
     #expect(events.failures.isEmpty)
   }
+
+  @Test("Refusing after the queue already drained ends the session silently, exactly once")
+  func refusalAfterDrainedQueueIsSilent() async {
+    let events = Events()
+    let session = makeSession(events)
+    defer { session.stop() }
+    let id = session.begin()
+    session.enqueue(Self.silenceChunk, index: 0, totalChunks: 2, generation: id)
+    #expect(session.hasScheduledChunks)
+    #expect(session.isPlaying)
+
+    // Let the lone 100 ms buffer play out. The stream is still open, so the session stays up.
+    try? await Task.sleep(for: .milliseconds(600))
+    #expect(session.isPlaying)
+    #expect(events.completed == 0)
+
+    // The producer then fails. The refusal ends playback itself, and must not fire the
+    // success callback (the owner posts `ttsDidStop` once and shows the error).
+    #expect(session.refuseFurtherChunks())
+    #expect(!session.isPlaying)
+    #expect(events.completed == 0)
+    #expect(events.failures.isEmpty)
+
+    // A late cancel refuses again: nothing left to end.
+    #expect(!session.refuseFurtherChunks())
+    #expect(events.completed == 0)
+  }
 }

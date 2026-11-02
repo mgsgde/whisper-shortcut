@@ -111,6 +111,8 @@ final class TTSPlaybackSession {
   /// `closeStream` tell "the producer finished without ever delivering audio" (end the session)
   /// from "the user already stopped this session" (nothing to do).
   private var sessionActive = false
+  /// True only inside `refuseFurtherChunks`; makes a synchronous completion silent (see there).
+  private var isRefusing = false
   /// Bumped by every `begin()`. A producer captures the value it was started with and passes it to
   /// `enqueue`, so a chunk from a cancelled Read Aloud whose synthesis landed late cannot be
   /// accepted into the next one (`acceptingChunks` alone is true again by then).
@@ -336,10 +338,20 @@ final class TTSPlaybackSession {
   /// `completeIfDrained` never sees `streamClosed` and `isPlaying` stays true. A refusal before
   /// any audio is not a failure; the owner reports that error itself (or the user stopped
   /// during processing).
-  func refuseFurtherChunks() {
+  ///
+  /// When the queue has already drained, the refusal itself ends the session. That completion is
+  /// *not* reported through `onPlaybackCompleted`: the caller is mid-teardown and owns the
+  /// end-of-session reporting (one `ttsDidStop`, and an error rather than "Audio playback
+  /// completed" on the failure path), so a second, success-flavoured callback would double-post.
+  /// - Returns: true when this call ended the playback synchronously.
+  @discardableResult
+  func refuseFurtherChunks() -> Bool {
     acceptingChunks = false
-    guard hasScheduledChunks else { return }
+    guard hasScheduledChunks, currentPlaybackToken != nil else { return false }
+    isRefusing = true
+    defer { isRefusing = false }
     closeStream()
+    return currentPlaybackToken == nil
   }
 
   // MARK: - Transport controls (driven by the pill)
@@ -482,7 +494,7 @@ final class TTSPlaybackSession {
     acceptingChunks = false
     sessionActive = false
     tearDownGraph()
-    onPlaybackCompleted()
+    if !isRefusing { onPlaybackCompleted() }
   }
 
   /// The engine stopped by itself because the audio hardware configuration changed. Restarting is

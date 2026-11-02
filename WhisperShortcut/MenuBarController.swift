@@ -3200,7 +3200,9 @@ class MenuBarController: NSObject {
     // Stop first when playback is being torn down. `refuseFurtherChunks` closes the stream once
     // chunks have been scheduled, so a producer error or cancel can let those buffers finish and
     // then end the session. After `stop()` nothing is scheduled, so an explicit Stop stays a
-    // teardown and does not take that completion path.
+    // teardown and does not take that completion path. If the queue had already drained, the
+    // refusal ends playback itself and stays silent (no `onPlaybackCompleted`), so the single
+    // `ttsDidStop` below is the only one and the error path never flashes "Audio playback completed".
     if stopPlayback {
       ttsPlayback.stop()
     }
