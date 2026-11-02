@@ -32,13 +32,15 @@ struct KeyboardShortcutsSection: View {
 
       // Labels keep the trailing colon, and Chat/Settings keep the "Open " the form has
       // always used. The binding is a `SettingsData` field, not the `ShortcutConfig` key path.
-      row("\(ShortcutAction.dictate.title):", $viewModel.data.toggleDictation, .toggleDictation)
-      row("\(ShortcutAction.dictatePrompt.title):", $viewModel.data.togglePrompting, .togglePrompting)
-      row("\(ShortcutAction.screenshot.title):", $viewModel.data.screenshotCapture, .screenshotCapture)
+      // Literal keys, not `"\(ShortcutAction.x.title):"`: interpolating the English `title`
+      // looks up `%@:` and leaves the name untranslated.
+      row("Dictate:", $viewModel.data.toggleDictation, .toggleDictation)
+      row("Dictate Prompt:", $viewModel.data.togglePrompting, .togglePrompting)
+      row("Screenshot:", $viewModel.data.screenshotCapture, .screenshotCapture)
 
       // Selection-based shortcuts copy via ⌘C (Accessibility) — not in the App Store build.
       if ShortcutAction.readAloud.isInThisBuild {
-        row("\(ShortcutAction.readAloud.title):", $viewModel.data.readAloud, .readAloudShortcut)
+        row("Read Aloud:", $viewModel.data.readAloud, .readAloudShortcut)
       }
 
       // Glossary is not a `ShortcutAction` (see that enum). Same App Store exclusion as Read Aloud.
