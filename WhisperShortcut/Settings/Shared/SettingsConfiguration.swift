@@ -1386,6 +1386,26 @@ enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
   }
 }
 
+// MARK: - Punctuation Mode
+/// Offline dictation only. `automatic`: the model punctuates. `spokenOnly`: model punctuation is
+/// stripped and only spoken marks ("Punkt", "Komma", …) are written (`SpokenPunctuation`).
+enum PunctuationMode: String, CaseIterable {
+  case automatic
+  case spokenOnly
+
+  var displayName: String {
+    switch self {
+    case .automatic: return String(localized: "Automatic")
+    case .spokenOnly: return String(localized: "Only when spoken")
+    }
+  }
+
+  static var current: PunctuationMode {
+    UserDefaults.standard.string(forKey: UserDefaultsKeys.punctuationMode)
+      .flatMap(PunctuationMode.init(rawValue:)) ?? SettingsDefaults.punctuationMode
+  }
+}
+
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -2083,6 +2103,7 @@ struct SettingsDefaults {
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
+  static let punctuationMode = PunctuationMode.automatic
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2246,6 +2267,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
+  var punctuationMode: PunctuationMode = SettingsDefaults.punctuationMode
 
   // MARK: - Notification Settings
   var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications

@@ -8,7 +8,9 @@ import Foundation
 ///
 /// Deliberately narrow: "Punkt", "Komma" and "Fragezeichen" are ordinary German words ("der
 /// wichtigste Punkt"), so they are left alone. Only phrases that are almost never meant literally in
-/// dictation are converted, matched case-insensitively on whole words.
+/// dictation are converted, matched case-insensitively on whole words. The exception is the
+/// "Only when spoken" punctuation mode (`PunctuationMode.spokenOnly`): there the user has opted in
+/// to saying the marks, so "Punkt", "Komma", "Fragezeichen" and "Ausrufezeichen" are converted too.
 enum SpokenPunctuation {
   private struct Rule {
     let regex: NSRegularExpression
@@ -36,7 +38,32 @@ enum SpokenPunctuation {
     // Parakeet glues this one onto the next word too ("neue Zeileinspektion", live capture
     // 2026-10-20). "neue Zeilen…" is left alone: that is the plural or a compound, said literally.
     rule(#"[ \t,;]*\bneue[ \t]+zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
+    // "ich Schrägstrich sage" → "ich/sage". Spaces and stray ASR commas/periods around it go.
+    // "Schrägstriche" (plural) does not match; the glued form ("Schrägstrichsage") does.
+    rule(#"[ \t,.;]*\bschr(?:ä|ae)gstrich\b[ \t,.;]*"#, "/"),
+    rule(#"[ \t,.;]*\bschr(?:ä|ae)gstrich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
   ]
+
+  /// Only in `PunctuationMode.spokenOnly`, where the model adds no punctuation of its own. The mark
+  /// attaches to the previous word with one space after; after ". ? !" the next word is
+  /// capitalized (marker, see `capitalizeAfterGluedColon`). Run after `rules`.
+  private static let spokenOnlyRules: [Rule] = [
+    rule(#"[ \t,.;]*\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
+    rule(#"[ \t,.;]*\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
+    rule(#"[ \t,.;]*\bpunkt\b[ \t,.;]*"#, ". \u{1}"),
+    rule(#"[ \t,.;]*\bkomma\b[ \t,.;]*"#, ", "),
+  ]
+
+  /// Removes the punctuation an offline model inserted on its own (`. , ; ! ?`) for
+  /// `PunctuationMode.spokenOnly`. Only marks followed by whitespace or the end of the text, so
+  /// "3.5" and "1,2" survive. Run before `apply`.
+  static func stripModelPunctuation(from text: String) -> String {
+    let range = NSRange(text.startIndex..., in: text)
+    return stripRegex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
+  }
+
+  // swiftlint:disable:next force_try
+  private static let stripRegex = try! NSRegularExpression(pattern: #"[.,;!?]+(?=\s|$)"#)
 
   /// The glued-command rules leave a U+0001 marker before the word they split off; this upper-cases
   /// that word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.
@@ -64,10 +91,10 @@ enum SpokenPunctuation {
   }
 
   /// Text with no command in it comes back byte for byte unchanged.
-  static func apply(to text: String) -> String {
+  static func apply(to text: String, mode: PunctuationMode = .automatic) -> String {
     var result = text
     var changed = false
-    for rule in rules {
+    for rule in mode == .spokenOnly ? rules + spokenOnlyRules : rules {
       let range = NSRange(result.startIndex..., in: result)
       guard rule.regex.firstMatch(in: result, range: range) != nil else { continue }
       result = rule.regex.stringByReplacingMatches(

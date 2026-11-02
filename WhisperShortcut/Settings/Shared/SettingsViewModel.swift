@@ -168,6 +168,8 @@ class SettingsViewModel: ObservableObject {
     // Whisper language
     .rawValue(\.whisperLanguage, key: UserDefaultsKeys.whisperLanguage,
               default: SettingsDefaults.whisperLanguage),
+    .rawValue(\.punctuationMode, key: UserDefaultsKeys.punctuationMode,
+              default: SettingsDefaults.punctuationMode),
 
     // Transcription tuning
     .rawValue(\.transcriptionTemperature, key: UserDefaultsKeys.transcriptionTemperature,

@@ -1708,6 +1708,16 @@
         }
       }
     },
+    "Automatic" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch"
+          }
+        }
+      }
+    },
     "Choose a template" : {
       "localizations" : {
         "de" : {
@@ -1818,6 +1828,26 @@
         }
       }
     },
+    "Only when spoken" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur gesprochen"
+          }
+        }
+      }
+    },
+    "Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur gesprochen: Satzzeichen werden nicht automatisch gesetzt. Sagen Sie „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ oder „Schrägstrich“. Deutsch, Offline-Modelle."
+          }
+        }
+      }
+    },
     "Press %@" : {
       "localizations" : {
         "de" : {
@@ -1884,6 +1914,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Taste drücken"
+          }
+        }
+      }
+    },
+    "Punctuation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satzzeichen"
           }
         }
       }

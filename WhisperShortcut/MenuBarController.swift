@@ -2550,12 +2550,18 @@ class MenuBarController: NSObject {
         ContextLogger.shared.deleteAudioSample(named: ref)
       }
     }
+    // "Only when spoken" is an offline-dictation setting; meeting segments keep model punctuation.
+    let punctuationMode: PunctuationMode =
+      transcriptionModelForCapture.isOffline && !duringMeeting ? .current : .automatic
     let spec = AudioJobSpec(
       mode: .transcription,
       logLabel: "Transcription",
       errorTitle: String(localized: "Transcription Error"),
       modelInfo: { await self.speechService.getTranscriptionModelInfo() },
-      copyResult: { self.clipboardManager.copyTranscriptionToClipboard(text: $0) },
+      copyResult: {
+        self.clipboardManager.copyTranscriptionToClipboard(
+          text: $0, addTrailingPeriod: punctuationMode == .automatic)
+      },
       presentResult: { text, info, title in
         if let title {
           PopupNotificationWindow.showTranscriptionResponse(text, modelInfo: info, title: .verbatim(title))
@@ -2591,8 +2597,11 @@ class MenuBarController: NSObject {
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
         // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
         // attaches to the word before it.
-        return transcriptionModelForCapture.isOffline
-          ? SpokenPunctuation.apply(to: transcript) : transcript
+        guard transcriptionModelForCapture.isOffline else { return transcript }
+        let source =
+          punctuationMode == .spokenOnly
+          ? SpokenPunctuation.stripModelPunctuation(from: transcript) : transcript
+        return SpokenPunctuation.apply(to: source, mode: punctuationMode)
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*

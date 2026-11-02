@@ -24,6 +24,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedChatModel,
     UserDefaultsKeys.selectedImprovementModel,
     UserDefaultsKeys.whisperLanguage,
+    UserDefaultsKeys.punctuationMode,
     UserDefaultsKeys.transcriptionTemperature,
     UserDefaultsKeys.transcriptionThinkingEffort,
     UserDefaultsKeys.openRouterTranscriptionModelID,
@@ -83,6 +84,7 @@ struct SettingsSlotRoundTripTests {
     data.selectedChatModel = .grok43
     data.selectedImprovementModel = .claudeSonnet55
     data.whisperLanguage = .de
+    data.punctuationMode = .spokenOnly
     data.transcriptionTemperature = .balanced
     data.transcriptionThinkingEffort = .high
     data.openRouterTranscriptionModelID = "probe/openrouter-model"

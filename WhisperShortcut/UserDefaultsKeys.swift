@@ -31,6 +31,7 @@ enum UserDefaultsKeys {
 
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
+  static let punctuationMode = "punctuationMode"
   
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
