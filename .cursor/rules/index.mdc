@@ -4,7 +4,7 @@ alwaysApply: true
 
 ## 📋 Project Overview
 
-**WhisperShortcut** is a macOS menu bar app for voice-first productivity: Dictate, Dictate Prompt, Read Aloud, Screenshot, AI Chat, Live Meeting transcription, Smart Improvement, local Whisper dictation, and Google account + Trello tools. The authoritative user-facing feature list is `README.md` `## Features` plus its shortcuts table — read it there rather than trusting this summary. Xcode project, not SPM.
+**WhisperShortcut** is a macOS menu bar app for voice-first productivity: Dictate, Dictate Prompt, Read Aloud, Screenshot, AI Chat (which also tunes the app from its usage log on request), Live Meeting transcription, local Whisper dictation, and Google account + Trello tools. Smart Improvement (automatic prompt/glossary rewrites from usage) was removed on 2026-11-02 — do not bring back anything that edits prompts or the glossary unattended. The authoritative user-facing feature list is `README.md` `## Features` plus its shortcuts table — read it there rather than trusting this summary. Xcode project, not SPM.
 
 **Stack**: Swift 5+, Cocoa, AVFoundation, UserNotifications · **Target**: macOS 15.5+
 
