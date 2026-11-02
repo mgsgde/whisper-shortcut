@@ -1331,8 +1331,8 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   }
 }
 
-// MARK: - Fn Key Start Mode
-enum FnStartMode: String, CaseIterable {
+// MARK: - Dictate Mode
+enum DictateMode: String, CaseIterable {
   case dictate
   case live
 
@@ -1343,13 +1343,13 @@ enum FnStartMode: String, CaseIterable {
     }
   }
 
-  /// Loads value from UserDefaults or returns SettingsDefaults.fnKeyStartMode.
-  static func loadFromUserDefaults() -> FnStartMode {
-    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.fnKeyStartMode),
-       let mode = FnStartMode(rawValue: raw) {
+  /// Loads value from UserDefaults or returns SettingsDefaults.dictateMode.
+  static func loadFromUserDefaults() -> DictateMode {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictateMode),
+       let mode = DictateMode(rawValue: raw) {
       return mode
     }
-    return SettingsDefaults.fnKeyStartMode
+    return SettingsDefaults.dictateMode
   }
 }
 
@@ -2174,7 +2174,7 @@ struct SettingsDefaults {
     #endif
   }
 
-  static let fnKeyStartMode: FnStartMode = .dictate
+  static let dictateMode: DictateMode = .dictate
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
@@ -2320,7 +2320,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
-  var fnKeyStartMode: FnStartMode = SettingsDefaults.fnKeyStartMode
+  var dictateMode: DictateMode = SettingsDefaults.dictateMode
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode

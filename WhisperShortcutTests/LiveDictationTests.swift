@@ -269,36 +269,41 @@ struct LiveDictationTests {
     #expect(cursor.texts.isEmpty)
   }
 
-  // MARK: - Fn key start mode
+  // MARK: - Dictate mode
 
-  @Test("Fn starts normal Dictate by default")
-  func fnDefaultIsDictate() {
-    #expect(SettingsDefaults.fnKeyStartMode == .dictate)
-    #expect(SettingsData().fnKeyStartMode == .dictate)
+  @Test("Dictate mode defaults to normal Dictate")
+  func dictateModeDefaultIsDictate() {
+    #expect(SettingsDefaults.dictateMode == .dictate)
+    #expect(SettingsData().dictateMode == .dictate)
   }
 
-  @Test("Fn start mode raw values round-trip and reject unknown ones")
-  func fnRawValues() {
-    for mode in FnStartMode.allCases {
-      #expect(FnStartMode(rawValue: mode.rawValue) == mode)
+  @Test("Dictate mode raw values round-trip and reject unknown ones")
+  func dictateModeRawValues() {
+    for mode in DictateMode.allCases {
+      #expect(DictateMode(rawValue: mode.rawValue) == mode)
     }
-    #expect(FnStartMode(rawValue: "bogus") == nil)
+    #expect(DictateMode(rawValue: "bogus") == nil)
   }
 
-  @Test("Fn start decision: Dictate never depends on availability")
-  func fnDecisionDictate() {
+  @Test("Start decision: Dictate never depends on availability")
+  func decisionDictate() {
     let reasons: [LiveDictation.Unavailable?] = [nil, .duringMeeting, .intelMac, .notParakeet, .notDownloaded]
     for reason in reasons {
-      #expect(LiveDictation.fnStartDecision(mode: .dictate, unavailable: reason) == .startDictate)
+      #expect(LiveDictation.startDecision(mode: .dictate, unavailable: reason) == .startDictate)
     }
   }
 
-  @Test("Fn start decision: Live starts when available and refuses with the reason otherwise")
-  func fnDecisionLive() {
-    #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: nil) == .startLive)
-    let reasons: [LiveDictation.Unavailable] = [.duringMeeting, .intelMac, .notParakeet, .notDownloaded]
+  @Test("Start decision: Live starts when available and refuses with the reason otherwise")
+  func decisionLive() {
+    #expect(LiveDictation.startDecision(mode: .live, unavailable: nil) == .startLive)
+    let reasons: [LiveDictation.Unavailable] = [.intelMac, .notParakeet, .notDownloaded]
     for reason in reasons {
-      #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: reason) == .refuse(reason))
+      #expect(LiveDictation.startDecision(mode: .live, unavailable: reason) == .refuse(reason))
     }
+  }
+
+  @Test("Start decision: Live during a meeting starts a Dictate meeting segment instead of refusing")
+  func decisionLiveDuringMeeting() {
+    #expect(LiveDictation.startDecision(mode: .live, unavailable: .duringMeeting) == .startDictate)
   }
 }

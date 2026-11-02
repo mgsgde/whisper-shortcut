@@ -4115,7 +4115,29 @@ extension MenuBarController: AudioRecorderDelegate {
 
 // MARK: - ShortcutDelegate (Simple Forwarding)
 extension MenuBarController: ShortcutDelegate {
-  func toggleDictation() { toggleTranscription() }
+  func toggleDictation() {
+    #if !APP_STORE
+    guard case .start = availability(.dictate) else {
+      // Stop, cancel, busy … behave exactly as today: the Dictate key ends whichever
+      // recording is running, Live included, same as Live's own shortcut.
+      toggleTranscription()
+      return
+    }
+    switch LiveDictation.startDecision(
+      mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
+    {
+    case .startDictate:
+      toggleTranscription()
+    case .startLive:
+      DebugLogger.log("SHORTCUTS: Dictate shortcut starts Dictate Live (mode)")
+      toggleLiveDictation()
+    case .refuse(let reason):
+      presentLiveUnavailable(reason)
+    }
+    #else
+    toggleTranscription()
+    #endif
+  }
 
   func toggleTemplatePrompting(id: UUID) {
     if templateShortcutShouldYieldToDictatePrompt() { return }
@@ -4481,8 +4503,8 @@ extension MenuBarController: FnDictationToggleDelegate {
     toggleTranscription()
     return isDictationRecordingActive()
     #else
-    switch LiveDictation.fnStartDecision(
-      mode: FnStartMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
+    switch LiveDictation.startDecision(
+      mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
     {
     case .startDictate:
       fnStartedLive = false

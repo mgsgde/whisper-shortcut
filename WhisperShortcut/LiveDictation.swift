@@ -32,7 +32,7 @@ enum LiveDictation {
     }
   }
 
-  enum FnStartDecision: Equatable {
+  enum StartDecision: Equatable {
     case startDictate
     case startLive
     case refuse(Unavailable)
@@ -66,10 +66,13 @@ enum LiveDictation {
     return downloaded ? nil : .notDownloaded
   }
 
-  static func fnStartDecision(mode: FnStartMode, unavailable: Unavailable?) -> FnStartDecision {
+  static func startDecision(mode: DictateMode, unavailable: Unavailable?) -> StartDecision {
     switch mode {
     case .dictate: return .startDictate
     case .live:
+      // During a live meeting, Live is never offered — the meeting already owns a dedicated
+      // dictation segment, so the Dictate mode falls back to recording that instead of refusing.
+      if unavailable == .duringMeeting { return .startDictate }
       if let reason = unavailable { return .refuse(reason) }
       return .startLive
     }

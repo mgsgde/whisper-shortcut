@@ -37,7 +37,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.restoreClipboardAfterPaste,
     UserDefaultsKeys.clearClipboardAfterAutoPaste,
     UserDefaultsKeys.fnKeyDictation,
-    UserDefaultsKeys.fnKeyStartMode,
+    UserDefaultsKeys.dictateMode,
     UserDefaultsKeys.screenshotInPromptMode,
     UserDefaultsKeys.screenshotSaveEnabled,
     UserDefaultsKeys.readAloudSmartRewriteEnabled,
@@ -99,7 +99,7 @@ struct SettingsSlotRoundTripTests {
     data.restoreClipboardAfterPaste = !SettingsDefaults.restoreClipboardAfterPaste
     data.clearClipboardAfterAutoPaste = !SettingsDefaults.clearClipboardAfterAutoPaste
     data.fnKeyDictation = !SettingsDefaults.fnKeyDictation
-    data.fnKeyStartMode = .live
+    data.dictateMode = .live
     data.screenshotInPromptMode = !SettingsDefaults.screenshotInPromptMode
     data.screenshotSaveEnabled = !SettingsDefaults.screenshotSaveEnabled
     data.readAloudSmartRewriteEnabled = !SettingsDefaults.readAloudSmartRewriteEnabled
