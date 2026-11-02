@@ -500,7 +500,17 @@ class SpeechService {
       }
     }
 
-    return try await task.value
+    return try await Self.value(of: task)
+  }
+
+  /// `task` is unstructured, so cancelling the awaiting caller (streaming dictate chunks, which
+  /// pass `cancellable: false`) would not reach the running work without this.
+  static func value<T>(of task: Task<T, Error>) async throws -> T {
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   // MARK: - Transcription Mode (Private Implementation)

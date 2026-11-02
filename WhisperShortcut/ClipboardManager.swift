@@ -25,6 +25,10 @@ class ClipboardManager {
   /// `changeCount` immediately after the last `copyToClipboard` write. Restore is skipped
   /// if the pasteboard changed in the meantime (user ⌘C, another dictation).
   private var changeCountAfterLastWrite: Int = 0
+  /// `changeCount` right after the selection copy (Dictate Prompt's synthetic ⌘C) that followed
+  /// the restore point. The job's own result copy is the next write; if the pasteboard moved
+  /// before it, the user copied something while the job ran and the restore point is stale.
+  private var changeCountAfterSelectionCopy: Int?
   /// `changeCount` right after the app's own most recent pasteboard write (a result copy or a
   /// clipboard restore). Unlike `changeCountAfterLastWrite` it is never reset, because its job is
   /// different: it lets Dictate Prompt tell "the user copied something" from "the pasteboard still
@@ -39,6 +43,11 @@ class ClipboardManager {
   }
 
   func copyToClipboard(text: String) {
+    if let expected = changeCountAfterSelectionCopy, pasteboard.changeCount != expected {
+      DebugLogger.log("AUTO-PASTE: Dropping clipboard restore point — user copied during processing")
+      pendingRestore = nil
+    }
+    changeCountAfterSelectionCopy = nil
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
     changeCountAfterLastWrite = pasteboard.changeCount
@@ -103,11 +112,19 @@ class ClipboardManager {
     pendingRestore = snapshot()
   }
 
+  /// Records that `changeCount` is the pasteboard state the job's selection copy produced, so the
+  /// result copy can tell a later user copy from it. Call only while a restore point is held.
+  func noteSelectionCopy(atChangeCount changeCount: Int) {
+    guard pendingRestore != nil else { return }
+    changeCountAfterSelectionCopy = changeCount
+  }
+
   /// Drops the remembered contents without restoring them. Called when a job ends without a
   /// paste, so a later job can never put back a clipboard from minutes ago.
   func discardRestorePoint() {
     pendingRestore = nil
     changeCountAfterLastWrite = 0
+    changeCountAfterSelectionCopy = nil
   }
 
   /// Restore for a job whose pasteboard change was made by another app (the synthetic ⌘C of Read
@@ -127,6 +144,7 @@ class ClipboardManager {
   func restorePendingSnapshot() -> Bool {
     guard let snapshot = pendingRestore else { return false }
     pendingRestore = nil
+    changeCountAfterSelectionCopy = nil
     guard pasteboard.changeCount == changeCountAfterLastWrite else {
       DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
       return false

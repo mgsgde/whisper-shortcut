@@ -223,6 +223,9 @@ class MenuBarController: NSObject {
     var templateInstruction: String?
     /// `displayName` of that template, for the replay menu item. Nil when no template was bound.
     var templateName: String?
+    /// Silence flag of this recording. The recorder's flag belongs to the latest recording, so a
+    /// retry after a newer one must not read it.
+    var recordingWasSilent = false
   }
   private var finishedPromptInputs: [URL: FinishedPromptInputs] = [:]
   /// App Store build + local model only (no synthetic ⌘C there): the pasteboard `changeCount` the
@@ -2325,6 +2328,7 @@ class MenuBarController: NSObject {
                 isEditQuickAction: inputs?.isEditQuickAction ?? false,
                 templateInstruction: inputs?.templateInstruction,
                 templateName: inputs?.templateName,
+                recordingWasSilent: inputs?.recordingWasSilent ?? false,
                 selection: inputs?.selection)
             }
           case .liveMeeting:
@@ -2973,6 +2977,7 @@ class MenuBarController: NSObject {
     isEditQuickAction: Bool = false,
     templateInstruction: String? = nil,
     templateName: String? = nil,
+    recordingWasSilent: Bool = false,
     selection: DictatePromptSelectionCapture?
   ) async {
     // Words of the on-device reply the dictation does not contain (Offline Mode only). They
@@ -3008,7 +3013,7 @@ class MenuBarController: NSObject {
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
           templateName: templateName, selectedText: selectedText,
-          recordingWasSilent: self.audioRecorder.lastRecordingWasSilent)
+          recordingWasSilent: recordingWasSilent)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
@@ -3404,10 +3409,12 @@ class MenuBarController: NSObject {
           changeCountBefore: before, changeCountAfter: after, string: text)
         else { continue }
         selection.resolve(text)
+        clipboardManager.noteSelectionCopy(atChangeCount: after)
         DebugLogger.log("\(logPrefix): Captured selection (\(text?.count ?? 0) chars)")
         return
       }
       selection.resolve(nil)
+      clipboardManager.noteSelectionCopy(atChangeCount: NSPasteboard.general.changeCount)
       DebugLogger.log("\(logPrefix): Nothing selected (⌘C copied nothing) — compose turn")
       // The decision stands. Keep watching only so a slow ⌘C shows up in the logs instead of
       // looking identical to "nothing was selected".
@@ -3418,6 +3425,7 @@ class MenuBarController: NSObject {
         guard DictatePromptSelectionDecision.copyProducedSelection(
           changeCountBefore: before, changeCountAfter: after)
         else { continue }
+        clipboardManager.noteSelectionCopy(atChangeCount: after)
         let elapsedMs = Int(Date().timeIntervalSince(copyStarted) * 1000)
         DebugLogger.logWarning(
           "\(logPrefix): ⌘C copy arrived late after \(elapsedMs) ms (deadline 500 ms) — treated as compose")
@@ -3832,7 +3840,9 @@ extension MenuBarController: AudioRecorderDelegate {
             await self.performTranscription(audioURL: audioURL, job: nil)
           case .prompt:
             await self.performPrompting(
-              audioURL: audioURL, job: nil, selection: intent?.promptSelection)
+              audioURL: audioURL, job: nil,
+              recordingWasSilent: self.audioRecorder.lastRecordingWasSilent,
+              selection: intent?.promptSelection)
           }
         }
         return
@@ -3880,8 +3890,10 @@ extension MenuBarController: AudioRecorderDelegate {
       if let selection = intent?.promptSelection {
         promptInputs.selection = selection
       }
+      promptInputs.recordingWasSilent = self.audioRecorder.lastRecordingWasSilent
       if promptInputs.quickActionInstruction != nil || promptInputs.selection != nil
-          || promptInputs.templateInstruction != nil {
+          || promptInputs.templateInstruction != nil
+          || (recordingMode == .prompt && promptInputs.recordingWasSilent) {
         self.finishedPromptInputs[audioURL] = promptInputs
       }
       let quickActionInstruction = promptInputs.quickActionInstruction
@@ -3924,7 +3936,21 @@ extension MenuBarController: AudioRecorderDelegate {
         alert.alertStyle = .informational
         alert.addButton(withTitle: String(localized: "Process", comment: "Alert button: go ahead and transcribe the long recording"))
         alert.addButton(withTitle: String(localized: "Cancel"))
+        let stateBeforeModal = self.appState
         let response = alert.runModal()
+        // The processing state set above has no job yet, so a cancel hotkey pressed while the modal
+        // is open resets the state to idle without anything to cancel. "Process" must not start
+        // a job over that.
+        if self.appState != stateBeforeModal {
+          DebugLogger.log("RECORDING-SAFEGUARD: Processing was cancelled while the long-recording dialog was open")
+          // The cancel already reset the state and the streaming session; only this file is left.
+          if recordingMode == .transcription {
+            self.retainCancelledRecording(audioURL)
+          } else {
+            self.cleanupAudioFile(at: audioURL)
+          }
+          return
+        }
         if response != .alertFirstButtonReturn {
           DebugLogger.log("RECORDING-SAFEGUARD: User cancelled processing for long recording (\(timeStr))")
           self.discardStreamingSession()
@@ -4078,7 +4104,8 @@ extension MenuBarController: AudioRecorderDelegate {
           audioURL: audioURL, job: job, instruction: quickActionInstruction,
           isEditQuickAction: promptInputs.isEditQuickAction,
           templateInstruction: promptInputs.templateInstruction,
-          templateName: promptInputs.templateName, selection: promptInputs.selection)
+          templateName: promptInputs.templateName,
+          recordingWasSilent: promptInputs.recordingWasSilent, selection: promptInputs.selection)
       }
     case .liveMeeting:
       DebugLogger.logWarning("AUDIO: Unexpected liveMeeting recording in standard AudioRecorderDelegate")
