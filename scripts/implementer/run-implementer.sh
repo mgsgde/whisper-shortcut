@@ -45,6 +45,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # kill_unprotected / daily_app_or: nothing under /Applications (the installed release) is ever killed.
 # shellcheck source=../lib/daily-app.sh
 source "${SCRIPT_DIR}/../lib/daily-app.sh"
+# run_with_timeout: every xcodebuild below runs under a wall-clock limit (process-group kill).
+# shellcheck source=../lib/timed-run.sh
+source "${SCRIPT_DIR}/../lib/timed-run.sh"
 QUEUE_REL="plans/implementer-queue.md"
 LEDGER_REL="plans/implementer-log.md"
 QUEUE_FILE="${REPO_ROOT}/${QUEUE_REL}"
@@ -77,6 +80,8 @@ fi
 PLAN_AGENT="${IMPLEMENTER_PLAN_AGENT:-claude}"
 PLAN_MODEL="${IMPLEMENTER_PLAN_MODEL:-claude-opus-5-5}"
 PLAN_TIMEOUT_SECONDS="${IMPLEMENTER_PLAN_TIMEOUT_SECONDS:-1800}"
+# The review reads one diff and writes one verdict; a call that outlives this is hung.
+REVIEW_TIMEOUT_SECONDS="${IMPLEMENTER_REVIEW_TIMEOUT_SECONDS:-1800}"
 # Grok 4.7 types; over its daily cap the build goes to Sonnet 5.5 at once, never waits
 # (Magnus 2026-10-11: „wann immer Grok aufgebraucht ist, einfach Sonnet verwenden").
 BUILD_AGENT="${IMPLEMENTER_BUILD_AGENT:-cursor}"
@@ -741,10 +746,10 @@ run_static_gates || fail_run "static gates failed (see the GATE FAILED line abov
 # derivedDataPath, so it can never inherit the approval your own build recorded — run
 # q4-20260906 died on it with the build agent's work complete and unjudged.
 log "gate: xcodebuild (Debug)…"
-( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
+( cd "$WT_DIR" && run_with_timeout "$XCODEBUILD_BUILD_TIMEOUT_SECONDS" "${RUN_DIR}/build.log" \
+    xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
     -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" \
     -skipPackagePluginValidation build ) \
-    >"${RUN_DIR}/build.log" 2>&1 \
     || { tail -40 "${RUN_DIR}/build.log"; fail_run "GATE FAILED: xcodebuild"; }
 
 # Gate: the full test plan. xcodebuild test needs the app stopped (a running instance can take
@@ -753,11 +758,12 @@ log "gate: xcodebuild (Debug)…"
 log "gate: test plan (live roundtrips: ${LIVE_TESTS} — kills the running app for the duration)…"
 kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
 ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
-  xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
+  run_with_timeout "$XCODEBUILD_TEST_TIMEOUT_SECONDS" "${RUN_DIR}/tests.log" \
+    xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
     -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+    "${XCODEBUILD_TEST_TIMEOUT_ARGS[@]}" \
     "${TEST_SKIP_ARGS[@]}" -skipPackagePluginValidation \
     -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
-    >"${RUN_DIR}/tests.log" 2>&1 \
     || { tail -40 "${RUN_DIR}/tests.log"; fail_run "GATE FAILED: test plan"; }
 restore_user_app
 
@@ -817,7 +823,7 @@ change. Be concrete and short. Nits are not blocking — say them under "Non-blo
 EOF
 )
         local rc=0
-        run_agent_cli "$REVIEW_AGENT" "$REVIEW_MODEL" 0 "${RUN_DIR}/review-agent-${attempt}.log" "$prompt" || rc=$?
+        run_agent_cli "$REVIEW_AGENT" "$REVIEW_MODEL" "$REVIEW_TIMEOUT_SECONDS" "${RUN_DIR}/review-agent-${attempt}.log" "$prompt" || rc=$?
         (( rc == 77 )) && defer_for_usage_limit
         if [[ "$(git -C "$WT_DIR" rev-parse HEAD)" != "$head_before" ]] \
             || [[ "$(git -C "$WT_DIR" status --porcelain -uall | sort)" != "$status_before" ]]; then
@@ -840,18 +846,19 @@ EOF
         run_build_agent 2 "${RUN_DIR}/review-1.md" || fail_run "build agent failed during rework"
         run_static_gates || fail_run "static gates failed after rework (see above)"
         log "gate: xcodebuild (after rework)…"
-        ( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
+        ( cd "$WT_DIR" && run_with_timeout "$XCODEBUILD_BUILD_TIMEOUT_SECONDS" "${RUN_DIR}/build-2.log" \
+            xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
             -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" \
-            -skipPackagePluginValidation build ) \
-            >"${RUN_DIR}/build-2.log" 2>&1 || { tail -40 "${RUN_DIR}/build-2.log"; fail_run "GATE FAILED: xcodebuild (after rework)"; }
+            -skipPackagePluginValidation build ) || { tail -40 "${RUN_DIR}/build-2.log"; fail_run "GATE FAILED: xcodebuild (after rework)"; }
         log "gate: test plan (after rework)…"
         kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
         ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
-          xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
+          run_with_timeout "$XCODEBUILD_TEST_TIMEOUT_SECONDS" "${RUN_DIR}/tests-2.log" \
+            xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
             -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+            "${XCODEBUILD_TEST_TIMEOUT_ARGS[@]}" \
             "${TEST_SKIP_ARGS[@]}" -skipPackagePluginValidation \
-            -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
-            >"${RUN_DIR}/tests-2.log" 2>&1 || { tail -40 "${RUN_DIR}/tests-2.log"; fail_run "GATE FAILED: test plan (after rework)"; }
+            -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) || { tail -40 "${RUN_DIR}/tests-2.log"; fail_run "GATE FAILED: test plan (after rework)"; }
         restore_user_app
         review_once 2
         VERDICT="$REVIEW_HEAD"
