@@ -165,6 +165,25 @@ struct ParakeetOfflineTests {
       "boosting cost \(vocab.seconds - none.seconds) s on \(audioSeconds) s of audio; budget \(budget) s")
   }
 
+  /// A glossary term must not be spotted into a sentence that never contained it (a practice saw
+  /// "weitere Einschränkungen liegen nicht vor" become "Diarrhöe nicht vor" with only "Diarrhoe" listed).
+  @Test(
+    "Glossary term is not inserted into an unrelated sentence",
+    .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
+  func glossaryTermNotInserted() async throws {
+    try await ModelManager.shared.ensureReady(.parakeetUltra)
+    try await LocalSpeechService.shared.initializeModel(.parakeetUltra)
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("parakeet-noinsert-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let url = dir.appendingPathComponent("unrelated.wav")
+    try Self.say("Weitere Einschränkungen liegen nicht vor.", to: url)
+    let transcript = try await LocalSpeechService.shared.transcribe(
+      audioURL: url, language: "de", vocabulary: ["Diarrhoe"])
+    #expect(!transcript.lowercased().contains("diarrh"), "inserted a term that was never spoken: \(transcript)")
+  }
+
   /// The download reports progress through the CTC phase too, instead of sitting at 86 % for the
   /// last ~100 MB. Removes only the CTC folder and fetches it again through `ModelManager`.
   @Test(

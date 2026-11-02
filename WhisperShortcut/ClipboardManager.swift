@@ -74,8 +74,8 @@ class ClipboardManager {
   }
 
   /// Copies dictation transcript text with capitalization and trailing punctuation.
-  func copyTranscriptionToClipboard(text: String) {
-    copyToClipboard(text: formatTranscription(text))
+  func copyTranscriptionToClipboard(text: String, addTrailingPeriod: Bool = true) {
+    copyToClipboard(text: formatTranscription(text, addTrailingPeriod: addTrailingPeriod))
   }
 
   func getClipboardText() -> String? {
@@ -159,7 +159,7 @@ class ClipboardManager {
   }
 
   // Format transcription text for better readability
-  func formatTranscription(_ text: String) -> String {
+  func formatTranscription(_ text: String, addTrailingPeriod: Bool = true) -> String {
     // Basic formatting improvements
     var formatted = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -169,7 +169,7 @@ class ClipboardManager {
     }
 
     // Add period if missing and text doesn't end with punctuation
-    if let lastChar = formatted.last, !Constants.punctuation.contains(lastChar) {
+    if addTrailingPeriod, let lastChar = formatted.last, !Constants.punctuation.contains(lastChar) {
       formatted += "."
     }
 

@@ -929,6 +929,13 @@ enum MCPSettingsCatalog {
         defaults.set(effort.rawValue, forKey: UserDefaultsKeys.transcriptionThinkingEffort)
       }))
 
+    // MARK: dictation.punctuation — offline dictation only; see `PunctuationMode`.
+    settings.append(enumSetting(
+      id: "dictation.punctuation", title: "Punctuation (offline models)", category: "dictation",
+      allOptions: { PunctuationMode.allCases.map { MCPSetting.Option($0.rawValue, $0.displayName) } },
+      current: { PunctuationMode.current },
+      applyValue: { (mode: PunctuationMode) in defaults.set(mode.rawValue, forKey: UserDefaultsKeys.punctuationMode) }))
+
     // MARK: shortcuts.* — one slot of ShortcutConfig. `slot` is the name
     // `ShortcutValidation.conflictingSlot(excluding:)` uses, so a binding already taken by
     // another row is refused with that row's name. null disables the slot without changing its key.
@@ -1044,6 +1051,11 @@ enum MCPSettingsCatalog {
     settings.append(boolSetting(
       id: "clipboard.restore_after_paste", title: "Restore clipboard after auto-paste", category: "clipboard",
       key: UserDefaultsKeys.restoreClipboardAfterPaste, defaultValue: SettingsDefaults.restoreClipboardAfterPaste))
+
+    // MARK: clipboard.clear_after_auto_paste
+    settings.append(boolSetting(
+      id: "clipboard.clear_after_auto_paste", title: "Clear clipboard after auto-paste", category: "clipboard",
+      key: UserDefaultsKeys.clearClipboardAfterAutoPaste, defaultValue: SettingsDefaults.clearClipboardAfterAutoPaste))
 
     // MARK: dictation.fn_key — direct-download build only (hidden in Settings on the App Store
     // build, `KeyboardShortcutsSection`'s `#if !APP_STORE`); same Accessibility gate as

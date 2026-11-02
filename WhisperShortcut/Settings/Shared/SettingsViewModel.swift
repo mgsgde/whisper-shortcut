@@ -169,6 +169,8 @@ class SettingsViewModel: ObservableObject {
     // Whisper language
     .rawValue(\.whisperLanguage, key: UserDefaultsKeys.whisperLanguage,
               default: SettingsDefaults.whisperLanguage),
+    .rawValue(\.punctuationMode, key: UserDefaultsKeys.punctuationMode,
+              default: SettingsDefaults.punctuationMode),
 
     // Transcription tuning
     .rawValue(\.transcriptionTemperature, key: UserDefaultsKeys.transcriptionTemperature,
@@ -202,6 +204,8 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.autoPasteAfterDictation),
     .bool(\.restoreClipboardAfterPaste, key: UserDefaultsKeys.restoreClipboardAfterPaste,
           default: SettingsDefaults.restoreClipboardAfterPaste),
+    .bool(\.clearClipboardAfterAutoPaste, key: UserDefaultsKeys.clearClipboardAfterAutoPaste,
+          default: SettingsDefaults.clearClipboardAfterAutoPaste),
     .bool(\.fnKeyDictation, key: UserDefaultsKeys.fnKeyDictation,
           default: SettingsDefaults.fnKeyDictation),
     .custom(\.fnKeyStartMode,

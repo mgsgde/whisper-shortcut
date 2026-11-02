@@ -107,7 +107,7 @@ enum APIKeyProvider: CaseIterable {
     }.value
     await MainActor.run {
       ModelSelectionReconciler.reconcileAll()
-      if !key.isEmpty { CloudModelOffer.scheduleCheck() }
+      if !key.isEmpty, let provider = credential.chatProvider { CloudModelOffer.scheduleCheck(for: provider) }
     }
     return status
   }

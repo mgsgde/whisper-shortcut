@@ -448,6 +448,8 @@ struct MCPSettingsCatalogTests {
       "dictate_prompt.local_model_id",
       "dictation.temperature",
       "dictation.thinking_effort",
+      "dictation.punctuation",
+      "clipboard.clear_after_auto_paste",
       "read_aloud.speed",
       "read_aloud.voice.gemini",
       "read_aloud.voice.openai",

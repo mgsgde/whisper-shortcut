@@ -27,6 +27,13 @@ struct SpeechToTextSettingsTab: View {
         SpacedSectionDivider()
       }
 
+      // Punctuation (offline models only: they are the ones that add marks on their own and
+      // write spoken marks out as words)
+      if viewModel.data.selectedTranscriptionModel.isOffline {
+        punctuationSection
+        SpacedSectionDivider()
+      }
+
       // The two text editors, ordered by what the *selected* model actually reads.
       //
       // For offline Whisper and GPT Transcribe the system prompt is inert — the model's API takes
@@ -145,6 +152,39 @@ struct SpeechToTextSettingsTab: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
         }
+      }
+    }
+  }
+
+  // MARK: - Punctuation Section
+  @ViewBuilder
+  private var punctuationSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Punctuation",
+        systemImage: "text.quote",
+        subtitle: "Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself."
+      )
+
+      Picker("Punctuation", selection: $viewModel.data.punctuationMode) {
+        ForEach(PunctuationMode.allCases, id: \.self) { mode in
+          Text(mode.displayName)
+            .tag(mode)
+        }
+      }
+      .pickerStyle(.menu)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onChange(of: viewModel.data.punctuationMode) {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+
+      if viewModel.data.punctuationMode == .spokenOnly {
+        Text("Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
