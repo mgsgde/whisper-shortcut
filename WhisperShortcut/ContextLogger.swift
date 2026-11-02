@@ -619,8 +619,11 @@ class ContextLogger {
 
   /// Lists all WAV files currently in the audio sample pool, oldest first.
   func audioSampleURLs() -> [URL] {
-    let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return [] }
+    Self.audioSampleURLs(in: audioSamplesDirectoryURL)
+  }
+
+  static func audioSampleURLs(in directory: URL) -> [URL] {
+    guard let contents = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
     return contents
       .filter { $0.pathExtension.lowercased() == "wav" }
       .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -664,12 +667,18 @@ class ContextLogger {
   }
 
   /// Removes the entire audio sample pool. Returns the number of files deleted.
-  /// Used when wiping all data; Smart Improvement no longer calls this — audio is now retained across
-  /// runs and bounded by age (see `pruneExpiredAudioSamples`).
+  /// Used when wiping all data and when "Learn from how I use WhisperShortcut" is switched off;
+  /// Smart Improvement no longer calls this — audio is retained across runs and bounded by age
+  /// (see `pruneExpiredAudioSamples`).
   @discardableResult
   func clearAudioSamples() -> Int {
+    Self.clearAudioSamples(in: audioSamplesDirectoryURL)
+  }
+
+  @discardableResult
+  static func clearAudioSamples(in directory: URL) -> Int {
     let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return 0 }
+    guard let contents = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return 0 }
     var deleted = 0
     for url in contents {
       if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
@@ -693,10 +702,7 @@ class ContextLogger {
   @discardableResult
   static func pruneExpiredAudioSamples(in directory: URL, now: Date, retentionDays: Int) -> Int {
     let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return 0 }
-    let urls = contents
-      .filter { $0.pathExtension.lowercased() == "wav" }
-      .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    let urls = audioSampleURLs(in: directory)
     let cutoff = now.addingTimeInterval(-Double(retentionDays) * 86_400)
     let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)

@@ -625,9 +625,20 @@ class ShortcutConfigManager {
     static let liveDictateKey = "shortcut_live_dictate"
   }
 
-  private let userDefaults = UserDefaults.standard
+  private let userDefaults: UserDefaults
 
-  private init() {}
+  /// `userDefaults` is injectable so tests can save into a throwaway suite.
+  init(userDefaults: UserDefaults = .standard) {
+    self.userDefaults = userDefaults
+  }
+
+  static let isAppStoreBuild: Bool = {
+    #if APP_STORE
+    return true
+    #else
+    return false
+    #endif
+  }()
 
   // MARK: - Load/Save Configuration
   func loadConfiguration() -> ShortcutConfig {
@@ -726,35 +737,18 @@ class ShortcutConfigManager {
 
   /// Read Aloud and Add to Glossary are forced off in the App Store build. Writing that disabled
   /// state back would clear a binding the direct download still uses — both builds share these
-  /// defaults. `saveConfiguration` skips them there.
-  static var appStoreSkippedShortcutKeys: Set<String> {
-    [Constants.readAloudKey, Constants.addToGlossaryKey]
-  }
-
-  static func persistsShortcutKey(_ key: String, isAppStore: Bool) -> Bool {
-    guard isAppStore else { return true }
-    return !appStoreSkippedShortcutKeys.contains(key)
-  }
-
-  func saveConfiguration(_ config: ShortcutConfig) {
-    let slots: [(ShortcutDefinition, String)] = [
-      (config.startRecording, Constants.startRecordingKey),
-      (config.startPrompting, Constants.startPromptingKey),
-      (config.openSettings, Constants.openSettingsKey),
-      (config.openChat, Constants.openChatKey),
-      (config.screenshotCapture, Constants.screenshotCaptureKey),
-      (config.readAloud, Constants.readAloudKey),
-      (config.addToGlossary, Constants.addToGlossaryKey),
-      (config.liveDictate, Constants.liveDictateKey),
-    ]
-    #if APP_STORE
-    let isAppStore = true
-    #else
-    let isAppStore = false
-    #endif
-    for (shortcut, key) in slots where Self.persistsShortcutKey(key, isAppStore: isAppStore) {
-      saveShortcut(shortcut, for: key)
+  /// defaults — so `saveConfiguration` leaves those two keys alone there.
+  func saveConfiguration(_ config: ShortcutConfig, isAppStore: Bool = ShortcutConfigManager.isAppStoreBuild) {
+    saveShortcut(config.startRecording, for: Constants.startRecordingKey)
+    saveShortcut(config.startPrompting, for: Constants.startPromptingKey)
+    saveShortcut(config.openSettings, for: Constants.openSettingsKey)
+    saveShortcut(config.openChat, for: Constants.openChatKey)
+    saveShortcut(config.screenshotCapture, for: Constants.screenshotCaptureKey)
+    if !isAppStore {
+      saveShortcut(config.readAloud, for: Constants.readAloudKey)
+      saveShortcut(config.addToGlossary, for: Constants.addToGlossaryKey)
     }
+    saveShortcut(config.liveDictate, for: Constants.liveDictateKey)
 
     // Post notification for shortcut updates
     NotificationCenter.default.post(name: .shortcutsChanged, object: config)

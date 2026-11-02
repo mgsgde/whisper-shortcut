@@ -6,53 +6,45 @@ import Testing
 @Suite("Improve from usage auto-run")
 struct ImproveFromUsageAutoRunTests {
 
-  @Test("A check a few seconds short of the interval is due; a truncated day count is not")
-  func dueUsesElapsedTimeWithSlack() {
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-    let now = calendar.date(from: DateComponents(year: 2026, month: 1, day: 20, hour: 12))!
-    let intervalDays = 7
-    // 30 s short of 7×86400. `dateComponents([.day])` truncates that to 6, so the old
-    // `elapsed >= days` check waited until the next daily timer — a day late.
-    let almost = now.addingTimeInterval(-(Double(intervalDays) * 86_400 - 30))
-    let truncatedDays = calendar.dateComponents([.day], from: almost, to: now).day
-    #expect(truncatedDays == 6)
-    #expect(
-      ImproveFromUsageAutoRunCoordinator.isDue(lastRun: almost, now: now, intervalDays: intervalDays))
+  private let now = Date(timeIntervalSince1970: 1_800_000_000)
+  private let intervalDays = 7
 
-    let twoMinutesShort = now.addingTimeInterval(-(Double(intervalDays) * 86_400 - 120))
+  private func lastRun(shortOfIntervalBy seconds: TimeInterval) -> Date {
+    now.addingTimeInterval(-(Double(intervalDays) * 86_400 - seconds))
+  }
+
+  @Test("A check up to half a day short of the interval is due; a day short is not")
+  func dueToleratesTimerMisalignment() {
+    func due(_ last: Date?) -> Bool {
+      ImproveFromUsageAutoRunCoordinator.isDue(lastRun: last, now: now, intervalDays: intervalDays)
+    }
+    // `dateComponents([.day])` truncated all of these to 6 days and waited another 24 h.
+    #expect(due(lastRun(shortOfIntervalBy: 30)))
+    // The daily timer is anchored to launch, so a run started at another time of day (a Settings
+    // interval change, a later launch) is out of step with it by up to 24 h. The nearest check
+    // on either side of the due time must run it.
+    #expect(due(lastRun(shortOfIntervalBy: 6 * 3_600)))
+    #expect(due(lastRun(shortOfIntervalBy: 11 * 3_600)))
+    #expect(!due(lastRun(shortOfIntervalBy: 13 * 3_600)))
+    #expect(!due(lastRun(shortOfIntervalBy: 24 * 3_600)))
+    #expect(due(now.addingTimeInterval(-Double(intervalDays) * 86_400 - 3_600)))
+    #expect(due(nil))
+  }
+
+  @Test("Daily ticks anchored to launch run the job within 12 h of the due time, then every period")
+  func nextTickAfterMisalignedRun() {
+    // Run started at t0; the launch-anchored timer ticks 19 h later and every 24 h after that.
+    let t0 = now
+    let firstTick = t0.addingTimeInterval(19 * 3_600)
+    let dueAt = t0.addingTimeInterval(Double(intervalDays) * 86_400)
+    // Tick on day 6 (+19 h) is 5 h short of due: runs, instead of waiting for day 7 (+19 h).
+    let dayBeforeDue = firstTick.addingTimeInterval(Double(intervalDays - 1) * 86_400)
+    #expect(dayBeforeDue < dueAt)
+    #expect(
+      ImproveFromUsageAutoRunCoordinator.isDue(lastRun: t0, now: dayBeforeDue, intervalDays: intervalDays))
+    // The tick before that is 29 h short and does not.
     #expect(
       !ImproveFromUsageAutoRunCoordinator.isDue(
-        lastRun: twoMinutesShort, now: now, intervalDays: intervalDays))
-    #expect(ImproveFromUsageAutoRunCoordinator.isDue(lastRun: nil, now: now, intervalDays: intervalDays))
-  }
-
-  @Test("Auto-run follows the selected improvement provider, not a Gemini credential")
-  func credentialFollowsSelectedModel() {
-    #expect(
-      ImproveFromUsageAutoRunCoordinator.providerAllowsAutoRun(
-        model: .openaiGPT6Sol, hasCredential: { $0 == .openai }))
-    // A Gemini key must not unlock a model the user did not select, and must not be required
-    // when the selected provider already has its own credential.
-    #expect(
-      !ImproveFromUsageAutoRunCoordinator.providerAllowsAutoRun(
-        model: .openaiGPT6Sol, hasCredential: { $0 == .gemini }))
-    #expect(
-      ImproveFromUsageAutoRunCoordinator.providerAllowsAutoRun(
-        model: .gemini38Flash, hasCredential: { $0 == .gemini }))
-    #expect(
-      !ImproveFromUsageAutoRunCoordinator.providerAllowsAutoRun(
-        model: .claudeHaiku55, hasCredential: { _ in false }))
-  }
-
-  @Test("The auto-run date is the start of the run, and a transient failure stamps nothing")
-  func stampIsTheStart() {
-    let started = Date(timeIntervalSince1970: 1_700_000_000)
-    #expect(
-      AutoPromptImprovementScheduler.autoRunStamp(startedAt: started, everyFocusFailedTransiently: false)
-        == started)
-    #expect(
-      AutoPromptImprovementScheduler.autoRunStamp(startedAt: started, everyFocusFailedTransiently: true)
-        == nil)
+        lastRun: t0, now: dayBeforeDue.addingTimeInterval(-86_400), intervalDays: intervalDays))
   }
 }

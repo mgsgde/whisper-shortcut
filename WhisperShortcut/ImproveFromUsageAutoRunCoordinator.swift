@@ -8,10 +8,13 @@ final class ImproveFromUsageAutoRunCoordinator {
 
   private static let timerInterval: TimeInterval = 24 * 60 * 60  // 24 hours
 
-  /// How far short of `days × 86400` a check may still count as due. The launch check and the
-  /// 24 h timer are not aligned to the second the run started; `dateComponents([.day])` used to
-  /// drop that remainder, so a check a few seconds early waited a full extra day.
-  nonisolated static let dueSlack: TimeInterval = 60
+  /// How far short of `days × 86400` a check may still count as due. The 24 h timer is anchored
+  /// to launch, not to the run start, so a run started from a Settings interval change (or a
+  /// launch at another time of day) is out of step with it by up to 24 h. Half a day lets the
+  /// nearest check on either side of the due time run it; after that run the stamp and the timer
+  /// are one period apart, so later runs land on the timer ticks. `dateComponents([.day])` used to
+  /// drop the remainder and wait a full extra day.
+  nonisolated static let dueSlack: TimeInterval = 12 * 60 * 60
 
   private var dailyTimer: Timer?
 
@@ -59,7 +62,7 @@ final class ImproveFromUsageAutoRunCoordinator {
     let improvementModel = PromptModel.loadPromptModel(
       forKey: UserDefaultsKeys.selectedImprovementModel,
       default: SettingsDefaults.selectedImprovementModel)
-    guard Self.providerAllowsAutoRun(model: improvementModel, hasCredential: { $0.hasCredential }) else {
+    guard improvementModel.provider.hasCredential else {
       DebugLogger.log("AUTO-RUN: No credential for \(improvementModel.displayName), skipping Improve from usage")
       return
     }
@@ -82,20 +85,13 @@ final class ImproveFromUsageAutoRunCoordinator {
   }
 
   /// True when `intervalDays` have elapsed since `lastRun`, with `dueSlack` so a check that
-  /// lands a few seconds early still runs. A missing last run is due.
+  /// lands up to half a day early still runs (the shortest interval is 3 days, so a run can
+  /// never repeat within a day). A missing last run is due.
   nonisolated static func isDue(
     lastRun: Date?, now: Date, intervalDays: Int, slack: TimeInterval? = nil
   ) -> Bool {
     guard let lastRun else { return true }
     let allowedShortfall = slack ?? dueSlack
     return now.timeIntervalSince(lastRun) >= Double(intervalDays) * 86_400 - allowedShortfall
-  }
-
-  /// The selected improvement model's own provider is what the run authenticates with.
-  /// `hasCredential` is passed in so the rule can be tested without the Keychain.
-  nonisolated static func providerAllowsAutoRun(
-    model: PromptModel, hasCredential: (ChatModelProvider) -> Bool
-  ) -> Bool {
-    hasCredential(model.provider)
   }
 }

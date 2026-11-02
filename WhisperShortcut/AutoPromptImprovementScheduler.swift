@@ -292,18 +292,12 @@ class AutoPromptImprovementScheduler {
     // failures (bad key, billing) still stamp, so they surface once per interval, not every day.
     let everyFocusFailedTransiently =
       !results.isEmpty && results.allSatisfy { $0.error.map(Self.isTransient) ?? false }
-    if let stamp = Self.autoRunStamp(startedAt: startedAt, everyFocusFailedTransiently: everyFocusFailedTransiently) {
-      UserDefaults.standard.set(stamp, forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
-    } else {
+    if everyFocusFailedTransiently {
       DebugLogger.log(
         "AUTO-IMPROVEMENT: Every focus failed on a transient error — lastRun date not set so we retry next check")
+    } else {
+      UserDefaults.standard.set(startedAt, forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
     }
-  }
-
-  /// Date written to `lastAutoImprovementRunDate`, or nil when every focus failed transiently
-  /// and the daily check should retry. The stamp is the start of the run, not when review closed.
-  nonisolated static func autoRunStamp(startedAt: Date, everyFocusFailedTransiently: Bool) -> Date? {
-    everyFocusFailedTransiently ? nil : startedAt
   }
 
   private static func isTransient(_ error: Error) -> Bool {

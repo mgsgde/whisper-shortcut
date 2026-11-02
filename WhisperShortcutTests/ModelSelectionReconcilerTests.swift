@@ -71,6 +71,30 @@ struct ModelSelectionReconcilerTests {
         == .openaiGPT5Mini)
   }
 
+  @Test("A keyed provider is not enough: a model the slot does not offer is replaced")
+  func selectionMustBeOneOfTheCandidates() {
+    // Users already migrated in v8.48 hold `openrouter-chat` in the Dictate Prompt slot.
+    let dictate = PromptModel.dictatePromptCapableModels
+    #expect(!dictate.contains(.openRouterChat))
+    let allKeyed: (ChatModelProvider) -> Bool = { _ in true }
+    #expect(!ModelSelectionReconciler.selectionIsUsable(.openRouterChat, among: dictate, hasKey: allKeyed))
+    #expect(ModelSelectionReconciler.selectionIsUsable(.gemini38Flash, among: dictate, hasKey: allKeyed))
+    // Candidate but key-less is still unusable.
+    #expect(!ModelSelectionReconciler.selectionIsUsable(.gemini38Flash, among: dictate, hasKey: { $0 == .openRouter }))
+
+    // The replacement comes from `preferredPromptModel`, which never picks a non-candidate…
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: { $0 == .gemini || $0 == .openRouter })
+        == .gemini38Flash)
+    // …and an OpenRouter-only user (no Dictate Prompt-capable key) falls to the offline model.
+    let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    let candidates = chatCandidates + [offline]
+    #expect(ModelSelectionReconciler.preferredPromptModel(among: candidates, hasKey: { $0 == .openRouter }) == nil)
+    #expect(
+      ModelSelectionReconciler.keylessOfflineModel(
+        among: candidates, hasKey: { $0 == .openRouter || $0 == .local || $0 == .localMLX }) == offline)
+  }
+
   @Test("Key-less fallback picks the offline MLX default only when no cloud provider has a key")
   func keylessOfflineModelRule() {
     let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)

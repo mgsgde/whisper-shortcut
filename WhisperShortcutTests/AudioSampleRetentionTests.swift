@@ -37,9 +37,20 @@ struct AudioSampleRetentionTests {
     #expect(fm.fileExists(atPath: samples.appendingPathComponent("not-a-timestamp.wav").path))
   }
 
-  @Test("Turning learning off is what clears retained dictation audio")
-  func learningOffClearsSamples() {
-    #expect(ContextLoggingPreference.shouldClearAudioSamples(learningEnabled: false))
-    #expect(!ContextLoggingPreference.shouldClearAudioSamples(learningEnabled: true))
+  @Test("Clearing the pool, which turning learning off does, deletes every clip")
+  func clearRemovesEverySample() throws {
+    let fm = FileManager.default
+    let samples = fm.temporaryDirectory
+      .appendingPathComponent("audio-clear-\(UUID().uuidString)", isDirectory: true)
+    defer { try? fm.removeItem(at: samples) }
+    try fm.createDirectory(at: samples, withIntermediateDirectories: true)
+    for name in ["20260601T120000000-AAAAAA.wav", "20260614T120000000-BBBBBB.wav"] {
+      try Data("clip".utf8).write(to: samples.appendingPathComponent(name))
+    }
+
+    #expect(ContextLogger.audioSampleURLs(in: samples).count == 2)
+    #expect(ContextLogger.clearAudioSamples(in: samples) == 2)
+    #expect(ContextLogger.audioSampleURLs(in: samples).isEmpty)
+    #expect(ContextLogger.clearAudioSamples(in: samples.appendingPathComponent("missing")) == 0)
   }
 }

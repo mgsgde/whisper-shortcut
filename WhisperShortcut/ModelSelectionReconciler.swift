@@ -310,10 +310,10 @@ enum ModelSelectionReconciler {
       DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(upgrade.rawValue) (key added)")
       return
     }
-    if hasKey(current.provider) { return }
+    if selectionIsUsable(current, among: candidates, hasKey: { hasKey($0) }) { return }
     if let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) }) {
       UserDefaults.standard.set(replacement.rawValue, forKey: key)
-      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider))")
+      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider), or not offered for this feature)")
       return
     }
     guard offlineWhenKeyless,
@@ -323,6 +323,17 @@ enum ModelSelectionReconciler {
     setKeylessOfflineFallback(
       key: key, record: KeylessOfflineRecord(fallback: offline, previous: current))
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(offline.rawValue) (no cloud key — offline)")
+  }
+
+  /// A stored selection can stay only if it is one of the slot's `candidates` *and* its provider has
+  /// a key. A key alone is not enough: `openrouter-chat` ended up in the Dictate Prompt slot via the
+  /// v8.48 custom-endpoint migration, has a key, and still throws in `SpeechService.performPrompt`
+  /// because it cannot take audio.
+  static func selectionIsUsable(
+    _ current: PromptModel, among candidates: [PromptModel],
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> Bool {
+    candidates.contains(current) && hasKeyForProvider(current.provider)
   }
 
   /// The offline MLX default, when it is among `candidates` (Apple Silicon) and no cloud provider
