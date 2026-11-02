@@ -16916,12 +16916,12 @@
         }
       }
     },
-    "Runs your last dictation again with your Dictate Prompt system prompt instead of “%@”. Select the formatted text first to replace it." : {
+    "Runs your last dictation again with your Dictate Prompt system prompt instead of “%@”. The result is copied to the clipboard." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Führt Ihr letztes Diktat noch einmal mit Ihrem Dictate-Prompt-System-Prompt statt mit „%@“ aus. Markieren Sie vorher den formatierten Text, um ihn zu ersetzen."
+            "value" : "Führt Ihr letztes Diktat noch einmal mit Ihrem Dictate-Prompt-System-Prompt statt mit „%@“ aus. Das Ergebnis wird in die Zwischenablage kopiert."
           }
         }
       }

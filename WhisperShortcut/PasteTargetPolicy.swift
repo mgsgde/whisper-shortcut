@@ -59,3 +59,24 @@ enum PasteTargetPolicy {
     return .activateRecordedThenPaste
   }
 }
+
+/// Whether the pasteboard still holds exactly what auto-paste put there. The synthetic ⌘V is read
+/// by the receiving app some time later (lazily in browsers, Citrix, RDP), so a pasteboard that
+/// changed in between would paste the previous clipboard — or a previous dictation — instead.
+///
+/// Pure functions of the counts and strings so they are testable without a pasteboard.
+enum ClipboardPasteGuard {
+  /// ⌘V may be sent only while the pasteboard is the one we wrote.
+  static func pasteAllowed(
+    changeCountAtWrite: Int, currentChangeCount: Int, expectedText: String?, currentText: String?
+  ) -> Bool {
+    guard currentChangeCount == changeCountAtWrite else { return false }
+    return currentText == expectedText
+  }
+
+  /// The old clipboard may be put back only if nothing wrote since our write (the user copying
+  /// something new must not be overwritten).
+  static func restoreAllowed(changeCountAtWrite: Int, currentChangeCount: Int) -> Bool {
+    currentChangeCount == changeCountAtWrite
+  }
+}
