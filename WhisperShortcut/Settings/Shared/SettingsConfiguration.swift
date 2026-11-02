@@ -1400,6 +1400,12 @@ enum PunctuationMode: String, CaseIterable {
     }
   }
 
+  /// The mode a dictation actually runs with. "Only when spoken" is an offline-dictation setting:
+  /// cloud models and meeting segments always keep the model's punctuation.
+  static func effective(stored: PunctuationMode, isOffline: Bool, duringMeeting: Bool) -> PunctuationMode {
+    isOffline && !duringMeeting ? stored : .automatic
+  }
+
   static var current: PunctuationMode {
     UserDefaults.standard.string(forKey: UserDefaultsKeys.punctuationMode)
       .flatMap(PunctuationMode.init(rawValue:)) ?? SettingsDefaults.punctuationMode

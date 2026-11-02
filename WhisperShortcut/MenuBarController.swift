@@ -2555,8 +2555,8 @@ class MenuBarController: NSObject {
       }
     }
     // "Only when spoken" is an offline-dictation setting; meeting segments keep model punctuation.
-    let punctuationMode: PunctuationMode =
-      transcriptionModelForCapture.isOffline && !duringMeeting ? .current : .automatic
+    let punctuationMode = PunctuationMode.effective(
+      stored: .current, isOffline: transcriptionModelForCapture.isOffline, duringMeeting: duringMeeting)
     let spec = AudioJobSpec(
       mode: .transcription,
       logLabel: "Transcription",

@@ -161,18 +161,53 @@ struct SpokenPunctuationReplyTests {
 
   // MARK: - Schrägstrich
 
-  @Test("\"Schrägstrich\" becomes a slash with no spaces, in every mode")
+  @Test("\"Schrägstrich\" becomes a slash with no spaces, only in spoken-only mode")
   func slash() {
-    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage") == "ich/sage")
-    #expect(SpokenPunctuation.apply(to: "ich, Schrägstrich. sage") == "ich/sage")
-    #expect(SpokenPunctuation.apply(to: "Hals Schraegstrich Nacken") == "Hals/Nacken")
-    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage", mode: .spokenOnly) == "ich/sage")
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage", mode: mode) == "ich/sage")
+    #expect(SpokenPunctuation.apply(to: "ich, Schrägstrich. sage", mode: mode) == "ich/sage")
+    #expect(SpokenPunctuation.apply(to: "Hals Schraegstrich Nacken", mode: mode) == "Hals/Nacken")
+    // Automatic mode and Dictate Prompt instructions: an ordinary noun.
+    let text = "ersetze jeden Schrägstrich durch ein Komma, getrennt mit einem Schrägstrich"
+    #expect(SpokenPunctuation.apply(to: text) == text)
+    #expect(SpokenPunctuation.apply(to: "ich Schrägstrich sage") == "ich Schrägstrich sage")
   }
 
   @Test("Glued \"Schrägstrich\" splits; the plural stays")
   func slashGluedAndPlural() {
-    #expect(SpokenPunctuation.apply(to: "Hals Schrägstrichnacken") == "Hals/nacken")
-    #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text") == "zwei Schrägstriche im Text")
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "Hals Schrägstrichnacken", mode: mode) == "Hals/nacken")
+    #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text", mode: mode) == "zwei Schrägstriche im Text")
+  }
+
+  @Test("An abbreviation period before \"Schrägstrich\" is kept")
+  func slashKeepsAbbreviationPeriod() {
+    let mode = PunctuationMode.spokenOnly
+    let stripped = SpokenPunctuation.stripModelPunctuation(from: "usw. Schrägstrich b")
+    #expect(SpokenPunctuation.apply(to: stripped, mode: mode) == "usw./b")
+  }
+
+  @Test("A spoken decimal comma between digits has no spaces")
+  func decimalComma() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "3 Komma 5 cm", mode: mode) == "3,5 cm")
+    #expect(SpokenPunctuation.apply(to: "Hallo Komma 5 Stück", mode: mode) == "Hallo, 5 Stück")
+    #expect(SpokenPunctuation.apply(to: "drei Komma fünf", mode: mode) == "drei, fünf")
+  }
+
+  @Test("Capitalisation carries over a line break after Punkt and Fragezeichen")
+  func capitalisationAfterBreak() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "Ende Punkt neue Zeile weiter", mode: mode) == "Ende.\nWeiter")
+    #expect(SpokenPunctuation.apply(to: "Gut Fragezeichen neuer Absatz ja", mode: mode) == "Gut?\n\nJa")
+  }
+
+  @Test("The effective mode is stored only for offline dictation outside meetings")
+  func effectiveMode() {
+    #expect(PunctuationMode.effective(stored: .spokenOnly, isOffline: true, duringMeeting: true) == .automatic)
+    #expect(PunctuationMode.effective(stored: .spokenOnly, isOffline: false, duringMeeting: false) == .automatic)
+    #expect(PunctuationMode.effective(stored: .spokenOnly, isOffline: true, duringMeeting: false) == .spokenOnly)
+    #expect(PunctuationMode.effective(stored: .automatic, isOffline: true, duringMeeting: false) == .automatic)
   }
 
   // MARK: - Only when spoken
@@ -189,6 +224,18 @@ struct SpokenPunctuationReplyTests {
   func stripKeepsNumbers() {
     #expect(SpokenPunctuation.stripModelPunctuation(from: "Wert 3.5 und 1,2 mg, ok.") == "Wert 3.5 und 1,2 mg ok")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "a.b") == "a.b")
+  }
+
+  @Test("Stripping keeps ordinals, dates and abbreviations, and still drops a sentence period")
+  func stripKeepsOrdinalsAndAbbreviations() {
+    let spoken = "Am 3. November untersuchte Dr. Müller z. B. Nr. 5 Punkt"
+    #expect(
+      SpokenPunctuation.apply(
+        to: SpokenPunctuation.stripModelPunctuation(from: spoken), mode: .spokenOnly)
+        == "Am 3. November untersuchte Dr. Müller z. B. Nr. 5.")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Der Befund ist unauffällig. Weiter, ok.") == "Der Befund ist unauffällig Weiter ok")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "bis 5.") == "bis 5")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "5. Lendenwirbel") == "5. Lendenwirbel")
   }
 
   @Test("Spoken marks attach to the previous word with one space after")
