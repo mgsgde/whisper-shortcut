@@ -23420,6 +23420,26 @@
         }
       }
     },
+    "Fn key starts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fn-Taste startet"
+          }
+        }
+      }
+    },
+    "Fn starts Dictate Live: text appears at the cursor after each pause." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fn startet Live diktieren: Der Text erscheint nach jeder Pause am Cursor."
+          }
+        }
+      }
+    },
     "Press Fn once to start, again to stop. Needs Accessibility." : {
       "localizations" : {
         "de" : {

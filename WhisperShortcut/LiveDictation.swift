@@ -32,6 +32,12 @@ enum LiveDictation {
     }
   }
 
+  enum FnStartDecision: Equatable {
+    case startDictate
+    case startLive
+    case refuse(Unavailable)
+  }
+
   static var isAppleSilicon: Bool {
     #if arch(arm64)
     return true
@@ -51,6 +57,15 @@ enum LiveDictation {
     if !appleSilicon { return .intelMac }
     guard model.isOffline, model.offlineModelType?.engine == .parakeet else { return .notParakeet }
     return downloaded ? nil : .notDownloaded
+  }
+
+  static func fnStartDecision(mode: FnStartMode, unavailable: Unavailable?) -> FnStartDecision {
+    switch mode {
+    case .dictate: return .startDictate
+    case .live:
+      if let reason = unavailable { return .refuse(reason) }
+      return .startLive
+    }
   }
 
   // MARK: - Comparing with the whole-file decode

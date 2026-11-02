@@ -1331,6 +1331,28 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Fn Key Start Mode
+enum FnStartMode: String, CaseIterable {
+  case dictate
+  case live
+
+  var displayName: String {
+    switch self {
+    case .dictate: return String(localized: "Dictate")
+    case .live: return String(localized: "Dictate Live")
+    }
+  }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.fnKeyStartMode.
+  static func loadFromUserDefaults() -> FnStartMode {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.fnKeyStartMode),
+       let mode = FnStartMode(rawValue: raw) {
+      return mode
+    }
+    return SettingsDefaults.fnKeyStartMode
+  }
+}
+
 // MARK: - Meeting Safeguard Duration (Live Meeting)
 enum MeetingSafeguardDuration: Double, CaseIterable {
   case never = 0
@@ -2122,6 +2144,8 @@ struct SettingsDefaults {
     #endif
   }
 
+  static let fnKeyStartMode: FnStartMode = .dictate
+
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
@@ -2264,6 +2288,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
+  var fnKeyStartMode: FnStartMode = SettingsDefaults.fnKeyStartMode
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode

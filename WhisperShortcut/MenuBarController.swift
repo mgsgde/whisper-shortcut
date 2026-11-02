@@ -178,6 +178,8 @@ class MenuBarController: NSObject {
   /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
   /// chunks, cut at every short pause.
   private var liveDictationSession: LiveDictationSession?
+  /// Whether the current Fn-started recording is a Dictate Live one, so Fn only ends its own kind.
+  private var fnStartedLive = false
   /// The clipboard from before the current Dictate Live recording, when "Restore clipboard" is on.
   /// Put back at the end and on every cancel, since every piece passed through the clipboard.
   private var liveClipboardSnapshot: ClipboardSnapshot?
@@ -2554,20 +2556,35 @@ class MenuBarController: NSObject {
       toggleTranscription()
       return
     }
-    let model = TranscriptionModel.loadSelected()
-    if let reason = LiveDictation.unavailableReason(
-      model: model, downloaded: model.isOfflineModelAvailable(),
-      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: isLiveMeetingActive)
-    {
-      DebugLogger.log("LIVE-DICTATE: Not started (\(reason))")
-      PopupNotificationWindow.showInfo(verbatim: reason.message, title: "Dictate Live", customDisplayDuration: 6)
+    if let reason = liveUnavailableReason() {
+      presentLiveUnavailable(reason)
       return
     }
+    startLiveDictation()
+    #endif
+  }
+
+  #if !APP_STORE
+  private func liveUnavailableReason() -> LiveDictation.Unavailable? {
+    let model = TranscriptionModel.loadSelected()
+    return LiveDictation.unavailableReason(
+      model: model, downloaded: model.isOfflineModelAvailable(),
+      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: isLiveMeetingActive)
+  }
+
+  private func presentLiveUnavailable(_ reason: LiveDictation.Unavailable) {
+    DebugLogger.log("LIVE-DICTATE: Not started (\(reason))")
+    PopupNotificationWindow.showInfo(verbatim: reason.message, title: "Dictate Live", customDisplayDuration: 6)
+  }
+
+  @discardableResult
+  private func startLiveDictation() -> Bool {
     guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
       DebugLogger.logWarning("LIVE-DICTATE: Not started — Accessibility permission missing")
       AccessibilityPermissionManager.showAccessibilityPermissionDialog()
-      return
+      return false
     }
+    let model = TranscriptionModel.loadSelected()
     ContextLogger.shared.noteDictationStart(autoPasteAvailable: true)
     ConnectionPrewarmer.prewarm(for: model)
     discardStreamingSession()  // also drops any earlier live session
@@ -2589,8 +2606,9 @@ class MenuBarController: NSObject {
     DebugLogger.log("LIVE-DICTATE: Starting (target \(target?.bundleId ?? "none"))")
     beginAudioCapture(mode: .transcription, rotation: .live)
     recording?.isLiveDictation = true
-    #endif
+    return isDictationRecordingActive()
   }
+  #endif
 
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
@@ -4351,8 +4369,27 @@ extension MenuBarController: FnDictationToggleDelegate {
     // fn-down must never cancel in-flight work or stop a recording the user started
     // otherwise — it only ever begins a fresh dictation.
     guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
+    #if APP_STORE
+    fnStartedLive = false
     toggleTranscription()
     return isDictationRecordingActive()
+    #else
+    switch LiveDictation.fnStartDecision(
+      mode: FnStartMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
+    {
+    case .startDictate:
+      fnStartedLive = false
+      toggleTranscription()
+    case .startLive:
+      fnStartedLive = true
+      toggleLiveDictation()  // the shortcut path: availability, Accessibility dialog
+      fnStartedLive = recording?.isLiveDictation == true
+    case .refuse(let reason):
+      presentLiveUnavailable(reason)
+      return false
+    }
+    return isDictationRecordingActive()
+    #endif
   }
 
   func fnDictationStop() {
@@ -4361,7 +4398,9 @@ extension MenuBarController: FnDictationToggleDelegate {
   }
 
   func fnDictationIsRecording() -> Bool {
-    return isDictationRecordingActive()
+    // Fn only ends the kind of recording it started, never one the other shortcut began.
+    guard isDictationRecordingActive() else { return false }
+    return (recording?.isLiveDictation == true) == fnStartedLive
   }
 
   // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn

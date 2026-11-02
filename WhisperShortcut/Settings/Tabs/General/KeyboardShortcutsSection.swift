@@ -20,6 +20,7 @@ struct KeyboardShortcutsSection: View {
   /// System Settings).
   @State private var hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
   @State private var globeUsage: GlobeKeyUsage = .current
+  @State private var liveUnavailable: LiveDictation.Unavailable?
   #endif
 
   var body: some View {
@@ -107,6 +108,39 @@ struct KeyboardShortcutsSection: View {
       .toggleStyle(.switch)
 
       if viewModel.data.fnKeyDictation {
+        HStack(alignment: .center, spacing: 12) {
+          Text("Fn key starts")
+            .font(.callout)
+          Spacer(minLength: 16)
+          Picker("", selection: Binding(
+            get: { viewModel.data.fnKeyStartMode },
+            set: { newValue in
+              if newValue == .live && liveUnavailable != nil { return }
+              viewModel.data.fnKeyStartMode = newValue
+              Task { await viewModel.saveSettings() }
+            }
+          )) {
+            ForEach(FnStartMode.allCases, id: \.self) { mode in
+              Text(mode.displayName).tag(mode)
+            }
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .accessibilityLabel("Fn key starts")
+          .fixedSize()
+        }
+        if let liveUnavailable {
+          Text(verbatim: liveUnavailable.message)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        if viewModel.data.fnKeyStartMode == .live {
+          Text("Fn starts Dictate Live: text appears at the cursor after each pause.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
         if !hasAccessibility {
           HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -140,6 +174,10 @@ struct KeyboardShortcutsSection: View {
   private func refreshFnStatus() {
     hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
     globeUsage = .current
+    let model = TranscriptionModel.loadSelected()
+    liveUnavailable = LiveDictation.unavailableReason(
+      model: model, downloaded: model.isOfflineModelAvailable(),
+      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: false)
   }
   #endif
 }

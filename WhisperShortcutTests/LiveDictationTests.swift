@@ -248,4 +248,37 @@ struct LiveDictationTests {
     }
     #expect(cursor.texts.isEmpty)
   }
+
+  // MARK: - Fn key start mode
+
+  @Test("Fn starts normal Dictate by default")
+  func fnDefaultIsDictate() {
+    #expect(SettingsDefaults.fnKeyStartMode == .dictate)
+    #expect(SettingsData().fnKeyStartMode == .dictate)
+  }
+
+  @Test("Fn start mode raw values round-trip and reject unknown ones")
+  func fnRawValues() {
+    for mode in FnStartMode.allCases {
+      #expect(FnStartMode(rawValue: mode.rawValue) == mode)
+    }
+    #expect(FnStartMode(rawValue: "bogus") == nil)
+  }
+
+  @Test("Fn start decision: Dictate never depends on availability")
+  func fnDecisionDictate() {
+    let reasons: [LiveDictation.Unavailable?] = [nil, .duringMeeting, .intelMac, .notParakeet, .notDownloaded]
+    for reason in reasons {
+      #expect(LiveDictation.fnStartDecision(mode: .dictate, unavailable: reason) == .startDictate)
+    }
+  }
+
+  @Test("Fn start decision: Live starts when available and refuses with the reason otherwise")
+  func fnDecisionLive() {
+    #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: nil) == .startLive)
+    let reasons: [LiveDictation.Unavailable] = [.duringMeeting, .intelMac, .notParakeet, .notDownloaded]
+    for reason in reasons {
+      #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: reason) == .refuse(reason))
+    }
+  }
 }

@@ -204,6 +204,9 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.restoreClipboardAfterPaste),
     .bool(\.fnKeyDictation, key: UserDefaultsKeys.fnKeyDictation,
           default: SettingsDefaults.fnKeyDictation),
+    .custom(\.fnKeyStartMode,
+            load: { FnStartMode.loadFromUserDefaults() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.fnKeyStartMode) }),
 
     // Screenshot. The folder bookmark itself is owned by `ScreenshotSaveLocation` and written
     // when the user picks a folder, so only the toggle round-trips here.
