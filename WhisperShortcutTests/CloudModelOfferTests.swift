@@ -49,6 +49,28 @@ struct CloudModelOfferTests {
     #expect(upgrades.allSatisfy { $0.provider == .anthropic })
   }
 
+  @Test("Saving an Anthropic key offers nothing for Gemini, even with a Gemini key present")
+  func savedProviderIgnoresOtherKeys() {
+    let hasKey: (ChatModelProvider) -> Bool = { $0 == .gemini || $0 == .anthropic }
+    let upgrades = CloudModelOffer.upgrades(
+      selections: [UserDefaultsKeys.selectedTranscriptionModel: offlineWhisper.rawValue],
+      savedProvider: .anthropic, hasKey: hasKey)
+    #expect(upgrades.isEmpty)
+    let withMLX = CloudModelOffer.upgrades(
+      selections: keyless(), savedProvider: .anthropic, hasKey: hasKey)
+    #expect(!withMLX.contains { $0.key == UserDefaultsKeys.selectedTranscriptionModel })
+    #expect(!withMLX.isEmpty && withMLX.allSatisfy { $0.provider == .anthropic })
+  }
+
+  @Test("Saving a Gemini key still offers the Gemini transcription upgrade")
+  func savedGeminiOffersTranscription() {
+    let upgrades = CloudModelOffer.upgrades(
+      selections: keyless(), savedProvider: .gemini, hasKey: { $0 == .gemini || $0 == .anthropic })
+    let dictation = upgrades.first { $0.key == UserDefaultsKeys.selectedTranscriptionModel }
+    #expect(dictation?.to == ModelSelectionReconciler.transcriptionReplacement(for: .gemini)?.rawValue)
+    #expect(upgrades.allSatisfy { $0.provider == .gemini })
+  }
+
   @Test("A declined provider is not asked again; a new provider is")
   func declineIsRememberedPerProvider() {
     let gemini = CloudModelOffer.upgrades(selections: keyless(), hasKey: { $0 == .gemini })
