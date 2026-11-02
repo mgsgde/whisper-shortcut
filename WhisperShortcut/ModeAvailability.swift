@@ -25,7 +25,7 @@ enum BlockReason: Equatable {
 }
 
 enum IgnoreReason: Equatable {
-  case otherMeetingSegmentActive, liveMeetingActive, otherModeRecording, otherProcessing
+  case otherMeetingSegmentActive, meetingSegmentProcessing, liveMeetingActive, otherModeRecording, otherProcessing
 }
 
 enum ModeAvailability: Equatable {
@@ -38,6 +38,8 @@ struct ModeAvailabilityInput: Equatable {
   var appState: AppState
   var isLiveMeetingActive: Bool
   var activeMeetingSegment: MeetingSegment?
+  /// The active segment has stopped recording and its text is on the way.
+  var meetingSegmentIsProcessing: Bool
   var pendingMeetingSegment: MeetingSegment?
   var pendingRecordingMode: AppState.RecordingMode?
   var currentJobMode: AppState.RecordingMode?
@@ -128,6 +130,10 @@ enum ModeAvailabilityRules {
   private static func meetingSegmentArm(
     _ i: ModeAvailabilityInput, own: MeetingSegment, hasCredential: Bool, need: CredentialNeed
   ) -> ModeAvailability {
+    // A processing segment has no recorder left to stop; a second press must not reach one.
+    if i.activeMeetingSegment == own, i.meetingSegmentIsProcessing {
+      return .ignored(.meetingSegmentProcessing)
+    }
     if i.activeMeetingSegment == own || i.pendingMeetingSegment == own { return .stop }
     if i.activeMeetingSegment != nil || i.pendingMeetingSegment != nil {
       return .ignored(.otherMeetingSegmentActive)

@@ -1482,9 +1482,7 @@ class MenuBarController: NSObject {
     recording = nil
     discardStreamingSession()
     clipboardManager.discardRestorePoint()
-    if case .recording = appState {
-      appState = appState.finish()
-    }
+    appState = appState.afterStopFoundNothingRunning()
     if activeMeetingSegment != nil, !meetingSegmentIsProcessing {
       clearMeetingSegment()
     }
@@ -1505,6 +1503,7 @@ class MenuBarController: NSObject {
       appState: appState,
       isLiveMeetingActive: isLiveMeetingActive,
       activeMeetingSegment: activeMeetingSegment,
+      meetingSegmentIsProcessing: meetingSegmentIsProcessing,
       pendingMeetingSegment: pendingMeetingSegment,
       pendingRecordingMode: pendingRecordingMode,
       currentJobMode: currentJob?.mode,
