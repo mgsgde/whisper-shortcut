@@ -12,9 +12,10 @@ struct MarkdownParsingTests {
   func pricesStay() {
     #expect(MarkdownParsing.renderLatexToUnicode("costs $5 per month, or $50")
       == "costs $5 per month, or $50")
-    // Digit immediately after the opening `$`, even when a closing `$` is present.
-    #expect(MarkdownParsing.renderLatexToUnicode("$5$") == "$5$")
     #expect(MarkdownParsing.renderLatexToUnicode("$50") == "$50")
+    // A digit right after the closing `$` means the pair is two prices, not math.
+    #expect(MarkdownParsing.renderLatexToUnicode("$5-$10") == "$5-$10")
+    #expect(MarkdownParsing.renderLatexToUnicode("between $5 and $10") == "between $5 and $10")
   }
 
   @Test("Whitespace just inside a dollar pair is not math")
@@ -53,6 +54,10 @@ struct MarkdownParsingTests {
   @Test("Real math still converts")
   func mathStillConverts() {
     #expect(MarkdownParsing.renderLatexToUnicode("$x^2$") == "x²")
+    // Digit-led math converts (Pandoc rule: only a digit after the closing `$` blocks it).
+    #expect(MarkdownParsing.renderLatexToUnicode("$2^n$") == "2ⁿ")
+    #expect(MarkdownParsing.renderLatexToUnicode("$1/2$") == "1/2")
+    #expect(MarkdownParsing.renderLatexToUnicode("$3x+1$") == "3x+1")
     #expect(MarkdownParsing.renderLatexToUnicode(#"$\alpha \to \beta$"#) == "α → β")
     #expect(MarkdownParsing.renderLatexToUnicode("$$x^2$$") == "x²")
     #expect(MarkdownParsing.renderLatexToUnicode(#"$$\alpha \to \beta$$"#) == "α → β")

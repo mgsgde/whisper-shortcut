@@ -309,6 +309,27 @@ struct ReplyBlockBuilderTests {
     #expect(Self.joinedText(blocks) == "Step one\n\nDo the thing.")
   }
 
+  @Test("A paragraph that opens with a heading does not glue its later headings")
+  func leadingHeadingDoesNotGlueLaterHeadings() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "### A\nfoo\n### B\nbar", sources: [], groundingSupports: [])
+    let texts = Self.textBlocks(blocks)
+    #expect(texts.count == 1)
+    guard let attr = texts.first else { return }
+    #expect(String(attr.characters) == "A\n\nfoo\nB\nbar")
+    let headingB = attr.runs.contains { run in
+      run[ProseFontHint.self] != nil && String(attr[run.range].characters) == "B"
+    }
+    #expect(headingB)
+  }
+
+  @Test("A quote line loses its `> ` marker but keeps its line break")
+  func quoteMarkerIsStripped() {
+    let blocks = ReplyBlockBuilder.buildBlocks(
+      content: "He said:\n> be kind\n> always", sources: [], groundingSupports: [])
+    #expect(Self.joinedText(blocks) == "He said:\nbe kind\nalways")
+  }
+
   @Test("A reply keeps prices, inline-code dollars, Windows paths, and real math")
   func replyKeepsDollarsPathsAndMath() {
     let content = """

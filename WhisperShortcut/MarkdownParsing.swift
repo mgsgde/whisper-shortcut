@@ -183,9 +183,9 @@ enum MarkdownParsing {
   /// Converts common LaTeX math notation to Unicode characters.
   /// Handles both inline `$...$` and display `$$...$$` delimiters.
   ///
-  /// Inline dollars count as math only when the contents look like math: the
-  /// character after the opening `$` is not a digit or whitespace, and the
-  /// character before the closing `$` is not whitespace. `$5` and `$ x $` stay
+  /// Inline dollars count as math only when the contents look like math (Pandoc's
+  /// rule): no whitespace just inside either `$`, and no digit right after the
+  /// closing `$`. `$2^n$` converts; `$5 per month, or $50`, `$5-$10` and `$ x $` stay
   /// literal. Fenced code and backtick spans are copied through unchanged, and a
   /// command name is replaced only when the next character is not a letter, so
   /// `\to` matches `\to` but not the `\tom` in `C:\Users\tom`.
@@ -206,12 +206,12 @@ enum MarkdownParsing {
     result = regexReplace(result, pattern: "\\$\\$(.+?)\\$\\$", template: "$1", options: .dotMatchesLineSeparators)
 
     // Step 2: Strip inline math delimiters $...$ only when the contents look like math.
-    // No digit or whitespace just after the opening `$`, no whitespace just before the
-    // closing `$`, and the pair cannot cross a newline — so `$5` / `$50` and
-    // `$HOME and $PATH` are not a pair.
+    // Pandoc's rule: no whitespace just inside either `$`, and no digit right after the
+    // closing `$`. The pair cannot cross a newline. So `$2^n$` and `$1/2$` convert, while
+    // `$5 per month, or $50`, `$5-$10` and `$HOME and $PATH` are not a pair.
     result = regexReplace(
       result,
-      pattern: "(?<!\\$)\\$(?!\\$)(?!\\d)(?!\\s)([^\\n$]*?[^\\s$])(?<!\\$)\\$(?!\\$)",
+      pattern: "(?<!\\$)\\$(?!\\$)(?!\\s)([^\\n$]*?[^\\s$])(?<!\\$)\\$(?!\\$)(?!\\d)",
       template: "$1")
 
     // Step 3: Structural commands FIRST (before simple replacements, so nested braces are intact)
@@ -337,18 +337,21 @@ enum MarkdownParsing {
     return result
   }
 
+  private static let fencedRegex = try! NSRegularExpression(pattern: "```[^\\n]*\\n[\\s\\S]*?```")
+  private static let tildeRegex = try! NSRegularExpression(pattern: "~~~[^\\n]*\\n[\\s\\S]*?~~~")
+  private static let inlineCodeRegex = try! NSRegularExpression(pattern: "`[^`\\n]+`")
+
   /// Fenced ``` / ~~~ blocks, then single-backtick spans. Placeholders use private-use
   /// sentinels so the LaTeX pass cannot rewrite them; unclosed delimiters stay prose.
   private static func maskCodeRegions(_ text: String) -> (String, [String]) {
     var tokens: [String] = []
-    var masked = captureRegions(text, pattern: "```[^\\n]*\\n[\\s\\S]*?```", into: &tokens)
-    masked = captureRegions(masked, pattern: "~~~[^\\n]*\\n[\\s\\S]*?~~~", into: &tokens)
-    masked = captureRegions(masked, pattern: "`[^`\\n]+`", into: &tokens)
+    var masked = captureRegions(text, regex: fencedRegex, into: &tokens)
+    masked = captureRegions(masked, regex: tildeRegex, into: &tokens)
+    masked = captureRegions(masked, regex: inlineCodeRegex, into: &tokens)
     return (masked, tokens)
   }
 
-  private static func captureRegions(_ text: String, pattern: String, into tokens: inout [String]) -> String {
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+  private static func captureRegions(_ text: String, regex: NSRegularExpression, into tokens: inout [String]) -> String {
     let ns = text as NSString
     let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
     guard !matches.isEmpty else { return text }
