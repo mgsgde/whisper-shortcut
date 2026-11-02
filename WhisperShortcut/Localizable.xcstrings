@@ -23670,6 +23670,116 @@
           }
         }
       }
+    },
+    "Move WhisperShortcut to Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut in den Ordner „Programme“ bewegen?"
+          }
+        }
+      }
+    },
+    "WhisperShortcut is running from the downloaded disk image or another temporary place. From there, macOS does not keep its permissions, and it is missing from the Accessibility list. Move it to the Applications folder and open it from there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut läuft direkt aus dem geladenen Disk-Image oder von einem anderen vorläufigen Ort. Dort behält macOS die Berechtigungen nicht, und die App fehlt in der Liste der Bedienungshilfen. Bewegen Sie sie in den Ordner „Programme“ und öffnen Sie sie von dort."
+          }
+        }
+      }
+    },
+    "Move and Relaunch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewegen und neu starten"
+          }
+        }
+      }
+    },
+    "Replace the copy in Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kopie im Ordner „Programme“ ersetzen?"
+          }
+        }
+      }
+    },
+    "There already is a WhisperShortcut in the Applications folder. It goes to the Trash and this one takes its place. Your settings and keys are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Ordner „Programme“ liegt bereits ein WhisperShortcut. Er wandert in den Papierkorb, und diese Version tritt an seine Stelle. Ihre Einstellungen und Schlüssel bleiben erhalten."
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        }
+      }
+    },
+    "macOS needs your OK to copy WhisperShortcut into the Applications folder. Click “Move Here”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS braucht Ihr Einverständnis, um WhisperShortcut in den Ordner „Programme“ zu kopieren. Klicken Sie auf „Hierher bewegen“."
+          }
+        }
+      }
+    },
+    "Move Here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hierher bewegen"
+          }
+        }
+      }
+    },
+    "Move WhisperShortcut yourself" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut selbst bewegen"
+          }
+        }
+      }
+    },
+    "Quit WhisperShortcut, then drag it from the disk image window into the Applications folder and open it from there. If macOS asks for your password, that is macOS confirming the copy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden Sie WhisperShortcut, ziehen Sie die App dann aus dem Fenster des Disk-Images in den Ordner „Programme“ und öffnen Sie sie von dort. Fragt macOS nach Ihrem Passwort, bestätigt macOS damit nur das Kopieren."
+          }
+        }
+      }
+    },
+    "Open Applications Folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner „Programme“ öffnen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
