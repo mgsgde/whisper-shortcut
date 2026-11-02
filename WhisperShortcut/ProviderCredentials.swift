@@ -3,7 +3,7 @@ import Foundation
 /// Single source of truth for "does the user have a usable API key for provider X?".
 ///
 /// Before this existed the same guard was hand-written at a dozen call sites (each chat provider,
-/// `SpeechService`'s TTS and transcription paths, `ContextDerivation`'s pre-flight check), which let
+/// `SpeechService`'s TTS and transcription paths, the former Smart Improvement pre-flight check), which let
 /// three kinds of drift accumulate: two different message wordings for the same condition, a wrong
 /// Settings destination for xAI ("→ Chat"; the key field lives under General), and inconsistent
 /// trimming — some sites trimmed whitespace off the stored key, others sent it verbatim into an

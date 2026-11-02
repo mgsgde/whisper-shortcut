@@ -239,7 +239,7 @@ final class SystemPromptsStore {
     return write(formatContent(parseSections(from: rawContent)), reason: "save")
   }
 
-  /// Update a single section (e.g. when Smart Improvement applies a suggestion). Writes the full file.
+  /// Update a single section (e.g. when the chat tool or an AI app applies a change). Writes the full file.
   /// Returns false — and leaves the file alone — when the file exists but cannot be read, because the
   /// only thing to merge the section into would then be the defaults.
   @discardableResult
@@ -256,7 +256,7 @@ final class SystemPromptsStore {
     return true
   }
 
-  /// Current content for a section (raw, for display or comparison). Used by Smart Improvement.
+  /// Current content for a section (raw, for display or comparison).
   /// Nil when the section is absent or the file cannot be read (see `unreadableReason`).
   func loadSection(_ section: SystemPromptSection) -> String? {
     guard case .contents = currentFile() else { return nil }

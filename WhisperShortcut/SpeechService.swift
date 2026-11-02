@@ -1377,7 +1377,8 @@ class SpeechService {
     logPrefix: String,
     promptStarted: ContinuousClock.Instant,
     providerLabel: String,
-    loadMs: Int?
+    loadMs: Int?,
+    audioURL: URL
   ) async throws {
     let userInstruction: String
     switch instruction {
@@ -1430,7 +1431,8 @@ class SpeechService {
       latencyMs: latencyMs,
       provider: providerLabel,
       loadMs: loadMs,
-      template: promptTurnKind.templateLogName
+      template: promptTurnKind.templateLogName,
+      durationMs: AudioDuration.milliseconds(audioURL)
     )
     DebugLogger.logSuccess("\(logPrefix): Completed successfully (\(normalizedText.count) chars)")
     // The append is queued; refresh runs behind it on the same queue so the new row is on disk.
@@ -1592,7 +1594,7 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-GEMINI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
-      loadMs: nil)
+      loadMs: nil, audioURL: audioURL)
     return normalizedText
   }
 
@@ -1770,7 +1772,7 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-OPENAI",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
-      loadMs: nil)
+      loadMs: nil, audioURL: audioURL)
     return normalizedText
   }
 
@@ -2067,7 +2069,7 @@ class SpeechService {
         logPrefix: "PROMPT-MODE-LOCAL",
         promptStarted: promptStarted,
         providerLabel: providerLabel,
-        loadMs: nil)
+        loadMs: nil, audioURL: audioURL)
       return agentText
     }
 
@@ -2139,7 +2141,7 @@ class SpeechService {
       logPrefix: "PROMPT-MODE-LOCAL",
       promptStarted: promptStarted,
       providerLabel: providerLabel,
-      loadMs: loadMs)
+      loadMs: loadMs, audioURL: audioURL)
     return normalizedText
   }
 

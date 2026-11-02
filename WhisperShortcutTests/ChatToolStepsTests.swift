@@ -14,6 +14,7 @@ struct ChatToolStepsTests {
     let groups: [[[String: Any]]] = [
       ChatToolRegistry.functionDeclarations, ChatToolRegistry.appDocsFunctionDeclarations,
       ChatToolRegistry.memoryFunctionDeclarations, ChatToolRegistry.instructionsFunctionDeclarations,
+      ChatToolRegistry.usageLogFunctionDeclarations,
       ChatToolRegistry.workspaceFunctionDeclarations, ChatToolRegistry.workspaceWriteFunctionDeclarations,
       ChatToolRegistry.imageFunctionDeclarations, ChatToolRegistry.calendarFunctionDeclarations,
       ChatToolRegistry.tasksFunctionDeclarations, ChatToolRegistry.gmailFunctionDeclarations,

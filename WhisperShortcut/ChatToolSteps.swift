@@ -195,6 +195,8 @@ extension ChatToolRegistry {
     correctTranscriptTermToolName: .init(running: "Correcting the transcript", done: "Corrected the transcript"),
     updateInstructionsToolName: .init(
       running: "Updating app instructions", done: "Updated app instructions"),
+    readRecentInteractionsToolName: .init(
+      running: "Reading your usage log", done: "Read your usage log", countNoun: "entries"),
     rememberAboutUserToolName: .init(running: "Saving to memory", done: "Saved to memory"),
     forgetAboutUserToolName: .init(running: "Removing from memory", done: "Removed from memory"),
   ]

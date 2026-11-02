@@ -15,12 +15,11 @@ struct ChatModelLineupTests {
     #expect(Set(PromptModel.allCases.map(\.shortAlias)).count == PromptModel.allCases.count)
   }
 
-  @Test("Chat and Smart Improvement defaults moved to 3.8 Flash")
+  @Test("Chat and Writing Style defaults moved to 3.8 Flash")
   func defaultsMoved() {
     #expect(SettingsDefaults.selectedChatModel == .gemini38Flash)
     #expect(SettingsDefaults.selectedImprovementModel == .gemini38Flash)
     #expect(ChatModelProvider.gemini.defaultChatModel == .gemini38Flash)
-    #expect(AppConstants.contextDerivationEndpoint.contains("gemini-3.8-flash"))
   }
 
   @Test("Chat offers Gemini 4 Argon and 3.8 Flash, not 3.7")
@@ -142,7 +141,6 @@ struct ChatModelLineupTests {
     #expect(
       TranscriptionModel.gemini38Flash.apiEndpoint
         == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
-    #expect(TranscriptionModel.gemini38Flash.asymmetryClass == .geminiFlash)
     #expect(TranscriptionModel.gemini38Flash.isSelectableForDictation)
     let clamped = TranscriptionModel.gemini38Flash.geminiTranscriptionGenerationConfig(
       temperature: 0.0, effort: .minimal)

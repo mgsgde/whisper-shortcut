@@ -37,7 +37,7 @@ struct TranscriptionProviderTests {
     }
 
     // The case itself must stay: PromptModel.asTranscriptionModel resolves the Gemini endpoint
-    // through it for Dictate Prompt and Smart Improvement.
+    // through it for Dictate Prompt and the Writing Style profile.
     #expect(PromptModel.gemini31Pro.asTranscriptionModel == .gemini31Pro)
     #expect(TranscriptionModel.gemini31Pro.apiEndpoint.contains("gemini-3.1-pro-preview"))
     #expect(!TranscriptionModel.gemini4Argon.isSelectableForDictation)

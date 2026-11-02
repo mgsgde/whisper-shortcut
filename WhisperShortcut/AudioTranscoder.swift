@@ -2,8 +2,8 @@ import AVFoundation
 import Foundation
 
 /// Transcodes recorded PCM WAV audio to lossless FLAC for cloud upload. Recording stays
-/// uncompressed WAV (local Whisper, AudioChunker, and Smart Improvement audio verification
-/// all expect PCM); only the bytes sent over the network are compressed. A 24 kHz mono
+/// uncompressed WAV (local Whisper and AudioChunker
+/// expect PCM); only the bytes sent over the network are compressed. A 24 kHz mono
 /// 16-bit WAV shrinks to roughly half its size as FLAC.
 /// AAC 32 kbps was used until 2026-10 and was dropped because an A/B test on real
 /// dictations showed it changed words on Gemini (WAV vs FLAC was word-identical).

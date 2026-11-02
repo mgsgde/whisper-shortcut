@@ -10,9 +10,9 @@ By default, nothing leaves your Mac for us. The app has no analytics SDKs and no
 
 The one thing that can reach us is the optional **Usage Report** in Settings → About, and only because you send it: the app composes it locally, shows you the complete text, and it travels only if you then press send in your own mail or WhatsApp app.
 
-## Smart Improvement (optional, your choice)
+## Usage data (optional, your choice)
 
-When **Save usage data** is enabled, your interaction logs (dictation, Dictate Prompt, and chat) are stored locally and periodically sent to the AI provider you configured so the app can suggest better prompts. This goes only to your chosen provider — never to us or any third party. You can turn it off during setup or in Settings → General.
+When **Save usage data** is enabled, your interaction logs (dictation, Dictate Prompt, and chat, with the app you dictated into and what you did next) are stored on your Mac for 90 days. Nothing reads them on its own: the in-app Chat reads them when you ask it to tune the app, and an AI app you connected reads them only if you also allow it in Settings → Claude & AI Apps. What they read goes to the model you chose for them — never to us or any third party. Turn it on or off in Settings → Privacy & Permissions.
 
 ## What you send (controlled by you)
 

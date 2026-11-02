@@ -66,7 +66,7 @@ enum TranscriptionModel: String, CaseIterable {
   /// **Not selectable for dictation** — excluded from every picker via `isSelectableForDictation`,
   /// and persisted selections are migrated away. The case survives only because `PromptModel`
   /// borrows this enum to resolve its Gemini endpoint (`PromptModel.asTranscriptionModel`), which
-  /// Dictate Prompt and Smart Improvement both depend on. Removing the case would break those.
+  /// Dictate Prompt and the Writing Style profile both depend on. Removing the case would break those.
   case gemini31Pro = "gemini-3.1-pro-preview"
   case gemini31FlashLite = "gemini-3.1-flash-lite"
   case gemini35FlashLite = "gemini-3.5-flash-lite"
@@ -545,61 +545,6 @@ enum TranscriptionModel: String, CaseIterable {
       return false
     }
     return ModelManager.shared.isModelAvailable(offlineModelType)
-  }
-
-  // MARK: - Smart Improvement Audio Verification
-
-  /// Coarse capability tier used by Smart Improvement to decide whether re-listening to audio
-  /// produced by another model can add information. Within Gemini, Pro > Flash > Flash-Lite.
-  /// Non-Gemini backends (offline Whisper, OpenAI cloud, self-hosted OpenAI-compatible endpoints)
-  /// are treated as separate families that Gemini can always informatively verify.
-  enum AsymmetryClass: Int {
-    case offlineWhisper
-    case openAIAudio
-    case xaiAudio
-    case selfHostedTranscription
-    case openRouterAudio
-    case geminiFlashLite
-    case geminiFlash
-    case geminiPro
-  }
-
-  var asymmetryClass: AsymmetryClass {
-    switch self {
-    // Parakeet shares the class: what matters here is "not Gemini, so Gemini re-listening adds
-    // information", not which on-device engine produced the transcript.
-    case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .parakeetUltra:
-      return .offlineWhisper
-    case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
-      return .openAIAudio
-    case .xaiTranscribe:
-      return .xaiAudio
-    case .selfHostedTranscription:
-      return .selfHostedTranscription
-    case .openRouterTranscription:
-      return .openRouterAudio
-    case .gemini31FlashLite, .gemini35FlashLite:
-      return .geminiFlashLite
-    case .gemini38Flash:
-      return .geminiFlash
-    case .gemini4Argon, .gemini31Pro:
-      return .geminiPro
-    }
-  }
-
-  /// Returns true when Smart Improvement using `self` can plausibly add information by re-listening
-  /// to audio originally transcribed by `transcriptionModel`. Audio from non-Gemini backends always
-  /// benefits from Gemini verification (different family). Same-family Gemini verification only adds
-  /// information when `self` is strictly in a higher tier.
-  func canInformativelyVerify(audioFrom transcriptionModel: TranscriptionModel) -> Bool {
-    switch transcriptionModel.asymmetryClass {
-    case .offlineWhisper, .openAIAudio, .xaiAudio, .selfHostedTranscription, .openRouterAudio:
-      return self.isGemini
-    default:
-      guard self.isGemini else { return false }
-      return self.asymmetryClass.rawValue > transcriptionModel.asymmetryClass.rawValue
-    }
   }
 
 }

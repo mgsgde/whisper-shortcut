@@ -149,12 +149,16 @@ enum ChatToolRegistry {
     case updateInstructionsToolName:
       let action = arg("action")
       let text = arg("text")
+      // The section the card names is the one the call writes; an unknown key falls back to the
+      // generic wording and the call itself is refused in `execute`.
+      let target = editableInstructionSections[arg("section")].map { MCPProposalWindows.displayName($0) }
+        ?? String(localized: "App instructions")
       let line: String
       switch action {
-      case "append": line = String(localized: "Add a rule to the Dictate Prompt instructions.")
-      case "replace": line = String(localized: "Replace the Dictate Prompt instructions.")
-      case "remove": line = String(localized: "Remove rules from the Dictate Prompt instructions.")
-      default: line = String(localized: "Change the Dictate Prompt instructions.")
+      case "append": line = String(localized: "Add to: \(target)")
+      case "replace": line = String(localized: "Replace: \(target)")
+      case "remove": line = String(localized: "Remove from: \(target)")
+      default: line = String(localized: "Change: \(target)")
       }
       return text.isEmpty ? line : line + "\n\n" + preview(text)
     case "write_text_file":
@@ -333,44 +337,97 @@ enum ChatToolRegistry {
   /// user rules before the model is told to consolidate instead of appending further.
   static let instructionsSectionLimitChars = 5_000
 
-  /// Sections the chat may edit, mapped from the model-facing enum values. Intentionally starts
-  /// with Dictate Prompt only. `chat` is withheld on purpose: editing its own system prompt is
-  /// the one case with a feedback loop, where the model can degrade itself and then explain why
-  /// that was correct. `whisperGlossary` stays with `remember_dictation_term`, which additionally
-  /// prunes competing spellings.
+  /// Sections the chat may edit, mapped from the model-facing enum values. Same names as MCP
+  /// `update_system_prompt`.
+  ///
+  /// Dictate Prompt only until 2026-11-02, when Smart Improvement was removed and the Chat became
+  /// the in-app place to tune the app (owner decision). `chat` was withheld because editing its own
+  /// prompt is a feedback loop where the model can degrade itself; every write still needs the
+  /// user's approval card (`requiresUserApproval`, never chat-wide), which is what stands between
+  /// the model and that loop now. `whisper_glossary` only ever grows unless the user asks for a
+  /// removal: `append` merges additively and `replace` is refused when it would drop an entry.
   static let editableInstructionSections: [String: SystemPromptSection] = [
-    "dictate_prompt": .promptMode
+    "dictate_prompt": .promptMode,
+    "dictation": .dictation,
+    "chat": .chat,
+    "whisper_glossary": .whisperGlossary,
   ]
+
+  /// Model-facing section names in a fixed order (tool schema, error messages).
+  static let editableInstructionSectionNames = ["dictation", "whisper_glossary", "dictate_prompt", "chat"]
+
+  /// Built apart from the declaration literal: concatenation inside a large `[String: Any]`
+  /// literal is a known way to make the type checker give up.
+  private static let instructionsToolDescription: String =
+        "Reads and edits WhisperShortcut's own instructions, so the user can tune how the app behaves by asking instead of editing Settings. Sections: 'dictation' (the Dictate prompt: how speech becomes text), 'whisper_glossary' (names and terms the recognizer should spell right, one per line, optionally Term (not \"wrong\", \"wrong2\")), 'dictate_prompt' (Dictate Prompt: rewriting selected text from a voice instruction), 'chat' (your own system prompt in this chat). Call it when the user states a lasting preference about how a mode should behave, or asks you to fix a recurring mistake. "
+        + InteractionLogTool.tuningRules
+        + " To find the mistake, call read_recent_interactions (when available). ALWAYS call action='read' on the section first and check whether an existing rule already covers or contradicts the request: then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use 'append' for one genuinely new rule or glossary term. 'remove' on whisper_glossary only when the user asked to drop that entry. Every change is shown to the user for approval. For a single dictation term, remember_dictation_term also works; for facts about the user use remember_about_user."
 
   static let instructionsFunctionDeclarations: [[String: Any]] = [
     [
       "name": updateInstructionsToolName,
-      "description":
-        "Reads and edits WhisperShortcut's own behavior instructions — the system prompt that governs a mode of the app — so the user can change how the app behaves by asking, instead of editing Settings. Currently supports the 'dictate_prompt' section (Dictate Prompt / Speech-to-Prompt: the mode that rewrites selected text from a voice instruction). Call this when the user states a lasting preference about HOW that mode should behave (e.g. 'when I say correct, never translate', 'always keep my bullet points', 'stop adding greetings'). ALWAYS call with action='read' first and check whether an existing rule already covers or contradicts the request — then 'replace' or 'remove' that rule rather than appending a second, conflicting one. Use action='append' only for genuinely new rules. This is for BEHAVIOR; for the spelling of a word use remember_dictation_term, and for facts about the user use remember_about_user.",
+      "description": instructionsToolDescription,
       "parameters": [
         "type": "object",
         "properties": [
           "section": [
             "type": "string",
-            "enum": ["dictate_prompt"],
+            "enum": editableInstructionSectionNames,
             "description": "Which instruction section to act on.",
           ],
           "action": [
             "type": "string",
             "enum": ["read", "append", "replace", "remove"],
             "description":
-              "'read' returns the current instructions (do this first). 'append' adds one rule. 'replace' overwrites the whole section — use when rewriting or restructuring. 'remove' deletes every line containing the given text.",
+              "'read' returns the current text (do this first). 'append' adds one rule, or one glossary line (never removes anything). 'replace' overwrites the whole section: keep every existing rule and glossary entry the user did not ask to change; a whisper_glossary replace that drops an entry is refused. 'remove' deletes every line containing the given text.",
           ],
           "text": [
             "type": "string",
             "description":
-              "For 'append': the new rule as one short imperative sentence. For 'replace': the complete new section text. For 'remove': text identifying the line(s) to delete. Omit for 'read'.",
+              "For 'append': the new rule as one short imperative sentence, or for whisper_glossary one term line. For 'replace': the complete new section text. For 'remove': text identifying the line(s) to delete. Omit for 'read'.",
           ],
         ] as [String: Any],
         "required": ["section", "action"],
       ],
     ]
   ]
+
+  /// Lets the chat read the usage log, so the user can ask "why did that dictation go wrong?" and
+  /// get a fix (one glossary term, one rule) through `update_app_instructions`. Declared only
+  /// while "Save usage data" is on (`allDeclarations(usageDataAvailable:)`), and re-checked when
+  /// it runs. Read-only, so it needs no approval; the texts it returns are the user's own and go
+  /// to the chat model the user picked, as any message they paste would.
+  static let readRecentInteractionsToolName = "read_recent_interactions"
+  /// Per-field and per-result caps, smaller than MCP's: the result lands in the chat context.
+  static let usageLogFieldCap = 800
+  static let usageLogResultBudget = 24_000
+
+  private static let usageLogToolDescription: String =
+    InteractionLogTool.description(
+      subject: "Reads WhisperShortcut's own usage log on this Mac: the user's recent dictations, Dictate Prompt turns and chats")
+    + " Call it when the user asks why the app got something wrong, wants the app tuned to them, or names a word the app keeps misspelling."
+
+  static let usageLogFunctionDeclarations: [[String: Any]] = [
+    [
+      "name": readRecentInteractionsToolName,
+      "description": usageLogToolDescription,
+      "parameters": InteractionLogTool.parameters,
+    ]
+  ]
+
+  /// Glossary terms in `current` that `replacement` no longer contains (case- and
+  /// diacritic-insensitive, the glossary's own dedupe key). A rejected spelling that moved onto
+  /// another line's `(not …)` group still counts as kept.
+  static func glossaryEntriesDropped(from current: String, by replacement: String) -> [String] {
+    let kept = Set(GlossaryLearning.entries(in: replacement).flatMap { [$0.term] + $0.rejected }.map(GlossaryLearning.fold))
+    var seen = Set<String>()
+    return GlossaryLearning.entries(in: current).map(\.term).filter { term in
+      let folded = GlossaryLearning.fold(term)
+      guard !folded.isEmpty, !kept.contains(folded), !seen.contains(folded) else { return false }
+      seen.insert(folded)
+      return true
+    }
+  }
 
   /// Names of the chat-memory tools; ChatView intercepts these in `executeToolCalls`
   /// (they write the local memory file and reload the UI rather than routing back through the model).
@@ -1187,6 +1244,7 @@ enum ChatToolRegistry {
     calendarConnected: Bool, trelloConnected: Bool, imageGenerationAvailable: Bool,
     meetingContext: Bool, workspaceAvailable: Bool, workspaceWritable: Bool,
     mailAvailable: Bool, mailAccountsConnected: Bool,
+    usageDataAvailable: Bool = false,
     chatProvider: ChatModelProvider = selectedChatProvider
   ) -> [[String: Any]] {
     // In-process MLX has no tool-calling path. Do not declare tools so the model cannot
@@ -1196,6 +1254,9 @@ enum ChatToolRegistry {
     var decls =
       functionDeclarations + appDocsFunctionDeclarations + memoryFunctionDeclarations
       + instructionsFunctionDeclarations
+    if usageDataAvailable {
+      decls += usageLogFunctionDeclarations
+    }
     if workspaceAvailable {
       decls += workspaceFunctionDeclarations
       if workspaceWritable {
@@ -1402,13 +1463,20 @@ enum ChatToolRegistry {
       else {
         return [
           "error":
-            "Unknown section. Editable sections: \(editableInstructionSections.keys.sorted().joined(separator: ", "))."
+            "Unknown section. Editable sections: \(editableInstructionSectionNames.joined(separator: ", "))."
         ]
       }
       guard let action = (args["action"] as? String)?.lowercased() else {
         return ["error": "Missing required argument: action"]
       }
-      let current = SystemPromptsStore.shared.loadSection(section) ?? ""
+      let isGlossary = section == .whisperGlossary
+      let stored = isGlossary
+        ? SystemPromptsStore.shared.loadWhisperGlossary()
+        : SystemPromptsStore.shared.loadSection(section) ?? ""
+      // An emptied prompt section runs on the built-in default; a rule appended to "" would
+      // silently replace that whole default with one line.
+      let current = !isGlossary && stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        ? MCPProposalWindows.defaultText(for: section) : stored
       let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
       // `read` is the documented first step: it hands the model the current rules so it can spot
@@ -1424,8 +1492,30 @@ enum ChatToolRegistry {
       let updated: String
       switch action {
       case "append":
-        updated = current.isEmpty ? text : current + "\n" + text
+        if isGlossary {
+          var lines: [String] = []
+          for raw in text.components(separatedBy: .newlines) where !raw.trimmingCharacters(in: .whitespaces).isEmpty {
+            let parsed = MCPConfigTools.glossaryLine(for: raw)
+            guard let line = parsed.line else { return ["error": parsed.error ?? "Not a glossary term."] }
+            lines.append(line)
+          }
+          updated = GlossaryLearning.mergeAdditively(current: current, suggestion: lines.joined(separator: "\n"))
+          if updated == current.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return ["ok": false, "status": "no_change", "note": "Already in the glossary."]
+          }
+        } else {
+          updated = current.isEmpty ? text : current + "\n" + text
+        }
       case "replace":
+        if isGlossary {
+          let dropped = Self.glossaryEntriesDropped(from: current, by: text)
+          guard dropped.isEmpty else {
+            return [
+              "error":
+                "Refused: this would delete glossary entries (\(dropped.prefix(10).joined(separator: ", "))). Glossary entries are the user's own corrections. Keep them, or, only if the user explicitly asked to remove one, use action='remove' with that entry.",
+            ]
+          }
+        }
         updated = text
       case "remove":
         let needle = text.lowercased()
@@ -1443,16 +1533,18 @@ enum ChatToolRegistry {
         return ["error": "Unknown action '\(action)'. Use read, append, replace, or remove."]
       }
 
-      guard updated.count <= instructionsSectionLimitChars else {
+      let limit = isGlossary ? SystemPromptsStore.glossaryCharBudget : instructionsSectionLimitChars
+      guard updated.count <= limit else {
         return [
-          "error":
-            "That would grow the \(sectionKey) instructions to \(updated.count) characters (limit \(instructionsSectionLimitChars)). Consolidate or remove an existing rule first — an overlong system prompt degrades every response in that mode."
+          "error": isGlossary
+            ? "That would grow the glossary to \(updated.count) characters (budget \(limit)). Add only the terms the user's recent dictations get wrong most often."
+            : "That would grow the \(sectionKey) instructions to \(updated.count) characters (limit \(limit)). Consolidate or remove an existing rule first — an overlong system prompt degrades every response in that mode."
         ]
       }
 
       SystemPromptsStore.shared.updateSection(section, content: updated)
-      // Recorded so a chat-made change is as reviewable and reversible as a Smart Improvement one;
-      // without this the app's behavior could drift with no trace of who changed what.
+      // Recorded so a chat-made change is reviewable and reversible: without this the app's
+      // behavior could drift with no trace of who changed what.
       ContextLogger.shared.appendSystemPromptsHistory(
         section: section, previousLength: current.count, newLength: updated.count,
         content: updated, model: nil, source: PromptHistorySource.chat.rawValue)
@@ -1461,8 +1553,22 @@ enum ChatToolRegistry {
       return [
         "ok": true, "status": action, "section": sectionKey,
         "instructions": updated,
-        "note": "Applied immediately. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
+        "note": "Applied. Tell the user briefly what changed; it is editable in Settings and recorded in the prompt history.",
       ]
+
+    case readRecentInteractionsToolName:
+      // Re-checked at call time: the declaration list was built when the turn started.
+      guard ContextLoggingPreference.isEnabled else {
+        return ["error": "Usage data is not being saved. The user can turn on \"Save usage data\" in Settings → Privacy & Permissions."]
+      }
+      let parsed = InteractionLogQuery.parse(args)
+      guard let query = parsed.query else { return ["error": parsed.error ?? "Invalid arguments."] }
+      let rows = InteractionLogReader.load(query)
+      let page = InteractionLogReader.page(entries: rows.entries, signals: rows.signals, query: query)
+      DebugLogger.log(
+        "USAGE-LOG-READ: chat read \(page.records.count) of \(page.totalAvailable) rows (mode=\(query.mode ?? "all") query=\(query.query == nil ? "no" : "yes"))")
+      return InteractionLogReader.result(
+        page, query: query, fieldCap: usageLogFieldCap, budget: usageLogResultBudget)
 
     case "google_calendar_list_events":
       guard GoogleAccountOAuthService.shared.isConnected else { return googleNotConnectedError }

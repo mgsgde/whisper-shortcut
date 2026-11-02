@@ -13,7 +13,7 @@ import Foundation
 /// - **No identifier.** Retention is computed server-side from `cohortWeek` + `dayIndex`, and each
 ///   install sends at most one daily ping per calendar day.
 /// - Independent of "Save usage data": `ContextLogger` feeds this *before* its own logging guard,
-///   otherwise only users who also opted into Smart Improvement would ever be counted.
+///   otherwise only users who also turned on "Save usage data" would ever be counted.
 final class TelemetryService: @unchecked Sendable {
 
   static let shared = TelemetryService(environment: .live)

@@ -14,7 +14,7 @@ import Foundation
 /// `~/Library/Containers/…/UserContext/interactions-<date>.jsonl` by hand. The interaction log is
 /// the wrong tool for that: it is opt-in, keyed by date, holds every mode, and has no UI.
 ///
-/// Deliberately separate from `ContextLogger`: that one feeds Smart Improvement analysis and can
+/// Deliberately separate from `ContextLogger`: that one is the opt-in usage log the Chat and AI apps read when asked to tune the app, and can
 /// be switched off, whereas this is a small user-facing convenience. It does respect the same
 /// privacy intent, though — when interaction logging is off, entries live in memory for the
 /// session only and never touch the disk.

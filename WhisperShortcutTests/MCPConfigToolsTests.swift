@@ -14,7 +14,9 @@ final class MCPTestEnv: @unchecked Sendable {
   var level: MCPConfigAccessLevel
   var logging = true
   var sharing = true
+  /// Oldest first, as the log files hold them.
   var interactions: [InteractionLogEntry] = []
+  var signals: [SignalLogEntry] = []
   var settings: [String: String] = ["transcription_model": "whisper-base", "chat_model": "gemini-x"]
   var history: [String] = []
 
@@ -55,8 +57,7 @@ final class MCPTestEnv: @unchecked Sendable {
       postNotification: { name, object in box.notifications.append((name, object)) },
       // The live hook posts into the user's app. Record the call on the same notification list
       // the catalog tests already read.
-      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) },
-      checkImprovementAutoRun: {})
+      postSelectionsChanged: { box.notifications.append((.modelSelectionsReconciled, nil)) })
     self.settingsCatalog = MCPSettingsCatalog.build(deps)
     var recorder: ((String) -> Void)?
     changeLog = MCPChangeLog(
@@ -77,9 +78,7 @@ final class MCPTestEnv: @unchecked Sendable {
       accessLevel: { self.level },
       contextLoggingEnabled: { self.logging },
       shareRecentInteractions: { self.sharing },
-      recentInteractions: { limit, mode in
-        Array(self.interactions.filter { mode == nil || $0.mode == mode }.prefix(limit))
-      },
+      interactionLog: { _ in (self.interactions, self.signals) },
       settings: { self.settings },
       shortcuts: { [["action": "Dictate", "shortcut": "F5", "enabled": true]] },
       writingStyleEnabled: { true },
@@ -412,6 +411,69 @@ struct MCPConfigToolsTests {
     let result = items?.first?["result"] as? String
     #expect((result?.count ?? 0) <= MCPConfigTools.maxFieldCharacters + 1)
     #expect(items?.first?["userInstruction"] as? String == "fix")
+    #expect(obj(c)["total_available"] as? Int == 1)
+    #expect(obj(c)["next_offset"] is NSNull)
+  }
+
+  @Test("get_recent_interactions pages newest first and reports total_available / next_offset")
+  func recentInteractionsPaging() {
+    let env = MCPTestEnv()
+    env.interactions = (1...5).map { i in
+      MCPTestEnv.entry(#"{"ts":"2026-10-2\#(i)T10:00:00Z","mode":"transcription","result":"r\#(i)"}"#)
+    }
+    let t = env.tools()
+    let first = obj(t.call(name: "get_recent_interactions", arguments: ["limit": 2], access: .read))
+    let firstItems = first["interactions"] as? [[String: Any]]
+    #expect(firstItems?.map { $0["result"] as? String } == ["r5", "r4"])
+    #expect(first["total_available"] as? Int == 5)
+    #expect(first["next_offset"] as? Int == 2)
+    let last = obj(t.call(name: "get_recent_interactions", arguments: ["limit": 2, "offset": 4], access: .read))
+    #expect((last["interactions"] as? [[String: Any]])?.map { $0["result"] as? String } == ["r1"])
+    #expect(last["next_offset"] is NSNull)
+  }
+
+  @Test("get_recent_interactions filters by query, mode and since")
+  func recentInteractionsFilters() {
+    let env = MCPTestEnv()
+    env.interactions = [
+      MCPTestEnv.entry(#"{"ts":"2026-10-01T10:00:00Z","mode":"transcription","result":"Termin mit Wianco"}"#),
+      MCPTestEnv.entry(#"{"ts":"2026-10-20T10:00:00Z","mode":"transcription","result":"Vianco hat angerufen"}"#),
+      MCPTestEnv.entry(#"{"ts":"2026-10-21T10:00:00Z","mode":"prompt","userInstruction":"Mail an vianco"}"#),
+    ]
+    let t = env.tools()
+    let q = obj(t.call(name: "get_recent_interactions", arguments: ["query": "VIANCO"], access: .read))
+    #expect(q["total_available"] as? Int == 2)
+    let m = obj(t.call(name: "get_recent_interactions", arguments: ["query": "vianco", "mode": "prompt"], access: .read))
+    #expect(m["total_available"] as? Int == 1)
+    let s = obj(t.call(name: "get_recent_interactions", arguments: ["since": "2026-10-15T00:00:00Z"], access: .read))
+    #expect(s["total_available"] as? Int == 2)
+    let bad = t.call(name: "get_recent_interactions", arguments: ["since": "last tuesday"], access: .read)
+    #expect(bad.isError)
+    let badMode = t.call(name: "get_recent_interactions", arguments: ["mode": "meetings"], access: .read)
+    #expect(badMode.isError)
+  }
+
+  @Test("get_recent_interactions attaches the outcome signals and the new context fields")
+  func recentInteractionsSignalsAndContext() {
+    let env = MCPTestEnv()
+    env.interactions = [
+      MCPTestEnv.entry(
+        #"{"ts":"2026-10-20T10:00:00.000Z","mode":"transcription","result":"hallo","appName":"Mail","appBundleId":"com.apple.mail","durationMs":2300,"language":"de","promptVersion":"default","audioRef":"old.wav"}"#)
+    ]
+    env.signals = [
+      SignalLogEntry(ts: "2026-10-20T10:00:01.000Z", kind: "pasted", refTs: "2026-10-20T10:00:00.000Z", mode: "transcription", gapMs: 900, detail: nil),
+      SignalLogEntry(ts: "2026-10-20T10:00:09.000Z", kind: "dictationRestart", refTs: "2026-10-20T10:00:00.000Z", mode: "transcription", gapMs: 9000, detail: ["autoPasteAvailable": "true"]),
+      SignalLogEntry(ts: "2026-10-20T10:00:09.000Z", kind: "chatRetry", refTs: "2026-10-19T10:00:00.000Z", mode: "geminiChat", gapMs: 1, detail: nil),
+    ]
+    let item = (obj(env.tools().call(name: "get_recent_interactions", arguments: [:], access: .read))["interactions"]
+      as? [[String: Any]])?.first
+    #expect(item?["appName"] as? String == "Mail")
+    #expect(item?["durationMs"] as? Int == 2300)
+    #expect(item?["language"] as? String == "de")
+    #expect(item?["promptVersion"] as? String == "default")
+    #expect(item?["audioRef"] == nil)
+    let kinds = (item?["signals"] as? [[String: Any]])?.compactMap { $0["kind"] as? String }
+    #expect(kinds == ["pasted", "dictationRestart"])
   }
 
   @Test("get_configuration reports state, recipe and inline texts")

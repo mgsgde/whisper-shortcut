@@ -5,7 +5,7 @@ import Foundation
 /// The factory defaults point at Gemini, but a user might provide only an OpenAI or only an xAI
 /// key. This reconciler rewrites any persisted selection whose provider has no key to a model of a
 /// provider the user *does* have a key for — so a single API key is enough to use every feature
-/// (transcription, dictate prompt, chat, meeting summary, smart improvement, read aloud).
+/// (transcription, dictate prompt, chat, meeting summary, writing style, read aloud).
 ///
 /// It never changes a selection whose provider already has a key, so explicit choices made when
 /// multiple keys are present are preserved. Offline Whisper and self-hosted transcription need no
@@ -175,7 +175,7 @@ enum ModelSelectionReconciler {
   // MARK: - Offline Mode
 
   /// Moves the selections that have an on-device equivalent onto this Mac: dictation, meeting
-  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and Smart Improvement.
+  /// transcription, Dictate Prompt, Chat, Read Aloud, the meeting summary, and the Writing Style model.
   /// The last two follow the Dictate Prompt model so a single
   /// on-device model serves every text slot and only one MLX model needs to be in memory.
   private static func reconcileForOfflineMode() {
@@ -282,7 +282,7 @@ enum ModelSelectionReconciler {
 
   /// `offlineWhenKeyless`: with no cloud key at all, fall back to the offline MLX default instead of
   /// leaving a cloud model selected that can only fail. Only for Dictate Prompt and Chat — the
-  /// features a new user tries by hand. Smart Improvement and meeting summaries run unattended, and
+  /// features a new user tries by hand. The Writing Style profile and meeting summaries run unattended, and
   /// a 4B model grinding through them in the background is not a default anyone chose.
   private static func reconcilePromptSelection(
     key: String, candidates: [PromptModel], fallback: PromptModel, offlineWhenKeyless: Bool = false

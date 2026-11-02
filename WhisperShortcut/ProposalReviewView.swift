@@ -1,8 +1,9 @@
 //
-//  SmartImprovementReviewView.swift
+//  ProposalReviewView.swift
 //  WhisperShortcut
 //
-//  Review UI for Smart Improvement: compare original prompt (read-only) with suggested prompt (editable), Accept or Cancel.
+//  Review UI for a proposed change (an AI app's proposal, a new Writing Style profile): compare the
+//  current text (read-only) with the suggested text (editable), Accept or Cancel.
 //
 
 import AppKit
@@ -11,7 +12,7 @@ import SwiftUI
 // MARK: - SwiftUI View
 
 /// One line of a unified line-based diff between current and suggested prompt.
-struct SmartImprovementDiffLine: Identifiable {
+struct ProposalDiffLine: Identifiable {
   enum Kind { case unchanged, removed, added, skipped }
   let id = UUID()
   let kind: Kind
@@ -20,13 +21,13 @@ struct SmartImprovementDiffLine: Identifiable {
 
 /// Computes a line-based diff using Swift's CollectionDifference. Result is a unified list
 /// (removed lines shown as red, added as green, common as grey) suitable for an at-a-glance review.
-func computeSmartImprovementDiff(original: String, suggested: String) -> [SmartImprovementDiffLine] {
+func computeProposalDiff(original: String, suggested: String) -> [ProposalDiffLine] {
   let oldLines = original.components(separatedBy: "\n")
   let newLines = suggested.components(separatedBy: "\n")
   let diff = newLines.difference(from: oldLines)
 
   // Apply diff incrementally to old, recording each change inline.
-  var result: [SmartImprovementDiffLine] = []
+  var result: [ProposalDiffLine] = []
   var removals = Set<Int>()
   var insertions: [Int: String] = [:]
   for change in diff {
@@ -68,8 +69,8 @@ func computeSmartImprovementDiff(original: String, suggested: String) -> [SmartI
 
 /// Folds long unchanged runs into one `.skipped` line, keeping `context` lines next to each
 /// change. A one-line edit at the end of a long prompt is otherwise buried under the whole prompt.
-func collapseUnchangedDiffLines(_ lines: [SmartImprovementDiffLine], context: Int = 2) -> [SmartImprovementDiffLine] {
-  var result: [SmartImprovementDiffLine] = []
+func collapseUnchangedDiffLines(_ lines: [ProposalDiffLine], context: Int = 2) -> [ProposalDiffLine] {
+  var result: [ProposalDiffLine] = []
   var start = 0
   while start < lines.count {
     guard lines[start].kind == .unchanged else {
@@ -94,15 +95,12 @@ func collapseUnchangedDiffLines(_ lines: [SmartImprovementDiffLine], context: In
   return result
 }
 
-struct SmartImprovementReviewView: View {
+struct ProposalReviewView: View {
   let focusDisplayName: String
-  let index: Int?
-  let total: Int?
   let originalText: String
   let rationale: String?
-  /// The prompt section under review, when there is one; it picks which scorecard numbers to show.
-  let section: SystemPromptSection?
-  /// "Smart Improvement" for the app's own runs; the AI-app inbox passes "Suggested by an AI app".
+  /// "Suggested change" for the app's own proposals (Writing Style); the AI-app inbox passes
+  /// "Suggested by an AI app".
   let titlePrefix: LocalizedStringResource
   let cancelTitle: LocalizedStringResource
   let acceptTitle: LocalizedStringResource
@@ -119,13 +117,10 @@ struct SmartImprovementReviewView: View {
 
   init(
     focusDisplayName: String,
-    index: Int? = nil,
-    total: Int? = nil,
     originalText: String,
     suggestedText: String,
     rationale: String? = nil,
-    section: SystemPromptSection? = nil,
-    titlePrefix: LocalizedStringResource = "Smart Improvement",
+    titlePrefix: LocalizedStringResource = "Suggested change",
     cancelTitle: LocalizedStringResource = "Cancel",
     acceptTitle: LocalizedStringResource = "Accept",
     textNoun: ReviewNoun = .prompt,
@@ -135,12 +130,9 @@ struct SmartImprovementReviewView: View {
     onCancel: @escaping () -> Void
   ) {
     self.focusDisplayName = focusDisplayName
-    self.index = index
-    self.total = total
     self.originalText = originalText
     self._editedSuggestedText = State(initialValue: suggestedText)
     self.rationale = rationale
-    self.section = section
     self.titlePrefix = titlePrefix
     self.cancelTitle = cancelTitle
     self.acceptTitle = acceptTitle
@@ -153,15 +145,12 @@ struct SmartImprovementReviewView: View {
 
   /// Title for the review window (used by the panel).
   var windowTitle: String {
-    if let index = index, let total = total, total > 1 {
-      return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName) (\(index) of \(total))")
-    }
     return String(localized: "\(String(localized: titlePrefix)) – \(focusDisplayName)")
   }
 
-  private var diffLines: [SmartImprovementDiffLine] {
+  private var diffLines: [ProposalDiffLine] {
     collapseUnchangedDiffLines(
-      computeSmartImprovementDiff(original: originalText, suggested: editedSuggestedText))
+      computeProposalDiff(original: originalText, suggested: editedSuggestedText))
   }
 
   var body: some View {
@@ -188,10 +177,6 @@ struct SmartImprovementReviewView: View {
             .background(Color(nsColor: .textBackgroundColor))
             .cornerRadius(6)
         }
-      }
-
-      if let section {
-        SmartImprovementScorecardStrip(section: section)
       }
 
       // Something new (an AI app's first command or profile) has nothing to compare against,
@@ -303,17 +288,14 @@ private final class ReviewPanelCloseObserver: NSObject, NSWindowDelegate {
   func windowWillClose(_ notification: Notification) { onClose() }
 }
 
-enum SmartImprovementReviewPanel {
+enum ProposalReviewPanel {
   /// Presents the review UI in a modal panel. Returns the edited text if the user clicked Accept,
   /// nil if the user cancelled **or dismissed the window any other way**.
   static func present(
     focusDisplayName: String,
-    index: Int? = nil,
-    total: Int? = nil,
     originalText: String,
     suggestedText: String,
-    rationale: String? = nil,
-    section: SystemPromptSection? = nil
+    rationale: String? = nil
   ) async -> String? {
     await withCheckedContinuation { continuation in
       let resultLock = NSLock()
@@ -338,14 +320,11 @@ enum SmartImprovementReviewPanel {
         panel.hidesOnDeactivate = false
         panel.minSize = NSSize(width: 820, height: 600)
 
-        let view = SmartImprovementReviewView(
+        let view = ProposalReviewView(
           focusDisplayName: focusDisplayName,
-          index: index,
-          total: total,
           originalText: originalText,
           suggestedText: suggestedText,
           rationale: rationale,
-          section: section,
           onAccept: { text in
             resumeOnce(returning: text)
             NSApp.stopModal()

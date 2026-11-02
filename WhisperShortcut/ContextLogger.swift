@@ -1,6 +1,14 @@
+import CryptoKit
 import Foundation
 
 // MARK: - Interaction Log Entry
+/// One JSONL row in `interactions-YYYY-MM-DD.jsonl`.
+///
+/// Every field after `mode` is optional and has no default on the property, so rows written by
+/// older builds still decode (a missing key is nil) and rows written by newer builds decode here
+/// too (an unknown key is ignored). Older rows may carry `audioRef`, the name of a dictation WAV
+/// kept for Smart Improvement's audio verification; that feature is gone (2026-11-02), the key is
+/// no longer written and is simply ignored on read.
 struct InteractionLogEntry: Codable {
   let ts: String
   let mode: String
@@ -11,10 +19,8 @@ struct InteractionLogEntry: Codable {
   let modelResponse: String?
   let text: String?
   let voice: String?
-  /// Filename inside `UserContext/audio-samples/` if the dictation audio was retained for Smart Improvement.
-  let audioRef: String?
   /// Stable rawValue of the TranscriptionModel used for this entry (e.g. "whisper-base", "gemini-3.5-flash").
-  /// Distinct from `model` (display name) so Smart Improvement can do model-asymmetry comparisons.
+  /// Distinct from `model` (display name), which changes with the UI copy.
   let transcriptionModel: String?
   /// Whether a screenshot was attached to a `prompt`-mode request. Lets analysis distinguish
   /// screenshot-grounded output from fabrication when `selectedText` is empty. Nil for other modes.
@@ -31,12 +37,29 @@ struct InteractionLogEntry: Codable {
   /// (⌘2) and for every other mode. `mode` stays `prompt` so older readers keep working.
   /// No default on the property: a default would keep synthesized `Codable` from reading it.
   let template: String?
+  /// Bundle id of the app that was frontmost when the recording started — where the result was
+  /// meant to go (e.g. "com.apple.mail"). Dictation and Dictate Prompt only; nil for chat, for
+  /// WhisperShortcut's own windows and for rows from before 2026-11.
+  let appBundleId: String?
+  /// That app's display name ("Mail"), for a reader that does not know bundle ids.
+  let appName: String?
+  /// Length of the recorded audio in milliseconds. Dictation and Dictate Prompt only.
+  let durationMs: Int?
+  /// The dictation language setting at the time (`WhisperLanguage` rawValue: "auto", "de", …).
+  /// Dictation and Dictate Prompt only.
+  let language: String?
+  /// Which version of the mode's system prompt section was in effect: the first 8 hex characters
+  /// of the SHA-256 of the section text, or "default" when the section is empty and the built-in
+  /// default applied. Lets a reader tell whether a mistake came before or after a prompt change
+  /// (`system-prompts-history.jsonl` holds the texts). See `InteractionContext.promptVersion`.
+  let promptVersion: String?
 
   init(
     ts: String, mode: String, model: String?, result: String?, selectedText: String?,
     userInstruction: String?, modelResponse: String?, text: String?, voice: String?,
-    audioRef: String?, transcriptionModel: String?, hadScreenshot: Bool?, latencyMs: Int?,
-    provider: String?, loadMs: Int?, template: String? = nil
+    transcriptionModel: String?, hadScreenshot: Bool?, latencyMs: Int?,
+    provider: String?, loadMs: Int?, template: String? = nil,
+    context: InteractionContext = InteractionContext()
   ) {
     self.ts = ts
     self.mode = mode
@@ -47,19 +70,55 @@ struct InteractionLogEntry: Codable {
     self.modelResponse = modelResponse
     self.text = text
     self.voice = voice
-    self.audioRef = audioRef
     self.transcriptionModel = transcriptionModel
     self.hadScreenshot = hadScreenshot
     self.latencyMs = latencyMs
     self.provider = provider
     self.loadMs = loadMs
     self.template = template
+    self.appBundleId = context.appBundleId
+    self.appName = context.appName
+    self.durationMs = context.durationMs
+    self.language = context.language
+    self.promptVersion = context.promptVersion
   }
 
   /// Known mode, or nil when an older row used a spelling this build does not list.
   /// `mode` stays a `String` so that unknown spelling still decodes: a strict enum would
   /// drop the whole JSONL line.
   var interactionMode: InteractionMode? { InteractionMode(rawValue: mode) }
+}
+
+// MARK: - Interaction Context
+
+/// The circumstances of one interaction that are not its text: where the result was meant to go,
+/// how long the recording was, the language setting and which prompt version ran. All optional;
+/// a caller that does not know one leaves it nil.
+struct InteractionContext: Equatable {
+  var appBundleId: String?
+  var appName: String?
+  var durationMs: Int?
+  var language: String?
+  var promptVersion: String?
+
+  /// See `InteractionLogEntry.promptVersion`. Pure, so tests can pin it.
+  static func promptVersion(of sectionText: String?) -> String {
+    let trimmed = sectionText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !trimmed.isEmpty else { return "default" }
+    let digest = SHA256.hash(data: Data(trimmed.utf8))
+    return digest.prefix(4).map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// The dictation language setting, as stored.
+  static var currentLanguage: String {
+    UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage) ?? WhisperLanguage.auto.rawValue
+  }
+}
+
+/// The app a recording was meant for, noted when the recording starts (`MenuBarController`).
+struct InteractionTargetApp: Equatable {
+  let bundleId: String?
+  let name: String?
 }
 
 // MARK: - Outcome Signal Entry
@@ -119,7 +178,7 @@ enum OutcomeSignal: String {
   /// verdict. Without this, retry chains are only visible by eyeballing timestamps.
   case promptRetry
   /// The user selected the previous Dictate Prompt output (word-Jaccard > 0.6, < 5 min) and gave
-  /// a new instruction: iterative refinement, the edit trace Smart Improvement learns style from.
+  /// a new instruction: iterative refinement, the edit trace a tuning model reads style from.
   /// Kept apart from `promptRetry` on purpose (`promptRetry` stays a verdict on a missed edit).
   /// `detail.kind` = `style` / `transform` / `other` (keyword class, never the instruction text),
   /// `detail.secondsSincePrevious`.
@@ -182,43 +241,30 @@ struct NoSpeechContext: Sendable {
     _ origin: NoSpeechOrigin, audioURL: URL, peakDb: Float? = nil,
     _ body: () async throws -> T
   ) async rethrows -> T {
-    let seconds = try? AudioDuration.avAudioFileSeconds(audioURL)
-    let durationMs = seconds.flatMap { $0.isFinite && $0 >= 0 ? Int(($0 * 1000).rounded()) : nil }
+    let durationMs = AudioDuration.milliseconds(audioURL)
     let context = NoSpeechContext(origin: origin, durationMs: durationMs, peakDb: peakDb)
     return try await $current.withValue(context) { try await body() }
   }
 }
 
 /// Which interaction a network/processing deadline belongs to. Raw values are the `mode` keys the
-/// interaction log uses, plus `smartImprovement` for background derivation traffic, which has no
-/// interaction of its own.
+/// interaction log uses. (`smartImprovement`, the background derivation origin, went with that
+/// feature on 2026-11-02; older signal rows may still carry it.)
 enum RequestOrigin: String {
   case transcription
   case prompt
   case geminiChat
-  case smartImprovement
 
   var phase: String {
     switch self {
     case .transcription: return "transcribing"
     case .prompt: return "prompting"
     case .geminiChat: return "chatting"
-    case .smartImprovement: return "deriving"
     }
   }
 }
 
 // MARK: - System Prompt History Entry
-struct SystemPromptHistoryEntry: Codable {
-  let ts: String
-  let source: String
-  let previousLength: Int
-  let newLength: Int
-  let content: String
-  /// Gemini model used for this improvement (e.g. "Gemini 3.1 Pro"). Optional for backward compatibility with existing JSONL lines.
-  let model: String?
-}
-
 /// Single history file entry for any system prompt section (system-prompts-history.jsonl).
 struct UnifiedSystemPromptHistoryEntry: Codable {
   let ts: String
@@ -228,8 +274,8 @@ struct UnifiedSystemPromptHistoryEntry: Codable {
   let newLength: Int
   let content: String
   let model: String?
-  /// Snapshot of the scorecard when this change was applied, so review can show "since the last change: X → Y".
-  let scorecard: ScorecardMetrics?
+  // Rows written before 2026-11-02 may also carry `scorecard` (a Smart Improvement metrics
+  // snapshot). It is ignored on read.
 }
 
 // MARK: - Context Logger
@@ -242,9 +288,15 @@ class ContextLogger {
   private let queue = DispatchQueue(label: "com.whisper-shortcut.contextlogger", qos: .utility)
   /// Directory name on disk; kept as "UserContext" for compatibility with existing installs.
   private let contextDirectoryName = "UserContext"
-  /// Subdirectory of UserContext holding short-lived dictation WAVs for Smart Improvement audio verification.
-  private let audioSamplesDirectoryName = "audio-samples"
-  private let rotationDays = 90
+  /// Subdirectory where Smart Improvement kept dictation WAVs for audio verification (up to 200 MB).
+  /// Nothing writes it any more; `performRotation` ages out what an older build left behind.
+  private let legacyAudioSamplesDirectoryName = "audio-samples"
+  /// Retention for streams that hold user text (interactions). See `retentionDays(for:)`.
+  static let contentRetentionDays = 90
+  /// Retention for the content-free outcome-signal stream. Signals carry timings and counts, never
+  /// text, so keeping them twice as long costs no privacy and a few hundred KB, and lets a trend
+  /// (paste rate, restart rate) be compared across a release cycle longer than three months.
+  static let signalRetentionDays = 180
   /// Maximum number of lines kept in history JSONL files that have no date-based rotation
   /// (system-prompts-history.jsonl, user-context-history.jsonl). Oldest lines are trimmed.
   private let historyFileMaxLines = 500
@@ -282,13 +334,13 @@ class ContextLogger {
   /// not rephrasing a failed instruction.
   private static let promptRetryWindow: TimeInterval = 120
 
+  /// The app the current Dictate / Dictate Prompt recording is meant for. Set when the recording
+  /// starts, read when its interaction is logged. Guarded by `lastInteractionLock`.
+  private var targetApp: InteractionTargetApp?
+
   private lazy var contextDirectoryURL: URL = {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
       .appendingPathComponent(contextDirectoryName)
-  }()
-
-  private lazy var audioSamplesDirectoryURL: URL = {
-    contextDirectoryURL.appendingPathComponent(audioSamplesDirectoryName)
   }()
 
   private init() {
@@ -325,9 +377,32 @@ class ContextLogger {
   /// `ContextLoggingPreference`.
   private var isLoggingEnabled: Bool { ContextLoggingPreference.isEnabled }
 
+  // MARK: - Interaction context
+
+  /// Notes the app a Dictate / Dictate Prompt recording is meant for, at the moment it starts.
+  /// `nil` (nothing frontmost, or WhisperShortcut's own window) clears it, so a later row never
+  /// names an app from an earlier recording.
+  func noteRecordingTarget(_ app: InteractionTargetApp?) {
+    lastInteractionLock.lock()
+    targetApp = app
+    lastInteractionLock.unlock()
+  }
+
+  /// Context for a dictation or Dictate Prompt row: the noted target app, the language setting,
+  /// the prompt version of `section`, and the recording length when the caller knows it.
+  func recordingContext(section: SystemPromptSection, durationMs: Int?) -> InteractionContext {
+    lastInteractionLock.lock()
+    let app = targetApp
+    lastInteractionLock.unlock()
+    return InteractionContext(
+      appBundleId: app?.bundleId, appName: app?.name, durationMs: durationMs,
+      language: InteractionContext.currentLanguage,
+      promptVersion: InteractionContext.promptVersion(of: SystemPromptsStore.shared.loadSection(section)))
+  }
+
   // MARK: - Public Logging Methods
 
-  func logTranscription(result: String, model: String?, audioRef: String? = nil, transcriptionModel: String? = nil) {
+  func logTranscription(result: String, model: String?, transcriptionModel: String? = nil, durationMs: Int? = nil) {
     // Before the guard: opt-in usage statistics are independent of "Save usage data". Only the
     // model id goes in — never `result`.
     TelemetryService.shared.completed(.dictation, modelKind: .transcription, model: transcriptionModel)
@@ -342,12 +417,12 @@ class ContextLogger {
       modelResponse: nil,
       text: nil,
       voice: nil,
-      audioRef: audioRef,
       transcriptionModel: transcriptionModel,
       hadScreenshot: nil,
       latencyMs: nil,
       provider: nil,
-      loadMs: nil
+      loadMs: nil,
+      context: recordingContext(section: .dictation, durationMs: durationMs)
     )
     writeEntry(entry)
   }
@@ -355,7 +430,7 @@ class ContextLogger {
   func logPrompt(
     mode: PromptMode, selectedText: String?, userInstruction: String, modelResponse: String,
     model: String? = nil, hadScreenshot: Bool? = nil, latencyMs: Int? = nil, provider: String? = nil,
-    loadMs: Int? = nil, template: String? = nil
+    loadMs: Int? = nil, template: String? = nil, durationMs: Int? = nil
   ) {
     TelemetryService.shared.completed(.prompt, modelKind: .prompt, model: model)
     guard isLoggingEnabled else { return }
@@ -381,13 +456,13 @@ class ContextLogger {
       modelResponse: modelResponse,
       text: nil,
       voice: nil,
-      audioRef: nil,
       transcriptionModel: nil,
       hadScreenshot: hadScreenshot,
       latencyMs: latencyMs,
       provider: provider,
       loadMs: loadMs,
-      template: template
+      template: template,
+      context: recordingContext(section: .promptMode, durationMs: durationMs)
     )
     writeEntry(entry)
   }
@@ -461,12 +536,14 @@ class ContextLogger {
       modelResponse: sanitizedResponse,
       text: nil,
       voice: nil,
-      audioRef: nil,
       transcriptionModel: nil,
       hadScreenshot: nil,
       latencyMs: nil,
       provider: nil,
-      loadMs: nil
+      loadMs: nil,
+      // No target app (the user typed in WhisperShortcut's own window) and no recording.
+      context: InteractionContext(
+        promptVersion: InteractionContext.promptVersion(of: SystemPromptsStore.shared.loadSection(.chat)))
     )
     writeEntry(entry)
   }
@@ -509,7 +586,7 @@ class ContextLogger {
 
   /// Deadline signal. `origin` is the caller's interaction mode — never inferred here, because
   /// `GeminiAPIClient.performRequest` serves every Gemini mode and a hardcoded `transcription` made
-  /// background Smart Improvement aborts read as dictation stalls (gap #11 / ledger I15). `nil`
+  /// background (since removed) Smart Improvement aborts read as dictation stalls (gap #11 / ledger I15). `nil`
   /// means "unattributed shared helper", which is honest where a wrong mode would not be.
   /// `stage` and `model` are emitted only when supplied, so the local paths keep their extra keys.
   func logRequestTimedOut(
@@ -612,131 +689,6 @@ class ContextLogger {
     )
   }
 
-  // MARK: - Audio Sample Capture (Smart Improvement verification)
-
-  /// Returns the absolute URL of the on-disk audio sample directory.
-  var audioSamplesDirectory: URL { audioSamplesDirectoryURL }
-
-  /// Lists all WAV files currently in the audio sample pool, oldest first.
-  func audioSampleURLs() -> [URL] {
-    let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return [] }
-    return contents
-      .filter { $0.pathExtension.lowercased() == "wav" }
-      .sorted { $0.lastPathComponent < $1.lastPathComponent }
-  }
-
-  /// Copies the given dictation WAV into the audio sample pool. Returns the stored filename
-  /// (suitable for storing as `audioRef` on an InteractionLogEntry) or nil if disabled / failed.
-  /// Backend label is recorded only in the `AUDIO-VERIFY:` log line, not on disk.
-  /// Synchronous: callers can immediately reference the returned filename.
-  func captureDictationAudio(from sourceURL: URL, backend: String, transcriptionModel: String) -> String? {
-    guard isLoggingEnabled else {
-      DebugLogger.logAudio("AUDIO-VERIFY: capture(skip) reason=logging-disabled")
-      return nil
-    }
-    let fm = FileManager.default
-    do {
-      if !fm.fileExists(atPath: audioSamplesDirectoryURL.path) {
-        try fm.createDirectory(at: audioSamplesDirectoryURL, withIntermediateDirectories: true)
-      }
-      // Eviction before copy to honor the pool cap.
-      evictOldestAudioSamplesIfNeeded(reserving: 1)
-      let filename = audioSampleFilename()
-      let destURL = audioSamplesDirectoryURL.appendingPathComponent(filename)
-      try fm.copyItem(at: sourceURL, to: destURL)
-      let size = (try? fm.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-      DebugLogger.logAudio("AUDIO-VERIFY: capture(done) ref=\(filename) backend=\(backend) transcriptionModel=\(transcriptionModel) sizeBytes=\(size)")
-      return filename
-    } catch {
-      DebugLogger.logError("AUDIO-VERIFY: capture(error) reason=\(error.logDescription)")
-      return nil
-    }
-  }
-
-  /// Deletes a single captured audio sample by its filename (as returned by
-  /// `captureDictationAudio`). Used to discard a sample captured up front when the dictation
-  /// turns out cancelled, stale, or failed, so those samples never linger in the pool.
-  func deleteAudioSample(named filename: String) {
-    guard !filename.isEmpty else { return }
-    let url = audioSamplesDirectoryURL.appendingPathComponent(filename)
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the entire audio sample pool. Returns the number of files deleted.
-  /// Used when wiping all data; Smart Improvement no longer calls this — audio is now retained across
-  /// runs and bounded by age (see `pruneExpiredAudioSamples`).
-  @discardableResult
-  func clearAudioSamples() -> Int {
-    let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return 0 }
-    var deleted = 0
-    for url in contents {
-      if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
-    }
-    return deleted
-  }
-
-  /// Deletes audio samples older than `audioSampleRetentionDays`, using the capture timestamp encoded
-  /// in each filename (UTC, format `yyyyMMdd'T'HHmmssSSS-XXXXXX.wav`). Audio is retained across Smart
-  /// Improvement runs so terms from older dictations stay verifiable; this keeps the pool bounded by
-  /// age. Files whose name can't be parsed are kept. Returns the number of files deleted.
-  @discardableResult
-  func pruneExpiredAudioSamples() -> Int {
-    let fm = FileManager.default
-    let cutoff = Date().addingTimeInterval(-Double(AppConstants.audioSampleRetentionDays) * 86_400)
-    let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    let urls = audioSampleURLs()
-    var deleted = 0
-    for url in urls {
-      let stamp = url.deletingPathExtension().lastPathComponent.components(separatedBy: "-").first ?? ""
-      guard let captured = formatter.date(from: stamp) else { continue }  // unknown format → keep
-      if captured < cutoff, (try? fm.removeItem(at: url)) != nil { deleted += 1 }
-    }
-    if deleted > 0 {
-      DebugLogger.logAudio("AUDIO-VERIFY: prune-age deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) olderThanDays=\(AppConstants.audioSampleRetentionDays)")
-    }
-    return deleted
-  }
-
-  private func evictOldestAudioSamplesIfNeeded(reserving newSlots: Int) {
-    let urls = audioSampleURLs()
-    let fm = FileManager.default
-    let capacity = AppConstants.audioSampleMaxFiles
-    let byteCap = AppConstants.audioSampleMaxTotalBytes
-
-    let sizes = urls.map { url -> Int in
-      ((try? fm.attributesOfItem(atPath: url.path)) ?? [:])[.size] as? Int ?? 0
-    }
-    var remainingBytes = sizes.reduce(0, +)
-    var remainingCount = urls.count
-
-    // Evict oldest-first until the pool fits under BOTH the file-count and total-byte caps.
-    var evictCount = 0
-    while evictCount < urls.count,
-          remainingCount + newSlots > capacity || remainingBytes > byteCap {
-      remainingBytes -= sizes[evictCount]
-      remainingCount -= 1
-      evictCount += 1
-    }
-    guard evictCount > 0 else { return }
-
-    var deleted = 0
-    for url in urls.prefix(evictCount) {
-      if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
-    }
-    DebugLogger.logAudio("AUDIO-VERIFY: pool-trim deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) capacity=\(capacity) poolBytes=\(remainingBytes) byteCap=\(byteCap)")
-  }
-
-  private func audioSampleFilename() -> String {
-    let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    let stamp = formatter.string(from: Date())
-    let suffix = UUID().uuidString.prefix(6)
-    return "\(stamp)-\(suffix).wav"
-  }
-
   // MARK: - Data Management
 
   func deleteAllData() {
@@ -759,7 +711,7 @@ class ContextLogger {
     queue.async { [weak self] in
       guard let self else { return }
       let fm = FileManager.default
-      let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.rotationDays, to: Date()) ?? Date()
+      self.pruneLegacyAudioSamples()
 
       do {
         let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
@@ -768,7 +720,7 @@ class ContextLogger {
 
           if let stream = UserContextLog.Stream.allCases.first(where: { filename.hasPrefix($0.rawValue) }),
              let fileDate = UserContextLog.fileDay(in: filename, stream: stream),
-             fileDate < cutoffDate {
+             fileDate < Self.retentionCutoff(for: stream) {
             try fm.removeItem(at: fileURL)
             DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
           } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
@@ -779,6 +731,54 @@ class ContextLogger {
       } catch {
         DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.logDescription)")
       }
+    }
+  }
+
+  /// Days a date-stamped stream is kept: user text for `contentRetentionDays`, content-free
+  /// signals for `signalRetentionDays`.
+  static func retentionDays(for stream: UserContextLog.Stream) -> Int {
+    switch stream {
+    case .interactions: return contentRetentionDays
+    case .signals: return signalRetentionDays
+    }
+  }
+
+  private static func retentionCutoff(for stream: UserContextLog.Stream, now: Date = Date()) -> Date {
+    Calendar.current.date(byAdding: .day, value: -retentionDays(for: stream), to: now) ?? now
+  }
+
+  /// Days a leftover `audio-samples/` WAV is kept: the retention Smart Improvement promised
+  /// (`audioSampleRetentionDays`) while it still pruned the pool on each run.
+  static let legacyAudioSampleRetentionDays = 30
+
+  /// Ages out `UserContext/audio-samples/`, where Smart Improvement kept copies of dictation audio
+  /// (up to 500 WAVs / 200 MB) for its audio verification. Nothing writes it since that feature
+  /// was removed (2026-11-02), and nothing pruned it any more either, so recordings would have
+  /// stayed for good. Deletes WAVs older than `legacyAudioSampleRetentionDays` (capture time is
+  /// in the name, `yyyyMMdd'T'HHmmssSSS-XXXXXX.wav`, UTC), then the folder once it is empty.
+  /// Not all at once on purpose: the opt-in offline benchmarks read the same folder, and the
+  /// promise users were given was "30 days", not "until the next update". Runs on `queue`.
+  private func pruneLegacyAudioSamples(now: Date = Date()) {
+    let fm = FileManager.default
+    let dir = contextDirectoryURL.appendingPathComponent(legacyAudioSamplesDirectoryName)
+    guard let contents = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+    let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    let cutoff = now.addingTimeInterval(-Double(Self.legacyAudioSampleRetentionDays) * 86_400)
+    var deleted = 0
+    var remaining = 0
+    for url in contents {
+      let stamp = url.deletingPathExtension().lastPathComponent.components(separatedBy: "-").first ?? ""
+      // An unreadable name is kept, as before: never delete what we cannot date.
+      if let captured = formatter.date(from: stamp), captured < cutoff, (try? fm.removeItem(at: url)) != nil {
+        deleted += 1
+      } else {
+        remaining += 1
+      }
+    }
+    if remaining == 0 { try? fm.removeItem(at: dir) }
+    if deleted > 0 || remaining == 0 {
+      DebugLogger.log("USER-CONTEXT: legacy audio-samples pruned=\(deleted) remaining=\(remaining)")
     }
   }
 
@@ -805,15 +805,13 @@ class ContextLogger {
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
-  /// `source` distinguishes who made the change — "auto" for Smart Improvement, "chat" for an
-  /// `update_app_instructions` tool call. Both write the same sections, so without it the history
-  /// can't tell you which writer caused a behavior change.
-  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String = PromptHistorySource.auto.rawValue) {
+  /// `source` distinguishes who made the change — "chat" for an `update_app_instructions` tool
+  /// call, "mcp" for an AI app, "voice-feedback" for spoken feedback ("auto" on older rows was
+  /// Smart Improvement). They write the same sections, so without it the history can't tell you
+  /// which writer caused a behavior change.
+  func appendSystemPromptsHistory(section: SystemPromptSection, previousLength: Int, newLength: Int, content: String, model: String? = nil, source: String) {
     queue.async { [weak self] in
       guard let self else { return }
-      let scorecard = SmartImprovementScorecard.snapshot(
-        directory: self.contextDirectoryURL,
-        currentGlossary: SystemPromptsStore.shared.loadWhisperGlossary())
       let entry = UnifiedSystemPromptHistoryEntry(
         ts: UserContextLog.nowString(),
         section: section.rawValue,
@@ -821,8 +819,7 @@ class ContextLogger {
         previousLength: previousLength,
         newLength: newLength,
         content: content,
-        model: model,
-        scorecard: scorecard
+        model: model
       )
       let fileURL = self.contextDirectoryURL.appendingPathComponent("system-prompts-history.jsonl")
       do {
@@ -835,30 +832,7 @@ class ContextLogger {
     }
   }
 
-  /// Truncates at the last sentence or word boundary before maxChars so text is never cut mid-phrase.
-  private static func truncateAtBoundary(_ text: String, maxChars: Int) -> String {
-    let prefix = String(text.prefix(maxChars))
-    let sentenceEnds: Set<Character> = [".", "!", "?", "\n"]
-    if let i = prefix.lastIndex(where: { sentenceEnds.contains($0) }) {
-      return String(prefix[...i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    if let i = prefix.lastIndex(of: " ") {
-      return String(prefix[..<i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  // MARK: - File Listing (for derivation)
-
-  /// Returns counts of interaction entries grouped by `mode` field over the last N days.
-  /// Used by Smart Improvement to skip focuses without enough data.
-  func interactionCountsByMode(lastDays: Int) -> [String: Int] {
-    var counts: [String: Int] = [:]
-    for entry in UserContextLog.interactions(lastDays: lastDays) {
-      counts[entry.mode, default: 0] += 1
-    }
-    return counts
-  }
+  // MARK: - File Listing
 
   /// Runs `work` after interaction-log appends already queued on the write queue.
   /// Dictate Prompt uses this so the quick-action cache rebuilds once the new row is on disk.
@@ -879,103 +853,6 @@ class ContextLogger {
   /// Returns the URL of the context directory.
   var directoryURL: URL {
     contextDirectoryURL
-  }
-
-  /// Removes the suggested system prompt file so it does not reappear after Apply.
-  /// Removes all suggested-*.txt files (and rationale sidecars). Called at start of a Smart Improvement run to discard stale suggestions from prior crashed/aborted runs.
-  func deleteAllSuggestedFiles() {
-    let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: contextDirectoryURL, includingPropertiesForKeys: nil) else { return }
-    for url in contents {
-      let name = url.lastPathComponent
-      if name.hasPrefix("suggested-") && (name.hasSuffix(".txt") || name.hasSuffix(".json")) {
-        try? fm.removeItem(at: url)
-      }
-    }
-  }
-
-  func deleteSuggestedSystemPromptFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested user context file so it does not reappear after Apply.
-  func deleteSuggestedUserContextFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-user-context.md")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested dictation prompt file so it does not reappear after Apply.
-  func deleteSuggestedDictationPromptFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-dictation-prompt.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested Whisper Glossary file so it does not reappear after Apply.
-  func deleteSuggestedWhisperGlossaryFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-whisper-glossary.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested Chat system prompt file so it does not reappear after Apply.
-  func deleteSuggestedChatSystemPromptFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription) or Dictate Prompt).
-  /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode).
-  /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
-  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "system-prompt-history-\(historyFileSuffix).jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.logDescription)")
-      }
-    }
-  }
-
-  /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
-  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when context data is deleted.
-  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "user-context-history.jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended user context history")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.logDescription)")
-      }
-    }
   }
 
   // MARK: - Private Helpers

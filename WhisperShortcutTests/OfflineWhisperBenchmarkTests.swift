@@ -520,7 +520,7 @@ struct OfflineWhisperBenchmarkTests {
   /// chunk held 1.8 s or 16 s of speech — a floor the "decode cost tracks output tokens" model
   /// above cannot explain, and the floor is exactly what the user waits through after Stop once
   /// streaming has taken the rest. This decodes retained recordings (`UserContext/audio-samples`,
-  /// the ones Smart Improvement keeps) at several lengths and prints WhisperKit's own stage
+  /// kept by builds before 2026-11-02 and aged out 30 days after capture) at several lengths and prints WhisperKit's own stage
   /// timings, with and without the user's Whisper Glossary, twice each. Transcripts are not
   /// printed: the material is real dictation, and only the numbers are needed here.
   @Test(

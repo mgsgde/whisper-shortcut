@@ -28,10 +28,12 @@ enum TelemetryArea: String, CaseIterable, Codable {
   case youtube
 
   /// Maps `InteractionLogEntry.mode` / `SignalLogEntry.mode` strings onto an area.
-  /// `smartImprovement` is a `RequestOrigin`, not an interaction mode: timeouts on that
-  /// path are logged with it, and an unknown spelling stays `.other`.
+  /// `smartImprovement` was a `RequestOrigin`, not an interaction mode: timeouts on that
+  /// background path were logged with it. The feature is gone (2026-11-02), but a ping queued by
+  /// an older build may still carry the spelling, and the area stays in the server schema. An
+  /// unknown spelling stays `.other`.
   init(logMode: String?) {
-    if logMode == RequestOrigin.smartImprovement.rawValue {
+    if logMode == "smartImprovement" {
       self = .smartImprovement
       return
     }
@@ -165,8 +167,8 @@ enum TelemetryMilestone: String, CaseIterable, Codable {
   case onboardingTryIt = "onboarding.step.tryIt"
   /// Retired with the five-step tour, like `onboardingPrivacy`.
   case onboardingAutoPaste = "onboarding.step.autoPaste"
-  /// Retired with the five-step tour, like `onboardingPrivacy`.
-  case onboardingSmartImprovement = "onboarding.step.smartImprovement"
+  /// Retired with the five-step tour, like `onboardingPrivacy` (the Smart Improvement step).
+  case onboardingLearningStep = "onboarding.step.smartImprovement"
   case onboardingDone = "onboarding.step.done"
   case onboardingCompleted = "onboarding.completed"
   case firstDictation = "activation.firstDictation"
@@ -210,6 +212,8 @@ enum TelemetryProvider: String, CaseIterable, Codable {
 struct TelemetrySetup: Codable, Equatable {
   var providers: [TelemetryProvider]
   var offlineWhisperModel: Bool
+  /// "Save usage data" is on. The wire name is from Smart Improvement (removed 2026-11-02), which
+  /// was the only reader of that log at the time; renaming it would break `server/telemetry/schema.json`.
   var smartImprovement: Bool
   var autoPaste: Bool
   var writingStyle: Bool

@@ -4,11 +4,11 @@ import Testing
 @testable import WhisperShortcut_AppStore
 
 @Suite("Review diff collapsing")
-struct SmartImprovementDiffCollapseTests {
+struct ProposalReviewDiffTests {
 
   private func render(_ original: [String], _ suggested: [String]) -> [String] {
     let lines = collapseUnchangedDiffLines(
-      computeSmartImprovementDiff(
+      computeProposalDiff(
         original: original.joined(separator: "\n"), suggested: suggested.joined(separator: "\n")))
     return lines.map { line in
       switch line.kind {

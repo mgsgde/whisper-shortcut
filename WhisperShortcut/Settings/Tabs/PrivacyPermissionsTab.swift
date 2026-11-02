@@ -4,6 +4,8 @@ import SwiftUI
 /// Permissions tab — macOS permission status and actions. This is the destination every
 /// permission-error path routes to, and the same overview shown during onboarding.
 struct PermissionsTab: View {
+  @ObservedObject var viewModel: SettingsViewModel
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
@@ -19,6 +21,10 @@ struct PermissionsTab: View {
       Spacer().frame(height: SettingsConstants.sectionSpacing)
 
       UsageStatisticsSection()
+
+      Spacer().frame(height: SettingsConstants.sectionSpacing)
+
+      UsageDataSection(viewModel: viewModel)
 
       Spacer().frame(height: SettingsConstants.sectionSpacing)
 
@@ -74,7 +80,7 @@ struct OfflineModeSection: View {
       if offlineMode {
         VStack(alignment: .leading, spacing: 6) {
           offlineModeBullet("Dictation and Dictate Prompt stay on this Mac — Parakeet or Whisper here, and an in-process MLX model (or Ollama / LM Studio) for the rewrite.")
-          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
+          offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. The Google and Trello integrations do not work — nothing runs them on-device.")
           offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
           #if !APP_STORE && canImport(Sparkle)
           offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates.")

@@ -508,7 +508,6 @@ struct MCPSettingsCatalogTests {
       "meetings.chunk_interval",
       "meetings.safeguard_duration",
       "dictate_prompt.screenshot_context",
-      "improvement.auto_run_interval",
     ]
     for id in expected {
       #expect(ids.contains(id), "missing \(id)")

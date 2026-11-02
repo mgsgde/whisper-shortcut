@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and Smart Improvement.
+/// Unified model selection component for Dictate Prompt (GPT-Audio and Gemini multimodal models) and the Writing Style model.
 struct PromptModelSelectionView: View {
   let title: LocalizedStringResource
   /// Optional SF Symbol shown next to the section header title.
@@ -13,7 +13,7 @@ struct PromptModelSelectionView: View {
   let onModelChanged: (() -> Void)?
   /// When true, user is on subscription (proxy); model selection is fixed by the backend. All options disabled.
   let subscriptionMode: Bool
-  /// When in subscription mode, optional custom text for the fixed model (e.g. "The chat window uses Gemini 3.1 Flash-Lite (fixed)."). If nil, shows Dictate Prompt / Smart Improvement text.
+  /// When in subscription mode, optional custom text for the fixed model (e.g. "The chat window uses Gemini 3.1 Flash-Lite (fixed)."). If nil, shows Dictate Prompt / Writing Style text.
   let subscriptionFixedModelDescription: String?
   /// When in subscription mode, if set, this model is shown as selected in the grid and used for Model Details (so only this tile is highlighted, others grayed out).
   let subscriptionEffectiveModel: PromptModel?
@@ -21,7 +21,7 @@ struct PromptModelSelectionView: View {
   let availableModels: [PromptModel]?
   /// Model to mark with the "Recommended" star. Required — every role passes its own
   /// `SettingsDefaults` value. It used to default to the Dictate Prompt default, which
-  /// silently made Smart Improvement star a model that was not its default.
+  /// silently made the then Smart Improvement picker star a model that was not its default.
   let recommendedModel: PromptModel
   @ObservedObject private var mlxManager = LocalLLMModelManager.shared
 
@@ -66,14 +66,14 @@ struct PromptModelSelectionView: View {
       if let custom = subscriptionFixedModelDescription {
         return "In subscription mode, model selection is not available. \(custom)"
       }
-      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Smart Improvement uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)."
+      return "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Writing Style uses \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)."
     }
     return subtitle ?? "Choose the model that hears your spoken instruction and applies it to the selected text"
   }
 
   private var subscriptionModeFixedModelLine: String {
     if let custom = subscriptionFixedModelDescription { return custom }
-    return String(localized: "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)")
+    return String(localized: "Dictate Prompt: Gemini 3.1 Flash-Lite · Writing Style: \(subscriptionEffectiveModel?.displayName ?? "Gemini 3 Flash") (fixed)")
   }
 
   var body: some View {
@@ -116,7 +116,7 @@ struct PromptModelSelectionView: View {
 
       // The download list only matters once an on-device model is picked (the tile already says
       // "Needs download") or one is on disk to manage. Shown in every prompt picker before, it
-      // repeated the same rows in Dictate Prompt, Chat, Meetings and Smart Improvement.
+      // repeated the same rows in Dictate Prompt, Chat, Meetings and Writing Style.
       let offlineModels = models.compactMap(\.localMLXModelType)
       if displayModel.localMLXModelType != nil
         || offlineModels.contains(where: { mlxManager.isModelAvailable($0) || mlxManager.downloadingModels.contains($0) }) {

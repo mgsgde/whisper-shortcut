@@ -57,22 +57,6 @@
         }
       }
     },
-    "%@\nBefore: %lld %@ · since: %lld %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@\nVorher: %2$lld %3$@ · seitdem: %4$lld %5$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@\nBefore: %2$lld %3$@ · since: %4$lld %5$@"
-          }
-        }
-      }
-    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -622,22 +606,6 @@
         }
       }
     },
-    "%@, by %@, %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@, von %2$@, %3$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@, by %2$@, %3$@"
-          }
-        }
-      }
-    },
     "%@:" : {
       "shouldTranslate" : false
     },
@@ -664,22 +632,6 @@
         }
       },
       "shouldTranslate" : false
-    },
-    "%lld %@, too few to read much into" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld %@, zu wenige für eine belastbare Aussage"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld %2$@, too few to read much into"
-          }
-        }
-      }
     },
     "%lld accounts" : {
       "localizations" : {
@@ -2188,16 +2140,6 @@
         }
       }
     },
-    "A run is already in progress and the queue is full. Try again later." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Durchlauf läuft bereits und die Warteschlange ist voll. Versuchen Sie es später noch einmal."
-          }
-        }
-      }
-    },
     "A small window shows the transcribed text and AI replies." : {
       "localizations" : {
         "de" : {
@@ -2286,16 +2228,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eigenen Prompt hinzufügen"
-          }
-        }
-      }
-    },
-    "Add a rule to the Dictate Prompt instructions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eine Regel zu den Anweisungen von Dictate Prompt hinzufügen."
           }
         }
       }
@@ -2626,46 +2558,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "In die Einstellungen von %@ eingetragen. %@ Warte auf die Verbindung…"
-          }
-        }
-      }
-    },
-    "Added to queue. %lld improvements queued." : {
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "In die Warteschlange gestellt. %lld Verbesserung wartet."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "In die Warteschlange gestellt. %lld Verbesserungen warten."
-                }
-              }
-            }
-          }
-        },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added to queue. %lld improvement queued."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Added to queue. %lld improvements queued."
-                }
-              }
-            }
           }
         }
       }
@@ -4187,16 +4079,6 @@
         }
       }
     },
-    "Change the Dictate Prompt instructions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Anweisungen von Dictate Prompt ändern."
-          }
-        }
-      }
-    },
     "Changed by AI apps" : {
       "localizations" : {
         "de" : {
@@ -4278,16 +4160,6 @@
         }
       }
     },
-    "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Chat kann dieselben Offline-MLX-Modelle nutzen. Vorlesen verwendet die macOS-Stimmen auf dem Gerät. Smart Improvement sowie die Google- und Trello-Integration funktionieren nicht, weil sie nicht auf dem Gerät laufen können."
-          }
-        }
-      }
-    },
     "Chat copied to clipboard (%lld messages)." : {
       "localizations" : {
         "de" : {
@@ -4354,16 +4226,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Chat ist leer – nichts zu kopieren."
-          }
-        }
-      }
-    },
-    "Chat messages sent again because the answer wasn't good enough, per 100 chat turns." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chat-Nachrichten, die erneut gesendet wurden, weil die Antwort nicht gut genug war, pro 100 Chat-Runden."
           }
         }
       }
@@ -4448,16 +4310,6 @@
         }
       }
     },
-    "Chat retries" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chat-Wiederholungen"
-          }
-        }
-      }
-    },
     "Chat runs on your ChatGPT Plus or Pro plan and counts toward its usage limits." : {
       "localizations" : {
         "de" : {
@@ -4500,26 +4352,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Chat sieht die Zusammenfassung und das ganze Transkript dieses Meetings."
-          }
-        }
-      }
-    },
-    "Chat System Prompt" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "System-Prompt für den Chat"
-          }
-        }
-      }
-    },
-    "chat turns" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chat-Runden"
           }
         }
       }
@@ -5861,16 +5693,6 @@
         }
       }
     },
-    "Context Data" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kontextdaten"
-          }
-        }
-      }
-    },
     "Continue" : {
       "localizations" : {
         "de" : {
@@ -6599,16 +6421,6 @@
         }
       }
     },
-    "Counting…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird gezählt …"
-          }
-        }
-      }
-    },
     "Country Not Supported" : {
       "localizations" : {
         "de" : {
@@ -6995,26 +6807,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dänisch"
-          }
-        }
-      }
-    },
-    "Dashes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gedankenstriche"
-          }
-        }
-      }
-    },
-    "Dashes added" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gedankenstriche eingefügt"
           }
         }
       }
@@ -7503,42 +7295,12 @@
         }
       }
     },
-    "Dictate Prompt System Prompt" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "System-Prompt für Dictate Prompt"
-          }
-        }
-      }
-    },
     "Dictate Prompt:" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dictate Prompt:"
-          }
-        }
-      }
-    },
-    "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: %@ (fixed)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dictate Prompt: Gemini 3.1 Flash-Lite · Smart Improvement: %@ (fest)"
-          }
-        }
-      }
-    },
-    "Dictate Prompts re-run on the same selection with a new instruction, per 100 prompts." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dictate Prompts, die auf derselben Auswahl mit neuer Anweisung wiederholt wurden, pro 100 Prompts."
           }
         }
       }
@@ -7639,36 +7401,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diktiermodell"
-          }
-        }
-      }
-    },
-    "Dictation Prompt" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktat-Prompt"
-          }
-        }
-      }
-    },
-    "dictations" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diktate"
-          }
-        }
-      }
-    },
-    "Did the changes you accepted help? Counted on this Mac from your usage logs, without AI, and nothing leaves your Mac. Lower is better for every number." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Haben die angenommenen Änderungen geholfen? Gezählt auf diesem Mac aus Ihren Nutzungsprotokollen, ohne KI, und nichts verlässt Ihren Mac. Bei jeder Zahl ist niedriger besser."
           }
         }
       }
@@ -8261,46 +7993,6 @@
         }
       }
     },
-    "Every 14 days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle 14 Tage"
-          }
-        }
-      }
-    },
-    "Every 3 days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle 3 Tage"
-          }
-        }
-      }
-    },
-    "Every 30 days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle 30 Tage"
-          }
-        }
-      }
-    },
-    "Every 7 days" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle 7 Tage"
-          }
-        }
-      }
-    },
     "Every line is public on GitHub — audit it or build it yourself." : {
       "localizations" : {
         "de" : {
@@ -8882,26 +8574,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordner, die der Chat lesen darf – und bearbeiten, wenn Sie unten das Schreiben erlauben. Außerhalb dieser Ordner ist nichts zugänglich."
-          }
-        }
-      }
-    },
-    "Follow-up fixes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nachbesserungen"
-          }
-        }
-      }
-    },
-    "Follow-ups" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nachfragen"
           }
         }
       }
@@ -10014,36 +9686,6 @@
         }
       }
     },
-    "Improve from usage" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus Nutzung verbessern"
-          }
-        }
-      }
-    },
-    "Improve prompts and context from your usage" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prompts und Kontext aus Ihrer Nutzung verbessern"
-          }
-        }
-      }
-    },
-    "Improve prompts from your usage and manage context data" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prompts aus Ihrer Nutzung verbessern und Kontextdaten verwalten"
-          }
-        }
-      }
-    },
     "Improve prompts from your usage logs" : {
       "localizations" : {
         "de" : {
@@ -10090,16 +9732,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Im Abo-Modus gibt es keine Modellauswahl. %@"
-          }
-        }
-      }
-    },
-    "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Smart Improvement uses %@ (fixed)." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Abo-Modus gibt es keine Modellauswahl. Dictate Prompt nutzt Gemini 3.1 Flash-Lite, Smart Improvement nutzt %@ (fest)."
           }
         }
       }
@@ -10200,16 +9832,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anweisungen an Ihr Chat-Modell, wenn intelligentes Umschreiben eingeschaltet ist. Es bekommt den markierten Text und gibt eine gut vorlesbare Fassung zurück."
-          }
-        }
-      }
-    },
-    "Interaction logs, context data, and suggested prompts are stored here. You can open the folder or delete all of this data; settings are preserved." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hier liegen Nutzungsprotokolle, Kontextdaten und vorgeschlagene Prompts. Sie können den Ordner öffnen oder alle diese Daten löschen; die Einstellungen bleiben erhalten."
           }
         }
       }
@@ -10496,26 +10118,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprache"
-          }
-        }
-      }
-    },
-    "Last 4 weeks. No earlier change was measured, so accepting this one sets the baseline." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte 4 Wochen. Eine frühere Änderung wurde nicht gemessen, diese hier legt also den Ausgangswert fest."
-          }
-        }
-      }
-    },
-    "Last 4 weeks. No usage since the last change yet." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte 4 Wochen. Seit der letzten Änderung noch keine Nutzung."
           }
         }
       }
@@ -11432,16 +11034,6 @@
         }
       }
     },
-    "Measured so far" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bisher gemessen"
-          }
-        }
-      }
-    },
     "Medium" : {
       "localizations" : {
         "de" : {
@@ -12123,16 +11715,6 @@
         }
       }
     },
-    "Needs \"Save usage data\" in Smart Improvement. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Braucht „Nutzungsdaten speichern“ unter Smart Improvement. Dann können Sie fragen „Warum war das falsch?“, und die KI-App sieht sich Ihre letzten Diktate an."
-          }
-        }
-      }
-    },
     "Needs \"Save usage data\". Runs in the background; you get a notification when it is done." : {
       "localizations" : {
         "de" : {
@@ -12510,16 +12092,6 @@
         }
       }
     },
-    "No changes applied. You cancelled all suggestions or left them empty." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Änderungen übernommen. Sie haben alle Vorschläge verworfen oder leer gelassen."
-          }
-        }
-      }
-    },
     "No chats yet" : {
       "localizations" : {
         "de" : {
@@ -12800,16 +12372,6 @@
         }
       }
     },
-    "No suggestions could be generated. Try again later or check that you have interaction data." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es konnten keine Vorschläge erstellt werden. Versuchen Sie es später noch einmal oder prüfen Sie, ob Nutzungsdaten vorhanden sind."
-          }
-        }
-      }
-    },
     "No text selected. Highlight text first, then press the Read Aloud shortcut." : {
       "localizations" : {
         "de" : {
@@ -12886,16 +12448,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Transkriptionsergebnis"
-          }
-        }
-      }
-    },
-    "No usage since then yet." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seitdem noch keine Nutzung."
           }
         }
       }
@@ -12992,16 +12544,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Not enough disk space to download this model. About %1$lld MB is needed, but only %2$lld MB is free. Free some space and try again."
-          }
-        }
-      }
-    },
-    "Not enough per-mode usage yet. Use the app a bit more and try again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch nicht genug Nutzung pro Modus. Nutzen Sie die App noch etwas und versuchen Sie es dann noch einmal."
           }
         }
       }
@@ -13146,16 +12688,6 @@
         }
       }
     },
-    "Nothing to measure yet. Numbers appear once you've used the app for a few days." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch nichts zu messen. Zahlen erscheinen, wenn Sie die App ein paar Tage genutzt haben."
-          }
-        }
-      }
-    },
     "Nothing to transcribe. Check the microphone and try again." : {
       "localizations" : {
         "de" : {
@@ -13277,16 +12809,6 @@
         }
       }
     },
-    "Offline Mode and macOS permissions" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Offline-Modus und macOS-Berechtigungen"
-          }
-        }
-      }
-    },
     "Offline Mode is on, so Chat only uses models on this Mac. Turn it off in Settings to use **%@**." : {
       "localizations" : {
         "de" : {
@@ -13313,16 +12835,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
-          }
-        }
-      }
-    },
-    "Offline Mode keeps no usage logs, so there is nothing to measure." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Offline-Modus werden keine Nutzungsprotokolle geführt, also gibt es nichts zu messen."
           }
         }
       }
@@ -15225,16 +14737,6 @@
         }
       }
     },
-    "Prompt retries" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prompt-Wiederholungen"
-          }
-        }
-      }
-    },
     "Prompting" : {
       "localizations" : {
         "de" : {
@@ -16029,16 +15531,6 @@
         }
       }
     },
-    "Rejected spellings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abgelehnte Schreibweisen"
-          }
-        }
-      }
-    },
     "Release notes" : {
       "localizations" : {
         "de" : {
@@ -16175,16 +15667,6 @@
         }
       }
     },
-    "Remove rules from the Dictate Prompt instructions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regeln aus den Anweisungen von Dictate Prompt entfernen."
-          }
-        }
-      }
-    },
     "Remove this prompt" : {
       "localizations" : {
         "de" : {
@@ -16231,16 +15713,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Umbenennen …"
-          }
-        }
-      }
-    },
-    "Replace the Dictate Prompt instructions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Anweisungen von Dictate Prompt ersetzen."
           }
         }
       }
@@ -16471,16 +15943,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf Standard zurücksetzen"
-          }
-        }
-      }
-    },
-    "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only usage data, use Settings → Smart Improvement." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Setzt die App in den Ausgangszustand zurück: Alle Einstellungen, System-Prompts, Modellauswahl, Chats, Meeting-Transkripte und Nutzungsdaten werden gelöscht. API-Schlüssel bleiben erhalten. Um nur die Nutzungsdaten zu löschen, nutzen Sie Einstellungen → Smart Improvement."
           }
         }
       }
@@ -16856,16 +16318,6 @@
         }
       }
     },
-    "Run Improve from usage automatically" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Aus Nutzung verbessern“ automatisch ausführen"
-          }
-        }
-      }
-    },
     "Run in Terminal, then start a new Claude Code session. Run it again after a new access key:" : {
       "localizations" : {
         "de" : {
@@ -16926,42 +16378,12 @@
         }
       }
     },
-    "Running…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Läuft…"
-          }
-        }
-      }
-    },
-    "Running… (%lld in queue)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Läuft… (%lld in der Warteschlange)"
-          }
-        }
-      }
-    },
     "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Läuft ganz auf Ihrem Mac über einen lokalen OpenAI-kompatiblen Server (Ollama / LM Studio) • Ohne API-Schlüssel, ohne Cloud • Das Audio wird zuerst lokal transkribiert und dann vom lokalen Modell umgeschrieben • Endpunkt und Modell in den Einstellungen von Dictate Prompt festlegen"
-          }
-        }
-      }
-    },
-    "Runs Improve from usage on its own at this interval." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Führt „Improve from usage“ in diesem Abstand selbst aus."
           }
         }
       }
@@ -17212,16 +16634,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sprechen Sie einen Satz. Später macht %@ dasselbe in jeder App und setzt den Text dort ein, wo Ihr Cursor steht."
-          }
-        }
-      }
-    },
-    "Scorecard" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bilanz"
           }
         }
       }
@@ -17988,26 +17400,6 @@
         }
       }
     },
-    "Share of Dictate Prompts that added an em or en dash to text that had none." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anteil der Dictate Prompts, die einem Text ohne Gedankenstriche einen hinzugefügt haben."
-          }
-        }
-      }
-    },
-    "Share of Dictate Prompts that reworked the previous result within 5 minutes, because the first one missed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anteil der Dictate Prompts, die das vorige Ergebnis innerhalb von 5 Minuten nachbearbeitet haben, weil der erste Versuch danebenlag."
-          }
-        }
-      }
-    },
     "Share Statistics" : {
       "localizations" : {
         "de" : {
@@ -18454,26 +17846,6 @@
         }
       }
     },
-    "Since the last change" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seit der letzten Änderung"
-          }
-        }
-      }
-    },
-    "Since the last change (%@)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seit der letzten Änderung (%@)"
-          }
-        }
-      }
-    },
     "sk-..." : {
       "localizations" : {
         "de" : {
@@ -18535,82 +17907,12 @@
         }
       }
     },
-    "Smart Improvement analyses your usage log with a cloud model, so it is off while Offline Mode is on." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Smart Improvement wertet Ihr Nutzungsprotokoll mit einem Cloud-Modell aus und ist deshalb im Offline-Modus aus."
-          }
-        }
-      }
-    },
-    "Smart Improvement is on cooldown. Try again in %llds." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Smart Improvement macht gerade Pause. Versuchen Sie es in %lld s noch einmal."
-          }
-        }
-      }
-    },
-    "Smart Improvement is optional: when you turn it on in Settings → Smart Improvement, your usage logs are sent to your chosen provider to refine prompts — never to us or anyone else." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Smart Improvement ist optional: Wenn Sie es unter Einstellungen → Smart Improvement einschalten, gehen Ihre Nutzungsprotokolle an den gewählten Anbieter, um Prompts zu verfeinern – nie an uns oder sonst jemanden."
-          }
-        }
-      }
-    },
-    "Smart Improvement model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell für Smart Improvement"
-          }
-        }
-      }
-    },
-    "Smart Improvement Model" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modell für Smart Improvement"
-          }
-        }
-      }
-    },
-    "Smart Improvement started. You can switch tabs; we'll notify you when it's done." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Smart Improvement läuft. Sie können den Tab wechseln; Sie bekommen Bescheid, wenn es fertig ist."
-          }
-        }
-      }
-    },
     "Smart Rewriting" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Intelligentes Umschreiben"
-          }
-        }
-      }
-    },
-    "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Damit Sie fragen können „Warum war das falsch?“ und die KI-App sich ansieht, was Sie in den letzten 7 Tagen diktiert haben."
           }
         }
       }
@@ -18702,26 +18004,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tempo:"
-          }
-        }
-      }
-    },
-    "Spellings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schreibweisen"
-          }
-        }
-      }
-    },
-    "Spellings you rejected in the Glossary (X (not \"Y\")) that still showed up, per 100 dictations." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schreibweisen, die Sie im Glossar abgelehnt haben (X (not \"Y\")) und die trotzdem auftauchten, pro 100 Diktate."
           }
         }
       }
@@ -19012,16 +18294,6 @@
         }
       }
     },
-    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Smart Improvement model drafts an updated profile from a sample of them and shows it for your review before saving." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Liegt auf diesem Mac im Datenordner der App. Solange es an ist, wird gesichert, was Sie in Mail-, Messenger- und Arbeits-Chat-Apps diktieren, als Beispiel; ist Ihr Google-Konto verbunden, werden gesendete E-Mails einmal pro Woche importiert. Jede Dictate-Prompt-Anfrage schickt Ihr Profil und einige dieser Nachrichten an Ihr Modell für Dictate Prompt (nur Cloud-Modelle; lokale Modelle bekommen sie nicht). Sind etwa 20 neue Nachrichten hinzugekommen, entwirft das Modell für Smart Improvement aus einer Auswahl ein aktualisiertes Profil und zeigt es Ihnen vor dem Sichern zur Prüfung."
-          }
-        }
-      }
-    },
     "Structured output is not supported for local models yet." : {
       "localizations" : {
         "de" : {
@@ -19238,16 +18510,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "System-Prompt – von %@ nicht genutzt"
-          }
-        }
-      }
-    },
-    "System prompts updated: %@. Check Settings to review or revert." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "System-Prompts aktualisiert: %@. In den Einstellungen können Sie sie prüfen oder zurücknehmen."
           }
         }
       }
@@ -19588,26 +18850,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Modell-ID, die Ihr Server erwartet. Bei Azure der Name Ihres Deployments."
-          }
-        }
-      }
-    },
-    "The model that reviews your usage and suggests better prompts." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Modell, das Ihre Nutzung auswertet und bessere Prompts vorschlägt."
-          }
-        }
-      }
-    },
-    "The next change you accept is measured from then on." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die nächste Änderung, die Sie annehmen, wird ab dann gemessen."
           }
         }
       }
@@ -20524,26 +19766,6 @@
         }
       }
     },
-    "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Smart Improvement ein, damit dies gesammelt wird"
-          }
-        }
-      }
-    },
-    "Turn on \"Save usage data\" to start measuring." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalten Sie „Nutzungsdaten sichern“ ein, damit gemessen wird."
-          }
-        }
-      }
-    },
     "Turn your voice into text in any app." : {
       "localizations" : {
         "de" : {
@@ -21328,16 +20550,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Websuche für Claude"
-          }
-        }
-      }
-    },
-    "Week of" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Woche vom"
           }
         }
       }
@@ -23597,6 +22809,246 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+          }
+        }
+      }
+    },
+    "Usage data is optional and stays on this Mac. When you turn on \"Save usage data\" in Settings → Privacy & Permissions, the in-app Chat (and an AI app you connect, if you allow it) can read it when you ask them to tune WhisperShortcut; what they read goes only to the model you chose for them, never to us or anyone else." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsdaten sind optional und bleiben auf diesem Mac. Wenn Sie unter Einstellungen → Datenschutz & Berechtigungen „Nutzungsdaten speichern“ einschalten, kann der Chat in der App (und eine verbundene KI-App, wenn Sie es erlauben) sie lesen, sobald Sie ihn bitten, WhisperShortcut anzupassen; was er liest, geht nur an das Modell, das Sie dafür gewählt haben, nie an uns oder sonst jemanden."
+          }
+        }
+      }
+    },
+    "Turn on \"Save usage data\" in Settings → Privacy & Permissions to collect this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Datenschutz & Berechtigungen ein, damit dies gesammelt wird"
+          }
+        }
+      }
+    },
+    "So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated recently (the last 7 days, or up to 90 when it asks for more)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Sie fragen können „Warum war das falsch?“ und die KI-App sich ansieht, was Sie zuletzt diktiert haben (die letzten 7 Tage oder bis zu 90, wenn sie mehr abfragt)."
+          }
+        }
+      }
+    },
+    "Needs \"Save usage data\" in Privacy & Permissions. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braucht „Nutzungsdaten speichern“ unter Datenschutz & Berechtigungen. Dann können Sie fragen „Warum war das falsch?“, und die KI-App sieht sich Ihre letzten Diktate an."
+          }
+        }
+      }
+    },
+    "Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. The Google and Trello integrations do not work — nothing runs them on-device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Chat kann dieselben Offline-MLX-Modelle nutzen. Vorlesen verwendet die macOS-Stimmen auf dem Gerät. Die Google- und Trello-Integration funktionieren nicht, weil sie nicht auf dem Gerät laufen können."
+          }
+        }
+      }
+    },
+    "Stored on this Mac in the app's data folder. While on, what you dictate into mail, messenger and work chat apps is kept as an example, and if your Google account is connected, emails you sent are imported once a week. Each Dictate Prompt request sends your profile and a few of these messages to your Dictate Prompt model (cloud models only; local models do not get them). When about 20 new messages have come in, the Writing Style model drafts an updated profile from a sample of them and shows it for your review before saving." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liegt auf diesem Mac im Datenordner der App. Solange es an ist, wird gesichert, was Sie in Mail-, Messenger- und Arbeits-Chat-Apps diktieren, als Beispiel; ist Ihr Google-Konto verbunden, werden gesendete E-Mails einmal pro Woche importiert. Jede Dictate-Prompt-Anfrage schickt Ihr Profil und einige dieser Nachrichten an Ihr Modell für Dictate Prompt (nur Cloud-Modelle; lokale Modelle bekommen sie nicht). Sind etwa 20 neue Nachrichten hinzugekommen, entwirft das Modell für den Schreibstil aus einer Auswahl ein aktualisiertes Profil und zeigt es Ihnen vor dem Sichern zur Prüfung."
+          }
+        }
+      }
+    },
+    "Resets the app to its original state: all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data are deleted. API keys are preserved. To delete only usage data, use Settings → Privacy & Permissions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setzt die App in den Ausgangszustand zurück: Alle Einstellungen, System-Prompts, Modellauswahl, Chats, Meeting-Transkripte und Nutzungsdaten werden gelöscht. API-Schlüssel bleiben erhalten. Um nur die Nutzungsdaten zu löschen, nutzen Sie Einstellungen → Datenschutz & Berechtigungen."
+          }
+        }
+      }
+    },
+    "In subscription mode, model selection is not available. Dictate Prompt uses Gemini 3.1 Flash-Lite; Writing Style uses %@ (fixed)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Abo-Modus gibt es keine Modellauswahl. Dictate Prompt nutzt Gemini 3.1 Flash-Lite, der Schreibstil nutzt %@ (fest)."
+          }
+        }
+      }
+    },
+    "Dictate Prompt: Gemini 3.1 Flash-Lite · Writing Style: %@ (fixed)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt: Gemini 3.1 Flash-Lite · Schreibstil: %@ (fest)"
+          }
+        }
+      }
+    },
+    "Usage Data" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsdaten"
+          }
+        }
+      }
+    },
+    "Keeps your dictations, prompts and chats on this Mac so you can ask the Chat or a connected AI app why something went wrong and let it fix a term or a rule. Nothing reads it on its own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewahrt Ihre Diktate, Prompts und Chats auf diesem Mac auf, damit Sie den Chat oder eine verbundene KI-App fragen können, warum etwas schiefging, und sie einen Begriff oder eine Regel korrigieren lassen. Von selbst liest niemand mit."
+          }
+        }
+      }
+    },
+    "Paused while Offline Mode is on. Nothing is stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert."
+          }
+        }
+      }
+    },
+    "Suggested change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorgeschlagene Änderung"
+          }
+        }
+      }
+    },
+    "Offline Mode, usage data, and macOS permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus, Nutzungsdaten und macOS-Berechtigungen"
+          }
+        }
+      }
+    },
+    "Writing Style Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für den Schreibstil"
+          }
+        }
+      }
+    },
+    "The model that drafts your writing style profile from your messages." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Modell, das aus Ihren Nachrichten Ihr Schreibstil-Profil entwirft."
+          }
+        }
+      }
+    },
+    "Writing Style model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für den Schreibstil"
+          }
+        }
+      }
+    },
+    "Reading your usage log" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsprotokoll wird gelesen"
+          }
+        }
+      }
+    },
+    "Read your usage log" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsprotokoll gelesen"
+          }
+        }
+      }
+    },
+    "App instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Anweisungen"
+          }
+        }
+      }
+    },
+    "Add to: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen zu: %@"
+          }
+        }
+      }
+    },
+    "Replace: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen: %@"
+          }
+        }
+      }
+    },
+    "Remove from: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen aus: %@"
+          }
+        }
+      }
+    },
+    "Change: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändern: %@"
           }
         }
       }

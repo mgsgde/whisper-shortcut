@@ -151,7 +151,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    // Usage logging for Smart Improvement is opt-in (owner decision 2026-10-19): new installs start
+    // Usage logging ("Save usage data") is opt-in (owner decision 2026-10-19): new installs start
     // with it off, matching the privacy promise "when on". Existing installs keep their stored value.
     if UserDefaults.standard.object(forKey: UserDefaultsKeys.contextLoggingEnabled) == nil {
       UserDefaults.standard.set(false, forKey: UserDefaultsKeys.contextLoggingEnabled)
@@ -161,14 +161,15 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // toggles it in Settings → General. The app must never register itself for
     // auto-launch without user consent (App Store Guideline 2.4.5(iii)).
 
-    // Improve from usage auto-run: check if due and start daily timer. Not in a sidecar: it shares
-    // the user's data directory and must not run the daily job a second time.
-    if !AppConstants.isSidecarInstance {
-      Task { @MainActor in
-        await ImproveFromUsageAutoRunCoordinator.shared.checkAndRunIfDue()
-        ImproveFromUsageAutoRunCoordinator.shared.startDailyTimer()
-      }
+    // Smart Improvement was removed (owner decision 2026-11-02). Its schedule keys have no reader
+    // left; clear them so a reset or a support dump does not show a dead setting.
+    for key in ["improveFromUsageAutoRunInterval", "lastAutoImprovementRunDate"] {
+      UserDefaults.standard.removeObject(forKey: key)
     }
+
+    // Writing Style: Gmail import and profile re-derive, checked now and daily. The guard against a
+    // sidecar sits inside `startDailySchedule`.
+    Task { @MainActor in WritingStyleAutoUpdater.shared.startDailySchedule() }
 
   }
 

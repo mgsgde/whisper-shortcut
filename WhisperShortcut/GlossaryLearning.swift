@@ -2,23 +2,15 @@
 //  GlossaryLearning.swift
 //  WhisperShortcut
 //
-//  The Whisper Glossary is free text the user asserts by hand (and via the chat tool).
-//  Smart Improvement used to let the model rewrite that whole text, so an accepted
-//  suggestion deleted annotated corrections. Every automatic edit now goes through
-//  `mergeAdditively`, which only appends. Near-miss mining is the deterministic half
-//  of the same idea: a term the corpus already spells one way, plus the other spellings
-//  the recognizer keeps producing, without waiting for the model to notice.
+//  The Whisper Glossary is free text the user asserts by hand (and via the chat tool or an AI
+//  app). Smart Improvement used to let a model rewrite that whole text, so an accepted
+//  suggestion deleted annotated corrections; that feature is gone (2026-11-02). Every automatic
+//  edit goes through `mergeAdditively`, which only appends.
 //
 
 import Foundation
 
 enum GlossaryLearning {
-
-  /// One glossary term and the spellings that should not be offered as that term.
-  struct NearMiss: Equatable {
-    let term: String
-    let variants: [String]
-  }
 
   /// Case- and diacritic-insensitive key shared with glossary dedupe ("Gödde" == "godde").
   /// `GlossaryDocument.fold` is POSIX, so this no longer follows the user's locale.
@@ -41,7 +33,7 @@ enum GlossaryLearning {
     return "\(term) (not \(quoted))"
   }
 
-  /// The only way Smart Improvement may change the glossary. `current` is kept verbatim
+  /// The only way an automatic writer (chat tool, AI app) may change the glossary. `current` is kept verbatim
   /// (trailing whitespace of the whole text aside) because those lines are user-asserted;
   /// `suggestion` may only contribute terms and rejected spellings that are not already there.
   static func mergeAdditively(current: String, suggestion: String) -> String {
@@ -144,143 +136,6 @@ enum GlossaryLearning {
     }
     if base.isEmpty { return rendered.joined(separator: "\n") }
     return base + "\n" + rendered.joined(separator: "\n")
-  }
-
-  /// Spellings the recognizer keeps substituting for a term the user (or the corpus) already
-  /// spells one way. Deterministic on purpose: the weekly model pass is what used to delete
-  /// asserted lines, and it also missed high-frequency pairs like Bachata / Batchata.
-  ///
-  /// `maxDistance == nil` uses the fast learner's length rule (2 edits only when the shorter
-  /// word has at least 8 characters). Audio selection passes 2 so a slightly farther mishearing
-  /// can still pick a clip; the suggestion itself stays on the strict rule.
-  static func nearMisses(
-    glossary: String,
-    transcripts: [String],
-    maxDistance: Int? = nil,
-    isKnownWord: (String) -> Bool = { _ in false }
-  ) -> [NearMiss] {
-    struct TokenStats {
-      var docFreq = 0
-      var occurrences = 0
-      var upperInitial = 0
-      var spellingCounts: [String: Int] = [:]
-    }
-    var stats: [String: TokenStats] = [:]
-    for text in transcripts {
-      var seenInDoc = Set<String>()
-      for tokenSub in text.split(whereSeparator: { !$0.isLetter }) {
-        let token = String(tokenSub)
-        let folded = fold(token)
-        if folded.isEmpty { continue }
-        var bucket = stats[folded] ?? TokenStats()
-        bucket.occurrences += 1
-        bucket.spellingCounts[token, default: 0] += 1
-        if token.first?.isUppercase == true { bucket.upperInitial += 1 }
-        if seenInDoc.insert(folded).inserted { bucket.docFreq += 1 }
-        stats[folded] = bucket
-      }
-    }
-
-    func majoritySpelling(_ folded: String) -> String? {
-      guard let counts = stats[folded]?.spellingCounts else { return nil }
-      return Self.majoritySpelling(in: counts)
-    }
-
-    let glossaryEntries = entries(in: glossary)
-    var glossaryTerms = Set<String>()
-    var rejectedForTerm: [String: Set<String>] = [:]
-    for entry in glossaryEntries {
-      let termFold = fold(entry.term)
-      if termFold.isEmpty { continue }
-      glossaryTerms.insert(termFold)
-      var rejected = rejectedForTerm[termFold] ?? []
-      for form in entry.rejected { rejected.insert(fold(form)) }
-      rejectedForTerm[termFold] = rejected
-    }
-
-    struct Candidate {
-      let folded: String
-      let display: String
-      let docFreq: Int
-      let fromGlossary: Bool
-    }
-    var candidatesByFold: [String: Candidate] = [:]
-    for entry in glossaryEntries {
-      if entry.term.contains(" ") { continue }
-      let termFold = fold(entry.term)
-      guard termFold.count >= 5, candidatesByFold[termFold] == nil else { continue }
-      let display = majoritySpelling(termFold) ?? entry.term
-      candidatesByFold[termFold] = Candidate(
-        folded: termFold,
-        display: display,
-        docFreq: stats[termFold]?.docFreq ?? 0,
-        fromGlossary: true)
-    }
-
-    let totalDocs = transcripts.count
-    let ambientCutoff = Int(ceil(Double(totalDocs) * AppConstants.audioCandidateAmbientDocRatio))
-    for (folded, bucket) in stats {
-      guard folded.count >= 5, bucket.docFreq >= 5, bucket.occurrences > 0 else { continue }
-      let capitalRatio = Double(bucket.upperInitial) / Double(bucket.occurrences)
-      guard capitalRatio >= AppConstants.audioCandidateConsistentCapRatio else { continue }
-      guard bucket.docFreq < ambientCutoff else { continue }
-      if candidatesByFold[folded] != nil { continue }
-      guard let display = majoritySpelling(folded) else { continue }
-      candidatesByFold[folded] = Candidate(
-        folded: folded,
-        display: display,
-        docFreq: bucket.docFreq,
-        fromGlossary: false)
-    }
-
-    let ordered = candidatesByFold.values.sorted { lhs, rhs in
-      if lhs.docFreq != rhs.docFreq { return lhs.docFreq > rhs.docFreq }
-      return lhs.folded < rhs.folded
-    }
-
-    var usedVariants = Set<String>()
-    var misses: [NearMiss] = []
-    for candidate in ordered {
-      if misses.count >= 20 { break }
-      guard let termFirst = candidate.folded.first else { continue }
-      let alreadyRejected = rejectedForTerm[candidate.folded] ?? []
-      var variants: [(folded: String, display: String, docFreq: Int)] = []
-      for (variantFold, bucket) in stats {
-        if variantFold == candidate.folded { continue }
-        guard variantFold.first == termFirst, bucket.docFreq >= 2 else { continue }
-        // A second glossary entry is a term the user wants, not a mishearing of this one.
-        guard !glossaryTerms.contains(variantFold) else { continue }
-        guard !alreadyRejected.contains(variantFold) else { continue }
-        // A term found only in the corpus must clearly dominate its variant: a mishearing is the
-        // rare form (Bachata ~100 vs Batchata 2). Two similar names used about equally often
-        // ("Martin"/"Marvin") are two words. Glossary terms are user-asserted and skip this.
-        if !candidate.fromGlossary, bucket.docFreq * 3 > candidate.docFreq { continue }
-        if usedVariants.contains(variantFold) { continue }
-        let shorter = min(candidate.folded.count, variantFold.count)
-        let allowed = maxDistance ?? (shorter >= 8 ? 2 : 1)
-        guard GlossaryFastLearner.levenshtein(candidate.folded, variantFold, limit: allowed) != nil else { continue }
-        guard !GlossaryFastLearner.isInflectionalVariant(candidate.folded, variantFold) else { continue }
-        guard let display = majoritySpelling(variantFold) else { continue }
-        // Two ordinary dictionary words that happen to be one edit apart ("Sonne"/"Sonnet")
-        // are not a recognizer mistake. Same guard as GlossaryFastLearner.
-        if isKnownWord(candidate.display) && isKnownWord(display) { continue }
-        variants.append((variantFold, display, bucket.docFreq))
-      }
-      variants.sort { lhs, rhs in
-        if lhs.docFreq != rhs.docFreq { return lhs.docFreq > rhs.docFreq }
-        if lhs.display != rhs.display { return lhs.display < rhs.display }
-        return lhs.folded < rhs.folded
-      }
-      if variants.count > 4 { variants = Array(variants.prefix(4)) }
-      guard !variants.isEmpty else { continue }
-      for variant in variants { usedVariants.insert(variant.folded) }
-      misses.append(NearMiss(term: candidate.display, variants: variants.map(\.display)))
-    }
-    return misses
-  }
-
-  static func nearMissLines(_ misses: [NearMiss]) -> String {
-    misses.map { annotatedLine(term: $0.term, rejected: $0.variants) }.joined(separator: "\n")
   }
 
   /// The chat tool often hand back a lowercase term. Lines already in

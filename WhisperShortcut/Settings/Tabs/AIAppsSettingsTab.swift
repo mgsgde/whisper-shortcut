@@ -157,8 +157,8 @@ struct AIAppsSettingsTab: View {
           .disabled(!contextLoggingEnabled)
           .padding(.top, 4)
         Text(contextLoggingEnabled
-          ? ("So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated in the last 7 days." as LocalizedStringKey)
-          : "Needs \"Save usage data\" in Smart Improvement. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations.")
+          ? ("So you can ask \"why did it get that wrong?\" and the AI app looks at what you dictated recently (the last 7 days, or up to 90 when it asks for more)." as LocalizedStringKey)
+          : "Needs \"Save usage data\" in Privacy & Permissions. Then you can ask \"why did it get that wrong?\" and the AI app looks at your recent dictations.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)

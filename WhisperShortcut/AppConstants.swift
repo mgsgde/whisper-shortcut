@@ -22,7 +22,7 @@ Guardrails – this is a DICTATION/TRANSCRIPTION task only. The audio contains s
 Output: Return only the clean transcribed text. Do not repeat these instructions, include meta-commentary, the word "transcription", or any part of this prompt. Start directly with the transcribed words.
 """
 
-  /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). Smart Improvement can populate it.
+  /// Default Whisper Glossary: empty. Used only for offline Whisper conditioning (vocabulary list). The user, the chat tool and AI apps add to it.
   static let defaultWhisperGlossary = ""
 
   /// Dictate Prompt system prompt. Structure: Persona → Input/task → Guardrails. Output rule is appended at runtime.
@@ -550,91 +550,6 @@ Transcript:
       \(segment)
       """
   }
-
-  // MARK: - Context Derivation
-  /// Fallback Gemini API endpoint when the selected Smart Improvement model is invalid. Matches
-  /// the Smart Improvement default (gemini-3.8-flash), which is GA and the current Flash workhorse.
-  static let contextDerivationEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
-
-  /// Maximum character length for context when appended to the system prompt.
-  /// Truncation is applied at sentence or word boundary so the model always sees complete text.
-  /// ~3000 chars ≈ ~750 tokens; keeps system instruction small and leaves room for conversation.
-  static let contextMaxChars: Int = 3000
-
-  // MARK: - Context Derivation Limits (recent data prioritized by tiered sampling)
-  // The per-mode entry cap must be large enough that RECURRING patterns survive sampling: the
-  // analysis prompt only accepts changes evidenced by ≥2 distinct primary interactions, and a
-  // term recurring in ~5% of dictations almost never lands twice in a 15-entry sample. 80 entries
-  // (bounded by the char budget below) makes recurrence statistically visible to the model.
-  static let contextDefaultMaxEntriesPerMode: Int = 80
-  static let contextDefaultMaxTotalChars: Int = 60_000
-
-  /// Maximum number of recurring terms included in the deterministic term-frequency evidence
-  /// section (computed across ALL primary interactions, not just the sampled ones) for the
-  /// dictation and Whisper Glossary focuses.
-  static let contextTermEvidenceMaxTerms: Int = 40
-
-  /// Tiered sampling: 50% from last 7 days, 30% from days 8–14, 20% from days 15–30.
-  static let contextTier1Days: Int = 7
-  static let contextTier1Ratio: Double = 0.50
-  static let contextTier2Days: Int = 14
-  static let contextTier2Ratio: Double = 0.30
-  static let contextTier3Days: Int = 30
-  static let contextTier3Ratio: Double = 0.20
-
-  /// Max chars for "other modes" when building secondary payload in focused Generate with AI (per-tab).
-  static let contextSecondaryOtherModesMaxChars: Int = 2000
-
-  /// Max chars for the Dictate Prompt follow-up correction chains in Smart Improvement. Holds ALL
-  /// chains of the last 30 days, unsampled: `evenSample` would tear the previous-output →
-  /// instruction → new-output pairs apart.
-  static let contextFollowUpChainsMaxChars: Int = 30_000
-
-  // MARK: - Smart Improvement: Audio Verification
-  /// Hard safety cap on dictation audio WAVs kept on disk. Audio is RETAINED ACROSS RUNS (pruned by
-  /// age, see `audioSampleRetentionDays`) so candidate terms that appear only in older dictations can
-  /// still be verified; this cap only guards against unbounded disk growth, not normal rotation.
-  static let audioSampleMaxFiles: Int = 500
-  /// Hard cap on the total on-disk size of the audio sample pool. Long dictations are multi-MB WAVs,
-  /// so a file-count cap alone can let the pool grow to hundreds of MB; the oldest samples are evicted
-  /// until the pool fits under both caps.
-  static let audioSampleMaxTotalBytes: Int = 200_000_000
-  /// Audio older than this many days is pruned at the start of each Smart Improvement run. Matches the
-  /// text-analysis window (`contextTier3Days`) so audio and text cover the same period.
-  static let audioSampleRetentionDays: Int = 30
-  /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement. Clips
-  /// are chosen content-aware: one representative clip per recurring candidate term (newest first),
-  /// then topped up with the newest clips for freshness.
-  static let audioSamplesPerRun: Int = 12
-  /// Total raw-WAV byte budget for the audio clips attached to one analysis request. Base64 inflates
-  /// payloads by ~33% and Gemini caps inline_data requests at 20 MB, so 12 MB raw (~16 MB encoded)
-  /// leaves headroom for the text body. Clips that would exceed the budget are skipped.
-  static let audioAttachmentMaxTotalBytes: Int = 12_000_000
-  /// A vocabulary term must appear in at least this many DISTINCT dictation transcripts to become an
-  /// audio-verification candidate (filters one-off words).
-  static let audioCandidateMinFrequency: Int = 2
-  /// A term appearing in at least this fraction of the user's own dictation transcripts is treated as
-  /// an ambient/function word (in whatever language they dictate) and excluded as a candidate. This is
-  /// how stop-words are derived from data instead of a hardcoded per-language list — keeping candidate
-  /// extraction generic across all users.
-  static let audioCandidateAmbientDocRatio: Double = 0.5
-  /// Maximum number of candidate terms (most distinctive-looking first) considered for content-aware
-  /// audio selection per run.
-  static let audioCandidateMaxTerms: Int = 30
-  /// A leading-capital term counts as "distinctive" for ranking only when it is capitalized in at least
-  /// this fraction of its occurrences. This separates consistently-capitalized nouns/names from function
-  /// words that are only capitalized at sentence start (e.g. German) — without a per-language word list.
-  static let audioCandidateConsistentCapRatio: Double = 0.8
-
-  // MARK: - Smart Improvement: thresholds, cooldown, queue
-  /// Minimum interactions in a focus's primary mode (last 30 days) for that focus to be analyzed.
-  static let smartImprovementMinPerFocusInteractions: Int = 20
-  /// Lookback window for per-focus eligibility counts.
-  static let smartImprovementEligibilityDays: Int = 30
-  /// Minimum interval (seconds) between two manual Smart Improvement runs.
-  static let smartImprovementCooldownSeconds: TimeInterval = 60
-  /// Maximum number of additional jobs that may queue while a run is in progress.
-  static let smartImprovementMaxQueuedJobs: Int = 1
 
   // MARK: - Outcome Signals
   /// How soon a new dictation must follow an unpasted transcript to count as a retry rather than a
