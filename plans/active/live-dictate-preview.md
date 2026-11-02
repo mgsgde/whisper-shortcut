@@ -2,6 +2,9 @@
 
 Status: planned 2026-11-02. Supersedes queue row 65's "do not build yet": build it as an
 **opt-in setting, off by default**. The default dictation flow does not change.
+**Parked 2026-11-02:** the pilot expects the text at the cursor while she speaks, as with Dragon.
+That mode is `live-dictate-insert.md` (branch `plan/live-dictate-insert`). This read-only panel is
+not merged until the pilot has tried that mode.
 S1–S4 written 2026-11-02 on branch `feat/live-dictate-preview` in a Linux cloud session —
 **not yet compiled or run on a Mac**; the Verification list below is still open. Two independent
 reviews (correctness against FluidAudio 0.17.7, and design) changed the build; see "As built".
