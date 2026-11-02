@@ -50,11 +50,39 @@ run_with_timeout() {
     wait "$watchdog" 2>/dev/null
     if [[ -f "$timeout_flag" ]]; then
         rm -f "$timeout_flag"
+        # A flag with rc=0 is the race where the command finished green and the watchdog woke
+        # before it was killed: that is a pass, not a timeout. (A command that was really killed
+        # by the watchdog never exits 0.)
+        (( rc == 0 )) && return 0
         # The leader may have exited on TERM while its children ignored it; the watchdog's own
         # KILL step was just cancelled, so do it here.
         kill -KILL -- "-${pid}" 2>/dev/null
         echo "TIMED OUT after ${secs}s — the command's whole process group was killed." >>"$log_file"
         return 124
+    fi
+    return "$rc"
+}
+
+# Reap what the group kill cannot reach: xcodebuild's children that made their own process group
+# or session (xctest, the test host app, swift-frontend, LaunchServices-launched processes). A
+# call site runs this when run_with_timeout returned 124, with the directory it built in —
+# `<dir>/` is in every one of those command lines (derivedDataPath, the test host's path), and
+# scoping by it leaves the operator's own xcodebuilds and the installed release alone.
+# Needs kill_unprotected from daily-app.sh (both callers source it).
+reap_timed_out_orphans() { # reap_timed_out_orphans <build-dir>
+    local dir="$1" pattern
+    [[ -n "$dir" && "$dir" != "/" ]] || return 0
+    pattern=$(printf '%s' "${dir%/}/" | sed 's/[][\\.*^$+?(){}|]/\\&/g')
+    kill_unprotected -f "$pattern"
+}
+
+# run_with_timeout for the gates: on a timeout, also reap the orphans of the current directory
+# (the worktree the call site cd'd into). Every xcodebuild gate calls this, not run_with_timeout.
+run_gate_with_timeout() { # run_gate_with_timeout <seconds> <log_file> <command…>
+    local rc=0
+    run_with_timeout "$@" || rc=$?
+    if (( rc == 124 )); then
+        reap_timed_out_orphans "$PWD"
     fi
     return "$rc"
 }

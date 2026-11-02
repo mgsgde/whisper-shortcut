@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # kill_unprotected: the installed /Applications release is never killed.
 # shellcheck source=../lib/daily-app.sh
 source "${SCRIPT_DIR}/../lib/daily-app.sh"
-# run_with_timeout: the re-gate's xcodebuild runs under a wall-clock limit (process-group kill).
+# run_gate_with_timeout: the re-gate's xcodebuild runs under a wall-clock limit (process-group kill + orphan sweep).
 # shellcheck source=../lib/timed-run.sh
 source "${SCRIPT_DIR}/../lib/timed-run.sh"
 QUEUE_REL="plans/implementer-queue.md"
@@ -346,7 +346,7 @@ you resolve it by hand."
         else
             local gate_name="" gate_log=""
             log "#${QUEUE_NUM}: gate: xcodebuild (rebased)…"
-            if ! ( cd "$WT_DIR" && run_with_timeout "$XCODEBUILD_BUILD_TIMEOUT_SECONDS" /tmp/ws-implementer-rebuild.log \
+            if ! ( cd "$WT_DIR" && run_gate_with_timeout "$XCODEBUILD_BUILD_TIMEOUT_SECONDS" /tmp/ws-implementer-rebuild.log \
                     xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
                     -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ); then
                 gate_name="xcodebuild"; gate_log=/tmp/ws-implementer-rebuild.log
@@ -354,7 +354,7 @@ you resolve it by hand."
                 log "#${QUEUE_NUM}: gate: test plan (rebased) — this stops running dev builds…"
                 kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
                 if ! ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
-                       run_with_timeout "$XCODEBUILD_TEST_TIMEOUT_SECONDS" /tmp/ws-implementer-retest.log \
+                       run_gate_with_timeout "$XCODEBUILD_TEST_TIMEOUT_SECONDS" /tmp/ws-implementer-retest.log \
                          xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
                          -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
                          "${XCODEBUILD_TEST_TIMEOUT_ARGS[@]}" \
