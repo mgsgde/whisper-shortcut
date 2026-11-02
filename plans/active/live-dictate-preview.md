@@ -2,6 +2,10 @@
 
 Status: planned 2026-11-02. Supersedes queue row 65's "do not build yet": build it as an
 **opt-in setting, off by default**. The default dictation flow does not change.
+S1–S4 written 2026-11-02 on branch `feat/live-dictate-preview` in a Linux cloud session —
+**not yet compiled or run on a Mac**; the Verification list below is still open. The window
+layout is 9 s left + 4 s hop + 2 s right (`ParakeetLivePreview.windowConfig`), not FluidAudio's
+11 s default, so text updates every 4 s; the cost guard below decides whether 4 s holds.
 
 ## Why
 
