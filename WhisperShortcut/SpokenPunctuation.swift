@@ -155,8 +155,11 @@ enum SpokenPunctuation {
       template: template)
   }
 
-  /// Text with no command in it comes back byte for byte unchanged.
-  static func apply(to text: String, mode: PunctuationMode = .automatic) -> String {
+  /// Text with no command in it comes back byte for byte unchanged. `keepsEdgeBreaks` trims only
+  /// spaces and tabs at the start/end, not line breaks — for a piece in Dictate Live, where a
+  /// trailing "neuer Absatz" must leave its "\n\n" for `LiveChunkJoiner` to lay out the next piece
+  /// against; the default trims newlines too, exactly as before.
+  static func apply(to text: String, mode: PunctuationMode = .automatic, keepsEdgeBreaks: Bool = false) -> String {
     var result = text
     var changed = false
     for rule in mode == .spokenOnly ? rules + spokenOnlyRules : rules {
@@ -173,6 +176,6 @@ enum SpokenPunctuation {
       result = cleanup.regex.stringByReplacingMatches(
         in: result, range: range, withTemplate: cleanup.template)
     }
-    return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    return result.trimmingCharacters(in: keepsEdgeBreaks ? .whitespaces : .whitespacesAndNewlines)
   }
 }

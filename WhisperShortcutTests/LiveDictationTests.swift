@@ -79,6 +79,15 @@ struct LiveDictationTests {
     #expect(joiner.next(LiveDictation.finishPiece("Keine Auffälligkeiten", mode: .spokenOnly)) == ". Keine Auffälligkeiten")
   }
 
+  @Test("Only when spoken: a spoken period is never held, even before a lowercase word")
+  func spokenOnlyNeverHoldsPeriod() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("klagt.") == "klagt.")
+    #expect(joiner.next("seit gestern") == " seit gestern")
+    #expect(joiner.inserted == "klagt. seit gestern")
+  }
+
   // MARK: - Joiner
 
   @Test("Pieces are joined with single spaces, none at the start")
@@ -135,6 +144,29 @@ struct LiveDictationTests {
     #expect(joiner.next("Schmerzen.") == "Schmerzen")
     #expect(joiner.next("") == "")
     #expect(joiner.finish() == ".")
+  }
+
+  @Test("A spoken paragraph break at the very end of a piece is not lost")
+  func trailingParagraphBreakSurvives() {
+    var joiner = LiveChunkJoiner()
+    let first = LiveDictation.finishPiece("Befund neuer Absatz", mode: .automatic)
+    let second = LiveDictation.finishPiece("Inspektion unauffällig", mode: .automatic)
+    #expect(joiner.next(first) == "Befund\n\n")
+    #expect(joiner.next(second) == "Inspektion unauffällig")
+    #expect(joiner.inserted == "Befund\n\nInspektion unauffällig")
+  }
+
+  @Test("A slash said across two pieces gets no space on either side")
+  func slashAcrossPieces() {
+    var afterSlash = LiveChunkJoiner()
+    #expect(afterSlash.next("L4/") == "L4/")
+    #expect(afterSlash.next("L5") == "L5")
+    #expect(afterSlash.inserted == "L4/L5")
+
+    var beforeSlash = LiveChunkJoiner()
+    #expect(beforeSlash.next("L4") == "L4")
+    #expect(beforeSlash.next("/L5") == "/L5")
+    #expect(beforeSlash.inserted == "L4/L5")
   }
 
   // MARK: - Drift

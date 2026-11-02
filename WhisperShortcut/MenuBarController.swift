@@ -2617,7 +2617,8 @@ class MenuBarController: NSObject {
       insert: { [weak self] text in
         guard let self else { return false }
         return await self.insertLivePiece(text, target: target, ownWindowAtStart: ownWindowAtStart)
-      })
+      },
+      holdsPeriods: punctuationMode != .spokenOnly)
     DebugLogger.log("LIVE-DICTATE: Starting (target \(target?.bundleId ?? "none"))")
     beginAudioCapture(mode: .transcription, rotation: .live)
     recording?.isLiveDictation = true

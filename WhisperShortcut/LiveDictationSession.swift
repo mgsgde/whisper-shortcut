@@ -42,9 +42,12 @@ final class LiveDictationSession {
   private var isCancelled = false
   private let started = Date()
 
-  init(decode: @escaping Decode, insert: @escaping Insert) {
+  /// `holdsPeriods` is false in "Only when spoken" mode: every period there was said on purpose,
+  /// so `LiveChunkJoiner` must never hold one back waiting to see whether the sentence continues.
+  init(decode: @escaping Decode, insert: @escaping Insert, holdsPeriods: Bool = true) {
     self.decode = decode
     self.insert = insert
+    joiner.holdsPeriods = holdsPeriods
   }
 
   /// A rotated chunk (mid-recording) or the tail chunk (at stop). Silent chunks are skipped.

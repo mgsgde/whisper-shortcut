@@ -46,15 +46,17 @@ enum LiveDictation {
     #endif
   }
 
-  /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
-  /// piece appears right after the pause; a cloud model would add a network round trip per piece.
   /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: model
-  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands.
+  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands. Edge line
+  /// breaks ("neuer Absatz" at the very end of a piece) are kept — `LiveChunkJoiner` relies on them
+  /// to lay out the next piece without adding a space after.
   static func finishPiece(_ text: String, mode: PunctuationMode) -> String {
     let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: text) : text
-    return SpokenPunctuation.apply(to: source, mode: mode)
+    return SpokenPunctuation.apply(to: source, mode: mode, keepsEdgeBreaks: true)
   }
 
+  /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
+  /// piece appears right after the pause; a cloud model would add a network round trip per piece.
   /// The model must already be on disk — a recording start must never trigger a 700 MB download.
   /// The Accessibility permission is checked separately, at the start, with its own dialog.
   static func unavailableReason(
@@ -118,7 +120,8 @@ enum LiveDictation {
 ///
 /// - **Spacing:** one space between pieces, none at the very start, none after a line break, none
 ///   before a piece that starts with a line break (`SpokenPunctuation` turns "neuer Absatz" into
-///   one) or with closing punctuation.
+///   one) or with closing punctuation, none on either side of a slash ("Schrägstrich" said in one
+///   piece and the next word in another must still read "L4/L5", not "L4/ L5" or "L4 /L5").
 /// - **A period at a breath:** Parakeet punctuates each piece on its own, so a pause mid-sentence
 ///   can end a piece with "." although the sentence goes on. A piece's final period is therefore
 ///   held back and emitted with the next piece — dropped when that piece starts with a lowercase
@@ -126,12 +129,18 @@ enum LiveDictation {
 ///   Abbreviations ("z. B.", "Dr.", "ca.", numbers) are never held: only a period after a word of
 ///   five or more letters without inner dots is. German capitalises nouns, so a capital start is
 ///   weak evidence; the period is then kept, which is what not holding it would have done anyway.
+///   Never held at all when `holdsPeriods` is false (`PunctuationMode.spokenOnly`): every period
+///   there was said on purpose, so there is nothing ambiguous to wait on.
 ///
 /// Pure value type; unit-tested directly.
 struct LiveChunkJoiner: Equatable {
   /// Everything handed out so far, held marks included once emitted.
   private(set) var inserted = ""
   private var heldPeriod = false
+  /// False in "Only when spoken" mode. The struct's other stored properties are private, so the
+  /// synthesized memberwise init is file-private and `LiveChunkJoiner(holdsPeriods:)` cannot be
+  /// called from another file — set this property on the instance after `LiveChunkJoiner()`.
+  var holdsPeriods = true
 
   /// The text to insert for `piece` (possibly empty).
   mutating func next(_ piece: String) -> String {
@@ -144,12 +153,12 @@ struct LiveChunkJoiner: Equatable {
       if !Self.startsWithLowercaseLetter(body) { out += "." }
     }
     let before = inserted + out
-    if let last = before.last, !last.isNewline,
-      let first = body.first, !first.isNewline, !Self.closingPunctuation.contains(first)
+    if let last = before.last, !last.isNewline, last != "/",
+      let first = body.first, !first.isNewline, first != "/", !Self.closingPunctuation.contains(first)
     {
       out += " "
     }
-    if Self.holdsFinalPeriod(body) {
+    if holdsPeriods, Self.holdsFinalPeriod(body) {
       body.removeLast()
       heldPeriod = true
     }

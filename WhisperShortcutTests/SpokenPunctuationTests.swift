@@ -310,6 +310,14 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.apply(to: "Doppelpunkte und Kommas", mode: .spokenOnly) == "Doppelpunkte und Kommas")
   }
 
+  @Test("keepsEdgeBreaks keeps a trailing paragraph/line break; the default still trims it")
+  func keepsEdgeBreaksTrimsSpacesOnly() {
+    #expect(SpokenPunctuation.apply(to: "Befund neuer Absatz", keepsEdgeBreaks: true) == "Befund\n\n")
+    #expect(SpokenPunctuation.apply(to: "Befund neuer Absatz") == "Befund")
+    #expect(SpokenPunctuation.apply(to: "Erste Zeile neue Zeile", keepsEdgeBreaks: true) == "Erste Zeile\n")
+    #expect(SpokenPunctuation.apply(to: "  Befund neuer Absatz  ", keepsEdgeBreaks: true) == "Befund\n\n")
+  }
+
   @Test("Spoken-only formatting keeps the capital but adds no trailing period")
   func formattingWithoutPeriod() {
     let manager = ClipboardManager(pasteboard: .withUniqueName())
