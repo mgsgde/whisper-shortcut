@@ -82,17 +82,44 @@ struct ModelSelectionReconcilerTests {
     // Candidate but key-less is still unusable.
     #expect(!ModelSelectionReconciler.selectionIsUsable(.gemini38Flash, among: dictate, hasKey: { $0 == .openRouter }))
 
-    // The replacement comes from `preferredPromptModel`, which never picks a non-candidate…
+    // Replacement tiers for the Dictate Prompt slot, in order.
+    // 1. preferred: a Gemini key wins; OpenRouter is not a Dictate Prompt candidate.
     #expect(
       ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: { $0 == .gemini || $0 == .openRouter })
         == .gemini38Flash)
-    // …and an OpenRouter-only user (no Dictate Prompt-capable key) falls to the offline model.
+    // 2. offline fallback for an OpenRouter-only user (Apple Silicon: the MLX default is a candidate).
     let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
-    let candidates = chatCandidates + [offline]
-    #expect(ModelSelectionReconciler.preferredPromptModel(among: candidates, hasKey: { $0 == .openRouter }) == nil)
+    let openRouterOnly: (ChatModelProvider) -> Bool = { $0 == .openRouter || $0 == .local || $0 == .localMLX }
+    #expect(ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: openRouterOnly) == nil)
+    if dictate.contains(offline) {
+      #expect(ModelSelectionReconciler.keylessOfflineModel(among: dictate, hasKey: openRouterOnly) == offline)
+    }
+  }
+
+  @Test("When preferred and offline both yield nothing, a non-candidate still moves")
+  func nonCandidateAlwaysMoves() {
+    let fallback = SettingsDefaults.selectedPromptModel
+    let customOnly: (ChatModelProvider) -> Bool = { $0 == .customOpenAI || $0 == .local || $0 == .localMLX }
+    // Only a custom endpoint is keyed: `providerPreference` skips it and the key blocks the offline pick.
+    let dictate = PromptModel.dictatePromptCapableModels
+    #expect(ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: customOnly) == nil)
+    #expect(ModelSelectionReconciler.keylessOfflineModel(among: dictate, hasKey: customOnly) == nil)
+    let moved = ModelSelectionReconciler.lastResortReplacement(
+      among: dictate, fallback: fallback, hasKey: customOnly)
+    #expect(moved == .customOpenAIEndpoint)
+    #expect(moved.map { dictate.contains($0) } == true)
+
+    // Intel-like list (no MLX default among the candidates), no keys at all: the factory default.
+    let intel: [PromptModel] = [.gemini38Flash, .openaiGPT4oAudio, .localModel]
+    #expect(ModelSelectionReconciler.keylessOfflineModel(among: intel, hasKey: { _ in false }) == nil)
     #expect(
-      ModelSelectionReconciler.keylessOfflineModel(
-        among: candidates, hasKey: { $0 == .openRouter || $0 == .local || $0 == .localMLX }) == offline)
+      ModelSelectionReconciler.lastResortReplacement(
+        among: intel, fallback: .gemini38Flash, hasKey: { $0 == .local }) == .gemini38Flash)
+    // A keyed cloud candidate beats the factory default.
+    #expect(
+      ModelSelectionReconciler.lastResortReplacement(
+        among: intel, fallback: .gemini38Flash, hasKey: { $0 == .openai }) == .openaiGPT4oAudio)
+    #expect(ModelSelectionReconciler.lastResortReplacement(among: [], fallback: fallback, hasKey: { _ in true }) == nil)
   }
 
   @Test("Key-less fallback picks the offline MLX default only when no cloud provider has a key")
