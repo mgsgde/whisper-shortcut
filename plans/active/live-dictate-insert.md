@@ -1,6 +1,9 @@
 # Live dictation into the cursor (Dragon-style), offline Parakeet
 
-Status: planned 2026-11-02, not started. Comes from the pilot user (long medical reports, offline
+Status: S1–S4 written 2026-11-02 on branch `feat/live-dictate-insert` in a Linux cloud session —
+**not yet compiled or run on a Mac.** v1 decisions taken there: paste (not type); a period at the end
+of a piece is held back and dropped when the next piece starts lowercase (`LiveChunkJoiner`); the
+shortcut row lives in Settings → General like Add to Glossary. Comes from the pilot user (long medical reports, offline
 Parakeet, previously Dragon): she expects the text **where the cursor is, while she speaks** — as
 Dragon does — not after Stop. Magnus had the same intuition. This changes the direction of
 `live-dictate-preview.md` (PR #318, a read-only panel; text still pasted after Stop): park that PR
