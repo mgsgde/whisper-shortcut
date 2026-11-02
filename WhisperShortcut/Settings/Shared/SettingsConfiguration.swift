@@ -2083,6 +2083,8 @@ struct SettingsDefaults {
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
+  /// Off: live text while dictating is opt-in (plans/active/live-dictate-preview.md).
+  static let liveDictatePreview = false
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true

@@ -31,7 +31,9 @@ enum UserDefaultsKeys {
 
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
-  
+  /// Live text panel while dictating with offline Parakeet (`LiveDictatePreviewSetting`).
+  static let liveDictatePreview = "liveDictatePreview"
+
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
   static let notificationPosition = "notificationPosition"
