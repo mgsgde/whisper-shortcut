@@ -14775,6 +14775,16 @@
         }
       }
     },
+    "Part of a meeting that has already ended couldn't be transcribed: %@\n\nThe audio is kept on this Mac. Choose Retry Meeting Transcription in the menu bar menu to transcribe it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil eines bereits beendeten Meetings konnte nicht transkribiert werden: %@\n\nDas Audio bleibt auf diesem Mac. Wählen Sie „Meeting-Transkription wiederholen“ im Menüleisten-Menü, um es zu transkribieren."
+          }
+        }
+      }
+    },
     "Part of this meeting couldn't be transcribed: %@" : {
       "localizations" : {
         "de" : {

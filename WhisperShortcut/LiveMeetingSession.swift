@@ -47,6 +47,16 @@ final class LiveMeetingSession: NSObject {
   /// inject one so they neither need a key nor spend a request; production leaves it nil. Pass
   /// scheduling (one in flight per stem, rerun when dirty) stays real.
   private let postProcessingOverride: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)?
+  /// The two LLM requests of a pass. Tests inject them so the real pass (epoch gating, rename,
+  /// file handling) runs without a key; production leaves it nil and uses the selected models.
+  struct PostProcessingCalls {
+    var consolidate: (String) async throws -> String
+    var summarize: (String) async throws -> String
+  }
+  private let postProcessingCalls: PostProcessingCalls?
+  /// Shows the alert for a chunk that failed after its meeting ended. Tests capture it instead of
+  /// opening a window; production leaves it nil.
+  private let presentEndedMeetingAlert: ((String) -> Void)?
 
   init(
     transcribeChunk: @escaping (URL) async throws -> String,
@@ -56,7 +66,9 @@ final class LiveMeetingSession: NSObject {
     onFinished: @escaping () -> Void,
     onBacklogChanged: @escaping () -> Void,
     stopSafetyNetDelay: TimeInterval = 30,
-    postProcessingOverride: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)? = nil
+    postProcessingOverride: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)? = nil,
+    postProcessingCalls: PostProcessingCalls? = nil,
+    presentEndedMeetingAlert: ((String) -> Void)? = nil
   ) {
     self.transcribeChunk = transcribeChunk
     self.cleanUpAudioFile = cleanUpAudioFile
@@ -66,6 +78,8 @@ final class LiveMeetingSession: NSObject {
     self.onBacklogChanged = onBacklogChanged
     self.stopSafetyNetDelay = stopSafetyNetDelay
     self.postProcessingOverride = postProcessingOverride
+    self.postProcessingCalls = postProcessingCalls
+    self.presentEndedMeetingAlert = presentEndedMeetingAlert
     super.init()
     // The meeting bar's preference (automatic / always mix / microphone only) can change mid-meeting.
     audioPreferenceObserver = NotificationCenter.default.addObserver(
@@ -589,7 +603,7 @@ final class LiveMeetingSession: NSObject {
   }
 
   /// Epoch a pass for `stem` would start under; see `postProcessingEpochs`.
-  func postProcessingEpoch(for stem: String) -> Int { postProcessingEpochs[stem] ?? 0 }
+  private func postProcessingEpoch(for stem: String) -> Int { postProcessingEpochs[stem] ?? 0 }
 
   /// The transcript for `stem` just changed on disk.
   private func noteTranscriptWrite(stem: String) {
@@ -599,10 +613,10 @@ final class LiveMeetingSession: NSObject {
   /// Rewrites the transcript with consolidated speaker labels unless a newer write overtook this
   /// pass. Runs on the main actor, where every other transcript write happens, so the check and the
   /// write cannot interleave with a late chunk.
-  func writeConsolidatedTranscript(
+  private func writeConsolidatedTranscript(
     _ text: String, to url: URL, stem: String, epoch: Int
   ) throws -> Bool {
-    guard postProcessingEpochs[stem] == epoch else { return false }
+    guard postProcessingEpoch(for: stem) == epoch else { return false }
     try text.write(to: url, atomically: true, encoding: .utf8)
     MeetingListService.shared.invalidateCache(for: nil)
     return true
@@ -640,8 +654,9 @@ final class LiveMeetingSession: NSObject {
     transcriptURL: URL, chunks chunksSnapshot: [LiveMeetingChunk], stem: String, epoch: Int
   ) async {
     func isCurrent() async -> Bool {
-      await MainActor.run { self.postProcessingEpochs[stem] == epoch }
+      await MainActor.run { self.postProcessingEpoch(for: stem) == epoch }
     }
+    let injected = postProcessingCalls != nil
     func superseded() {
       DebugLogger.log("LIVE-MEETING: Post-processing superseded by a transcript change; a newer pass follows")
     }
@@ -656,7 +671,7 @@ final class LiveMeetingSession: NSObject {
       separator: "\n\n")
     guard !transcriptText.isEmpty else { return }
     let model = PromptModel.loadSelectedMeetingSummary()
-    guard model.hasRequiredCredential else {
+    guard injected || model.hasRequiredCredential else {
       DebugLogger.logWarning(
         "LIVE-MEETING: No credential for \(model.rawValue) — skipping post-processing")
       return
@@ -667,14 +682,19 @@ final class LiveMeetingSession: NSObject {
     // route to the provider's cheapest model: relabeling is mechanical and doesn't need the
     // summary model's quality.
     var finalTranscript = transcriptText
-    if MeetingListService.skipsSpeakerConsolidation(provider: model.provider) {
+    let calls = postProcessingCalls ?? PostProcessingCalls(
+      consolidate: {
+        try await MeetingListService.consolidateSpeakerLabels(
+          transcript: $0, model: model.speakerConsolidationModel)
+      },
+      summarize: { try await MeetingListService.generateSummaryText(transcript: $0, model: model) })
+    if !injected, MeetingListService.skipsSpeakerConsolidation(provider: model.provider) {
       DebugLogger.log(
         "LIVE-MEETING: Skipping speaker consolidation (on-device summary model \(model.rawValue))")
     } else if MeetingListService.distinctSpeakerCount(in: transcriptText) >= 2 {
       guard await isCurrent() else { return superseded() }
       do {
-        let consolidated = try await MeetingListService.consolidateSpeakerLabels(
-          transcript: transcriptText, model: model.speakerConsolidationModel)
+        let consolidated = try await calls.consolidate(transcriptText)
         let trimmed = consolidated.trimmingCharacters(in: .whitespacesAndNewlines)
         if !Self.acceptsConsolidation(original: transcriptText, consolidated: trimmed) {
           DebugLogger.logWarning(
@@ -703,8 +723,7 @@ final class LiveMeetingSession: NSObject {
       textForSummary = String(textForSummary.suffix(MeetingListService.meetingContextMaxChars))
     }
     do {
-      let summary = try await MeetingListService.generateSummaryText(
-        transcript: textForSummary, model: model)
+      let summary = try await calls.summarize(textForSummary)
       let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
       guard await isCurrent() else { return superseded() }
       if !trimmed.isEmpty {
@@ -745,6 +764,19 @@ final class LiveMeetingSession: NSObject {
       return String(localized: "Part of this meeting couldn't be transcribed: \(reason)")
     }
     return String(localized: "Part of this meeting couldn't be transcribed: \(reason)\n\nRecording continues and the audio is kept on this Mac. It is transcribed again when the meeting ends, or choose Retry Meeting Transcription in the menu bar menu.")
+  }
+
+  static func endedMeetingFailureMessage(error: Error) -> String {
+    let reason = SpeechErrorFormatter.formatForUser(error)
+    return String(localized: "Part of a meeting that has already ended couldn't be transcribed: \(reason)\n\nThe audio is kept on this Mac. Choose Retry Meeting Transcription in the menu bar menu to transcribe it.")
+  }
+
+  private func showEndedMeetingAlert(_ message: String) {
+    if let presentEndedMeetingAlert {
+      presentEndedMeetingAlert(message)
+    } else {
+      PopupNotificationWindow.showError(verbatim: message, title: "Live Meeting – Transcription Failed")
+    }
   }
 
   /// Warns the moment a meeting starts without a network path, instead of a chunk interval later.
@@ -1386,10 +1418,14 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
+          if kept { self.onBacklogChanged() }
           // A failure for a meeting that has ended (stopped, or replaced by a newer one) must not
           // tell the user "Recording continues" or consume the current meeting's one-shot alerts.
-          guard self.isLive(generation) else { return }
-          if kept { self.onBacklogChanged() }
+          // The kept audio still needs a word: nothing else will mention it.
+          guard self.isLive(generation) else {
+            if kept { self.showEndedMeetingAlert(Self.endedMeetingFailureMessage(error: error)) }
+            return
+          }
           if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
               self.didShowRateLimitAlert = true

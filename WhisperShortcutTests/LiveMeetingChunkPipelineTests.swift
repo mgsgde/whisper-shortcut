@@ -171,7 +171,7 @@ struct LiveMeetingChunkPipelineTests {
     }
   }
 
-  @Test("A pass started before a resumed meeting's late chunk cannot rewrite it away")
+  @Test("A real pass overtaken by a resumed meeting's late chunk leaves the transcript alone")
   func overtakenPassKeepsLateText() async throws {
     try await withPreservedRecordingMarker {
       let store = LiveMeetingTranscriptStore.shared
@@ -181,33 +181,72 @@ struct LiveMeetingChunkPipelineTests {
       let dir = try makeDirectory()
       defer { try? FileManager.default.removeItem(at: dir) }
       let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
-      let stem = file.deletingPathExtension().lastPathComponent
-      FileManager.default.createFile(atPath: file.path, contents: Data())
+      try "[0:05] Speaker A: hello\n\n[0:20] Speaker B: hi\n\n".write(
+        to: file, atomically: true, encoding: .utf8)
 
       let transcripts = ChunkTranscripts()
       defer { transcripts.resumeOutstanding(returning: "") }
       let box = Counters()
-      let session = makeSession(transcripts: transcripts, box: box)
+      box.holdConsolidation = true
+      box.consolidatedReply = "[0:05] Speaker A: CONSOLIDATED hello\n\n[0:20] Speaker B: CONSOLIDATED hi"
+      let session = makeSession(transcripts: transcripts, box: box, realPass: true)
       session.beginSessionWithoutRecorder(transcriptFile: file)
-      deliver(session, index: 0, start: 15)
+      deliver(session, index: 0, start: 40)
       #expect(await waitUntil { transcripts.waiterCount == 1 })
       session.stop()
       session.stopSafetyNetForTesting?.perform()
-      #expect(await waitUntil { box.postProcessed.count == 1 })
-
-      // The pass `finish()` started holds the epoch from this moment.
-      let epochOfRunningPass = session.postProcessingEpoch(for: stem)
+      // The pass `finish()` started is waiting on its consolidation request.
+      #expect(await waitUntil { box.consolidationHeld() == true })
 
       // The user resumes the meeting; the late chunk lands in the resumed meeting.
       session.beginSessionWithoutRecorder(transcriptFile: file)
       transcripts.resume(at: 0, returning: "late words")
       #expect(await waitUntil { text(at: file).contains("late words") })
 
-      // The old pass now comes back with its consolidated copy, which lacks the late words.
-      let wrote = try session.writeConsolidatedTranscript(
-        "[0:15] consolidated without it\n\n", to: file, stem: stem, epoch: epochOfRunningPass)
-      #expect(!wrote)
+      // The old pass now gets its consolidated copy, which lacks the late words.
+      box.releaseConsolidation()
+      let summarised = await waitForSummary(box, timeout: 0.5)
+      #expect(!summarised)
       #expect(text(at: file).contains("late words"))
+      #expect(!text(at: file).contains("CONSOLIDATED"))
+    }
+  }
+
+  @Test("A meeting named at End still gets its summary")
+  func namedMeetingGetsSummary() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      let renamed = dir.appendingPathComponent("\(stem)-Board.txt")
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      let session = makeSession(transcripts: transcripts, box: box, realPass: true)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      deliver(session, index: 0, start: 5)
+      #expect(await waitUntil { transcripts.waiterCount == 1 })
+      transcripts.resume(at: 0, returning: "agenda for the board")
+      #expect(await waitUntil { text(at: file).contains("agenda for the board") })
+
+      session.end(preferredName: "Board", discard: false)
+      deliver(session, index: 1, start: 30, silent: true, final: true)
+      #expect(box.finished == 1)
+      #expect(FileManager.default.fileExists(atPath: renamed.path))
+
+      #expect(await waitUntil { box.summaryCount == 1 })
+      #expect(box.lastSummaryInput.contains("agenda for the board"))
+      #expect(await waitUntil {
+        FileManager.default.fileExists(
+          atPath: MeetingListService.summaryURL(transcriptFileURL: renamed).path)
+      })
     }
   }
 
@@ -324,6 +363,40 @@ struct LiveMeetingChunkPipelineTests {
       #expect(await waitUntil { !MeetingAudioBacklog.items(stem: stem).isEmpty })
       let negative = await waitUntil(timeout: 0.3) { session.pendingChunkCount != 0 }
       #expect(!negative)
+    }
+  }
+
+  @Test("A late failure for an ended meeting tells the user the audio is kept")
+  func lateFailureForEndedMeetingIsReported() async throws {
+    try await withPreservedRecordingMarker {
+      let store = LiveMeetingTranscriptStore.shared
+      store.clearForNewMeeting()
+      defer { store.clearForNewMeeting() }
+
+      let dir = try makeDirectory()
+      defer { try? FileManager.default.removeItem(at: dir) }
+      let file = dir.appendingPathComponent("Meeting-b02-\(UUID().uuidString).txt")
+      let stem = file.deletingPathExtension().lastPathComponent
+      defer { MeetingAudioBacklog.remove(stem: stem) }
+      FileManager.default.createFile(atPath: file.path, contents: Data())
+      let audio = dir.appendingPathComponent("chunk.wav")
+      FileManager.default.createFile(atPath: audio.path, contents: Data([0]))
+
+      let transcripts = ChunkTranscripts()
+      defer { transcripts.resumeOutstanding(returning: "") }
+      let box = Counters()
+      let session = makeSession(transcripts: transcripts, box: box)
+      session.beginSessionWithoutRecorder(transcriptFile: file)
+      deliver(session, index: 0, start: 15, audio: audio)
+      #expect(await waitUntil { transcripts.waiterCount == 1 })
+      session.stop()
+      session.stopSafetyNetForTesting?.perform()
+
+      transcripts.fail(at: 0)
+      #expect(await waitUntil { box.alerts.count == 1 })
+      #expect(box.backlogChanged == 1)
+      #expect(!box.alerts[0].contains("Recording continues"))
+      #expect(box.alerts[0].contains("kept on this Mac"))
     }
   }
 
@@ -458,6 +531,53 @@ private final class Counters: @unchecked Sendable {
   /// Every end-of-meeting pass the session ran, with the chunks it was given.
   var postProcessed: [(URL, [LiveMeetingChunk])] = []
   var postProcessedURLs: [URL] { postProcessed.map { $0.0 } }
+  var backlogChanged = 0
+  var alerts: [String] = []
+  // The injected LLM calls run off the main actor, so their state sits behind a lock.
+  private let llmLock = NSLock()
+  private var summaries: [String] = []
+  private var consolidationGate: CheckedContinuation<Void, Never>?
+  var holdConsolidation = false
+  var consolidatedReply = ""
+  var summaryCount: Int {
+    llmLock.lock()
+    defer { llmLock.unlock() }
+    return summaries.count
+  }
+  var lastSummaryInput: String {
+    llmLock.lock()
+    defer { llmLock.unlock() }
+    return summaries.last ?? ""
+  }
+  func hasSummary() -> Bool { summaryCount > 0 }
+  func consolidationHeld() -> Bool {
+    llmLock.lock()
+    defer { llmLock.unlock() }
+    return consolidationGate != nil
+  }
+  func consolidate(_ text: String) async -> String {
+    if holdConsolidation {
+      await withCheckedContinuation { continuation in
+        llmLock.lock()
+        consolidationGate = continuation
+        llmLock.unlock()
+      }
+    }
+    return consolidatedReply
+  }
+  func summarize(_ text: String) -> String {
+    llmLock.lock()
+    summaries.append(text)
+    llmLock.unlock()
+    return "summary"
+  }
+  func releaseConsolidation() {
+    llmLock.lock()
+    let gate = consolidationGate
+    consolidationGate = nil
+    llmLock.unlock()
+    gate?.resume()
+  }
   /// When set, the first pass does not return until `releaseHeldPass()`.
   var holdFirstPass = false
   private var heldPass: CheckedContinuation<Void, Never>?
@@ -539,8 +659,21 @@ private final class ChunkTranscripts: @unchecked Sendable {
 }
 
 @MainActor
-private func makeSession(transcripts: ChunkTranscripts, box: Counters) -> LiveMeetingSession {
-  LiveMeetingSession(
+private func makeSession(
+  transcripts: ChunkTranscripts, box: Counters, realPass: Bool = false
+) -> LiveMeetingSession {
+  var override: (@MainActor (URL, [LiveMeetingChunk]) async -> Void)?
+  var calls: LiveMeetingSession.PostProcessingCalls?
+  if realPass {
+    calls = LiveMeetingSession.PostProcessingCalls(
+      consolidate: { await box.consolidate($0) }, summarize: { box.summarize($0) })
+  } else {
+    override = { url, chunks in
+      box.postProcessed.append((url, chunks))
+      await box.holdIfRequested()
+    }
+  }
+  return LiveMeetingSession(
     transcribeChunk: { _ in try await transcripts.next() },
     cleanUpAudioFile: { _ in box.didCleanUp() },
     appStateIsRecordingMeeting: { false },
@@ -551,13 +684,13 @@ private func makeSession(transcripts: ChunkTranscripts, box: Counters) -> LiveMe
         box.transcriptAtFinish = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
       }
     },
-    onBacklogChanged: {},
+    onBacklogChanged: { box.backlogChanged += 1 },
     stopSafetyNetDelay: 3600,
-    // The real pass calls an LLM; the host may have a key configured.
-    postProcessingOverride: { url, chunks in
-      box.postProcessed.append((url, chunks))
-      await box.holdIfRequested()
-    }
+    // The real pass calls an LLM; the host may have a key configured. Tests either replace the
+    // whole pass body (scheduling tests) or inject just its two requests (`realPass`).
+    postProcessingOverride: override,
+    postProcessingCalls: calls,
+    presentEndedMeetingAlert: { box.alerts.append($0) }
   )
 }
 
@@ -583,6 +716,11 @@ private func makeDirectory() throws -> URL {
 }
 
 @MainActor
+private func waitForSummary(_ box: Counters, timeout: TimeInterval) async -> Bool {
+  await waitUntil(timeout: timeout) { box.hasSummary() }
+}
+
+@MainActor
 private func waitForChunkTexts(at url: URL, _ expected: [String]) async -> Bool {
   await waitUntil { chunkTexts(at: url) == expected }
 }
@@ -601,7 +739,7 @@ private func text(at url: URL) -> String {
 
 @MainActor
 private func waitUntil(
-  timeout: TimeInterval = 2, _ predicate: @escaping () -> Bool
+  timeout: TimeInterval = 2, _ predicate: () -> Bool
 ) async -> Bool {
   let deadline = Date().addingTimeInterval(timeout)
   while Date() < deadline {
