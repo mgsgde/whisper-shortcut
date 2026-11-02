@@ -33,6 +33,10 @@ enum SpokenPunctuation {
     rule(#"[ \t,.;]*\bdoppelpunkt(?!(?:e|en|es|s)\b)(?=\p{L})"#, ": \u{1}"),
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
     rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, ".\n\n"),
+    // The model already ended the sentence ("Anamnese. Neuer Absatz, die Klägerin"): the next word
+    // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
+    rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"(?<=[.!?])[ \t]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Paragraph break. A sentence end before it (". ! ? :") is kept, a stray comma is not.
     rule(#"[ \t,;]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n"),
     rule(#"[ \t,;]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n"),
@@ -52,29 +56,36 @@ enum SpokenPunctuation {
     rule(#"[ \t,;]*\bschr(?:ä|ae)gstrich\b[ \t,.;]*"#, "/"),
     rule(#"[ \t,;]*\bschr(?:ä|ae)gstrich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
     // "3 Komma 5 cm" → "3,5 cm": a decimal comma, no spaces. Must run before the plain "Komma" rule.
-    rule(#"(?<=\d)[ \t]*\bkomma\b[ \t]*(?=\d)"#, ","),
-    rule(#"[ \t,.;]*\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
-    rule(#"[ \t,.;]*\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
-    rule(#"[ \t,.;]*\bpunkt\b[ \t,.;]*"#, ". \u{1}"),
-    rule(#"[ \t,.;]*\bkomma\b[ \t,.;]*"#, ", "),
+    // Only a single pair: "3 Komma 5 Komma 4" is a list and gets plain commas below.
+    rule(#"(?<!\bkomma[ \t]\d{1,6})(?<=\d)[ \t]*\bkomma\b[ \t]*(?=\d)(?!\d+[ \t]*\bkomma\b[ \t]*\d)"#, ","),
+    rule(#"[ \t,;]*\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
+    rule(#"[ \t,;]*\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
+    // Not the noun: "Punkt 3", "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt".
+    rule(
+      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?![ \t]*\d)[ \t,.;]*"#,
+      ". \u{1}"),
+    rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
   ]
 
   /// Removes the punctuation an offline model inserted on its own (`. , ; ! ?`) for
   /// `PunctuationMode.spokenOnly`. Only marks followed by whitespace or the end of the text, so
   /// "3.5" and "1,2" survive. A single period stays when it belongs to the text rather than ending
   /// a sentence: after a digit and before a space ("3. November", "5. Lendenwirbel") and after one
-  /// of `keptAbbreviations` ("Dr. Müller", "z. B."). Run before `apply`.
+  /// of `keptAbbreviations` ("Dr. Müller", "z. B.", any single letter). A model comma glued to a kept period is dropped alone. Run before `apply`.
   static func stripModelPunctuation(from text: String) -> String {
     let nsText = text as NSString
     var result = text
     let matches = stripRegex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
     for match in matches.reversed() {
-      if match.range.length == 1, nsText.character(at: match.range.location) == 0x2E,
-        periodBelongsToText(in: nsText, at: match.range)
+      var range = match.range
+      if nsText.character(at: range.location) == 0x2E,
+        periodBelongsToText(in: nsText, at: NSRange(location: range.location, length: 1))
       {
-        continue
+        // Keep the text's period; a model mark glued to it (".,") still goes.
+        if range.length == 1 { continue }
+        range = NSRange(location: range.location + 1, length: range.length - 1)
       }
-      guard let swiftRange = Range(match.range, in: result) else { continue }
+      guard let swiftRange = Range(range, in: result) else { continue }
       result.removeSubrange(swiftRange)
     }
     return result
@@ -84,6 +95,9 @@ enum SpokenPunctuation {
   private static let keptAbbreviations: Set<String> = [
     "Dr", "Prof", "Nr", "z", "B", "u", "a", "bzw", "ca", "usw", "ggf", "S", "Abs", "Art", "vgl",
     "evtl", "inkl", "Hr", "Fr", "St", "Tel", "Str",
+    "med", "habil", "Az", "Abb", "Anl", "Bl", "geb", "tgl", "f", "ff", "Ziff", "bzgl", "etc", "sog",
+    "lt", "gem", "Mio", "Std", "Min", "max", "min", "Jh", "Hrsg", "Aufl", "Kap", "Tab", "Anm",
+    "Mrd", "Tsd", "Dipl", "Ing", "dent", "rer", "nat",
   ]
 
   private static func periodBelongsToText(in text: NSString, at range: NSRange) -> Bool {
@@ -91,7 +105,9 @@ enum SpokenPunctuation {
     var start = range.location
     while start > 0, isLetter(text.character(at: start - 1)) { start -= 1 }
     if start < range.location {
-      return keptAbbreviations.contains(text.substring(with: NSRange(location: start, length: range.location - start)))
+      let word = text.substring(with: NSRange(location: start, length: range.location - start))
+      // Any single letter is an abbreviation ("d. h.", "i. d. R."); "Hauptstr." ends in "str".
+      return word.count == 1 || keptAbbreviations.contains(word) || word.lowercased().hasSuffix("str")
     }
     // Directly after a digit, and followed by a space (not the end): an ordinal or a date.
     guard range.location > 0, let digit = Unicode.Scalar(text.character(at: range.location - 1)),

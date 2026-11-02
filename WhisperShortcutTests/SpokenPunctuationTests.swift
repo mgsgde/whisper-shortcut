@@ -238,6 +238,55 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.stripModelPunctuation(from: "5. Lendenwirbel") == "5. Lendenwirbel")
   }
 
+  @Test("Abbreviation periods survive stripping")
+  func stripKeepsMoreAbbreviations() {
+    for text in [
+      "Dr. med. Müller", "d. h. die", "Az. 12 SB 345/24", "i. d. R. stabil", "Hauptstr. 5",
+      "geb. 12. 3. 1961",
+    ] {
+      #expect(SpokenPunctuation.stripModelPunctuation(from: text) == text)
+    }
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Er ging nach Hause. Dann kam sie.") == "Er ging nach Hause Dann kam sie")
+  }
+
+  @Test("A kept period followed by the model's comma loses only the comma")
+  func keptPeriodThenComma() {
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "z. B., Kopfschmerzen") == "z. B. Kopfschmerzen")
+  }
+
+  @Test("\"Punkt\" before a number or after a preposition is the noun")
+  func punktNoun() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "Zu Punkt 3 der Beweisfragen", mode: mode) == "Zu Punkt 3 der Beweisfragen")
+    #expect(SpokenPunctuation.apply(to: "Siehe Punkt 2.1", mode: mode) == "Siehe Punkt 2.1")
+    #expect(SpokenPunctuation.apply(to: "Er kam um 9 Uhr Punkt neue Zeile die", mode: mode) == "Er kam um 9 Uhr.\nDie")
+  }
+
+  @Test("A kept abbreviation period survives a spoken Komma")
+  func abbreviationThenKomma() {
+    let stripped = SpokenPunctuation.stripModelPunctuation(from: "usw. Komma die")
+    #expect(SpokenPunctuation.apply(to: stripped, mode: .spokenOnly) == "usw., die")
+  }
+
+  @Test("Decimal Komma only for a single pair of numbers")
+  func decimalOnlySinglePair() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "3 Komma 5 cm", mode: mode) == "3,5 cm")
+    #expect(SpokenPunctuation.apply(to: "3 Komma 5 Komma 4", mode: mode) == "3, 5, 4")
+  }
+
+  @Test("After a sentence end the word after a spoken break gets a capital, in both modes")
+  func capitalAfterBreakWithModelPeriod() {
+    for mode in [PunctuationMode.automatic, .spokenOnly] {
+      #expect(
+        SpokenPunctuation.apply(to: "Anamnese. Neuer Absatz, die Klägerin", mode: mode)
+          == "Anamnese.\n\nDie Klägerin")
+      #expect(
+        SpokenPunctuation.apply(to: "Ist sie arbeitsfähig? Neue Zeile, nein.", mode: mode)
+          == "Ist sie arbeitsfähig?\nNein.")
+    }
+  }
+
   @Test("Spoken marks attach to the previous word with one space after")
   func spokenOnlyMarks() {
     let mode = PunctuationMode.spokenOnly
