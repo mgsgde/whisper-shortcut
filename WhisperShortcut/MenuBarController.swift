@@ -3203,10 +3203,13 @@ class MenuBarController: NSObject {
     // teardown and does not take that completion path. If the queue had already drained, the
     // refusal ends playback itself and stays silent (no `onPlaybackCompleted`), so the single
     // `ttsDidStop` below is the only one and the error path never flashes "Audio playback completed".
+    // If buffers are still playing (or paused), `onPlaybackCompleted` posts the one `ttsDidStop`
+    // once they drain, so this method must not post it as well.
     if stopPlayback {
       ttsPlayback.stop()
     }
     ttsPlayback.refuseFurtherChunks()
+    let playbackStillDraining = ttsPlayback.isPlaying
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
@@ -3217,9 +3220,18 @@ class MenuBarController: NSObject {
     // Post `ttsDidStop` exactly once. Skip when `transitionToIdleAndCleanup` already did
     // (the synthesizing path); post explicitly otherwise — audio-playing toggle-off, or
     // in-task catch paths that skip the transition entirely.
-    if !transitionWillPostStop {
+    if Self.finishShouldPostStop(
+      transitionPostedStop: transitionWillPostStop, playbackStillDraining: playbackStillDraining)
+    {
       NotificationCenter.default.post(name: .ttsDidStop, object: nil)
     }
+  }
+
+  /// Whether `finishReadAloudSession` itself posts `ttsDidStop`. Never when the transition already
+  /// did, and never while refused-but-undrained audio is still playing: that playback's
+  /// `onPlaybackCompleted` owns the single stop notification.
+  static func finishShouldPostStop(transitionPostedStop: Bool, playbackStillDraining: Bool) -> Bool {
+    !transitionPostedStop && !playbackStillDraining
   }
 
   /// Handles the "Read Aloud is already busy — treat this trigger as Stop" cases. Returns true

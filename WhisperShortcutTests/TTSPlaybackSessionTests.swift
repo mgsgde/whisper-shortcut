@@ -160,4 +160,39 @@ struct TTSPlaybackSessionTests {
     #expect(!session.refuseFurtherChunks())
     #expect(events.completed == 0)
   }
+
+  @Test("Refusing while audio is still playing leaves the single completion to the drain")
+  func refusalWhileStillPlayingCompletesOnceAfterDrain() async {
+    let events = Events()
+    let session = makeSession(events)
+    defer { session.stop() }
+    let id = session.begin()
+    for index in 0..<3 {
+      session.enqueue(Self.silenceChunk, index: index, totalChunks: 3, generation: id)
+    }
+    #expect(session.isPlaying)
+
+    // Producer error mid-stream: the refusal must not end playback itself, so the owner has to
+    // leave `ttsDidStop` to the completion callback that follows the drain.
+    #expect(!session.refuseFurtherChunks())
+    #expect(session.isPlaying)
+    #expect(events.completed == 0)
+    #expect(!MenuBarController.finishShouldPostStop(
+      transitionPostedStop: false, playbackStillDraining: session.isPlaying))
+
+    let deadline = ContinuousClock.now + .seconds(3)
+    while session.isPlaying, ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(events.completed == 1)
+    #expect(!session.refuseFurtherChunks())
+    #expect(events.completed == 1)
+  }
+
+  @Test("finish posts ttsDidStop only when nothing else will")
+  func finishPostsStopOnlyWhenNothingElseWill() {
+    #expect(MenuBarController.finishShouldPostStop(transitionPostedStop: false, playbackStillDraining: false))
+    #expect(!MenuBarController.finishShouldPostStop(transitionPostedStop: true, playbackStillDraining: false))
+    #expect(!MenuBarController.finishShouldPostStop(transitionPostedStop: false, playbackStillDraining: true))
+  }
 }
