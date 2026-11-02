@@ -10,8 +10,9 @@ import AppKit
 /// automatically would be worse: it turns "on-device" into "audio goes to Google" without a word,
 /// which is exactly what a practice dictating patient findings must never get. So: ask once.
 ///
-/// Asked only when a key is saved — never at launch — and never while Offline Mode is on. A "No"
-/// is remembered per provider; a key for a different provider asks again.
+/// Asked only when a key is saved — never at launch — and never while Offline Mode is on, and only
+/// about the provider whose key was just saved (a Claude key never offers Gemini). A "No" is
+/// remembered per provider; a key for a different provider asks again.
 @MainActor
 enum CloudModelOffer {
 
@@ -28,11 +29,14 @@ enum CloudModelOffer {
 
   /// The slots that sit on an on-device model and the cloud model each would move to. Only the
   /// app's own offline models count: a self-hosted transcription endpoint, a local Ollama server
-  /// or a custom endpoint is something the user set up on purpose.
+  /// or a custom endpoint is something the user set up on purpose. With `savedProvider`, only
+  /// moves onto that provider count; nil considers every provider the user has a key for.
   static func upgrades(
     selections: [String: String],
-    hasKey: (ChatModelProvider) -> Bool
+    savedProvider: ChatModelProvider? = nil,
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
   ) -> [Upgrade] {
+    let hasKey: (ChatModelProvider) -> Bool = { savedProvider == nil || $0 == savedProvider ? hasKeyForProvider($0) : false }
     var result: [Upgrade] = []
 
     let transcriptionSlots: [(String, String)] = [
@@ -84,18 +88,18 @@ enum CloudModelOffer {
   private static var pending: Task<Void, Never>?
   private static var isShowing = false
 
-  /// Call after a key was saved. Debounced: the Settings key field saves on every keystroke, and
+  /// Call after a key for `provider` was saved. Debounced: the Settings key field saves on every keystroke, and
   /// the dialog must not pop up after the first character of a typed key.
-  static func scheduleCheck() {
+  static func scheduleCheck(for provider: ChatModelProvider) {
     pending?.cancel()
     pending = Task { @MainActor in
       try? await Task.sleep(nanoseconds: 1_500_000_000)
       guard !Task.isCancelled else { return }
-      presentIfNeeded()
+      presentIfNeeded(for: provider)
     }
   }
 
-  private static func presentIfNeeded() {
+  private static func presentIfNeeded(for provider: ChatModelProvider) {
     guard !isShowing, !OfflineMode.isEnabled else { return }
     var selections: [String: String] = [:]
     for key in [
@@ -108,7 +112,7 @@ enum CloudModelOffer {
     ] {
       selections[key] = UserDefaults.standard.string(forKey: key)
     }
-    let upgrades = upgrades(selections: selections, hasKey: { ModelSelectionReconciler.hasKey($0) })
+    let upgrades = upgrades(selections: selections, savedProvider: provider, hasKey: { ModelSelectionReconciler.hasKey($0) })
     let declined = Set(
       UserDefaults.standard.stringArray(forKey: UserDefaultsKeys.cloudModelOfferDeclinedProviders) ?? [])
     guard shouldOffer(upgrades, declined: declined) else { return }
