@@ -59,6 +59,26 @@ struct LiveDictationTests {
     #expect(ChunkedDictateRecorder.RotationPolicy.live.minDuration == 1.5)
   }
 
+  // MARK: - Punctuation mode
+
+  @Test("Only when spoken: a spoken Punkt ends the piece with a period")
+  func spokenOnlyPeriod() {
+    #expect(LiveDictation.finishPiece("befund Punkt", mode: .spokenOnly).hasSuffix("."))
+  }
+
+  @Test("Only when spoken: the model's own period is stripped, automatic keeps it")
+  func spokenOnlyStripsModelPeriod() {
+    #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .spokenOnly) == "Der Befund ist unauffällig")
+    #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .automatic) == "Der Befund ist unauffällig.")
+  }
+
+  @Test("Only when spoken: the joiner holds a spoken final period like a model one")
+  func spokenOnlyJoins() {
+    var joiner = LiveChunkJoiner()
+    #expect(joiner.next(LiveDictation.finishPiece("befund Punkt", mode: .spokenOnly)).hasPrefix("befund"))
+    #expect(joiner.next(LiveDictation.finishPiece("Keine Auffälligkeiten", mode: .spokenOnly)) == ". Keine Auffälligkeiten")
+  }
+
   // MARK: - Joiner
 
   @Test("Pieces are joined with single spaces, none at the start")

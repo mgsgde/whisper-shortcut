@@ -48,6 +48,13 @@ enum LiveDictation {
 
   /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
   /// piece appears right after the pause; a cloud model would add a network round trip per piece.
+  /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: model
+  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands.
+  static func finishPiece(_ text: String, mode: PunctuationMode) -> String {
+    let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: text) : text
+    return SpokenPunctuation.apply(to: source, mode: mode)
+  }
+
   /// The model must already be on disk — a recording start must never trigger a 700 MB download.
   /// The Accessibility permission is checked separately, at the start, with its own dialog.
   static func unavailableReason(

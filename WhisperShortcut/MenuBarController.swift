@@ -183,6 +183,8 @@ class MenuBarController: NSObject {
   /// The clipboard from before the current Dictate Live recording, when "Restore clipboard" is on.
   /// Put back at the end and on every cancel, since every piece passed through the clipboard.
   private var liveClipboardSnapshot: ClipboardSnapshot?
+  /// The punctuation mode of the current Dictate Live recording, fixed at its start like Dictate.
+  private var livePunctuationMode: PunctuationMode = .automatic
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
   /// meeting. Cancelling cancels its task and clears this, which is how a late-arriving result (or
   /// a late cancellation tail) is recognised as belonging to a superseded job and dropped instead of
@@ -1709,6 +1711,7 @@ class MenuBarController: NSObject {
       live.cancel()
       liveDictationSession = nil
       restoreLiveClipboard()
+      clearLiveClipboardAfterLastPiece()
     }
   }
 
@@ -2605,8 +2608,12 @@ class MenuBarController: NSObject {
     let ownWindowAtStart = Self.ownFocusedTextWindowNumber()
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
+    let punctuationMode = PunctuationMode.effective(stored: .current, isOffline: true, duringMeeting: false)
+    livePunctuationMode = punctuationMode
     liveDictationSession = LiveDictationSession(
-      decode: { url in try await Self.decodeLivePiece(url, speechService: speechService) },
+      decode: { url in
+        try await Self.decodeLivePiece(url, speechService: speechService, punctuationMode: punctuationMode)
+      },
       insert: { [weak self] text in
         guard let self else { return false }
         return await self.insertLivePiece(text, target: target, ownWindowAtStart: ownWindowAtStart)
@@ -2620,12 +2627,14 @@ class MenuBarController: NSObject {
 
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
-  private static func decodeLivePiece(_ url: URL, speechService: SpeechService) async throws -> String {
+  private static func decodeLivePiece(
+    _ url: URL, speechService: SpeechService, punctuationMode: PunctuationMode
+  ) async throws -> String {
     do {
       let text = try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
         try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
       }
-      return SpokenPunctuation.apply(to: text)
+      return LiveDictation.finishPiece(text, mode: punctuationMode)
     } catch TranscriptionError.noSpeechDetected {
       return ""
     }
@@ -2659,8 +2668,8 @@ class MenuBarController: NSObject {
     simulatePaste()
     let front = NSWorkspace.shared.frontmostApplication
     // The receiving app reads the pasteboard when it handles ⌘V; the next piece must not replace
-    // it first. Same margin as the clipboard restore, which covers Electron and remote desktops.
-    try? await Task.sleep(for: .seconds(Self.clipboardRestoreDelay))
+    // it first. A short gap: the restore margin (`clipboardRestoreDelay`) would stall live text.
+    try? await Task.sleep(for: .seconds(AppConstants.livePieceGapDelay))
     DebugLogger.log(
       "LIVE-DICTATE: Inserted \(text.count) chars into \(front?.bundleIdentifier ?? "unknown")")
     return true
@@ -2673,6 +2682,19 @@ class MenuBarController: NSObject {
     liveClipboardSnapshot = nil
     if clipboardManager.restore(snapshot) {
       DebugLogger.log("LIVE-DICTATE: Restored the clipboard contents from before dictation")
+    }
+  }
+
+  /// "Clear clipboard after paste" for Dictate Live, with restore off: after the last piece has had
+  /// `clipboardRestoreDelay` to be read, empty the pasteboard unless something else wrote to it.
+  private func clearLiveClipboardAfterLastPiece() {
+    guard !Self.restoreClipboardEnabled, Self.clearClipboardEnabled,
+      let ownCount = clipboardManager.lastOwnWriteChangeCount
+    else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) {
+      guard NSPasteboard.general.changeCount == ownCount else { return }
+      NSPasteboard.general.clearContents()
+      DebugLogger.log("LIVE-DICTATE: Cleared clipboard after last piece")
     }
   }
 
@@ -2710,7 +2732,8 @@ class MenuBarController: NSObject {
     if outcome.failedPieces > 0 {
       // A piece is missing from the document. The whole recording, decoded once, is the full copy.
       liveClipboardSnapshot = nil
-      let whole = try? await Self.decodeLivePiece(audioURL, speechService: service)
+      let whole = try? await Self.decodeLivePiece(
+        audioURL, speechService: service, punctuationMode: livePunctuationMode)
       if isSuperseded(job) {
         processedAudioURLs.remove(audioURL)
         return
@@ -2737,6 +2760,7 @@ class MenuBarController: NSObject {
       } else {
         // Like Dictate: the whole result stays on the clipboard for a second ⌘V.
         clipboardManager.copyToClipboard(text: outcome.text)
+        clearLiveClipboardAfterLastPiece()
       }
     } else {
       restoreLiveClipboard()
@@ -2796,7 +2820,8 @@ class MenuBarController: NSObject {
         DebugLogger.log("LIVE-DICTATE: drift measurement skipped — the app is busy")
         return
       }
-      guard let whole = try? await Self.decodeLivePiece(audioURL, speechService: service) else { return }
+      guard let whole = try? await Self.decodeLivePiece(
+        audioURL, speechService: service, punctuationMode: livePunctuationMode) else { return }
       let drift = LiveDictation.drift(inserted: inserted, wholeFile: whole)
       DebugLogger.log(
         "LIVE-DICTATE: drift insertedWords=\(drift.insertedWords) wholeFileWords=\(drift.wholeFileWords) "
