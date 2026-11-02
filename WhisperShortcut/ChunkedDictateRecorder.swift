@@ -141,9 +141,11 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     // Deliberately not gated on `recorder.isRecording`: a stop that lands in the window
     // before the async `record()` has flipped that flag must still end the session.
     // `isSessionActive` is our own state and is the authoritative signal.
+    // Reset even when nothing runs: a start that never began (permission prompt still open) must
+    // not hand Dictate Live's short-pause cutting to whatever starts the recorder later.
+    rotationPolicy = .standard
     guard isSessionActive, let recorder = activeRecorder else { return false }
     isSessionActive = false
-    rotationPolicy = .standard
 
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
     lastPeakPowerDb = peakPowerDuringRecording

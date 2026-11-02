@@ -1771,6 +1771,17 @@
         }
       }
     },
+    "Dictate Live shortcut" : {
+      "comment" : "MCP proposal review: setting title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel: Live diktieren"
+          }
+        }
+      }
+    },
     "Dictate Live works with the offline Parakeet Ultra model. Select it in Settings → Dictate." : {
       "comment" : "Dictate Live cannot start with another model",
       "localizations" : {
@@ -1913,6 +1924,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Teil des Diktats konnte nicht live eingefügt werden. Der vollständige Text liegt in der Zwischenablage."
+          }
+        }
+      }
+    },
+    "Part of the dictation could not be transcribed. Please check the text. The recording is kept: use Transcribe Cancelled Recording in the menu bar." : {
+      "comment" : "Dictate Live: a piece failed and the whole-file fallback failed too",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil des Diktats konnte nicht transkribiert werden. Bitte prüfen Sie den Text. Die Aufnahme bleibt erhalten: Nutzen Sie „Abgebrochene Aufnahme transkribieren“ in der Menüleiste."
           }
         }
       }

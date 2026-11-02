@@ -71,13 +71,16 @@ final class LiveDictationSession {
   @MainActor
   func finish(deliveredAudio: URL) async throws -> Outcome {
     if !anyPieceAdded { add(deliveredAudio, isSilent: false) }
-    await chain?.value
-    if isCancelled { throw CancellationError() }
-    let tail = joiner.finish()
-    if !tail.isEmpty {
-      pending += tail
-      await flush()
+    // The held-back period goes through the same chain as everything else, so a `retryHeld` from
+    // an app activation can never flush the same text a second time.
+    enqueue { session in
+      let tail = session.joiner.finish()
+      guard !tail.isEmpty else { return }
+      session.pending += tail
+      await session.flush()
     }
+    await drain()
+    if isCancelled { throw CancellationError() }
     let outcome = Outcome(
       text: joiner.inserted, heldText: pending, pieces: pieces, failedPieces: failedPieces)
     DebugLogger.log(
@@ -95,6 +98,16 @@ final class LiveDictationSession {
   }
 
   // MARK: - Chain
+
+  /// Waits until every step queued so far — and any queued while waiting — has run.
+  @MainActor
+  func drain() async {
+    while true {
+      let current = chain
+      await current?.value
+      if current == chain { return }
+    }
+  }
 
   private func enqueue(_ step: @escaping @MainActor (LiveDictationSession) async -> Void) {
     let previous = chain
@@ -133,8 +146,13 @@ final class LiveDictationSession {
     guard !pending.isEmpty, !isCancelled else { return }
     let text = pending
     if await insert(text) {
-      // Only what was handed to `insert`: nothing can be appended meanwhile, the chain is serial.
-      pending.removeFirst(text.count)
+      // Only what was handed to `insert`. The chain is serial, so `pending` still starts with it;
+      // checked anyway, because a crash here would cost the user the whole dictation.
+      if pending.hasPrefix(text) {
+        pending.removeFirst(text.count)
+      } else {
+        pending = ""
+      }
     } else {
       DebugLogger.log("LIVE-DICTATE: Holding \(pending.count) chars — the dictated-into app is not in front")
     }

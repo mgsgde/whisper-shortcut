@@ -179,7 +179,7 @@ struct LiveDictationTests {
     cursor.appInFront = false
     s.add(Self.url("a"), isSilent: false)
     s.add(Self.url("b"), isSilent: false)
-    try await Task.sleep(nanoseconds: 50_000_000)
+    await s.drain()  // both pieces decoded and refused; no timing assumption
     #expect(cursor.texts.isEmpty)
     cursor.appInFront = true
     s.retryHeld()

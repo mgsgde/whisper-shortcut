@@ -257,6 +257,7 @@ enum MCPSettingsCatalog {
     case "Screenshot shortcut": return String(localized: "Screenshot shortcut")
     case "Read Aloud shortcut": return String(localized: "Read Aloud shortcut")
     case "Add to Glossary shortcut": return String(localized: "Add to Glossary shortcut")
+    case "Dictate Live shortcut": return String(localized: "Dictate Live shortcut")
     case "Open Chat shortcut": return String(localized: "Open Chat shortcut")
     case "Open Settings shortcut": return String(localized: "Open Settings shortcut")
     case "Show dictation notifications": return String(localized: "Show dictation notifications")
