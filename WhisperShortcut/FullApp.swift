@@ -473,7 +473,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   }
 
 
-  private func setupEditMenu() {
+  /// Builds the top-level Edit item with its standard text editing submenu.
+  static func makeEditMenuItem() -> NSMenuItem {
     // Create Edit menu with standard text editing commands
     let editMenu = NSMenu(title: String(localized: "Edit"))
 
@@ -522,10 +523,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
+    // Titles are localized, so never look up a menu item by title; set the submenu on the item itself.
+    let editMenuItem = NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: "")
+    editMenuItem.submenu = editMenu
+    return editMenuItem
+  }
+
+  private func setupEditMenu() {
     // Add Edit and Chat menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Edit")?.submenu = editMenu
+    mainMenu.addItem(FullAppDelegate.makeEditMenuItem())
 
     let chatMenu = NSMenu(title: String(localized: "Chat"))
     let newChatItem = NSMenuItem(
@@ -555,8 +562,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     clearChatItem.target = self
     chatMenu.addItem(clearChatItem)
 
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Chat")?.submenu = chatMenu
+    let chatMenuItem = NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: "")
+    chatMenuItem.submenu = chatMenu
+    mainMenu.addItem(chatMenuItem)
 
     NSApp.mainMenu = mainMenu
   }
