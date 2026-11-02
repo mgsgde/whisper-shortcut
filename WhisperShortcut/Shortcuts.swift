@@ -16,6 +16,8 @@ protocol ShortcutDelegate: AnyObject {
   /// Appends the current selection to the Glossary. Selection-based like Read Aloud, so it shares
   /// its build gate: the synthetic ⌘C needs Accessibility, which the App Store build cannot ask for.
   func addSelectionToGlossary()
+  /// Dictate Live: text at the cursor while speaking. Pastes, so it shares the build gate.
+  func toggleLiveDictation()
   #endif
 }
 
@@ -36,6 +38,7 @@ class Shortcuts {
   private var readAloudKey: HotKey?
   #if !APP_STORE
   private var addToGlossaryKey: HotKey?
+  private var liveDictateKey: HotKey?
   #endif
   /// Hotkeys for templates that have their own shortcut. Empty when nothing is saved, so a user
   /// without templates pays for one UserDefaults read and no extra registration.
@@ -149,6 +152,12 @@ class Shortcuts {
         self?.delegate?.addSelectionToGlossary()
       }
     }
+    if config.liveDictate.isEnabled {
+      liveDictateKey = HotKey(key: config.liveDictate.key, modifiers: config.liveDictate.modifiers)
+      liveDictateKey?.keyDownHandler = { [weak self] in
+        self?.delegate?.toggleLiveDictation()
+      }
+    }
     #endif
 
     // Create settings shortcut (only if enabled)
@@ -250,6 +259,7 @@ class Shortcuts {
     readAloudKey = nil
     #if !APP_STORE
     addToGlossaryKey = nil
+    liveDictateKey = nil
     #endif
     templateKeys = []
     templatePickerKey = nil

@@ -55,6 +55,7 @@ enum ShortcutValidation {
       ("Open Settings", config.openSettings), ("Open Chat", config.openChat),
       ("Screenshot", config.screenshotCapture), ("Read Aloud", config.readAloud),
       ("Add to Glossary", config.addToGlossary),
+      ("Dictate Live", config.liveDictate),
     ]
     return conflictingSlot(key: key, modifiers: modifiers, among: slots, excluding: excluding)
   }
@@ -256,6 +257,7 @@ enum MCPSettingsCatalog {
     case "Screenshot shortcut": return String(localized: "Screenshot shortcut")
     case "Read Aloud shortcut": return String(localized: "Read Aloud shortcut")
     case "Add to Glossary shortcut": return String(localized: "Add to Glossary shortcut")
+    case "Dictate Live shortcut": return String(localized: "Dictate Live shortcut")
     case "Open Chat shortcut": return String(localized: "Open Chat shortcut")
     case "Open Settings shortcut": return String(localized: "Open Settings shortcut")
     case "Show dictation notifications": return String(localized: "Show dictation notifications")
@@ -1004,6 +1006,9 @@ enum MCPSettingsCatalog {
     settings.append(shortcutSetting(
       id: "shortcuts.add_to_glossary", title: "Add to Glossary shortcut", slot: "Add to Glossary",
       keyPath: \.addToGlossary, unavailableReason: directDownloadOnly))
+    settings.append(shortcutSetting(
+      id: "shortcuts.live_dictate", title: "Dictate Live shortcut", slot: "Dictate Live",
+      keyPath: \.liveDictate, unavailableReason: directDownloadOnly))
     settings.append(shortcutSetting(
       id: "shortcuts.open_chat", title: "Open Chat shortcut", slot: "Open Chat",
       keyPath: \.openChat))

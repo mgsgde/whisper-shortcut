@@ -208,6 +208,9 @@ Output rules (CRITICAL):
   /// How long after ⌘V the user's previous clipboard is put back. Slow receivers (browser, Citrix,
   /// RDP) read the pasteboard lazily; restoring earlier would make them paste the old content.
   static let clipboardRestoreDelay: TimeInterval = 3.0
+  /// Gap after each Dictate Live piece's ⌘V before the next piece may replace the pasteboard; short
+  /// on purpose, since `clipboardRestoreDelay` would stall live text.
+  static let livePieceGapDelay: TimeInterval = 0.4
 
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"

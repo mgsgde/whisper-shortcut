@@ -288,6 +288,7 @@ enum TemplateShortcuts {
       (String(localized: "Screenshot"), config.screenshotCapture),
       (String(localized: "Read Aloud"), config.readAloud),
       (String(localized: "Add to Glossary"), config.addToGlossary),
+      (String(localized: "Dictate Live"), config.liveDictate),
       (String(localized: "Chat"), config.openChat),
       (String(localized: "Settings"), config.openSettings),
     ]

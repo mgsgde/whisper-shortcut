@@ -118,6 +118,7 @@ class SettingsViewModel: ObservableObject {
       target.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
       target.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
       target.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
+      target.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
     }
     apply(to: &data)
     apply(to: &persisted)
@@ -207,6 +208,9 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.clearClipboardAfterAutoPaste),
     .bool(\.fnKeyDictation, key: UserDefaultsKeys.fnKeyDictation,
           default: SettingsDefaults.fnKeyDictation),
+    .custom(\.fnKeyStartMode,
+            load: { FnStartMode.loadFromUserDefaults() },
+            save: { UserDefaults.standard.set($0.rawValue, forKey: UserDefaultsKeys.fnKeyStartMode) }),
 
     // Screenshot. The folder bookmark itself is owned by `ScreenshotSaveLocation` and written
     // when the user picks a folder, so only the toggle round-trips here.
@@ -282,6 +286,7 @@ class SettingsViewModel: ObservableObject {
     data.screenshotCapture = currentConfig.screenshotCapture.isEnabled ? currentConfig.screenshotCapture : nil
     data.readAloud = currentConfig.readAloud.isEnabled ? currentConfig.readAloud : nil
     data.addToGlossary = currentConfig.addToGlossary.isEnabled ? currentConfig.addToGlossary : nil
+    data.liveDictate = currentConfig.liveDictate.isEnabled ? currentConfig.liveDictate : nil
 
     for slot in Self.slots { slot.load(&data) }
 
@@ -411,6 +416,10 @@ class SettingsViewModel: ObservableObject {
       field: .addToGlossaryShortcut, label: String(localized: "Add Selection to Glossary"),
       read: { $0.addToGlossary }, write: { $0.addToGlossary = $1 },
       applyToConfig: { $0.addToGlossary = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.addToGlossary) }),
+    ConfigurableShortcutSlot(
+      field: .liveDictateShortcut, label: String(localized: "Dictate Live"),
+      read: { $0.liveDictate }, write: { $0.liveDictate = $1 },
+      applyToConfig: { $0.liveDictate = resolvedOrDisabled($1, factoryDefault: ShortcutConfig.default.liveDictate) }),
   ]
 
   /// The shortcut half of `data` as a `ShortcutConfig`. Also used by the onboarding Done step,
@@ -432,6 +441,7 @@ class SettingsViewModel: ObservableObject {
     let screenshotCapture = data.screenshotCapture ?? disable(factory.screenshotCapture)
     let readAloud = data.readAloud ?? disable(factory.readAloud)
     let addToGlossary = data.addToGlossary ?? disable(factory.addToGlossary)
+    let liveDictate = data.liveDictate ?? disable(factory.liveDictate)
     let newConfig = ShortcutConfig(
       startRecording: startRecording,
       startPrompting: startPrompting,
@@ -439,7 +449,8 @@ class SettingsViewModel: ObservableObject {
       openChat: openChat,
       screenshotCapture: screenshotCapture,
       readAloud: readAloud,
-      addToGlossary: addToGlossary
+      addToGlossary: addToGlossary,
+      liveDictate: liveDictate
     )
     return newConfig
   }

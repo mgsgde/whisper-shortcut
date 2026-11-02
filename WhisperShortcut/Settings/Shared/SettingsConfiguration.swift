@@ -1331,6 +1331,28 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Fn Key Start Mode
+enum FnStartMode: String, CaseIterable {
+  case dictate
+  case live
+
+  var displayName: String {
+    switch self {
+    case .dictate: return String(localized: "Dictate")
+    case .live: return String(localized: "Dictate Live")
+    }
+  }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.fnKeyStartMode.
+  static func loadFromUserDefaults() -> FnStartMode {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.fnKeyStartMode),
+       let mode = FnStartMode(rawValue: raw) {
+      return mode
+    }
+    return SettingsDefaults.fnKeyStartMode
+  }
+}
+
 // MARK: - Meeting Safeguard Duration (Live Meeting)
 enum MeetingSafeguardDuration: Double, CaseIterable {
   case never = 0
@@ -2066,6 +2088,7 @@ struct SettingsDefaults {
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
+  static let liveDictate: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
@@ -2151,6 +2174,8 @@ struct SettingsDefaults {
     #endif
   }
 
+  static let fnKeyStartMode: FnStartMode = .dictate
+
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
@@ -2230,6 +2255,7 @@ struct SettingsData: Equatable {
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
+  var liveDictate: ShortcutDefinition? = SettingsDefaults.liveDictate
 
   // MARK: - Transcription tuning
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
@@ -2294,6 +2320,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
+  var fnKeyStartMode: FnStartMode = SettingsDefaults.fnKeyStartMode
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
@@ -2324,6 +2351,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case addToGlossaryShortcut
+  case liveDictateShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
   case templateShortcut(UUID)
   /// The generic template shortcut that starts the last-used template (same section).

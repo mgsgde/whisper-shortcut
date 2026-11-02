@@ -45,6 +45,34 @@ class ClipboardManager {
     lastOwnWriteChangeCount = pasteboard.changeCount
   }
 
+  /// Marker types from nspasteboard.org: clipboard managers and history apps (Maccy, Raycast,
+  /// Paste, …) skip content that carries them.
+  private static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+  private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
+  /// One Dictate Live piece, written only so the synthetic ⌘V can paste it. Marked transient and
+  /// concealed, and kept to this Mac (no Universal Clipboard to the phone): these are fragments of
+  /// patient notes passing through, not something the user copied.
+  func copyLivePiece(text: String) {
+    _ = pasteboard.prepareForNewContents(with: .currentHostOnly)
+    pasteboard.setString(text, forType: .string)
+    pasteboard.setData(Data(), forType: Self.transientType)
+    pasteboard.setData(Data(), forType: Self.concealedType)
+    changeCountAfterLastWrite = pasteboard.changeCount
+    lastOwnWriteChangeCount = pasteboard.changeCount
+  }
+
+  /// Puts `snapshot` back, unless something other than this app wrote to the pasteboard after
+  /// our last write (the user copied something meanwhile — that wins).
+  @discardableResult
+  func restore(_ snapshot: ClipboardSnapshot) -> Bool {
+    guard pasteboard.changeCount == lastOwnWriteChangeCount else {
+      DebugLogger.log("CLIPBOARD: Skipping restore — pasteboard changed since our last write")
+      return false
+    }
+    return write(snapshot)
+  }
+
   /// Copies dictation transcript text with capitalization and trailing punctuation.
   func copyTranscriptionToClipboard(text: String, addTrailingPeriod: Bool = true) {
     copyToClipboard(text: formatTranscription(text, addTrailingPeriod: addTrailingPeriod))
@@ -103,6 +131,10 @@ class ClipboardManager {
       DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
       return false
     }
+    return write(snapshot)
+  }
+
+  private func write(_ snapshot: ClipboardSnapshot) -> Bool {
     guard !snapshot.isEmpty else { return false }
 
     pasteboard.clearContents()
