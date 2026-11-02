@@ -2247,6 +2247,10 @@ class MenuBarController: NSObject {
           // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
           // job, the same way `transcribeCancelledRecording` starts one.
           self.processedAudioURLs.insert(audioURL)
+          // The popup can outlive the recording it belongs to, and the recorded paste target may be
+          // another client's note by now. Like every re-run that skips `beginAudioCapture`, the
+          // result is copied only, never pasted.
+          self.clipboardOnlyForNextResult = true
           DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
           switch mode {
           case .transcription:
