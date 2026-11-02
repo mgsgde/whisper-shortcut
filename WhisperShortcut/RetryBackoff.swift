@@ -47,7 +47,7 @@ enum RetryBackoff {
       .trimmingCharacters(in: .whitespacesAndNewlines), !header.isEmpty {
       if let seconds = nonNegativeSeconds(header) { return seconds }
       if let date = httpDate(from: header) {
-        return max(0, date.timeIntervalSince(now))
+        return max(0, date.timeIntervalSince(now)) + clockSkewBuffer
       }
     }
     if let header = response.value(forHTTPHeaderField: "retry-after-ms"),
@@ -56,6 +56,12 @@ enum RetryBackoff {
     }
     return anthropicReset(in: response, now: now)
   }
+
+  /// Added to waits derived from a server-supplied absolute timestamp (HTTP-date, Anthropic
+  /// `*-reset`): the server's clock and ours differ, and a fast client clock would otherwise turn
+  /// the delta into 0 and retry hot. Same 2s as `RateLimitCoordinator`. Not applied to
+  /// delta-seconds values, which carry no clock.
+  static let clockSkewBuffer: TimeInterval = 2
 
   private static func nonNegativeSeconds(_ raw: String) -> TimeInterval? {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,7 +101,7 @@ enum RetryBackoff {
       if name.hasSuffix(resetSuffix) {
         let bucket = String(name.dropFirst(prefix.count).dropLast(resetSuffix.count))
         guard let date = iso.date(from: trimmed) ?? isoFractional.date(from: trimmed) else { continue }
-        resets[bucket] = max(0, date.timeIntervalSince(now))
+        resets[bucket] = max(0, date.timeIntervalSince(now)) + clockSkewBuffer
       } else if name.hasSuffix(remainingSuffix) {
         let bucket = String(name.dropFirst(prefix.count).dropLast(remainingSuffix.count))
         if let remaining = Double(trimmed), remaining <= 0 { exhausted.insert(bucket) }
@@ -136,15 +142,21 @@ enum RetryBackoff {
 
   /// Longest a chat stream will automatically sit on a rate limit before the first token.
   /// The user is watching an empty reply, and with `preFirstTokenMaxAttempts` the waits add up
-  /// (two retries at 45s is ~90s of silence), so this is deliberately well below the 120s
+  /// (two retries at 60s is ~2 min of silence), so this is deliberately well below the 120s
   /// `RateLimitCoordinator` uses for background work. A longer server delay is a quota window:
   /// failing fast with the error beats blocking the reply (the full delay stays on the error
   /// for the message).
-  static let maxAutomaticRetryWait: TimeInterval = 45
+  static let maxAutomaticRetryWait: TimeInterval = 60
 
   /// Floor for a pre-first-token retry sleep. A server that says `Retry-After: 0` (or an
   /// already-past HTTP-date) would otherwise get an immediate hot retry.
   static let minAutomaticRetryWait: TimeInterval = 1
+
+  /// Seconds to show in a "please wait N seconds" message: never below the floor, so a
+  /// `Retry-After: 0` does not read "wait 0 seconds".
+  static func displayedWaitSeconds(_ retryAfter: TimeInterval) -> Int {
+    max(Int(minAutomaticRetryWait), Int(retryAfter))
+  }
 
   /// Pre-first-token stream failures that are worth retrying (Wi-Fi blip, 5xx, transient
   /// rate limits). Auth, cancel, permanent spending-cap 429s, and a delay past
