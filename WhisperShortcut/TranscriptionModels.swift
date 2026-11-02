@@ -1067,7 +1067,9 @@ enum TranscriptionError: Error, Equatable {
   case permissionDenied
   case notFound
   case modelDeprecated
-  case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil)
+  /// `isAbsolute`: `retryAfter` was derived from a server timestamp (HTTP-date, Anthropic
+  /// `*-reset`) rather than stated as a delta, so a sleep on it should add `RetryBackoff.clockSkewBuffer`.
+  case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil, isAbsolute: Bool = false)
   case quotaExceeded(retryAfter: TimeInterval?)
   /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
   ///
@@ -1153,18 +1155,24 @@ enum TranscriptionError: Error, Equatable {
   /// Returns the retry delay if this error has one
   var retryAfter: TimeInterval? {
     switch self {
-    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
+    case .rateLimited(let retryAfter, _, _), .quotaExceeded(let retryAfter):
       return retryAfter
     default:
       return nil
     }
   }
 
+  /// True when `retryAfter` came from an absolute server timestamp (exposed to clock skew).
+  var retryAfterIsAbsolute: Bool {
+    if case .rateLimited(_, _, let isAbsolute) = self { return isAbsolute }
+    return false
+  }
+
   /// Where an OpenAI API account adds credit — the fix for 429 `insufficient_quota`.
   static let openAIBillingURL = URL(string: "https://platform.openai.com/settings/organization/billing")!
 
   var topUpURL: URL? {
-    if case .rateLimited(_, let url) = self { return url }
+    if case .rateLimited(_, let url, _) = self { return url }
     if case .billingRequired(let url) = self { return url }
     return nil
   }
@@ -1176,7 +1184,7 @@ enum TranscriptionError: Error, Equatable {
     case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
-    case .rateLimited(let retryAfter, _):
+    case .rateLimited(let retryAfter, _, _):
       return retryAfter != nil
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil

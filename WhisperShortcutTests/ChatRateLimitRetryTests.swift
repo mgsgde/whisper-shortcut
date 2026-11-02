@@ -69,9 +69,31 @@ struct ChatRateLimitRetryTests {
     #expect(RetryBackoff.retryAfter(from: reset, now: fast) == 0)
     #expect(RetryBackoff.retryAfter(from: Self.http(["Retry-After": "12"]), now: now) == 12)
     #expect(RetryBackoff.clockSkewBuffer == 2)
-    // End to end: the sleep for a past date is the buffer, not the 1s hot-retry floor.
-    let err = TranscriptionError.rateLimited(retryAfter: RetryBackoff.retryAfter(from: date, now: fast))
+    // End to end: the sleep for a past absolute date is the buffer, not the 1s hot-retry floor.
+    let err = RetryBackoff.rateLimitedError(from: date, now: fast)
+    #expect(err.retryAfterIsAbsolute)
     #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 2)
+    let resetErr = RetryBackoff.rateLimitedError(from: reset, now: fast)
+    #expect(resetErr.retryAfterIsAbsolute)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: resetErr) == 2)
+  }
+
+  @Test("Delta-seconds delays are not buffered: Retry-After 7 sleeps 7, 0 keeps the 1s floor")
+  func deltaWaitsAreNotBuffered() {
+    let now = Self.utc(2015, 10, 21, 7, 27, 45)
+    let seven = RetryBackoff.rateLimitedError(from: Self.http(["Retry-After": "7"]), now: now)
+    let zero = RetryBackoff.rateLimitedError(from: Self.http(["Retry-After": "0"]), now: now)
+    let ms = RetryBackoff.rateLimitedError(from: Self.http(["retry-after-ms": "2500"]), now: now)
+    #expect(!seven.retryAfterIsAbsolute && !zero.retryAfterIsAbsolute && !ms.retryAfterIsAbsolute)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: seven) == 7)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: zero) == RetryBackoff.minAutomaticRetryWait)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: ms) == 2.5)
+    // Provenance is parsed from the same headers as the seconds.
+    #expect(RetryBackoff.serverDelay(from: Self.http(["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"]), now: now)?.isAbsolute == true)
+    #expect(RetryBackoff.serverDelay(from: Self.http(["Retry-After": "12"]), now: now)?.isAbsolute == false)
+    #expect(RetryBackoff.serverDelay(from: Self.http([:]), now: now) == nil)
+    #expect(RetryBackoff.rateLimitedError(from: Self.http([:])) == .rateLimited(retryAfter: nil))
+    #expect(RetryBackoff.rateLimitedError(from: nil) == .rateLimited(retryAfter: nil))
   }
 
   @Test("An absolute reset ~60s away stays transient and sleeps ~62s")
@@ -83,13 +105,13 @@ struct ChatRateLimitRetryTests {
     for response in [date, reset] {
       let wait = RetryBackoff.retryAfter(from: response, now: now)
       #expect(wait == 60)
-      let err = TranscriptionError.rateLimited(retryAfter: wait)
+      let err = RetryBackoff.rateLimitedError(from: response, now: now)
       #expect(RetryBackoff.isTransientPreFirstToken(err))
       #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 62)
     }
     // Past the ceiling on the raw delta is still rejected.
     let tooLong = Self.http(["Retry-After": "Sun, 01 Nov 2026 00:01:01 GMT"])
-    let err = TranscriptionError.rateLimited(retryAfter: RetryBackoff.retryAfter(from: tooLong, now: now))
+    let err = RetryBackoff.rateLimitedError(from: tooLong, now: now)
     #expect(!RetryBackoff.isTransientPreFirstToken(err))
   }
 
@@ -225,13 +247,15 @@ struct ChatRateLimitRetryTests {
   func zeroRetryAfterIsFloored() {
     let err = TranscriptionError.rateLimited(retryAfter: 0)
     #expect(RetryBackoff.isTransientPreFirstToken(err))
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.minAutomaticRetryWait)
   }
 
-  @Test("A server delay inside the ceiling is slept plus the skew buffer")
+  @Test("A delta delay inside the ceiling is slept as-is; an absolute one gets the skew buffer")
   func retryAfterInsideCeilingIsUsed() {
-    let err = TranscriptionError.rateLimited(retryAfter: 7)
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 7 + RetryBackoff.clockSkewBuffer)
+    let delta = TranscriptionError.rateLimited(retryAfter: 7)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: delta) == 7)
+    let absolute = TranscriptionError.rateLimited(retryAfter: 7, isAbsolute: true)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: absolute) == 7 + RetryBackoff.clockSkewBuffer)
   }
 
   @Test("The automatic wait ceiling is short enough not to stall a chat reply")
@@ -375,7 +399,7 @@ struct ChatRateLimitRetryTests {
 
     #expect(Self.text(in: events) == "ok")
     #expect(SequencedStub.hits(for: endpoint) == 2)
-    // `Retry-After: 0` is floored at `minAutomaticRetryWait`, not retried hot.
+    // Delta `Retry-After: 0` is floored at `minAutomaticRetryWait` (1s, no skew buffer), not retried hot.
     #expect(started.duration(to: clock.now) >= .milliseconds(900))
   }
 

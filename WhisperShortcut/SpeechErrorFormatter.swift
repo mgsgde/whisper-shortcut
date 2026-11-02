@@ -77,7 +77,7 @@ struct SpeechErrorFormatter {
         Choose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite).
         """)
 
-    case .rateLimited(let retryAfter, let topUpURL):
+    case .rateLimited(let retryAfter, let topUpURL, _):
       if topUpURL != nil {
         return String(localized: """
           ⏳ Daily Limit Reached

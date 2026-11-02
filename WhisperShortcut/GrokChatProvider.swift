@@ -235,6 +235,6 @@ final class GrokChatProvider: LLMChatProvider {
       return TranscriptionError.networkError(
         String(localized: "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue."))
     }
-    return TranscriptionError.rateLimited(retryAfter: RetryBackoff.retryAfter(from: response))
+    return RetryBackoff.rateLimitedError(from: response)
   }
 }

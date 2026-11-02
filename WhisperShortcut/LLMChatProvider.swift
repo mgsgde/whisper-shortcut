@@ -1091,8 +1091,7 @@ enum ChatProviderHTTPError {
       if body.contains("insufficient_quota") {
         return TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
-      let retryAfter = response.flatMap { RetryBackoff.retryAfter(from: $0) }
-      return TranscriptionError.rateLimited(retryAfter: retryAfter)
+      return RetryBackoff.rateLimitedError(from: response)
     }
     if (500...599).contains(status) {
       return TranscriptionError.serverError(status)
