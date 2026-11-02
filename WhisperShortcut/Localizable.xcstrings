@@ -23258,16 +23258,6 @@
         }
       }
     },
-    "Your 🌐 key also does “%@”. In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ihre 🌐-Taste löst auch „%@“ aus. Stellen Sie in den Tastatur-Einstellungen „Drücken der 🌐-Taste“ auf „Keine Aktion“."
-          }
-        }
-      }
-    },
     "Open Keyboard Settings" : {
       "localizations" : {
         "de" : {
@@ -23517,6 +23507,146 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+          }
+        }
+      }
+    },
+    "Change Input Source" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabequelle ändern"
+          }
+        }
+      }
+    },
+    "Show Emoji & Symbols" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emoji & Symbole einblenden"
+          }
+        }
+      }
+    },
+    "Start Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierfunktion starten"
+          }
+        }
+      }
+    },
+    "Fn dictation won’t work yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn funktioniert noch nicht"
+          }
+        }
+      }
+    },
+    "When you press 🌐 Fn, macOS currently does “%@” instead, so your dictation does not start. To fix this, set “Press 🌐 key to” to “Do Nothing” — once, and Fn dictates from then on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie 🌐 Fn drücken, führt macOS derzeit stattdessen „%@“ aus – Ihr Diktat startet deshalb nicht. Stellen Sie einmalig „Drücken der 🌐-Taste“ auf „Keine Aktion“, danach diktieren Sie mit Fn."
+          }
+        }
+      }
+    },
+    "macOS did not accept the change. Keyboard settings are open: choose “Do Nothing” next to “Press 🌐 key to”, then come back here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat die Änderung nicht übernommen. Die Tastatur-Einstellungen sind geöffnet: Wählen Sie bei „Drücken der 🌐-Taste“ die Option „Keine Aktion“ und kehren Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "Free the 🌐 key for WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste für WhisperShortcut freigeben"
+          }
+        }
+      }
+    },
+    "Free the 🌐 key?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste freigeben?"
+          }
+        }
+      }
+    },
+    "Free the Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste freigeben"
+          }
+        }
+      }
+    },
+    "WhisperShortcut will change one macOS setting: System Settings → Keyboard → “Press 🌐 key to” becomes “Do Nothing”. Pressing 🌐 Fn then only starts and stops your dictation. You can change it back there at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut ändert eine macOS-Einstellung: Systemeinstellungen → Tastatur → „Drücken der 🌐-Taste“ wird auf „Keine Aktion“ gesetzt. 🌐 Fn startet und stoppt dann nur noch Ihr Diktat. Sie können das dort jederzeit zurückstellen."
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen Diktieren mit Fn ausschalten"
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation and use %@ instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn ausschalten und stattdessen %@ verwenden"
+          }
+        }
+      }
+    },
+    "The 🌐 key is free. Press Fn once to start dictating, again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die 🌐-Taste ist frei. Fn einmal drücken zum Starten, noch einmal zum Stoppen."
+          }
+        }
+      }
+    },
+    "Free the 🌐 key above, or turn off Fn dictation, to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie oben die 🌐-Taste frei oder schalten Sie Diktieren mit Fn aus, um fortzufahren."
           }
         }
       }

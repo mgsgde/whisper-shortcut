@@ -36,12 +36,16 @@ enum WelcomeStep: Int, CaseIterable {
   /// user pass a step the Done page then called "Needs a model". Advance only when the selected
   /// transcription model can run. Offline is already inside that check: `hasRequiredCredential`
   /// for an offline model means its file is on disk.
-  func canAdvance(micStatus: PermissionStatus) -> Bool {
+  ///
+  /// `fnSetupResolved` is `GlobeKeyUsage.fnSetupMayContinue`: the permissions step holds the Fn
+  /// toggle, and leaving it with Fn on while macOS still owns the 🌐 key ends in a Fn press that
+  /// opens the emoji picker and dictates nothing.
+  func canAdvance(micStatus: PermissionStatus, fnSetupResolved: Bool = true) -> Bool {
     switch self {
     case .dictationSetup:
       return TranscriptionModel.loadSelected().hasRequiredCredential
     case .permissions:
-      return micStatus == .granted || micStatus == .denied
+      return (micStatus == .granted || micStatus == .denied) && fnSetupResolved
     case .intro, .tryIt, .done:
       return true
     }
@@ -83,6 +87,10 @@ struct WelcomeView: View {
   /// The answer to "How should dictation run?". Kept here, not in the step, so Back/Continue
   /// does not forget it. Pre-filled from what is already set up when the tour is revisited.
   @State private var dictationChoice: DictationChoice? = DictationChoice.inferred()
+  /// Fn toggle and 🌐 setting, for the permissions step's Continue (see `fnSetupResolved`). In the
+  /// App Store build the 🌐 setting always reads `.unknown`, which never blocks.
+  @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
+  @ObservedObject private var globeKey = GlobeKeyStatus.shared
 
   var body: some View {
     VStack(spacing: 0) {
@@ -93,7 +101,7 @@ struct WelcomeView: View {
         case .dictationSetup:
           WelcomeDictationSetupStep(choice: $dictationChoice, setup: setup)
         case .permissions:
-          WelcomePermissionsStep(micStatus: $micStatus)
+          WelcomePermissionsStep(micStatus: $micStatus, fnSetupResolved: fnSetupResolved)
         case .tryIt:
           WelcomeTryItStep()
         case .done:
@@ -209,8 +217,12 @@ struct WelcomeView: View {
     case .dictationSetup:
       return setup.dictationCanAdvance
     default:
-      return step.canAdvance(micStatus: micStatus)
+      return step.canAdvance(micStatus: micStatus, fnSetupResolved: fnSetupResolved)
     }
+  }
+
+  private var fnSetupResolved: Bool {
+    GlobeKeyUsage.fnSetupMayContinue(fnEnabled: fnEnabled, usage: globeKey.usage)
   }
 
   private func advance() {
@@ -234,5 +246,6 @@ struct WelcomeView: View {
   private func refreshState() {
     setup.refresh()
     micStatus = PermissionStatusChecker.status(for: .microphone)
+    globeKey.refresh()
   }
 }

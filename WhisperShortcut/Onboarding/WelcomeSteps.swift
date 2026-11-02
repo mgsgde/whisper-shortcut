@@ -763,6 +763,8 @@ struct WelcomeTryItStep: View {
 
 struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
+  /// False while Fn dictation is on and macOS still owns the 🌐 key; Continue waits for it.
+  var fnSetupResolved: Bool = true
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -788,7 +790,11 @@ struct WelcomePermissionsStep: View {
         .padding(.bottom, 8)
       }
 
-      if micStatus == .granted {
+      if (micStatus == .granted || micStatus == .denied) && !fnSetupResolved {
+        Label("Free the 🌐 key above, or turn off Fn dictation, to continue.", systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.orange)
+      } else if micStatus == .granted {
         Label("Ready to continue.", systemImage: "checkmark.circle.fill")
           .font(.caption)
           .foregroundStyle(.green)
@@ -813,16 +819,17 @@ struct WelcomePermissionsStep: View {
 ///
 /// Fn arrives already on when the 🌐 key is free (`SettingsDefaults.fnKeyDictation`): it is the
 /// most comfortable trigger, and here is where one grant covers both features. When macOS still
-/// uses the 🌐 key itself, Fn stays off by default and turning it on shows how to free the key.
+/// uses the 🌐 key itself, Fn stays off by default and turning it on shows `GlobeKeyConflictCard`;
+/// Continue then waits until the key is freed or Fn is turned off again (`WelcomeStep.canAdvance`).
 struct OnboardingAccessibilityCard: View {
   @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
   @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
     SettingsDefaults.autoPasteAfterDictation
 
-  /// Live Accessibility status and 🌐 setting, so the card reflects what the user just changed in
-  /// System Settings. Refreshed on appear and whenever the app reactivates.
+  /// Live Accessibility status, so the card reflects what the user just changed in System
+  /// Settings. Refreshed on appear and whenever the app reactivates. The 🌐 setting is
+  /// `GlobeKeyStatus`, which the conflict card refreshes itself.
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
-  @State private var globeUsage: GlobeKeyUsage = .current
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -846,9 +853,11 @@ struct OnboardingAccessibilityCard: View {
         title: "Dictate with 🌐 Fn",
         detail: "Press Fn once to start, again to stop. The quickest way to dictate.")
 
-      if fnEnabled, let systemAction = globeUsage.systemSettingsLabel {
-        GlobeKeyConflictNote(systemAction: systemAction)
-          .padding(.leading, 2)
+      if fnEnabled {
+        GlobeKeyConflictCard(onTurnOffFn: {
+          DebugLogger.log("ONBOARDING: turned Fn dictation off from the 🌐 conflict card")
+          fnEnabled = false
+        })
       }
 
       featureToggle(
@@ -913,33 +922,7 @@ struct OnboardingAccessibilityCard: View {
 
   private func refreshStatus() {
     axStatus = PermissionStatusChecker.status(for: .accessibility)
-    globeUsage = .current
-  }
-}
-
-/// Shown when Fn dictation is on but macOS still reacts to the 🌐 key itself, so one press
-/// would also open the emoji picker / switch input / start Apple Dictation. The app never
-/// changes that system setting; it names the item and opens the pane.
-struct GlobeKeyConflictNote: View {
-  /// The current "Press 🌐 key to" item, from `GlobeKeyUsage.systemSettingsLabel`.
-  let systemAction: String
-
-  var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(.orange)
-        .font(.caption)
-      Text("Your 🌐 key also does “\(systemAction)”. In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 8)
-      Button("Open Keyboard Settings") {
-        GlobeKeyUsage.openKeyboardSettings()
-      }
-      .controlSize(.small)
-      .pointerCursorOnHover()
-    }
+    GlobeKeyStatus.shared.refresh()
   }
 }
 

@@ -16,10 +16,9 @@ struct KeyboardShortcutsSection: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   #if !APP_STORE
-  /// Re-read on appear and on app reactivation (the user may have just changed either in
-  /// System Settings).
+  /// Re-read on appear and on app reactivation (the user may have just changed it in System
+  /// Settings). The 🌐 setting is `GlobeKeyStatus`, refreshed by `GlobeKeyConflictCard`.
   @State private var hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
-  @State private var globeUsage: GlobeKeyUsage = .current
   #endif
 
   var body: some View {
@@ -123,9 +122,7 @@ struct KeyboardShortcutsSection: View {
             .pointerCursorOnHover()
           }
         }
-        if let systemAction = globeUsage.systemSettingsLabel {
-          GlobeKeyConflictNote(systemAction: systemAction)
-        }
+        GlobeKeyConflictCard()
       }
     }
     .padding(.top, 4)
@@ -137,7 +134,7 @@ struct KeyboardShortcutsSection: View {
 
   private func refreshFnStatus() {
     hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
-    globeUsage = .current
+    GlobeKeyStatus.shared.refresh()
   }
   #endif
 }
