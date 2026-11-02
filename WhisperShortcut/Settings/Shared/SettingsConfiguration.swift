@@ -1386,6 +1386,32 @@ enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
   }
 }
 
+// MARK: - Punctuation Mode
+/// Offline dictation only. `automatic`: the model punctuates. `spokenOnly`: model punctuation is
+/// stripped and only spoken marks ("Punkt", "Komma", …) are written (`SpokenPunctuation`).
+enum PunctuationMode: String, CaseIterable {
+  case automatic
+  case spokenOnly
+
+  var displayName: String {
+    switch self {
+    case .automatic: return String(localized: "Automatic")
+    case .spokenOnly: return String(localized: "Only when spoken")
+    }
+  }
+
+  /// The mode a dictation actually runs with. "Only when spoken" is an offline-dictation setting:
+  /// cloud models and meeting segments always keep the model's punctuation.
+  static func effective(stored: PunctuationMode, isOffline: Bool, duringMeeting: Bool) -> PunctuationMode {
+    isOffline && !duringMeeting ? stored : .automatic
+  }
+
+  static var current: PunctuationMode {
+    UserDefaults.standard.string(forKey: UserDefaultsKeys.punctuationMode)
+      .flatMap(PunctuationMode.init(rawValue:)) ?? SettingsDefaults.punctuationMode
+  }
+}
+
 // MARK: - Whisper Language Enum
 enum WhisperLanguage: String, CaseIterable {
   case auto = "auto"
@@ -2083,6 +2109,7 @@ struct SettingsDefaults {
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
+  static let punctuationMode = PunctuationMode.automatic
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2106,6 +2133,9 @@ struct SettingsDefaults {
   /// still reach for ⌘V afterwards (pasting the same dictation into a second window). Putting
   /// the old clipboard back would break that, so restoring stays a deliberate choice.
   static let restoreClipboardAfterPaste = false
+  /// OFF by default: emptying the clipboard breaks the habit of pasting the same dictation a second
+  /// time. Practices where a stale ⌘V could paste one patient's text into another's note turn it on.
+  static let clearClipboardAfterAutoPaste = false
 
   // MARK: - Fn Key Dictation
   // Off in the App Store build: observing the Fn key needs Accessibility (Guideline 2.4.5).
@@ -2246,6 +2276,7 @@ struct SettingsData: Equatable {
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
+  var punctuationMode: PunctuationMode = SettingsDefaults.punctuationMode
 
   // MARK: - Notification Settings
   var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications
@@ -2259,6 +2290,7 @@ struct SettingsData: Equatable {
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
   var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
+  var clearClipboardAfterAutoPaste: Bool = SettingsDefaults.clearClipboardAfterAutoPaste
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation

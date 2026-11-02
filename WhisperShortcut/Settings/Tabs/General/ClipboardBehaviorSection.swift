@@ -89,6 +89,32 @@ struct ClipboardBehaviorSection: View {
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Clear clipboard:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Toggle("", isOn: $viewModel.data.clearClipboardAfterAutoPaste)
+          .toggleStyle(SwitchToggleStyle())
+          .accessibilityLabel("Clear clipboard after auto-paste")
+          // Restore wins: with it on, this setting does nothing.
+          .disabled(!viewModel.data.autoPasteAfterDictation || viewModel.data.restoreClipboardAfterPaste)
+          .onChange(of: viewModel.data.clearClipboardAfterAutoPaste) { _, newValue in
+            DebugLogger.log("AUTO-PASTE SETTINGS: Clear clipboard changed to \(newValue)")
+            Task {
+              await viewModel.saveSettings()
+            }
+          }
+
+        Spacer()
+      }
+
+      Text("After the text is inserted, the clipboard is emptied so a later ⌘V cannot paste an earlier dictation. Copy Last Transcription still works.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       #endif
     }
   }

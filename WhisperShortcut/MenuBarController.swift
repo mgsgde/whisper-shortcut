@@ -1413,6 +1413,7 @@ class MenuBarController: NSObject {
       pasteTargetAtRecordStart = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
       ownTextWindowAtRecordStart = Self.ownFocusedTextWindowNumber()
     }
+    clipboardOnlyForNextResult = false
     recording = RecordingIntent(target: meetingSegment.map { .meetingSegment($0) } ?? .mode(mode))
     recording?.promptSelection = promptSelection
     if mode == .prompt, meetingSegment == nil, let template {
@@ -1746,6 +1747,8 @@ class MenuBarController: NSObject {
     // Hand ownership back to the normal pipeline, which deletes the file when it is done with it.
     cancelledRecordingURL = nil
     processedAudioURLs.insert(url)
+    // No recording start, so no recorded paste target: copy only (see `clipboardOnlyForNextResult`).
+    clipboardOnlyForNextResult = true
     appState = .processing(.transcribing)
     startVoiceJob(mode: .transcription, audioURL: url) { job in
       await self.performTranscription(audioURL: url, job: job)
@@ -1846,12 +1849,12 @@ class MenuBarController: NSObject {
     item.isHidden = !exists
     if exists, let name = saved?.templateName {
       item.toolTip = String(
-        localized: "Runs your last dictation again with your Dictate Prompt system prompt instead of “\(name)”. Select the formatted text first to replace it.")
+        localized: "Runs your last dictation again with your Dictate Prompt system prompt instead of “\(name)”. The result is copied to the clipboard.")
     }
   }
 
   /// Sends the saved template recording through Dictate Prompt with no template and no selection,
-  /// so the pasted result replaces whatever the user selected in the target app.
+  /// and copies the result to the clipboard (it is never auto-pasted).
   @objc private func runAgainWithoutTemplate() {
     guard !appState.isBusy else {
       PopupNotificationWindow.showInfo(
@@ -1881,6 +1884,7 @@ class MenuBarController: NSObject {
     }
     DebugLogger.log("DICTATION-TEMPLATE: Running the last template dictation again without its template")
     processedAudioURLs.insert(copy)
+    clipboardOnlyForNextResult = true
     appState = .processing(.prompting)
     startVoiceJob(mode: .prompt, audioURL: copy) { job in
       await self.performPrompting(audioURL: copy, job: job, selection: nil)
@@ -2243,6 +2247,10 @@ class MenuBarController: NSObject {
           // `runAudioJob`'s catch tail drops the job after the popup is shown. A retry is a new
           // job, the same way `transcribeCancelledRecording` starts one.
           self.processedAudioURLs.insert(audioURL)
+          // The popup can outlive the recording it belongs to, and the recorded paste target may be
+          // another client's note by now. Like every re-run that skips `beginAudioCapture`, the
+          // result is copied only, never pasted.
+          self.clipboardOnlyForNextResult = true
           DebugLogger.log("RETRY: Re-running \(mode) for \(audioURL.lastPathComponent)")
           switch mode {
           case .transcription:
@@ -2546,12 +2554,18 @@ class MenuBarController: NSObject {
         ContextLogger.shared.deleteAudioSample(named: ref)
       }
     }
+    // "Only when spoken" is an offline-dictation setting; meeting segments keep model punctuation.
+    let punctuationMode = PunctuationMode.effective(
+      stored: .current, isOffline: transcriptionModelForCapture.isOffline, duringMeeting: duringMeeting)
     let spec = AudioJobSpec(
       mode: .transcription,
       logLabel: "Transcription",
       errorTitle: String(localized: "Transcription Error"),
       modelInfo: { await self.speechService.getTranscriptionModelInfo() },
-      copyResult: { self.clipboardManager.copyTranscriptionToClipboard(text: $0) },
+      copyResult: {
+        self.clipboardManager.copyTranscriptionToClipboard(
+          text: $0, addTrailingPeriod: punctuationMode == .automatic)
+      },
       presentResult: { text, info, title in
         if let title {
           PopupNotificationWindow.showTranscriptionResponse(text, modelInfo: info, title: .verbatim(title))
@@ -2587,8 +2601,11 @@ class MenuBarController: NSObject {
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
         // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
         // attaches to the word before it.
-        return transcriptionModelForCapture.isOffline
-          ? SpokenPunctuation.apply(to: transcript) : transcript
+        guard transcriptionModelForCapture.isOffline else { return transcript }
+        let source =
+          punctuationMode == .spokenOnly
+          ? SpokenPunctuation.stripModelPunctuation(from: transcript) : transcript
+        return SpokenPunctuation.apply(to: source, mode: punctuationMode)
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*
@@ -3177,11 +3194,23 @@ class MenuBarController: NSObject {
     #endif
   }
 
-  /// How long to wait after posting ⌘V before putting the old clipboard back. The receiving app
-  /// reads the pasteboard asynchronously when it handles the keystroke, so restoring immediately
-  /// would race it and paste the *old* contents. Generous enough for slow apps (Electron, remote
-  /// desktops) while still feeling instant.
-  private static let clipboardRestoreDelay: TimeInterval = 0.4
+  private static var clearClipboardEnabled: Bool {
+    #if APP_STORE
+    return false
+    #else
+    return UserDefaults.standard.object(forKey: UserDefaultsKeys.clearClipboardAfterAutoPaste) != nil
+      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.clearClipboardAfterAutoPaste)
+      : SettingsDefaults.clearClipboardAfterAutoPaste
+    #endif
+  }
+
+  /// Incremented by every `autoPasteIfEnabled` call; a delayed restore only acts if it still holds
+  /// the latest value (see `ClipboardPasteGuard.delayedAction`).
+  private var pasteGeneration = 0
+
+  /// Set by menu re-runs that run from idle (no recording start, so no recorded paste target):
+  /// their result is copied only, never pasted into whatever app got the last dictation.
+  private var clipboardOnlyForNextResult = false
 
   /// The app that was frontmost when the current Dictate / Dictate Prompt recording started. Auto-paste
   /// goes there, not to whatever the user has switched to since.
@@ -3267,6 +3296,10 @@ class MenuBarController: NSObject {
     return false
     #else
     if Self.autoPasteAvailable {
+      // Every job is a generation, pasting or not: a delayed restore from an earlier job must not
+      // touch the restore point of this one.
+      pasteGeneration += 1
+      let generation = pasteGeneration
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
         AccessibilityPermissionManager.showAccessibilityPermissionDialog()
@@ -3274,8 +3307,17 @@ class MenuBarController: NSObject {
         clipboardManager.discardRestorePoint()
         return false
       }
+      if clipboardOnlyForNextResult {
+        clipboardOnlyForNextResult = false
+        DebugLogger.log("AUTO-PASTE: Not pasting — re-run from the menu, result stays on the clipboard")
+        clipboardManager.discardRestorePoint()
+        return false
+      }
+      // What we just wrote; ⌘V is sent only while the pasteboard still holds exactly this.
+      let writtenChangeCount = NSPasteboard.general.changeCount
+      let writtenText = NSPasteboard.general.string(forType: .string)
       // Small delay to ensure clipboard is ready
-      try? await Task.sleep(for: .milliseconds(50))
+      try? await Task.sleep(for: AppConstants.autoPastePreDelay)
 
       // The result can arrive minutes after the recording started, with another app (or this one)
       // in front. ⌘V there replaces whatever that app has selected, so paste only into the app the
@@ -3307,6 +3349,19 @@ class MenuBarController: NSObject {
         return false
       }
 
+      guard
+        ClipboardPasteGuard.pasteAllowed(
+          changeCountAtWrite: writtenChangeCount,
+          currentChangeCount: NSPasteboard.general.changeCount,
+          expectedText: writtenText,
+          currentText: NSPasteboard.general.string(forType: .string))
+      else {
+        DebugLogger.logWarning("AUTO-PASTE: Skipped, clipboard changed before paste")
+        // Whatever is on the pasteboard now is not ours to overwrite with an old snapshot.
+        clipboardManager.discardRestorePoint()
+        return false
+      }
+
       simulatePaste()
       // Log *where* the synthetic ⌘V went. Without the target and payload size on record, a report
       // of "my text was suddenly gone" is undiagnosable after the fact.
@@ -3328,11 +3383,38 @@ class MenuBarController: NSObject {
         ])
 
       // Non-destructive paste: give the receiving app time to read the pasteboard, then put
-      // the user's previous clipboard back.
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.clipboardRestoreDelay) { [weak self] in
+      // the user's previous clipboard back. With restore off, the optional "clear" setting empties
+      // the pasteboard instead, so a later manual ⌘V cannot paste this dictation.
+      let clearInsteadOfRestore = !Self.restoreClipboardEnabled && Self.clearClipboardEnabled
+      DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.clipboardRestoreDelay) { [weak self] in
         guard let self else { return }
-        if self.clipboardManager.restorePendingSnapshot() {
-          DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+        switch ClipboardPasteGuard.delayedAction(
+          generation: generation, latestGeneration: self.pasteGeneration,
+          changeCountAtWrite: writtenChangeCount,
+          currentChangeCount: NSPasteboard.general.changeCount)
+        {
+        case .ignore:
+          // A newer job owns the clipboard and its restore point now.
+          return
+        case .discard:
+          // Clipboard managers and Citrix/RDP sync rewrite the pasteboard right after a paste, which
+          // moves the count without changing the text. If it is still our text, clear anyway.
+          if clearInsteadOfRestore, writtenText != nil,
+            NSPasteboard.general.string(forType: .string) == writtenText
+          {
+            NSPasteboard.general.clearContents()
+            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste (count moved, text still ours)")
+          } else {
+            DebugLogger.log("AUTO-PASTE: Skipping clipboard restore — pasteboard changed since write")
+          }
+          self.clipboardManager.discardRestorePoint()
+        case .restore:
+          if clearInsteadOfRestore {
+            NSPasteboard.general.clearContents()
+            DebugLogger.log("AUTO-PASTE: Cleared clipboard after paste")
+          } else if self.clipboardManager.restorePendingSnapshot() {
+            DebugLogger.log("AUTO-PASTE: Restored the clipboard contents from before dictation")
+          }
         }
       }
       return true

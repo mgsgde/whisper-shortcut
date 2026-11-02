@@ -202,6 +202,13 @@ Output rules (CRITICAL):
   static let readAloudRewriteMaxGrowth: Double = 1.3
   static let readAloudRewriteGrowthGuardMinChars = 200
 
+  // MARK: - Auto-paste timing
+  /// Pause between writing the result to the pasteboard and posting ⌘V.
+  static let autoPastePreDelay: Duration = .milliseconds(150)
+  /// How long after ⌘V the user's previous clipboard is put back. Slow receivers (browser, Citrix,
+  /// RDP) read the pasteboard lazily; restoring earlier would make them paste the old content.
+  static let clipboardRestoreDelay: TimeInterval = 3.0
+
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"

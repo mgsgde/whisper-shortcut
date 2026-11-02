@@ -200,7 +200,13 @@ private actor VocabularyBooster {
       throw error
     }
     let context = CustomVocabularyContext(terms: terms.map { CustomVocabularyTerm(text: $0) })
-    let built = try await VocabularyBoostingSession(vocabulary: context, ctcModels: ctcModels)
+    // FluidAudio's default similarity floor is 0, so its spotter rescue can swap up to four
+    // unrelated words for a term ("weitere Einschränkungen liegen nicht vor" became "Diarrhöe nicht
+    // vor" with only "Diarrhoe" in the glossary). `itnDefaultConfig` carries the floors FluidAudio
+    // sets for ITN engines; they are used here to stop that, at the cost of some recall on heavily
+    // mangled terms.
+    let built = try await VocabularyBoostingSession(
+      vocabulary: context, ctcModels: ctcModels, config: VocabularyBoostingSession.itnDefaultConfig)
     session = (terms, built)
     DebugLogger.log("LOCAL-SPEECH: Parakeet vocabulary built from \(terms.count) glossary term(s)")
     return built
