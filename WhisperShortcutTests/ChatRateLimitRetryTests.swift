@@ -55,24 +55,42 @@ struct ChatRateLimitRetryTests {
     // 21 Oct 2015 07:28:00 GMT is the RFC 9110 example's shape; the wait is measured from `now`.
     let now = Self.utc(2015, 10, 21, 7, 27, 45)
     let response = Self.http(["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"])
-    #expect(RetryBackoff.retryAfter(from: response, now: now) == 15 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: response, now: now) == 15)
   }
 
-  @Test("Absolute timestamps get a clock-skew buffer; a past one still waits the buffer")
-  func absoluteWaitsGetSkewBuffer() {
+  @Test("Stored delay is raw; the skew buffer is applied only when sleeping")
+  func absoluteWaitsGetSkewBufferOnlyWhenSleeping() {
     let now = Self.utc(2015, 10, 21, 7, 27, 45)
     // Client clock runs 30s fast: the server's date is already "in the past" for us.
     let fast = Self.utc(2015, 10, 21, 7, 28, 15)
     let date = Self.http(["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"])
-    #expect(RetryBackoff.retryAfter(from: date, now: fast) == RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: date, now: fast) == 0)
     let reset = Self.http(["anthropic-ratelimit-requests-reset": "2015-10-21T07:28:00Z"])
-    #expect(RetryBackoff.retryAfter(from: reset, now: fast) == RetryBackoff.clockSkewBuffer)
-    // Delta-seconds carry no clock, so no buffer.
+    #expect(RetryBackoff.retryAfter(from: reset, now: fast) == 0)
     #expect(RetryBackoff.retryAfter(from: Self.http(["Retry-After": "12"]), now: now) == 12)
     #expect(RetryBackoff.clockSkewBuffer == 2)
-    // End to end: the sleep for a past date is buffer, not the 1s hot-retry floor.
+    // End to end: the sleep for a past date is the buffer, not the 1s hot-retry floor.
     let err = TranscriptionError.rateLimited(retryAfter: RetryBackoff.retryAfter(from: date, now: fast))
     #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 2)
+  }
+
+  @Test("An absolute reset ~60s away stays transient and sleeps ~62s")
+  func absoluteSixtySecondResetIsTransient() {
+    let now = Self.utc(2026, 11, 1, 0, 0, 0)
+    let date = Self.http(["Retry-After": "Sun, 01 Nov 2026 00:01:00 GMT"])
+    let reset = Self.http(["anthropic-ratelimit-tokens-remaining": "0",
+                           "anthropic-ratelimit-tokens-reset": "2026-11-01T00:01:00Z"])
+    for response in [date, reset] {
+      let wait = RetryBackoff.retryAfter(from: response, now: now)
+      #expect(wait == 60)
+      let err = TranscriptionError.rateLimited(retryAfter: wait)
+      #expect(RetryBackoff.isTransientPreFirstToken(err))
+      #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 62)
+    }
+    // Past the ceiling on the raw delta is still rejected.
+    let tooLong = Self.http(["Retry-After": "Sun, 01 Nov 2026 00:01:01 GMT"])
+    let err = TranscriptionError.rateLimited(retryAfter: RetryBackoff.retryAfter(from: tooLong, now: now))
+    #expect(!RetryBackoff.isTransientPreFirstToken(err))
   }
 
   @Test("A response with no rate-limit header has no delay")
@@ -93,12 +111,12 @@ struct ChatRateLimitRetryTests {
   func anthropicReset() {
     let now = Self.utc(2026, 11, 1, 0, 0, 0)
     let one = Self.http(["anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z"])
-    #expect(RetryBackoff.retryAfter(from: one, now: now) == 5 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: one, now: now) == 5)
     let two = Self.http([
       "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:20Z",
       "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
     ])
-    #expect(RetryBackoff.retryAfter(from: two, now: now) == 20 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: two, now: now) == 20)
     let notAReset = Self.http(["anthropic-ratelimit-requests-limit": "2026-11-01T00:00:05Z"])
     #expect(RetryBackoff.retryAfter(from: notAReset, now: now) == nil)
   }
@@ -112,21 +130,21 @@ struct ChatRateLimitRetryTests {
       "anthropic-ratelimit-tokens-remaining": "0",
       "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
     ])
-    #expect(RetryBackoff.retryAfter(from: tokensBlocked, now: now) == 40 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: tokensBlocked, now: now) == 40)
     let requestsBlocked = Self.http([
       "anthropic-ratelimit-requests-remaining": "0",
       "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
       "anthropic-ratelimit-tokens-remaining": "9000",
       "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
     ])
-    #expect(RetryBackoff.retryAfter(from: requestsBlocked, now: now) == 5 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: requestsBlocked, now: now) == 5)
     let both = Self.http([
       "anthropic-ratelimit-requests-remaining": "0",
       "anthropic-ratelimit-requests-reset": "2026-11-01T00:00:05Z",
       "anthropic-ratelimit-tokens-remaining": "0",
       "anthropic-ratelimit-tokens-reset": "2026-11-01T00:00:40Z",
     ])
-    #expect(RetryBackoff.retryAfter(from: both, now: now) == 40 + RetryBackoff.clockSkewBuffer)
+    #expect(RetryBackoff.retryAfter(from: both, now: now) == 40)
   }
 
   // MARK: - Classification
@@ -203,17 +221,17 @@ struct ChatRateLimitRetryTests {
 
   // MARK: - Retry delay
 
-  @Test("Retry-After: 0 is floored instead of retrying hot")
+  @Test("Retry-After: 0 is not a hot retry")
   func zeroRetryAfterIsFloored() {
     let err = TranscriptionError.rateLimited(retryAfter: 0)
     #expect(RetryBackoff.isTransientPreFirstToken(err))
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.minAutomaticRetryWait)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == RetryBackoff.clockSkewBuffer)
   }
 
-  @Test("A server delay inside the ceiling is used as given")
+  @Test("A server delay inside the ceiling is slept plus the skew buffer")
   func retryAfterInsideCeilingIsUsed() {
     let err = TranscriptionError.rateLimited(retryAfter: 7)
-    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 7)
+    #expect(RetryBackoff.preFirstTokenDelay(attempt: 1, error: err) == 7 + RetryBackoff.clockSkewBuffer)
   }
 
   @Test("The automatic wait ceiling is short enough not to stall a chat reply")
