@@ -162,8 +162,8 @@ struct SpeechToTextSettingsTab: View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
         title: "Punctuation",
-        systemImage: "textformat.abc",
-        subtitle: "Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models."
+        systemImage: "text.quote",
+        subtitle: "Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself."
       )
 
       Picker("Punctuation", selection: $viewModel.data.punctuationMode) {
@@ -178,6 +178,13 @@ struct SpeechToTextSettingsTab: View {
         Task {
           await viewModel.saveSettings()
         }
+      }
+
+      if viewModel.data.punctuationMode == .spokenOnly {
+        Text("Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }

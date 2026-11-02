@@ -1838,6 +1838,16 @@
         }
       }
     },
+    "Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modelle setzen Punkt und Komma von selbst. Wählen Sie Nur gesprochen, wenn Sie jedes Satzzeichen selbst ansagen wollen."
+          }
+        }
+      }
+    },
     "Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models." : {
       "localizations" : {
         "de" : {
