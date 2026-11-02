@@ -298,7 +298,14 @@ struct SpeechToTextSettingsTab: View {
       Image(systemName: "exclamationmark.triangle.fill")
         .foregroundStyle(.orange)
       VStack(alignment: .leading, spacing: 2) {
-        Text(verbatim: reason.message)
+        // `message` points to Settings → Dictate, which is this tab.
+        Group {
+          if reason == .notParakeet {
+            Text("Dictate Live works with the offline Parakeet Ultra model. Select it below.")
+          } else {
+            Text(verbatim: reason.message)
+          }
+        }
           .font(.callout)
           .fixedSize(horizontal: false, vertical: true)
         Text("Until then, the Dictate shortcut and Fn start nothing.")
