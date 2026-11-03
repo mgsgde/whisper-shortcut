@@ -390,7 +390,7 @@ class MenuBarController: NSObject {
       }
       return segment == .dictation
         ? String(localized: "\(presentedState.icon) Dictating — meeting still recording")
-        : String(localized: "\(presentedState.icon) Recording AI prompt — meeting still recording")
+        : String(localized: "\(presentedState.icon) Recording Dictate Prompt — meeting still recording")
     }
     if meetingIsFinishing { return String(localized: "⏳ Finishing meeting — saving the last seconds…") }
     return appState.statusText
@@ -1164,7 +1164,7 @@ class MenuBarController: NSObject {
     if case .processing(.processingChunks(let statuses, _)) = presentedState {
       let active = statuses.filter { $0 == .active }.count
       let done = statuses.filter { $0 == .completed }.count
-      button.toolTip = String(localized: "Transcribing [\(done)/\(statuses.count)] - \(active) active")
+      button.toolTip = String(localized: "Transcribing \(done) of \(statuses.count) — \(active) still in progress")
     } else if activeMeetingSegment != nil || meetingIsFinishing {
       button.toolTip = presentedStatusText
     } else {
