@@ -66,9 +66,10 @@ struct LiveDictationTests {
     #expect(LiveDictation.finishPiece("befund Punkt", mode: .spokenOnly).hasSuffix("."))
   }
 
-  @Test("Only when spoken: the model's own period is stripped, automatic keeps it")
-  func spokenOnlyStripsModelPeriod() {
-    #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .spokenOnly) == "Der Befund ist unauffällig")
+  @Test("Only when spoken: the model's period is kept, its comma is stripped, automatic keeps both")
+  func spokenOnlyKeepsModelPeriod() {
+    #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .spokenOnly) == "Der Befund ist unauffällig.")
+    #expect(LiveDictation.finishPiece("Gangbild, unauffällig.", mode: .spokenOnly) == "Gangbild unauffällig.")
     #expect(LiveDictation.finishPiece("Der Befund ist unauffällig.", mode: .automatic) == "Der Befund ist unauffällig.")
   }
 
@@ -95,6 +96,15 @@ struct LiveDictationTests {
     #expect(joiner.next("Sie klagt") == "Sie klagt")
     #expect(joiner.next("Über Schmerzen") == " über Schmerzen")
     #expect(joiner.inserted == "Sie klagt über Schmerzen")
+  }
+
+  @Test("Only when spoken: a kept model period at the end of piece 1 lets piece 2 keep its capital")
+  func spokenOnlyKeptModelPeriodThenCapital() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next(LiveDictation.finishPiece("Die Patientin klagt.", mode: .spokenOnly)) == "Die Patientin klagt.")
+    #expect(joiner.next(LiveDictation.finishPiece("Über Schmerzen", mode: .spokenOnly)) == " Über Schmerzen")
+    #expect(joiner.inserted == "Die Patientin klagt. Über Schmerzen")
   }
 
   @Test("Only when spoken: a capital stays when the previous piece ended the sentence")

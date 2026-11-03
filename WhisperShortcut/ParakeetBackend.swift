@@ -172,7 +172,10 @@ private actor VocabularyBooster {
       let session = try await session(for: terms)
       let rescored = await session.rescore(
         text: result.text, tokenTimings: result.tokenTimings ?? [], audioSamples: samples)
-      guard let rescored, rescored.wasModified else { return result.text }
+      guard let rescored, rescored.wasModified else {
+        return ParakeetVocabularyGuard.restoreGlossaryCasing(
+          in: result.text, glossaryTerms: terms)
+      }
       let candidates = rescored.replacements.filter(\.shouldReplace).compactMap {
         replacement -> ParakeetVocabularyGuard.Replacement? in
         guard let term = replacement.replacementWord else { return nil }
@@ -189,7 +192,8 @@ private actor VocabularyBooster {
         DebugLogger.log(
           "LOCAL-SPEECH: Parakeet vocabulary applied \(applied.accepted) replacement(s)")
       }
-      return applied.text
+      return ParakeetVocabularyGuard.restoreGlossaryCasing(
+        in: applied.text, glossaryTerms: terms)
     } catch {
       DebugLogger.logWarning(
         "LOCAL-SPEECH: Parakeet vocabulary boosting skipped (\(error.localizedDescription))")

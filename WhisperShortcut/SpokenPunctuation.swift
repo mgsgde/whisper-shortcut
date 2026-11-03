@@ -11,8 +11,19 @@ import Foundation
 /// dictation are converted, matched case-insensitively on whole words. The exception is the
 /// "Only when spoken" punctuation mode (`PunctuationMode.spokenOnly`): there the user has opted in
 /// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Schrägstrich"
-/// and "drei Pünktchen" are converted too.
+/// and "drei Pünktchen" are converted too. There the model's own commas and semicolons are
+/// removed (`stripModelPunctuation`), but its sentence marks (". ? ! :") are kept, because the
+/// model often writes a spoken "Punkt" as "." itself.
 enum SpokenPunctuation {
+  /// Folded (`GlossaryDocument.fold`) single words the rules below turn into layout or marks.
+  /// Mirrors the spoken words in `rules` and `spokenOnlyRules`; `ParakeetVocabularyGuard` never
+  /// lets a glossary boost rewrite one of them. Keep in sync when a rule gains a word.
+  static let commandWords: Set<String> = [
+    "doppelpunkt", "komma", "punkt", "fragezeichen", "ausrufezeichen", "schragstrich",
+    "schraegstrich", "schreckstrich", "semikolon", "strichpunkt", "punktchen", "puenktchen",
+    "auslassungspunkte", "absatz", "zeile",
+  ]
+
   private struct Rule {
     let regex: NSRegularExpression
     let template: String
@@ -56,19 +67,32 @@ enum SpokenPunctuation {
     // Dictate Prompt instructions ("ersetze jeden Schrägstrich …"), the word is an ordinary noun.
     rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t,.;]*"#, "/"),
     rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
+    // Parakeet glues the word onto the word before it: "Arbeitsmarktschrägstrich im ADL" →
+    // "Arbeitsmarkt/im ADL". Needs a letter directly before, so it never overlaps the rules above.
+    rule(#"(?<=\p{L})schr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t,.;]*"#, "/"),
+    // Glued on both sides ("Arbeitsmarktschrägstrichbewegung" → "Arbeitsmarkt/Bewegung"). Parakeet
+    // wrote the right part lower-case only because it was one word with the rest; it starts a
+    // word of its own now, so it gets a capital (marker, see `capitalizeAfterGluedColon`). Case
+    // is not guessed anywhere else: a glued right part with a space on the left keeps its letters.
+    rule(#"(?<=\p{L})schr(?:ä|ae|e)(?:g|ck)[ \t-]?strich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/\u{1}"),
     // "3 Komma 5 cm" → "3,5 cm": a decimal comma, no spaces. Must run before the plain "Komma" rule.
     // Only a single pair: "3 Komma 5 Komma 4" is a list and gets plain commas below. The same pair
     // said in words ("zwei Komma fünf" → "2,5") is `decimalCommaBetweenNumberWords` in `apply`:
     // the words map to digits, so a replacement template cannot do it.
     rule(#"(?<!\bkomma[ \t]\d{1,6})(?<=\d)[ \t]*\bkomma\b[ \t]*(?=\d)(?!\d+[ \t]*\bkomma\b[ \t]*\d)"#, ","),
-    rule(#"[ \t,;]*\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
-    rule(#"[ \t,;]*\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
+    // A sentence mark the model wrote right before the word ("Gut. Fragezeichen") is swallowed.
+    rule(#"[ \t,;]*(?:[.!?][ \t]*)?\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
+    rule(#"[ \t,;]*(?:[.!?][ \t]*)?\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
     // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
     // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after
     // it go too. Not "drei Punkte" (a score). Before "Punkt", so "Pünktchen" is not read as one.
+    // Parakeet also writes the count as a digit and glues or hyphenates it ("GDB3-Pünktchen",
+    // "3 Pünktchen", "drei-Pünktchen"); the digit may sit directly on the previous word.
     rule(
-      #"[ \t,;]*\b(?:drei[ \t]+p(?:ü|ue)nktchen|auslassungspunkte)\b[ \t,.;]*"#,
+      #"[ \t,;]*(?:(?:\bdrei|(?<!\d)3)[ \t-]*p(?:ü|ue)nktchen|\bauslassungspunkte)\b[ \t,.;]*"#,
       "… "),
+    // A model period before or after the word ("vor. Punkt", "Punkt.") is swallowed: the
+    // `repeatedMarks` pass collapses the pair to one mark.
     // Not the noun: "Punkt 3", "Punkt drei", "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt".
     // A following number word counts as the number, same as a digit ("Unter Punkt drei steht").
     rule(
@@ -77,68 +101,27 @@ enum SpokenPunctuation {
     rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
   ]
 
-  /// Removes the punctuation an offline model inserted on its own (`. , ; ! ?`) for
+  /// Removes the commas and semicolons an offline model inserted on its own, for
   /// `PunctuationMode.spokenOnly`. Only marks followed by whitespace or the end of the text, so
-  /// "3.5" and "1,2" survive. A single period stays when it belongs to the text rather than ending
-  /// a sentence: after a digit and before a space ("3. November", "5. Lendenwirbel") and after one
-  /// of `keptAbbreviations` ("Dr. Müller", "z. B.", any single letter). A model comma glued to a
-  /// kept period is dropped alone. Parakeet capitalises the word after its own period; once a
-  /// sentence mark (`.!?`, not a kept period and not a comma or semicolon) is gone, a following
-  /// function word (`lowercasingFunctionWord`) is written lower-case again. A noun, a verb and the
-  /// formal "Sie" keep the capital. A spoken "Punkt" puts that capital back later, in `apply`.
-  /// Run before `apply`.
+  /// "1,2" survives. The model's sentence marks (". ? ! :") stay: Parakeet often turns a spoken
+  /// "Punkt" into "." itself (and a spoken "Komma" into ","), and stripping them destroyed marks
+  /// the user did say. What she objects to are the commas the model adds on its own, and those
+  /// are the only thing removed. A model comma glued to a kept period ("z. B.,") loses the comma
+  /// alone. A comma does not start the next word, so no capital is touched: with the sentence
+  /// marks kept, Parakeet's capital after its own period is correct, and the lower-casing that
+  /// used to follow a stripped period (and the abbreviation list guarding it) cannot happen any
+  /// more. A spoken mark next to a kept model mark does not double: see `repeatedMarks` and the
+  /// rules in `spokenOnlyRules`. Run before `apply`.
   static func stripModelPunctuation(from text: String) -> String {
-    let nsText = text as NSString
-    var result = text
-    let matches = stripRegex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
-    for match in matches.reversed() {
-      var range = match.range
-      if nsText.character(at: range.location) == 0x2E,
-        periodBelongsToText(in: nsText, at: NSRange(location: range.location, length: 1))
-      {
-        // Keep the text's period; a model mark glued to it (".,") still goes.
-        if range.length == 1 { continue }
-        range = NSRange(location: range.location + 1, length: range.length - 1)
-      }
-      guard let swiftRange = Range(range, in: result) else { continue }
-      // The prefix is still the original text (matches are removed from the end), so the
-      // original UTF-16 range still addresses it. Rebuilding avoids using a String index
-      // across the edit.
-      let prefix = String(result[..<swiftRange.lowerBound])
-      var suffix = String(result[swiftRange.upperBound...])
-      if sentenceMark(nsText.substring(with: range)) {
-        suffix = lowercasingLeadingFunctionWord(suffix)
-      }
-      result = prefix + suffix
-    }
-    return result
-  }
-
-  /// A comma or semicolon does not start the next word: "Hallo, Welt" stays "Hallo Welt".
-  private static func sentenceMark(_ removed: String) -> Bool {
-    removed.contains { $0 == "." || $0 == "!" || $0 == "?" }
-  }
-
-  /// `suffix` starts where the sentence mark was. Skip whitespace, then the next word.
-  private static func lowercasingLeadingFunctionWord(_ suffix: String) -> String {
-    var index = suffix.startIndex
-    while index < suffix.endIndex, suffix[index].isWhitespace {
-      index = suffix.index(after: index)
-    }
-    guard index < suffix.endIndex else { return suffix }
-    var end = index
-    while end < suffix.endIndex, !suffix[end].isWhitespace {
-      end = suffix.index(after: end)
-    }
-    let word = String(suffix[index..<end])
-    guard let lowered = lowercasingFunctionWord(word) else { return suffix }
-    return String(suffix[..<index]) + lowered + String(suffix[end...])
+    let range = NSRange(location: 0, length: (text as NSString).length)
+    return stripRegex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
   }
 
   /// The lower-case spelling of a German function word Parakeet capitalised on its own, or nil.
   /// Whole word. "Sie", "Ihr" and "Ihnen" are not function words here: they are the formal
   /// address and must stay capital ("Wir bitten Sie"). Nouns and verbs are absent too, so they
-  /// keep the capital Parakeet wrote. Live dictation reuses this at a piece boundary.
+  /// keep the capital Parakeet wrote. Live dictation uses this at a piece boundary, where the
+  /// next piece starts a new decode and Parakeet capitalises its first word.
   static func lowercasingFunctionWord(_ word: String) -> String? {
     guard let first = word.first, first.isUppercase else { return nil }
     guard functionWords.contains(word.lowercased()) else { return nil }
@@ -156,43 +139,8 @@ enum SpokenPunctuation {
     "ein", "eine", "einen", "einem", "einer",
   ]
 
-  /// Abbreviations whose period is kept (case-sensitive, whole word).
-  private static let keptAbbreviations: Set<String> = [
-    "Dr", "Prof", "Nr", "z", "B", "u", "a", "bzw", "ca", "usw", "ggf", "S", "Abs", "Art", "vgl",
-    "evtl", "inkl", "Hr", "Fr", "St", "Tel", "Str",
-    "med", "habil", "Az", "Abb", "Anl", "Bl", "geb", "tgl", "f", "ff", "Ziff", "bzgl", "etc", "sog",
-    "lt", "gem", "Mio", "Std", "Min", "max", "min", "Jh", "Hrsg", "Aufl", "Kap", "Tab", "Anm",
-    "Mrd", "Tsd", "Dipl", "Ing", "dent", "rer", "nat",
-    // Chart shorthand, weekdays and months. "So" is not here: it is the word in "Das ist so."
-    // "Fr" is already listed above.
-    "Pat", "Diagn", "chron", "Bsp", "Pkt", "Mo", "Di", "Mi", "Do", "Sa",
-    "Jan", "Feb", "Apr", "Aug", "Sep", "Sept", "Okt", "Nov", "Dez",
-  ]
-
-  private static func periodBelongsToText(in text: NSString, at range: NSRange) -> Bool {
-    // The word (letters) right before the period.
-    var start = range.location
-    while start > 0, isLetter(text.character(at: start - 1)) { start -= 1 }
-    if start < range.location {
-      let word = text.substring(with: NSRange(location: start, length: range.location - start))
-      // Any single letter is an abbreviation ("d. h.", "i. d. R."); "Hauptstr." ends in "str".
-      return word.count == 1 || keptAbbreviations.contains(word) || word.lowercased().hasSuffix("str")
-    }
-    // Directly after a digit, and followed by a space (not the end): an ordinal or a date.
-    guard range.location > 0, let digit = Unicode.Scalar(text.character(at: range.location - 1)),
-      CharacterSet.decimalDigits.contains(digit)
-    else { return false }
-    let next = range.location + range.length
-    return next < text.length && text.character(at: next) == 0x20
-  }
-
-  private static func isLetter(_ unit: unichar) -> Bool {
-    guard let scalar = Unicode.Scalar(unit) else { return false }
-    return CharacterSet.letters.contains(scalar)
-  }
-
   // swiftlint:disable:next force_try
-  private static let stripRegex = try! NSRegularExpression(pattern: #"[.,;!?]+(?=\s|$)"#)
+  private static let stripRegex = try! NSRegularExpression(pattern: #"[,;]+(?=\s|$)"#)
 
   /// The glued-command rules leave a U+0001 marker before the word they split off; this upper-cases
   /// that word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.
