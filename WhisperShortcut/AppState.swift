@@ -332,6 +332,13 @@ extension AppState {
   func finish() -> AppState {
     return .idle
   }
+
+  /// State after a stop found no recorder running. A live meeting keeps `.recording(.liveMeeting)`:
+  /// it owns its own recorder, so "nothing running" here says nothing about the meeting.
+  func afterStopFoundNothingRunning() -> AppState {
+    guard case .recording(let mode) = self, mode != .liveMeeting else { return self }
+    return finish()
+  }
 }
 
 // MARK: - Menu Enablement Logic

@@ -9,6 +9,7 @@ struct ModeAvailabilityTests {
     _ state: AppState = .idle,
     meeting: Bool = false,
     active: MeetingSegment? = nil,
+    segmentProcessing: Bool = false,
     pending: MeetingSegment? = nil,
     pendingMode: AppState.RecordingMode? = nil,
     jobMode: AppState.RecordingMode? = nil,
@@ -23,7 +24,7 @@ struct ModeAvailabilityTests {
   ) -> ModeAvailabilityInput {
     ModeAvailabilityInput(
       appState: state, isLiveMeetingActive: meeting, activeMeetingSegment: active,
-      pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
+      meetingSegmentIsProcessing: segmentProcessing, pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
       currentJobMode: jobMode, isTTSPlaying: playing, isOfflineMode: offline,
       readAloudUsesSystemVoice: systemVoice, hasTranscriptionCredential: transcription,
       hasPromptCredential: prompt, hasImprovementCredential: improvement,
@@ -58,6 +59,28 @@ struct ModeAvailabilityTests {
     #expect(a(.dictate, input(state, meeting: true, active: .dictation)) == .stop)
     #expect(a(.dictate, input(state, meeting: true, pending: .dictation)) == .stop)
     #expect(a(.dictate, input(state, meeting: true, active: .prompt)) == .ignored(.otherMeetingSegmentActive))
+  }
+
+  @Test("A segment that is already processing ignores its own shortcut")
+  func processingSegmentIgnoresSecondPress() {
+    let state = AppState.recording(.liveMeeting)
+    #expect(a(.dictate, input(state, meeting: true, active: .dictation, segmentProcessing: true)) == .ignored(.meetingSegmentProcessing))
+    #expect(a(.dictatePrompt, input(state, meeting: true, active: .prompt, segmentProcessing: true)) == .ignored(.meetingSegmentProcessing))
+    // The other mode's reason is unchanged, and a recording segment still stops.
+    #expect(a(.dictatePrompt, input(state, meeting: true, active: .dictation, segmentProcessing: true)) == .ignored(.otherMeetingSegmentActive))
+    #expect(a(.dictate, input(state, meeting: true, active: .dictation)) == .stop)
+    // The row no longer reads "Stop Dictate", so the generic Stop row is shown again.
+    #expect(ModeAvailabilityRules.showsCentralStop(
+      input(state, meeting: true, active: .dictation, segmentProcessing: true),
+      presentRows: [.dictate, .dictatePrompt, .readAloudSelection]))
+  }
+
+  @Test("A stop that finds no recorder never ends a live meeting")
+  func stopFoundNothingKeepsMeeting() {
+    #expect(AppState.recording(.liveMeeting).afterStopFoundNothingRunning() == .recording(.liveMeeting))
+    #expect(AppState.recording(.transcription).afterStopFoundNothingRunning() == .idle)
+    #expect(AppState.recording(.prompt).afterStopFoundNothingRunning() == .idle)
+    #expect(AppState.processing(.transcribing).afterStopFoundNothingRunning() == .processing(.transcribing))
   }
 
   @Test("Dictate Prompt")
