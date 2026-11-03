@@ -246,6 +246,9 @@ enum UserDefaultsKeys {
   static let customOpenAIChatEndpointURL = "customOpenAIChatEndpointURL"
   /// Model tag for the Custom endpoint chat model (e.g. `zai-org/GLM-5.2`).
   static let customOpenAIChatModelID = "customOpenAIChatModelID"
+  /// Model id sent to the same server's `/audio/speech` for Read Aloud. Separate from the chat
+  /// model on purpose: a chat model cannot synthesize speech. Empty → `tts-1`.
+  static let customTTSModelID = "customTTSModelID"
 
   // MARK: - Claude web search
   /// Whether Claude models get Anthropic's server-side web search (billed per search on the
@@ -299,6 +302,9 @@ enum UserDefaultsKeys {
   static let selectedReadAloudVoiceOpenAI = "selectedReadAloudVoiceOpenAI"
   static let selectedReadAloudVoiceXAI = "selectedReadAloudVoiceXAI"
   static let selectedReadAloudVoiceSystem = "selectedReadAloudVoiceSystem"
+  /// Voice id sent to the user's own OpenAI-compatible TTS server. Free text, because the
+  /// catalogue lives on that server (`GET /v1/audio/voices` on mlx-audio), not in the app.
+  static let selectedReadAloudVoiceCustom = "selectedReadAloudVoiceCustom"
 
   /// Snapshot of model selections taken when Offline Mode is turned on, restored when it is
   /// turned off. Dictionary of UserDefaults key → raw value. See `ModelSelectionReconciler`.

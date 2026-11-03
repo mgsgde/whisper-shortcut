@@ -322,7 +322,7 @@ extension TTSModel: PickerCuratedModel {
     switch self {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
-    case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS: return nil
+    case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS, .ownServerTTS: return nil
     }
   }
 
@@ -330,7 +330,14 @@ extension TTSModel: PickerCuratedModel {
 
   var pickerSupersededBy: TTSModel? { nil }
 
-  var pickerTitle: String { self == .systemMacOS ? "macOS" : displayName }
+  var pickerTitle: String {
+    switch self {
+    case .systemMacOS: return "macOS"
+    // The tile is narrow; the footer description names the protocol.
+    case .ownServerTTS: return String(localized: "Own server")
+    default: return displayName
+    }
+  }
 
   var pickerSetupBadge: String? { hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing") }
 

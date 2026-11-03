@@ -322,6 +322,8 @@ struct ModelSelectionReconcilerTests {
         case .openai: return keyed.contains("openai")
         case .xai: return keyed.contains("xai")
         case .system: return true
+        // Mirrors `TTSProvider.hasCredential`: the own server needs no key, so it is always usable.
+        case .custom: return true
         }
       }
     }
