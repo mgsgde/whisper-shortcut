@@ -227,7 +227,7 @@ final class MCPServer: ObservableObject {
   }
 
   /// Session titles by meeting stem; ChatSessionStore is @MainActor but requests arrive off-main, so hop to main.
-  private static func meetingTitlesFromSessions() -> [String: String] {
+  static func meetingTitlesFromSessions(timeout: TimeInterval = MCPMain.mainWaitTimeout) -> [String: String] {
     func build() -> [String: String] {
       MainActor.assumeIsolated {
         var map: [String: String] = [:]
@@ -240,8 +240,8 @@ final class MCPServer: ObservableObject {
         return map
       }
     }
-    if Thread.isMainThread { return build() }
-    return DispatchQueue.main.sync { build() }
+    // A modal dialog stalls the main queue; fall back to the titles in the transcript files.
+    return MCPMain.runBounded(timeout: timeout, build) ?? [:]
   }
 
   static func meetingsDirectory() -> URL {
