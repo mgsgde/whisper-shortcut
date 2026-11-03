@@ -33,6 +33,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/daily-app.sh
 source "$SCRIPT_DIR/lib/daily-app.sh"
+# shellcheck source=lib/build-lock.sh
+source "$SCRIPT_DIR/lib/build-lock.sh"
 # Parse flags (order-independent)
 APP_STORE=false
 DEVELOPMENT=false
@@ -93,6 +95,20 @@ elif [[ "$IN_WORKTREE" == true && "$FORCE_REPLACE" != true && "$LAUNCH_FROM_MAIN
 fi
 
 cd "$PROJECT_DIR"
+
+# One Xcode run at a time on this Mac (see lib/build-lock.sh: seven concurrent runs took the load
+# average to 162 on 2026-11-03). A rebuild collides with run-tests.sh just the same, so it takes
+# the same lock. Taken before anything is built (the scheme check below shells out to xcodebuild
+# too) or stopped. CI is skipped: one job per isolated runner, nothing to serialize against.
+# The default 1200 s wait stays: this script is interactive, and waiting with a progress line
+# every 60 s beats two xcodebuilds thrashing a 10-core machine. Exit 75 (EX_TEMPFAIL) is passed
+# on unchanged: "another run holds the machine", not "the build failed".
+if [[ "${CI:-}" != "true" ]]; then
+  lock_rc=0
+  acquire_build_lock || lock_rc=$?
+  [[ "$lock_rc" -eq 0 ]] || exit "$lock_rc"
+  trap release_build_lock EXIT
+fi
 
 # Keychain items live in the data protection keychain, which needs the keychain-access-groups
 # entitlement and therefore a provisioning profile. With an Apple Development identity we use the
