@@ -86,6 +86,24 @@ struct ParakeetPunctuationTimingTests {
     #expect(result?.dropped == 2)
   }
 
+  @Test("a dropped period lowers a following adverb, a noun keeps its capital")
+  func lowersAdverb() {
+    let tokens = [
+      word("Ich", 0, 0.2), word("arbeite", 0.2, 0.5), word("mal", 0.5, 0.7), mark(".", 0.7, 0.72),
+      word("Weiter", 0.72, 1.0), word("damit", 1.0, 1.3),
+    ]
+    let result = ParakeetPunctuationTiming.filter(
+      text: "Ich arbeite mal. Weiter damit", tokens: tokens, audioDuration: 3)
+    #expect(result?.text == "Ich arbeite mal weiter damit")
+    let noun = [
+      word("Befund", 0, 0.4), mark(".", 0.4, 0.42), word("Patientin", 0.42, 0.9),
+      word("kam", 0.9, 1.1),
+    ]
+    let nounResult = ParakeetPunctuationTiming.filter(
+      text: "Befund. Patientin kam", tokens: noun, audioDuration: 3)
+    #expect(nounResult?.text == "Befund Patientin kam")
+  }
+
   @Test("an ordinal or abbreviation period mid-text stays")
   func keepsOrdinal() {
     let tokens = [word("5", 0, 0.3), mark(".", 0.3, 0.32), word("Lendenwirbel", 0.32, 1.0)]

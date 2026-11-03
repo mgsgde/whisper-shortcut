@@ -150,7 +150,7 @@ enum SpokenPunctuation {
     return first.lowercased() + word.dropFirst()
   }
 
-  /// Lower-case forms. "sie" is omitted on purpose — see `lowercasingFunctionWord`.
+  /// Lower-case forms of function words and adverbs that are never nouns. "sie" is omitted on purpose — see `lowercasingFunctionWord`.
   private static let functionWords: Set<String> = [
     "und", "oder", "aber", "sondern", "denn", "weil", "dass", "ob", "wenn", "als", "wie",
     "mit", "bei", "nach", "von", "vor", "zu", "zum", "zur", "aus", "auf", "an", "am",
@@ -159,6 +159,11 @@ enum SpokenPunctuation {
     "auch", "noch", "schon", "sehr", "er", "es", "wir", "man",
     "der", "die", "das", "den", "dem", "des",
     "ein", "eine", "einen", "einem", "einer",
+    "weiter", "dann", "jetzt", "hier", "da", "dort", "so", "nur", "mal", "wieder", "bitte",
+    "doch", "eben", "gerade", "eigentlich", "vielleicht", "also", "dabei", "dazu", "damit",
+    "daher", "deshalb", "trotzdem", "bereits", "immer", "nie", "oft", "etwas", "sonst", "zwar",
+    "jedoch", "insgesamt", "ebenfalls", "weiterhin", "zudem", "außerdem", "allerdings", "eher",
+    "kaum", "fast", "ganz",
   ]
 
   // swiftlint:disable:next force_try
