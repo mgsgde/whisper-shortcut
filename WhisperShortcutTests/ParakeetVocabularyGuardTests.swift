@@ -103,4 +103,61 @@ struct ParakeetVocabularyGuardTests {
     #expect(glued.text == "Placement")
     #expect(glued.rejected == 1)
   }
+
+  private let pilotGlossary = ["GdB", "VersMedV", "ADL", "Merkzeichen", "Kizomba"]
+
+  @Test("Dissimilar spans are rejected (spelling similarity)")
+  func rejectsDissimilarSpans() {
+    for (span, term) in [
+      ("erreicht", "Merkzeichen"), ("Ah", "ADL"), ("G", "GdB"), ("im ADL", "ADL"),
+    ] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: pilotGlossary),
+        "\(span) -> \(term)")
+    }
+  }
+
+  @Test("Genuine spelling corrections still pass")
+  func acceptsSimilarSpans() {
+    for (span, term) in [
+      ("Metotrexat", "Methotrexat"), ("Vers Med V", "VersMedV"), ("G d B", "GdB"),
+      ("A D L", "ADL"), ("GDB", "GdB"),
+    ] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term),
+          glossaryTerms: pilotGlossary + ["Methotrexat"]),
+        "\(span) -> \(term)")
+    }
+  }
+
+  @Test("Spoken punctuation command words are never rewritten")
+  func rejectsCommandWords() {
+    #expect(
+      !ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Komma", term: "Kizomba"), glossaryTerms: pilotGlossary))
+    #expect(
+      !ParakeetVocabularyGuard.accepts(
+        .init(originalSpan: "Doppelpunkt", term: "Doppelpunkte"), glossaryTerms: pilotGlossary))
+    let applied = ParakeetVocabularyGuard.apply(
+      to: "Gangbild Komma geht weiter.",
+      replacements: [.init(originalSpan: "Komma", term: "Kizomba")],
+      glossaryTerms: pilotGlossary)
+    #expect(applied.text == "Gangbild Komma geht weiter.")
+  }
+
+  @Test("Glossary casing is restored for whole words only")
+  func restoresCasing() {
+    let terms = ["GdB", "Merkzeichen", "ADL"]
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "Der GDB ist 50.", glossaryTerms: terms)
+        == "Der GdB ist 50.")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "GDB50 und gdb", glossaryTerms: terms)
+        == "GDB50 und GdB")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(
+        in: "merkzeichen und Adl", glossaryTerms: terms) == "merkzeichen und ADL")
+  }
 }

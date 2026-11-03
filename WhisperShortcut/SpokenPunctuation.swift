@@ -13,6 +13,15 @@ import Foundation
 /// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Schrägstrich"
 /// and "drei Pünktchen" are converted too.
 enum SpokenPunctuation {
+  /// Folded (`GlossaryDocument.fold`) single words the rules below turn into layout or marks.
+  /// Mirrors the spoken words in `rules` and `spokenOnlyRules`; `ParakeetVocabularyGuard` never
+  /// lets a glossary boost rewrite one of them. Keep in sync when a rule gains a word.
+  static let commandWords: Set<String> = [
+    "doppelpunkt", "komma", "punkt", "fragezeichen", "ausrufezeichen", "schragstrich",
+    "schraegstrich", "schreckstrich", "semikolon", "strichpunkt", "punktchen", "puenktchen",
+    "auslassungspunkte", "absatz", "zeile",
+  ]
+
   private struct Rule {
     let regex: NSRegularExpression
     let template: String
