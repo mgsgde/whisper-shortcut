@@ -81,7 +81,7 @@ struct LiveDictationPilotTests {
     var passed = 0
     for pilotCase in Self.cases {
       let url = dir.appendingPathComponent("\(pilotCase.id).wav")
-      try Self.say(pilotCase.speech, to: url)
+      try Self.say(pilotCase.speech, voice: "Anna", rate: nil, to: url)
       let glossary = Self.baseGlossary + pilotCase.extraTerms
       let raw = try await LocalSpeechService.shared.transcribe(audioURL: url, language: "de")
       let boosted = try await LocalSpeechService.shared.transcribe(
@@ -111,52 +111,122 @@ struct LiveDictationPilotTests {
     print("PILOT SUMMARY spokenOnly pass=\(passed)/\(Self.cases.count)")
   }
 
-  /// Measurement only: does a spoken "Komma" leave its own audio time behind the "," token that
-  /// Parakeet writes, compared with a "," it guesses where nothing was said? Prints one `COMMA `
-  /// line per "," token; asserts nothing.
+  /// Measurement only: in "Only when spoken" mode a spoken "Komma"/"Punkt" (which Parakeet often
+  /// writes as "," / "." itself) must be told apart from punctuation Parakeet guessed. Prints one
+  /// `PUNCT ` line per punctuation token (gaps to neighbouring tokens, distance to audio end),
+  /// `PUNCT-AUDIO ` per sentence and `PUNCT-SUMMARY ` per kind and mark. Asserts nothing.
   @Test(
-    "Comma token timing, spoken vs guessed",
+    "Punctuation token timing, spoken vs guessed",
     .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
-  func commaTiming() async throws {
+  func punctuationTiming() async throws {
     setvbuf(stdout, nil, _IONBF, 0)
     try await ModelManager.shared.ensureReady(.parakeetUltra)
     let backend = try await ParakeetBackend.load()
 
     let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-      .appendingPathComponent("comma-timing-\(UUID().uuidString)")
+      .appendingPathComponent("punct-timing-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
+    let voices: [(label: String, name: String, rate: Int?)] = [
+      ("Anna", "Anna", nil),
+      ("Anna-r150", "Anna", 150),
+      ("Anna-r220", "Anna", 220),
+      ("Eddy", "Eddy (German (Germany))", nil),
+      ("Flo", "Flo (German (Germany))", nil),
+      ("Reed", "Reed (German (Germany))", nil),
+      ("Sandy", "Sandy (German (Germany))", nil),
+      ("Shelley", "Shelley (German (Germany))", nil),
+    ]
     let sentences: [(kind: String, text: String)] = [
-      ("spoken", "Wirbelsäule Komma Hüfte beidseits Komma Knie rechts"),
-      ("spoken", "Gangbild Komma geht weiter"),
-      ("spoken", "Gesamt GdB fünfzig Komma Merkzeichen G"),
+      ("spokenComma", "Wirbelsäule Komma Hüfte beidseits Komma Knie rechts"),
+      ("spokenComma", "Gangbild Komma geht weiter"),
+      ("spokenComma", "Gesamt GdB fünfzig Komma Merkzeichen G"),
+      ("spokenComma", "Hüfte rechts Komma Knie links"),
+      ("spokenComma", "Befund unauffällig Komma keine Einschränkung"),
+      ("spokenPeriod", "Die Dosis stimmt Punkt"),
+      ("spokenPeriod", "Gangbild unauffällig Punkt"),
+      ("spokenPeriod", "Sie hat drei Punkte erreicht Punkt"),
+      ("spokenPeriod", "Entscheidung nach Aktenlage Punkt"),
+      ("spokenPeriod", "Weitere Befunde angefordert Punkt"),
       ("guessed", "Wenn das so ist dann gehen wir weiter"),
       ("guessed", "Hüfte rechts Knie links Schulter beidseits"),
       ("guessed", "Ich glaube er kommt morgen"),
+      ("guessed", "Die Dosis stimmt"),
+      ("guessed", "Gangbild unauffällig"),
+      ("guessed", "Um zehn Uhr kam die Patientin"),
+      ("guessed", "Entscheidung nach Aktenlage"),
+      ("guessed", "Wirbelsäule Hüfte beidseits Knie rechts"),
+      ("guessed", "Weil sie Schmerzen hat kommt sie später"),
+      ("guessed", "Basistherapie Methotrexat"),
     ]
     func ms(_ seconds: Double) -> Int { Int((seconds * 1000).rounded()) }
+    let marks: Set<String> = [",", ".", "?", "!"]
 
-    for (index, sentence) in sentences.enumerated() {
-      let url = dir.appendingPathComponent("c\(index).wav")
-      try Self.say(sentence.text, to: url)
-      let result = try await backend.rawTokenTimings(audioURL: url, language: "de")
-      let hasKomma = result.text.lowercased().contains("komma")
-      print("COMMA TEXT kind=\(sentence.kind) sentence=\(index + 1) komma=\(hasKomma) raw=\(result.text)")
-      for (i, token) in result.tokens.enumerated() where token.token.trimmingCharacters(in: .whitespaces) == "," {
-        let before = i > 0 ? ms(token.start - result.tokens[i - 1].end) : 0
-        let after = i + 1 < result.tokens.count ? ms(result.tokens[i + 1].start - token.end) : 0
+    struct Sample { let kind: String, mark: String, pos: String, token: Int, after: Int, tail: Int? }
+    var samples: [Sample] = []
+
+    for voice in voices {
+      for (index, sentence) in sentences.enumerated() {
+        let url = dir.appendingPathComponent("\(voice.label)-\(index).wav")
+        try Self.say(sentence.text, voice: voice.name, rate: voice.rate, to: url)
+        let file = try AVAudioFile(forReading: url)
+        let audioEnd = Double(file.length) / file.processingFormat.sampleRate
+        let result = try await backend.rawTokenTimings(audioURL: url, language: "de")
+        let tokens = result.tokens
+        let rawHasWord = ["komma", "punkt"].contains { result.text.lowercased().contains($0) }
+        let lastWordEnd =
+          tokens.last(where: { !marks.contains($0.token.trimmingCharacters(in: .whitespaces)) })?.end ?? 0
         print(
-          "COMMA kind=\(sentence.kind) sentence=\(index + 1) tokenMs=\(ms(token.end - token.start)) "
-            + "gapBeforeMs=\(before) gapAfterMs=\(after) rawContainsKomma=\(hasKomma)")
+          "PUNCT-AUDIO voice=\(voice.label) sentence=\(index + 1) durMs=\(ms(audioEnd)) "
+            + "lastWordEndMs=\(ms(lastWordEnd)) raw=\(result.text)")
+        for (i, token) in tokens.enumerated() {
+          let mark = token.token.trimmingCharacters(in: .whitespaces)
+          guard marks.contains(mark) else { continue }
+          let isFinal = i == tokens.count - 1
+          let kind = sentence.kind == "guessed" ? "guessed" : sentence.kind
+          let before = i > 0 ? ms(token.start - tokens[i - 1].end) : 0
+          let after = isFinal ? ms(audioEnd - token.end) : ms(tokens[i + 1].start - token.end)
+          let tokenMs = ms(token.end - token.start)
+          var tail: Int?
+          var tailText = "-"
+          if isFinal {
+            let lastWord = tokens[..<i].last(where: { !marks.contains($0.token.trimmingCharacters(in: .whitespaces)) })
+            tail = ms(audioEnd - (lastWord?.end ?? 0))
+            tailText = "\(tail!)"
+          }
+          samples.append(
+            Sample(kind: kind, mark: mark, pos: isFinal ? "final" : "mid", token: tokenMs, after: after, tail: tail))
+          print(
+            "PUNCT voice=\(voice.label) kind=\(kind) mark=\(mark) pos=\(isFinal ? "final" : "mid") "
+              + "tokenMs=\(tokenMs) gapBeforeMs=\(before) gapAfterMs=\(after) "
+              + "prevWordEndToAudioEndMs=\(tailText) rawHasWord=\(rawHasWord)")
+        }
       }
+    }
+
+    func stats(_ values: [Int]) -> String {
+      guard !values.isEmpty else { return "-" }
+      let sorted = values.sorted()
+      return "\(sorted.first!)/\(sorted[sorted.count / 2])/\(sorted.last!)"
+    }
+    var groups: [String: [Sample]] = [:]
+    for s in samples { groups["\(s.kind) mark=\(s.mark) pos=\(s.pos)", default: []].append(s) }
+    for key in groups.keys.sorted() {
+      let g = groups[key]!
+      print(
+        "PUNCT-SUMMARY \(key) count=\(g.count) gapAfterMs(min/med/max)=\(stats(g.map(\.after))) "
+          + "tokenMs=\(stats(g.map(\.token))) prevWordEndToAudioEndMs=\(stats(g.compactMap(\.tail)))")
     }
   }
 
-  private static func say(_ text: String, to url: URL) throws {
+  private static func say(_ text: String, voice: String, rate: Int?, to url: URL) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-    process.arguments = ["-v", "Anna", "-o", url.path, "--data-format=LEI16@16000", text]
+    var args = ["-v", voice]
+    if let rate { args += ["-r", String(rate)] }
+    args += ["-o", url.path, "--data-format=LEI16@16000", text]
+    process.arguments = args
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
