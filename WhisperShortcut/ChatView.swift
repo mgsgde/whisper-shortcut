@@ -5112,6 +5112,27 @@ private struct SourceChip: View {
   }
 }
 
+/// Link clicks in chat prose. `open` is injectable so tests can call the text-view
+/// delegate without launching a URL. Every click is handled (returns true): only allowed
+/// links are opened, while blocked schemes and unparseable links are swallowed so AppKit's
+/// default opener never sees a link we did not vet.
+class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
+  var open: (URL) -> Void
+
+  init(open: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
+    self.open = open
+    super.init()
+  }
+
+  func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+    let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
+    guard let url else { return true }
+    guard ChatLinkPolicy.isSafeToOpen(url) else { return true }
+    open(url)
+    return true
+  }
+}
+
 /// Boxes parsed reply segments so they can be stored in an NSCache (class-only values).
 private final class ModelReplySegmentBox {
   let segments: [ModelReplyRenderSegment]
@@ -5267,14 +5288,7 @@ private struct SelectableProseText: NSViewRepresentable {
     return CGSize(width: ceil(used.width), height: ceil(used.height))
   }
 
-  final class Coordinator: NSObject, NSTextViewDelegate {
-    func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-      let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
-      guard let url else { return false }
-      NSWorkspace.shared.open(url)
-      return true
-    }
-  }
+  final class Coordinator: ChatReplyLinkDelegate {}
 }
 
 private struct ModelReplyView: View {
@@ -5372,6 +5386,7 @@ private struct ModelReplyView: View {
     .fixedSize(horizontal: false, vertical: true)
     .contentShape(Rectangle())
     .environment(\.openURL, OpenURLAction { url in
+      guard ChatLinkPolicy.isSafeToOpen(url) else { return .discarded }
       NSWorkspace.shared.open(url)
       return .handled
     })

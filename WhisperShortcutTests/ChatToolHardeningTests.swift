@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
@@ -121,6 +122,84 @@ struct ChatToolHardeningTests {
     #expect(f(-3.7) == -3)
     #expect(f(Int.max) == 1_000_000_000)
     #expect(ChatToolRegistry.intArgument([:], "k", default: 7) == 7)
+  }
+
+  // MARK: chat reply links
+
+  @Test func chatReplyLinksOpenOnlyHttpHttpsMailto() throws {
+    let http = try #require(URL(string: "https://example.com/doc"))
+    let mail = try #require(URL(string: "mailto:user@example.com"))
+    let file = try #require(URL(string: "file:///etc/passwd"))
+    let custom = try #require(URL(string: "shortcuts://run-shortcut?name=x"))
+    let js = try #require(URL(string: "javascript:alert(1)"))
+    #expect(ChatLinkPolicy.isSafeToOpen(http))
+    #expect(ChatLinkPolicy.isSafeToOpen(mail))
+    #expect(!ChatLinkPolicy.isSafeToOpen(file))
+    #expect(!ChatLinkPolicy.isSafeToOpen(custom))
+    #expect(!ChatLinkPolicy.isSafeToOpen(js))
+  }
+
+  @Test func chatReplyLinkDelegateSwallowsBlockedSchemes() throws {
+    let textView = NSTextView()
+    var opened: [URL] = []
+    let delegate = ChatReplyLinkDelegate { opened.append($0) }
+    let https = try #require(URL(string: "https://example.com/doc"))
+    let mail = try #require(URL(string: "mailto:user@example.com"))
+    let file = try #require(URL(string: "file:///etc/passwd"))
+    let custom = try #require(URL(string: "shortcuts://run-shortcut?name=x"))
+
+    #expect(delegate.textView(textView, clickedOnLink: https, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "mailto:user@example.com", at: 0))
+    #expect(opened == [https, mail])
+
+    #expect(delegate.textView(textView, clickedOnLink: file, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: custom, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "javascript:alert(1)", at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "not a url", at: 4))
+    #expect(opened == [https, mail])
+  }
+
+  @Test func gmailToolsWarnThatContentIsUntrusted() {
+    for decl in ChatToolRegistry.gmailFunctionDeclarations {
+      let desc = decl["description"] as? String ?? ""
+      #expect(desc.contains("untrusted third-party text"), "\(decl["name"] ?? "?")")
+    }
+  }
+
+  @Test func gmailMessageIdsArePathEncoded() {
+    #expect(GmailAPIClient.encodedPathComponent("18c5f3a1b2") == "18c5f3a1b2")
+    #expect(GmailAPIClient.encodedPathComponent("abc/../x") == "abc%2F..%2Fx")
+    #expect(GmailAPIClient.encodedPathComponent("id?x=1#frag") == "id%3Fx%3D1%23frag")
+  }
+
+  @Test func googleTasksErrorLogKeepsKeysNotTitles() throws {
+    let body = try JSONSerialization.data(withJSONObject: ["title": "Secret meeting", "notes": "private"])
+    let keys = GoogleTasksAPIClient.loggedBodyKeys(body)
+    #expect(keys == "notes,title")
+    #expect(!keys.contains("Secret"))
+    #expect(!keys.contains("private"))
+    #expect(GoogleTasksAPIClient.loggedBodyKeys(nil) == "none")
+    #expect(GoogleTasksAPIClient.loggedBodyKeys(Data("not-json".utf8)) == "none")
+  }
+
+  @Test func trelloLogStripsKeyAndTokenButKeepsTheError() {
+    let key = String(repeating: "ab", count: 16)
+    let card = String(repeating: "cd", count: 12)
+    let body = """
+      card missing https://api.trello.com/1/cards/\(card)?key=abc123secret&token=tok_value&name=Q3%20plan \
+      {"message":"invalid idList","token":"short-tok"} leaked \(key)
+      """
+    let logged = TrelloAPIClient.redactingSecretsForLog(body)
+    #expect(logged.contains("invalid idList"))
+    #expect(logged.contains("name=Q3%20plan"))
+    #expect(logged.contains(card))
+    #expect(logged.contains("key=REDACTED"))
+    #expect(logged.contains("token=REDACTED"))
+    #expect(!logged.contains("abc123secret"))
+    #expect(!logged.contains("tok_value"))
+    #expect(!logged.contains("short-tok"))
+    #expect(!logged.contains(key))
+    #expect(TrelloAPIClient.redactingSecretsForLog("key%3Dsupersecret&ok=1") == "key%3DREDACTED&ok=1")
   }
 
   // MARK: write tools size check
