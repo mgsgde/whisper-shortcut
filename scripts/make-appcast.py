@@ -93,7 +93,7 @@ def item_build(item):
     return match.group(1).strip() if match else None
 
 
-def render_item(version, build, url, length, signature, notes_html, min_system, pub, channel):
+def render_item(version, build, url, length, signature, notes_html, min_system, pub, channel, notes_de_html=""):
     lines = [
         "    <item>",
         "      <title>%s</title>" % html.escape("WhisperShortcut %s" % version, quote=False),
@@ -106,11 +106,22 @@ def render_item(version, build, url, length, signature, notes_html, min_system, 
         lines.append(
             "      <sparkle:channel>%s</sparkle:channel>" % html.escape(channel, quote=False)
         )
+    # Sparkle picks the description whose xml:lang matches the Mac's language. With two of
+    # them it logs an error for one without xml:lang, so English is marked "en" then; alone
+    # it stays unmarked, byte-identical to older feeds.
+    description_lines = [
+        "      <description%s><![CDATA[%s]]></description>"
+        % (' xml:lang="en"' if notes_de_html else "", notes_html),
+    ]
+    if notes_de_html:
+        description_lines.append(
+            '      <description xml:lang="de"><![CDATA[%s]]></description>' % notes_de_html
+        )
     lines.extend(
         [
             "      <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>"
             % html.escape(min_system, quote=False),
-            "      <description><![CDATA[%s]]></description>" % notes_html,
+            *description_lines,
             "      <enclosure url=%s length=%s type=\"application/octet-stream\" sparkle:edSignature=%s/>"
             % (quoteattr(url), quoteattr(length), quoteattr(signature)),
             "    </item>",
@@ -119,7 +130,7 @@ def render_item(version, build, url, length, signature, notes_html, min_system, 
     return "\n".join(lines)
 
 
-def build_appcast(version, build, url, length, signature, notes_html, min_system, pub, channel, previous_path):
+def build_appcast(version, build, url, length, signature, notes_html, min_system, pub, channel, previous_path, notes_de_html=""):
     build = build.strip()
     channel = (channel or "").strip() or None
     kept = []
@@ -131,7 +142,9 @@ def build_appcast(version, build, url, length, signature, notes_html, min_system
             continue
         kept.append(item)
     items = [
-        render_item(version, build, url, length, signature, notes_html, min_system, pub, channel)
+        render_item(
+            version, build, url, length, signature, notes_html, min_system, pub, channel, notes_de_html
+        )
     ] + kept
     items = items[:MAX_ITEMS]
     body = "\n".join(items)
@@ -153,6 +166,11 @@ def main():
     ap.add_argument("--length", required=True)
     ap.add_argument("--signature", required=True)
     ap.add_argument("--notes", required=True)
+    ap.add_argument(
+        "--notes-de",
+        default=None,
+        help="Optional German markdown notes. Missing or empty omits the localized description.",
+    )
     ap.add_argument("--min-system", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument(
@@ -173,6 +191,15 @@ def main():
     except FileNotFoundError:
         notes_html = ""
     notes_html = notes_html.replace("]]>", "]]&gt;")
+    notes_de_html = ""
+    if a.notes_de:
+        try:
+            with open(a.notes_de, encoding="utf-8") as f:
+                raw_de = f.read()
+        except FileNotFoundError:
+            raw_de = ""
+        if raw_de.strip():
+            notes_de_html = markdown_to_html(raw_de).replace("]]>", "]]&gt;")
     pub = format_datetime(datetime.now(timezone.utc), usegmt=True)
     xml = build_appcast(
         a.version,
@@ -185,6 +212,7 @@ def main():
         pub,
         a.channel,
         a.previous,
+        notes_de_html,
     )
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(xml)
