@@ -42,19 +42,35 @@ enum LLMHTTPRedirectPolicy {
     "cf-access-client-secret",
   ]
 
-  /// The request to follow. Same host and port keeps headers; a host (or port) change strips
+  /// The request to follow. Same scheme, host, and effective port keeps headers.
+  /// https defaults to 443 and http to 80, so `https://h` and `https://h:443` are one origin.
+  /// A scheme downgrade (`https://h` → `http://h`), or a host or port change, strips
   /// credential headers, including any extra names the caller configured.
   static func follow(
     original: URLRequest,
     proposed: URLRequest,
     extraSecretHeaderNames: [String] = []
   ) -> URLRequest {
-    let from = original.url
-    let to = proposed.url
-    let sameHost = from?.host?.lowercased() == to?.host?.lowercased()
-      && from?.port == to?.port
-    if sameHost { return proposed }
+    if isSameOrigin(original.url, proposed.url) { return proposed }
     return strippingSecrets(proposed, extraNames: extraSecretHeaderNames)
+  }
+
+  /// Scheme plus host plus the port a client actually connects to. A missing port is 443 for
+  /// https and 80 for http, so an explicit default port is not a different origin.
+  private static func isSameOrigin(_ from: URL?, _ to: URL?) -> Bool {
+    guard let from, let to else { return false }
+    guard from.scheme?.lowercased() == to.scheme?.lowercased() else { return false }
+    guard from.host?.lowercased() == to.host?.lowercased() else { return false }
+    return effectivePort(of: from) == effectivePort(of: to)
+  }
+
+  private static func effectivePort(of url: URL) -> Int? {
+    if let port = url.port { return port }
+    switch url.scheme?.lowercased() {
+    case "https": return 443
+    case "http": return 80
+    default: return nil
+    }
   }
 
   static func strippingSecrets(_ request: URLRequest, extraNames: [String] = []) -> URLRequest {

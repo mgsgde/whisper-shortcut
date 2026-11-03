@@ -69,4 +69,29 @@ struct LLMHTTPRedirectPolicyTests {
     let followed = LLMHTTPRedirectPolicy.follow(original: original, proposed: proposed)
     #expect(followed.value(forHTTPHeaderField: "Authorization") == nil)
   }
+
+  @Test("An https to http redirect on the same host drops Authorization")
+  func schemeDowngradeStripsSecrets() throws {
+    let original = try request("https://litellm.example/v1/chat/completions", headers: [
+      "Authorization": "Bearer sk-secret",
+    ])
+    let proposed = try request("http://litellm.example/v1/chat/completions", headers: [
+      "Authorization": "Bearer sk-secret",
+    ])
+    let followed = LLMHTTPRedirectPolicy.follow(original: original, proposed: proposed)
+    #expect(followed.url?.scheme == "http")
+    #expect(followed.value(forHTTPHeaderField: "Authorization") == nil)
+  }
+
+  @Test("An explicit port 443 is the same origin as the https default")
+  func explicitDefaultPortKeepsSecrets() throws {
+    let original = try request("https://litellm.example/v1", headers: [
+      "Authorization": "Bearer sk-secret",
+    ])
+    let proposed = try request("https://litellm.example:443/v1", headers: [
+      "Authorization": "Bearer sk-secret",
+    ])
+    let followed = LLMHTTPRedirectPolicy.follow(original: original, proposed: proposed)
+    #expect(followed.value(forHTTPHeaderField: "Authorization") == "Bearer sk-secret")
+  }
 }
