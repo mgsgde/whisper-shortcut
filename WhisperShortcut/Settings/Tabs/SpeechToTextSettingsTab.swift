@@ -427,7 +427,9 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
-  // MARK: - Offline Models Section  @ViewBuilder
+  // MARK: - Offline Models Section
+
+  @ViewBuilder
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(
