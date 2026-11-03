@@ -252,9 +252,6 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
-  /// Gemini 2.0 family was removed from this enum; no transcription option is deprecated in-app.
-  var isDeprecated: Bool { false }
-
   var costLevel: CostLevel {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,

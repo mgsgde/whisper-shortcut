@@ -7607,16 +7607,6 @@
         }
       }
     },
-    "Deprecated – no longer available to new users. Consider switching to %@." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veraltet – für neue Nutzer nicht mehr verfügbar. Wechseln Sie am besten zu %@."
-          }
-        }
-      }
-    },
     "Description: %@" : {
       "localizations" : {
         "de" : {
