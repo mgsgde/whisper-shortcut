@@ -107,6 +107,18 @@ enum ExtraModelFolder {
     return try body()
   }
 
+  /// Whether `url` lies inside the folder the user picked, symlinks resolved so a link out of it
+  /// cannot be mistaken for one of the app's own downloads.
+  ///
+  /// Deliberately asks about *this* folder rather than about the app's own: a model family may
+  /// keep its weights somewhere other than `ModelStore.rootDirectory` (Parakeet does, under
+  /// `Application Support/FluidAudio/Models`), and "outside rootDirectory" would call those the
+  /// user's own files.
+  static func contains(_ url: URL) -> Bool {
+    guard let folder = resolveFolderURL() else { return false }
+    return ModelStore<OfflineModelType>.isInside(url, folder)
+  }
+
   // MARK: - WhisperKit lookup
 
   /// Every place a WhisperKit model may sit inside the user's folder, in the order they are tried:
