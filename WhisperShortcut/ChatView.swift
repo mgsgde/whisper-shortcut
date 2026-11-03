@@ -4156,10 +4156,12 @@ struct ChatView: View {
     return ScrollView {
       VStack(alignment: .leading, spacing: 12) {
         if let summary, !summary.isEmpty {
-          Text(summary)
-            .font(.system(size: 14))
-            .foregroundColor(ChatTheme.primaryText)
-            .textSelection(.enabled)
+          // NSTextView, not SwiftUI `.textSelection`: hovering a note row below re-renders this
+          // view, which is exactly the churn that wedges SelectionOverlay (hang-20261103-182004).
+          SelectableProseText(
+            plain: summary,
+            font: .systemFont(ofSize: 14),
+            color: NSColor(ChatTheme.primaryText))
           if !notes.isEmpty {
             Divider().padding(.vertical, 8)
             Text("Live notes")
@@ -4214,11 +4216,12 @@ struct ChatView: View {
       Image(systemName: icon)
         .foregroundColor(.white)
         .font(.footnote)
-      Text(message)
-        .font(.footnote)
-        .foregroundColor(.white)
-        .fixedSize(horizontal: false, vertical: true)
-        .textSelection(.enabled)
+      // NSTextView, not SwiftUI `.textSelection` — see the invariant on `SelectableProseText`.
+      SelectableProseText(
+        plain: message,
+        font: .preferredFont(forTextStyle: .footnote),
+        color: .white,
+        hugsContentWidth: true)
       Spacer()
       Button(action: dismiss) {
         Image(systemName: "xmark")
@@ -5146,7 +5149,7 @@ private final class ModelReplySegmentBox {
 /// markdown links stay clickable (with a pointing-hand cursor). SwiftUI's `Text` can do one or the
 /// other but not both: `.textSelection(.enabled)` makes its overlay swallow link clicks. AppKit's
 /// text view handles selection and links natively, sidestepping that limitation.
-private struct SelectableProseText: NSViewRepresentable {
+struct SelectableProseText: NSViewRepresentable {
   private let nsAttributed: NSAttributedString
   /// true = wrap to the proposed width (prose); false = keep natural line lengths
   /// (code inside a horizontal scroller).
