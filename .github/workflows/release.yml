@@ -293,6 +293,7 @@ jobs:
             --length "$LENGTH" \
             --signature "$SIGNATURE" \
             --notes .github/RELEASE_NOTES.md \
+            --notes-de .github/RELEASE_NOTES.de.md \
             --min-system 15.5 \
             --previous "$RUNNER_TEMP/previous-appcast.xml" \
             --channel latest \
