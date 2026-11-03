@@ -512,21 +512,51 @@ enum ReplyBlockBuilder {
       headingAttr[ProseFontHint.self] = ProseFontMetrics(size: headingMetrics.size, weight: headingMetrics.weight.rawValue)
       if !bodyPart.isEmpty {
         headingAttr.append(AttributedString("\n\n"))
-        var bodyAttr = MarkdownParsing.inlineAttributedString(bodyPart, options: options)
-        bodyAttr.font = .system(size: ChatTheme.bodyFontSize, weight: .regular)
-        headingAttr.append(bodyAttr)
+        // Same per-line path as a paragraph without a leading heading, so a later
+        // `### B` in the body gets heading metrics instead of showing literally.
+        headingAttr.append(buildLineByLineAttributed(bodyPart, options: options))
       }
       return headingAttr
     }
-    // Bullet lists are now handled at the block level, not here
-    // Convert LaTeX formulas to Unicode before markdown parsing
-    let latexProcessed = MarkdownParsing.renderLatexToUnicode(trimmed)
-    let fullOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-    let inlineOptions = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-    var attr = (try? AttributedString(markdown: latexProcessed, options: fullOptions))
-      ?? (try? AttributedString(markdown: latexProcessed, options: inlineOptions))
-      ?? AttributedString(latexProcessed)
-    attr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize)
+    // Bullet lists are now handled at the block level, not here.
+    return buildLineByLineAttributed(trimmed, options: options)
+  }
+
+  /// `.full` markdown turns a single newline into a space and concatenates block
+  /// elements, so "Hi\nthere" renders as "Hi there" and a heading between two lines
+  /// is glued on ("plan:Step oneDo the thing."). Parse each line as inline markdown
+  /// and keep the newline; an ATX heading on its own line still gets heading metrics,
+  /// and a leading `> ` quote marker is dropped (inline parsing would show it literally).
+  private static func buildLineByLineAttributed(
+    _ text: String,
+    options: AttributedString.MarkdownParsingOptions
+  ) -> AttributedString {
+    let latexProcessed = MarkdownParsing.renderLatexToUnicode(text)
+    var attr = AttributedString()
+    let lines = latexProcessed.components(separatedBy: "\n")
+    for (index, line) in lines.enumerated() {
+      if index > 0 {
+        var breakAttr = AttributedString("\n")
+        breakAttr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize)
+        attr.append(breakAttr)
+      }
+      let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+      if let (level, title) = MarkdownParsing.parseATXHeading(trimmedLine) {
+        var headingAttr = (try? AttributedString(markdown: title, options: options)) ?? AttributedString(title)
+        headingAttr.font = MarkdownParsing.fontForHeadingLevel(level, baseSize: ChatTheme.bodyFontSize)
+        let headingMetrics = MarkdownParsing.nsHeadingMetrics(level, baseSize: ChatTheme.bodyFontSize)
+        headingAttr[ProseFontHint.self] = ProseFontMetrics(size: headingMetrics.size, weight: headingMetrics.weight.rawValue)
+        attr.append(headingAttr)
+      } else {
+        var content = line
+        if trimmedLine.hasPrefix(">") {
+          content = String(trimmedLine.drop(while: { $0 == ">" || $0 == " " }))
+        }
+        var lineAttr = (try? AttributedString(markdown: content, options: options)) ?? AttributedString(content)
+        lineAttr.font = ChatTheme.bodyFont(size: ChatTheme.bodyFontSize)
+        attr.append(lineAttr)
+      }
+    }
     return attr
   }
 }
