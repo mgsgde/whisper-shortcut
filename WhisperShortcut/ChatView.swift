@@ -4113,11 +4113,13 @@ struct ChatView: View {
             Text("•")
               .font(.system(size: 13))
               .foregroundColor(ChatTheme.secondaryText)
-            Text(bullet)
-              .font(.system(size: 13))
-              .foregroundColor(ChatTheme.primaryText)
-              .fixedSize(horizontal: false, vertical: true)
-              .textSelection(.enabled)
+            // Selectable NSTextView, DELIBERATELY not SwiftUI `.textSelection(.enabled)`: these rows
+            // render inline in the chat stream, and SelectionOverlay's updateNSView loop pinned the
+            // main thread there (hang-20261103-182004). Invariant: no .textSelection in the transcript.
+            SelectableProseText(
+              plain: bullet,
+              font: .systemFont(ofSize: 13),
+              color: NSColor(ChatTheme.primaryText))
           }
         }
       }
