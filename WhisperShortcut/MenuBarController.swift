@@ -575,8 +575,12 @@ class MenuBarController: NSObject {
     feedbackItem.submenu = feedbackMenu
     menu.addItem(feedbackItem)
 
+    #if APP_STORE
+    // App Store build only: the direct build never sends people to the App Store
+    // (Magnus, 2026-11-03).
     menu.addItem(
       createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: .rate))
+    #endif
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 

@@ -2,13 +2,12 @@ import Foundation
 import StoreKit
 import AppKit
 
-/// Manages two distinct review/support prompts depending on how the app was distributed:
+/// Asks App Store users for a rating: native `AppStore.requestReview(in:)` after enough
+/// successful operations. Apple's own system additionally rate-limits this to 3×/year.
 ///
-/// - **App Store build**: native `AppStore.requestReview(in:)` after enough successful
-///   operations. Apple's own system additionally rate-limits this to 3×/year.
-/// - **GitHub build**: one-time NSAlert pointing the user at the App Store version
-///   ("If you like this, please consider supporting me by buying it for a few euros and
-///   leaving a review"). Shown at most once per installation.
+/// GitHub (direct) installs are never prompted. They used to get a one-time alert asking them
+/// to buy the App Store version; Magnus, 2026-11-03: „Also ich will eigentlich nirgendswo aktiv
+/// die App-Store-Version promoten, weil die ja schlechter ist."
 ///
 /// Distribution is detected at runtime via the presence of an App Store receipt — no
 /// build-config / scheme split needed.
@@ -28,9 +27,6 @@ final class ReviewPrompter {
   private enum Constants {
     /// App Store: threshold for triggering the native review prompt.
     static let appStoreOperationThreshold = 10
-    /// GitHub: higher threshold — this is a stronger ask ("buy it"), so wait until
-    /// the user has clearly gotten value out of the app.
-    static let githubOperationThreshold = 20
     /// Don't show the App Store prompt more than once per this period (Apple's own
     /// limit is 3×/365d; we add our own backstop on top).
     static let minimumDaysBetweenPrompts: Double = 30
@@ -47,7 +43,7 @@ final class ReviewPrompter {
 
   // MARK: - Public API
 
-  /// Record one successful operation. Once the per-distribution threshold is reached
+  /// Record one successful operation (App Store installs only). Once the threshold is reached
   /// (and any cooldown has expired), arms a pending prompt that fires on the next
   /// menu-bar open via `showPendingPromptIfNeeded()`.
   ///
@@ -56,11 +52,12 @@ final class ReviewPrompter {
   /// non-atomic read/write of UserDefaults.
   @MainActor
   func recordSuccessfulOperation() {
+    guard distribution == .appStore else { return }
     let newCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.successfulOperationsCount) + 1
     UserDefaults.standard.set(newCount, forKey: UserDefaultsKeys.successfulOperationsCount)
 
-    let threshold = currentThreshold()
-    DebugLogger.log("REVIEW: Successful operation recorded. Count: \(newCount)/\(threshold) (\(distribution))")
+    let threshold = Constants.appStoreOperationThreshold
+    DebugLogger.log("REVIEW: Successful operation recorded. Count: \(newCount)/\(threshold)")
 
     guard newCount >= threshold else { return }
 
@@ -87,13 +84,7 @@ final class ReviewPrompter {
       return
     }
 
-    let shown: Bool
-    switch distribution {
-    case .appStore:
-      shown = showAppStorePrompt()
-    case .github:
-      shown = showGitHubSupportPrompt()
-    }
+    let shown = showAppStorePrompt()
 
     // A prompt that could not be presented is not a prompt the user declined: leave the flag
     // armed so the next window gets it, and leave the counter alone.
@@ -123,20 +114,13 @@ final class ReviewPrompter {
     return FileManager.default.fileExists(atPath: receiptURL.path) ? .appStore : .github
   }
 
-  private func currentThreshold() -> Int {
-    switch distribution {
-    case .appStore: return Constants.appStoreOperationThreshold
-    case .github: return Constants.githubOperationThreshold
-    }
-  }
-
   private func canShowPromptForCurrentDistribution() -> Bool {
     switch distribution {
     case .appStore:
       return isPastAppStoreCooldown()
     case .github:
-      // Strictly one-shot per installation — independent of any counter cooldown.
-      return !UserDefaults.standard.bool(forKey: UserDefaultsKeys.githubSupportPromptShown)
+      // Direct installs are never prompted (see the type comment).
+      return false
     }
   }
 
@@ -176,38 +160,6 @@ final class ReviewPrompter {
     return NSApp.windows
       .first { $0.isVisible && $0.contentViewController != nil }?
       .contentViewController
-  }
-
-  // MARK: - GitHub one-time support prompt
-
-  /// Always shows: `NSAlert.runModal()` needs no host window, so unlike the App Store sheet
-  /// this cannot fail for want of one.
-  @MainActor
-  @discardableResult
-  private func showGitHubSupportPrompt() -> Bool {
-    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.githubSupportPromptShown)
-
-    let alert = NSAlert()
-    alert.alertStyle = .informational
-    alert.messageText = String(localized: "Hey, I'm Magnus — the developer")
-    alert.informativeText = String(localized: """
-      If you enjoy WhisperShortcut, feel free to buy it on the App Store and leave a \
-      short review. It really helps me out as a solo developer.
-
-      Best wishes from Heidelberg, Germany
-      """)
-    alert.addButton(withTitle: String(localized: "Open App Store"))
-    alert.addButton(withTitle: String(localized: "Maybe Later"))
-
-    let response = alert.runModal()
-    if response == .alertFirstButtonReturn {
-      let url = URL(string: "https://apps.apple.com/us/app/whispershortcut/id6749648401")!
-      NSWorkspace.shared.open(url)
-      DebugLogger.log("REVIEW: GitHub user opened App Store from support prompt")
-    } else {
-      DebugLogger.log("REVIEW: GitHub user dismissed support prompt")
-    }
-    return true
   }
 
   // MARK: - Counter housekeeping

@@ -10,9 +10,8 @@ Bring your own API keys — Gemini, and optionally GPT, Grok, or Claude — or r
 
 ## Download
 
-**[⬇️ Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-readme)** — the easiest way to install, with automatic updates.
+**[⬇️ Download the latest signed `.dmg` from GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases/latest)** — open it and drag WhisperShortcut to Applications. The app tells you when a new version is out.
 
-- Prefer a direct download? Get the latest signed `.dmg` from [GitHub Releases](https://github.com/mgsgde/whisper-shortcut/releases).
 - Cloud features use your Google Gemini API key and, optionally, an xAI API key (Grok chat and TTS), an OpenAI API key (GPT-5.x chat, transcription, GPT Audio Dictate Prompt, TTS), or an Anthropic API key (Claude chat). Offline Whisper needs no key at all.
 
 ## Features
