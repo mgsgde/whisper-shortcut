@@ -61,6 +61,18 @@ final class ChatAgentRunner {
   /// What the turn has shown so far, for a caller that keeps the partial after a throw.
   var partialText: String { ChatViewModel.stripLeakedThoughtTokens(markerPrefix + streamed) }
 
+  /// Most providers drop tools on the final synthesis round so the model must answer.
+  /// A provider with `requiresToolsOnFinalRound` keeps the declarations and sends
+  /// `tool_choice: none` instead — Anthropic 400s if history still has `tool_use` /
+  /// `tool_result` and `tools` is omitted.
+  static func declarationsForRound(
+    _ tools: [LLMToolDeclaration],
+    isFinalRound: Bool,
+    provider: LLMChatProvider
+  ) -> [LLMToolDeclaration] {
+    (isFinalRound && !provider.requiresToolsOnFinalRound) ? [] : tools
+  }
+
   init(
     provider: LLMChatProvider,
     model: String,
@@ -112,11 +124,13 @@ final class ChatAgentRunner {
     var lastRoundText = ""
 
     toolLoop: for round in 0..<(maxToolRounds + 1) {
-      // Final round: strip every tool so the model is forced to synthesize an answer from
-      // what it already gathered, instead of firing yet another tool call we'd discard. Without
-      // this, a model that keeps searching (e.g. re-querying Gmail with reworded terms) ends the
-      // loop on an unanswered batch of function calls and the user is shown nothing.
+      // Final round: drop tools so the model has to answer from what it already gathered,
+      // instead of firing another call this loop would discard. Without that, a model that
+      // keeps searching (e.g. re-querying Gmail with reworded terms) ends on an unanswered
+      // batch and the user sees nothing. Providers with `requiresToolsOnFinalRound` keep the
+      // declarations and refuse further calls via `tool_choice: none`.
       let isFinalRound = (round == maxToolRounds)
+      let roundTools = Self.declarationsForRound(tools, isFinalRound: isFinalRound, provider: provider)
       var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
       // Narration the model emits in THIS round; echoed back in the model turn that carries
       // the round's function calls so the re-sent history is faithful (see executeToolCalls).
@@ -124,12 +138,16 @@ final class ChatAgentRunner {
       // Grounding supports index this round's own stream; earlier rounds' text (and any image
       // markers) already sit in front of it in the final reply.
       let roundOffset = (markerPrefix + streamed).count
+      // Stamp the round here. Callers such as Dictate Prompt set `disableBuiltInTools` on
+      // every round, which is not the same signal.
+      var roundOptions = options(isFinalRound)
+      roundOptions.isFinalRound = isFinalRound
       let stream = provider.sendChatStream(
         model: model,
         contents: currentContents,
         systemInstruction: systemInstruction(),
-        tools: isFinalRound ? [] : tools,
-        options: options(isFinalRound))
+        tools: roundTools,
+        options: roundOptions)
       for try await event in stream {
         try Task.checkCancellation()
         switch event {

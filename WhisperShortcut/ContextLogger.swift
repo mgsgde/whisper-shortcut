@@ -316,6 +316,7 @@ class ContextLogger {
     let fm = FileManager.default
     guard fm.fileExists(atPath: contextDirectoryURL.path) else { return }
     try fm.removeItem(at: contextDirectoryURL)
+    DebugLogger.closeContextErrorLogHandles()
     DebugLogger.log("USER-CONTEXT: Deleted all context data at \(contextDirectoryURL.path)")
   }
 

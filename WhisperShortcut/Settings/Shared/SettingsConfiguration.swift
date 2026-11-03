@@ -1942,9 +1942,24 @@ enum OpenAIChatPreferences {
 
   static var resolvedAPIKey: String? { resolvedCredential?.key }
 
-  /// True when URL + any usable API key are set — required before the Custom endpoint model can run.
+  /// True when the Custom endpoint can run: a base URL plus a usable key, or a keyless local
+  /// host (a Whisper box on the LAN does not need — and must not receive — the OpenAI key).
   static var isConfigured: Bool {
-    customEndpointBaseURL != nil && resolvedAPIKey != nil
+    guard let base = customEndpointBaseURL else { return false }
+    if resolvedAPIKey != nil { return true }
+    return allowsKeylessRequests(baseURL: base)
+  }
+
+  /// A local/LAN host can be called without any API key. Used so Chat and Dictate Prompt stay
+  /// selectable for a keyless Whisper / Ollama box after the OpenAI-key fallback is withheld
+  /// from `http://` URLs.
+  static func allowsKeylessRequests(baseURL: String) -> Bool {
+    guard let host = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
+      .host
+    else {
+      return false
+    }
+    return OfflineMode.isLocalHost(host)
   }
 
   static func isCustomEndpointModel(_ model: String) -> Bool {

@@ -12992,6 +12992,16 @@
         }
       }
     },
+    "No key: fine for a local server without auth." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Schlüssel: in Ordnung für einen lokalen Server ohne Anmeldung."
+          }
+        }
+      }
+    },
     "No key: fine for a local speech server without auth." : {
       "localizations" : {
         "de" : {

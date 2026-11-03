@@ -16,6 +16,17 @@ struct ReviewQuickFixTests {
     #expect(ChatToolRegistry.updateEventAllDay(["all_day": "true"]))
   }
 
+  @Test("create_event accepts all_day as a string, same as update_event")
+  func createEventAllDayString() {
+    #expect(ChatToolRegistry.createEventAllDay(["all_day": "true"]))
+    #expect(ChatToolRegistry.createEventAllDay(["all_day": true]))
+    #expect(ChatToolRegistry.createEventAllDay(["all_day": NSNumber(value: true)]))
+    #expect(!ChatToolRegistry.createEventAllDay(["all_day": "false"]))
+    #expect(!ChatToolRegistry.createEventAllDay([:]))
+    #expect(ChatToolRegistry.createEventAllDay(["all_day": "true"])
+      == ChatToolRegistry.updateEventAllDay(["all_day": "true"]))
+  }
+
   @Test("An error popup does not repeat a differently worded heading in its body")
   func popupBodyDropsSecondHeading() {
     let (title, body) = SpeechErrorFormatter.titleAndBodyForPopup(.noGoogleAPIKey)

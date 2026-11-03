@@ -3246,14 +3246,12 @@ class SpeechService {
   /// would still cut a long LAN dictation after the Task deadline was raised
   /// (a 5-minute recording needs 330s). Cloud providers keep `LLMHTTPSession.shared`.
   /// The Task deadline remains the precise cap; this session only raises the ceiling
-  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`.
+  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`. Built through
+  /// `LLMHTTPSession.makeSession` so a redirect strips the bearer token and
+  /// Cloudflare Access headers the same way chat does.
   private static let selfHostedTranscriptionSession: URLSession = {
-    let config = URLSessionConfiguration.default
     let cap = NetworkDeadline.selfHostedTranscriptionTimeoutCap
-    config.timeoutIntervalForRequest = cap
-    config.timeoutIntervalForResource = cap
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    return LLMHTTPSession.makeSession(requestTimeout: cap, resourceTimeout: cap)
   }()
 
   /// POSTs `request` and retries once on HTTP 429 with exponential backoff. Returns the

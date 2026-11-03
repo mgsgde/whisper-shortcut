@@ -57,35 +57,64 @@ enum CustomEndpointAuth {
   }
 
   /// The auth headers to send with `apiKey` for this endpoint.
+  /// An empty key produces no header — keyless local servers exist, and
+  /// `Authorization: Bearer ` (trailing space, no token) is worse than sending nothing.
   static func headers(baseURL: String, apiKey: String) -> [String: String] {
+    let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty else { return [:] }
     switch flavor(forBaseURL: baseURL) {
     case .azure:
       // Deliberately *only* `api-key`. Sending both headers looks harmless but is not: on the
       // classic deployment surface Azure reads `Authorization` as an Entra token and rejects the
       // request outright rather than falling back to the key.
-      return ["api-key": apiKey]
+      return ["api-key": key]
     case .bearer:
-      return ["Authorization": "Bearer \(apiKey)"]
+      return ["Authorization": "Bearer \(key)"]
     }
   }
 
   /// Whether an `sk-…` key issued by OpenAI could conceivably authenticate here.
   ///
-  /// True for a proxy (LiteLLM, a self-hosted gateway) — those commonly forward to api.openai.com
-  /// using the caller's own OpenAI key, which is why the custom endpoint falls back to it at all.
-  /// False for a customer's own tenant: an OpenAI key is never valid at an Azure resource or a
-  /// Google project, so falling back there does not produce a working request — it silently
-  /// transmits the user's OpenAI credential to a third party's endpoint to earn a 401.
+  /// True for an **https** proxy (LiteLLM, a self-hosted gateway) — those commonly forward to
+  /// api.openai.com using the caller's own OpenAI key, which is why the custom endpoint falls
+  /// back to it at all. Also true for loopback over `http://` (`localhost`, `127.0.0.0/8`,
+  /// `::1`): the key never leaves this Mac, and a local LiteLLM needs it. False for:
+  ///   - a customer's own tenant (Azure, Vertex): that key cannot work and would be handed to
+  ///     someone else's endpoint for a 401;
+  ///   - any other `http://` host, including a LAN Whisper box: sending the personal OpenAI key
+  ///     in cleartext is a leak, and a keyless local server does not need it.
+  /// An unparseable or empty URL keeps the fallback — no request goes out until a real URL exists.
   static func acceptsOpenAIAPIKey(baseURL: String) -> Bool {
-    guard let host = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
-      .host?.lowercased()
+    let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty,
+          let components = URLComponents(string: trimmed),
+          let host = components.host?.lowercased(), !host.isEmpty
     else {
       return true
     }
+    // Cleartext stays on this machine for loopback. A LAN box or an http proxy does not.
+    if components.scheme?.lowercased() != "https" { return isLoopbackHost(host) }
     if isAzureHost(host) { return false }
     // Vertex AI and every other Google API front door.
     if host == "googleapis.com" || host.hasSuffix(".googleapis.com") { return false }
     return true
+  }
+
+  /// This Mac only: `localhost`, `127.0.0.0/8`, and `::1` (URLComponents keeps the brackets
+  /// on an IPv6 literal, so `[::1]` is the same host).
+  private static func isLoopbackHost(_ host: String) -> Bool {
+    let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    if h == "localhost" || h == "::1" || h == "0:0:0:0:0:0:0:1" { return true }
+    let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4 else { return false }
+    var octets: [Int] = []
+    for part in parts {
+      guard !part.isEmpty, part.allSatisfy(\.isNumber), let value = Int(part), value <= 255 else {
+        return false
+      }
+      octets.append(value)
+    }
+    return octets[0] == 127
   }
 
   /// Azure follows OpenAI's own rule that reasoning models reject `max_tokens` and require
