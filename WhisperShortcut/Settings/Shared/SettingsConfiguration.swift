@@ -1589,10 +1589,22 @@ enum SettingsTab: String, CaseIterable {
       }
     }
 
-    /// The tabs shown under this header, in `SettingsTab.allCases` order.
+    /// The tabs shown under this header, in `SettingsTab.allCases` order, limited to the tabs
+    /// this build shows (`SettingsTab.visibleTabs`).
     var tabs: [SettingsTab] {
-      SettingsTab.allCases.filter { $0.section == self }
+      SettingsTab.visibleTabs.filter { $0.section == self }
     }
+  }
+
+  /// The tabs this build shows in the sidebar. Read Aloud is absent from the App Store build:
+  /// it copies the selection with ⌘C, which needs the Accessibility permission Apple rejects
+  /// under Guideline 2.4.5, so the tab could only offer a feature that does nothing.
+  static var visibleTabs: [SettingsTab] {
+    #if APP_STORE
+    return allCases.filter { $0 != .readAloud }
+    #else
+    return allCases
+    #endif
   }
 }
 
