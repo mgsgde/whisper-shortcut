@@ -14,6 +14,9 @@ enum UserDefaultsKeys {
   /// array of session UUID strings. Without it a tab switch back to a live conversation stopped
   /// the autoscroll, because a bottom-read session still has a top message.
   static let chatScrollFollowing = "chatScrollFollowing"
+  /// How chat and meeting rows are named (`ChatTitleStyle` raw value). Absent → first message,
+  /// which is what every existing install already shows. See `ChatTitleStyle`.
+  static let chatTitleStyle = "chatTitleStyle"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"

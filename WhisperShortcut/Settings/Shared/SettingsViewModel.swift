@@ -240,6 +240,8 @@ class SettingsViewModel: ObservableObject {
     // Window behaviour
     .bool(\.chatCloseOnFocusLoss, key: UserDefaultsKeys.chatCloseOnFocusLoss,
           default: SettingsDefaults.chatCloseOnFocusLoss),
+    .rawValue(\.chatTitleStyle, key: UserDefaultsKeys.chatTitleStyle,
+              default: SettingsDefaults.chatTitleStyle),
     .bool(\.settingsCloseOnFocusLoss, key: UserDefaultsKeys.settingsCloseOnFocusLoss,
           default: SettingsDefaults.settingsCloseOnFocusLoss),
     .bool(\.showDockIcon, key: UserDefaultsKeys.showDockIcon,

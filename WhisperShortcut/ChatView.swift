@@ -1746,6 +1746,17 @@ class ChatViewModel: ObservableObject {
     return rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
+  /// The first-message topic, truncated to `maxSessionTitleLength`. Shared by the derivation path
+  /// (`appendMessage`) and the legacy-fallback detector so the two can never drift apart.
+  static func firstMessageTopic(from content: String) -> String {
+    let oneLine = contentForSessionTitle(content)
+      .replacingOccurrences(of: "\n", with: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    var title = String(oneLine.prefix(maxSessionTitleLength))
+    if oneLine.count > maxSessionTitleLength { title += "…" }
+    return title
+  }
+
   /// Extracts a clean title from an LLM title response: the first non-empty line, stripped of
   /// surrounding whitespace and quote characters.
   static func cleanTitleResponse(_ raw: String) -> String {
@@ -1775,13 +1786,8 @@ class ChatViewModel: ObservableObject {
   /// nil when there's no first user message to derive one from.
   static func meetingFirstMessageFallbackTitle(for session: ChatSession) -> String? {
     guard let firstContent = session.messages.first(where: { $0.role == .user })?.content else { return nil }
-    let oneLine = contentForSessionTitle(firstContent)
-      .replacingOccurrences(of: "\n", with: " ")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !oneLine.isEmpty else { return nil }
-    var title = String(oneLine.prefix(maxSessionTitleLength))
-    if oneLine.count > maxSessionTitleLength { title += "…" }
-    return title
+    let topic = firstMessageTopic(from: firstContent)
+    return topic.isEmpty ? nil : topic
   }
 
   /// True when a meeting row has no *real* (summary-derived or manually renamed) title yet — i.e.
@@ -2074,10 +2080,11 @@ class ChatViewModel: ObservableObject {
     target.messages.append(message)
     target.lastUpdated = Date()
     if isFirstUserMessage {
-      let contentForTitle = Self.contentForSessionTitle(message.content)
-      let oneLine = contentForTitle.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-      target.title = String(oneLine.prefix(Self.maxSessionTitleLength))
-      if oneLine.count > Self.maxSessionTitleLength { target.title? += "…" }
+      // Stores the *topic*, never the date: `displayTitle(for:)` composes the date style on top at
+      // render time. Baking the date in here would double it up on display and, worse, leave it
+      // behind forever once the user switches back to first-message titles — the stored title has
+      // to stay the thing a rename edits.
+      target.title = Self.firstMessageTopic(from: message.content)
     }
     store.save(target)
 
@@ -2604,23 +2611,44 @@ class ChatViewModel: ObservableObject {
 
   /// Canonical display title for a session row (sidebar + search results).
   static func displayTitle(for session: ChatSession) -> String {
+    let style = ChatTitleStyle.current
+    let topic = derivedTopicTitle(for: session)
+    if style.usesDatePrefix {
+      // A date style knows the date the moment the session exists, so a meeting row no longer has
+      // to sit on the "Meeting" placeholder until its summary title arrives — the date alone is
+      // already the useful part. `meetingTitleNeedsGeneration` still guards *regeneration* of the
+      // summary title; it just no longer decides what is displayed.
+      return ChatTitleStyle.datedTitle(topic: topic, date: ChatTitleStyle.date(for: session), style: style)
+    }
+    if let topic { return topic }
+    return String(localized: session.isMeeting ? "Meeting" : "New chat")
+  }
+
+  /// The row text a session would carry without a date style: its stored title, else its first
+  /// user message, else nil.
+  ///
+  /// Meetings whose title is still missing or is a stale first-message fallback return nil — their
+  /// summary-based title has not arrived yet, and showing whatever the user happened to ask first
+  /// would be worse than showing nothing. Kept separate from `displayTitle` so the date styles can
+  /// prefix a topic without re-deriving it.
+  static func derivedTopicTitle(for session: ChatSession) -> String? {
     // Meetings stay "Meeting" until their summary-based title is generated, so the row never shows
     // whatever question the user happened to ask first — including legacy sessions still carrying a
     // stale first-message fallback title (which the backfill/summary path will replace shortly).
-    if meetingTitleNeedsGeneration(session) { return String(localized: "Meeting") }
+    if meetingTitleNeedsGeneration(session) { return nil }
     if let t = session.title, !t.isEmpty {
       let stripped = unwrapUserMessageTypedByUser(t)
       let base = stripped.isEmpty ? t : stripped
       return base.replacingOccurrences(of: "\n", with: " ")
     }
-    if session.isMeeting { return String(localized: "Meeting") }
+    if session.isMeeting { return nil }
     if let firstContent = session.messages.first(where: { $0.role == .user })?.content {
       let cleaned = contentForSessionTitle(firstContent)
       if !cleaned.isEmpty {
         return String(cleaned.prefix(60)).replacingOccurrences(of: "\n", with: " ")
       }
     }
-    return String(localized: "New chat")
+    return nil
   }
 
   /// Translates a meeting-button tap into the right intent based on current session state:
@@ -3306,6 +3334,11 @@ struct ChatView: View {
   @State private var createNewSessionOnAppear: Bool
   @State private var hasTriggeredNewSessionOnAppear: Bool = false
   @AppStorage(UserDefaultsKeys.chatSidebarVisible) private var sidebarVisible: Bool = true
+  /// Not read directly — `displayTitle(for:)` reads the style itself. This exists so SwiftUI
+  /// re-renders the tab strip when the user changes the style in Settings: a plain UserDefaults
+  /// read is invisible to the view graph, so without this the tabs would keep their old names
+  /// until something else happened to redraw them.
+  @AppStorage(UserDefaultsKeys.chatTitleStyle) private var chatTitleStyleRaw: String = SettingsDefaults.chatTitleStyle.rawValue
   @State private var meetingTab: MeetingTab = .chat
   /// True while a folder is being dragged over the window, so the drop target is visible.
   @State private var isFolderDropTargeted: Bool = false

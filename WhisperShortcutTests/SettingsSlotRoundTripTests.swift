@@ -48,6 +48,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedReadAloudVoiceXAI,
     UserDefaultsKeys.selectedReadAloudVoiceSystem,
     UserDefaultsKeys.chatCloseOnFocusLoss,
+    UserDefaultsKeys.chatTitleStyle,
     UserDefaultsKeys.settingsCloseOnFocusLoss,
     UserDefaultsKeys.showDockIcon,
     UserDefaultsKeys.chatFontDesign,
@@ -113,6 +114,7 @@ struct SettingsSlotRoundTripTests {
     data.readAloudVoiceXAI = "probe-xai-voice"
     data.readAloudVoiceSystem = "probe-system-voice"
     data.chatCloseOnFocusLoss = !SettingsDefaults.chatCloseOnFocusLoss
+    data.chatTitleStyle = .dateTopic
     data.settingsCloseOnFocusLoss = !SettingsDefaults.settingsCloseOnFocusLoss
     data.showDockIcon = !SettingsDefaults.showDockIcon
     data.chatFontDesign = .serif

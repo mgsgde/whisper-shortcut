@@ -32,6 +32,10 @@ struct ChatSettingsTab: View {
 
       SpacedSectionDivider()
 
+      titleStyleSection
+
+      SpacedSectionDivider()
+
       ClaudeWebSearchSection()
 
       SpacedSectionDivider()
@@ -126,6 +130,46 @@ struct ChatSettingsTab: View {
       .onChange(of: viewModel.data.chatFollowNewContent) { _ in
         Task { await viewModel.saveSettings() }
       }
+    }
+  }
+
+  // MARK: - Title Style Section
+  /// Where the date-based naming lives. Deliberately a top-level section rather than a row inside
+  /// Advanced: the people who want it are the ones writing meeting notes, and they should not have
+  /// to know that a collapsed "Advanced" group exists to find it.
+  @ViewBuilder
+  private var titleStyleSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Session Titles",
+        systemImage: "textformat.123",
+        subtitle: "How chat and meeting rows are named in the sidebar."
+      )
+
+      HStack(alignment: .center, spacing: 16) {
+        Text("Title:")
+          .font(.body)
+          .fontWeight(.medium)
+          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+        Picker("", selection: $viewModel.data.chatTitleStyle) {
+          ForEach(ChatTitleStyle.allCases, id: \.self) { style in
+            Text(style.displayName).tag(style)
+          }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 200)
+        .onChange(of: viewModel.data.chatTitleStyle) { _ in
+          Task { await viewModel.saveSettings() }
+        }
+
+        Spacer()
+      }
+
+      Text("Date styles put the day in front of the row, e.g. \"2026-11-03 Topic\". Meetings use the day they were recorded. Existing titles are not changed.")
+        .font(.callout)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
