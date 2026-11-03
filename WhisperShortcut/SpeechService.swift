@@ -88,6 +88,10 @@ class SpeechService {
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
+  /// True when this turn reads the selection from a screenshot. A macOS Service already supplied
+  /// the text, so that path stays off even when the model would otherwise use a screenshot.
+  /// Set per turn in `performPrompt`, same as `promptIsEditQuickAction`.
+  private var promptUsesScreenshotSelection = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -663,7 +667,8 @@ class SpeechService {
     templateInstruction: String? = nil,
     templateName: String? = nil,
     selectedText: String? = nil,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -671,7 +676,8 @@ class SpeechService {
         audioURL: audioURL, mode: mode, instruction: instruction,
         isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
         templateName: templateName, selectedText: selectedText,
-        recordingWasSilent: recordingWasSilent)
+        recordingWasSilent: recordingWasSilent,
+        selectionIsFromService: selectionIsFromService)
     }
 
     currentPromptTask = task
@@ -837,6 +843,14 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Screenshot-selection mode follows the model, unless a macOS Service already handed over the
+  /// selected text. That text is the selection; a screenshot would discard it.
+  static func usesScreenshotSelection(
+    modelUsesScreenshotSelection: Bool, selectionIsFromService: Bool
+  ) -> Bool {
+    modelUsesScreenshotSelection && !selectionIsFromService
+  }
+
   /// Request knobs for the on-device Dictate Prompt path. In Offline Mode — where a practice
   /// dictates clinical notes — decoding is greedy (temperature 0), so a note is reordered, not
   /// sampled; outside it the model keeps its default temperature, which reads better for free
@@ -873,7 +887,8 @@ class SpeechService {
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
     templateInstruction: String? = nil, templateName: String? = nil, selectedText: String?,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
@@ -883,16 +898,18 @@ class SpeechService {
     promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
-    // reaches it as nothing at all.
+    // reaches it as nothing at all. A selection from a macOS Service is already text.
     let selectedPromptModel = getPromptModel()
-    let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
+    promptUsesScreenshotSelection = Self.usesScreenshotSelection(
+      modelUsesScreenshotSelection: selectedPromptModel.dictatePromptUsesScreenshotSelection,
+      selectionIsFromService: selectionIsFromService)
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
     // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
     // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
     // corrupts the text the user asked to edit. A template turn does not use that mode; the
     // selection captured for a non-screenshot model is still the text it formats.
-    let clipboardContext: String? = usesScreenshotSelection
+    let clipboardContext: String? = promptUsesScreenshotSelection
       ? nil
       : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
@@ -903,7 +920,7 @@ class SpeechService {
     // instruction arrived with it.
     promptTurnKind = Self.decidePromptTurnKind(
       templateInstruction: templateInstruction, templateName: templateName,
-      usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext,
+      usesScreenshotSelection: promptUsesScreenshotSelection, selectedText: clipboardContext,
       textInstruction: textInstruction)
     promptIsEditQuickAction = isEditQuickAction && !promptTurnKind.isTemplate
     if case .template(let turn) = promptTurnKind {
@@ -1501,13 +1518,13 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: true,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
     let historyContents = Self.promptHistoryContents(
       mode: mode,
       isComposeTurn: Self.isComposeTurn(
-        usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+        usesScreenshotSelection: promptUsesScreenshotSelection,
         selectedText: clipboardContext),
       turnKind: promptTurnKind)
 
@@ -1644,7 +1661,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: model.supportsImageInput,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
     // Kept for the agent path, which builds its own request from the same ingredients.
@@ -1998,7 +2015,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: false,
       supportsScreenshot: false,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-LOCAL")
 
     let dictationHeader = Self.additionalDictationHeader(

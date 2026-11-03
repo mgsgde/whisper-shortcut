@@ -123,6 +123,14 @@ struct SpeechToTextSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(.top, SettingsConstants.internalSectionSpacing)
+    #else
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Add a term from anywhere: select it, then right-click → Services → Add to WhisperShortcut Glossary. No model is involved, so this also works while Offline Mode is on. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, SettingsConstants.internalSectionSpacing)
     #endif
   }
 
