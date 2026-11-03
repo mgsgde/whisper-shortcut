@@ -294,6 +294,11 @@ struct ChatRequestOptions {
 /// Abstraction over different LLM chat APIs (Gemini, Grok/xAI, etc.).
 /// Each provider translates the unified interface into its native API format.
 protocol LLMChatProvider {
+  /// When true, the final agent round still sends tool declarations. Anthropic rejects a
+  /// history that contains `tool_use` / `tool_result` once `tools` is omitted, and instead
+  /// wants `tool_choice: none`. Everyone else drops the tools so the model must answer.
+  var requiresToolsOnFinalRound: Bool { get }
+
   /// Streams a chat reply. Returns an async stream of `ChatStreamEvent`.
   ///
   /// - Parameters:
@@ -334,6 +339,8 @@ protocol LLMChatProvider {
 }
 
 extension LLMChatProvider {
+  var requiresToolsOnFinalRound: Bool { false }
+
   /// Provider-agnostic single-shot text generation. Routes through `generateStructured` with a
   /// one-field `{ text }` schema, so features like meeting summaries / speaker consolidation work
   /// uniformly on Gemini, OpenAI, and Grok without a per-provider endpoint. Returns the generated

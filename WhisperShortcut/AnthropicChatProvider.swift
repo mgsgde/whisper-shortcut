@@ -6,6 +6,9 @@ import Foundation
 final class AnthropicChatProvider: LLMChatProvider {
   static let shared = AnthropicChatProvider()
 
+  /// History that still has `tool_use` / `tool_result` 400s if the final round omits `tools`.
+  var requiresToolsOnFinalRound: Bool { true }
+
   private static let apiVersion = "2023-06-01"
   private static let messagesURL = "https://api.anthropic.com/v1/messages"
   private static let modelsURL = "https://api.anthropic.com/v1/models"

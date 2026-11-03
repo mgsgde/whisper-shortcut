@@ -62,14 +62,15 @@ final class ChatAgentRunner {
   var partialText: String { ChatViewModel.stripLeakedThoughtTokens(markerPrefix + streamed) }
 
   /// Most providers drop tools on the final synthesis round so the model must answer.
-  /// Anthropic 400s if history still has `tool_use`/`tool_result` and `tools` is omitted, so
-  /// that provider keeps the declarations and sends `tool_choice: none` instead.
+  /// A provider with `requiresToolsOnFinalRound` keeps the declarations and sends
+  /// `tool_choice: none` instead — Anthropic 400s if history still has `tool_use` /
+  /// `tool_result` and `tools` is omitted.
   static func declarationsForRound(
     _ tools: [LLMToolDeclaration],
     isFinalRound: Bool,
     provider: LLMChatProvider
   ) -> [LLMToolDeclaration] {
-    (isFinalRound && !(provider is AnthropicChatProvider)) ? [] : tools
+    (isFinalRound && !provider.requiresToolsOnFinalRound) ? [] : tools
   }
 
   init(
@@ -123,10 +124,11 @@ final class ChatAgentRunner {
     var lastRoundText = ""
 
     toolLoop: for round in 0..<(maxToolRounds + 1) {
-      // Final round: strip every tool so the model is forced to synthesize an answer from
-      // what it already gathered, instead of firing yet another tool call we'd discard. Without
-      // this, a model that keeps searching (e.g. re-querying Gmail with reworded terms) ends the
-      // loop on an unanswered batch of function calls and the user is shown nothing.
+      // Final round: drop tools so the model has to answer from what it already gathered,
+      // instead of firing another call this loop would discard. Without that, a model that
+      // keeps searching (e.g. re-querying Gmail with reworded terms) ends on an unanswered
+      // batch and the user sees nothing. Providers with `requiresToolsOnFinalRound` keep the
+      // declarations and refuse further calls via `tool_choice: none`.
       let isFinalRound = (round == maxToolRounds)
       let roundTools = Self.declarationsForRound(tools, isFinalRound: isFinalRound, provider: provider)
       var pendingCalls: [(name: String, args: [String: Any], thoughtSignature: String?)] = []
