@@ -5113,8 +5113,9 @@ private struct SourceChip: View {
 }
 
 /// Link clicks in chat prose. `open` is injectable so tests can call the text-view
-/// delegate without launching a URL. A blocked scheme returns true so the click is
-/// handled and AppKit does not open `file://` or a custom scheme itself.
+/// delegate without launching a URL. Every click is handled (returns true): only allowed
+/// links are opened, while blocked schemes and unparseable links are swallowed so AppKit's
+/// default opener never sees a link we did not vet.
 class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
   var open: (URL) -> Void
 
@@ -5125,7 +5126,7 @@ class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
 
   func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
     let url: URL? = (link as? URL) ?? (link as? String).flatMap(URL.init(string:))
-    guard let url else { return false }
+    guard let url else { return true }
     guard ChatLinkPolicy.isSafeToOpen(url) else { return true }
     open(url)
     return true

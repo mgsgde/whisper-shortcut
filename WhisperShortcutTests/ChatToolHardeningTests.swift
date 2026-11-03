@@ -155,7 +155,7 @@ struct ChatToolHardeningTests {
     #expect(delegate.textView(textView, clickedOnLink: file, at: 0))
     #expect(delegate.textView(textView, clickedOnLink: custom, at: 0))
     #expect(delegate.textView(textView, clickedOnLink: "javascript:alert(1)", at: 0))
-    #expect(delegate.textView(textView, clickedOnLink: "not a url", at: 4) == false)
+    #expect(delegate.textView(textView, clickedOnLink: "not a url", at: 4))
     #expect(opened == [https, mail])
   }
 
