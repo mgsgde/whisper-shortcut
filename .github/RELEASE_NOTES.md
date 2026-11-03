@@ -1,17 +1,19 @@
 **[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
 
-## Auto-paste
-- **Never pastes the wrong text.** Auto-paste now checks that the clipboard still holds your dictation before pasting, and only restores your previous clipboard if nothing else changed it in the meantime.
-- **Works better in slow apps.** Browsers, Citrix and remote desktops get a little more time to pick up the text: the paste waits 150 ms, and your old clipboard comes back after 3 seconds.
-- **New option: Clear clipboard after auto-paste** (Settings → General, off by default).
-- "Transcribe Cancelled Recording", "Run Again Without Template" and Retry in an error message now copy the result instead of pasting it into whichever app you used last.
+## Dictate Live
+- **Text appears at the cursor while you speak.** In Dictate Live, every short pause inserts what you just said, so you can watch the text grow as you dictate. Text already inserted is never rewritten; you correct it as you go.
+- **Choose your mode.** Settings → Dictate → **Mode**: Dictate (the default, unchanged) or Dictate Live. The mode applies to the Dictate shortcut and the Fn key. There is also a separate Dictate Live shortcut and menu item.
+- **Safe while you switch apps.** If you switch to another app or into a password field, the text waits until you are back in the app where you started. Anything still waiting when you stop goes to the clipboard.
+- Requires the offline model Parakeet Ultra, an Apple Silicon Mac and the Accessibility permission. Direct download only.
 
-## Offline dictation
-- **Glossary terms are no longer inserted when you didn't say them.** The offline model could replace ordinary words with a glossary term that sounded vaguely similar.
-- **New option: Punctuation → Only when spoken** (Settings → Dictate, offline models). Say "Punkt", "Komma", "Fragezeichen" or "Ausrufezeichen" and only those are set. The default, Automatic, is unchanged.
-- **"Schrägstrich" becomes "/".**
+## Spoken punctuation
+With Punctuation set to "Only when spoken":
+- Abbreviations such as "Pat.", "Diagn.", months and weekdays keep their period.
+- "zwei Komma fünf" becomes "2,5", and "Punkt drei" stays as words.
+- A doubled "Punkt Punkt" gives one period.
+- Words after a removed period are no longer capitalised.
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.74...v8.75
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.75...v8.76
