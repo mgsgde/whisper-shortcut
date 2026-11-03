@@ -99,13 +99,14 @@ modifier right after the start discards (text already inserted stays). If Live c
 not Parakeet, not downloaded, Intel Mac) the key shows the same notice as the Live shortcut and
 starts nothing: no silent fallback. During a live meeting the Dictate key records a meeting segment
 as before. Live stays selectable while unavailable; the tab shows the reason in an orange note with
-"Use Parakeet Ultra" when that model is on disk. Fn compares the running recording's kind with the
-kind it started (`fnStartedLive`). Pure decision: `LiveDictation.startDecision`. Direct build only.
+"Use Parakeet Ultra" when that model is on disk. Fn ends only the recording it started
+(`fnStartedRecordingID`). Pure decision: `LiveDictation.startDecision`. Direct build only.
 
 With "Only when spoken" punctuation the joiner never holds a piece's final period (it was said), a
 spoken paragraph or line break at the end of a piece survives, and "/" joins pieces without spaces.
-Known gap: Parakeet capitalises the word after a pause, so with its own period stripped a word can
-start upper-case mid-sentence ("klagt Über Schmerzen").
+After a stripped model period and at a Live piece start, a short list of function words is
+lower-cased again; other words (nouns, verbs) keep Parakeet's capital. Known gap: the article
+check before "Punkt" ("den wichtigsten Punkt") does not look back across a Live piece boundary.
 
 ## Open questions (measure or decide)
 

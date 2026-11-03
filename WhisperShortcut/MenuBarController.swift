@@ -109,6 +109,8 @@ class MenuBarController: NSObject {
   /// (`beginAudioCapture`) and ends by dropping it (`audioRecorderDidFinishRecording`, the fail and
   /// cancel paths). Same shape as `VoiceJob` on the processing side (refactor ledger R52).
   private struct RecordingIntent {
+    /// Identifies this recording, so Fn can end only the one it started.
+    let id = UUID()
     enum Target: Equatable {
       case mode(AppState.RecordingMode)
       case meetingSegment(MeetingSegment)
@@ -178,8 +180,9 @@ class MenuBarController: NSObject {
   /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
   /// chunks, cut at every short pause.
   private var liveDictationSession: LiveDictationSession?
-  /// Whether the current Fn-started recording is a Dictate Live one, so Fn only ends its own kind.
-  private var fnStartedLive = false
+  /// The recording Fn started, so Fn only ever ends that one — never one another shortcut began, even
+  /// of the same kind.
+  private var fnStartedRecordingID: UUID?
   /// The clipboard from before the current Dictate Live recording, when "Restore clipboard" is on.
   /// Put back at the end and on every cancel, since every piece passed through the clipboard.
   private var liveClipboardSnapshot: ClipboardSnapshot?
@@ -4500,22 +4503,22 @@ extension MenuBarController: FnDictationToggleDelegate {
     // otherwise — it only ever begins a fresh dictation.
     guard !isTranscriptionProcessing, !isDictationRecordingActive() else { return false }
     #if APP_STORE
-    fnStartedLive = false
     toggleTranscription()
+    fnStartedRecordingID = recording?.id
     return isDictationRecordingActive()
     #else
     switch LiveDictation.startDecision(
       mode: DictateMode.loadFromUserDefaults(), unavailable: liveUnavailableReason())
     {
     case .startDictate:
-      fnStartedLive = false
       toggleTranscription()
+      fnStartedRecordingID = recording?.id
     case .startLive:
-      fnStartedLive = true
       toggleLiveDictation()  // the shortcut path: availability, Accessibility dialog
-      fnStartedLive = recording?.isLiveDictation == true
+      fnStartedRecordingID = recording?.id
     case .refuse(let reason):
       presentLiveUnavailable(reason)
+      fnStartedRecordingID = nil
       return false
     }
     return isDictationRecordingActive()
@@ -4528,9 +4531,9 @@ extension MenuBarController: FnDictationToggleDelegate {
   }
 
   func fnDictationIsRecording() -> Bool {
-    // Fn only ends the kind of recording it started, never one the other shortcut began.
-    guard isDictationRecordingActive() else { return false }
-    return (recording?.isLiveDictation == true) == fnStartedLive
+    // Fn only ends the recording it started, never one another shortcut began — even of the same kind.
+    guard isDictationRecordingActive(), let id = fnStartedRecordingID else { return false }
+    return recording?.id == id
   }
 
   // During a live meeting ⌘1 never cancels either — its meeting branch runs first — so fn

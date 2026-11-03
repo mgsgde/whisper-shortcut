@@ -88,6 +88,32 @@ struct LiveDictationTests {
     #expect(joiner.inserted == "klagt. seit gestern")
   }
 
+  @Test("Only when spoken: a function word at the next piece start is lower-cased mid-sentence")
+  func spokenOnlyLowercasesFunctionWordAtPieceStart() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("Sie klagt") == "Sie klagt")
+    #expect(joiner.next("Über Schmerzen") == " über Schmerzen")
+    #expect(joiner.inserted == "Sie klagt über Schmerzen")
+  }
+
+  @Test("Only when spoken: a capital stays when the previous piece ended the sentence")
+  func spokenOnlyKeepsCapitalAfterSentenceMark() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("Ende.") == "Ende.")
+    #expect(joiner.next("Über Schmerzen") == " Über Schmerzen")
+    #expect(joiner.inserted == "Ende. Über Schmerzen")
+  }
+
+  @Test("With periods held, a capital at a piece start stays")
+  func heldPeriodsKeepPieceStartCapital() {
+    var joiner = LiveChunkJoiner()
+    #expect(joiner.next("Sie klagt") == "Sie klagt")
+    #expect(joiner.next("Über Schmerzen") == " Über Schmerzen")
+    #expect(joiner.inserted == "Sie klagt Über Schmerzen")
+  }
+
   // MARK: - Joiner
 
   @Test("Pieces are joined with single spaces, none at the start")

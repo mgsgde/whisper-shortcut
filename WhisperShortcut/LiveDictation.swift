@@ -131,6 +131,11 @@ enum LiveDictation {
 ///   weak evidence; the period is then kept, which is what not holding it would have done anyway.
 ///   Never held at all when `holdsPeriods` is false (`PunctuationMode.spokenOnly`): every period
 ///   there was said on purpose, so there is nothing ambiguous to wait on.
+/// - **A capital after a pause:** Parakeet capitalises the first word of every piece. With
+///   `holdsPeriods` false, when the text so far is non-empty and does not end (trailing spaces
+///   aside) in ". ! ? :", or a newline, that capital is taken off a function word
+///   (`SpokenPunctuation.lowercasingFunctionWord`). The sentence reads "klagt über"; after a
+///   period that was actually said, "Ende. Über" stays. Nouns and verbs keep Parakeet's capital.
 ///
 /// Pure value type; unit-tested directly.
 struct LiveChunkJoiner: Equatable {
@@ -146,6 +151,10 @@ struct LiveChunkJoiner: Equatable {
   mutating func next(_ piece: String) -> String {
     var body = piece.trimmingCharacters(in: .whitespaces)
     guard !body.isEmpty else { return "" }
+
+    if !holdsPeriods {
+      body = Self.lowercaseLeadingFunctionWord(body, after: inserted)
+    }
 
     var out = ""
     if heldPeriod {
@@ -176,6 +185,19 @@ struct LiveChunkJoiner: Equatable {
   }
 
   static let closingPunctuation: Set<Character> = [",", ".", ";", ":", "!", "?", ")", "]", "»", "“"]
+
+  /// Parakeet capitalises the first word after a pause. Mid-sentence, in spoken-only mode, that
+  /// capital belongs only on a noun or a verb — see the struct comment.
+  private static func lowercaseLeadingFunctionWord(_ body: String, after inserted: String) -> String {
+    let prior = inserted.trimmingCharacters(in: .whitespaces)
+    guard let last = prior.last, !last.isNewline, last != ".", last != "!", last != "?", last != ":"
+    else { return body }
+    let split = body.firstIndex(where: \.isWhitespace)
+    let word = split.map { String(body[..<$0]) } ?? body
+    guard let lowered = SpokenPunctuation.lowercasingFunctionWord(word) else { return body }
+    guard let split else { return lowered }
+    return lowered + body[split...]
+  }
 
   static func startsWithLowercaseLetter(_ text: String) -> Bool {
     guard let first = text.first else { return false }

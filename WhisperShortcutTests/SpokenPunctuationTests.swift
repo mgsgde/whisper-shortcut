@@ -192,7 +192,8 @@ struct SpokenPunctuationReplyTests {
     let mode = PunctuationMode.spokenOnly
     #expect(SpokenPunctuation.apply(to: "3 Komma 5 cm", mode: mode) == "3,5 cm")
     #expect(SpokenPunctuation.apply(to: "Hallo Komma 5 Stück", mode: mode) == "Hallo, 5 Stück")
-    #expect(SpokenPunctuation.apply(to: "drei Komma fünf", mode: mode) == "drei, fünf")
+    // Number words are the same decimal, one pair: "drei Komma fünf" → "3,5".
+    #expect(SpokenPunctuation.apply(to: "drei Komma fünf", mode: mode) == "3,5")
   }
 
   @Test("Capitalisation carries over a line break after Punkt and Fragezeichen")
@@ -214,9 +215,10 @@ struct SpokenPunctuationReplyTests {
 
   @Test("Stripping removes model punctuation before whitespace or the end")
   func stripsModelPunctuation() {
+    // "Wie" is a function word, so the capital Parakeet added after its own period goes.
     #expect(
       SpokenPunctuation.stripModelPunctuation(from: "Hallo, Welt. Wie geht's? Gut!")
-        == "Hallo Welt Wie geht's Gut")
+        == "Hallo Welt wie geht's Gut")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "Ende...") == "Ende")
   }
 
@@ -316,6 +318,47 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.apply(to: "Befund neuer Absatz") == "Befund")
     #expect(SpokenPunctuation.apply(to: "Erste Zeile neue Zeile", keepsEdgeBreaks: true) == "Erste Zeile\n")
     #expect(SpokenPunctuation.apply(to: "  Befund neuer Absatz  ", keepsEdgeBreaks: true) == "Befund\n\n")
+  }
+
+  /// The order Dictate uses: drop the model's marks, then the spoken-only commands.
+  private func spokenOnly(_ text: String) -> String {
+    SpokenPunctuation.apply(
+      to: SpokenPunctuation.stripModelPunctuation(from: text), mode: .spokenOnly)
+  }
+
+  @Test("Dates and clinical abbreviations keep their period")
+  func stripKeepsDatesAndClinicalAbbreviations() {
+    #expect(spokenOnly("Seit dem 12. März.") == "Seit dem 12. März")
+    #expect(spokenOnly("Pat. ist mobil.") == "Pat. ist mobil")
+  }
+
+  @Test("\"Punkt\" before a digit or a number word is the noun")
+  func punktBeforeNumberWordStays() {
+    #expect(spokenOnly("unter Punkt 3 der Fragen") == "unter Punkt 3 der Fragen")
+    #expect(spokenOnly("Unter Punkt drei steht") == "Unter Punkt drei steht")
+  }
+
+  @Test("A decimal comma between number words becomes digits, and only in spoken-only mode")
+  func decimalCommaBetweenNumberWords() {
+    #expect(spokenOnly("Messwert zwei Komma fünf") == "Messwert 2,5")
+    let automatic = "zwei Komma fünf"
+    #expect(SpokenPunctuation.apply(to: automatic, mode: .automatic) == automatic)
+  }
+
+  @Test("A repeated spoken mark collapses to one and still capitalises the next word")
+  func repeatedSpokenMarksCollapse() {
+    #expect(spokenOnly("Ende Punkt Punkt weiter") == "Ende. Weiter")
+  }
+
+  @Test("A function word loses the capital after a stripped model period; a spoken Punkt puts it back")
+  func functionWordAfterStrippedPeriod() {
+    #expect(spokenOnly("Sie klagt. Über Schmerzen.") == "Sie klagt über Schmerzen")
+    #expect(spokenOnly("Befund. Seit gestern") == "Befund seit gestern")
+    #expect(spokenOnly("Befund. Patient") == "Befund Patient")
+    #expect(spokenOnly("Wir bitten. Sie um Antwort") == "Wir bitten Sie um Antwort")
+    // The model's period goes and "Punkt" is not a function word, so "Über" is capitalised
+    // again by the spoken mark.
+    #expect(spokenOnly("klagt. Punkt Über") == "klagt. Über")
   }
 
   @Test("Spoken-only formatting keeps the capital but adds no trailing period")
