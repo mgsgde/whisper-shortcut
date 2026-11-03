@@ -77,11 +77,12 @@ enum CustomEndpointAuth {
   ///
   /// True for an **https** proxy (LiteLLM, a self-hosted gateway) — those commonly forward to
   /// api.openai.com using the caller's own OpenAI key, which is why the custom endpoint falls
-  /// back to it at all. False for:
+  /// back to it at all. Also true for loopback over `http://` (`localhost`, `127.0.0.0/8`,
+  /// `::1`): the key never leaves this Mac, and a local LiteLLM needs it. False for:
   ///   - a customer's own tenant (Azure, Vertex): that key cannot work and would be handed to
   ///     someone else's endpoint for a 401;
-  ///   - any `http://` host, including a LAN Whisper box: sending the personal OpenAI key in
-  ///     cleartext is a leak, and a keyless local server does not need it.
+  ///   - any other `http://` host, including a LAN Whisper box: sending the personal OpenAI key
+  ///     in cleartext is a leak, and a keyless local server does not need it.
   /// An unparseable or empty URL keeps the fallback — no request goes out until a real URL exists.
   static func acceptsOpenAIAPIKey(baseURL: String) -> Bool {
     let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,12 +92,29 @@ enum CustomEndpointAuth {
     else {
       return true
     }
-    // Cleartext: never send an OpenAI key to a LAN box or an http proxy.
-    if components.scheme?.lowercased() != "https" { return false }
+    // Cleartext stays on this machine for loopback. A LAN box or an http proxy does not.
+    if components.scheme?.lowercased() != "https" { return isLoopbackHost(host) }
     if isAzureHost(host) { return false }
     // Vertex AI and every other Google API front door.
     if host == "googleapis.com" || host.hasSuffix(".googleapis.com") { return false }
     return true
+  }
+
+  /// This Mac only: `localhost`, `127.0.0.0/8`, and `::1` (URLComponents keeps the brackets
+  /// on an IPv6 literal, so `[::1]` is the same host).
+  private static func isLoopbackHost(_ host: String) -> Bool {
+    let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    if h == "localhost" || h == "::1" || h == "0:0:0:0:0:0:0:1" { return true }
+    let parts = h.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4 else { return false }
+    var octets: [Int] = []
+    for part in parts {
+      guard !part.isEmpty, part.allSatisfy(\.isNumber), let value = Int(part), value <= 255 else {
+        return false
+      }
+      octets.append(value)
+    }
+    return octets[0] == 127
   }
 
   /// Azure follows OpenAI's own rule that reasoning models reject `max_tokens` and require
