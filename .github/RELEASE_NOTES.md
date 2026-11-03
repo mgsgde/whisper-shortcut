@@ -1,5 +1,3 @@
-**[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.
-
 ## Dictate Live
 - **No more glued words.** When you start a new Dictate Live session right after existing text, the first words now get a space in front of them.
 - **Fillers are dropped.** "äh", "ähm", "hm", "mhm" and "Mm-hmm" no longer end up in your text.

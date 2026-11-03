@@ -48,7 +48,7 @@ GitHub and App Store ship on different cadences. The live App Store version is o
 7. **GitHub release notes:** summarize changes since the previous git tag (`git log` since last `Update to version` commit / `v<PREV>`).
 8. **App Store “What's New”:** summarize **user-facing** changes since the last version **live on App Store Connect** (see [App Store vs GitHub baselines](#app-store-vs-github-baselines) — not the previous git tag unless they match). Get the live App Store version from `asc` rather than asking.
 9. Save GitHub release notes to `.github/RELEASE_NOTES.md` (used automatically by the workflow) – **IMPORTANT**: Use the resolved repository URL for all links (releases link and changelog link); never use placeholders like `your-repo`
-10. Also write `.github/RELEASE_NOTES.de.md`: the same notes in German (Sie-Form, natural German, not word-for-word; keep the Mac App Store link line, with German link text 'WhisperShortcut im Mac App Store laden'). Sparkle shows it to users whose Mac runs in German.
+10. Also write `.github/RELEASE_NOTES.de.md`: the same notes in German (Sie-Form, natural German, not word-for-word). Sparkle shows it to users whose Mac runs in German.
 11. Rebuild and start the app with `bash scripts/rebuild-and-restart.sh`; stop if the build fails
 12. Git add and commit only the files changed for this release command, with message `Update to version X.X` – **Important**: `WhisperShortcut/Info.plist`, `.github/RELEASE_NOTES.md`, and `.github/RELEASE_NOTES.de.md` must be included in the commit, plus `WhisperShortcut/Docs/README.md` when step 11 changed it (the rebuild copies `README.md` there, and CI bundles the committed copy, so an uncommitted sync ships the old README to the in-app Chat — v8.36 did)
 13. Detect the current branch with `git branch --show-current`
@@ -125,10 +125,6 @@ This command + the `release.yml` workflow build and ship only the **notarized De
 
 Release notes should be formatted in Markdown and may include:
 
-- **Store CTA — always the first line after the title (growth ledger G1):**
-  `**[Get WhisperShortcut on the Mac App Store](https://whispershortcut.com/go/appstore?src=github-release)** — automatic updates, one-time purchase.`
-  Keep the `/go/appstore?src=github-release` hop exactly as written — it is how release-note
-  clicks become attributable in the Cloud Run logs (`plans/instrumentation-gaps.md` #1/#7).
 - Installation instructions (with link to releases page: `https://github.com/USER/REPO/releases`)
 - Changes (main section)
 - Full changelog link (format: `https://github.com/USER/REPO/compare/vPREVIOUS...vCURRENT`)

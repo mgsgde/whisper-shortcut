@@ -123,6 +123,9 @@ struct SupportFeedbackSection: View {
           )
           .pointerCursorOnHover()
 
+          #if APP_STORE
+          // App Store build only: the direct build never sends people to the App Store
+          // (Magnus, 2026-11-03).
           Button(action: {
             viewModel.openAppStoreReview()
           }) {
@@ -172,6 +175,7 @@ struct SupportFeedbackSection: View {
           .buttonStyle(PlainButtonStyle())
           .help(viewModel.data.appStoreLinkCopied ? ("App Store link copied to clipboard" as LocalizedStringKey) : "Copy App Store link to clipboard")
           .pointerCursorOnHover()
+          #endif
 
           Button(action: {
             viewModel.revealHangReports()
