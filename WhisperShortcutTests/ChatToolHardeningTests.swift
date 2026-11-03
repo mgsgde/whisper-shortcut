@@ -182,6 +182,26 @@ struct ChatToolHardeningTests {
     #expect(GoogleTasksAPIClient.loggedBodyKeys(Data("not-json".utf8)) == "none")
   }
 
+  @Test func trelloLogStripsKeyAndTokenButKeepsTheError() {
+    let key = String(repeating: "ab", count: 16)
+    let card = String(repeating: "cd", count: 12)
+    let body = """
+      card missing https://api.trello.com/1/cards/\(card)?key=abc123secret&token=tok_value&name=Q3%20plan \
+      {"message":"invalid idList","token":"short-tok"} leaked \(key)
+      """
+    let logged = TrelloAPIClient.redactingSecretsForLog(body)
+    #expect(logged.contains("invalid idList"))
+    #expect(logged.contains("name=Q3%20plan"))
+    #expect(logged.contains(card))
+    #expect(logged.contains("key=REDACTED"))
+    #expect(logged.contains("token=REDACTED"))
+    #expect(!logged.contains("abc123secret"))
+    #expect(!logged.contains("tok_value"))
+    #expect(!logged.contains("short-tok"))
+    #expect(!logged.contains(key))
+    #expect(TrelloAPIClient.redactingSecretsForLog("key%3Dsupersecret&ok=1") == "key%3DREDACTED&ok=1")
+  }
+
   // MARK: write tools size check
 
   @Test func existingFileSizeReadsAttributesOnly() throws {
