@@ -10,8 +10,8 @@ import Foundation
 /// wichtigste Punkt"), so they are left alone. Only phrases that are almost never meant literally in
 /// dictation are converted, matched case-insensitively on whole words. The exception is the
 /// "Only when spoken" punctuation mode (`PunctuationMode.spokenOnly`): there the user has opted in
-/// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen" and "Schrägstrich"
-/// are converted too.
+/// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Schrägstrich"
+/// and "drei Pünktchen" are converted too.
 enum SpokenPunctuation {
   private struct Rule {
     let regex: NSRegularExpression
@@ -49,12 +49,13 @@ enum SpokenPunctuation {
   /// attaches to the previous word with one space after; after ". ? !" the next word is
   /// capitalized (marker, see `capitalizeAfterGluedColon`). Run after `rules`.
   private static let spokenOnlyRules: [Rule] = [
-    // "ich Schrägstrich sage" → "ich/sage". Spaces and stray ASR commas/semicolons before it go; a
-    // period stays ("usw. Schrägstrich b" → "usw./b"). "Schrägstriche" (plural) does not match; the
-    // glued form ("Schrägstrichsage") does. Spoken-only: in automatic mode, and in Dictate Prompt
-    // instructions ("ersetze jeden Schrägstrich …"), the word is an ordinary noun.
-    rule(#"[ \t,;]*\bschr(?:ä|ae)gstrich\b[ \t,.;]*"#, "/"),
-    rule(#"[ \t,;]*\bschr(?:ä|ae)gstrich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
+    // "ich Schrägstrich sage" → "ich/sage". Also "Schraegstrich", the mishearing "Schreckstrich",
+    // and a split "Schräg Strich" / "Schräg-Strich". Spaces and stray ASR commas/semicolons before
+    // it go; a period stays ("usw. Schrägstrich b" → "usw./b"). "Schrägstriche" (plural) does not
+    // match; the glued form ("Schrägstrichsage") does. Spoken-only: in automatic mode, and in
+    // Dictate Prompt instructions ("ersetze jeden Schrägstrich …"), the word is an ordinary noun.
+    rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich\b[ \t,.;]*"#, "/"),
+    rule(#"[ \t,;]*\bschr(?:ä|ae|e)(?:g|ck)[ \t-]?strich(?!(?:e|en|es|s)\b)(?=\p{L})"#, "/"),
     // "3 Komma 5 cm" → "3,5 cm": a decimal comma, no spaces. Must run before the plain "Komma" rule.
     // Only a single pair: "3 Komma 5 Komma 4" is a list and gets plain commas below. The same pair
     // said in words ("zwei Komma fünf" → "2,5") is `decimalCommaBetweenNumberWords` in `apply`:
@@ -62,6 +63,12 @@ enum SpokenPunctuation {
     rule(#"(?<!\bkomma[ \t]\d{1,6})(?<=\d)[ \t]*\bkomma\b[ \t]*(?=\d)(?!\d+[ \t]*\bkomma\b[ \t]*\d)"#, ","),
     rule(#"[ \t,;]*\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
     rule(#"[ \t,;]*\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
+    // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
+    // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after
+    // it go too. Not "drei Punkte" (a score). Before "Punkt", so "Pünktchen" is not read as one.
+    rule(
+      #"[ \t,;]*\b(?:drei[ \t]+p(?:ü|ue)nktchen|auslassungspunkte)\b[ \t,.;]*"#,
+      "… "),
     // Not the noun: "Punkt 3", "Punkt drei", "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt".
     // A following number word counts as the number, same as a digit ("Unter Punkt drei steht").
     rule(

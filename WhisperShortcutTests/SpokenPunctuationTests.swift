@@ -180,6 +180,25 @@ struct SpokenPunctuationReplyTests {
     #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text", mode: mode) == "zwei Schrägstriche im Text")
   }
 
+  @Test("\"Schreckstrich\" and a split \"Schräg Strich\" become a slash; the plural stays")
+  func slashMishearings() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "Arbeitsmarkt Schreckstrich im ADL", mode: mode) == "Arbeitsmarkt/im ADL")
+    #expect(SpokenPunctuation.apply(to: "Hals Schräg Strich Nacken", mode: mode) == "Hals/Nacken")
+    #expect(SpokenPunctuation.apply(to: "Hals Schräg-Strich Nacken", mode: mode) == "Hals/Nacken")
+    #expect(SpokenPunctuation.apply(to: "zwei Schrägstriche im Text", mode: mode) == "zwei Schrägstriche im Text")
+  }
+
+  @Test("\"drei Pünktchen\" becomes an ellipsis; \"drei Punkte\" and automatic mode stay")
+  func ellipsis() {
+    let mode = PunctuationMode.spokenOnly
+    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Pünktchen und", mode: mode) == "Gesamt GdB… und")
+    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Puenktchen und", mode: mode) == "Gesamt GdB… und")
+    #expect(SpokenPunctuation.apply(to: "Gesamt GdB Auslassungspunkte und", mode: mode) == "Gesamt GdB… und")
+    #expect(SpokenPunctuation.apply(to: "drei Punkte erreicht", mode: mode) == "drei Punkte erreicht")
+    #expect(SpokenPunctuation.apply(to: "Gesamt GdB drei Pünktchen und") == "Gesamt GdB drei Pünktchen und")
+  }
+
   @Test("An abbreviation period before \"Schrägstrich\" is kept")
   func slashKeepsAbbreviationPeriod() {
     let mode = PunctuationMode.spokenOnly
