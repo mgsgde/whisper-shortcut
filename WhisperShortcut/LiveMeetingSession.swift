@@ -1181,19 +1181,14 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         }()
         // Keep the audio: losing a meeting because the Wi-Fi dropped is not acceptable, and the
         // chunk can be transcribed later at its original timestamp.
-        let keptStem = stem.map { MeetingAudioBacklog.resolvedStem($0) }
-        let kept = keptStem.map {
-          MeetingAudioBacklog.retain(audioURL, stem: $0, startTime: startTime)
+        // The finish safety net may have renamed the meeting while this call was out.
+        let kept = stem.map {
+          MeetingAudioBacklog.retain(
+            audioURL, stem: MeetingAudioBacklog.resolvedStem($0), startTime: startTime)
         } ?? false
         if !kept { cleanUpAudioFile(audioURL) }
         await MainActor.run {
           if kept { self.onBacklogChanged() }
-          // The 30 s finish safety net can rename and finalize while this call is still
-          // out. Retain already followed the rename; kick retry so the chunk lands in
-          // the renamed transcript instead of waiting for a manual retry.
-          if kept, self.finalized, let keptStem {
-            Task { @MainActor in await self.retryBacklog(stems: [keptStem], announce: false) }
-          }
           if isRateLimitOrQuota {
             if !self.didShowRateLimitAlert {
               self.didShowRateLimitAlert = true
