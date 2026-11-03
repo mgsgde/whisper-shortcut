@@ -83,15 +83,10 @@ struct GeminiErrorMappingTests {
 
   // MARK: - parseErrorResponse
 
-  @Test("HTTP 402 maps to serverError(402)")
-  func http402IsServerError() throws {
-    // Documented, not fixed: `TranscriptionError.subscriptionRequired` exists for a backend
-    // 402 ("no active subscription") but `parseErrorResponse` returns `.serverError(402)`
-    // before any body is read. A later change that maps 402 to `.subscriptionRequired`
-    // should update this pin.
+  @Test("HTTP 402 maps to subscriptionRequired")
+  func http402IsSubscriptionRequired() throws {
     let error = try client.parseErrorResponse(data: Data("{}".utf8), statusCode: 402)
-    #expect(error == .serverError(402))
-    #expect(error != .subscriptionRequired)
+    #expect(error == .subscriptionRequired)
   }
 
   @Test("Proxy 429 with top_up_url is a rate limit pointing at that URL")
@@ -136,15 +131,12 @@ struct GeminiErrorMappingTests {
         == .quotaExceeded(retryAfter: 12.5))
   }
 
-  @Test("'Rate limit exceeded' currently maps to quotaExceeded because of the 'exceeded' substring")
-  func rateLimitExceededSubstringHitsQuotaFirst() throws {
-    // Current contract / known mapping quirk: the quota branch matches `exceeded` before
-    // the rate-limit branch, so a classic "Rate limit exceeded" Gemini message becomes
-    // `.quotaExceeded`, not `.rateLimited`. Documented rather than changed.
+  @Test("'Rate limit exceeded' maps to rateLimited")
+  func rateLimitExceededIsRateLimited() throws {
     let data = try geminiError(code: 429, message: "Rate limit exceeded. Please retry in 8s.")
     #expect(
       try client.parseErrorResponse(data: data, statusCode: 429)
-        == .quotaExceeded(retryAfter: 8))
+        == .rateLimited(retryAfter: 8, topUpURL: nil))
   }
 
   @Test("A rate-limit message without 'exceeded' is rateLimited")
@@ -165,35 +157,34 @@ struct GeminiErrorMappingTests {
 
   @Test("400 plus voice/allowlist language is voiceRequiresAPIKey")
   func voiceRequiresAPIKey() throws {
-    // Must not also contain "api key" — that substring is checked first and becomes
-    // `.incorrectAPIKey` on a non-401 (see `voicePhraseAlsoContainingAPIKey`).
     let data = try geminiError(
       code: 400,
       message: "Audio output is allowlist-only.")
     #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .voiceRequiresAPIKey)
   }
 
-  @Test("A voice error that also says 'api key' currently maps to incorrectAPIKey")
+  @Test("A voice error that also says 'api key' is voiceRequiresAPIKey")
   func voicePhraseAlsoContainingAPIKey() throws {
-    // Current contract: the api-key branch runs before the voice/allowlist branch.
     let data = try geminiError(
       code: 400,
       message: "Audio output requires an API key and allowlist access.")
-    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .incorrectAPIKey)
+    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .voiceRequiresAPIKey)
   }
 
   @Test("A typed-decode miss still reads error.message from loose JSON")
   func fallbackJSONParsing() throws {
     // `code` as a string fails `GeminiErrorResponse` decoding (code is Int) and must
-    // still map via the manual JSON path.
+    // still map via the manual JSON path. Status 400 (not 401): the status-only
+    // fallback for 400 is `.invalidRequest`, so this is `.incorrectAPIKey` only when
+    // the message is actually read. A 401 would be `.invalidAPIKey` either way.
     let data = try json([
       "error": [
-        "code": "401",
+        "code": "400",
         "message": "API key not valid",
-        "status": "UNAUTHENTICATED",
+        "status": "INVALID_ARGUMENT",
       ] as [String: Any],
     ])
-    #expect(try client.parseErrorResponse(data: data, statusCode: 401) == .invalidAPIKey)
+    #expect(try client.parseErrorResponse(data: data, statusCode: 400) == .incorrectAPIKey)
   }
 
   @Test("Unknown bodies fall back to the HTTP status map", arguments: [

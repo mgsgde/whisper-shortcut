@@ -108,8 +108,8 @@ struct SpeechTextSanitizerTests {
       | Ada | Engineer |
       """)
     #expect(!spoken.contains("|"))
-    #expect(spoken.contains("Ada"))
-    #expect(spoken.contains("Engineer"))
+    #expect(spoken.contains("Name, Role"))
+    #expect(spoken.contains("Ada, Engineer"))
   }
 }
 

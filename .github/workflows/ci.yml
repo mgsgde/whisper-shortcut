@@ -2,14 +2,12 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
   workflow_call:
 
-# Offline unit tests + unsigned compile of both app schemes. No secrets, no .env,
-# no live provider calls. Tests already compile the App Store scheme; the extra
-# compile job is what catches `#if APP_STORE` drift in the direct/GitHub build.
+# Offline unit tests + unsigned compile of the direct scheme. No secrets, no .env,
+# no live provider calls. The hermetic job already builds WhisperShortcut-AppStore;
+# this compile job catches `#if APP_STORE` drift in the direct/GitHub build.
 permissions:
   contents: read
 
@@ -78,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scheme: [WhisperShortcut, WhisperShortcut-AppStore]
+        scheme: [WhisperShortcut]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -104,6 +102,7 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData-${{ matrix.scheme }}" \
             -skipPackagePluginValidation \
+            -disableAutomaticPackageResolution \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM=

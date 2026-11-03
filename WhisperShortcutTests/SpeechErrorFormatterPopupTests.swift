@@ -14,7 +14,7 @@ struct SpeechErrorFormatterPopupTests {
     let message = SpeechErrorFormatter.format(
       .billingRequired(topUpURL: TranscriptionError.openAIBillingURL))
     #expect(message.contains("OpenAI"))
-    #expect(message.contains("Out of Credit") || message.contains("no credit"))
+    #expect(message.contains("Out of Credit"))
     #expect(!message.contains("OpenRouter"))
   }
 
@@ -38,7 +38,7 @@ struct SpeechErrorFormatterPopupTests {
   func rateLimitWithTopUpIsDailyLimit() {
     let url = URL(string: "https://example.com/topup")!
     let message = SpeechErrorFormatter.format(.rateLimited(retryAfter: nil, topUpURL: url))
-    #expect(message.contains("Daily Limit") || message.contains("included usage"))
+    #expect(message.contains("Daily Limit Reached"))
     #expect(!message.contains("aistudio.google.com"))
   }
 
@@ -46,13 +46,13 @@ struct SpeechErrorFormatterPopupTests {
   func rateLimitRetryAfterSeconds() {
     let message = SpeechErrorFormatter.format(.rateLimited(retryAfter: 30, topUpURL: nil))
     #expect(message.contains("30"))
-    #expect(message.contains("Rate Limit") || message.contains("usage limits"))
+    #expect(message.contains("Rate Limit Exceeded"))
   }
 
   @Test("A fileError that mentions a missing model points at Offline Models")
   func fileErrorModelNotFound() {
     let message = SpeechErrorFormatter.format(.fileError("Model not found on disk"))
-    #expect(message.contains("Model Not Downloaded") || message.contains("Offline Models"))
+    #expect(message.contains("Model Not Downloaded"))
     #expect(message.contains("Download"))
   }
 
@@ -67,7 +67,7 @@ struct SpeechErrorFormatterPopupTests {
   @Test("A networkError whose details mention timeout uses the timeout copy")
   func networkTimeoutCopy() {
     let message = SpeechErrorFormatter.format(.networkError("The request timeout was reached"))
-    #expect(message.contains("Timeout") || message.contains("timed out"))
+    #expect(message.contains("Generic Timeout"))
     #expect(message.contains("The request timeout was reached"))
   }
 

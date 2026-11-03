@@ -1359,8 +1359,9 @@ class GeminiAPIClient {
 
   /// Parses Gemini error responses into TranscriptionError
   func parseErrorResponse(data: Data, statusCode: Int) throws -> TranscriptionError {
+    // Backend 402 means the signed-in user has no active subscription, whatever the body says.
     if statusCode == 402 {
-      return .serverError(402)
+      return .subscriptionRequired
     }
     // Backend proxy 429: { error: string, code: "rate_limit_exceeded", top_up_url: string }
     if statusCode == 429,
@@ -1394,8 +1395,15 @@ class GeminiAPIClient {
         DebugLogger.log("GEMINI-ERROR: Found retryDelay: \(retryAfter)s")
       }
 
-      // Map common Gemini errors to TranscriptionError
+      // Map common Gemini errors to TranscriptionError.
+      // Voice/allowlist is checked before the generic api-key branch: the voice
+      // error says "requires an api key", which the api-key substring would swallow.
+      // Rate limit is checked before "exceeded": "Rate limit exceeded" is a rate
+      // limit, and the quota branch's `exceeded` match would claim it first.
       let lowerMessage = message.lowercased()
+      if statusCode == 400 && (lowerMessage.contains("allowlist") || lowerMessage.contains("audio output") || lowerMessage.contains("voice output") || lowerMessage.contains("requires an api key")) {
+        return .voiceRequiresAPIKey
+      }
       if lowerMessage.contains("api key") || lowerMessage.contains("authentication") {
         return statusCode == 401 ? .invalidAPIKey : .incorrectAPIKey
       }
@@ -1403,17 +1411,14 @@ class GeminiAPIClient {
       if statusCode == 400 && (status == "FAILED_PRECONDITION" || lowerMessage.contains("billing") || lowerMessage.contains("free tier") || lowerMessage.contains("payment")) {
         return .billingRequired()
       }
-      if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
-        return .quotaExceeded(retryAfter: retryAfter)
-      }
       if lowerMessage.contains("rate limit") {
         return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
       }
+      if lowerMessage.contains("quota") || lowerMessage.contains("exceeded") {
+        return .quotaExceeded(retryAfter: retryAfter)
+      }
       if statusCode == 404 && (lowerMessage.contains("no longer available") || lowerMessage.contains("deprecated")) {
         return .modelDeprecated
-      }
-      if statusCode == 400 && (lowerMessage.contains("allowlist") || lowerMessage.contains("audio output") || lowerMessage.contains("voice output") || lowerMessage.contains("requires an api key")) {
-        return .voiceRequiresAPIKey
       }
     }
 
@@ -1426,7 +1431,7 @@ class GeminiAPIClient {
     switch statusCode {
     case 400: return .invalidRequest
     case 401: return .invalidAPIKey
-    case 402: return .serverError(402)
+    case 402: return .subscriptionRequired
     case 403: return .permissionDenied
     case 404: return .notFound
     case 429: return .rateLimited(retryAfter: retryAfter, topUpURL: nil)
