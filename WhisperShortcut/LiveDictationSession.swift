@@ -44,10 +44,15 @@ final class LiveDictationSession {
 
   /// `holdsPeriods` is false in "Only when spoken" mode: every period there was said on purpose,
   /// so `LiveChunkJoiner` must never hold one back waiting to see whether the sentence continues.
-  init(decode: @escaping Decode, insert: @escaping Insert, holdsPeriods: Bool = true) {
+  /// `caret` is the character already before the cursor. `.unknown` spaces the first piece as today.
+  init(
+    decode: @escaping Decode, insert: @escaping Insert, holdsPeriods: Bool = true,
+    caret: FocusedTextContext.CaretContext = .unknown
+  ) {
     self.decode = decode
     self.insert = insert
     joiner.holdsPeriods = holdsPeriods
+    joiner.seed(caret)
   }
 
   /// A rotated chunk (mid-recording) or the tail chunk (at stop). Silent chunks are skipped.

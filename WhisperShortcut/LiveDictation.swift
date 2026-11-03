@@ -46,14 +46,36 @@ enum LiveDictation {
     #endif
   }
 
-  /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: model
-  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands. Edge line
-  /// breaks ("neuer Absatz" at the very end of a piece) are kept — `LiveChunkJoiner` relies on them
-  /// to lay out the next piece without adding a space after.
+  /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: standalone
+  /// fillers dropped, model punctuation stripped in "Only when spoken" mode, then the spoken
+  /// layout commands. Edge line breaks ("neuer Absatz" at the very end of a piece) are kept —
+  /// `LiveChunkJoiner` relies on them to lay out the next piece without adding a space after.
   static func finishPiece(_ text: String, mode: PunctuationMode) -> String {
-    let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: text) : text
+    let withoutFillers = removingFillers(text)
+    let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: withoutFillers) : withoutFillers
     return SpokenPunctuation.apply(to: source, mode: mode, keepsEdgeBreaks: true)
   }
+
+  /// Parakeet writes fillers ("Mm-hmm", "Ähm") into the record. Whole word, case-insensitive, plus
+  /// one comma, period or semicolon glued on, and the spaces around them. "Um", "ah", "aha",
+  /// "achso" and "oh" stay — they are real German words. A piece of only fillers comes back "".
+  private static func removingFillers(_ text: String) -> String {
+    let range = NSRange(text.startIndex..., in: text)
+    guard fillerRegex.firstMatch(in: text, range: range) != nil else { return text }
+    let replaced = fillerRegex.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
+    let collapsed = fillerSpaceRun.stringByReplacingMatches(
+      in: replaced, range: NSRange(replaced.startIndex..., in: replaced), withTemplate: " ")
+    return collapsed.trimmingCharacters(in: .whitespaces)
+  }
+
+  // "hmm" is two or more m's; "hm" is the single one. Longer forms come first so a word boundary
+  // still decides, and "ähm" is not eaten as "äh".
+  // swiftlint:disable:next force_try
+  private static let fillerRegex = try! NSRegularExpression(
+    pattern: #"[ \t]*\b(?:mm-hmm|mmhmm|m-hm|mhm|hm{2,}|hm|ähm|äh|öhm|ehm)\b[,.;]?[ \t]*"#,
+    options: [.caseInsensitive])
+  // swiftlint:disable:next force_try
+  private static let fillerSpaceRun = try! NSRegularExpression(pattern: #"[ \t]{2,}"#)
 
   /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
   /// piece appears right after the pause; a cloud model would add a network round trip per piece.
@@ -118,10 +140,13 @@ enum LiveDictation {
 
 /// Turns decoded pieces into the exact strings to insert, append-only.
 ///
-/// - **Spacing:** one space between pieces, none at the very start, none after a line break, none
-///   before a piece that starts with a line break (`SpokenPunctuation` turns "neuer Absatz" into
-///   one) or with closing punctuation, none on either side of a slash ("Schrägstrich" said in one
-///   piece and the next word in another must still read "L4/L5", not "L4/ L5" or "L4 /L5").
+/// - **Spacing:** one space between pieces, none at the very start. `seed` is the character already
+///   before the caret: a letter takes that leading space ("Basistherapie" + "Ah" → " Ah"),
+///   whitespace or a line break there does not, and an unknown caret keeps today's start. Also
+///   none after a line break, none before a piece that starts with a line break
+///   (`SpokenPunctuation` turns "neuer Absatz" into one) or with closing punctuation, none on
+///   either side of a slash ("Schrägstrich" said in one piece and the next word in another must
+///   still read "L4/L5", not "L4/ L5" or "L4 /L5").
 /// - **A period at a breath:** Parakeet punctuates each piece on its own, so a pause mid-sentence
 ///   can end a piece with "." although the sentence goes on. A piece's final period is therefore
 ///   held back and emitted with the next piece — dropped when that piece starts with a lowercase
@@ -132,20 +157,36 @@ enum LiveDictation {
 ///   Never held at all when `holdsPeriods` is false (`PunctuationMode.spokenOnly`): every period
 ///   there was said on purpose, so there is nothing ambiguous to wait on.
 /// - **A capital after a pause:** Parakeet capitalises the first word of every piece. With
-///   `holdsPeriods` false, when the text so far is non-empty and does not end (trailing spaces
-///   aside) in ". ! ? :", or a newline, that capital is taken off a function word
+///   `holdsPeriods` false, when the text so far — the seeded character plus `inserted` — is
+///   non-empty and does not end (trailing spaces aside) in ". ! ? :", or a newline, that capital
+///   is taken off a function word
 ///   (`SpokenPunctuation.lowercasingFunctionWord`). The sentence reads "klagt über"; after a
 ///   period that was actually said, "Ende. Über" stays. Nouns and verbs keep Parakeet's capital.
 ///
 /// Pure value type; unit-tested directly.
 struct LiveChunkJoiner: Equatable {
-  /// Everything handed out so far, held marks included once emitted.
+  /// Everything handed out so far, held marks included once emitted. The character `seed` read
+  /// from the field is not included — it was already in the document.
   private(set) var inserted = ""
   private var heldPeriod = false
+  /// One character already before the caret, or empty when the field starts there or the caret
+  /// could not be read. Spacing and the spoken-only lower-case check see this plus `inserted`.
+  private var precedingText = ""
   /// False in "Only when spoken" mode. The struct's other stored properties are private, so the
   /// synthesized memberwise init is file-private and `LiveChunkJoiner(holdsPeriods:)` cannot be
   /// called from another file — set this property on the instance after `LiveChunkJoiner()`.
   var holdsPeriods = true
+
+  /// `.character` is the character already before the caret. Start-of-text and unknown leave the
+  /// first piece unspaced, which is today's behaviour.
+  mutating func seed(_ context: FocusedTextContext.CaretContext) {
+    switch context {
+    case .character(let character):
+      precedingText = String(character)
+    case .startOfText, .unknown:
+      precedingText = ""
+    }
+  }
 
   /// The text to insert for `piece` (possibly empty).
   mutating func next(_ piece: String) -> String {
@@ -153,7 +194,7 @@ struct LiveChunkJoiner: Equatable {
     guard !body.isEmpty else { return "" }
 
     if !holdsPeriods {
-      body = Self.lowercaseLeadingFunctionWord(body, after: inserted)
+      body = Self.lowercaseLeadingFunctionWord(body, after: precedingText + inserted)
     }
 
     var out = ""
@@ -161,8 +202,10 @@ struct LiveChunkJoiner: Equatable {
       heldPeriod = false
       if !Self.startsWithLowercaseLetter(body) { out += "." }
     }
-    let before = inserted + out
-    if let last = before.last, !last.isNewline, last != "/",
+    let before = precedingText + inserted + out
+    // Whitespace (a space or a line break already in the field, or a break this joiner wrote)
+    // already separates the next piece, so it must not gain a second space.
+    if let last = before.last, !last.isWhitespace, last != "/",
       let first = body.first, !first.isNewline, first != "/", !Self.closingPunctuation.contains(first)
     {
       out += " "
@@ -184,7 +227,7 @@ struct LiveChunkJoiner: Equatable {
     return "."
   }
 
-  static let closingPunctuation: Set<Character> = [",", ".", ";", ":", "!", "?", ")", "]", "»", "“"]
+  static let closingPunctuation: Set<Character> = [",", ".", ";", ":", "!", "?", ")", "]", "»", "“", "…"]
 
   /// Parakeet capitalises the first word after a pause. Mid-sentence, in spoken-only mode, that
   /// capital belongs only on a noun or a verb — see the struct comment.

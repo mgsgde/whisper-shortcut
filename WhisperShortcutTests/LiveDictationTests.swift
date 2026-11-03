@@ -106,6 +106,18 @@ struct LiveDictationTests {
     #expect(joiner.inserted == "Ende. Über Schmerzen")
   }
 
+  @Test("Standalone fillers are dropped; real words stay")
+  func fillersDropped() {
+    #expect(LiveDictation.finishPiece("Mm-hmm", mode: .automatic) == "")
+    #expect(LiveDictation.finishPiece("Hmm, was ist das", mode: .automatic) == "was ist das")
+    #expect(LiveDictation.finishPiece("Hmmm", mode: .automatic) == "")
+    #expect(LiveDictation.finishPiece("Basistherapie ähm Punkt", mode: .spokenOnly) == "Basistherapie.")
+    #expect(LiveDictation.finishPiece("Um zehn Uhr", mode: .automatic) == "Um zehn Uhr")
+    #expect(
+      LiveDictation.finishPiece("Ah stimmt, aha und achso oh", mode: .automatic)
+        == "Ah stimmt, aha und achso oh")
+  }
+
   @Test("With periods held, a capital at a piece start stays")
   func heldPeriodsKeepPieceStartCapital() {
     var joiner = LiveChunkJoiner()
@@ -115,6 +127,42 @@ struct LiveDictationTests {
   }
 
   // MARK: - Joiner
+
+  @Test("A seeded caret spaces the first piece and is not part of the inserted text")
+  func seededCaret() {
+    var afterLetter = LiveChunkJoiner()
+    afterLetter.seed(.character("e"))
+    #expect(afterLetter.next("Ah stimmt") == " Ah stimmt")
+    #expect(afterLetter.inserted == " Ah stimmt")
+
+    var afterSpace = LiveChunkJoiner()
+    afterSpace.seed(.character(" "))
+    #expect(afterSpace.next("Ah stimmt") == "Ah stimmt")
+
+    var afterNewline = LiveChunkJoiner()
+    afterNewline.seed(.character("\n"))
+    #expect(afterNewline.next("Ah stimmt") == "Ah stimmt")
+
+    var atStart = LiveChunkJoiner()
+    atStart.seed(.startOfText)
+    #expect(atStart.next("Ah stimmt") == "Ah stimmt")
+
+    var unknown = LiveChunkJoiner()
+    unknown.seed(.unknown)
+    var today = LiveChunkJoiner()
+    #expect(unknown.next("Der Patient") == today.next("Der Patient"))
+    #expect(unknown.next("klagt über Schmerzen") == today.next("klagt über Schmerzen"))
+    #expect(unknown.inserted == today.inserted)
+  }
+
+  @Test("Only when spoken: a seeded letter lower-cases a leading function word")
+  func seededFunctionWord() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    joiner.seed(.character("g"))
+    #expect(joiner.next("Und weiter") == " und weiter")
+    #expect(joiner.inserted == " und weiter")
+  }
 
   @Test("Pieces are joined with single spaces, none at the start")
   func spacing() {

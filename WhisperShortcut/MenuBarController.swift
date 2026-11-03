@@ -2608,6 +2608,8 @@ class MenuBarController: NSObject {
     // `discardStreamingSession` with this session in place instead of leaving it for the next
     // normal Dictate.
     let target = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
+    let caret = FocusedTextContext.characterBeforeCaret()
+    DebugLogger.log("LIVE-DICTATE: Caret context \(caret.logKind)")
     let ownWindowAtStart = Self.ownFocusedTextWindowNumber()
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
@@ -2621,7 +2623,8 @@ class MenuBarController: NSObject {
         guard let self else { return false }
         return await self.insertLivePiece(text, target: target, ownWindowAtStart: ownWindowAtStart)
       },
-      holdsPeriods: punctuationMode != .spokenOnly)
+      holdsPeriods: punctuationMode != .spokenOnly,
+      caret: caret)
     DebugLogger.log("LIVE-DICTATE: Starting (target \(target?.bundleId ?? "none"))")
     beginAudioCapture(mode: .transcription, rotation: .live)
     recording?.isLiveDictation = true
