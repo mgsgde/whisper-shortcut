@@ -193,6 +193,9 @@ class MenuBarController: NSObject {
   /// The clipboard from before the current Dictate Live recording, when "Restore clipboard" is on.
   /// Put back at the end and on every cancel, since every piece passed through the clipboard.
   private var liveClipboardSnapshot: ClipboardSnapshot?
+  /// True once a piece of the running Dictate Live session went in through the pasteboard. Pieces
+  /// typed into Chromium never touch it, so with no such piece there is nothing of ours to clear.
+  private var livePiecesUsedPasteboard = false
   /// The punctuation mode of the current Dictate Live recording, fixed at its start like Dictate.
   private var livePunctuationMode: PunctuationMode = .automatic
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
@@ -1751,7 +1754,7 @@ class MenuBarController: NSObject {
       live.cancel()
       liveDictationSession = nil
       restoreLiveClipboard()
-      clearLiveClipboardAfterLastPiece()
+      if livePiecesUsedPasteboard { clearLiveClipboardAfterLastPiece() }
     }
   }
 
@@ -2660,6 +2663,7 @@ class MenuBarController: NSObject {
     let ownWindowAtStart = Self.ownFocusedTextWindowNumber()
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
+    livePiecesUsedPasteboard = false
     let punctuationMode = PunctuationMode.effective(stored: .current, isOffline: true, duringMeeting: false)
     livePunctuationMode = punctuationMode
     liveDictationSession = LiveDictationSession(
@@ -2763,6 +2767,22 @@ class MenuBarController: NSObject {
     guard livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart),
       AccessibilityPermissionManager.hasAccessibilityPermission()
     else { return false }
+    #if !APP_STORE
+    // Chromium's renderer sometimes drops a synthesized ⌘V, and the pasteboard read cannot show
+    // it. Typed Unicode key events always arrive, and leave the pasteboard alone.
+    if LiveTextTyping.isChromium(bundleID: target?.bundleId) {
+      let started = Date()
+      let chunkCount = typeLivePiece(text)
+      let ms = Int(Date().timeIntervalSince(started) * 1000)
+      DebugLogger.log(
+        "LIVE-DICTATE: Typed \(text.count) chars into \(target?.bundleId ?? "unknown") in \(ms) ms (chunks=\(chunkCount))"
+      )
+      let remaining = AppConstants.livePieceGapDelay - Date().timeIntervalSince(started)
+      if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+      return true
+    }
+    #endif
+    livePiecesUsedPasteboard = true
     clipboardManager.copyLivePiece(text: text)
     try? await Task.sleep(for: .milliseconds(50))
     // Checked again right before ⌘V: a ⌘Tab in the last 50 ms must not send the piece elsewhere.
@@ -3658,6 +3678,38 @@ class MenuBarController: NSObject {
       if index < steps.count - 1 { usleep(10_000) }
     }
   }
+
+  #if !APP_STORE
+  /// Types `text` as synthesized Unicode key events (at most 20 UTF-16 units each), Return for line
+  /// breaks. Flags are cleared on every event so a held modifier cannot leak in. Synchronous like
+  /// `postCommandChord`; returns the number of chunks posted.
+  @MainActor
+  private func typeLivePiece(_ text: String) -> Int {
+    let source = CGEventSource(stateID: .privateState)
+    let chunks = LiveTextTyping.chunks(text)
+    for chunk in chunks {
+      switch chunk {
+      case .text(let string):
+        let units = Array(string.utf16)
+        for down in [true, false] {
+          let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down)
+          event?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+          event?.flags = []
+          event?.post(tap: .cghidEventTap)
+          usleep(2_000)
+        }
+      case .newline:
+        for down in [true, false] {
+          let event = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: down)
+          event?.flags = []
+          event?.post(tap: .cghidEventTap)
+          usleep(2_000)
+        }
+      }
+    }
+    return chunks.count
+  }
+  #endif
 
   /// Non-destructive paste: remembers the current clipboard so `autoPasteIfEnabled()` can put it
   /// back after the synthetic ⌘V. No-op unless the user turned the setting on.
