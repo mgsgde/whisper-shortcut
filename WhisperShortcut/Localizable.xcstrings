@@ -23873,22 +23873,22 @@
         }
       }
     },
-    "Recommended for work. You get a new version only after it has run in daily use for about a week, at most every two weeks." : {
+    "A new version only after it has run in daily use for about a week, at most every two weeks. Stable only advances when a release has been promoted, so it can lag behind the newest release for a while." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Empfohlen für die Arbeit. Eine neue Version kommt erst, wenn sie etwa eine Woche im Alltag gelaufen ist, höchstens alle zwei Wochen."
+            "value" : "Eine neue Version erst, wenn sie etwa eine Woche im Alltag gelaufen ist, höchstens alle zwei Wochen. Stabil rückt nur vor, wenn eine Version freigegeben wurde, und kann daher eine Weile hinter der neuesten Version zurückliegen."
           }
         }
       }
     },
-    "Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer." : {
+    "Recommended. Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+            "value" : "Empfohlen. Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
           }
         }
       }

@@ -12,7 +12,7 @@ final class UpdaterService: NSObject, ObservableObject {
 
   @Published private(set) var canCheckForUpdates: Bool = false
   @Published private(set) var lastUpdateCheckDate: Date?
-  /// Feed the direct build checks. Stable until the user picks Latest. See `UpdateChannel`.
+  /// Feed the direct build checks. Latest unless the user picked Stable. See `UpdateChannel`.
   @Published private(set) var channel: UpdateChannel = UpdateChannel.current()
 
   /// Bridges `SPUUpdater.automaticallyChecksForUpdates` for the Settings toggle.
@@ -113,6 +113,15 @@ extension UpdaterService: SPUUpdaterDelegate {
       DebugLogger.log("UPDATER: update cycle finished with error: \(error.logDescription)")
     } else {
       DebugLogger.log("UPDATER: update cycle finished")
+      // Sparkle only reports "no update" here, never the feed's newest version, so the log
+      // cannot compare the two without new plumbing. Record what the client is and which
+      // channel it reads: a "no update found" on Stable may simply mean the channel is
+      // behind the newest release, not that the app is current.
+      let channel = UpdateChannel.current()
+      DebugLogger.log(
+        "UPDATER: no update found for \(AppConstants.appVersion) (build \(AppConstants.appBuildNumber)) "
+          + "on channel \(channel.rawValue); on Stable this can mean the channel is behind the newest release"
+      )
     }
   }
 }
