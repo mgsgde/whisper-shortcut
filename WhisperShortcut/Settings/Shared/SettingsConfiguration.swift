@@ -1776,6 +1776,40 @@ enum OpenRouterChatPreferences {
       keyToAdopt: (!hasAccountKey && !proxy.isEmpty) ? proxy : nil)
   }
 
+  /// New raw value for a slot still set to the custom-endpoint sentinel, or nil to leave it.
+  ///
+  /// Dictate Prompt cannot move to `openRouterChat`: that model fails `supportsDictatePrompt` and
+  /// `SpeechService.performPrompt` throws. The slot takes `dictatePromptReplacement` only when that
+  /// model can run Dictate Prompt (the preferred-model helper's pick); otherwise it stays put.
+  static func migratedSelectionRawValue(
+    key: String, current: String?, dictatePromptReplacement: String?
+  ) -> String? {
+    let old = PromptModel.customOpenAIEndpoint.rawValue
+    guard current == old else { return nil }
+    if key == UserDefaultsKeys.selectedPromptModel {
+      guard let replacement = dictatePromptReplacement, replacement != old,
+        let model = PromptModel(rawValue: replacement), model.supportsDictatePrompt
+      else { return nil }
+      return replacement
+    }
+    return PromptModel.openRouterChat.rawValue
+  }
+
+  /// Applies `migratedSelectionRawValue` to every entry. Keys that stay put are copied through.
+  static func migratedSelections(
+    _ selections: [String: String], dictatePromptReplacement: String?
+  ) -> [String: String] {
+    var updated = selections
+    for (key, value) in selections {
+      if let rewritten = migratedSelectionRawValue(
+        key: key, current: value, dictatePromptReplacement: dictatePromptReplacement)
+      {
+        updated[key] = rewritten
+      }
+    }
+    return updated
+  }
+
   /// One-time move of an OpenRouter-pointed custom endpoint onto the OpenRouter provider. Idempotent:
   /// once the custom URL is cleared the plan is nil.
   @MainActor
@@ -1798,8 +1832,10 @@ enum OpenRouterChatPreferences {
     defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatModelID)
     KeychainManager.shared.delete(.customOpenAIChatAPIKey)
 
-    let old = PromptModel.customOpenAIEndpoint.rawValue
-    let new = PromptModel.openRouterChat.rawValue
+    let dictatePromptReplacement = ModelSelectionReconciler.preferredPromptModel(
+      among: PromptModel.dictatePromptCapableModels,
+      hasKey: { $0.hasCredential }
+    )?.rawValue
     let selectionKeys = [
       UserDefaultsKeys.selectedChatModel,
       UserDefaultsKeys.selectedPromptModel,
@@ -1807,17 +1843,26 @@ enum OpenRouterChatPreferences {
       UserDefaultsKeys.selectedMeetingSummaryModel,
       UserDefaultsKeys.selectedReadAloudModel,
     ]
-    for key in selectionKeys where defaults.string(forKey: key) == old {
-      defaults.set(new, forKey: key)
+    var selections: [String: String] = [:]
+    for key in selectionKeys {
+      if let value = defaults.string(forKey: key) { selections[key] = value }
+    }
+    let rewritten = migratedSelections(selections, dictatePromptReplacement: dictatePromptReplacement)
+    for (key, value) in rewritten where selections[key] != value {
+      defaults.set(value, forKey: key)
     }
     // The pre-Offline-Mode snapshot restores these same slots later; rewrite it too.
+    // Dictate Prompt is excluded from the OpenRouter rewrite there as well.
     if var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) {
-      var changed = false
-      for (key, value) in snapshot where (value as? String) == old {
-        snapshot[key] = new
-        changed = true
+      var strings: [String: String] = [:]
+      for (key, value) in snapshot {
+        if let string = value as? String { strings[key] = string }
       }
-      if changed { defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections) }
+      let migrated = migratedSelections(strings, dictatePromptReplacement: dictatePromptReplacement)
+      if migrated != strings {
+        for (key, value) in migrated { snapshot[key] = value }
+        defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+      }
     }
     DebugLogger.log(
       "OPENROUTER-CHAT: migrated custom endpoint → OpenRouter provider (model=\(plan.modelID ?? modelID))")

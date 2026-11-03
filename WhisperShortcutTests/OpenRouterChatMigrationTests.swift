@@ -58,6 +58,41 @@ struct OpenRouterChatMigrationTests {
     #expect(plan == Prefs.CustomEndpointMigration(modelID: nil, keyToAdopt: nil))
   }
 
+  @Test("Dictate Prompt is not rewritten to OpenRouter, which cannot run it")
+  func dictatePromptSlotStaysCapable() {
+    let custom = PromptModel.customOpenAIEndpoint.rawValue
+    let replacement = PromptModel.gemini38Flash
+    #expect(replacement.supportsDictatePrompt)
+    #expect(!PromptModel.openRouterChat.supportsDictatePrompt)
+
+    let migrated = Prefs.migratedSelections(
+      [
+        UserDefaultsKeys.selectedChatModel: custom,
+        UserDefaultsKeys.selectedPromptModel: custom,
+        UserDefaultsKeys.selectedImprovementModel: PromptModel.claudeHaiku55.rawValue,
+      ],
+      dictatePromptReplacement: replacement.rawValue)
+    #expect(migrated[UserDefaultsKeys.selectedChatModel] == PromptModel.openRouterChat.rawValue)
+    #expect(migrated[UserDefaultsKeys.selectedPromptModel] == replacement.rawValue)
+    #expect(migrated[UserDefaultsKeys.selectedImprovementModel] == PromptModel.claudeHaiku55.rawValue)
+
+    // No keyed Dictate-Prompt model: leave the slot alone rather than point it at OpenRouter.
+    let excluded = Prefs.migratedSelections(
+      [
+        UserDefaultsKeys.selectedChatModel: custom,
+        UserDefaultsKeys.selectedPromptModel: custom,
+      ],
+      dictatePromptReplacement: nil)
+    #expect(excluded[UserDefaultsKeys.selectedChatModel] == PromptModel.openRouterChat.rawValue)
+    #expect(excluded[UserDefaultsKeys.selectedPromptModel] == custom)
+
+    // The snapshot uses the same map. An OpenRouter raw value is not an acceptable replacement.
+    let snapshot = Prefs.migratedSelections(
+      [UserDefaultsKeys.selectedPromptModel: custom],
+      dictatePromptReplacement: PromptModel.openRouterChat.rawValue)
+    #expect(snapshot[UserDefaultsKeys.selectedPromptModel] == custom)
+  }
+
   @Test("/model openrouter resolves to the OpenRouter sentinel")
   func commandResolves() {
     for argument in ["openrouter", "open router", "OpenRouter"] {

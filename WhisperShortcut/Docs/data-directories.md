@@ -10,7 +10,7 @@ WhisperShortcut stores user data locally on your Mac. The app intentionally uses
 
 This path is used for:
 
-- `UserContext/`: interaction logs, user context, system prompts, prompt history, short-lived Smart Improvement audio verification samples in `UserContext/audio-samples/`, and the Writing Style profile and example messages in `UserContext/writing-style/` (`profile.md`, `samples.jsonl`).
+- `UserContext/`: interaction logs, user context, system prompts, prompt history, Smart Improvement audio samples in `UserContext/audio-samples/` (kept for 30 days; see below), and the Writing Style profile and example messages in `UserContext/writing-style/` (`profile.md`, `samples.jsonl`).
 - `Meetings/`: saved live meetings. Each one is up to three files sharing a stem: `<meeting>.txt` (the transcript), `<meeting>.notes.md` (the live notes taken during the meeting), and `<meeting>.summary.md` (the summary written when it ended).
 - `MeetingAudio/<meeting>/`: audio of meeting parts that couldn't be transcribed yet (for example recorded offline), one `chunk-<start ms>.wav` per part. Deleted part by part once **Retry Meeting Transcription** gets it into the transcript, and with the meeting when it is discarded.
 - `WhisperKit/`: downloaded local Whisper models.
@@ -76,4 +76,4 @@ Prefer the reset and delete actions in Settings when available. For manual clean
 
 API keys, Google OAuth refresh tokens, and Trello tokens are stored in macOS Keychain, not in this directory.
 
-Smart Improvement audio samples are only created when **Save usage data** is enabled. They are capped, used as verifier evidence for dictation-related suggestions, and deleted at the start of the next Smart Improvement run or when interaction data is deleted.
+Smart Improvement audio samples are only created when **Learn from how I use WhisperShortcut** is on. They are capped, kept so a later run can still verify terms from older dictations, and removed once they are older than 30 days. That prune runs on every launch, with log rotation, and again at the start of a Smart Improvement run. Switching **Learn from how I use WhisperShortcut** (Settings → Smart Improvement) off deletes the samples immediately, and so does deleting interaction data. Offline Mode only pauses new samples and does not delete them.

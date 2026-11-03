@@ -177,7 +177,10 @@ class AutoPromptImprovementScheduler {
 
     // Burn the session-cooldown only once eligibility passes and real work is about to start,
     // otherwise a no-op early return above would block the next manual click for `smartImprovementCooldownSeconds`.
-    lastRunStartedAt = Date()
+    // The auto-run interval is measured from this instant. Stamping after the review panels
+    // (they can sit open indefinitely) pushed the next run out by however long that took.
+    let startedAt = Date()
+    lastRunStartedAt = startedAt
 
     typealias FocusResult = (focus: GenerationKind, error: Error?)
     let results: [FocusResult] = await withTaskGroup(of: FocusResult.self) { group in
@@ -293,7 +296,7 @@ class AutoPromptImprovementScheduler {
       DebugLogger.log(
         "AUTO-IMPROVEMENT: Every focus failed on a transient error — lastRun date not set so we retry next check")
     } else {
-      UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
+      UserDefaults.standard.set(startedAt, forKey: UserDefaultsKeys.lastAutoImprovementRunDate)
     }
   }
 
