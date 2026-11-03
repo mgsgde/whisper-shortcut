@@ -89,11 +89,19 @@ struct ModelDownloadRow<M: DownloadableModel, Badge: View>: View {
             .pointerCursorOnHover()
           }
         } else if isAvailable {
-          Button("Delete", action: delete)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .foregroundColor(.red)
-            .pointerCursorOnHover()
+          if store.isExternal(model) {
+            // The weights are the user's, in the folder they chose. Delete would reach outside the
+            // app's own folder, so it is not offered at all.
+            Text("In your model folder")
+              .font(.caption)
+              .foregroundColor(.secondary)
+          } else {
+            Button("Delete", action: delete)
+              .buttonStyle(.bordered)
+              .controlSize(.small)
+              .foregroundColor(.red)
+              .pointerCursorOnHover()
+          }
         } else {
           Button("Download", action: download)
             .buttonStyle(.borderedProminent)

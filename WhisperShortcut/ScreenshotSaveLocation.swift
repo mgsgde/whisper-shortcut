@@ -82,26 +82,14 @@ enum ScreenshotSaveLocation {
       volumeIsMounted: { FileManager.default.fileExists(atPath: $0) })
   }
 
-  /// Whether a bookmark that failed to resolve should be forgotten for good. Only "the bookmark
-  /// data is corrupt" and "the folder no longer exists" qualify. An unmounted external drive
-  /// reports the same missing-file error as a deleted folder, so for paths under `/Volumes` the
-  /// volume root decides: if it is not mounted right now, the folder may well come back.
+  /// Whether a bookmark that failed to resolve should be forgotten for good. The rule itself is
+  /// `SecurityScopedBookmark.shouldDiscard` — shared with `ExtraModelFolder` so the two cannot
+  /// disagree about an unplugged drive.
   static func shouldDiscardBookmark(
     error: NSError, folderPath: String, volumeIsMounted: (String) -> Bool
   ) -> Bool {
-    guard error.domain == NSCocoaErrorDomain else { return false }
-    switch error.code {
-    case NSFileReadCorruptFileError:
-      return true
-    case NSFileReadNoSuchFileError, NSFileNoSuchFileError:
-      let parts = folderPath.split(separator: "/", omittingEmptySubsequences: true)
-      if parts.count >= 2, parts[0] == "Volumes" {
-        return volumeIsMounted("/Volumes/\(parts[1])")
-      }
-      return true
-    default:
-      return false
-    }
+    SecurityScopedBookmark.shouldDiscard(
+      error: error, folderPath: folderPath, volumeIsMounted: volumeIsMounted)
   }
 
   /// Writes the PNG into the chosen folder under a timestamped name. Returns the written URL or nil.

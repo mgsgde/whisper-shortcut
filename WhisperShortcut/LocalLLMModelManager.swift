@@ -144,6 +144,13 @@ enum MLXModelPaths {
         if hasRequiredFiles(at: snap) { return snap }
       }
     }
+    // Then the folder the user pointed us at (LM Studio, a Hugging Face cache, a shared drive), so
+    // weights they already have are used instead of downloaded again. Same completeness check as
+    // above — a half-downloaded repo there stays unavailable.
+    if let extra = ExtraModelFolder.mlxModelURL(for: type.huggingFaceID) {
+      DebugLogger.log("MLX: using \(type.huggingFaceID) from the user's model folder: \(extra.path)")
+      return extra
+    }
     return nil
   }
 

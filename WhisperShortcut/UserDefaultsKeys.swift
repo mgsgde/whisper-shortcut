@@ -115,6 +115,13 @@ enum UserDefaultsKeys {
   /// Last directory the chat Attach picker landed on; reopened next time (see C2 behavior).
   static let lastAttachDirectoryPath = "lastAttachDirectoryPath"
 
+  // MARK: - Extra Model Folder
+  /// Security-scoped bookmark (Data) for a folder the user already keeps model weights in, so
+  /// they need not be downloaded again. See `ExtraModelFolder`.
+  static let extraModelFolderBookmark = "extraModelFolderBookmark"
+  /// Human-readable path of that folder, for display in Settings.
+  static let extraModelFolderDisplayPath = "extraModelFolderDisplayPath"
+
   // MARK: - Workspace Folders
   /// Folders the chat may read from, as `[[String: Any]]` entries holding a security-scoped
   /// bookmark (Data) plus the originally picked path (String). See `WorkspaceFolders`.
