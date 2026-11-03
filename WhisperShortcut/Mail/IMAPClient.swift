@@ -517,7 +517,11 @@ actor IMAPSession {
     _ operation: @Sendable @escaping () async throws -> T
   ) async throws -> T {
     let limit = deadline.next()
-    if ContinuousClock.now >= limit { throw IMAPError.timeout }
+    let hitsCap = limit >= deadline.cap
+    if ContinuousClock.now >= limit {
+      DebugLogger.log("IMAP: timeout limit=\(hitsCap ? "cap" : "idle")")
+      throw IMAPError.timeout
+    }
     return try await withThrowingTaskGroup(of: RaceResult<T>.self) { group in
       group.addTask {
         do {
@@ -557,7 +561,10 @@ actor IMAPSession {
         return value
       case .failed(let error):
         throw error
-      case .timedOut, .cancelled, .none:
+      case .timedOut:
+        DebugLogger.log("IMAP: timeout limit=\(hitsCap ? "cap" : "idle")")
+        throw IMAPError.timeout
+      case .cancelled, .none:
         throw IMAPError.timeout
       }
     }
