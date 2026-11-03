@@ -20,7 +20,9 @@ enum LLMHTTPSession {
     makeSession(requestTimeout: nil, resourceTimeout: nil)
   }()
 
-  private static func makeSession(requestTimeout: TimeInterval?, resourceTimeout: TimeInterval?) -> URLSession {
+  /// Shared factory so a caller with different timeouts (own-server transcription) still
+  /// installs the offline-mode protocol and the redirect guard that strips credentials.
+  static func makeSession(requestTimeout: TimeInterval?, resourceTimeout: TimeInterval?) -> URLSession {
     let config = URLSessionConfiguration.default
     if let requestTimeout { config.timeoutIntervalForRequest = requestTimeout }
     if let resourceTimeout { config.timeoutIntervalForResource = resourceTimeout }
