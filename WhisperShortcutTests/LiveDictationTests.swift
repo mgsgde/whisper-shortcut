@@ -136,6 +136,73 @@ struct LiveDictationTests {
     #expect(joiner.inserted == "Sie klagt Über Schmerzen")
   }
 
+  // MARK: - Last insertion memory
+
+  private let memoryNow = Date(timeIntervalSince1970: 1_000_000)
+  private func memory(_ character: Character = "s", bundle: String = "com.app.a", age: TimeInterval = 5)
+    -> LiveDictation.LastInsertion
+  {
+    LiveDictation.LastInsertion(character: character, bundleId: bundle, at: memoryNow.addingTimeInterval(-age))
+  }
+
+  @Test("Unknown caret, same app, fresh memory: the remembered character")
+  func memorySeedsUnknown() {
+    let seeded = LiveDictation.LastInsertion.seed(
+      caret: .unknown, last: memory(), frontmostBundle: "com.app.a", now: memoryNow)
+    #expect(seeded == .character("s"))
+  }
+
+  @Test("Unknown caret, other app / expired / no memory: stays unknown")
+  func memoryIgnored() {
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .unknown, last: memory(), frontmostBundle: "com.app.b", now: memoryNow) == .unknown)
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .unknown, last: memory(age: 601), frontmostBundle: "com.app.a", now: memoryNow) == .unknown)
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .unknown, last: nil, frontmostBundle: "com.app.a", now: memoryNow) == .unknown)
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .unknown, last: memory(), frontmostBundle: nil, now: memoryNow) == .unknown)
+  }
+
+  @Test("A readable caret wins over the memory")
+  func readableCaretWins() {
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .startOfText, last: memory(), frontmostBundle: "com.app.a", now: memoryNow) == .startOfText)
+    #expect(
+      LiveDictation.LastInsertion.seed(
+        caret: .character("."), last: memory(), frontmostBundle: "com.app.a", now: memoryNow)
+        == .character("."))
+  }
+
+  @Test("make keeps the last character, nothing for empty text or unknown target")
+  func memoryMake() {
+    #expect(LiveDictation.LastInsertion.make(insertedText: "… Dosis", bundleId: "x", now: memoryNow)?.character == "s")
+    #expect(LiveDictation.LastInsertion.make(insertedText: "", bundleId: "x", now: memoryNow) == nil)
+    #expect(LiveDictation.LastInsertion.make(insertedText: "a", bundleId: nil, now: memoryNow) == nil)
+  }
+
+  @Test("Seeded with the previous dictation's ending, the next piece is spaced and cased")
+  func joinerAfterRememberedDictation() {
+    var afterWord = LiveChunkJoiner()
+    afterWord.seed(.character("s"))
+    #expect(afterWord.next("Weiter geht's") == " Weiter geht's")
+
+    var afterPeriod = LiveChunkJoiner()
+    afterPeriod.seed(.character("."))
+    afterPeriod.holdsPeriods = false
+    #expect(afterPeriod.next("Weiter geht's") == " Weiter geht's")
+
+    var spokenOnly = LiveChunkJoiner()
+    spokenOnly.holdsPeriods = false
+    spokenOnly.seed(.character("s"))
+    #expect(spokenOnly.next("Und dann") == " und dann")
+  }
+
   // MARK: - Joiner
 
   @Test("A seeded caret spaces the first piece and is not part of the inserted text")

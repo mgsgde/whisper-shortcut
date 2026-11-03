@@ -46,6 +46,37 @@ enum LiveDictation {
     #endif
   }
 
+  /// The last character of the previous live dictation, kept in memory so the next one can be
+  /// spaced and cased when the caret cannot be read (the sandboxed app gets `.unknown` from
+  /// Accessibility in every app). Never persisted, never logged; it is patient text.
+  struct LastInsertion: Equatable {
+    let character: Character
+    let bundleId: String
+    let at: Date
+
+    /// Older than this, the user has most likely moved on.
+    static let maxAge: TimeInterval = 600
+
+    /// The memory for a finished dictation, or nil when nothing was inserted or the target is unknown.
+    static func make(insertedText: String, bundleId: String?, now: Date) -> LastInsertion? {
+      guard let last = insertedText.last, let bundleId, !bundleId.isEmpty else { return nil }
+      return LastInsertion(character: last, bundleId: bundleId, at: now)
+    }
+
+    /// A readable caret always wins. Only `.unknown` falls back to the memory, and only for the
+    /// same app, within `maxAge`.
+    static func seed(
+      caret: FocusedTextContext.CaretContext, last: LastInsertion?, frontmostBundle: String?, now: Date
+    ) -> FocusedTextContext.CaretContext {
+      guard case .unknown = caret, let last, let frontmostBundle, last.bundleId == frontmostBundle else {
+        return caret
+      }
+      let age = now.timeIntervalSince(last.at)
+      guard age >= 0, age < maxAge else { return caret }
+      return .character(last.character)
+    }
+  }
+
   /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: standalone
   /// fillers dropped, model punctuation stripped in "Only when spoken" mode, then the spoken
   /// layout commands. Edge line breaks ("neuer Absatz" at the very end of a piece) are kept —

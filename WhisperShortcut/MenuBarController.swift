@@ -180,6 +180,13 @@ class MenuBarController: NSObject {
   /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
   /// chunks, cut at every short pause.
   private var liveDictationSession: LiveDictationSession?
+  /// Bundle id of the app the current live dictation inserts into.
+  private var liveTargetBundleId: String?
+  /// What the previous live dictation ended with, while nothing has moved the caret since.
+  private var lastLiveInsertion: LiveDictation.LastInsertion?
+  private var lastInsertionEventMonitor: Any?
+  private var lastInsertionActivationObserver: NSObjectProtocol?
+  private var lastInsertionArmedAt = Date.distantFuture
   /// The recording Fn started, so Fn only ever ends that one — never one another shortcut began, even
   /// of the same kind.
   private var fnStartedRecordingID: UUID?
@@ -2639,8 +2646,17 @@ class MenuBarController: NSObject {
     // `discardStreamingSession` with this session in place instead of leaving it for the next
     // normal Dictate.
     let target = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
-    let caret = FocusedTextContext.characterBeforeCaret()
-    DebugLogger.log("LIVE-DICTATE: Caret context \(caret.logKind)")
+    liveTargetBundleId = target?.bundleId
+    let readCaret = FocusedTextContext.characterBeforeCaret()
+    let caret = LiveDictation.LastInsertion.seed(
+      caret: readCaret, last: lastLiveInsertion, frontmostBundle: target?.bundleId, now: Date())
+    if caret != readCaret {
+      DebugLogger.log("LIVE-DICTATE: Caret context from last dictation (\(caret.logKind))")
+    } else {
+      DebugLogger.log("LIVE-DICTATE: Caret context \(caret.logKind)")
+    }
+    // The new session records its own ending; the old memory is spent either way.
+    forgetLastLiveInsertion()
     let ownWindowAtStart = Self.ownFocusedTextWindowNumber()
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
@@ -2662,6 +2678,53 @@ class MenuBarController: NSObject {
     return isDictationRecordingActive()
   }
   #endif
+
+  /// Remembers how this dictation ended so the next one can space and case its first piece when
+  /// Accessibility cannot read the field. Any click, any key and any switch to another app forgets
+  /// it again. The monitor exists only while a memory does, is installed after the last ⌘V of the
+  /// dictation has been delivered, and looks at no key or character.
+  private func rememberLastLiveInsertion(_ text: String) {
+    forgetLastLiveInsertion()
+    guard !AppConstants.isSidecarInstance,
+      let memory = LiveDictation.LastInsertion.make(
+        insertedText: text, bundleId: liveTargetBundleId, now: Date())
+    else { return }
+    lastLiveInsertion = memory
+    // A global monitor also sees the synthesized ⌘V of our own paste. The last one is long
+    // delivered (`livePieceGapDelay` after it), the grace period covers any straggler.
+    lastInsertionArmedAt = Date().addingTimeInterval(0.3)
+    lastInsertionEventMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+    ) { [weak self] _ in
+      Task { @MainActor in
+        guard let self, Date() >= self.lastInsertionArmedAt else { return }
+        self.forgetLastLiveInsertion(reason: "input")
+      }
+    }
+    lastInsertionActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+      guard let self, app?.bundleIdentifier != self.lastLiveInsertion?.bundleId else { return }
+      self.forgetLastLiveInsertion(reason: "app switch")
+    }
+    DebugLogger.log("LIVE-DICTATE: Remembering how the dictation ended for the next one")
+  }
+
+  private func forgetLastLiveInsertion(reason: String? = nil) {
+    if let monitor = lastInsertionEventMonitor {
+      NSEvent.removeMonitor(monitor)
+      lastInsertionEventMonitor = nil
+    }
+    if let observer = lastInsertionActivationObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(observer)
+      lastInsertionActivationObserver = nil
+    }
+    if lastLiveInsertion != nil, let reason {
+      DebugLogger.log("LIVE-DICTATE: Forgot the last dictation (\(reason))")
+    }
+    lastLiveInsertion = nil
+  }
 
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
@@ -2793,6 +2856,7 @@ class MenuBarController: NSObject {
       notice = String(
         localized: "The end of the dictation was not inserted because another app was in front. It is on the clipboard.")
     } else if !outcome.text.isEmpty {
+      rememberLastLiveInsertion(outcome.text)
       if liveClipboardSnapshot != nil {
         restoreLiveClipboard()
       } else {
