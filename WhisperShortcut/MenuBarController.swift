@@ -4705,7 +4705,7 @@ extension MenuBarController: ChunkProgressDelegate {
       return
     }
 
-    if error is CancellationError {
+    if Self.isCancellation(error) {
       DebugLogger.log("CHUNK-PROGRESS: Chunk \(index) cancelled")
       _ = applyChunkStatus(.failed, at: index)
       return
