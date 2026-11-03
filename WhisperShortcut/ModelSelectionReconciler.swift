@@ -564,10 +564,41 @@ enum ModelSelectionReconciler {
     }
   }
 
+  /// Moves a cloud transcription slot whose provider has no key onto a provider that does.
+  ///
+  /// With no key at all it used to return silently, which left the slot stuck on a cloud model
+  /// that could only fail: a user who added an OpenAI key for Read Aloud, let `CloudModelOffer`
+  /// move both dictation slots to GPT Transcribe, and then removed the key kept POSTing meeting
+  /// chunks to api.openai.com (401 `invalidAPIKey`) while a downloaded offline model sat unused on
+  /// disk. The fallback below is what ends that state — but only onto a model that is actually
+  /// there, so it never invents a selection the user cannot run.
   private static func replaceTranscriptionSelection(key: String, current: TranscriptionModel) {
-    guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
+    guard let provider = providerPreference.first(where: { hasKey($0) }) else {
+      // No provider has a key. A provider that is keyed but has no transcription model (OpenRouter)
+      // still returns above, so the keyed path stays exactly as it was.
+      guard let offline = downloadedOfflineTranscription() else { return }
+      UserDefaults.standard.set(offline.rawValue, forKey: key)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(key): \(current.rawValue) → \(offline.rawValue) (no key, offline model available)")
+      return
+    }
     guard let replacement = transcriptionReplacement(for: provider) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
+  }
+
+  /// The best offline model the user has actually downloaded, or nil when none is on disk.
+  private static func downloadedOfflineTranscription() -> TranscriptionModel? {
+    offlineFallbackTranscription(
+      available: OfflineModelType.allCases.filter { ModelManager.shared.isModelAvailable($0) })
+  }
+
+  /// The pure half of the decision above, split out so the choice can be tested without
+  /// `ModelManager` and the on-disk model store. Unlike `offlineTranscriptionReplacement`, this
+  /// never falls back to a model that still needs downloading — a key-less slot that cannot run
+  /// anything is better left alone than pointed at a download the user never asked for.
+  static func offlineFallbackTranscription(available: [OfflineModelType]) -> TranscriptionModel? {
+    guard let best = OfflineModelType.byAccuracy.last(where: available.contains) else { return nil }
+    return TranscriptionModel.forOfflineModel(best)
   }
 }
