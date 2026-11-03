@@ -66,7 +66,13 @@ struct APIKeyEntrySection: View {
           // `onAppear` loading the stored key also fires this. Treat that as a load, not a save:
           // otherwise merely opening Settings → Accounts rewrites every key and pops the
           // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
-          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
+          // Back at the stored key (e.g. backspace within the debounce window): drop the pending
+          // save, or it would still write the intermediate value.
+          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else {
+            saveTask?.cancel()
+            saveTask = nil
+            return
+          }
           scheduleSave(newValue)
         }
 
