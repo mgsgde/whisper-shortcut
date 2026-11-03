@@ -590,6 +590,79 @@ final class GeminiComposerController: ObservableObject {
   }
 }
 
+// MARK: - Finder paste
+
+/// Decides what a pasted file URL becomes. Images are not routed through `insertScreenshot`,
+/// which would label every one `image/png` / `screenshot.png`. The allow-list is
+/// `ChatViewModel.attachableContentTypes` — the same types the attach panel offers.
+/// HEIC and TIFF are not in that list (the APIs do not accept them), so they are converted
+/// through `NSImage` to JPEG, or PNG when the image has an alpha channel.
+enum ComposerFilePaste {
+  enum Rejection: Equatable {
+    case tooLarge
+    case unreadable
+    case unsupportedType
+  }
+
+  enum Decision: Equatable {
+    case attach(data: Data, mimeType: String, filename: String)
+    case reject(filename: String, reason: Rejection)
+  }
+
+  static func decisions(for urls: [URL], maxBytes: Int) -> [Decision] {
+    urls.map { decision(for: $0, maxBytes: maxBytes) }
+  }
+
+  static func decision(for url: URL, maxBytes: Int) -> Decision {
+    let filename = url.lastPathComponent
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+    if size > maxBytes {
+      return .reject(filename: filename, reason: .tooLarge)
+    }
+    guard let data = try? Data(contentsOf: url) else {
+      return .reject(filename: filename, reason: .unreadable)
+    }
+    if data.count > maxBytes {
+      return .reject(filename: filename, reason: .tooLarge)
+    }
+    let fileType = UTType(filenameExtension: url.pathExtension)
+    if let fileType, fileType.conforms(to: .heic) || fileType.conforms(to: .tiff) {
+      guard let converted = convertToSupportedImage(data, originalFilename: filename) else {
+        return .reject(filename: filename, reason: .unreadable)
+      }
+      if converted.data.count > maxBytes {
+        return .reject(filename: filename, reason: .tooLarge)
+      }
+      return .attach(data: converted.data, mimeType: converted.mimeType, filename: converted.filename)
+    }
+    guard let type = fileType,
+          ChatViewModel.attachableContentTypes.contains(where: { type.conforms(to: $0) }),
+          let mime = type.preferredMIMEType
+    else {
+      return .reject(filename: filename, reason: .unsupportedType)
+    }
+    return .attach(data: data, mimeType: mime, filename: filename)
+  }
+
+  /// Re-encodes an image the chat APIs do not accept (HEIC, TIFF) as JPEG, or PNG when it has
+  /// alpha. Returns nil when the data cannot be decoded.
+  static func convertToSupportedImage(
+    _ data: Data, originalFilename: String
+  ) -> (data: Data, mimeType: String, filename: String)? {
+    guard let image = NSImage(data: data),
+          let tiff = image.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff)
+    else { return nil }
+    let usePNG = rep.hasAlpha
+    let fileType: NSBitmapImageRep.FileType = usePNG ? .png : .jpeg
+    let properties: [NSBitmapImageRep.PropertyKey: Any] = usePNG ? [:] : [.compressionFactor: 0.9]
+    guard let out = rep.representation(using: fileType, properties: properties) else { return nil }
+    let base = (originalFilename as NSString).deletingPathExtension
+    let ext = usePNG ? "png" : "jpg"
+    return (out, usePNG ? "image/png" : "image/jpeg", "\(base).\(ext)")
+  }
+}
+
 // MARK: - NSViewRepresentable
 
 struct ChatComposerTextView: NSViewRepresentable {
@@ -667,38 +740,51 @@ struct ChatComposerTextView: NSViewRepresentable {
     }
     tv.onFilePaste = { [weak controller] urls in
       guard let c = controller else { return false }
-      let maxBytes = AppConstants.maxFileSizeBytes
+      let decisions = ComposerFilePaste.decisions(for: urls, maxBytes: AppConstants.maxFileSizeBytes)
       var handled = false
-      var rejected: [String] = []
-      for url in urls {
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        if size > maxBytes {
-          rejected.append(url.lastPathComponent)
-          continue
-        }
-        guard let data = try? Data(contentsOf: url) else { continue }
-        if data.count > maxBytes {
-          rejected.append(url.lastPathComponent)
-          continue
-        }
-        let ext = url.pathExtension.lowercased()
-        let isImage = ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff"].contains(ext)
-        if isImage {
-          if c.insertScreenshot(data) { handled = true }
-        } else {
-          guard let mime = UTType(filenameExtension: ext)?.preferredMIMEType else { continue }
-          if c.insertFile(data: data, mimeType: mime, filename: url.lastPathComponent) {
+      var tooLarge: [String] = []
+      var unreadable: [String] = []
+      var unsupported: [String] = []
+      var hitCap = false
+      for decision in decisions {
+        switch decision {
+        case .attach(let data, let mime, let filename):
+          // File URLs keep their real type and name. Raw bitmap pastes (no URL) still go
+          // through onImagePaste → insertScreenshot, which is always a PNG screenshot.
+          if c.insertFile(data: data, mimeType: mime, filename: filename) {
             handled = true
+          } else {
+            hitCap = true
           }
+        case .reject(let filename, .tooLarge):
+          tooLarge.append(filename)
+        case .reject(let filename, .unreadable):
+          unreadable.append(filename)
+        case .reject(let filename, .unsupportedType):
+          unsupported.append(filename)
         }
       }
-      if !rejected.isEmpty {
+      var messages: [String] = []
+      if !tooLarge.isEmpty {
+        messages.append(ChatViewModel.attachmentTooLargeMessage(filenames: tooLarge))
+      }
+      if !unreadable.isEmpty {
+        messages.append(String(localized: "Could not read: \(unreadable.joined(separator: ", "))"))
+      }
+      if !unsupported.isEmpty {
+        messages.append(ChatViewModel.attachmentUnsupportedMessage(filenames: unsupported))
+      }
+      if hitCap {
+        messages.append(
+          String(localized: "Maximum number of file attachments reached (\(GeminiComposerController.maxFileAttachments))."))
+      }
+      if !messages.isEmpty {
+        let message = messages.joined(separator: "\n")
         DispatchQueue.main.async {
-          context.coordinator.parent.onAttachmentRejected?(
-            ChatViewModel.attachmentTooLargeMessage(filenames: rejected))
+          context.coordinator.parent.onAttachmentRejected?(message)
         }
       }
-      return handled || !rejected.isEmpty
+      return handled || !messages.isEmpty
     }
     tv.onAttachmentClicked = { attachment in
       switch attachment.kind {

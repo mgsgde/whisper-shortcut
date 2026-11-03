@@ -64,7 +64,9 @@ enum ChatSearch {
       } else {
         var built: [String] = []
         if let t = session.title { built.append(t) }
-        built.append(contentsOf: session.messages.map { GeminiAPIClient.stripImageMarkers($0.content) })
+        // Index the visible text. The raw wrappers (`<typed_by_user>`, `<pasted_content>`)
+        // made "user", "typed", "pasted", and "content" match every chat.
+        built.append(contentsOf: session.messages.map { searchableText(of: $0.content) })
         if session.isMeeting, let stem = session.meetingStem, let meeting = meetingsByStem[stem] {
           built.append(meetingService.chunks(for: meeting).map { $0.text }.joined(separator: "\n"))
         }
@@ -113,6 +115,27 @@ enum ChatSearch {
 
     results.sort { $0.score != $1.score ? $0.score > $1.score : $0.date > $1.date }
     return Array(results.prefix(maxResults))
+  }
+
+  /// Text that should be matched and shown in snippets.
+  ///
+  /// User messages are stored with the wrappers `parseUserMessagePastedXML` strips for display
+  /// (`<typed_by_user>`, `<pasted_content>`, `<pasted_selection>`, `<quoted_from_meeting>`).
+  /// The tags themselves are not part of what the user wrote, so they are removed before
+  /// indexing. Removing the tags (rather than using the parser output) also keeps a typed
+  /// block that sits before a paste searchable.
+  static func searchableText(of content: String) -> String {
+    var text = GeminiAPIClient.stripImageMarkers(content)
+    let wrappers = [
+      "<typed_by_user>", "</typed_by_user>",
+      "<pasted_content>", "</pasted_content>",
+      "<pasted_selection>", "</pasted_selection>",
+      "<quoted_from_meeting>", "</quoted_from_meeting>",
+    ]
+    for tag in wrappers {
+      text = text.replacingOccurrences(of: tag, with: "\n")
+    }
+    return text
   }
 
   /// Relevance score: total term occurrences across the (lowercased) haystack, plus a bonus

@@ -111,6 +111,17 @@ struct ChatMessage: Identifiable, Codable, Equatable {
     self.commandName = commandName
   }
 
+  /// A model turn written when a reply was interrupted before any text, attachment, or tool
+  /// call was saved. Gemini rejects a later request that still contains that turn
+  /// (`{"role":"model","parts":[{"text":""}]}`). Local notices are not placeholders.
+  var isEmptyAssistantPlaceholder: Bool {
+    role == .model
+      && !isLocalNotice
+      && toolCalls.isEmpty
+      && attachedImageParts.isEmpty
+      && content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     id = try c.decode(UUID.self, forKey: .id)
@@ -309,7 +320,12 @@ class ChatSessionStore {
       do {
         var file = try JSONDecoder().decode(SessionsFile.self, from: data)
         if !file.sessions.isEmpty {
-          if purgeExpiredArchivedSessions(&file) {
+          // A quit or crash mid-stream persists the empty model placeholder `performSend`
+          // appends before the first token. Drop it on load so the next Gemini request
+          // is not rejected for an empty model turn. In-flight placeholders are not
+          // stripped on save — that would remove the bubble while the reply is streaming.
+          let droppedPlaceholders = dropEmptyAssistantPlaceholders(&file)
+          if purgeExpiredArchivedSessions(&file) || droppedPlaceholders {
             saveSessionsFile(file)
             return cachedFile ?? file
           }
@@ -347,6 +363,22 @@ class ChatSessionStore {
     file.sessions.removeAll { expiredIds.contains($0.id) }
     file.tabOrder?.removeAll { expiredIds.contains($0) }
     DebugLogger.log("GEMINI-CHAT: Auto-deleted \(expiredIds.count) archived session(s) older than \(Int(Self.archivedRetentionDays)) days")
+    return true
+  }
+
+  /// Removes empty non-notice model messages left by a quit mid-reply. Returns true if any
+  /// session changed.
+  private func dropEmptyAssistantPlaceholders(_ file: inout SessionsFile) -> Bool {
+    var removed = 0
+    for index in file.sessions.indices {
+      let original = file.sessions[index].messages
+      let kept = original.filter { !$0.isEmptyAssistantPlaceholder }
+      guard kept.count != original.count else { continue }
+      file.sessions[index].messages = kept
+      removed += original.count - kept.count
+    }
+    guard removed > 0 else { return false }
+    DebugLogger.log("GEMINI-CHAT: Dropped \(removed) empty assistant placeholder(s) left by a quit mid-reply")
     return true
   }
 
