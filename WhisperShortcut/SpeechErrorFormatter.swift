@@ -77,7 +77,7 @@ struct SpeechErrorFormatter {
         Choose a different model in Settings → Dictate (e.g. Gemini 3.1 Flash-Lite).
         """)
 
-    case .rateLimited(let retryAfter, let topUpURL):
+    case .rateLimited(let retryAfter, let topUpURL, _):
       if topUpURL != nil {
         return String(localized: """
           ⏳ Daily Limit Reached
@@ -87,7 +87,7 @@ struct SpeechErrorFormatter {
           Top up your balance in the Dashboard to continue. Use the "Top up" button below to open the website.
           """)
       }
-      let waitMessage = retryAfter.map { String(localized: "Please wait \(Int($0)) seconds and try again.") } ?? String(localized: "Wait a moment and try again, or check billing (see above).")
+      let waitMessage = retryAfter.map { String(localized: "Please wait \(RetryBackoff.displayedWaitSeconds($0)) seconds and try again.") } ?? String(localized: "Wait a moment and try again, or check billing (see above).")
       return String(localized: """
         ⏳ Rate Limit Exceeded
 
@@ -142,7 +142,7 @@ struct SpeechErrorFormatter {
         """)
 
     case .quotaExceeded(let retryAfter):
-      let waitMessage = retryAfter.map { String(localized: "Please wait \(Int($0)) seconds and try again.") } ?? String(localized: "Please try again after adding more credits.")
+      let waitMessage = retryAfter.map { String(localized: "Please wait \(RetryBackoff.displayedWaitSeconds($0)) seconds and try again.") } ?? String(localized: "Please try again after adding more credits.")
       return String(localized: """
         ⏳ Quota Exceeded
 

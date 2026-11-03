@@ -180,14 +180,15 @@ final class GrokChatProvider: LLMChatProvider {
       endpoint: endpoint,
       headers: headers,
       logTag: logTag,
-      mapHTTPError: { status, body in
-        if status == 401 {
+      mapHTTPError: { response, body in
+        if response.statusCode == 401 {
           return TranscriptionError.networkError(ProviderCredentials.invalidKeyMessage(.xAI))
         }
-        if status == 429 {
-          return classifyXAI429(body: body)
+        if response.statusCode == 429 {
+          return classifyXAI429(body: body, response: response)
         }
-        return ChatProviderHTTPError.map(provider: "Grok", status: status, body: body)
+        return ChatProviderHTTPError.map(
+          provider: "Grok", status: response.statusCode, body: body, response: response)
       })
   }
 
@@ -220,7 +221,9 @@ final class GrokChatProvider: LLMChatProvider {
   /// rate limits and for permanent "credits exhausted / monthly spending limit" — the
   /// second is not solved by waiting, so it gets its own actionable message instead of
   /// the generic `.rateLimited` (which would tell the user to "wait and try again").
-  private static func classifyXAI429(body: String) -> TranscriptionError {
+  /// A transient 429 keeps the response's `Retry-After`; without one the delay stays nil
+  /// and the pre-first-token loop does not retry it.
+  static func classifyXAI429(body: String, response: HTTPURLResponse) -> TranscriptionError {
     let lower = body.lowercased()
     // Substring matches mirror xAI error wording observed in 2026-05; xAI may change
     // these phrases without notice, in which case we silently fall back to the generic
@@ -232,6 +235,6 @@ final class GrokChatProvider: LLMChatProvider {
       return TranscriptionError.networkError(
         String(localized: "xAI account is out of credits or has reached its monthly spending limit. Top up or raise the limit at https://console.x.ai/ to continue."))
     }
-    return TranscriptionError.rateLimited(retryAfter: nil)
+    return RetryBackoff.rateLimitedError(from: response)
   }
 }

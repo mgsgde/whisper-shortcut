@@ -47,12 +47,13 @@ final class LocalLLMChatProvider: LLMChatProvider {
       endpoint: endpoint,
       headers: [:],
       logTag: "LOCAL-CHAT-STREAM",
-      mapHTTPError: { status, body in
-        if status == 404 {
+      mapHTTPError: { response, body in
+        if response.statusCode == 404 {
           return TranscriptionError.networkError(
             String(localized: "Local server returned 404 for model \"\(model)\". Pull/select the model first (e.g. `ollama pull \(model)`) or fix the model id in Dictate Prompt settings."))
         }
-        return ChatProviderHTTPError.map(provider: "Local LLM", status: status, body: body)
+        return ChatProviderHTTPError.map(
+          provider: "Local LLM", status: response.statusCode, body: body, response: response)
       },
       mapTransportError: { Self.mapConnectionError($0, endpoint: endpoint) })
     return OpenAICompatibleStream.chatCompletions(config, body: body)
