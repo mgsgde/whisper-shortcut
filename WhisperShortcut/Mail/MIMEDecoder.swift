@@ -20,10 +20,18 @@ struct DecodedMail: Sendable, Equatable {
 enum MIMEDecoder {
   static let bodyCharacterCap = 20_000
 
+  /// Containers (multipart, message/rfc822) opened beyond this depth are opaque.
+  /// A text leaf at this depth is still decoded. Real mail is a handful of levels;
+  /// a hostile message nests thousands and would otherwise blow the stack.
+  private static let maxNestingDepth = 20
+
   static func decode(_ data: Data) -> DecodedMail {
-    let (headerData, bodyData) = splitHeaderBody(data)
-    let headers = parseHeaders(headerData)
-    let collected = collect(headers: headers, body: bodyData)
+    // One buffer for the whole message. Parts are index ranges into it: copying the
+    // remaining body at each level is quadratic, and a nested message can be megabytes.
+    let bytes = [UInt8](data)
+    let (headerRange, bodyRange) = splitHeaderBody(bytes, 0..<bytes.count)
+    let headers = parseHeaders(Data(bytes[headerRange]))
+    let collected = collect(headers: headers, bytes: bytes, range: bodyRange, depth: 0)
     let chosen: String
     if let plain = collected.plain, !plain.isEmpty {
       chosen = plain
@@ -54,9 +62,12 @@ enum MIMEDecoder {
     var attachments: [(name: String, bytes: Int)] = []
   }
 
-  private static func collect(headers: HeaderMap, body: Data) -> Collected {
+  private static func collect(
+    headers: HeaderMap, bytes: [UInt8], range: Range<Int>, depth: Int
+  ) -> Collected {
     let type = headers.mimeType
     if type.hasPrefix("multipart/") {
+      if depth >= maxNestingDepth { return Collected() }
       guard let boundary = headers.parameter("content-type", "boundary"), !boundary.isEmpty else {
         return Collected()
       }
@@ -64,9 +75,11 @@ enum MIMEDecoder {
       // multipart (mixed, related, ...) holds consecutive parts of one message: join them.
       let isAlternative = type == "multipart/alternative"
       var merged = Collected()
-      for part in splitMultipart(body, boundary: boundary) {
-        let (partHeaders, partBody) = splitHeaderBody(part)
-        let child = collect(headers: parseHeaders(partHeaders), body: partBody)
+      for part in splitMultipart(bytes, range, boundary: boundary) {
+        let (partHeaders, partBody) = splitHeaderBody(bytes, part)
+        let child = collect(
+          headers: parseHeaders(Data(bytes[partHeaders])), bytes: bytes, range: partBody,
+          depth: depth + 1)
         if isAlternative {
           if merged.plain == nil { merged.plain = child.plain }
           if merged.html == nil { merged.html = child.html }
@@ -83,11 +96,19 @@ enum MIMEDecoder {
     }
 
     if type == "message/rfc822" {
-      let inner = decodeTransfer(body, encoding: headers.transferEncoding)
-      return Collected(forwarded: forwardedText(from: inner))
+      if depth >= maxNestingDepth { return Collected() }
+      let encoding = headers.transferEncoding
+      // Identity encodings share the parent buffer. Base64 and quoted-printable
+      // produce new bytes, walked as their own buffer from here down.
+      if encoding == "base64" || encoding == "quoted-printable" {
+        let decoded = [UInt8](decodeTransfer(Data(bytes[range]), encoding: encoding))
+        return Collected(
+          forwarded: forwardedText(bytes: decoded, range: 0..<decoded.count, depth: depth + 1))
+      }
+      return Collected(forwarded: forwardedText(bytes: bytes, range: range, depth: depth + 1))
     }
 
-    let decoded = decodeTransfer(body, encoding: headers.transferEncoding)
+    let decoded = decodeTransfer(Data(bytes[range]), encoding: headers.transferEncoding)
     let name = attachmentName(headers)
     let disposition = headers.parameter("content-disposition", nil)?.lowercased()
       ?? headers.value("content-disposition").split(separator: ";").first
@@ -118,10 +139,13 @@ enum MIMEDecoder {
 
   /// A nested message rendered as text: marker, From/Subject when present, then its body
   /// (plain preferred, HTML stripped otherwise). Empty when the inner message has no text.
-  private static func forwardedText(from data: Data) -> String {
-    let (headerData, bodyData) = splitHeaderBody(data)
-    let headers = parseHeaders(headerData)
-    let inner = collect(headers: headers, body: bodyData)
+  private static func forwardedText(bytes: [UInt8], range: Range<Int>, depth: Int) -> String {
+    // `depth` is the forwarded message's content. The container cap lives in `collect`;
+    // this stops a chain that has already stepped past it.
+    if depth > maxNestingDepth { return "" }
+    let (headerRange, bodyRange) = splitHeaderBody(bytes, range)
+    let headers = parseHeaders(Data(bytes[headerRange]))
+    let inner = collect(headers: headers, bytes: bytes, range: bodyRange, depth: depth)
     var text = inner.plain ?? ""
     if text.isEmpty, let html = inner.html { text = stripHTML(html) }
     if !inner.forwarded.isEmpty { text = text.isEmpty ? inner.forwarded : text + "\n\n" + inner.forwarded }
@@ -208,16 +232,27 @@ enum MIMEDecoder {
     return lines.joined(separator: "\n")
   }
 
-  private static func splitHeaderBody(_ data: Data) -> (Data, Data) {
-    let crlf = Data([13, 10, 13, 10])
-    if let range = data.range(of: crlf) {
-      return (Data(data[..<range.lowerBound]), Data(data[range.upperBound...]))
+  /// Header and body ranges into `bytes`. Empty body when the separator is missing.
+  /// CRLF is preferred over LF for the whole part, matching a single `range(of:)` search.
+  private static func splitHeaderBody(_ bytes: [UInt8], _ range: Range<Int>) -> (Range<Int>, Range<Int>) {
+    if let at = indexOf(bytes, pattern: [13, 10, 13, 10], in: range) {
+      return (range.lowerBound..<at, (at + 4)..<range.upperBound)
     }
-    let lf = Data([10, 10])
-    if let range = data.range(of: lf) {
-      return (Data(data[..<range.lowerBound]), Data(data[range.upperBound...]))
+    if let at = indexOf(bytes, pattern: [10, 10], in: range) {
+      return (range.lowerBound..<at, (at + 2)..<range.upperBound)
     }
-    return (data, Data())
+    return (range, range.upperBound..<range.upperBound)
+  }
+
+  private static func indexOf(_ bytes: [UInt8], pattern: [UInt8], in range: Range<Int>) -> Int? {
+    guard !pattern.isEmpty, pattern.count <= range.count else { return nil }
+    var index = range.lowerBound
+    let last = range.upperBound - pattern.count
+    while index <= last {
+      if bytes[index..<(index + pattern.count)].elementsEqual(pattern) { return index }
+      index += 1
+    }
+    return nil
   }
 
   private static func splitSemicolons(_ value: String) -> [String] {
@@ -263,33 +298,40 @@ enum MIMEDecoder {
 
   // MARK: - Multipart
 
-  private static func splitMultipart(_ body: Data, boundary: String) -> [Data] {
-    let bytes = [UInt8](body)
+  private static func splitMultipart(
+    _ bytes: [UInt8], _ range: Range<Int>, boundary: String
+  ) -> [Range<Int>] {
     let delim = [UInt8]("--\(boundary)".utf8)
-    guard !delim.isEmpty, let first = findDelim(bytes, delim, from: 0) else { return [] }
-    var cursor = skipBoundaryEnding(bytes, from: first + delim.count)
-    var parts: [Data] = []
-    while cursor < bytes.count {
-      if isCloser(bytes, at: cursor) { break }
-      guard let next = findDelim(bytes, delim, from: cursor) else { break }
+    guard !delim.isEmpty, let first = findDelim(bytes, delim, from: range.lowerBound, in: range) else {
+      return []
+    }
+    var cursor = skipBoundaryEnding(bytes, from: first + delim.count, end: range.upperBound)
+    var parts: [Range<Int>] = []
+    while cursor < range.upperBound {
+      if isCloser(bytes, at: cursor, end: range.upperBound) { break }
+      guard let next = findDelim(bytes, delim, from: cursor, in: range) else { break }
       var end = next
-      if end >= 2, bytes[end - 2] == 13, bytes[end - 1] == 10 { end -= 2 }
-      else if end >= 1, bytes[end - 1] == 10 { end -= 1 }
-      if end >= cursor { parts.append(Data(bytes[cursor..<end])) }
+      // Measured from the start of this part, so a nested range cannot eat the parent's bytes.
+      if end >= range.lowerBound + 2, bytes[end - 2] == 13, bytes[end - 1] == 10 { end -= 2 }
+      else if end >= range.lowerBound + 1, bytes[end - 1] == 10 { end -= 1 }
+      if end >= cursor { parts.append(cursor..<end) }
       let after = next + delim.count
-      if isCloser(bytes, at: after) { break }
-      cursor = skipBoundaryEnding(bytes, from: after)
+      if isCloser(bytes, at: after, end: range.upperBound) { break }
+      cursor = skipBoundaryEnding(bytes, from: after, end: range.upperBound)
     }
     return parts
   }
 
-  private static func findDelim(_ bytes: [UInt8], _ delim: [UInt8], from start: Int) -> Int? {
+  private static func findDelim(
+    _ bytes: [UInt8], _ delim: [UInt8], from start: Int, in range: Range<Int>
+  ) -> Int? {
     guard !delim.isEmpty else { return nil }
-    var index = max(0, start)
-    while index + delim.count <= bytes.count {
-      let atLine = index == 0 || bytes[index - 1] == 10
+    var index = max(range.lowerBound, start)
+    let end = range.upperBound
+    while index + delim.count <= end {
+      let atLine = index == range.lowerBound || bytes[index - 1] == 10
       if atLine, bytes[index..<(index + delim.count)].elementsEqual(delim),
-         boundaryTailOK(bytes, after: index + delim.count) {
+         boundaryTailOK(bytes, after: index + delim.count, end: end) {
         return index
       }
       index += 1
@@ -297,23 +339,23 @@ enum MIMEDecoder {
     return nil
   }
 
-  private static func boundaryTailOK(_ bytes: [UInt8], after index: Int) -> Bool {
-    guard index < bytes.count else { return true }
+  private static func boundaryTailOK(_ bytes: [UInt8], after index: Int, end: Int) -> Bool {
+    guard index < end else { return true }
     switch bytes[index] {
     case UInt8(ascii: "-"), 13, 10, 32, 9: return true
     default: return false
     }
   }
 
-  private static func isCloser(_ bytes: [UInt8], at index: Int) -> Bool {
-    index + 1 < bytes.count && bytes[index] == UInt8(ascii: "-") && bytes[index + 1] == UInt8(ascii: "-")
+  private static func isCloser(_ bytes: [UInt8], at index: Int, end: Int) -> Bool {
+    index + 1 < end && bytes[index] == UInt8(ascii: "-") && bytes[index + 1] == UInt8(ascii: "-")
   }
 
-  private static func skipBoundaryEnding(_ bytes: [UInt8], from start: Int) -> Int {
+  private static func skipBoundaryEnding(_ bytes: [UInt8], from start: Int, end: Int) -> Int {
     var index = start
-    while index < bytes.count, bytes[index] == 32 || bytes[index] == 9 { index += 1 }
-    if index + 1 < bytes.count, bytes[index] == 13, bytes[index + 1] == 10 { return index + 2 }
-    if index < bytes.count, bytes[index] == 10 { return index + 1 }
+    while index < end, bytes[index] == 32 || bytes[index] == 9 { index += 1 }
+    if index + 1 < end, bytes[index] == 13, bytes[index + 1] == 10 { return index + 2 }
+    if index < end, bytes[index] == 10 { return index + 1 }
     return index
   }
 

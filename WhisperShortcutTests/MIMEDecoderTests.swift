@@ -263,8 +263,90 @@ struct MIMEDecoderTests {
     raw.append(Data("\r\n\r\nbody".utf8))
     #expect(MIMEDecoder.decode(raw).subject == "Grüße")
   }
+
+  @Test func nestingCapKeepsTheTwentiethLevelAndSkipsTheTwentyFirst() {
+    let kept = MIMEDecoder.decode(nestedMultipart(levels: 20, leaf: "LEVEL20"))
+    #expect(kept.body == "LEVEL20")
+    let skipped = MIMEDecoder.decode(nestedMultipart(levels: 21, leaf: "LEVEL21"))
+    #expect(skipped.body.isEmpty)
+  }
+
+  @Test func threeForwardedLevelsStillDecode() {
+    let decoded = MIMEDecoder.decode(nestedForwards(levels: 3, leaf: "INNERTEXT"))
+    #expect(decoded.body.contains("INNERTEXT"))
+    let markers = decoded.body.components(separatedBy: "---------- Forwarded message ----------").count - 1
+    #expect(markers == 3)
+  }
+
+  @Test func quotedPrintableForwardedMessageStillDecodes() {
+    let decoded = MIMEDecoder.decode(mail("""
+    Content-Type: message/rfc822
+    Content-Transfer-Encoding: quoted-printable
+
+    From: boss@b.test
+    Subject: Budget
+    Content-Type: text/plain; charset=utf-8
+
+    Hello=20there
+    """))
+    #expect(decoded.body.contains("---------- Forwarded message ----------"))
+    #expect(decoded.body.contains("From: boss@b.test"))
+    #expect(decoded.body.contains("Subject: Budget"))
+    #expect(decoded.body.contains("Hello there"))
+  }
+
+  @Test func deeplyNestedMultipartDecodesWithoutWalkingEveryLevel() {
+    let bomb = nestedMultipart(levels: 5_000, leaf: "DEEPLEAF")
+    var message = Data(
+      "Content-Type: multipart/mixed; boundary=\"top\"\r\n\r\n--top\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nSHALLOW\r\n--top\r\n".utf8)
+    message.append(bomb)
+    message.append(Data("\r\n--top--\r\n".utf8))
+    let started = ContinuousClock.now
+    let decoded = MIMEDecoder.decode(message)
+    #expect(ContinuousClock.now - started < .seconds(2))
+    #expect(decoded.body == "SHALLOW")
+    #expect(!decoded.body.contains("DEEPLEAF"))
+  }
+
+  @Test func deeplyNestedForwardStopsAtTheCap() {
+    let within = MIMEDecoder.decode(nestedForwards(levels: 20, leaf: "FORWARD20"))
+    #expect(within.body.contains("FORWARD20"))
+    let past = MIMEDecoder.decode(nestedForwards(levels: 21, leaf: "FORWARD21"))
+    #expect(!past.body.contains("FORWARD21"))
+    let started = ContinuousClock.now
+    let bomb = MIMEDecoder.decode(nestedForwards(levels: 5_000, leaf: "DEEPFORWARD"))
+    #expect(ContinuousClock.now - started < .seconds(2))
+    #expect(bomb.body.isEmpty)
+  }
 }
 
 private func mail(_ text: String) -> Data {
   Data(text.replacingOccurrences(of: "\n", with: "\r\n").utf8)
+}
+
+/// `levels` nested multipart/mixed wrappers around one text/plain leaf.
+private func nestedMultipart(levels: Int, leaf: String) -> Data {
+  var chunks: [String] = []
+  chunks.reserveCapacity(levels * 2 + 1)
+  for level in 0..<levels {
+    let boundary = String(format: "bnd%04d", level)
+    chunks.append("Content-Type: multipart/mixed; boundary=\"\(boundary)\"\r\n\r\n--\(boundary)\r\n")
+  }
+  chunks.append("Content-Type: text/plain; charset=utf-8\r\n\r\n\(leaf)\r\n")
+  for level in stride(from: levels - 1, through: 0, by: -1) {
+    let boundary = String(format: "bnd%04d", level)
+    chunks.append("--\(boundary)--\r\n")
+  }
+  return Data(chunks.joined().utf8)
+}
+
+/// `levels` nested message/rfc822 wrappers around one text/plain leaf.
+private func nestedForwards(levels: Int, leaf: String) -> Data {
+  var chunks: [String] = []
+  chunks.reserveCapacity(levels + 1)
+  for _ in 0..<levels {
+    chunks.append("Content-Type: message/rfc822\r\n\r\n")
+  }
+  chunks.append("Content-Type: text/plain; charset=utf-8\r\n\r\n\(leaf)\r\n")
+  return Data(chunks.joined().utf8)
 }

@@ -1934,7 +1934,12 @@ enum ChatToolRegistry {
       let mailbox = mailMailbox(args)
       return await runMailTool(args: args) { session in
         _ = try await session.examine(mailbox)
-        let mail = MIMEDecoder.decode(try await session.fetchBody(uid: uid))
+        let raw = try await session.fetchBody(uid: uid)
+        // This closure inherits MailAccountStore's main-actor isolation. Decoding a
+        // nested message there freezes the UI and trips the hang watchdog.
+        let mail = await Task.detached(priority: .userInitiated) {
+          MIMEDecoder.decode(raw)
+        }.value
         let attachments: [Any] = mail.attachments.map { item in
           ["name": item.name, "bytes": item.bytes] as [String: Any]
         }
