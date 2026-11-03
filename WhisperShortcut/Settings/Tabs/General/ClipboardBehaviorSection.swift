@@ -66,56 +66,73 @@ struct ClipboardBehaviorSection: View {
         .fixedSize(horizontal: false, vertical: true)
 
       HStack(alignment: .center, spacing: 16) {
-        Text("Restore clipboard:")
+        Text("After auto-paste:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        Toggle("", isOn: $viewModel.data.restoreClipboardAfterPaste)
-          .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Restore clipboard after auto-paste")
-          .disabled(!viewModel.data.autoPasteAfterDictation)
-          .onChange(of: viewModel.data.restoreClipboardAfterPaste) { _, newValue in
-            DebugLogger.log("AUTO-PASTE SETTINGS: Restore clipboard changed to \(newValue)")
-            Task {
-              await viewModel.saveSettings()
-            }
+        // One choice instead of two toggles: restore and clear contradict each other, and two
+        // switches let both look on at once (pilot feedback 2026-11-03). Stored in the existing
+        // two keys, so no migration.
+        Picker("", selection: afterPasteBinding) {
+          ForEach(AfterPasteClipboard.allCases, id: \.self) { option in
+            Text(option.displayName).tag(option)
           }
+        }
+        .pickerStyle(MenuPickerStyle())
+        .frame(width: 200)
+        .accessibilityLabel("Clipboard after auto-paste")
+        .disabled(!viewModel.data.autoPasteAfterDictation)
 
         Spacer()
       }
 
-      Text("Puts back what you had copied before, right after pasting. Needs auto-paste.")
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-      HStack(alignment: .center, spacing: 16) {
-        Text("Clear clipboard:")
-          .font(.body)
-          .fontWeight(.medium)
-          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
-
-        Toggle("", isOn: $viewModel.data.clearClipboardAfterAutoPaste)
-          .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Clear clipboard after auto-paste")
-          // Restore wins: with it on, this setting does nothing.
-          .disabled(!viewModel.data.autoPasteAfterDictation || viewModel.data.restoreClipboardAfterPaste)
-          .onChange(of: viewModel.data.clearClipboardAfterAutoPaste) { _, newValue in
-            DebugLogger.log("AUTO-PASTE SETTINGS: Clear clipboard changed to \(newValue)")
-            Task {
-              await viewModel.saveSettings()
-            }
-          }
-
-        Spacer()
-      }
-
-      Text("After the text is inserted, the clipboard is emptied so a later ⌘V cannot paste an earlier dictation. Copy Last Transcription still works.")
+      Text(afterPasteBinding.wrappedValue.explanation)
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
       #endif
+    }
+  }
+
+  private var afterPasteBinding: Binding<AfterPasteClipboard> {
+    Binding(
+      get: {
+        if viewModel.data.restoreClipboardAfterPaste { return .restore }
+        if viewModel.data.clearClipboardAfterAutoPaste { return .clear }
+        return .keep
+      },
+      set: { option in
+        DebugLogger.log("AUTO-PASTE SETTINGS: Clipboard after paste changed to \(option)")
+        viewModel.data.restoreClipboardAfterPaste = option == .restore
+        viewModel.data.clearClipboardAfterAutoPaste = option == .clear
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    )
+  }
+}
+
+private enum AfterPasteClipboard: CaseIterable {
+  case keep, restore, clear
+
+  var displayName: String {
+    switch self {
+    case .keep: return String(localized: "Leave dictation")
+    case .restore: return String(localized: "Restore previous")
+    case .clear: return String(localized: "Empty it")
+    }
+  }
+
+  var explanation: String {
+    switch self {
+    case .keep:
+      return String(localized: "The dictated text stays on the clipboard, so you can paste it again with ⌘V.")
+    case .restore:
+      return String(localized: "Puts back what you had copied before, right after pasting.")
+    case .clear:
+      return String(localized: "Empties the clipboard after pasting, so a later ⌘V cannot paste an earlier dictation. Copy Last Transcription still works.")
     }
   }
 }

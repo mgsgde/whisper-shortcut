@@ -1,6 +1,86 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The dictated text stays on the clipboard, so you can paste it again with ⌘V." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der diktierte Text bleibt in der Zwischenablage, Sie können ihn mit ⌘V erneut einfügen."
+          }
+        }
+      }
+    },
+    "Restore previous" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorherige wiederherstellen"
+          }
+        }
+      }
+    },
+    "Puts back what you had copied before, right after pasting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stellt direkt nach dem Einfügen wieder her, was Sie vorher kopiert hatten."
+          }
+        }
+      }
+    },
+    "Leave dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat behalten"
+          }
+        }
+      }
+    },
+    "Empty it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leeren"
+          }
+        }
+      }
+    },
+    "Empties the clipboard after pasting, so a later ⌘V cannot paste an earlier dictation. Copy Last Transcription still works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leert die Zwischenablage nach dem Einfügen, damit ein späteres ⌘V kein früheres Diktat einfügt. „Letzte Transkription kopieren“ funktioniert weiterhin."
+          }
+        }
+      }
+    },
+    "Clipboard after auto-paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenablage nach dem Einfügen"
+          }
+        }
+      }
+    },
+    "After auto-paste:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Einfügen:"
+          }
+        }
+      }
+    },
     "" : {
       "shouldTranslate" : false
     },
