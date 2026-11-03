@@ -131,4 +131,37 @@ struct AnthropicMessagesConverterTests {
     #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: false, clientToolCount: 3) == nil)
     #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: true, clientToolCount: 0) == nil)
   }
+
+  @Test("The final-round request body keeps tools and sets tool_choice to none")
+  func finalRoundBodyKeepsToolsAndRefusesCalls() throws {
+    let tool = LLMToolDeclaration(
+      name: "fake_lookup", description: "Look something up",
+      parameters: ["type": "object", "properties": [:] as [String: Any]])
+    let contents: [[String: Any]] = [
+      ["role": "user", "parts": [["text": "Find it"]]],
+    ]
+    let body = AnthropicChatProvider.requestBody(
+      model: "claude-sonnet-5",
+      contents: contents,
+      systemInstruction: nil,
+      tools: [tool],
+      options: ChatRequestOptions(disableBuiltInTools: true, isFinalRound: true),
+      includesWebSearch: false)
+    let tools = try #require(body["tools"] as? [[String: Any]])
+    #expect(tools.contains { ($0["name"] as? String) == "fake_lookup" })
+    let choice = try #require(body["tool_choice"] as? [String: Any])
+    #expect(choice["type"] as? String == "none")
+
+    // Dictate Prompt sets disableBuiltInTools on every round. That is not the final round,
+    // so the tools stay callable.
+    let earlier = AnthropicChatProvider.requestBody(
+      model: "claude-sonnet-5",
+      contents: contents,
+      systemInstruction: nil,
+      tools: [tool],
+      options: ChatRequestOptions(disableBuiltInTools: true, isFinalRound: false),
+      includesWebSearch: false)
+    #expect((earlier["tools"] as? [[String: Any]])?.isEmpty == false)
+    #expect(earlier["tool_choice"] == nil)
+  }
 }

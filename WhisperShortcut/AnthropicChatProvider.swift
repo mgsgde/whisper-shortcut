@@ -67,6 +67,62 @@ final class AnthropicChatProvider: LLMChatProvider {
     return ["type": "none"]
   }
 
+  /// The Messages request body. `includesWebSearch` is decided by the caller: a 400 that names
+  /// web search retries the same turn with it false. The final round keeps `tools` and sets
+  /// `tool_choice` to none (see `messagesToolChoice`).
+  static func requestBody(
+    model: String,
+    contents: [[String: Any]],
+    systemInstruction: [String: Any]?,
+    tools: [LLMToolDeclaration],
+    options: ChatRequestOptions,
+    includesWebSearch: Bool
+  ) -> [String: Any] {
+    let messages = AnthropicMessagesConverter.messages(from: contents)
+    let systemText = GeminiSystemInstruction.text(from: systemInstruction)
+
+    var body: [String: Any] = [
+      "model": model,
+      "messages": messages,
+      "max_tokens": 16384,
+      "stream": true,
+    ]
+    if let systemText, !systemText.isEmpty {
+      body["system"] = systemText
+    }
+    let clientTools: [[String: Any]] = tools.map { tool in
+      [
+        "name": tool.name,
+        "description": tool.description,
+        "input_schema": tool.parameters,
+      ] as [String: Any]
+    }
+    // Web search leads so the client tools' breakpoint below still covers the whole list.
+    var defs = (includesWebSearch ? [webSearchTool] : []) + clientTools
+    // Explicit breakpoint on the last tool: tools render first and change only when an
+    // integration is connected, so this prefix is re-read across turns and tool rounds
+    // even when the system prompt's volatile tail (memory, meeting transcript) changes.
+    if !clientTools.isEmpty {
+      defs[defs.count - 1]["cache_control"] = ["type": "ephemeral"]
+    }
+    if !defs.isEmpty {
+      body["tools"] = defs
+    }
+    if let toolChoice = messagesToolChoice(
+      isFinalRound: options.isFinalRound, clientToolCount: clientTools.count
+    ) {
+      body["tool_choice"] = toolChoice
+    }
+    // Automatic caching for the growing tail: the API places this breakpoint on the last
+    // cacheable block and moves it forward each turn, so every tool round and follow-up
+    // re-reads the whole conversation instead of paying full input price again.
+    body["cache_control"] = ["type": "ephemeral"]
+    if let effort = options.thinkingLevel.anthropicEffort, supportsEffort(model: model) {
+      body["output_config"] = ["effort": effort]
+    }
+    return body
+  }
+
   private struct WebSearchRejected: Error {}
 
   func sendChatStream(
@@ -96,60 +152,21 @@ final class AnthropicChatProvider: LLMChatProvider {
           request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
           request.timeoutInterval = 300
 
-          let messages = AnthropicMessagesConverter.messages(from: contents)
-          let systemText = GeminiSystemInstruction.text(from: systemInstruction)
-
-          var body: [String: Any] = [
-            "model": model,
-            "messages": messages,
-            "max_tokens": 16384,
-            "stream": true,
-          ]
-          if let systemText, !systemText.isEmpty {
-            body["system"] = systemText
-          }
-          let clientTools: [[String: Any]] = tools.map { tool in
-            [
-              "name": tool.name,
-              "description": tool.description,
-              "input_schema": tool.parameters,
-            ] as [String: Any]
-          }
           var includesSearch =
             options.useGrounding && !options.disableBuiltInTools && Self.isWebSearchEnabledInSettings
             && !self.isWebSearchRejected
-          // Web search leads so the client tools' breakpoint below still covers the whole list.
-          func toolDefinitions() -> [[String: Any]] {
-            var defs = (includesSearch ? [Self.webSearchTool] : []) + clientTools
-            // Explicit breakpoint on the last tool: tools render first and change only when an
-            // integration is connected, so this prefix is re-read across turns and tool rounds
-            // even when the system prompt's volatile tail (memory, meeting transcript) changes.
-            if !clientTools.isEmpty {
-              defs[defs.count - 1]["cache_control"] = ["type": "ephemeral"]
-            }
-            return defs
-          }
-          let toolDefs = toolDefinitions()
-          if !toolDefs.isEmpty {
-            body["tools"] = toolDefs
-          }
-          if let toolChoice = Self.messagesToolChoice(
-            isFinalRound: options.isFinalRound, clientToolCount: clientTools.count
-          ) {
-            body["tool_choice"] = toolChoice
-          }
-          // Automatic caching for the growing tail: the API places this breakpoint on the last
-          // cacheable block and moves it forward each turn, so every tool round and follow-up
-          // re-reads the whole conversation instead of paying full input price again.
-          body["cache_control"] = ["type": "ephemeral"]
-          if let effort = options.thinkingLevel.anthropicEffort,
-             Self.supportsEffort(model: model) {
-            body["output_config"] = ["effort": effort]
-          }
+          var body = Self.requestBody(
+            model: model,
+            contents: contents,
+            systemInstruction: systemInstruction,
+            tools: tools,
+            options: options,
+            includesWebSearch: includesSearch)
 
           request.httpBody = try JSONSerialization.data(withJSONObject: body)
+          let messageCount = (body["messages"] as? [[String: Any]])?.count ?? 0
           DebugLogger.logNetwork(
-            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messages.count) tools=\(tools.count) webSearch=\(includesSearch) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
+            "ANTHROPIC-CHAT-STREAM: POST \(Self.messagesURL) model=\(model) messages=\(messageCount) tools=\(tools.count) webSearch=\(includesSearch) effort=\(options.thinkingLevel.anthropicEffort ?? "default")"
           )
 
           func openStream() async throws -> URLSession.AsyncBytes {
@@ -180,12 +197,13 @@ final class AnthropicChatProvider: LLMChatProvider {
             DebugLogger.logWarning("ANTHROPIC-CHAT-STREAM: web search rejected by the API — retrying without it")
             self.markWebSearchRejected()
             includesSearch = false
-            let retryTools = toolDefinitions()
-            if retryTools.isEmpty {
-              body.removeValue(forKey: "tools")
-            } else {
-              body["tools"] = retryTools
-            }
+            body = Self.requestBody(
+              model: model,
+              contents: contents,
+              systemInstruction: systemInstruction,
+              tools: tools,
+              options: options,
+              includesWebSearch: false)
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             bytes = try await openStream()
           }
