@@ -55,8 +55,19 @@ enum ParakeetPunctuationTiming {
       guard mark.count == 1, let character = mark.first, markCharacters.contains(character) else {
         return false
       }
-      return index == tokens.count - 1 || startsWord(tokens[index + 1])
+      if index == tokens.count - 1 || startsWord(tokens[index + 1]) { return true }
+      // Parakeet sometimes writes a spoken "Komma" glued to the next word ("50,Merkzeichen"):
+      // the next token then continues without a word marker and starts with a letter.
+      return character == "," && (bare(tokens[index + 1]).first?.isLetter ?? false)
     }
+  }
+
+  /// Puts the missing space after a comma glued to a letter (",Merkzeichen" → ", Merkzeichen").
+  /// A comma before a digit ("3,5") is a decimal comma and stays. Applied to every Parakeet
+  /// output, in every punctuation mode.
+  static func spacingGluedCommas(_ text: String) -> String {
+    text.replacingOccurrences(
+      of: ",(?=\\p{L})", with: ", ", options: .regularExpression)
   }
 
   /// One verdict per mark token, in order: true = the speaker said it, false = Parakeet guessed it.
@@ -82,10 +93,15 @@ enum ParakeetPunctuationTiming {
     let verdicts = spokenMarks(tokens: tokens, audioDuration: audioDuration)
     let characters = Array(text)
     var markPositions: [Int] = []
+    var gluedCommas = Set<Int>()
     for (i, character) in characters.enumerated() where markCharacters.contains(character) {
       let endsWord = i + 1 == characters.count || characters[i + 1].isWhitespace
       let followsWord = i > 0 && !characters[i - 1].isWhitespace
-      if endsWord && followsWord { markPositions.append(i) }
+      let glued = character == "," && i + 1 < characters.count && characters[i + 1].isLetter
+      if (endsWord || glued) && followsWord {
+        markPositions.append(i)
+        if glued { gluedCommas.insert(i) }
+      }
     }
     guard markPositions.count == verdicts.count else { return nil }
 
@@ -108,6 +124,7 @@ enum ParakeetPunctuationTiming {
     while index < characters.count {
       let character = characters[index]
       if drop.contains(index) {
+        if gluedCommas.contains(index) { result.append(" ") }
         if character == "." || character == "?" || character == "!" { lowerNextWord = true }
         index += 1
         continue
@@ -123,6 +140,7 @@ enum ParakeetPunctuationTiming {
       }
       if !character.isWhitespace { lowerNextWord = false }
       result.append(character)
+      if gluedCommas.contains(index) { result.append(" ") }
       index += 1
     }
     // A dropped final mark leaves trailing spaces only if the text had them; keep the text as is.

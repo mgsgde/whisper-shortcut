@@ -145,7 +145,9 @@ final class ParakeetBackend: @unchecked Sendable {
     do {
       guard !terms.isEmpty else {
         let result = try await manager.transcribe(audioURL, decoderState: &state, language: hint)
-        return spokenMarksOnly ? Self.keepingSpokenMarks(result, audioURL: audioURL) : result.text
+        return spokenMarksOnly
+          ? Self.keepingSpokenMarks(result, audioURL: audioURL)
+          : ParakeetPunctuationTiming.spacingGluedCommas(result.text)
       }
       // The spotter needs the samples too, so decode from them rather than reading the file twice.
       let samples = try converter.resampleAudioFile(audioURL)
@@ -155,7 +157,8 @@ final class ParakeetBackend: @unchecked Sendable {
       // agree. It only rewrites word spans; the filter maps marks to tokens by order and falls
       // back when a span swallowed one (count mismatch).
       return spokenMarksOnly
-        ? Self.keepingSpokenMarks(result, text: rescored, audioURL: audioURL) : rescored
+        ? Self.keepingSpokenMarks(result, text: rescored, audioURL: audioURL)
+        : ParakeetPunctuationTiming.spacingGluedCommas(rescored)
     } catch let error as ASRError {
       switch error {
       case .invalidAudioData: throw ParakeetBackendError.audioTooShort
@@ -185,7 +188,8 @@ extension ParakeetBackend {
       return filtered.text
     }
     DebugLogger.log("LOCAL-SPEECH: punctuation timing skipped (count mismatch)")
-    return SpokenPunctuation.stripModelPunctuation(from: text)
+    return SpokenPunctuation.stripModelPunctuation(
+      from: ParakeetPunctuationTiming.spacingGluedCommas(text))
   }
 
   /// The raw decode with its token timings, for the opt-in live tests only (no app code calls

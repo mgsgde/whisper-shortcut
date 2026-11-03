@@ -123,4 +123,43 @@ struct ParakeetPunctuationTimingTests {
     #expect(
       LiveDictation.finishPiece("Gangbild, geht weiter.", mode: .spokenOnly) == "Gangbild geht weiter.")
   }
+
+  // "Gesamt GdB 50,Merkzeichen G." with Parakeet's comma glued to the next word.
+  private func gluedTokens(gap: Double) -> [Token] {
+    [
+      word("Gesamt", 0, 0.4), word("GdB", 0.4, 0.8), word("50", 0.8, 1.2), mark(",", 1.2, 1.24),
+      mark("Merk", 1.24 + gap, 1.5 + gap), mark("zeichen", 1.5 + gap, 1.8 + gap),
+      word("G", 1.8 + gap, 2.0 + gap), mark(".", 2.0 + gap, 2.04 + gap),
+    ]
+  }
+
+  @Test("a spoken comma glued to the next word is kept and gets its space")
+  func gluedCommaKept() {
+    let tokens = gluedTokens(gap: 0.2)
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 4) == [true, true])
+    let result = ParakeetPunctuationTiming.filter(
+      text: "Gesamt GdB 50,Merkzeichen G.", tokens: tokens, audioDuration: 4)
+    #expect(result == .init(text: "Gesamt GdB 50, Merkzeichen G.", kept: 2, dropped: 0))
+  }
+
+  @Test("a guessed glued comma is replaced by a space, never gluing the words")
+  func gluedCommaDropped() {
+    let result = ParakeetPunctuationTiming.filter(
+      text: "Gesamt GdB 50,Merkzeichen G.", tokens: gluedTokens(gap: 0), audioDuration: 4)
+    #expect(result?.text == "Gesamt GdB 50 Merkzeichen G.")
+    #expect(result?.dropped == 1)
+  }
+
+  @Test("a decimal comma stays untouched")
+  func decimalComma() {
+    let tokens = [word("Wert", 0, 0.4), word("3", 0.4, 0.6), mark(",", 0.6, 0.62),
+      Token(text: "5", start: 0.62, end: 0.8), word("mg", 0.8, 1.0), mark(".", 1.0, 1.04)]
+    let result = ParakeetPunctuationTiming.filter(text: "Wert 3,5 mg.", tokens: tokens, audioDuration: 3)
+    #expect(result?.text == "Wert 3,5 mg.")
+  }
+
+  @Test("spacingGluedCommas adds the space before a letter only")
+  func spacingGluedCommas() {
+    #expect(ParakeetPunctuationTiming.spacingGluedCommas("50,Merkzeichen und 3,5") == "50, Merkzeichen und 3,5")
+  }
 }
