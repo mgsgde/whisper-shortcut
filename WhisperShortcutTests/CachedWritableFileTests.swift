@@ -3,25 +3,30 @@ import Testing
 
 @testable import WhisperShortcut_AppStore
 
-@Suite("Cached error-log handle after Delete context data")
+@Suite("Error log reopens after its file is deleted")
 struct CachedWritableFileTests {
 
-  @Test("A handle is invalid once its file is deleted underneath it")
-  func deletedFileIsNoLongerOnDisk() throws {
+  @Test("A write after the file was deleted recreates it with the new line")
+  func reopensAfterDelete() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    let file = dir.appendingPathComponent("errors-2026-11-01.log")
-    #expect(FileManager.default.createFile(atPath: file.path, contents: Data("old\n".utf8)))
-    #expect(CachedWritableFile.isStillOnDisk(path: file.path))
+    let writer = ErrorFileWriter(logDirectory: dir, suppressWritesDuringTests: false)
+    writer.write(message: "first-line")
+    writer.waitForPendingWrites()
 
-    try FileManager.default.removeItem(at: file)
-    #expect(!CachedWritableFile.isStillOnDisk(path: file.path))
+    let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+    let log = try #require(files.first { $0.lastPathComponent.hasPrefix("errors-") && $0.pathExtension == "log" })
+    try FileManager.default.removeItem(at: log)
+    #expect(!FileManager.default.fileExists(atPath: log.path))
 
-    #expect(FileManager.default.createFile(atPath: file.path, contents: Data("new\n".utf8)))
-    #expect(CachedWritableFile.isStillOnDisk(path: file.path))
-    let text = try String(contentsOf: file, encoding: .utf8)
-    #expect(text == "new\n")
+    writer.write(message: "second-line")
+    writer.waitForPendingWrites()
+
+    #expect(FileManager.default.fileExists(atPath: log.path))
+    let text = try String(contentsOf: log, encoding: .utf8)
+    #expect(text.contains("second-line"))
+    #expect(!text.contains("first-line"))
   }
 }
