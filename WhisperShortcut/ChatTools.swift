@@ -1,6 +1,16 @@
 import AppKit
 import Foundation
 
+/// Schemes a markdown link in a chat reply may open. The `open_url` tool is http(s) only
+/// and needs approval; reply links used to skip that check and launch any handler
+/// (`file://`, custom app schemes) from text the model just read.
+enum ChatLinkPolicy {
+  static func isSafeToOpen(_ url: URL) -> Bool {
+    guard let scheme = url.scheme?.lowercased(), !scheme.isEmpty else { return false }
+    return scheme == "http" || scheme == "https" || scheme == "mailto"
+  }
+}
+
 // MARK: - Gemini Chat Tools (Function Calling)
 //
 // Small registry of local "agent" tools that Gemini can invoke via function calls.

@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
@@ -121,6 +122,41 @@ struct ChatToolHardeningTests {
     #expect(f(-3.7) == -3)
     #expect(f(Int.max) == 1_000_000_000)
     #expect(ChatToolRegistry.intArgument([:], "k", default: 7) == 7)
+  }
+
+  // MARK: chat reply links
+
+  @Test func chatReplyLinksOpenOnlyHttpHttpsMailto() throws {
+    let http = try #require(URL(string: "https://example.com/doc"))
+    let mail = try #require(URL(string: "mailto:user@example.com"))
+    let file = try #require(URL(string: "file:///etc/passwd"))
+    let custom = try #require(URL(string: "shortcuts://run-shortcut?name=x"))
+    let js = try #require(URL(string: "javascript:alert(1)"))
+    #expect(ChatLinkPolicy.isSafeToOpen(http))
+    #expect(ChatLinkPolicy.isSafeToOpen(mail))
+    #expect(!ChatLinkPolicy.isSafeToOpen(file))
+    #expect(!ChatLinkPolicy.isSafeToOpen(custom))
+    #expect(!ChatLinkPolicy.isSafeToOpen(js))
+  }
+
+  @Test func chatReplyLinkDelegateSwallowsBlockedSchemes() throws {
+    let textView = NSTextView()
+    var opened: [URL] = []
+    let delegate = ChatReplyLinkDelegate { opened.append($0) }
+    let https = try #require(URL(string: "https://example.com/doc"))
+    let mail = try #require(URL(string: "mailto:user@example.com"))
+    let file = try #require(URL(string: "file:///etc/passwd"))
+    let custom = try #require(URL(string: "shortcuts://run-shortcut?name=x"))
+
+    #expect(delegate.textView(textView, clickedOnLink: https, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "mailto:user@example.com", at: 0))
+    #expect(opened == [https, mail])
+
+    #expect(delegate.textView(textView, clickedOnLink: file, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: custom, at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "javascript:alert(1)", at: 0))
+    #expect(delegate.textView(textView, clickedOnLink: "not a url", at: 4) == false)
+    #expect(opened == [https, mail])
   }
 
   // MARK: write tools size check
