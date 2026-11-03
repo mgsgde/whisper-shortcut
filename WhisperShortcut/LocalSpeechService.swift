@@ -368,9 +368,12 @@ actor LocalSpeechService {
   ///   lever that actually removes the wait is streaming, not intra-file parallelism.
   /// - Parameter vocabulary: the Glossary as terms, for Parakeet (CTC vocabulary boosting).
   ///   Whisper ignores it and conditions on `prompt` instead.
+  /// - Parameter spokenMarksOnly: Parakeet only, "Only when spoken" punctuation: guessed commas and
+  ///   periods are removed by token timing (`ParakeetPunctuationTiming`). Whisper ignores it.
   func transcribe(
     audioURL: URL, language: String? = nil, prompt: String? = nil,
     vocabulary: [String] = [],
+    spokenMarksOnly: Bool = false,
     chunkingStrategy: ChunkingStrategy? = nil
   ) async throws -> String {
     let transcribeStartTime = CFAbsoluteTimeGetCurrent()
@@ -453,7 +456,7 @@ actor LocalSpeechService {
       let decodeStart = CFAbsoluteTimeGetCurrent()
       do {
         text = try await performParakeetTranscription(
-          parakeet, audioURL: audioURL, language: language, vocabulary: vocabulary,
+          parakeet, audioURL: audioURL, language: language, vocabulary: vocabulary, spokenMarksOnly: spokenMarksOnly,
           deadline: deadline, audioSeconds: audioDuration)
       } catch ParakeetBackendError.notLoaded {
         // Defensive: the backend object is never torn down under a decode any more, but if
@@ -466,7 +469,7 @@ actor LocalSpeechService {
         guard let reloaded = self.parakeet else { throw TranscriptionError.localModelFailed(String(localized: "Offline model not initialized")) }
         do {
           text = try await performParakeetTranscription(
-            reloaded, audioURL: audioURL, language: language, vocabulary: vocabulary,
+            reloaded, audioURL: audioURL, language: language, vocabulary: vocabulary, spokenMarksOnly: spokenMarksOnly,
             deadline: deadline, audioSeconds: audioDuration)
         } catch ParakeetBackendError.notLoaded {
           // Second failure after a clean reload: typed, so the recording is kept and Retry offered.
@@ -554,12 +557,16 @@ actor LocalSpeechService {
   /// Parakeet's decode under the same wall-clock deadline and error mapping as Whisper's.
   private func performParakeetTranscription(
     _ backend: ParakeetBackend, audioURL: URL, language: String?, vocabulary: [String],
-    deadline: TimeInterval, audioSeconds: Double?
+    spokenMarksOnly: Bool, deadline: TimeInterval, audioSeconds: Double?
   ) async throws -> String {
     try await Self.withDecodeDeadline(
       seconds: deadline, audioSeconds: audioSeconds,
       model: currentModelType?.rawValue ?? "unknown",
-      op: { try await backend.transcribe(audioURL: audioURL, language: language, vocabulary: vocabulary) },
+      op: {
+        try await backend.transcribe(
+          audioURL: audioURL, language: language, vocabulary: vocabulary,
+          spokenMarksOnly: spokenMarksOnly)
+      },
       mapFailure: { error in
         switch error {
         case ParakeetBackendError.audioTooShort:

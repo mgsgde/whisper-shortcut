@@ -81,9 +81,14 @@ enum LiveDictation {
   /// fillers dropped, model punctuation stripped in "Only when spoken" mode, then the spoken
   /// layout commands. Edge line breaks ("neuer Absatz" at the very end of a piece) are kept —
   /// `LiveChunkJoiner` relies on them to lay out the next piece without adding a space after.
-  static func finishPiece(_ text: String, mode: PunctuationMode) -> String {
+  /// `timedMarks`: the piece's commas and periods were already filtered by token timing
+  /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken").
+  static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
     let withoutFillers = removingFillers(text)
-    let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: withoutFillers) : withoutFillers
+    let source =
+      mode == .spokenOnly
+      ? SpokenPunctuation.stripModelPunctuation(from: withoutFillers, timedMarks: timedMarks)
+      : withoutFillers
     return SpokenPunctuation.apply(to: source, mode: mode, keepsEdgeBreaks: true)
   }
 

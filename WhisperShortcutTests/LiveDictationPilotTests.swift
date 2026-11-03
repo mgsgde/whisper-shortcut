@@ -84,11 +84,16 @@ struct LiveDictationPilotTests {
       try Self.say(pilotCase.speech, voice: "Anna", rate: nil, to: url)
       let glossary = Self.baseGlossary + pilotCase.extraTerms
       let raw = try await LocalSpeechService.shared.transcribe(audioURL: url, language: "de")
-      let boosted = try await LocalSpeechService.shared.transcribe(
+      let boostedAutomatic = try await LocalSpeechService.shared.transcribe(
         audioURL: url, language: "de", vocabulary: glossary)
+      // Decoded the way the app decodes a piece in "Only when spoken": guessed marks removed by
+      // token timing inside the decode, then `finishPiece` with `timedMarks`.
+      let boostedSpokenOnly = try await LocalSpeechService.shared.transcribe(
+        audioURL: url, language: "de", vocabulary: glossary, spokenMarksOnly: true)
 
       for mode in [PunctuationMode.spokenOnly, .automatic] {
-        let final = LiveDictation.finishPiece(boosted, mode: mode)
+        let boosted = mode == .spokenOnly ? boostedSpokenOnly : boostedAutomatic
+        let final = LiveDictation.finishPiece(boosted, mode: mode, timedMarks: mode == .spokenOnly)
         let isSpokenOnly = mode == .spokenOnly
         let verdict: String
         let expectedColumn: String

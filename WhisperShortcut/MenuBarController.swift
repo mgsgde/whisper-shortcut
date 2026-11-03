@@ -2733,9 +2733,10 @@ class MenuBarController: NSObject {
   ) async throws -> String {
     do {
       let text = try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
-        try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+        try await speechService.transcribe(
+          audioURL: url, cancellable: false, reportsProgress: false, punctuationMode: punctuationMode)
       }
-      return LiveDictation.finishPiece(text, mode: punctuationMode)
+      return LiveDictation.finishPiece(text, mode: punctuationMode, timedMarks: true)
     } catch TranscriptionError.noSpeechDetected {
       return ""
     }
@@ -3043,7 +3044,8 @@ class MenuBarController: NSObject {
           transcript = try await NoSpeechContext.run(
             duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
           ) {
-            try await self.speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+            try await self.speechService.transcribe(
+              audioURL: audioURL, cancellable: !duringMeeting, punctuationMode: punctuationMode)
           }
         }
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
@@ -3052,7 +3054,10 @@ class MenuBarController: NSObject {
         guard transcriptionModelForCapture.isOffline else { return transcript }
         let source =
           punctuationMode == .spokenOnly
-          ? SpokenPunctuation.stripModelPunctuation(from: transcript) : transcript
+          ? SpokenPunctuation.stripModelPunctuation(
+            from: transcript,
+            timedMarks: transcriptionModelForCapture.offlineModelType?.engine == .parakeet)
+          : transcript
         return SpokenPunctuation.apply(to: source, mode: punctuationMode)
       },
       afterCopy: { result in

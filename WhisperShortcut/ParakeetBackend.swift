@@ -129,7 +129,13 @@ final class ParakeetBackend: @unchecked Sendable {
   ///     conditioning text; instead FluidAudio's CTC keyword spotter listens for these terms in the
   ///     audio and rescores the transcript where it hears one. Benchmarked on German practice
   ///     terms: 18/24 → 23/24, for ~0.2 s on a short clip. Empty → the plain, faster path.
-  func transcribe(audioURL: URL, language: String?, vocabulary terms: [String]) async throws -> String {
+  ///   - spokenMarksOnly: "Only when spoken" punctuation. Parakeet's own commas and periods are
+  ///     kept only where the token timings show speech time behind them
+  ///     (`ParakeetPunctuationTiming`); the rest are removed. When the marks in the text cannot be
+  ///     matched to the tokens, the old rule applies (commas out, periods stay).
+  func transcribe(
+    audioURL: URL, language: String?, vocabulary terms: [String], spokenMarksOnly: Bool = false
+  ) async throws -> String {
     var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
     let hint = language.flatMap(Language.init(rawValue:))
     if let language, hint == nil {
@@ -138,12 +144,18 @@ final class ParakeetBackend: @unchecked Sendable {
     }
     do {
       guard !terms.isEmpty else {
-        return try await manager.transcribe(audioURL, decoderState: &state, language: hint).text
+        let result = try await manager.transcribe(audioURL, decoderState: &state, language: hint)
+        return spokenMarksOnly ? Self.keepingSpokenMarks(result, audioURL: audioURL) : result.text
       }
       // The spotter needs the samples too, so decode from them rather than reading the file twice.
       let samples = try converter.resampleAudioFile(audioURL)
       let result = try await manager.transcribe(samples, decoderState: &state, language: hint)
-      return await vocabulary.rescore(result, samples: samples, terms: terms)
+      let rescored = await vocabulary.rescore(result, samples: samples, terms: terms)
+      // After the rescore, which reads `result.text` with its token timings and needs them to
+      // agree. It only rewrites word spans; the filter maps marks to tokens by order and falls
+      // back when a span swallowed one (count mismatch).
+      return spokenMarksOnly
+        ? Self.keepingSpokenMarks(result, text: rescored, audioURL: audioURL) : rescored
     } catch let error as ASRError {
       switch error {
       case .invalidAudioData: throw ParakeetBackendError.audioTooShort
@@ -155,6 +167,27 @@ final class ParakeetBackend: @unchecked Sendable {
 }
 
 extension ParakeetBackend {
+  /// `text` (default: the decode's own) with the marks Parakeet guessed removed. Counts only, never
+  /// the dictated text, go to the log.
+  fileprivate static func keepingSpokenMarks(
+    _ result: ASRResult, text: String? = nil, audioURL: URL
+  ) -> String {
+    let text = text ?? result.text
+    let tokens = (result.tokenTimings ?? []).map {
+      ParakeetPunctuationTiming.Token(text: $0.token, start: $0.startTime, end: $0.endTime)
+    }
+    if let duration = try? AudioDuration.avAudioFileSeconds(audioURL),
+      let filtered = ParakeetPunctuationTiming.filter(
+        text: text, tokens: tokens, audioDuration: duration)
+    {
+      DebugLogger.log(
+        "LOCAL-SPEECH: punctuation timing kept=\(filtered.kept) dropped=\(filtered.dropped)")
+      return filtered.text
+    }
+    DebugLogger.log("LOCAL-SPEECH: punctuation timing skipped (count mismatch)")
+    return SpokenPunctuation.stripModelPunctuation(from: text)
+  }
+
   /// The raw decode with its token timings, for the opt-in live tests only (no app code calls
   /// it). Plain value types so the test target does not need to import FluidAudio.
   func rawTokenTimings(audioURL: URL, language: String?) async throws

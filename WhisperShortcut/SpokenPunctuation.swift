@@ -113,8 +113,12 @@ enum SpokenPunctuation {
   /// A model comma glued to a kept period ("z. B.,") loses the comma alone. A spoken mark next
   /// to a kept model mark does not double: see `repeatedMarks` and `spokenOnlyRules`. Run before
   /// `apply`.
-  static func stripModelPunctuation(from text: String) -> String {
-    var result = stripRegex.stringByReplacingMatches(
+  ///
+  /// - Parameter timedMarks: the text is Parakeet's, already filtered by token timing
+  ///   (`ParakeetPunctuationTiming`): the commas and periods left are spoken, so besides the "?"
+  ///   and "!" only the semicolons are removed here.
+  static func stripModelPunctuation(from text: String, timedMarks: Bool = false) -> String {
+    var result = (timedMarks ? semicolonRegex : stripRegex).stringByReplacingMatches(
       in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
     let resultNS = result as NSString
     let matches = guessedSentenceMarkRegex.matches(
@@ -159,6 +163,8 @@ enum SpokenPunctuation {
 
   // swiftlint:disable:next force_try
   private static let stripRegex = try! NSRegularExpression(pattern: #"[,;]+(?=\s|$)"#)
+  // swiftlint:disable:next force_try
+  private static let semicolonRegex = try! NSRegularExpression(pattern: #";+(?=\s|$)"#)
   // A model "?" / "!" at a word end, with the spaces and the word after it (group 1 and 2).
   // swiftlint:disable:next force_try
   private static let guessedSentenceMarkRegex = try! NSRegularExpression(
