@@ -12,8 +12,8 @@ import Foundation
 /// "Only when spoken" punctuation mode (`PunctuationMode.spokenOnly`): there the user has opted in
 /// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Schrägstrich"
 /// and "drei Pünktchen" are converted too. There the model's own commas and semicolons are
-/// removed (`stripModelPunctuation`), but its sentence marks (". ? ! :") are kept, because the
-/// model often writes a spoken "Punkt" as "." itself.
+/// removed (`stripModelPunctuation`) together with its guessed "?" and "!"; its "." and ":" are
+/// kept, because the model often writes a spoken "Punkt" as "." itself.
 enum SpokenPunctuation {
   /// Folded (`GlossaryDocument.fold`) single words the rules below turn into layout or marks.
   /// Mirrors the spoken words in `rules` and `spokenOnlyRules`; `ParakeetVocabularyGuard` never
@@ -101,20 +101,42 @@ enum SpokenPunctuation {
     rule(#"[ \t,;]*\bkomma\b[ \t,.;]*"#, ", "),
   ]
 
-  /// Removes the commas and semicolons an offline model inserted on its own, for
-  /// `PunctuationMode.spokenOnly`. Only marks followed by whitespace or the end of the text, so
-  /// "1,2" survives. The model's sentence marks (". ? ! :") stay: Parakeet often turns a spoken
-  /// "Punkt" into "." itself (and a spoken "Komma" into ","), and stripping them destroyed marks
-  /// the user did say. What she objects to are the commas the model adds on its own, and those
-  /// are the only thing removed. A model comma glued to a kept period ("z. B.,") loses the comma
-  /// alone. A comma does not start the next word, so no capital is touched: with the sentence
-  /// marks kept, Parakeet's capital after its own period is correct, and the lower-casing that
-  /// used to follow a stripped period (and the abbreviation list guarding it) cannot happen any
-  /// more. A spoken mark next to a kept model mark does not double: see `repeatedMarks` and the
-  /// rules in `spokenOnlyRules`. Run before `apply`.
-  static func stripModelPunctuation(from text: String) -> String {
-    let range = NSRange(location: 0, length: (text as NSString).length)
-    return stripRegex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
+  /// Removes the marks an offline model guessed on its own, for `PunctuationMode.spokenOnly`:
+  /// commas, semicolons, question marks and exclamation marks. Only marks followed by whitespace
+  /// or the end of the text, so "1,2" and "a?b" survive. The model's "." and ":" stay: Parakeet
+  /// often turns a spoken "Punkt" into "." itself, and stripping it destroyed marks the user did
+  /// say. A "?" or "!" is different: the model guesses it from intonation ("Die Dosis stimmt?"),
+  /// while a spoken "Fragezeichen" / "Ausrufezeichen" is applied afterwards by `apply`, so the
+  /// user's own marks still work and never double. When a stripped "?" or "!" ended a sentence
+  /// the model capitalised the next word; that word is lower-cased again if it is a function
+  /// word ("Und weiter" → "und weiter"), nouns keep their capital (`lowercasingFunctionWord`).
+  /// A model comma glued to a kept period ("z. B.,") loses the comma alone. A spoken mark next
+  /// to a kept model mark does not double: see `repeatedMarks` and `spokenOnlyRules`. Run before
+  /// `apply`.
+  ///
+  /// - Parameter timedMarks: the text is Parakeet's, already filtered by token timing
+  ///   (`ParakeetPunctuationTiming`): the commas and periods left are spoken, so besides the "?"
+  ///   and "!" only the semicolons are removed here.
+  static func stripModelPunctuation(from text: String, timedMarks: Bool = false) -> String {
+    var result = (timedMarks ? semicolonRegex : stripRegex).stringByReplacingMatches(
+      in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    let resultNS = result as NSString
+    let matches = guessedSentenceMarkRegex.matches(
+      in: result, range: NSRange(location: 0, length: resultNS.length))
+    for match in matches.reversed() {
+      var replacement = ""
+      let gapRange = match.range(at: 1)
+      let wordRange = match.range(at: 2)
+      if gapRange.location != NSNotFound, wordRange.location != NSNotFound {
+        let word = resultNS.substring(with: wordRange)
+        replacement = resultNS.substring(with: gapRange) + (lowercasingFunctionWord(word) ?? word)
+      } else if gapRange.location != NSNotFound {
+        replacement = resultNS.substring(with: gapRange)
+      }
+      guard let swiftRange = Range(match.range, in: result) else { continue }
+      result.replaceSubrange(swiftRange, with: replacement)
+    }
+    return result
   }
 
   /// The lower-case spelling of a German function word Parakeet capitalised on its own, or nil.
@@ -128,7 +150,7 @@ enum SpokenPunctuation {
     return first.lowercased() + word.dropFirst()
   }
 
-  /// Lower-case forms. "sie" is omitted on purpose — see `lowercasingFunctionWord`.
+  /// Lower-case forms of function words and adverbs that are never nouns. "sie" is omitted on purpose — see `lowercasingFunctionWord`.
   private static let functionWords: Set<String> = [
     "und", "oder", "aber", "sondern", "denn", "weil", "dass", "ob", "wenn", "als", "wie",
     "mit", "bei", "nach", "von", "vor", "zu", "zum", "zur", "aus", "auf", "an", "am",
@@ -137,10 +159,21 @@ enum SpokenPunctuation {
     "auch", "noch", "schon", "sehr", "er", "es", "wir", "man",
     "der", "die", "das", "den", "dem", "des",
     "ein", "eine", "einen", "einem", "einer",
+    "weiter", "dann", "jetzt", "hier", "da", "dort", "so", "nur", "mal", "wieder", "bitte",
+    "doch", "eben", "gerade", "eigentlich", "vielleicht", "also", "dabei", "dazu", "damit",
+    "daher", "deshalb", "trotzdem", "bereits", "immer", "nie", "oft", "etwas", "sonst", "zwar",
+    "jedoch", "insgesamt", "ebenfalls", "weiterhin", "zudem", "außerdem", "allerdings", "eher",
+    "kaum", "fast", "ganz",
   ]
 
   // swiftlint:disable:next force_try
   private static let stripRegex = try! NSRegularExpression(pattern: #"[,;]+(?=\s|$)"#)
+  // swiftlint:disable:next force_try
+  private static let semicolonRegex = try! NSRegularExpression(pattern: #";+(?=\s|$)"#)
+  // A model "?" / "!" at a word end, with the spaces and the word after it (group 1 and 2).
+  // swiftlint:disable:next force_try
+  private static let guessedSentenceMarkRegex = try! NSRegularExpression(
+    pattern: #"[?!]+(?=\s|$)([ \t]+)?(\p{L}+)?"#)
 
   /// The glued-command rules leave a U+0001 marker before the word they split off; this upper-cases
   /// that word's first letter ("Doppelpunktdruckschmerz" → ": Druckschmerz") and drops the marker.

@@ -180,12 +180,22 @@ class MenuBarController: NSObject {
   /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
   /// chunks, cut at every short pause.
   private var liveDictationSession: LiveDictationSession?
+  /// Bundle id of the app the current live dictation inserts into.
+  private var liveTargetBundleId: String?
+  /// What the previous live dictation ended with, while nothing has moved the caret since.
+  private var lastLiveInsertion: LiveDictation.LastInsertion?
+  private var lastInsertionEventMonitor: Any?
+  private var lastInsertionActivationObserver: NSObjectProtocol?
+  private var lastInsertionArmedAt = Date.distantFuture
   /// The recording Fn started, so Fn only ever ends that one — never one another shortcut began, even
   /// of the same kind.
   private var fnStartedRecordingID: UUID?
   /// The clipboard from before the current Dictate Live recording, when "Restore clipboard" is on.
   /// Put back at the end and on every cancel, since every piece passed through the clipboard.
   private var liveClipboardSnapshot: ClipboardSnapshot?
+  /// True once a piece of the running Dictate Live session went in through the pasteboard. Pieces
+  /// typed into Chromium never touch it, so with no such piece there is nothing of ours to clear.
+  private var livePiecesUsedPasteboard = false
   /// The punctuation mode of the current Dictate Live recording, fixed at its start like Dictate.
   private var livePunctuationMode: PunctuationMode = .automatic
   /// The Dictate or Dictate Prompt job currently being processed, outside a live
@@ -1744,7 +1754,7 @@ class MenuBarController: NSObject {
       live.cancel()
       liveDictationSession = nil
       restoreLiveClipboard()
-      clearLiveClipboardAfterLastPiece()
+      if livePiecesUsedPasteboard { clearLiveClipboardAfterLastPiece() }
     }
   }
 
@@ -2639,11 +2649,21 @@ class MenuBarController: NSObject {
     // `discardStreamingSession` with this session in place instead of leaving it for the next
     // normal Dictate.
     let target = Self.pasteTarget(of: NSWorkspace.shared.frontmostApplication)
-    let caret = FocusedTextContext.characterBeforeCaret()
-    DebugLogger.log("LIVE-DICTATE: Caret context \(caret.logKind)")
+    liveTargetBundleId = target?.bundleId
+    let readCaret = FocusedTextContext.characterBeforeCaret()
+    let caret = LiveDictation.LastInsertion.seed(
+      caret: readCaret, last: lastLiveInsertion, frontmostBundle: target?.bundleId, now: Date())
+    if caret != readCaret {
+      DebugLogger.log("LIVE-DICTATE: Caret context from last dictation (\(caret.logKind))")
+    } else {
+      DebugLogger.log("LIVE-DICTATE: Caret context \(caret.logKind)")
+    }
+    // The new session records its own ending; the old memory is spent either way.
+    forgetLastLiveInsertion()
     let ownWindowAtStart = Self.ownFocusedTextWindowNumber()
     let speechService = self.speechService
     liveClipboardSnapshot = Self.restoreClipboardEnabled ? clipboardManager.snapshot() : nil
+    livePiecesUsedPasteboard = false
     let punctuationMode = PunctuationMode.effective(stored: .current, isOffline: true, duringMeeting: false)
     livePunctuationMode = punctuationMode
     liveDictationSession = LiveDictationSession(
@@ -2663,6 +2683,53 @@ class MenuBarController: NSObject {
   }
   #endif
 
+  /// Remembers how this dictation ended so the next one can space and case its first piece when
+  /// Accessibility cannot read the field. Any click, any key and any switch to another app forgets
+  /// it again. The monitor exists only while a memory does, is installed after the last ⌘V of the
+  /// dictation has been delivered, and looks at no key or character.
+  private func rememberLastLiveInsertion(_ text: String) {
+    forgetLastLiveInsertion()
+    guard !AppConstants.isSidecarInstance,
+      let memory = LiveDictation.LastInsertion.make(
+        insertedText: text, bundleId: liveTargetBundleId, now: Date())
+    else { return }
+    lastLiveInsertion = memory
+    // A global monitor also sees the synthesized ⌘V of our own paste. The last one is long
+    // delivered (`livePieceGapDelay` after it), the grace period covers any straggler.
+    lastInsertionArmedAt = Date().addingTimeInterval(0.3)
+    lastInsertionEventMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+    ) { [weak self] _ in
+      Task { @MainActor in
+        guard let self, Date() >= self.lastInsertionArmedAt else { return }
+        self.forgetLastLiveInsertion(reason: "input")
+      }
+    }
+    lastInsertionActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+      guard let self, app?.bundleIdentifier != self.lastLiveInsertion?.bundleId else { return }
+      self.forgetLastLiveInsertion(reason: "app switch")
+    }
+    DebugLogger.log("LIVE-DICTATE: Remembering how the dictation ended for the next one")
+  }
+
+  private func forgetLastLiveInsertion(reason: String? = nil) {
+    if let monitor = lastInsertionEventMonitor {
+      NSEvent.removeMonitor(monitor)
+      lastInsertionEventMonitor = nil
+    }
+    if let observer = lastInsertionActivationObserver {
+      NSWorkspace.shared.notificationCenter.removeObserver(observer)
+      lastInsertionActivationObserver = nil
+    }
+    if lastLiveInsertion != nil, let reason {
+      DebugLogger.log("LIVE-DICTATE: Forgot the last dictation (\(reason))")
+    }
+    lastLiveInsertion = nil
+  }
+
   /// One piece through the normal offline path — Parakeet with the Glossary, the glossary-echo
   /// check, then the spoken layout commands. "" when the piece held no speech.
   private static func decodeLivePiece(
@@ -2670,9 +2737,10 @@ class MenuBarController: NSObject {
   ) async throws -> String {
     do {
       let text = try await NoSpeechContext.run(.streamingChunk, audioURL: url) {
-        try await speechService.transcribe(audioURL: url, cancellable: false, reportsProgress: false)
+        try await speechService.transcribe(
+          audioURL: url, cancellable: false, reportsProgress: false, punctuationMode: punctuationMode)
       }
-      return LiveDictation.finishPiece(text, mode: punctuationMode)
+      return LiveDictation.finishPiece(text, mode: punctuationMode, timedMarks: true)
     } catch TranscriptionError.noSpeechDetected {
       return ""
     }
@@ -2699,15 +2767,48 @@ class MenuBarController: NSObject {
     guard livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart),
       AccessibilityPermissionManager.hasAccessibilityPermission()
     else { return false }
+    #if !APP_STORE
+    // Chromium's renderer sometimes drops a synthesized ⌘V, and the pasteboard read cannot show
+    // it. Typed Unicode key events always arrive, and leave the pasteboard alone.
+    if LiveTextTyping.isChromium(bundleID: target?.bundleId) {
+      let started = Date()
+      let chunkCount = typeLivePiece(text)
+      let ms = Int(Date().timeIntervalSince(started) * 1000)
+      DebugLogger.log(
+        "LIVE-DICTATE: Typed \(text.count) chars into \(target?.bundleId ?? "unknown") in \(ms) ms (chunks=\(chunkCount))"
+      )
+      let remaining = AppConstants.livePieceGapDelay - Date().timeIntervalSince(started)
+      if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
+      return true
+    }
+    #endif
+    livePiecesUsedPasteboard = true
     clipboardManager.copyLivePiece(text: text)
     try? await Task.sleep(for: .milliseconds(50))
     // Checked again right before ⌘V: a ⌘Tab in the last 50 ms must not send the piece elsewhere.
     guard livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart) else { return false }
+    let postedAt = Date()
     simulatePaste()
     let front = NSWorkspace.shared.frontmostApplication
     // The receiving app reads the pasteboard when it handles ⌘V; the next piece must not replace
-    // it first. A short gap: the restore margin (`clipboardRestoreDelay`) would stall live text.
-    try? await Task.sleep(for: .seconds(AppConstants.livePieceGapDelay))
+    // it first. The read is the proof of delivery: the piece sits on the pasteboard as a lazy
+    // provider. Unread after 600 ms → one more ⌘V (Chrome sometimes drops the first one).
+    if await clipboardManager.waitForLivePieceRead(timeout: 0.6) {
+      DebugLogger.log(
+        "LIVE-DICTATE: Target read the piece after \(clipboardManager.livePieceReadLatencyMs ?? -1) ms")
+    } else if livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart) {
+      simulatePaste()
+      let read = await clipboardManager.waitForLivePieceRead(timeout: 0.6)
+      DebugLogger.log(
+        "LIVE-DICTATE: Target did not read the piece; resent ⌘V (read=\(read))")
+      if !read { DebugLogger.log("LIVE-DICTATE: Target never read the piece") }
+    } else {
+      DebugLogger.log("LIVE-DICTATE: Target never read the piece")
+    }
+    // A short gap: the restore margin (`clipboardRestoreDelay`) would stall live text. Never
+    // shorter in total than before the read check existed.
+    let remaining = AppConstants.livePieceGapDelay - Date().timeIntervalSince(postedAt)
+    if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
     DebugLogger.log(
       "LIVE-DICTATE: Inserted \(text.count) chars into \(front?.bundleIdentifier ?? "unknown")")
     return true
@@ -2793,6 +2894,7 @@ class MenuBarController: NSObject {
       notice = String(
         localized: "The end of the dictation was not inserted because another app was in front. It is on the clipboard.")
     } else if !outcome.text.isEmpty {
+      rememberLastLiveInsertion(outcome.text)
       if liveClipboardSnapshot != nil {
         restoreLiveClipboard()
       } else {
@@ -2962,7 +3064,8 @@ class MenuBarController: NSObject {
           transcript = try await NoSpeechContext.run(
             duringMeeting ? .meetingSegment : .dictation, audioURL: audioURL, peakDb: recordingPeakDb
           ) {
-            try await self.speechService.transcribe(audioURL: audioURL, cancellable: !duringMeeting)
+            try await self.speechService.transcribe(
+              audioURL: audioURL, cancellable: !duringMeeting, punctuationMode: punctuationMode)
           }
         }
         // Offline engines write spoken "Doppelpunkt" / "neuer Absatz" out as words. Applied to the
@@ -2971,7 +3074,10 @@ class MenuBarController: NSObject {
         guard transcriptionModelForCapture.isOffline else { return transcript }
         let source =
           punctuationMode == .spokenOnly
-          ? SpokenPunctuation.stripModelPunctuation(from: transcript) : transcript
+          ? SpokenPunctuation.stripModelPunctuation(
+            from: transcript,
+            timedMarks: transcriptionModelForCapture.offlineModelType?.engine == .parakeet)
+          : transcript
         return SpokenPunctuation.apply(to: source, mode: punctuationMode)
       },
       afterCopy: { result in
@@ -3540,34 +3646,70 @@ class MenuBarController: NSObject {
 
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   private func simulateCopy() {
-    // Use a private event source so modifier keys physically held (e.g. Option from the
-    // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
-    let source = CGEventSource(stateID: .privateState)
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
+    postCommandChord(virtualKey: 0x08)
   }
 
   /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
+  /// (virtual key 0x09 = 'V').
   private func simulatePaste() {
-    // Same private source as simulateCopy: a still-held Fn/⌥ from the shortcut
-    // must not turn ⌘V into ⌘⌥V ("Paste and Match Style") in the frontmost app.
-    let source = CGEventSource(stateID: .privateState)
-    // Virtual key 0x09 is 'V'
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
+    postCommandChord(virtualKey: 0x09)
   }
+
+  /// Posts ⌘ down, key down, key up, ⌘ up with a short gap between the events, the way a real
+  /// chord arrives. Back-to-back V events without a Command key event (same microsecond) were
+  /// sometimes ignored by Chrome while Electron apps took them. Synchronous on purpose: the whole
+  /// chord takes about 30 ms and callers are not async.
+  private func postCommandChord(virtualKey: CGKeyCode) {
+    // Private event source so modifier keys physically held (e.g. Option or Fn from the global
+    // shortcut) do not leak into the synthetic chord and turn ⌘V into ⌘⌥V ("Paste and Match
+    // Style") or ⌘C into ⌘⌥C.
+    let source = CGEventSource(stateID: .privateState)
+    let commandKey: CGKeyCode = 0x37
+    let steps: [(CGKeyCode, Bool, CGEventFlags)] = [
+      (commandKey, true, .maskCommand),
+      (virtualKey, true, .maskCommand),
+      (virtualKey, false, .maskCommand),
+      (commandKey, false, []),
+    ]
+    for (index, step) in steps.enumerated() {
+      let event = CGEvent(keyboardEventSource: source, virtualKey: step.0, keyDown: step.1)
+      event?.flags = step.2
+      event?.post(tap: .cghidEventTap)
+      if index < steps.count - 1 { usleep(10_000) }
+    }
+  }
+
+  #if !APP_STORE
+  /// Types `text` as synthesized Unicode key events (at most 20 UTF-16 units each), Return for line
+  /// breaks. Flags are cleared on every event so a held modifier cannot leak in. Synchronous like
+  /// `postCommandChord`; returns the number of chunks posted.
+  @MainActor
+  private func typeLivePiece(_ text: String) -> Int {
+    let source = CGEventSource(stateID: .privateState)
+    let chunks = LiveTextTyping.chunks(text)
+    for chunk in chunks {
+      switch chunk {
+      case .text(let string):
+        let units = Array(string.utf16)
+        for down in [true, false] {
+          let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down)
+          event?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+          event?.flags = []
+          event?.post(tap: .cghidEventTap)
+          usleep(2_000)
+        }
+      case .newline:
+        for down in [true, false] {
+          let event = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: down)
+          event?.flags = []
+          event?.post(tap: .cghidEventTap)
+          usleep(2_000)
+        }
+      }
+    }
+    return chunks.count
+  }
+  #endif
 
   /// Non-destructive paste: remembers the current clipboard so `autoPasteIfEnabled()` can put it
   /// back after the synthetic ⌘V. No-op unless the user turned the setting on.

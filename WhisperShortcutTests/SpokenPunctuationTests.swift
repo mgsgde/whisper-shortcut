@@ -232,14 +232,26 @@ struct SpokenPunctuationReplyTests {
 
   // MARK: - Only when spoken
 
-  @Test("Stripping removes the model's commas and semicolons, keeps its sentence marks")
+  @Test("Stripping removes the model's commas, semicolons, question and exclamation marks; keeps . and :")
   func stripsModelPunctuation() {
     // Parakeet writes a spoken "Punkt" as "." itself, so the sentence marks stay and so do capitals.
     #expect(
       SpokenPunctuation.stripModelPunctuation(from: "Hallo, Welt. Wie geht's? Gut!")
-        == "Hallo Welt. Wie geht's? Gut!")
+        == "Hallo Welt. Wie geht's Gut")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "Ende...") == "Ende...")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "Befund: a; b, c.") == "Befund: a b c.")
+  }
+
+  @Test("A guessed question or exclamation mark goes; spoken ones still work")
+  func stripsGuessedQuestionAndExclamationMarks() {
+    #expect(spokenOnly("Die Dosis stimmt? Und weiter") == "Die Dosis stimmt und weiter")
+    #expect(spokenOnly("Stimmt die Dosis Fragezeichen") == "Stimmt die Dosis?")
+    #expect(spokenOnly("Stimmt die Dosis? Fragezeichen") == "Stimmt die Dosis?")
+    #expect(spokenOnly("Wirklich! Ausrufezeichen") == "Wirklich!")
+    // Nouns and the formal "Sie" keep their capital.
+    #expect(spokenOnly("Stimmt das? Dosis gleich") == "Stimmt das Dosis gleich")
+    #expect(spokenOnly("Geht es? Sie kommen") == "Geht es Sie kommen")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "a?b und 1!2") == "a?b und 1!2")
   }
 
   @Test("Stripping keeps marks inside numbers and words")

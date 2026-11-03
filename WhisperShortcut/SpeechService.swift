@@ -456,6 +456,8 @@ class SpeechService {
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
   ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
+  ///   - punctuationMode: `.spokenOnly` makes offline Parakeet drop the commas and periods it
+  ///     guessed (`ParakeetPunctuationTiming`); every other engine and mode ignores it.
   ///   - reportsProgress: When false, a chunked transcription (>45s audio) does not drive
   ///     the global chunk-progress delegate. Background transcriptions (streaming dictate
   ///     chunks) must pass false — the delegate mutates the app state machine, which
@@ -465,11 +467,12 @@ class SpeechService {
     preferredModel: TranscriptionModel? = nil,
     promptOverride: String? = nil,
     cancellable: Bool = true,
-    reportsProgress: Bool = true
+    reportsProgress: Bool = true,
+    punctuationMode: PunctuationMode = .automatic
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress, punctuationMode: punctuationMode)
       // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
       // return through this one call. Both the trailing glossary-echo strip and the
@@ -518,7 +521,7 @@ class SpeechService {
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true, punctuationMode: PunctuationMode = .automatic) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
     let model = preferredModel ?? TranscriptionModel.loadSelected()
 
@@ -588,7 +591,8 @@ class SpeechService {
 
       // Transcribe using local service
       let result = try await LocalSpeechService.shared.transcribe(
-        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary)
+        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary,
+        spokenMarksOnly: punctuationMode == .spokenOnly)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result

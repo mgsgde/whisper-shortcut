@@ -63,12 +63,37 @@ class ClipboardManager {
   /// concealed, and kept to this Mac (no Universal Clipboard to the phone): these are fragments of
   /// patient notes passing through, not something the user copied.
   func copyLivePiece(text: String) {
+    let provider = LivePieceProvider(text: text)
+    livePieceProvider = provider
+    let item = NSPasteboardItem()
+    item.setDataProvider(provider, forTypes: [.string])
+    item.setData(Data(), forType: Self.transientType)
+    item.setData(Data(), forType: Self.concealedType)
     _ = pasteboard.prepareForNewContents(with: .currentHostOnly)
-    pasteboard.setString(text, forType: .string)
-    pasteboard.setData(Data(), forType: Self.transientType)
-    pasteboard.setData(Data(), forType: Self.concealedType)
+    pasteboard.writeObjects([item])
     changeCountAfterLastWrite = pasteboard.changeCount
     lastOwnWriteChangeCount = pasteboard.changeCount
+  }
+
+  /// The provider of the last live piece, kept alive until the next write (the pasteboard holds
+  /// it weakly).
+  private var livePieceProvider: LivePieceProvider?
+
+  /// True once some app has asked the pasteboard for the last live piece's text — proof the
+  /// synthetic ⌘V reached something that pasted. (Our own reads of the pasteboard count too.)
+  func livePieceWasRead() -> Bool { livePieceProvider?.wasRead ?? false }
+
+  /// Milliseconds from the write to the first read, nil while unread.
+  var livePieceReadLatencyMs: Int? { livePieceProvider?.readLatencyMs }
+
+  /// Waits up to `timeout` seconds for the last live piece to be read; polls every 20 ms.
+  func waitForLivePieceRead(timeout: TimeInterval) async -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !livePieceWasRead() {
+      if Date() >= deadline { return false }
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+    return true
   }
 
   /// Puts `snapshot` back, unless something other than this app wrote to the pasteboard after
@@ -192,5 +217,42 @@ class ClipboardManager {
     }
 
     return formatted
+  }
+}
+
+
+/// Supplies a live piece's text only when a reader asks for it, and remembers that it happened.
+/// The pasteboard may call it from any thread, so the state sits behind a lock.
+final class LivePieceProvider: NSObject, NSPasteboardItemDataProvider {
+  private let text: String
+  private let created = Date()
+  private let lock = NSLock()
+  private var firstRead: Date?
+  private var finished = false
+
+  init(text: String) { self.text = text }
+
+  var wasRead: Bool {
+    lock.lock(); defer { lock.unlock() }
+    return firstRead != nil
+  }
+
+  var readLatencyMs: Int? {
+    lock.lock(); defer { lock.unlock() }
+    return firstRead.map { Int($0.timeIntervalSince(created) * 1000) }
+  }
+
+  func pasteboard(
+    _ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType
+  ) {
+    guard type == .string else { return }
+    lock.lock()
+    if firstRead == nil { firstRead = Date() }
+    lock.unlock()
+    item.setString(text, forType: .string)
+  }
+
+  func pasteboardFinishedWithDataProvider(_ pasteboard: NSPasteboard) {
+    lock.lock(); finished = true; lock.unlock()
   }
 }
