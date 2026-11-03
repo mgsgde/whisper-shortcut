@@ -5115,7 +5115,7 @@ private struct SourceChip: View {
 /// Link clicks in chat prose. `open` is injectable so tests can call the text-view
 /// delegate without launching a URL. A blocked scheme returns true so the click is
 /// handled and AppKit does not open `file://` or a custom scheme itself.
-final class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
+class ChatReplyLinkDelegate: NSObject, NSTextViewDelegate {
   var open: (URL) -> Void
 
   init(open: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
