@@ -18486,6 +18486,16 @@
         }
       }
     },
+    "Show a Dock icon" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dock-Symbol anzeigen"
+          }
+        }
+      }
+    },
     "Show all %lld" : {
       "localizations" : {
         "de" : {
@@ -21990,6 +22000,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut ist mit %@ verbunden. Sie können diesen Tab schließen."
+          }
+        }
+      }
+    },
+    "WhisperShortcut is a menu-bar app and normally has no Dock icon. Turn this on to get one, so you can switch to the app with ⌘-Tab. Takes effect immediately." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut ist eine Menüleisten-App und hat normalerweise kein Dock-Symbol. Schalte dies ein, um eines zu erhalten und mit ⌘-Tab zur App wechseln zu können. Wirkt sofort."
           }
         }
       }

@@ -20,6 +20,15 @@ enum UserDefaultsKeys {
   /// Last Settings sidebar pane (`SettingsTab.rawValue`). Restored on next open, matching
   /// the macOS HIG recommendation for multi-pane settings windows.
   static let settingsSelectedTab = "settingsSelectedTab"
+  /// One-shot migration flag: the `settingsCloseOnFocusLoss` default moved true → false in 7.62,
+  /// but older builds had already written `true` out explicitly, so the new default never reached
+  /// those installs. See `FullAppDelegate.migrateSettingsCloseOnFocusLossToOff`.
+  static let didMigrateSettingsCloseOnFocusLossToOff = "didMigrateSettingsCloseOnFocusLossToOff"
+
+  // MARK: - Dock Icon
+  /// Show a Dock icon (activation policy `.regular`) so the app can be reached with ⌘-Tab.
+  /// Default false: this is a menu-bar app (`LSUIElement`). See `DockIconPreference`.
+  static let showDockIcon = "showDockIcon"
 
   // MARK: - Model Settings
   static let selectedTranscriptionModel = "selectedTranscriptionModel"

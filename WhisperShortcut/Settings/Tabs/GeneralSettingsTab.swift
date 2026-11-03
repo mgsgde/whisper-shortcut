@@ -81,6 +81,23 @@ struct GeneralSettingsTab: View {
       .onChange(of: viewModel.data.settingsCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
       }
+
+      Toggle(isOn: $viewModel.data.showDockIcon) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Show a Dock icon")
+            .font(.callout)
+          Text("WhisperShortcut is a menu-bar app and normally has no Dock icon. Turn this on to get one, so you can switch to the app with ⌘-Tab. Takes effect immediately.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.showDockIcon) { _ in
+        Task {
+          await viewModel.saveSettings()
+          DockIconPreference.apply()
+        }
+      }
     }
   }
 }
