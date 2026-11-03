@@ -47,6 +47,22 @@ enum CustomEndpointPreferences {
   /// A key is optional: keyless self-hosted servers exist. Configured means a URL to POST to.
   static var isTranscriptionConfigured: Bool { transcriptionURL != nil }
 
+  /// Model id sent as the `model` field of a Read Aloud `/audio/speech` request. Empty storage
+  /// falls back to `tts-1`. Deliberately not `modelID` (the chat model): a chat model cannot
+  /// synthesize speech, and a LiteLLM config usually names them differently.
+  static var ttsModelID: String {
+    let stored = (UserDefaults.standard.string(forKey: UserDefaultsKeys.customTTSModelID) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return stored.isEmpty ? SettingsDefaults.customTTSModelID : stored
+  }
+
+  /// Where Read Aloud posts text. `{base}/audio/speech`, shaped the same way Chat shapes
+  /// `/chat/completions` (Azure path, preserved query string). Nil when no base URL is set.
+  static var ttsURL: String? {
+    guard let base = baseURL else { return nil }
+    return CustomEndpointAuth.endpointURL(appending: "audio/speech", to: base)
+  }
+
   /// Chat needs a base URL and a usable key. Dictate Prompt uses the same bar.
   static var isConfigured: Bool { OpenAIChatPreferences.isConfigured }
 
