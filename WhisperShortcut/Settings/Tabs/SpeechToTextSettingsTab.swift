@@ -80,12 +80,18 @@ struct SpeechToTextSettingsTab: View {
       // Usage Instructions Section
       usageInstructionsSection
 
+      // Advanced: cloud accuracy tuning and the offline hallucination filter. Both sections
+      // self-gate on the selected model, so the group only appears when one of them has content.
       if viewModel.data.selectedTranscriptionModel.isGemini
         || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
+        || viewModel.data.selectedTranscriptionModel.isOffline
       {
         SpacedSectionDivider()
         AdvancedSettingsGroup {
           tuningSection
+          if viewModel.data.selectedTranscriptionModel.isOffline {
+            hallucinationFilterSection
+          }
         }
       }
     }
@@ -389,8 +395,39 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
-  // MARK: - Offline Models Section
+  // MARK: - Hallucination Filter Section
+
+  /// Offline Whisper only: the phrase filter that drops a transcript consisting of nothing but a
+  /// known silence hallucination. The VAD gate in `LocalSpeechService` is not switchable — it is a
+  /// correctness fix, not a taste — but this list contains phrases a user could legitimately
+  /// dictate on their own ("You", "Bye"), so it is theirs to turn off.
   @ViewBuilder
+  private var hallucinationFilterSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Silence Hallucinations",
+        systemImage: "waveform.slash",
+        subtitle: "Whisper was trained on subtitled video, so on breath or room noise it sometimes writes what a subtitle track says at the end of a clip — usually \"Thank you.\""
+      )
+
+      Toggle(isOn: $viewModel.data.filterKnownWhisperHallucinations) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Filter known Whisper hallucinations")
+            .font(.callout)
+          Text("Drops a transcript that is nothing but one of those phrases. A real sentence that merely contains one is kept.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.filterKnownWhisperHallucinations) { _ in
+        Task { await viewModel.saveSettings() }
+      }
+    }
+  }
+
+  // MARK: - Offline Models Section  @ViewBuilder
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       SectionHeader(

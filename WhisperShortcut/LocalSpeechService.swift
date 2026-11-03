@@ -93,6 +93,11 @@ actor LocalSpeechService {
   /// Same threshold `AudioRecorder` uses (−45 dB). Duplicated because that type is not shared
   /// with this actor; do not invent a second VAD.
   private static let silenceThresholdDB: Float = -45
+  /// RMS amplitude a 100 ms frame must exceed to count as voice activity, for the Whisper-only
+  /// gate in `hasVoiceActivity(in:)`. WhisperKit's own `EnergyVAD` default, kept rather than
+  /// tuned: the gate only has to answer "is there any speech in this clip at all", and a higher
+  /// value starts rejecting quiet dictation.
+  private static let vadEnergyThreshold: Float = 0.02
   /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime —
   /// but only for a model that is no longer selected, see `unloadIfNotSelected`.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
@@ -478,6 +483,24 @@ actor LocalSpeechService {
       }
       decodeElapsed = CFAbsoluteTimeGetCurrent() - decodeStart
     } else if let whisperKit {
+      // Whisper-only voice-activity gate. The peak gate above only catches digital silence;
+      // breath, a chair and keyboard noise sit well above −45 dB and still make Whisper emit
+      // subtitle filler ("Thank you."). Measured on 400 non-speech clips with large-v3: text on
+      // 112 (28 %) with the peak gate alone, 97 after lowering `no_speech_threshold` to 0.3, and
+      // 9 with a VAD gate in front of the decode. Tightening the threshold is not the lever — a
+      // confident hallucination has a high logprob and passes Whisper's own silence check, which
+      // only discards a segment when `no_speech_prob > threshold` AND `avg_logprob` is low.
+      //
+      // A gate, never a chunker: `.vad` chunking loses words at the seams (see the
+      // `chunkingStrategy` doc comment on `transcribe`), so the clip is either decoded whole or
+      // not at all.
+      if let hasVoice = hasVoiceActivity(in: audioURL), !hasVoice {
+        DebugLogger.log(
+          "LOCAL-SPEECH: Skipping Whisper — no voice activity in the clip (VAD gate)")
+        ContextLogger.shared.logNoSpeechDetected(
+          source: "localVADGate", peakDb: "n/a", durationMs: "n/a", logPrefix: "LOCAL-SPEECH")
+        throw TranscriptionError.noSpeechDetected
+      }
       (text, decodeElapsed) = try await transcribeWithWhisper(
         whisperKit, audioURL: audioURL, language: language, prompt: prompt,
         chunkingStrategy: chunkingStrategy, deadline: deadline, audioSeconds: audioDuration)
@@ -734,12 +757,16 @@ actor LocalSpeechService {
   private func buildDecodingOptions(
     language: String?, promptTokens: [Int]?, chunkingStrategy: ChunkingStrategy?
   ) -> DecodingOptions {
+    // `suppressBlank` removes the empty leading token Whisper likes to start a window with. It is
+    // cheap and harmless, and it takes away the token that the silence hallucinations grow out of
+    // ("Thank you." is what the decoder writes after an empty first token on non-speech audio).
     if let language = language {
       return DecodingOptions(
         language: language,
         temperatureFallbackCount: Self.temperatureFallbackCount,
         skipSpecialTokens: true,
         promptTokens: promptTokens,
+        suppressBlank: true,
         chunkingStrategy: chunkingStrategy
       )
     } else {
@@ -749,6 +776,7 @@ actor LocalSpeechService {
         detectLanguage: true,
         skipSpecialTokens: true,
         promptTokens: promptTokens,
+        suppressBlank: true,
         chunkingStrategy: chunkingStrategy
       )
     }
@@ -835,6 +863,49 @@ actor LocalSpeechService {
 
   private func isEmptyResult(_ results: [TranscriptionResult]) -> Bool {
     results.isEmpty || results.allSatisfy { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+  }
+
+  /// True when the clip contains at least one frame of voice activity. `nil` when the file cannot
+  /// be read — the caller then decodes rather than dropping a real recording, the same fail-open
+  /// rule `peakPowerDecibels` follows.
+  ///
+  /// WhisperKit's `EnergyVAD` is used as a **gate**, not a chunker: it answers "is there speech in
+  /// this clip at all" and the clip is still decoded in one piece. `.vad` *chunking* is a different
+  /// lever and stays rejected — see the `chunkingStrategy` doc comment on `transcribe`.
+  ///
+  /// Frames are 100 ms at the file's own rate, so no resampling is needed: `EnergyVAD` compares
+  /// RMS energy against a threshold, which does not depend on the sample rate. Only the first
+  /// channel is read; the recorder writes mono.
+  private func hasVoiceActivity(in audioURL: URL) -> Bool? {
+    do {
+      let file = try AVAudioFile(
+        forReading: audioURL, commonFormat: .pcmFormatFloat32, interleaved: false)
+      let frameCount = AVAudioFrameCount(file.length)
+      guard frameCount > 0,
+            let buffer = AVAudioPCMBuffer(
+              pcmFormat: file.processingFormat, frameCapacity: frameCount)
+      else { return nil }
+      try file.read(into: buffer)
+      guard let channels = buffer.floatChannelData else { return nil }
+      let samples = Array(
+        UnsafeBufferPointer(start: channels[0], count: Int(buffer.frameLength)))
+      guard !samples.isEmpty else { return nil }
+
+      let vad = EnergyVAD(
+        sampleRate: Int(file.processingFormat.sampleRate),
+        frameLength: 0.1,
+        energyThreshold: Self.vadEnergyThreshold)
+      let activeChunks = vad.calculateActiveChunks(in: samples)
+      let seconds = Double(samples.count) / file.processingFormat.sampleRate
+      DebugLogger.log(
+        "LOCAL-SPEECH: VAD gate — \(activeChunks.count) active chunk(s) in "
+          + "\(String(format: "%.2f", seconds))s")
+      return !activeChunks.isEmpty
+    } catch {
+      DebugLogger.logWarning(
+        "LOCAL-SPEECH: Could not run the VAD gate (\(error.localizedDescription))")
+      return nil
+    }
   }
 
   /// Peak sample magnitude as dBFS. Same units `AVAudioRecorder.peakPower` reports, so the

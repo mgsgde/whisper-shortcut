@@ -45,6 +45,10 @@ enum UserDefaultsKeys {
   // MARK: - Whisper Settings
   static let whisperLanguage = "whisperLanguage"
   static let punctuationMode = "punctuationMode"
+  /// When true, a transcript that is *entirely* one of the known Whisper silence hallucinations
+  /// ("Thank you.", "Thanks for watching!") is treated as no speech instead of being pasted.
+  /// Default: enabled. See `TextProcessingUtility.knownWhisperHallucinations`.
+  static let filterKnownWhisperHallucinations = "filterKnownWhisperHallucinations"
   
   // MARK: - Notification Settings
   static let showPopupNotifications = "showPopupNotifications"
