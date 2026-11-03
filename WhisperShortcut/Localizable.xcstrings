@@ -24264,6 +24264,16 @@
         }
       }
     },
+    "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen ist auf Ihren eigenen Server eingestellt, aber es ist keine Server-URL hinterlegt. Legen Sie sie in Einstellungen → Vorlesen fest, oder wählen Sie ein anderes Sprachmodell."
+          }
+        }
+      }
+    },
     "Your own OpenAI-compatible server • LiteLLM, LM Studio or mlx-audio • Runs on your hardware or your own bill" : {
       "localizations" : {
         "de" : {

@@ -2731,7 +2731,15 @@ class SpeechService {
   /// The key is optional: keyless self-hosted servers exist, so this reads the Keychain directly
   /// instead of `ProviderCredentials.require(...)`, which throws when there is none.
   private func synthesizeCustomTTS(text: String, voice: String, model: TTSModel) async throws -> Data {
-    guard let url = URL(string: model.apiEndpoint) else { throw TranscriptionError.invalidRequest }
+    guard let url = URL(string: model.apiEndpoint), !model.apiEndpoint.isEmpty else {
+      // No base URL yet. `hasCredential` is true for `.custom` (a key is optional), so this is the
+      // only place that can tell the user what is actually missing — "Invalid Request" would not.
+      throw TranscriptionError.networkError(
+        String(
+          localized:
+            "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model."
+        ))
+    }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
