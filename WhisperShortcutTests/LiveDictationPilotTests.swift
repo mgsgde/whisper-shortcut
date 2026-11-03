@@ -111,6 +111,48 @@ struct LiveDictationPilotTests {
     print("PILOT SUMMARY spokenOnly pass=\(passed)/\(Self.cases.count)")
   }
 
+  /// Measurement only: does a spoken "Komma" leave its own audio time behind the "," token that
+  /// Parakeet writes, compared with a "," it guesses where nothing was said? Prints one `COMMA `
+  /// line per "," token; asserts nothing.
+  @Test(
+    "Comma token timing, spoken vs guessed",
+    .enabled(if: liveEnabled, "Set WHISPERSHORTCUT_BENCH_PARAKEET=1 in the test plan to run"))
+  func commaTiming() async throws {
+    setvbuf(stdout, nil, _IONBF, 0)
+    try await ModelManager.shared.ensureReady(.parakeetUltra)
+    let backend = try await ParakeetBackend.load()
+
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("comma-timing-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let sentences: [(kind: String, text: String)] = [
+      ("spoken", "Wirbelsäule Komma Hüfte beidseits Komma Knie rechts"),
+      ("spoken", "Gangbild Komma geht weiter"),
+      ("spoken", "Gesamt GdB fünfzig Komma Merkzeichen G"),
+      ("guessed", "Wenn das so ist dann gehen wir weiter"),
+      ("guessed", "Hüfte rechts Knie links Schulter beidseits"),
+      ("guessed", "Ich glaube er kommt morgen"),
+    ]
+    func ms(_ seconds: Double) -> Int { Int((seconds * 1000).rounded()) }
+
+    for (index, sentence) in sentences.enumerated() {
+      let url = dir.appendingPathComponent("c\(index).wav")
+      try Self.say(sentence.text, to: url)
+      let result = try await backend.rawTokenTimings(audioURL: url, language: "de")
+      let hasKomma = result.text.lowercased().contains("komma")
+      print("COMMA TEXT kind=\(sentence.kind) sentence=\(index + 1) komma=\(hasKomma) raw=\(result.text)")
+      for (i, token) in result.tokens.enumerated() where token.token.trimmingCharacters(in: .whitespaces) == "," {
+        let before = i > 0 ? ms(token.start - result.tokens[i - 1].end) : 0
+        let after = i + 1 < result.tokens.count ? ms(result.tokens[i + 1].start - token.end) : 0
+        print(
+          "COMMA kind=\(sentence.kind) sentence=\(index + 1) tokenMs=\(ms(token.end - token.start)) "
+            + "gapBeforeMs=\(before) gapAfterMs=\(after) rawContainsKomma=\(hasKomma)")
+      }
+    }
+  }
+
   private static func say(_ text: String, to url: URL) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/say")

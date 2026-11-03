@@ -25,9 +25,9 @@ import FluidAudio
 /// directory the models were loaded from.
 final class ParakeetBackend: @unchecked Sendable {
   // `@unchecked`: every stored property is an actor or `Sendable`, and none is reassigned.
-  private let manager: AsrManager
+  fileprivate let manager: AsrManager
   private let vocabulary = VocabularyBooster()
-  private static let version: AsrModelVersion = .ultra
+  fileprivate static let version: AsrModelVersion = .ultra
   private let converter = AudioConverter()
 
   private init(manager: AsrManager) {
@@ -151,6 +151,22 @@ final class ParakeetBackend: @unchecked Sendable {
       default: throw error
       }
     }
+  }
+}
+
+extension ParakeetBackend {
+  /// The raw decode with its token timings, for the opt-in live tests only (no app code calls
+  /// it). Plain value types so the test target does not need to import FluidAudio.
+  func rawTokenTimings(audioURL: URL, language: String?) async throws
+    -> (text: String, tokens: [(token: String, start: Double, end: Double)])
+  {
+    var state = TdtDecoderState.make(decoderLayers: Self.version.decoderLayers)
+    let hint = language.flatMap(Language.init(rawValue:))
+    let result = try await manager.transcribe(audioURL, decoderState: &state, language: hint)
+    let tokens = (result.tokenTimings ?? []).map {
+      (token: $0.token, start: $0.startTime, end: $0.endTime)
+    }
+    return (result.text, tokens)
   }
 }
 
