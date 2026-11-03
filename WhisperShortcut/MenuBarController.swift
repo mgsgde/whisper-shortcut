@@ -3205,15 +3205,22 @@ class MenuBarController: NSObject {
     // `ttsDidStop` when leaving a TTS-synthesizing state (`isTTSRunning == true`); for the
     // audio-playing path the prior state is `.speaking` and it won't post on its own.
     let transitionWillPostStop = transitionToIdle && isTTSRunning
-    // Whatever brought us here, this session is over: refuse chunks that are still in flight even
-    // when playback itself isn't being torn down (the cancellation paths pass stopPlayback: false).
+    // Stop first when playback is being torn down. `refuseFurtherChunks` closes the stream once
+    // chunks have been scheduled, so a producer error or cancel can let those buffers finish and
+    // then end the session. After `stop()` nothing is scheduled, so an explicit Stop stays a
+    // teardown and does not take that completion path. If the queue had already drained, the
+    // refusal ends playback itself and stays silent (no `onPlaybackCompleted`), so the single
+    // `ttsDidStop` below is the only one and the error path never flashes "Audio playback completed".
+    // If buffers are still playing (or paused), `onPlaybackCompleted` posts the one `ttsDidStop`
+    // once they drain, so this method must not post it as well.
+    if stopPlayback {
+      ttsPlayback.stop()
+    }
     ttsPlayback.refuseFurtherChunks()
+    let playbackStillDraining = ttsPlayback.isPlaying
     currentReadAloudTask?.cancel()
     if cancelNetworkWork {
       speechService.cancelTTS()
-    }
-    if stopPlayback {
-      ttsPlayback.stop()
     }
     if transitionToIdle {
       transitionToIdleAndCleanup()
@@ -3221,9 +3228,18 @@ class MenuBarController: NSObject {
     // Post `ttsDidStop` exactly once. Skip when `transitionToIdleAndCleanup` already did
     // (the synthesizing path); post explicitly otherwise — audio-playing toggle-off, or
     // in-task catch paths that skip the transition entirely.
-    if !transitionWillPostStop {
+    if Self.finishShouldPostStop(
+      transitionPostedStop: transitionWillPostStop, playbackStillDraining: playbackStillDraining)
+    {
       NotificationCenter.default.post(name: .ttsDidStop, object: nil)
     }
+  }
+
+  /// Whether `finishReadAloudSession` itself posts `ttsDidStop`. Never when the transition already
+  /// did, and never while refused-but-undrained audio is still playing: that playback's
+  /// `onPlaybackCompleted` owns the single stop notification.
+  static func finishShouldPostStop(transitionPostedStop: Bool, playbackStillDraining: Bool) -> Bool {
+    !transitionPostedStop && !playbackStillDraining
   }
 
   /// Handles the "Read Aloud is already busy — treat this trigger as Stop" cases. Returns true
