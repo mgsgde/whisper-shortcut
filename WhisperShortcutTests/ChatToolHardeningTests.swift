@@ -159,6 +159,29 @@ struct ChatToolHardeningTests {
     #expect(opened == [https, mail])
   }
 
+  @Test func gmailToolsWarnThatContentIsUntrusted() {
+    for decl in ChatToolRegistry.gmailFunctionDeclarations {
+      let desc = decl["description"] as? String ?? ""
+      #expect(desc.contains("untrusted third-party text"), "\(decl["name"] ?? "?")")
+    }
+  }
+
+  @Test func gmailMessageIdsArePathEncoded() {
+    #expect(GmailAPIClient.encodedPathComponent("18c5f3a1b2") == "18c5f3a1b2")
+    #expect(GmailAPIClient.encodedPathComponent("abc/../x") == "abc%2F..%2Fx")
+    #expect(GmailAPIClient.encodedPathComponent("id?x=1#frag") == "id%3Fx%3D1%23frag")
+  }
+
+  @Test func googleTasksErrorLogKeepsKeysNotTitles() throws {
+    let body = try JSONSerialization.data(withJSONObject: ["title": "Secret meeting", "notes": "private"])
+    let keys = GoogleTasksAPIClient.loggedBodyKeys(body)
+    #expect(keys == "notes,title")
+    #expect(!keys.contains("Secret"))
+    #expect(!keys.contains("private"))
+    #expect(GoogleTasksAPIClient.loggedBodyKeys(nil) == "none")
+    #expect(GoogleTasksAPIClient.loggedBodyKeys(Data("not-json".utf8)) == "none")
+  }
+
   // MARK: write tools size check
 
   @Test func existingFileSizeReadsAttributesOnly() throws {

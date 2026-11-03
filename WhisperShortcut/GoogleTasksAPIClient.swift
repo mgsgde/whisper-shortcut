@@ -226,20 +226,28 @@ actor GoogleTasksAPIClient {
     }
 
     if !(200..<300).contains(httpResponse.statusCode) {
-      // Log the offending request body on 4xx/5xx — without it, "invalid argument" 400s are
-      // impossible to attribute to a specific field (see recurring Grok tasks_create failures).
-      let bodyString = body.flatMap { String(data: $0, encoding: .utf8) } ?? "<none>"
+      // Keys only — the body holds the task title and notes. The key list is enough
+      // to attribute an "invalid argument" 400 to a field (see tasks_create failures).
+      let bodyKeys = Self.loggedBodyKeys(body)
       if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
          let error = json["error"] as? [String: Any],
          let message = error["message"] as? String {
-        DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode): \(message) | \(httpMethod) request body: \(bodyString.prefix(300))")
+        DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode): \(message) | \(httpMethod) body keys=[\(bodyKeys)]")
         throw TasksAPIError.apiError(message)
       }
-      DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode) | \(httpMethod) request body: \(bodyString.prefix(300))")
+      DebugLogger.logError("GOOGLE-TASKS: API error \(httpResponse.statusCode) | \(httpMethod) body keys=[\(bodyKeys)]")
       throw TasksAPIError.requestFailed(httpResponse.statusCode)
     }
 
     return data
+  }
+
+  /// Sorted JSON keys of a request body, for error logs. Never the title or notes.
+  static func loggedBodyKeys(_ body: Data?) -> String {
+    body.flatMap { data -> String? in
+      (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?
+        .keys.sorted().joined(separator: ",")
+    } ?? "none"
   }
 
   private func encodedPathComponent(_ value: String) -> String {
