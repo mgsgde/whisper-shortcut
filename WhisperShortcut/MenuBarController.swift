@@ -2766,11 +2766,28 @@ class MenuBarController: NSObject {
     try? await Task.sleep(for: .milliseconds(50))
     // Checked again right before ⌘V: a ⌘Tab in the last 50 ms must not send the piece elsewhere.
     guard livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart) else { return false }
+    let postedAt = Date()
     simulatePaste()
     let front = NSWorkspace.shared.frontmostApplication
     // The receiving app reads the pasteboard when it handles ⌘V; the next piece must not replace
-    // it first. A short gap: the restore margin (`clipboardRestoreDelay`) would stall live text.
-    try? await Task.sleep(for: .seconds(AppConstants.livePieceGapDelay))
+    // it first. The read is the proof of delivery: the piece sits on the pasteboard as a lazy
+    // provider. Unread after 600 ms → one more ⌘V (Chrome sometimes drops the first one).
+    if await clipboardManager.waitForLivePieceRead(timeout: 0.6) {
+      DebugLogger.log(
+        "LIVE-DICTATE: Target read the piece after \(clipboardManager.livePieceReadLatencyMs ?? -1) ms")
+    } else if livePieceMayGoIn(target: target, ownWindowAtStart: ownWindowAtStart) {
+      simulatePaste()
+      let read = await clipboardManager.waitForLivePieceRead(timeout: 0.6)
+      DebugLogger.log(
+        "LIVE-DICTATE: Target did not read the piece; resent ⌘V (read=\(read))")
+      if !read { DebugLogger.log("LIVE-DICTATE: Target never read the piece") }
+    } else {
+      DebugLogger.log("LIVE-DICTATE: Target never read the piece")
+    }
+    // A short gap: the restore margin (`clipboardRestoreDelay`) would stall live text. Never
+    // shorter in total than before the read check existed.
+    let remaining = AppConstants.livePieceGapDelay - Date().timeIntervalSince(postedAt)
+    if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
     DebugLogger.log(
       "LIVE-DICTATE: Inserted \(text.count) chars into \(front?.bundleIdentifier ?? "unknown")")
     return true
