@@ -8,7 +8,7 @@ struct ParakeetVocabularyGuardTests {
 
   private let glossary = [
     "HbA1c", "CRP", "TSH", "eGFR", "Metoprolol", "Bisoprolol", "Ramipril",
-    "Apixaban", "Rivaroxaban", "Pantoprazol",
+    "Apixaban", "Rivaroxaban", "Pantoprazol", "B12", "COVID-19", "GPT-4o", "ACE",
   ]
 
   @Test("Lab value next to a glossary term is kept")
@@ -61,5 +61,46 @@ struct ParakeetVocabularyGuardTests {
       !ParakeetVocabularyGuard.accepts(
         .init(originalSpan: "weiter Bisoprolol unverändert", term: "Metoprolol"),
         glossaryTerms: glossary))
+  }
+
+  @Test("Digits that belong to the term are accepted")
+  func acceptsDigitsOfTerm() {
+    for (span, term) in [
+      ("HBA1C", "HbA1c"), ("B 12", "B12"), ("COVID 19", "COVID-19"), ("GPT 4o", "GPT-4o"),
+    ] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: glossary),
+        "\(span) → \(term)")
+    }
+  }
+
+  @Test("A neighbouring glossary drug in the span blocks the replacement")
+  func rejectsNeighbourDrugSwap() {
+    let replacement = ParakeetVocabularyGuard.Replacement(
+      originalSpan: "weiter Bisoprolol", term: "Metoprolol")
+    #expect(!ParakeetVocabularyGuard.accepts(replacement, glossaryTerms: glossary))
+    let original = "Pantoprazol weiter Bisoprolol unverändert"
+    let applied = ParakeetVocabularyGuard.apply(
+      to: original, replacements: [replacement], glossaryTerms: glossary)
+    #expect(applied.text == original)
+    #expect(applied.rejected == 1)
+  }
+
+  @Test("Spans match on word boundaries only")
+  func matchesOnWordBoundaries() {
+    let inside = ParakeetVocabularyGuard.apply(
+      to: "Place the Ace here",
+      replacements: [.init(originalSpan: "Ace", term: "ACE")],
+      glossaryTerms: glossary)
+    #expect(inside.text == "Place the ACE here")
+    #expect(inside.accepted == 1)
+
+    let glued = ParakeetVocabularyGuard.apply(
+      to: "Placement",
+      replacements: [.init(originalSpan: "ace", term: "ACE")],
+      glossaryTerms: glossary)
+    #expect(glued.text == "Placement")
+    #expect(glued.rejected == 1)
   }
 }
