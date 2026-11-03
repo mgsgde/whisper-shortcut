@@ -1,5 +1,3 @@
-**[WhisperShortcut im Mac App Store laden](https://whispershortcut.com/go/appstore?src=github-release)** — automatische Updates, einmaliger Kauf.
-
 ## Live-Diktat
 - **Keine zusammengeklebten Wörter mehr.** Starten Sie ein neues Live-Diktat direkt hinter vorhandenem Text, steht vor den ersten Wörtern jetzt ein Leerzeichen.
 - **Füllwörter fallen weg.** „äh“, „ähm“, „hm“, „mhm“ und „Mm-hmm“ landen nicht mehr im Text.
