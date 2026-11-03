@@ -95,11 +95,13 @@ private final class LLMHTTPRedirectGuard: NSObject, URLSessionTaskDelegate {
     completionHandler: @escaping (URLRequest?) -> Void
   ) {
     let original = task.originalRequest ?? request
+    // Header names were snapshotted when the request was built (`extraHeaders`).
+    // Reading the Keychain again on every hop would take that lock per redirect.
     completionHandler(
       LLMHTTPRedirectPolicy.follow(
         original: original,
         proposed: request,
-        extraSecretHeaderNames: Array(CustomEndpointPreferences.extraHeaders.keys)))
+        extraSecretHeaderNames: CustomEndpointPreferences.extraHeaderNamesSnapshot))
   }
 }
 

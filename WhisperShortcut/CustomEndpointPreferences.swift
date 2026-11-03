@@ -51,6 +51,8 @@ enum CustomEndpointPreferences {
   static var isConfigured: Bool { OpenAIChatPreferences.isConfigured }
 
   /// Extra headers shared by Dictate and Chat. Entries with an empty name are dropped.
+  /// Also publishes the header names for redirect stripping. The redirect delegate
+  /// reads that snapshot instead of the Keychain on every hop.
   static var extraHeaders: [String: String] {
     var headers: [String: String] = [:]
     for entry in KeychainManager.shared.getCustomTranscriptionHeaders() {
@@ -58,8 +60,23 @@ enum CustomEndpointPreferences {
       guard !name.isEmpty else { continue }
       headers[name] = entry["value"] ?? ""
     }
+    extraHeaderNamesLock.lock()
+    // Union, not replace: an in-flight request still carries the names it was built
+    // with after a later read sees a different set.
+    storedExtraHeaderNames = Array(Set(storedExtraHeaderNames).union(headers.keys))
+    extraHeaderNamesLock.unlock()
     return headers
   }
+
+  /// Header names seen when any request was built. Empty until the first `extraHeaders` read.
+  static var extraHeaderNamesSnapshot: [String] {
+    extraHeaderNamesLock.lock()
+    defer { extraHeaderNamesLock.unlock() }
+    return storedExtraHeaderNames
+  }
+
+  private static let extraHeaderNamesLock = NSLock()
+  private static var storedExtraHeaderNames: [String] = []
 
   /// Credential for a transcription request.
   ///
