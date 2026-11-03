@@ -124,14 +124,11 @@ struct AnthropicMessagesConverterTests {
     #expect(blocks[1]["id"] as? String == "toolu_1")
   }
 
-  @Test("The final tool round sends tool_choice none instead of dropping tools")
+  @Test("tool_choice none is only the final round, and only when client tools are present")
   func finalRoundUsesToolChoiceNone() {
-    let choice = AnthropicChatProvider.messagesToolChoice(
-      disableBuiltInTools: true, clientToolCount: 3)
+    let choice = AnthropicChatProvider.messagesToolChoice(isFinalRound: true, clientToolCount: 3)
     #expect(choice?["type"] as? String == "none")
-    #expect(AnthropicChatProvider.messagesToolChoice(
-      disableBuiltInTools: false, clientToolCount: 3) == nil)
-    #expect(AnthropicChatProvider.messagesToolChoice(
-      disableBuiltInTools: true, clientToolCount: 0) == nil)
+    #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: false, clientToolCount: 3) == nil)
+    #expect(AnthropicChatProvider.messagesToolChoice(isFinalRound: true, clientToolCount: 0) == nil)
   }
 }

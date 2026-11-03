@@ -136,12 +136,16 @@ final class ChatAgentRunner {
       // Grounding supports index this round's own stream; earlier rounds' text (and any image
       // markers) already sit in front of it in the final reply.
       let roundOffset = (markerPrefix + streamed).count
+      // Stamp the round here. Callers such as Dictate Prompt set `disableBuiltInTools` on
+      // every round, which is not the same signal.
+      var roundOptions = options(isFinalRound)
+      roundOptions.isFinalRound = isFinalRound
       let stream = provider.sendChatStream(
         model: model,
         contents: currentContents,
         systemInstruction: systemInstruction(),
         tools: roundTools,
-        options: options(isFinalRound))
+        options: roundOptions)
       for try await event in stream {
         try Task.checkCancellation()
         switch event {

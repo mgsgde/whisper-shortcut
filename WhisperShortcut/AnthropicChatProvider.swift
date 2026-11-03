@@ -57,8 +57,10 @@ final class AnthropicChatProvider: LLMChatProvider {
 
   /// Final synthesis round: keep the tool declarations (history still has `tool_use` /
   /// `tool_result`) and tell Claude not to call them. Empty tools + leftover tool blocks is a 400.
-  static func messagesToolChoice(disableBuiltInTools: Bool, clientToolCount: Int) -> [String: Any]? {
-    guard disableBuiltInTools, clientToolCount > 0 else { return nil }
+  /// Keyed on the agent's final round only. `disableBuiltInTools` is also set on every Dictate
+  /// Prompt round, and that must still be allowed to call tools.
+  static func messagesToolChoice(isFinalRound: Bool, clientToolCount: Int) -> [String: Any]? {
+    guard isFinalRound, clientToolCount > 0 else { return nil }
     return ["type": "none"]
   }
 
@@ -129,7 +131,7 @@ final class AnthropicChatProvider: LLMChatProvider {
             body["tools"] = toolDefs
           }
           if let toolChoice = Self.messagesToolChoice(
-            disableBuiltInTools: options.disableBuiltInTools, clientToolCount: clientTools.count
+            isFinalRound: options.isFinalRound, clientToolCount: clientTools.count
           ) {
             body["tool_choice"] = toolChoice
           }

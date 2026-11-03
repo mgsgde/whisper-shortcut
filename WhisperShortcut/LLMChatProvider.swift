@@ -244,7 +244,13 @@ struct ChatRequestOptions {
   /// When true the provider sends no built-in tools (e.g. Gemini's `code_execution`). Pure text
   /// transforms (Read Aloud rewrite, Smart Improvement) set this so the model returns only prose,
   /// never code or tool output. Ignored by providers that don't auto-enable built-ins.
+  /// Dictate Prompt sets this on every round; it must not be read as "final round".
   var disableBuiltInTools: Bool = false
+
+  /// True only on the agent's last synthesis round. `ChatAgentRunner` sets this after the
+  /// caller's options closure. Anthropic keeps `tools` and sends `tool_choice: none` when it
+  /// is set. `disableBuiltInTools` does not imply this.
+  var isFinalRound: Bool = false
 
   /// Stable per-conversation identifier that improves provider prompt-cache hit rates — OpenAI
   /// maps it to `prompt_cache_key`, Grok to the `x-grok-conv-id` header. `nil` for one-shot
