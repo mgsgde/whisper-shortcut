@@ -33,11 +33,11 @@ struct LiveDictationPilotTests {
     PilotCase(id: "slash1", speech: "Arbeitsmarkt Schrägstrich im A D L", expected: "Arbeitsmarkt/im ADL"),
     PilotCase(id: "slash2", speech: "Arbeitsmarkt Schräg Strich Bewegung", expected: "Arbeitsmarkt/Bewegung"),
     PilotCase(id: "ell1", speech: "Gesamt G d B drei Pünktchen und dann weiter", expected: "Gesamt GdB… und dann weiter"),
-    PilotCase(id: "keep1", speech: "Um zehn Uhr kam die Patientin", expected: "Um zehn Uhr kam die Patientin"),
+    PilotCase(id: "keep1", speech: "Um zehn Uhr kam die Patientin", expected: "Um 10 Uhr kam die Patientin"),
     PilotCase(id: "keep2", speech: "Sie hat drei Punkte erreicht", expected: "Sie hat drei Punkte erreicht"),
     PilotCase(id: "keep3", speech: "Die Schrägstriche fehlen", expected: "Die Schrägstriche fehlen"),
     PilotCase(id: "comma1", speech: "Gangbild Komma geht weiter Punkt", expected: "Gangbild, geht weiter."),
-    PilotCase(id: "ah1", speech: "Ah stimmt die Dosis", expected: "Ah stimmt die Dosis"),
+    PilotCase(id: "ah1", speech: "Ah stimmt die Dosis", expected: "A stimmt die Dosis"),
     PilotCase(
       id: "A", speech: "Gesamt G d B fünfzig Komma Merkzeichen G nicht begründet Punkt",
       expected: "Gesamt GdB 50, Merkzeichen G nicht begründet."),

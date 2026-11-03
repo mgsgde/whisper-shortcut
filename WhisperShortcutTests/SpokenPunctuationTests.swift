@@ -232,30 +232,31 @@ struct SpokenPunctuationReplyTests {
 
   // MARK: - Only when spoken
 
-  @Test("Stripping removes model punctuation before whitespace or the end")
+  @Test("Stripping removes the model's commas and semicolons, keeps its sentence marks")
   func stripsModelPunctuation() {
-    // "Wie" is a function word, so the capital Parakeet added after its own period goes.
+    // Parakeet writes a spoken "Punkt" as "." itself, so the sentence marks stay and so do capitals.
     #expect(
       SpokenPunctuation.stripModelPunctuation(from: "Hallo, Welt. Wie geht's? Gut!")
-        == "Hallo Welt wie geht's Gut")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Ende...") == "Ende")
+        == "Hallo Welt. Wie geht's? Gut!")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Ende...") == "Ende...")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Befund: a; b, c.") == "Befund: a b c.")
   }
 
   @Test("Stripping keeps marks inside numbers and words")
   func stripKeepsNumbers() {
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Wert 3.5 und 1,2 mg, ok.") == "Wert 3.5 und 1,2 mg ok")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Wert 3.5 und 1,2 mg, ok.") == "Wert 3.5 und 1,2 mg ok.")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "a.b") == "a.b")
   }
 
-  @Test("Stripping keeps ordinals, dates and abbreviations, and still drops a sentence period")
+  @Test("Stripping keeps ordinals, dates and abbreviations and the model's sentence period")
   func stripKeepsOrdinalsAndAbbreviations() {
     let spoken = "Am 3. November untersuchte Dr. Müller z. B. Nr. 5 Punkt"
     #expect(
       SpokenPunctuation.apply(
         to: SpokenPunctuation.stripModelPunctuation(from: spoken), mode: .spokenOnly)
         == "Am 3. November untersuchte Dr. Müller z. B. Nr. 5.")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Der Befund ist unauffällig. Weiter, ok.") == "Der Befund ist unauffällig Weiter ok")
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "bis 5.") == "bis 5")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Der Befund ist unauffällig. Weiter, ok.") == "Der Befund ist unauffällig. Weiter ok.")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "bis 5.") == "bis 5.")
     #expect(SpokenPunctuation.stripModelPunctuation(from: "5. Lendenwirbel") == "5. Lendenwirbel")
   }
 
@@ -267,7 +268,7 @@ struct SpokenPunctuationReplyTests {
     ] {
       #expect(SpokenPunctuation.stripModelPunctuation(from: text) == text)
     }
-    #expect(SpokenPunctuation.stripModelPunctuation(from: "Er ging nach Hause. Dann kam sie.") == "Er ging nach Hause Dann kam sie")
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Er ging nach Hause. Dann kam sie.") == "Er ging nach Hause. Dann kam sie.")
   }
 
   @Test("A kept period followed by the model's comma loses only the comma")
@@ -347,8 +348,8 @@ struct SpokenPunctuationReplyTests {
 
   @Test("Dates and clinical abbreviations keep their period")
   func stripKeepsDatesAndClinicalAbbreviations() {
-    #expect(spokenOnly("Seit dem 12. März.") == "Seit dem 12. März")
-    #expect(spokenOnly("Pat. ist mobil.") == "Pat. ist mobil")
+    #expect(spokenOnly("Seit dem 12. März.") == "Seit dem 12. März.")
+    #expect(spokenOnly("Pat. ist mobil.") == "Pat. ist mobil.")
   }
 
   @Test("\"Punkt\" before a digit or a number word is the noun")
@@ -369,14 +370,11 @@ struct SpokenPunctuationReplyTests {
     #expect(spokenOnly("Ende Punkt Punkt weiter") == "Ende. Weiter")
   }
 
-  @Test("A function word loses the capital after a stripped model period; a spoken Punkt puts it back")
-  func functionWordAfterStrippedPeriod() {
-    #expect(spokenOnly("Sie klagt. Über Schmerzen.") == "Sie klagt über Schmerzen")
-    #expect(spokenOnly("Befund. Seit gestern") == "Befund seit gestern")
-    #expect(spokenOnly("Befund. Patient") == "Befund Patient")
-    #expect(spokenOnly("Wir bitten. Sie um Antwort") == "Wir bitten Sie um Antwort")
-    // The model's period goes and "Punkt" is not a function word, so "Über" is capitalised
-    // again by the spoken mark.
+  @Test("The model's sentence period and the capital after it are kept; its comma is dropped")
+  func modelPeriodAndCapitalKept() {
+    #expect(spokenOnly("Sie klagt. Über Schmerzen.") == "Sie klagt. Über Schmerzen.")
+    #expect(spokenOnly("Befund. Seit gestern") == "Befund. Seit gestern")
+    #expect(spokenOnly("Wir bitten, Sie um Antwort") == "Wir bitten Sie um Antwort")
     #expect(spokenOnly("klagt. Punkt Über") == "klagt. Über")
   }
 
@@ -385,5 +383,34 @@ struct SpokenPunctuationReplyTests {
     let manager = ClipboardManager(pasteboard: .withUniqueName())
     #expect(manager.formatTranscription("hallo welt", addTrailingPeriod: false) == "Hallo welt")
     #expect(manager.formatTranscription("hallo welt") == "Hallo welt.")
+  }
+
+  @Test("A spoken mark next to a kept model mark does not double")
+  func spokenMarkNextToModelMark() {
+    #expect(spokenOnly("Gangbild Komma geht weiter. Punkt.") == "Gangbild, geht weiter.")
+    #expect(spokenOnly("Neue Befunde liegen nicht vor Punkt.") == "Neue Befunde liegen nicht vor.")
+    #expect(spokenOnly("Neue Befunde liegen nicht vor. Punkt") == "Neue Befunde liegen nicht vor.")
+    #expect(spokenOnly("Gehstrecke unter 500 m Punkt.") == "Gehstrecke unter 500 m.")
+    #expect(spokenOnly("Gut. Fragezeichen") == "Gut?")
+    #expect(spokenOnly("Gut! Ausrufezeichen danke") == "Gut! Danke")
+  }
+
+  @Test("Spoken-only: Schrägstrich glued to the neighbouring words")
+  func gluedSlash() {
+    #expect(spokenOnly("Arbeitsmarktschrägstrich im ADL") == "Arbeitsmarkt/im ADL")
+    #expect(spokenOnly("Arbeitsmarktschrägstrichbewegung") == "Arbeitsmarkt/Bewegung")
+    // Only glued on both sides is capitalised; the plural and the plain noun are untouched.
+    #expect(spokenOnly("Die Schrägstriche fehlen") == "Die Schrägstriche fehlen")
+    #expect(spokenOnly("Arbeitsmarkt Schrägstrichbewegung") == "Arbeitsmarkt/bewegung")
+    #expect(
+      SpokenPunctuation.apply(to: "Arbeitsmarktschrägstrich im ADL") == "Arbeitsmarktschrägstrich im ADL")
+  }
+
+  @Test("Spoken-only: the three dots in their glued and digit forms")
+  func gluedEllipsis() {
+    #expect(spokenOnly("Gesamt GDB3-Pünktchen und") == "Gesamt GDB… und")
+    #expect(spokenOnly("Gesamt GDB 3 Pünktchen und") == "Gesamt GDB… und")
+    #expect(spokenOnly("Gesamt GDB drei-Pünktchen und") == "Gesamt GDB… und")
+    #expect(spokenOnly("Es gibt 13 Pünktchen") == "Es gibt 13 Pünktchen")
   }
 }

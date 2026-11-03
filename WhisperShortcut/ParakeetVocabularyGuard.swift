@@ -102,10 +102,13 @@ enum ParakeetVocabularyGuard {
   /// case-insensitively ("GDB" → "GdB"). Limited to single-token terms with an internal capital
   /// ("GdB", "VersMedV", "HbA1c") or written fully upper-case ("ADL", "ACE"), so an ordinary
   /// capitalised noun such as "Merkzeichen" is never forced into a different case. A match glued
-  /// to a letter or digit ("GDB50") is left alone.
+  /// to a letter is left alone. A match glued to a digit run ("GDB50", Parakeet writing "GdB 50"
+  /// without the space) becomes the term, a space and the digits ("GdB 50"), unless the term
+  /// itself ends in a digit ("B12" is not split from a following digit).
   static func restoreGlossaryCasing(in text: String, glossaryTerms: [String]) -> String {
     var result = text
     for term in glossaryTerms where hasDistinctiveCasing(term) {
+      let endsInDigit = term.last?.isNumber ?? false
       var searchStart = result.startIndex
       while searchStart < result.endIndex,
         let range = result.range(
@@ -115,9 +118,12 @@ enum ParakeetVocabularyGuard {
           || !isWordCharacter(result[result.index(before: range.lowerBound)])
         let afterOK = range.upperBound == result.endIndex
           || !isWordCharacter(result[range.upperBound])
-        if beforeOK && afterOK && result[range] != term {
-          result.replaceSubrange(range, with: term)
-          searchStart = result.index(range.lowerBound, offsetBy: term.count)
+        let glueDigits = !afterOK && !endsInDigit && result[range.upperBound].isNumber
+        if beforeOK && (afterOK || glueDigits) && (glueDigits || result[range] != term) {
+          let replacement = glueDigits ? term + " " : term
+          let offset = result.distance(from: result.startIndex, to: range.lowerBound)
+          result.replaceSubrange(range, with: replacement)
+          searchStart = result.index(result.startIndex, offsetBy: offset + replacement.count)
         } else {
           searchStart = range.upperBound
         }

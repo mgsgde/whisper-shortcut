@@ -155,9 +155,30 @@ struct ParakeetVocabularyGuardTests {
         == "Der GdB ist 50.")
     #expect(
       ParakeetVocabularyGuard.restoreGlossaryCasing(in: "GDB50 und gdb", glossaryTerms: terms)
-        == "GDB50 und GdB")
+        == "GdB 50 und GdB")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "gdb50", glossaryTerms: terms) == "GdB 50")
     #expect(
       ParakeetVocabularyGuard.restoreGlossaryCasing(
         in: "merkzeichen und Adl", glossaryTerms: terms) == "merkzeichen und ADL")
+  }
+
+  @Test("A glued digit run is split off a casing term, unless the term ends in a digit")
+  func splitsGluedDigits() {
+    let terms = ["GdB", "HbA1c", "B12"]
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "Der GDB50 liegt vor", glossaryTerms: terms)
+        == "Der GdB 50 liegt vor")
+    // Already spaced, glued to a letter, or the term ends in a digit: nothing to split.
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "GdB 50 GdBx", glossaryTerms: terms)
+        == "GdB 50 GdBx")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "HbA1c 7,2", glossaryTerms: terms)
+        == "HbA1c 7,2")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "hba1c", glossaryTerms: terms) == "HbA1c")
+    #expect(
+      ParakeetVocabularyGuard.restoreGlossaryCasing(in: "B125", glossaryTerms: ["B12"]) == "B125")
   }
 }
