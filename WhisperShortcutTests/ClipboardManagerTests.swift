@@ -65,6 +65,61 @@ struct ClipboardManagerTests {
     #expect(!manager.restorePendingSnapshot(afterForeignWriteAt: consumed))
     #expect(manager.getClipboardText() == "user copied this")
   }
+
+  @Test("Restore is dropped when the user copied between the selection copy and the result")
+  func skipRestoreWhenUserCopiedDuringProcessing() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("original", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    pasteboard.clearContents()  // the synthetic ⌘C
+    pasteboard.setString("selected text", forType: .string)
+    manager.noteSelectionCopy(atChangeCount: pasteboard.changeCount)
+    pasteboard.clearContents()  // the user copies while the model runs
+    pasteboard.setString("user copied this", forType: .string)
+
+    manager.copyToClipboard(text: "result")
+    #expect(!manager.restorePendingSnapshot())
+    #expect(manager.getClipboardText() == "result")
+  }
+
+  @Test("Restore still happens when nothing was copied after the selection copy")
+  func restoreWhenNoCopyDuringProcessing() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("original", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    pasteboard.clearContents()
+    pasteboard.setString("selected text", forType: .string)
+    manager.noteSelectionCopy(atChangeCount: pasteboard.changeCount)
+
+    manager.copyToClipboard(text: "result")
+    #expect(manager.restorePendingSnapshot())
+    #expect(manager.getClipboardText() == "original")
+  }
+
+  @Test("A selection-copy baseline from a dropped job does not leak into the next one")
+  func baselineClearedWithRestorePoint() {
+    let pasteboard = NSPasteboard.withUniqueName()
+    let manager = ClipboardManager(pasteboard: pasteboard)
+    pasteboard.clearContents()
+    pasteboard.setString("original", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    manager.noteSelectionCopy(atChangeCount: pasteboard.changeCount)
+    manager.discardRestorePoint()
+    pasteboard.clearContents()
+    pasteboard.setString("user copied this", forType: .string)
+
+    manager.captureRestorePointIfNeeded()
+    manager.copyToClipboard(text: "result")
+    #expect(manager.restorePendingSnapshot())
+    #expect(manager.getClipboardText() == "user copied this")
+  }
 }
 
 /// The App Store clipboard path tells the user's copies from the app's own writes by this value.
