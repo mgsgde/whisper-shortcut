@@ -195,11 +195,15 @@ struct SystemPromptSectionEditor: View {
     return onDiskBody == lastSaved.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// Save rule for a section Chat may append to while the user is typing (glossary via
-  /// `remember_dictation_term`). The user's deletions win; lines added on disk since the last
-  /// load or save are kept. Same merge as Chat memory / folder map.
-  static func textToSave(edited: String, loaded: String, onDisk: String) -> String {
-    LineListMerge.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
+  /// Save rule. Only the glossary is a line list Chat appends to while the user is typing
+  /// (`remember_dictation_term`): there the user's deletions win and lines added on disk since
+  /// the last load or save are kept (same merge as Chat memory / folder map). Prose prompts are
+  /// saved as edited, since a line merge would append changed lines and contradict itself.
+  static func textToSave(
+    section: SystemPromptSection, edited: String, loaded: String, onDisk: String
+  ) -> String {
+    guard section == .whisperGlossary else { return edited }
+    return LineListMerge.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
   }
 
   /// `resetBaseline` is true when the page opens: the loaded text becomes what Revert returns to.
@@ -243,8 +247,10 @@ struct SystemPromptSectionEditor: View {
 
   private func save() {
     guard text != lastSavedText, unreadableReason == nil else { return }
-    let onDisk = SystemPromptsStore.shared.loadSection(section) ?? ""
-    let toSave = Self.textToSave(edited: text, loaded: lastSavedText, onDisk: onDisk)
+    let onDisk = section == .whisperGlossary
+      ? (SystemPromptsStore.shared.loadSection(section) ?? "") : ""
+    let toSave = Self.textToSave(
+      section: section, edited: text, loaded: lastSavedText, onDisk: onDisk)
     let previous = lastSavedText
     // Set before writing: the store posts `.contextFileDidUpdate` synchronously, and `load` must
     // see this text as already saved rather than reload over it. Assign `lastSavedText` first

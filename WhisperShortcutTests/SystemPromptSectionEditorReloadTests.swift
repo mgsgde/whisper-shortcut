@@ -34,7 +34,17 @@ struct SystemPromptSectionEditorReloadTests {
     let edited = "Metoprolol"
     let onDisk = "Metoprolol\nBisoprolol\nHbA1c"
     #expect(
-      SystemPromptSectionEditor.textToSave(edited: edited, loaded: loaded, onDisk: onDisk)
+      SystemPromptSectionEditor.textToSave(
+        section: .whisperGlossary, edited: edited, loaded: loaded, onDisk: onDisk)
         == "Metoprolol\nHbA1c")
+  }
+
+  @Test("Prose sections save the edited text as is, even when disk has an extra line")
+  func proseSectionIgnoresDisk() {
+    #expect(
+      SystemPromptSectionEditor.textToSave(
+        section: .dictation, edited: "Be brief.", loaded: "Be verbose.",
+        onDisk: "Be verbose.\nAlso formal.")
+        == "Be brief.")
   }
 }
