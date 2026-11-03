@@ -427,6 +427,27 @@ like an empty queue. Run the fetch below to tell them apart." \
     exit 0
 fi
 
+# Load-and-disk guard for step 2 ONLY. Steps 0 (merge windows) and 1 (groom the queue) are cheap
+# and must not be delayed, and this file's header says step 2 is the one guarded locally. On
+# 2026-11-03 seven Xcode runs took the load average to 162 on 10 cores (window server starved at
+# 61 percent CPU) with the disk at 96 percent. Skipping is exit 0, not an error: the next tick is
+# an hour away and an hourly tick turns "busy" into LATER rather than NEVER, as it does for a shut
+# lid. A skipped tick costs nothing; a tick onto an overloaded machine costs an hour of usability
+# and one run from the daily Grok cap of 16.
+TICK_MAX_LOAD="${TICK_MAX_LOAD:-8}"
+TICK_MIN_FREE_GB="${TICK_MIN_FREE_GB:-20}"
+LOAD_1M="$(sysctl -n vm.loadavg 2>/dev/null | awk '{print $2}')"
+LOAD_INT="${LOAD_1M%%.*}"
+FREE_GB="$(df -g / 2>/dev/null | awk 'END{print $4}')"
+if [[ "$LOAD_INT" =~ ^[0-9]+$ ]] && (( LOAD_INT >= TICK_MAX_LOAD )); then
+    log "step 2 skipped: load average ${LOAD_1M} >= TICK_MAX_LOAD ${TICK_MAX_LOAD} (free ${FREE_GB:-?} GB, min ${TICK_MIN_FREE_GB}) - next tick retries"
+    exit 0
+fi
+if [[ "$FREE_GB" =~ ^[0-9]+$ ]] && (( FREE_GB < TICK_MIN_FREE_GB )); then
+    log "step 2 skipped: free disk ${FREE_GB} GB < TICK_MIN_FREE_GB ${TICK_MIN_FREE_GB} (load average ${LOAD_1M:-?}, max ${TICK_MAX_LOAD}) - next tick retries"
+    exit 0
+fi
+
 log "step 2: starting the next build if one is due"
 RUN_OUT="$(mktemp -t wstickrun)"
 # caffeinate holds an idle-sleep assertion for exactly the run (2026-10-13: the tick was paused
