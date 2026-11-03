@@ -412,12 +412,12 @@
         }
       }
     },
-    "%@ Recording AI prompt — meeting still recording" : {
+    "%@ Recording Dictate Prompt — meeting still recording" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ KI-Anweisung wird aufgenommen – Meeting wird weiter aufgenommen"
+            "value" : "%@ Dictate Prompt wird aufgenommen – Meeting wird weiter aufgenommen"
           }
         }
       }
@@ -8749,22 +8749,12 @@
         }
       }
     },
-    "Failed to create audio buffer" : {
+    "Read Aloud could not start. Please try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Audiopuffer konnte nicht angelegt werden"
-          }
-        }
-      }
-    },
-    "Failed to create audio format" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audioformat konnte nicht angelegt werden"
+            "value" : "Vorlesen konnte nicht starten. Bitte versuchen Sie es erneut."
           }
         }
       }
@@ -10556,12 +10546,12 @@
         }
       }
     },
-    "Invalid Authentication" : {
+    "Invalid API Key" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ungültige Anmeldung"
+            "value" : "Ungültiger API-Schlüssel"
           }
         }
       }
@@ -12752,12 +12742,12 @@
         }
       }
     },
-    "No audio was generated for this text" : {
+    "Read Aloud produced no audio for this text." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für diesen Text wurde kein Audio erzeugt"
+            "value" : "Vorlesen hat für diesen Text kein Audio erzeugt."
           }
         }
       }
@@ -15457,12 +15447,12 @@
         }
       }
     },
-    "Processing AI prompt... Please wait" : {
+    "Processing Dictate Prompt... Please wait" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "KI-Anweisung wird verarbeitet … Bitte warten"
+            "value" : "Dictate Prompt wird verarbeitet … Bitte warten"
           }
         }
       }
@@ -15497,12 +15487,12 @@
         }
       }
     },
-    "Processing text-to-speech... Please wait" : {
+    "Preparing Read Aloud... Please wait" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprachausgabe wird erzeugt … Bitte warten"
+            "value" : "Vorlesen wird vorbereitet … Bitte warten"
           }
         }
       }
@@ -20580,18 +20570,18 @@
         }
       }
     },
-    "Transcribing [%lld/%lld] - %lld active" : {
+    "Transcribing %lld of %lld — %lld still in progress" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Transkription [%lld/%lld] – %lld aktiv"
+            "value" : "%lld von %lld werden transkribiert – %lld noch in Arbeit"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+            "value" : "Transcribing %1$lld of %2$lld — %3$lld still in progress"
           }
         }
       }
@@ -21934,12 +21924,12 @@
         }
       }
     },
-    "WhisperShortcut - Click to record" : {
+    "WhisperShortcut — Click to open the menu" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut – zum Aufnehmen klicken"
+            "value" : "WhisperShortcut – Klicken Sie, um das Menü zu öffnen"
           }
         }
       }
@@ -22954,22 +22944,22 @@
         }
       }
     },
-    "⏳ Processing AI prompt..." : {
+    "⏳ Processing Dictate Prompt..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏳ KI-Anweisung wird verarbeitet …"
+            "value" : "⏳ Dictate Prompt wird verarbeitet …"
           }
         }
       }
     },
-    "⏳ Processing text-to-speech..." : {
+    "⏳ Preparing Read Aloud..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "⏳ Sprachausgabe wird erzeugt …"
+            "value" : "⏳ Vorlesen wird vorbereitet …"
           }
         }
       }
@@ -23144,12 +23134,12 @@
         }
       }
     },
-    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {
+    "❌ Invalid API Key\n\nThe API key for the selected provider is invalid or has expired.\nOpen Settings → Accounts, check the key, then try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Anmeldung fehlgeschlagen\n\nIhr API-Schlüssel ist ungültig oder abgelaufen.\nPrüfen Sie in den Einstellungen den API-Schlüssel für den gewählten Anbieter."
+            "value" : "❌ Ungültiger API-Schlüssel\n\nDer API-Schlüssel für den gewählten Anbieter ist ungültig oder abgelaufen.\nÖffnen Sie Einstellungen → Konten, prüfen Sie den Schlüssel und versuchen Sie es erneut."
           }
         }
       }
@@ -23254,12 +23244,12 @@
         }
       }
     },
-    "❌ Invalid Authentication" : {
+    "❌ Invalid API Key" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "❌ Ungültige Anmeldung"
+            "value" : "❌ Ungültiger API-Schlüssel"
           }
         }
       }

@@ -22,10 +22,10 @@ struct SpeechErrorFormatter {
 
     case .invalidAPIKey:
       return String(localized: """
-        ❌ Authentication Error
+        ❌ Invalid API Key
 
-        Your API key is invalid or has expired.
-        Please check the API key for the selected provider in Settings.
+        The API key for the selected provider is invalid or has expired.
+        Open Settings → Accounts, check the key, then try again.
         """)
 
     case .incorrectAPIKey:
@@ -420,7 +420,7 @@ struct SpeechErrorFormatter {
     case .noGoogleAPIKey:
       return String(localized: "⚠️ No Google API Key")
     case .invalidAPIKey:
-      return String(localized: "❌ Invalid Authentication")
+      return String(localized: "❌ Invalid API Key")
     case .incorrectAPIKey:
       return String(localized: "❌ Incorrect API Key")
     case .countryNotSupported:

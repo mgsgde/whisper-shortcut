@@ -1120,7 +1120,7 @@ enum TranscriptionError: Error, Equatable {
   var title: String {
     switch self {
     case .noGoogleAPIKey: return String(localized: "No Google API Key")
-    case .invalidAPIKey: return String(localized: "Invalid Authentication")
+    case .invalidAPIKey: return String(localized: "Invalid API Key")
     case .incorrectAPIKey: return String(localized: "Incorrect API Key")
     case .countryNotSupported: return String(localized: "Country Not Supported")
     case .invalidRequest: return String(localized: "Invalid Request")
