@@ -8,8 +8,16 @@ struct SettingsView: View {
   @Environment(\.dismiss) private var dismiss
   @FocusState private var focusedField: SettingsFocusField?
 
+  /// A stored tab this build does not show (an App Store user who had Read Aloud selected
+  /// before upgrading) falls back to General for display only. The raw value in `UserDefaults`
+  /// is left untouched so the direct build still finds it.
   private var selectedTab: SettingsTab {
-    SettingsTab(rawValue: selectedTabRaw) ?? .general
+    guard let stored = SettingsTab(rawValue: selectedTabRaw),
+      SettingsTab.visibleTabs.contains(stored)
+    else {
+      return .general
+    }
+    return stored
   }
 
   var body: some View {
@@ -45,7 +53,7 @@ struct SettingsView: View {
   // MARK: - Sidebar
   @ViewBuilder
   private var sidebar: some View {
-    List(SettingsTab.allCases, id: \.self, selection: Binding<SettingsTab?>(
+    List(SettingsTab.visibleTabs, id: \.self, selection: Binding<SettingsTab?>(
       get: { selectedTab },
       set: { if let tab = $0 { selectedTabRaw = tab.rawValue } }
     )) { tab in
