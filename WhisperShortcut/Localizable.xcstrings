@@ -5412,6 +5412,26 @@
         }
       }
     },
+    "Choose a folder that already contains offline model weights" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie einen Ordner, der bereits Offline-Modellgewichte enthält"
+          }
+        }
+      }
+    },
+    "Choose folder…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner wählen …"
+          }
+        }
+      }
+    },
     "Choose a folder to save screenshots into" : {
       "localizations" : {
         "de" : {
@@ -12301,6 +12321,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Modell wurde geladen, aber nötige Dateien fehlen. Bitte versuchen Sie es noch einmal."
+          }
+        }
+      }
+    },
+    "In your model folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Ihrem Modellordner"
+          }
+        }
+      }
+    },
+    "This model is in the folder you chose, not in WhisperShortcut's own folder. Nothing was deleted — remove it yourself in Finder if you want the space back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Modell liegt in dem Ordner, den Sie gewählt haben, nicht im eigenen Ordner von WhisperShortcut. Es wurde nichts gelöscht — entfernen Sie es bei Bedarf selbst im Finder, wenn Sie den Speicherplatz zurückwollen."
+          }
+        }
+      }
+    },
+    "Model folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modellordner"
+          }
+        }
+      }
+    },
+    "The app downloads offline models itself. If you already have the weights on disk — an LM Studio models folder, a Hugging Face cache, a shared drive — point the app at that folder and it uses them instead of downloading again. Nothing in your folder is moved, changed or deleted." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die App lädt Offline-Modelle selbst herunter. Wenn Sie die Gewichte bereits auf der Festplatte haben — ein LM-Studio-Modellordner, ein Hugging-Face-Cache, ein geteiltes Laufwerk — zeigen Sie der App diesen Ordner, und sie verwendet sie, statt sie erneut herunterzuladen. In Ihrem Ordner wird nichts verschoben, geändert oder gelöscht."
           }
         }
       }

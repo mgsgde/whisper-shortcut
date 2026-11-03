@@ -336,7 +336,35 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     guard let modelPath = resolveModelPath(for: model) else {
       throw ModelStoreError.fileError(String(localized: "Model not found"))
     }
+    // A model resolved from the user's own model folder (`ExtraModelFolder`) is theirs, not ours.
+    // Delete must never reach into it: the app promises that folder is read-only, and a user who
+    // pointed us at a shared drive would otherwise lose weights we merely borrowed.
+    guard Self.isInside(modelPath, rootDirectory) else {
+      DebugLogger.logWarning(
+        "\(logPrefix): refusing to delete \(modelPath.path) — it is outside \(rootDirectory.path)")
+      throw ModelStoreError.fileError(
+        String(
+          localized:
+            "This model is in the folder you chose, not in WhisperShortcut's own folder. Nothing was deleted — remove it yourself in Finder if you want the space back."
+        ))
+    }
     try fileManager.removeItem(at: deletionTarget(for: modelPath))
+  }
+
+  /// Whether `url` lies inside `directory`, symlinks resolved so a link out of the app's folder
+  /// cannot be mistaken for a model we downloaded.
+  nonisolated static func isInside(_ url: URL, _ directory: URL) -> Bool {
+    let target = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    let root = directory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    guard target.count >= root.count else { return false }
+    return Array(target.prefix(root.count)) == root
+  }
+
+  /// True when `model` resolves into the user's own model folder rather than the app's. Settings
+  /// offers no Delete for those — the weights are the user's, and the app only reads them.
+  nonisolated func isExternal(_ model: Model) -> Bool {
+    guard let path = resolveModelPath(for: model) else { return false }
+    return !Self.isInside(path, rootDirectory)
   }
 
   // MARK: - Size

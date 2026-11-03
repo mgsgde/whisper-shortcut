@@ -225,6 +225,14 @@ final class ModelManager: ModelStore<OfflineModelType> {
         return path
       }
     }
+
+    // Then the folder the user pointed us at, so weights they already had on disk are used
+    // instead of downloaded again. Existence only: `isModelAvailable` still decides whether the
+    // folder is complete, so a half-written copy there is reported exactly like one here.
+    if let extra = ExtraModelFolder.whisperModelURL(for: whisperKitModelName) {
+      DebugLogger.log("MODEL-MANAGER: Using \(type.displayName) from the user's model folder: \(extra.path)")
+      return extra
+    }
     return nil
   }
 
