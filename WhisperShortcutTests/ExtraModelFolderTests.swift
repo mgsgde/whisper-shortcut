@@ -64,4 +64,21 @@ struct ExtraModelFolderTests {
     #expect(!ModelStore<OfflineModelType>.isInside(
       URL(fileURLWithPath: "/Users/me/Library/WhisperKitBackup/x"), root))
   }
+
+  /// The delete guard asks "is this inside the folder the user picked", not "is this outside
+  /// `rootDirectory`". Parakeet keeps its weights under `Application Support/FluidAudio/Models`,
+  /// which is outside `rootDirectory` by design — asking the wrong question would have hidden its
+  /// Delete button and refused to remove a download the app itself made.
+  @Test("A model outside rootDirectory is only external when it is in the user's folder")
+  func externalMeansInTheUsersFolderNotOutsideRoot() {
+    let root = URL(fileURLWithPath: "/Users/me/Library/WhisperKit")
+    let parakeet = URL(fileURLWithPath: "/Users/me/Library/FluidAudio/Models/parakeet")
+    // Outside `rootDirectory`, but the app downloaded it — so it is not the user's.
+    #expect(!ModelStore<OfflineModelType>.isInside(parakeet, root))
+    // The guard's actual question, asked against the user's folder instead.
+    let userFolder = URL(fileURLWithPath: "/Users/me/testmodels")
+    #expect(ModelStore<OfflineModelType>.isInside(
+      URL(fileURLWithPath: "/Users/me/testmodels/openai_whisper-base"), userFolder))
+    #expect(!ModelStore<OfflineModelType>.isInside(parakeet, userFolder))
+  }
 }

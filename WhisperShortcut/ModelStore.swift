@@ -339,9 +339,14 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     // A model resolved from the user's own model folder (`ExtraModelFolder`) is theirs, not ours.
     // Delete must never reach into it: the app promises that folder is read-only, and a user who
     // pointed us at a shared drive would otherwise lose weights we merely borrowed.
-    guard Self.isInside(modelPath, rootDirectory) else {
+    //
+    // The test is "is it inside the folder the user picked", NOT "is it outside `rootDirectory`".
+    // Parakeet keeps its weights under `Application Support/FluidAudio/Models`, which is outside
+    // `rootDirectory` by design; asking the wrong question would have hidden its Delete button and
+    // refused to remove a download the app itself made.
+    guard !ExtraModelFolder.contains(modelPath) else {
       DebugLogger.logWarning(
-        "\(logPrefix): refusing to delete \(modelPath.path) — it is outside \(rootDirectory.path)")
+        "\(logPrefix): refusing to delete \(modelPath.path) — it is inside the user's model folder")
       throw ModelStoreError.fileError(
         String(
           localized:
@@ -351,20 +356,20 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     try fileManager.removeItem(at: deletionTarget(for: modelPath))
   }
 
-  /// Whether `url` lies inside `directory`, symlinks resolved so a link out of the app's folder
-  /// cannot be mistaken for a model we downloaded.
+  /// True when `model` resolves into the user's own model folder rather than the app's. Settings
+  /// offers no Delete for those — the weights are the user's, and the app only reads them.
+  nonisolated func isExternal(_ model: Model) -> Bool {
+    guard let path = resolveModelPath(for: model) else { return false }
+    return ExtraModelFolder.contains(path)
+  }
+
+  /// Whether `url` lies inside `directory`, symlinks resolved so a link out of a folder cannot be
+  /// mistaken for a file that really sits in it.
   nonisolated static func isInside(_ url: URL, _ directory: URL) -> Bool {
     let target = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
     let root = directory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
     guard target.count >= root.count else { return false }
     return Array(target.prefix(root.count)) == root
-  }
-
-  /// True when `model` resolves into the user's own model folder rather than the app's. Settings
-  /// offers no Delete for those — the weights are the user's, and the app only reads them.
-  nonisolated func isExternal(_ model: Model) -> Bool {
-    guard let path = resolveModelPath(for: model) else { return false }
-    return !Self.isInside(path, rootDirectory)
   }
 
   // MARK: - Size
