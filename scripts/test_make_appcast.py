@@ -145,11 +145,11 @@ class MakeAppcastTests(unittest.TestCase):
             re.DOTALL,
         )
         self.assertEqual(len(descriptions), 2)
-        self.assertEqual(descriptions[0][0], "")
+        self.assertEqual(descriptions[0][0], ' xml:lang="en"')
         self.assertIn("<p>Hello <strong>notes</strong>.</p>", descriptions[0][1])
         self.assertEqual(descriptions[1][0], ' xml:lang="de"')
         self.assertIn("<p>Hallo <strong>Notizen</strong>.</p>", descriptions[1][1])
-        english = items[0].index("<description><![CDATA[")
+        english = items[0].index('<description xml:lang="en">')
         german = items[0].index('<description xml:lang="de">')
         enclosure = items[0].index("<enclosure ")
         self.assertLess(english, german)

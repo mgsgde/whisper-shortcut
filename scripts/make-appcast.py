@@ -106,10 +106,12 @@ def render_item(version, build, url, length, signature, notes_html, min_system, 
         lines.append(
             "      <sparkle:channel>%s</sparkle:channel>" % html.escape(channel, quote=False)
         )
-    # English (no xml:lang) stays the fallback. Sparkle picks <description xml:lang="de">
-    # for a German Mac and treats a description without xml:lang as "en".
+    # Sparkle picks the description whose xml:lang matches the Mac's language. With two of
+    # them it logs an error for one without xml:lang, so English is marked "en" then; alone
+    # it stays unmarked, byte-identical to older feeds.
     description_lines = [
-        "      <description><![CDATA[%s]]></description>" % notes_html,
+        "      <description%s><![CDATA[%s]]></description>"
+        % (' xml:lang="en"' if notes_de_html else "", notes_html),
     ]
     if notes_de_html:
         description_lines.append(
