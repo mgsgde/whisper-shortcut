@@ -1792,6 +1792,16 @@
         }
       }
     },
+    "Dictate Live works with the offline Parakeet Ultra model. Select it below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live diktieren funktioniert mit dem Offline-Modell Parakeet Ultra. Wählen Sie es unten aus."
+          }
+        }
+      }
+    },
     "Dictate Live works with the offline Parakeet Ultra model. Select it in Settings → Dictate." : {
       "comment" : "Dictate Live cannot start with another model",
       "localizations" : {
@@ -1903,6 +1913,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modus"
           }
         }
       }
@@ -2149,6 +2169,16 @@
         }
       }
     },
+    "Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text erscheint nach jeder Pause am Cursor, offline transkribiert von Parakeet Ultra."
+          }
+        }
+      }
+    },
     "The end of the dictation was not inserted because another app was in front. It is on the clipboard." : {
       "comment" : "Dictate Live: held text at Stop",
       "localizations" : {
@@ -2156,6 +2186,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Ende des Diktats wurde nicht eingefügt, weil eine andere App im Vordergrund war. Es liegt in der Zwischenablage."
+          }
+        }
+      }
+    },
+    "The text is inserted when you stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Text wird eingefügt, wenn Sie stoppen."
+          }
+        }
+      }
+    },
+    "Until then, the Dictate shortcut and Fn start nothing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis dahin starten das Diktieren-Kürzel und Fn nichts."
+          }
+        }
+      }
+    },
+    "Use Parakeet Ultra" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parakeet Ultra verwenden"
+          }
+        }
+      }
+    },
+    "What the Dictate shortcut and 🌐 Fn do. The Dictate Live shortcut always starts Dictate Live." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was das Diktieren-Kürzel und 🌐 Fn tun. Das Kürzel für Live diktieren startet immer Live diktieren."
           }
         }
       }
@@ -23506,26 +23576,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fn bewirkt nichts, solange WhisperShortcut unter Bedienungshilfen nicht erlaubt ist."
-          }
-        }
-      }
-    },
-    "Fn key starts" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fn-Taste startet"
-          }
-        }
-      }
-    },
-    "Fn starts Dictate Live: text appears at the cursor after each pause." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fn startet Live diktieren: Der Text erscheint nach jeder Pause am Cursor."
           }
         }
       }

@@ -79,6 +79,41 @@ struct LiveDictationTests {
     #expect(joiner.next(LiveDictation.finishPiece("Keine Auffälligkeiten", mode: .spokenOnly)) == ". Keine Auffälligkeiten")
   }
 
+  @Test("Only when spoken: a spoken period is never held, even before a lowercase word")
+  func spokenOnlyNeverHoldsPeriod() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("klagt.") == "klagt.")
+    #expect(joiner.next("seit gestern") == " seit gestern")
+    #expect(joiner.inserted == "klagt. seit gestern")
+  }
+
+  @Test("Only when spoken: a function word at the next piece start is lower-cased mid-sentence")
+  func spokenOnlyLowercasesFunctionWordAtPieceStart() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("Sie klagt") == "Sie klagt")
+    #expect(joiner.next("Über Schmerzen") == " über Schmerzen")
+    #expect(joiner.inserted == "Sie klagt über Schmerzen")
+  }
+
+  @Test("Only when spoken: a capital stays when the previous piece ended the sentence")
+  func spokenOnlyKeepsCapitalAfterSentenceMark() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("Ende.") == "Ende.")
+    #expect(joiner.next("Über Schmerzen") == " Über Schmerzen")
+    #expect(joiner.inserted == "Ende. Über Schmerzen")
+  }
+
+  @Test("With periods held, a capital at a piece start stays")
+  func heldPeriodsKeepPieceStartCapital() {
+    var joiner = LiveChunkJoiner()
+    #expect(joiner.next("Sie klagt") == "Sie klagt")
+    #expect(joiner.next("Über Schmerzen") == " Über Schmerzen")
+    #expect(joiner.inserted == "Sie klagt Über Schmerzen")
+  }
+
   // MARK: - Joiner
 
   @Test("Pieces are joined with single spaces, none at the start")
@@ -135,6 +170,29 @@ struct LiveDictationTests {
     #expect(joiner.next("Schmerzen.") == "Schmerzen")
     #expect(joiner.next("") == "")
     #expect(joiner.finish() == ".")
+  }
+
+  @Test("A spoken paragraph break at the very end of a piece is not lost")
+  func trailingParagraphBreakSurvives() {
+    var joiner = LiveChunkJoiner()
+    let first = LiveDictation.finishPiece("Befund neuer Absatz", mode: .automatic)
+    let second = LiveDictation.finishPiece("Inspektion unauffällig", mode: .automatic)
+    #expect(joiner.next(first) == "Befund\n\n")
+    #expect(joiner.next(second) == "Inspektion unauffällig")
+    #expect(joiner.inserted == "Befund\n\nInspektion unauffällig")
+  }
+
+  @Test("A slash said across two pieces gets no space on either side")
+  func slashAcrossPieces() {
+    var afterSlash = LiveChunkJoiner()
+    #expect(afterSlash.next("L4/") == "L4/")
+    #expect(afterSlash.next("L5") == "L5")
+    #expect(afterSlash.inserted == "L4/L5")
+
+    var beforeSlash = LiveChunkJoiner()
+    #expect(beforeSlash.next("L4") == "L4")
+    #expect(beforeSlash.next("/L5") == "/L5")
+    #expect(beforeSlash.inserted == "L4/L5")
   }
 
   // MARK: - Drift
@@ -269,36 +327,41 @@ struct LiveDictationTests {
     #expect(cursor.texts.isEmpty)
   }
 
-  // MARK: - Fn key start mode
+  // MARK: - Dictate mode
 
-  @Test("Fn starts normal Dictate by default")
-  func fnDefaultIsDictate() {
-    #expect(SettingsDefaults.fnKeyStartMode == .dictate)
-    #expect(SettingsData().fnKeyStartMode == .dictate)
+  @Test("Dictate mode defaults to normal Dictate")
+  func dictateModeDefaultIsDictate() {
+    #expect(SettingsDefaults.dictateMode == .dictate)
+    #expect(SettingsData().dictateMode == .dictate)
   }
 
-  @Test("Fn start mode raw values round-trip and reject unknown ones")
-  func fnRawValues() {
-    for mode in FnStartMode.allCases {
-      #expect(FnStartMode(rawValue: mode.rawValue) == mode)
+  @Test("Dictate mode raw values round-trip and reject unknown ones")
+  func dictateModeRawValues() {
+    for mode in DictateMode.allCases {
+      #expect(DictateMode(rawValue: mode.rawValue) == mode)
     }
-    #expect(FnStartMode(rawValue: "bogus") == nil)
+    #expect(DictateMode(rawValue: "bogus") == nil)
   }
 
-  @Test("Fn start decision: Dictate never depends on availability")
-  func fnDecisionDictate() {
+  @Test("Start decision: Dictate never depends on availability")
+  func decisionDictate() {
     let reasons: [LiveDictation.Unavailable?] = [nil, .duringMeeting, .intelMac, .notParakeet, .notDownloaded]
     for reason in reasons {
-      #expect(LiveDictation.fnStartDecision(mode: .dictate, unavailable: reason) == .startDictate)
+      #expect(LiveDictation.startDecision(mode: .dictate, unavailable: reason) == .startDictate)
     }
   }
 
-  @Test("Fn start decision: Live starts when available and refuses with the reason otherwise")
-  func fnDecisionLive() {
-    #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: nil) == .startLive)
-    let reasons: [LiveDictation.Unavailable] = [.duringMeeting, .intelMac, .notParakeet, .notDownloaded]
+  @Test("Start decision: Live starts when available and refuses with the reason otherwise")
+  func decisionLive() {
+    #expect(LiveDictation.startDecision(mode: .live, unavailable: nil) == .startLive)
+    let reasons: [LiveDictation.Unavailable] = [.intelMac, .notParakeet, .notDownloaded]
     for reason in reasons {
-      #expect(LiveDictation.fnStartDecision(mode: .live, unavailable: reason) == .refuse(reason))
+      #expect(LiveDictation.startDecision(mode: .live, unavailable: reason) == .refuse(reason))
     }
+  }
+
+  @Test("Start decision: Live during a meeting starts a Dictate meeting segment instead of refusing")
+  func decisionLiveDuringMeeting() {
+    #expect(LiveDictation.startDecision(mode: .live, unavailable: .duringMeeting) == .startDictate)
   }
 }

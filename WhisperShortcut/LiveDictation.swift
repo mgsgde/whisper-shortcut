@@ -32,7 +32,7 @@ enum LiveDictation {
     }
   }
 
-  enum FnStartDecision: Equatable {
+  enum StartDecision: Equatable {
     case startDictate
     case startLive
     case refuse(Unavailable)
@@ -46,15 +46,17 @@ enum LiveDictation {
     #endif
   }
 
-  /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
-  /// piece appears right after the pause; a cloud model would add a network round trip per piece.
   /// One decoded Dictate Live piece as normal offline Dictate finishes a transcript: model
-  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands.
+  /// punctuation stripped in "Only when spoken" mode, then the spoken layout commands. Edge line
+  /// breaks ("neuer Absatz" at the very end of a piece) are kept — `LiveChunkJoiner` relies on them
+  /// to lay out the next piece without adding a space after.
   static func finishPiece(_ text: String, mode: PunctuationMode) -> String {
     let source = mode == .spokenOnly ? SpokenPunctuation.stripModelPunctuation(from: text) : text
-    return SpokenPunctuation.apply(to: source, mode: mode)
+    return SpokenPunctuation.apply(to: source, mode: mode, keepsEdgeBreaks: true)
   }
 
+  /// Nil when Dictate Live can start. Offline Parakeet only: it decodes a sentence in ~0.1 s, so a
+  /// piece appears right after the pause; a cloud model would add a network round trip per piece.
   /// The model must already be on disk — a recording start must never trigger a 700 MB download.
   /// The Accessibility permission is checked separately, at the start, with its own dialog.
   static func unavailableReason(
@@ -66,10 +68,13 @@ enum LiveDictation {
     return downloaded ? nil : .notDownloaded
   }
 
-  static func fnStartDecision(mode: FnStartMode, unavailable: Unavailable?) -> FnStartDecision {
+  static func startDecision(mode: DictateMode, unavailable: Unavailable?) -> StartDecision {
     switch mode {
     case .dictate: return .startDictate
     case .live:
+      // During a live meeting, Live is never offered — the meeting already owns a dedicated
+      // dictation segment, so the Dictate mode falls back to recording that instead of refusing.
+      if unavailable == .duringMeeting { return .startDictate }
       if let reason = unavailable { return .refuse(reason) }
       return .startLive
     }
@@ -115,7 +120,8 @@ enum LiveDictation {
 ///
 /// - **Spacing:** one space between pieces, none at the very start, none after a line break, none
 ///   before a piece that starts with a line break (`SpokenPunctuation` turns "neuer Absatz" into
-///   one) or with closing punctuation.
+///   one) or with closing punctuation, none on either side of a slash ("Schrägstrich" said in one
+///   piece and the next word in another must still read "L4/L5", not "L4/ L5" or "L4 /L5").
 /// - **A period at a breath:** Parakeet punctuates each piece on its own, so a pause mid-sentence
 ///   can end a piece with "." although the sentence goes on. A piece's final period is therefore
 ///   held back and emitted with the next piece — dropped when that piece starts with a lowercase
@@ -123,17 +129,32 @@ enum LiveDictation {
 ///   Abbreviations ("z. B.", "Dr.", "ca.", numbers) are never held: only a period after a word of
 ///   five or more letters without inner dots is. German capitalises nouns, so a capital start is
 ///   weak evidence; the period is then kept, which is what not holding it would have done anyway.
+///   Never held at all when `holdsPeriods` is false (`PunctuationMode.spokenOnly`): every period
+///   there was said on purpose, so there is nothing ambiguous to wait on.
+/// - **A capital after a pause:** Parakeet capitalises the first word of every piece. With
+///   `holdsPeriods` false, when the text so far is non-empty and does not end (trailing spaces
+///   aside) in ". ! ? :", or a newline, that capital is taken off a function word
+///   (`SpokenPunctuation.lowercasingFunctionWord`). The sentence reads "klagt über"; after a
+///   period that was actually said, "Ende. Über" stays. Nouns and verbs keep Parakeet's capital.
 ///
 /// Pure value type; unit-tested directly.
 struct LiveChunkJoiner: Equatable {
   /// Everything handed out so far, held marks included once emitted.
   private(set) var inserted = ""
   private var heldPeriod = false
+  /// False in "Only when spoken" mode. The struct's other stored properties are private, so the
+  /// synthesized memberwise init is file-private and `LiveChunkJoiner(holdsPeriods:)` cannot be
+  /// called from another file — set this property on the instance after `LiveChunkJoiner()`.
+  var holdsPeriods = true
 
   /// The text to insert for `piece` (possibly empty).
   mutating func next(_ piece: String) -> String {
     var body = piece.trimmingCharacters(in: .whitespaces)
     guard !body.isEmpty else { return "" }
+
+    if !holdsPeriods {
+      body = Self.lowercaseLeadingFunctionWord(body, after: inserted)
+    }
 
     var out = ""
     if heldPeriod {
@@ -141,12 +162,12 @@ struct LiveChunkJoiner: Equatable {
       if !Self.startsWithLowercaseLetter(body) { out += "." }
     }
     let before = inserted + out
-    if let last = before.last, !last.isNewline,
-      let first = body.first, !first.isNewline, !Self.closingPunctuation.contains(first)
+    if let last = before.last, !last.isNewline, last != "/",
+      let first = body.first, !first.isNewline, first != "/", !Self.closingPunctuation.contains(first)
     {
       out += " "
     }
-    if Self.holdsFinalPeriod(body) {
+    if holdsPeriods, Self.holdsFinalPeriod(body) {
       body.removeLast()
       heldPeriod = true
     }
@@ -164,6 +185,19 @@ struct LiveChunkJoiner: Equatable {
   }
 
   static let closingPunctuation: Set<Character> = [",", ".", ";", ":", "!", "?", ")", "]", "»", "“"]
+
+  /// Parakeet capitalises the first word after a pause. Mid-sentence, in spoken-only mode, that
+  /// capital belongs only on a noun or a verb — see the struct comment.
+  private static func lowercaseLeadingFunctionWord(_ body: String, after inserted: String) -> String {
+    let prior = inserted.trimmingCharacters(in: .whitespaces)
+    guard let last = prior.last, !last.isNewline, last != ".", last != "!", last != "?", last != ":"
+    else { return body }
+    let split = body.firstIndex(where: \.isWhitespace)
+    let word = split.map { String(body[..<$0]) } ?? body
+    guard let lowered = SpokenPunctuation.lowercasingFunctionWord(word) else { return body }
+    guard let split else { return lowered }
+    return lowered + body[split...]
+  }
 
   static func startsWithLowercaseLetter(_ text: String) -> Bool {
     guard let first = text.first else { return false }

@@ -78,7 +78,7 @@ enum UserDefaultsKeys {
   /// transcribe. The raw value predates the removal of the hold-to-talk gesture and is kept
   /// so a value the user already stored still wins over the default.
   static let fnKeyDictation = "holdFnToDictate"
-  static let fnKeyStartMode = "fnKeyStartMode"
+  static let dictateMode = "dictateMode"
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
