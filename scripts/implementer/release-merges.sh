@@ -23,6 +23,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # kill_unprotected: the installed /Applications release is never killed.
 # shellcheck source=../lib/daily-app.sh
 source "${SCRIPT_DIR}/../lib/daily-app.sh"
+# run_gate_with_timeout: the re-gate's xcodebuild runs under a wall-clock limit (process-group kill + orphan sweep).
+# shellcheck source=../lib/timed-run.sh
+source "${SCRIPT_DIR}/../lib/timed-run.sh"
 QUEUE_REL="plans/implementer-queue.md"
 LEDGER_REL="plans/implementer-log.md"
 STATE_DIR="${HOME}/.local/state/whispershortcut-implementer"
@@ -55,6 +58,11 @@ PUSH_MAIN="${IMPLEMENTER_AUTO_PUSH_MAIN:-1}"
 # an exempt delta genuinely cannot reach the code under test. Widening this list is a gate
 # change and needs the same deliberate act as widening AUTO_CLASSES.
 REGATE_EXEMPT_REGEX='^(plans/|\.cursor/|\.agents/|[^/]+\.md$)'
+# A window that needs a re-gate this far behind main, or this long past its deadline, is not
+# going to land by retrying: hand it to a human instead of rebuilding (and killing dev builds)
+# every hour forever.
+MAX_BEHIND_COMMITS=50
+MAX_DAYS_PAST_DEADLINE=3
 
 mail_out() { # mail_out <subject> <body-file> [send-report-mail.py flags …]
     # Every call states a verdict — this lane's mails are mostly "it landed, do nothing", and the
@@ -137,10 +145,47 @@ push_main() {
         || warn "push failed — main holds the merge locally; push it by hand, the next tick expects origin/main to be current"
 }
 
+# Park a window the pipeline will not carry out by itself: queue row → ASK (so no tick rebuilds
+# it), ledger outcome, window closed, branch + worktree kept, one mail. Same mechanism as a veto.
+# Reads QUEUE_NUM, BRANCH, WT_DIR and the window `file` from handle_window's scope.
+park_window() { # park_window <ledger-outcome> <commit-subject> <mail-subject> <mail-title> <body-line> <verdict-detail>
+    local outcome="$1" commit_msg="$2" mail_subject="$3" mail_title="$4" body_line="$5" detail="$6"
+    set_queue_status "$QUEUE_NUM" "BRANCH ${BRANCH}" "ASK" || warn "queue write failed"
+    set_ledger_outcome "$BRANCH" "$outcome"
+    commit_bookkeeping "chore(implementer): #${QUEUE_NUM} ${commit_msg}
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+    push_main
+    rm -f "$file"
+    local pnote="/tmp/ws-merge-parked-${QUEUE_NUM}.md"
+    {
+        echo "VERDICT: merge window for queue #${QUEUE_NUM} needs you — ${outcome}."
+        echo
+        echo "$body_line Worktree kept: ${WT_DIR}"
+        echo "The queue row is ASK, so nothing rebuilds it."
+    } >"$pnote"
+    mail_out "$mail_subject" "$pnote" --verdict needs-fix --verdict-detail "$detail" --title "$mail_title"
+    rm -f "$pnote"
+}
+
+# Put the worktree back on $BRANCH, untouched, after a re-gate that did not pass (or a crash that
+# left it on the temp ref). The rebased commits live only on the temp ref, so this discards them.
+regate_discard() { # regate_discard <temp-ref>
+    git -C "$WT_DIR" rebase --abort >/dev/null 2>&1
+    git -C "$WT_DIR" switch -q "$BRANCH" >/dev/null 2>&1
+    git -C "$REPO_ROOT" branch -D "$1" >/dev/null 2>&1
+}
+
+# Remember which (main, branch) pair failed its re-gate, so the next tick does not rebuild and
+# re-mail the same failure. Rewritten, not appended: see veto.sh on duplicate assignments.
+record_regate_failure() { # record_regate_failure <window-file> <main_sha:branch_sha>
+    { grep -v '^REGATE_FAILED=' "$1"; echo "REGATE_FAILED=$2"; } >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
 # --- One window ------------------------------------------------------------------------------
 handle_window() { # handle_window <window-file>
     local file="$1"
-    local QUEUE_NUM="" BRANCH="" WT_DIR="" PR_URL="" DEADLINE="" VETOED="" RUN_DIR=""
+    local QUEUE_NUM="" BRANCH="" WT_DIR="" PR_URL="" DEADLINE="" VETOED="" RUN_DIR="" REGATE_FAILED=""
     # shellcheck disable=SC1090
     source "$file"
     [[ -n "$QUEUE_NUM" && -n "$BRANCH" ]] || { warn "$(basename "$file"): unreadable window file — leaving it for a human"; return; }
@@ -226,36 +271,71 @@ nothing further happens to it unless you merge or drop it yourself (commands bel
     # --- Re-gate against the base that will actually receive this ---------------------------
     # The runner's gates ran against the base the branch was cut from. If main has moved since,
     # they no longer say anything about what would land.
-    local main_sha base_sha gates_note="unchanged base"
+    #
+    # The merge below takes the BRANCH REF, so the commit the gates test has to be that ref's
+    # tip. A worktree on a detached HEAD (q22, 2026-10-18) made `rebase main` move HEAD only:
+    # every tick then gated a commit that was not the branch, and the merge failed as a
+    # misleading "main moved again".
+    local head_ref temp_ref="ws-regate/${BRANCH}"
+    head_ref=$(git -C "$WT_DIR" symbolic-ref -q HEAD 2>/dev/null || true)
+    if [[ "$head_ref" == "refs/heads/${temp_ref}" ]]; then
+        regate_discard "$temp_ref"      # a crashed earlier tick left the worktree on the temp ref
+        head_ref=$(git -C "$WT_DIR" symbolic-ref -q HEAD 2>/dev/null || true)
+    fi
+    if [[ "$head_ref" != "refs/heads/${BRANCH}" ]]; then
+        warn "#${QUEUE_NUM}: worktree ${WT_DIR} is on '${head_ref:-a detached HEAD}', not ${BRANCH} — what was gated there is not the branch. Parking."
+        park_window "WORKTREE OFF BRANCH" "needs a hand — worktree is not on its branch" \
+            "WhisperShortcut implementer — #${QUEUE_NUM} worktree off branch" \
+            "Worktree off its branch — queue #${QUEUE_NUM}" \
+            "The worktree is on '${head_ref:-a detached HEAD}', not on ${BRANCH}, so no gate can vouch for the branch." \
+            "The worktree is not on the build branch, so the gates would test a commit that is not \
+what a merge would land. The window is closed and the row is ASK: check out the branch (or merge \
+it by hand) once you know which commit is the right one."
+        return
+    fi
+
+    local main_sha base_sha branch_sha gates_note="unchanged base"
     main_sha=$(git -C "$REPO_ROOT" rev-parse main)
     base_sha=$(git -C "$REPO_ROOT" merge-base main "$BRANCH")
+    branch_sha=$(git -C "$REPO_ROOT" rev-parse "$BRANCH")
     if [[ "$main_sha" != "$base_sha" ]]; then
         local behind; behind=$(git -C "$REPO_ROOT" rev-list --count "${base_sha}..main")
+        local stale_before; stale_before=$(date -v-"${MAX_DAYS_PAST_DEADLINE}"d +%F 2>/dev/null \
+            || date -d "-${MAX_DAYS_PAST_DEADLINE} days" +%F)
+        if (( behind > MAX_BEHIND_COMMITS )) || [[ -n "$DEADLINE" && "$DEADLINE" < "$stale_before" ]]; then
+            warn "#${QUEUE_NUM}: ${behind} commit(s) behind main, deadline ${DEADLINE:-none} — too stale to re-gate unattended. Parking."
+            park_window "TOO STALE TO MERGE" "needs a hand — too far behind main to merge unattended" \
+                "WhisperShortcut implementer — #${QUEUE_NUM} too stale" \
+                "Too stale to merge — queue #${QUEUE_NUM}" \
+                "Branch ${BRANCH} is ${behind} commit(s) behind main (window deadline ${DEADLINE:-none})." \
+                "The branch is more than ${MAX_BEHIND_COMMITS} commits behind main or its window ran \
+out more than ${MAX_DAYS_PAST_DEADLINE} days ago, so a rebase and re-gate would be testing a different \
+change than the one that was reviewed. The row is ASK: rebase it yourself or drop it."
+            return
+        fi
+        # Already failed for exactly this main and this branch tip: nothing a retry could change,
+        # and every retry rebuilds, kills the dev builds and (before this) re-sent the mail.
+        if [[ "$REGATE_FAILED" == "${main_sha}:${branch_sha}" ]]; then
+            log "#${QUEUE_NUM}: re-gate already failed for this main and this branch — waiting for either to move."
+            return
+        fi
         log "#${QUEUE_NUM}: main moved ${behind} commit(s) since the build — rebasing ${BRANCH}…"
+        # On a temp ref, never on $BRANCH itself: a rebased branch that then fails its gate
+        # would otherwise keep the rebase, and the next tick would see "base unchanged" and
+        # fast-forward it with no gate at all. $BRANCH moves only after the gates pass.
+        git -C "$WT_DIR" switch -q -C "$temp_ref" "$BRANCH" \
+            || { warn "#${QUEUE_NUM}: could not create ${temp_ref} — deferring."; return; }
         if ! git -C "$WT_DIR" rebase main >/tmp/ws-implementer-rebase.log 2>&1; then
             tail -20 /tmp/ws-implementer-rebase.log | sed 's/^/    /'
-            git -C "$WT_DIR" rebase --abort >/dev/null 2>&1
+            regate_discard "$temp_ref"
             warn "#${QUEUE_NUM}: rebase hit a conflict — resolving that is not something this pipeline claims to do."
-            set_queue_status "$QUEUE_NUM" "BRANCH ${BRANCH}" "ASK"
-            set_ledger_outcome "$BRANCH" "REBASE CONFLICT"
-            commit_bookkeeping "chore(implementer): #${QUEUE_NUM} needs a hand — rebase conflict on merge
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-            push_main
-            rm -f "$file"
-            local cnote="/tmp/ws-merge-conflict-${QUEUE_NUM}.md"
-            {
-                echo "VERDICT: merge window for queue #${QUEUE_NUM} needs you — rebase conflict."
-                echo
-                echo "Branch ${BRANCH} could not be rebased onto main. Worktree kept: ${WT_DIR}"
-                echo "The queue row is ASK, so nothing rebuilds it."
-            } >"$cnote"
-            mail_out "WhisperShortcut implementer — #${QUEUE_NUM} rebase conflict" "$cnote" \
-                --verdict needs-fix --verdict-detail "The branch could not be rebased onto main \
-and resolving a conflict is not something this pipeline claims to do. The row is ASK, so nothing \
-retries it: the change stays unmerged until you resolve it by hand." \
-                --title "Rebase conflict — queue #${QUEUE_NUM}"
-            rm -f "$cnote"
+            park_window "REBASE CONFLICT" "needs a hand — rebase conflict on merge" \
+                "WhisperShortcut implementer — #${QUEUE_NUM} rebase conflict" \
+                "Rebase conflict — queue #${QUEUE_NUM}" \
+                "Branch ${BRANCH} could not be rebased onto main." \
+                "The branch could not be rebased onto main and resolving a conflict is not something \
+this pipeline claims to do. The row is ASK, so nothing retries it: the change stays unmerged until \
+you resolve it by hand."
             return
         fi
         local non_exempt
@@ -264,32 +344,64 @@ retries it: the change stays unmerged until you resolve it by hand." \
             log "#${QUEUE_NUM}: the ${behind} new commit(s) touch only non-compiled paths — no re-gate needed."
             gates_note="base moved (docs-only), not re-gated"
         else
+            local gate_name="" gate_log=""
             log "#${QUEUE_NUM}: gate: xcodebuild (rebased)…"
-            if ! ( cd "$WT_DIR" && xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
-                    -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ) \
-                    </dev/null >/tmp/ws-implementer-rebuild.log 2>&1; then
-                tail -30 /tmp/ws-implementer-rebuild.log
-                warn "#${QUEUE_NUM}: GATE FAILED after rebase (xcodebuild) — leaving the window open and the branch alone."
-                return
-            fi
-            log "#${QUEUE_NUM}: gate: test plan (rebased) — this stops running dev builds…"
-            kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
-            if ! ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
-                   xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
-                     -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
-                     -skip-testing:WhisperShortcutTests/TranscriptionRoundtripTests \
-                     -skip-testing:WhisperShortcutTests/LLMProviderRoundtripTests \
-                     -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ) \
-                     </dev/null >/tmp/ws-implementer-retest.log 2>&1; then
+            if ! ( cd "$WT_DIR" && run_gate_with_timeout "$XCODEBUILD_BUILD_TIMEOUT_SECONDS" /tmp/ws-implementer-rebuild.log \
+                    xcodebuild -project WhisperShortcut.xcodeproj -scheme WhisperShortcut \
+                    -configuration Debug -derivedDataPath "${WT_DIR}/build/DerivedData" build ); then
+                gate_name="xcodebuild"; gate_log=/tmp/ws-implementer-rebuild.log
+            else
+                log "#${QUEUE_NUM}: gate: test plan (rebased) — this stops running dev builds…"
+                kill_unprotected -f "WhisperShortcut( Dev)?\.app/Contents/MacOS"
+                if ! ( cd "$WT_DIR" && set -a && [[ -f .env ]] && . ./.env; set +a
+                       run_gate_with_timeout "$XCODEBUILD_TEST_TIMEOUT_SECONDS" /tmp/ws-implementer-retest.log \
+                         xcodebuild test -project WhisperShortcut.xcodeproj -scheme WhisperShortcut-AppStore \
+                         -testPlan WhisperShortcut-AppStore -destination 'platform=macOS' \
+                         "${XCODEBUILD_TEST_TIMEOUT_ARGS[@]}" \
+                         -skip-testing:WhisperShortcutTests/TranscriptionRoundtripTests \
+                         -skip-testing:WhisperShortcutTests/LLMProviderRoundtripTests \
+                         -derivedDataPath "${WT_DIR}/build/DerivedData-AppStore" ); then
+                    gate_name="test plan"; gate_log=/tmp/ws-implementer-retest.log
+                fi
                 bash "${REPO_ROOT}/scripts/ensure-app-running.sh"
-                tail -40 /tmp/ws-implementer-retest.log
-                warn "#${QUEUE_NUM}: GATE FAILED after rebase (test plan) — leaving the window open and the branch alone."
+            fi
+            if [[ -n "$gate_name" ]]; then
+                tail -40 "$gate_log"
+                regate_discard "$temp_ref"
+                warn "#${QUEUE_NUM}: GATE FAILED after rebase (${gate_name}) — ${BRANCH} left as it was, window stays open."
+                record_regate_failure "$file" "${main_sha}:${branch_sha}"
+                local fnote="/tmp/ws-regate-failed-${QUEUE_NUM}.md"
+                {
+                    echo "VERDICT: merge window for queue #${QUEUE_NUM} cannot merge — the re-gate failed (${gate_name})."
+                    echo
+                    echo "Branch ${BRANCH} was rebased onto main ${main_sha:0:10} and failed ${gate_name}"
+                    echo "(a timeout counts as a failure). The rebase was discarded: the branch is exactly"
+                    echo "as it was built, and nothing merges until it passes again."
+                    echo "The window stays open but will not retry until main or the branch moves."
+                    echo
+                    echo "Worktree: ${WT_DIR}"
+                    echo
+                    echo '```'
+                    tail -40 "$gate_log"
+                    echo '```'
+                } >"$fnote"
+                mail_out "WhisperShortcut implementer — #${QUEUE_NUM} re-gate failed" "$fnote" \
+                    --verdict needs-fix --verdict-detail "Main moved after this change was built, and the \
+branch no longer passes ${gate_name} on top of it. It will not merge; the window is open but idle \
+until main or the branch changes. Rebase and fix it by hand, or stop it with veto.sh." \
+                    --title "Re-gate failed — queue #${QUEUE_NUM}"
+                rm -f "$fnote"
                 return
             fi
-            bash "${REPO_ROOT}/scripts/ensure-app-running.sh"
             gates_note="re-gated on the new base"
             log "#${QUEUE_NUM}: gates green on the rebased branch."
         fi
+        # Gates passed (or none were due): only now does the real branch take the rebased commits.
+        if ! { git -C "$WT_DIR" switch -q "$BRANCH" && git -C "$WT_DIR" reset -q --hard "$temp_ref"; }; then
+            warn "#${QUEUE_NUM}: could not move ${BRANCH} to the re-gated commits — deferring."
+            regate_discard "$temp_ref"; return
+        fi
+        git -C "$REPO_ROOT" branch -D "$temp_ref" >/dev/null 2>&1
     fi
 
     # After a clean rebase this is a fast-forward. --ff-only so we never quietly produce a merge
