@@ -76,6 +76,41 @@ struct SpeechTextSanitizerTests {
     let prose = "He is consistently optimistic about bold tech-driven human advancement."
     #expect(SpeechTextSanitizer.plainSpeech(from: prose) == prose)
   }
+
+  @Test("An unterminated final fence is dropped rather than voiced")
+  func dropsUnterminatedFence() {
+    let spoken = SpeechTextSanitizer.plainSpeech(from: """
+      Here is the sketch:
+
+      ```swift
+      let x = 1
+      let y = 2
+      """)
+    #expect(!spoken.contains("let x"))
+    #expect(spoken.contains("Here is the sketch:"))
+  }
+
+  @Test("Grok leaked search tokens are stripped")
+  func stripsGrokSearchTokens() {
+    let spoken = SpeechTextSanitizer.plainSpeech(
+      from: "The paper argues otherwise [web:9] and the thread agrees [x:3].")
+    #expect(!spoken.contains("[web:"))
+    #expect(!spoken.contains("[x:"))
+    #expect(spoken.contains("The paper argues otherwise"))
+    #expect(spoken.contains("and the thread agrees"))
+  }
+
+  @Test("Table rows become comma-separated speech")
+  func tableRowsBecomePauses() {
+    let spoken = SpeechTextSanitizer.plainSpeech(from: """
+      | Name | Role |
+      | --- | --- |
+      | Ada | Engineer |
+      """)
+    #expect(!spoken.contains("|"))
+    #expect(spoken.contains("Name, Role"))
+    #expect(spoken.contains("Ada, Engineer"))
+  }
 }
 
 @Suite("Transcript plausibility gates")
