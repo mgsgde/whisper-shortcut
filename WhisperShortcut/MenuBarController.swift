@@ -3604,33 +3604,37 @@ class MenuBarController: NSObject {
 
   /// Simulates Cmd+C to copy the current selection to the clipboard (virtual key 0x08 = 'C').
   private func simulateCopy() {
-    // Use a private event source so modifier keys physically held (e.g. Option from the
-    // global shortcut) do not leak into the synthetic Cmd+C and turn it into Cmd+Option+C.
-    let source = CGEventSource(stateID: .privateState)
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
+    postCommandChord(virtualKey: 0x08)
   }
 
   /// Simulates Cmd+V paste keystroke to paste clipboard contents at cursor position
+  /// (virtual key 0x09 = 'V').
   private func simulatePaste() {
-    // Same private source as simulateCopy: a still-held Fn/⌥ from the shortcut
-    // must not turn ⌘V into ⌘⌥V ("Paste and Match Style") in the frontmost app.
+    postCommandChord(virtualKey: 0x09)
+  }
+
+  /// Posts ⌘ down, key down, key up, ⌘ up with a short gap between the events, the way a real
+  /// chord arrives. Back-to-back V events without a Command key event (same microsecond) were
+  /// sometimes ignored by Chrome while Electron apps took them. Synchronous on purpose: the whole
+  /// chord takes about 30 ms and callers are not async.
+  private func postCommandChord(virtualKey: CGKeyCode) {
+    // Private event source so modifier keys physically held (e.g. Option or Fn from the global
+    // shortcut) do not leak into the synthetic chord and turn ⌘V into ⌘⌥V ("Paste and Match
+    // Style") or ⌘C into ⌘⌥C.
     let source = CGEventSource(stateID: .privateState)
-    // Virtual key 0x09 is 'V'
-    let cmdDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
-    let cmdUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
-
-    cmdDown?.flags = .maskCommand
-    cmdUp?.flags = .maskCommand
-
-    cmdDown?.post(tap: .cghidEventTap)
-    cmdUp?.post(tap: .cghidEventTap)
+    let commandKey: CGKeyCode = 0x37
+    let steps: [(CGKeyCode, Bool, CGEventFlags)] = [
+      (commandKey, true, .maskCommand),
+      (virtualKey, true, .maskCommand),
+      (virtualKey, false, .maskCommand),
+      (commandKey, false, []),
+    ]
+    for (index, step) in steps.enumerated() {
+      let event = CGEvent(keyboardEventSource: source, virtualKey: step.0, keyDown: step.1)
+      event?.flags = step.2
+      event?.post(tap: .cghidEventTap)
+      if index < steps.count - 1 { usleep(10_000) }
+    }
   }
 
   /// Non-destructive paste: remembers the current clipboard so `autoPasteIfEnabled()` can put it
