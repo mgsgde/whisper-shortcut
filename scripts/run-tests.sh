@@ -13,6 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/daily-app.sh
 source "$SCRIPT_DIR/lib/daily-app.sh"
+# shellcheck source=lib/build-lock.sh
+source "$SCRIPT_DIR/lib/build-lock.sh"
 
 HERMETIC_RUN=false
 for arg in "$@"; do
@@ -136,6 +138,8 @@ dump_teardown_evidence() {
 }
 
 on_exit() {
+  # Lock first: a long relaunch or evidence dump must not keep the next run waiting.
+  release_build_lock
   dump_teardown_evidence
   relaunch_app
 }
@@ -144,6 +148,22 @@ trap on_exit EXIT
 # so the EXIT trap above still runs and the evidence still lands in the log.
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# One Xcode run at a time on this Mac. The per-checkout DERIVED_DATA above stopped parallel runs
+# from killing each other, but that was also the only thing limiting concurrency: on 2026-11-03
+# seven runs were alive at once (load average 162 on 10 cores, swap 10.5 of 11 GB), and the oldest
+# had 18 seconds of CPU after 14 minutes 48 seconds. The machine has room for exactly one run, so
+# this is a real lock now. CI is skipped: a GitHub runner is one job on an isolated machine, there
+# is nothing to serialize against and a lock could only wedge the run.
+# Taken BEFORE the app is killed below: acquiring after would stop the user's app and then sit
+# waiting for the lock with no app running. Exit 75 (EX_TEMPFAIL) is passed on unchanged so a
+# caller can tell "another run holds the machine" from "tests failed"; nothing was stopped yet,
+# so there is nothing to restore.
+if [[ "${CI:-}" != "true" ]]; then
+  lock_rc=0
+  acquire_build_lock || lock_rc=$?
+  [[ "$lock_rc" -eq 0 ]] || exit "$lock_rc"
+fi
 
 if [[ "${CI:-}" != "true" ]]; then
   # Never take a recording meeting down for a test run (2026-10-20 incident). Refusing here kills
