@@ -215,6 +215,17 @@ jobs:
             | tee "$RUNNER_TEMP/archive.log"
           echo "Compilation cache: $(grep -c 'Cache hit' "$RUNNER_TEMP/archive.log" || true) hits, $(grep -c 'Cache miss' "$RUNNER_TEMP/archive.log" || true) misses"
 
+      # A dry run keeps Xcode's per-task build log so the build's critical path can be read
+      # with xclogparser instead of guessed from buffered console timestamps.
+      - name: Upload build log
+        if: always() && inputs.dry_run == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcactivitylog
+          path: ${{ env.DERIVED_DATA_PATH }}/Logs/Build/*.xcactivitylog
+          retention-days: 7
+          if-no-files-found: warn
+
       # Only the default branch saves (schedule/push/dispatch on main); tag runs only
       # restore, since a cache saved under a tag ref is invisible to the next tag.
       - name: Save build cache
