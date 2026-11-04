@@ -88,6 +88,9 @@ final class ParakeetEngine: Engine {
   /// `<parent>/<version.repo.folderName>` and silently load stock v3.
   private let localDirectory: URL?
   private let boostConfig: VocabularyRescorer.Config?
+  /// When true, vocabulary replacements go through the app's guard
+  /// (`ParakeetVocabularyGuard`) instead of FluidAudio's rewritten text.
+  private let appGuard: Bool
   private var manager: AsrManager?
   private var ctcModels: CtcModels?
   /// Boosting sessions are built per vocabulary (tokenising the terms is not free), and the two
@@ -97,12 +100,14 @@ final class ParakeetEngine: Engine {
 
   init(
     version: AsrModelVersion, label: String, useVocabulary: Bool, localDirectory: URL? = nil,
-    boostConfig: VocabularyRescorer.Config? = nil, nameOverride: String? = nil
+    boostConfig: VocabularyRescorer.Config? = nil, nameOverride: String? = nil,
+    appGuard: Bool = false
   ) {
     self.version = version
     self.useVocabulary = useVocabulary
     self.localDirectory = localDirectory
     self.boostConfig = boostConfig
+    self.appGuard = appGuard
     self.name = nameOverride ?? ("parakeet-\(label)" + (useVocabulary ? "+vocab" : ""))
   }
 
@@ -143,7 +148,23 @@ final class ParakeetEngine: Engine {
     }
     let rescored = await session.rescore(
       text: result.text, tokenTimings: result.tokenTimings ?? [], audioSamples: samples)
-    return rescored?.text ?? result.text
+    guard appGuard else { return rescored?.text ?? result.text }
+    // Same order as ParakeetBackend.VocabularyBooster.rescore: accept only
+    // shouldReplace hits that name a term, then the app guard, then casing.
+    guard let rescored, rescored.wasModified else {
+      return ParakeetVocabularyGuard.restoreGlossaryCasing(
+        in: result.text, glossaryTerms: vocabulary)
+    }
+    let candidates = rescored.replacements.filter(\.shouldReplace).compactMap {
+      replacement -> ParakeetVocabularyGuard.Replacement? in
+      guard let term = replacement.replacementWord else { return nil }
+      return ParakeetVocabularyGuard.Replacement(
+        originalSpan: replacement.originalWord, term: term)
+    }
+    let applied = ParakeetVocabularyGuard.apply(
+      to: result.text, replacements: candidates, glossaryTerms: vocabulary)
+    return ParakeetVocabularyGuard.restoreGlossaryCasing(
+      in: applied.text, glossaryTerms: vocabulary)
   }
 
   func unload() async {

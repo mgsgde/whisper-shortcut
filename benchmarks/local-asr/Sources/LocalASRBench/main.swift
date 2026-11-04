@@ -75,6 +75,17 @@ func makeEngine(_ name: String) -> Engine? {
       boostConfig: VocabularyRescorer.Config(
         spotterRescueMinSimilarity: 0.30, spotterRescueMultiWordMinSimilarity: 0.50, confidentWordBiasGate: true),
       nameOverride: "parakeet-ultra+vocab-gate")
+  case "parakeet-ultra+app":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyBoostingSession.itnDefaultConfig,
+      nameOverride: "parakeet-ultra+app", appGuard: true)
+  case "parakeet-ultra+app-gate":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyRescorer.Config(
+        spotterRescueMinSimilarity: 0.30, spotterRescueMultiWordMinSimilarity: 0.50, confidentWordBiasGate: true),
+      nameOverride: "parakeet-ultra+app-gate", appGuard: true)
   case "nemotron-unified": return NemotronUnifiedEngine(useVocabulary: false)
   case "nemotron-unified+vocab": return NemotronUnifiedEngine(useVocabulary: true)
   case "apple":

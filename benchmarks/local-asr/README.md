@@ -12,6 +12,8 @@ dictating user feels — **accuracy on German** and **the wait after Stop** — 
 | `apple`, `apple+ctx` | macOS 26 `SpeechAnalyzer` / `SpeechTranscriber` (system model, nothing to ship), with and without `contextualStrings` |
 | `whisper-small`, `whisper-base` | opt-in via `--engines` |
 
+The `+app` arms run the app's glossary guard through sources symlinked from `WhisperShortcut/`.
+
 It is a standalone Swift package rather than a test in the Xcode project so candidates can be
 measured before any of them becomes an app dependency, and because the unsandboxed CLI can run
 `say` and read the app container.
