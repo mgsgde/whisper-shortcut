@@ -12,7 +12,7 @@ final class UpdaterService: NSObject, ObservableObject {
 
   @Published private(set) var canCheckForUpdates: Bool = false
   @Published private(set) var lastUpdateCheckDate: Date?
-  /// Feed the direct build checks. Latest unless the user picked Stable. See `UpdateChannel`.
+  /// Feed the direct build checks. Stable until the user picks Latest. See `UpdateChannel`.
   @Published private(set) var channel: UpdateChannel = UpdateChannel.current()
 
   /// Bridges `SPUUpdater.automaticallyChecksForUpdates` for the Settings toggle.

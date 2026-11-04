@@ -2,9 +2,8 @@ import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
 
-/// The direct build's Sparkle channel. A missing or unknown preference falls back to Latest,
-/// because Stable only advances when a release is promoted and can lag behind the feed. A
-/// stored choice always wins, so anyone who picked Stable keeps it.
+/// The direct build's Sparkle channel. A missing or unknown preference must stay on Stable:
+/// that choice sees only untagged appcast items until someone explicitly chooses Latest.
 @Suite("Update channel")
 struct UpdateChannelTests {
 
@@ -15,32 +14,20 @@ struct UpdateChannelTests {
     return (defaults, suite)
   }
 
-  @Test("Missing key defaults to latest")
-  func missingKeyIsLatest() {
+  @Test("Missing key defaults to stable")
+  func missingKeyIsStable() {
     let (defaults, suite) = freshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
-    #expect(UpdateChannel.current(defaults) == .latest)
-    #expect(UpdateChannel.defaultChannel == .latest)
+    #expect(UpdateChannel.current(defaults) == .stable)
+    #expect(UpdateChannel.defaultChannel == .stable)
   }
 
-  @Test("Unknown stored value falls back to latest; latest is latest")
+  @Test("Unknown stored value falls back to stable; latest is latest")
   func unknownAndLatest() {
     let (defaults, suite) = freshDefaults()
     defer { defaults.removePersistentDomain(forName: suite) }
 
     defaults.set("beta", forKey: UserDefaultsKeys.updateChannel)
-    #expect(UpdateChannel.current(defaults) == .latest)
-
-    defaults.set("latest", forKey: UserDefaultsKeys.updateChannel)
-    #expect(UpdateChannel.current(defaults) == .latest)
-  }
-
-  @Test("A stored choice wins over the default")
-  func storedChoiceWins() {
-    let (defaults, suite) = freshDefaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
-
-    defaults.set("stable", forKey: UserDefaultsKeys.updateChannel)
     #expect(UpdateChannel.current(defaults) == .stable)
 
     defaults.set("latest", forKey: UserDefaultsKeys.updateChannel)

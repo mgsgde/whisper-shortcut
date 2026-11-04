@@ -62,9 +62,8 @@ struct UpdatesSection: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  /// Latest is the default: Stable only advances when a release is promoted, so on a machine
-  /// without the promotion job it silently falls behind and reports an older version as newest.
-  /// Stable stays available for people who want a release to have run in daily use first.
+  /// Stable is the default so a practice that works with the app all day only sees versions that
+  /// already ran a week in daily use; Latest is for people who want every release the day it ships.
   private var channelPicker: some View {
     VStack(alignment: .leading, spacing: 4) {
       Picker(
@@ -93,12 +92,12 @@ struct UpdatesSection: View {
     case .stable:
       return String(
         localized:
-          "A new version only after it has run in daily use for about a week, at most every two weeks. Stable only advances when a release has been promoted, so it can lag behind the newest release for a while."
+          "Recommended for work. You get a new version only after it has run in daily use for about a week, at most every two weeks."
       )
     case .latest:
       return String(
         localized:
-          "Recommended. Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer."
+          "Every release on the day it ships, with the newest features and fixes. Switching back to Stable keeps your version; the next update comes once Stable is newer."
       )
     }
   }
