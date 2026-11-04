@@ -4,6 +4,8 @@ import SwiftUI
 struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  @State private var ownServerKeyDraft = ""
+  @FocusState private var ownServerKeyFocused: Bool
 
   @State private var showingPersonaEditor = false
   /// Bumped whenever the frozen voice or the custom-persona list changes, so the reset button
@@ -308,11 +310,12 @@ struct ReadAloudSettingsTab: View {
   private var customVoiceField: some View {
     let binding = Binding<String>(
       get: {
-        let stored = viewModel.data.readAloudVoice(for: .custom)
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        return stored.isEmpty ? TTSModel.ownServerTTS.defaultVoice : stored
+        // Empty stays empty (the prompt shows the default); the "alloy" fallback is applied at
+        // read time in `ReadAloudPreferences.voice(for:)`.
+        viewModel.data.readAloudVoice(for: .custom)
       },
-      set: { newValue in
+      set: { raw in
+        let newValue = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         viewModel.data.setReadAloudVoice(newValue, for: .custom)
         UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.selectedReadAloudVoiceCustom)
         Task { await viewModel.saveSettings() }
@@ -386,6 +389,11 @@ struct ReadAloudSettingsTab: View {
 
       ownServerFieldRow("API key:") {
         SecureField("Optional", text: ownServerKeyBinding)
+          .focused($ownServerKeyFocused)
+          .onSubmit { commitOwnServerKey() }
+          .onChange(of: ownServerKeyFocused) { _, focused in if !focused { commitOwnServerKey() } }
+          .onAppear { ownServerKeyDraft = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "" }
+          .onDisappear { commitOwnServerKey() }
           .textFieldStyle(.roundedBorder)
           .font(.system(.body, design: .monospaced))
           .frame(height: SettingsConstants.textFieldHeight)
@@ -418,12 +426,19 @@ struct ReadAloudSettingsTab: View {
       set: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.customTTSModelID) })
   }
 
-  /// The key lives in the Keychain, not UserDefaults. Seeded on appear so the field shows the
-  /// stored value instead of an empty box that would overwrite it on the first keystroke.
+  /// The key lives in the Keychain, not UserDefaults. The field edits a local draft that is
+  /// loaded on appear and written to the Keychain on submit, focus loss or disappear — not on
+  /// every keystroke.
   private var ownServerKeyBinding: Binding<String> {
-    Binding(
-      get: { KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "" },
-      set: { _ = KeychainManager.shared.save($0, for: .customOpenAIChatAPIKey) })
+    Binding(get: { ownServerKeyDraft }, set: { ownServerKeyDraft = $0 })
+  }
+
+  private func commitOwnServerKey() {
+    let trimmed = ownServerKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed != (KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "") else { return }
+    if !KeychainManager.shared.save(trimmed, for: .customOpenAIChatAPIKey) {
+      DebugLogger.log("READ-ALOUD: Failed to save own-server API key to Keychain")
+    }
   }
 
   private func ownServerFieldRow<Field: View, Caption: View>(

@@ -2969,13 +2969,16 @@ class SpeechService {
             "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model."
         ))
     }
+    if OfflineMode.isEnabled, !OfflineMode.allows(url) {
+      throw TranscriptionError.networkError(
+        String(localized: "Offline Mode is on and your own server URL is not on this machine or network."))
+    }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    let key = (KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "")
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    if !key.isEmpty {
-      request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+    let key = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? ""
+    for (name, value) in CustomEndpointAuth.headers(baseURL: model.apiEndpoint, apiKey: key) {
+      request.setValue(value, forHTTPHeaderField: name)
     }
     let body: [String: Any] = [
       "model": CustomEndpointPreferences.ttsModelID,
