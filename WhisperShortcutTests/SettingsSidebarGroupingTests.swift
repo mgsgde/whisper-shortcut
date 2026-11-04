@@ -14,8 +14,10 @@ struct SettingsSidebarGroupingTests {
   func everyTabAppearsExactlyOnce() {
     let grouped = SettingsTab.sections.flatMap(\.tabs)
 
-    #expect(grouped.count == SettingsTab.allCases.count)
-    #expect(Set(grouped) == Set(SettingsTab.allCases))
+    // The test host is the App Store build, which hides Read Aloud.
+    let expected = SettingsTab.allCases.filter { $0 != .readAloud }
+    #expect(grouped.count == expected.count)
+    #expect(Set(grouped) == Set(expected))
     #expect(Set(grouped).count == grouped.count, "a tab is listed in more than one section")
   }
 
@@ -35,9 +37,15 @@ struct SettingsSidebarGroupingTests {
   @Test("Tabs keep their allCases order inside a section")
   func tabsKeepAllCasesOrder() {
     for section in SettingsTab.sections {
-      let expected = SettingsTab.allCases.filter { $0.section == section }
+      let expected = SettingsTab.allCases.filter { $0.section == section && $0 != .readAloud }
       #expect(section.tabs == expected)
     }
+  }
+
+  @Test("Read Aloud is absent from the App Store sidebar")
+  func readAloudHiddenInAppStoreBuild() {
+    // This suite imports the App Store module, so APP_STORE is set for the code under test.
+    #expect(!SettingsTab.sections.flatMap(\.tabs).contains(.readAloud))
   }
 
   @Test("The persisted raw values are unchanged")
