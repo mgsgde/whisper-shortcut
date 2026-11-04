@@ -34,17 +34,22 @@ struct ParakeetPunctuationTimingTests {
     [word("Gangbild", 0.0, 0.6), word("unauffällig", 0.6, 1.2), mark(".", 1.2, 1.24)]
   }
 
-  @Test("final period needs 240 ms of audio behind it")
+  @Test("final period needs 400 ms of audio behind it")
   func finalPeriodTail() {
     let tokens = periodTokens()
+    // 100 ms is under both the old 240 ms line and the current 400 ms line.
     #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 1.24 + 0.1) == [false])
+    // 500 ms clears 400 ms. A tail of 300 ms, which the old 240 ms line kept, is now dropped.
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 1.24 + 0.30) == [false])
     #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 1.24 + 0.5) == [true])
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 1.24 + 0.70) == [true])
   }
 
-  @Test("question and exclamation marks are always guessed")
+  @Test("question and exclamation marks follow the same gap and tail rule")
   func questionAndExclamation() {
+    // Gap after "?" is 0.96 s, tail after "!" is 3.16 s: both spoken.
     let tokens = [word("Stimmt", 0, 0.5), mark("?", 0.5, 0.54), word("Ja", 1.5, 1.8), mark("!", 1.8, 1.84)]
-    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 5) == [false, false])
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 5) == [true, true])
   }
 
   @Test("a decimal point inside a number is not a mark")
@@ -119,18 +124,27 @@ struct ParakeetPunctuationTimingTests {
         text: "Gangbild, geht, weiter", tokens: commaTokens(gap: 0), audioDuration: 2) == nil)
   }
 
-  @Test("question marks are removed by the filter too")
-  func removesQuestionMark() {
+  @Test("a final question mark with a short tail is dropped, a long tail is kept")
+  func questionMarkTail() {
     let tokens = [word("Stimmt", 0, 0.5), mark("?", 0.5, 0.54)]
     #expect(
-      ParakeetPunctuationTiming.filter(text: "Stimmt?", tokens: tokens, audioDuration: 3)?.text == "Stimmt")
+      ParakeetPunctuationTiming.filter(text: "Stimmt?", tokens: tokens, audioDuration: 0.54 + 0.10)?.text
+        == "Stimmt")
+    #expect(
+      ParakeetPunctuationTiming.filter(text: "Stimmt?", tokens: tokens, audioDuration: 0.54 + 0.70)?.text
+        == "Stimmt?")
   }
 
-  @Test("timed marks: strip leaves commas and periods, removes semicolons and ?/!")
+  @Test("timed marks: strip leaves commas, periods and ?/!, removes semicolons")
   func stripTimedMarks() {
     #expect(
       SpokenPunctuation.stripModelPunctuation(from: "Hallo, Welt; ok? Gut.", timedMarks: true)
-        == "Hallo, Welt ok Gut.")
+        == "Hallo, Welt ok? Gut.")
+    // No timings: the model's "!" is still dropped, so a period written beside it is what remains.
+    // With timings the "!" the filter kept is left alone.
+    #expect(SpokenPunctuation.stripModelPunctuation(from: "Wirklich.!") == "Wirklich.")
+    #expect(
+      SpokenPunctuation.stripModelPunctuation(from: "Wirklich.!", timedMarks: true) == "Wirklich.!")
   }
 
   @Test("a live piece with timed marks keeps its spoken comma; without, the old rule strips it")
@@ -179,5 +193,83 @@ struct ParakeetPunctuationTimingTests {
   @Test("spacingGluedCommas adds the space before a letter only")
   func spacingGluedCommas() {
     #expect(ParakeetPunctuationTiming.spacingGluedCommas("50,Merkzeichen und 3,5") == "50, Merkzeichen und 3,5")
+  }
+
+  // "Stimmt ? Ja" with a configurable pause after the question mark.
+  private func questionTokens(gap: Double) -> [Token] {
+    [
+      word("Stimmt", 0.0, 0.5), mark("?", 0.5, 0.54),
+      word("Ja", 0.54 + gap, 0.8 + gap),
+    ]
+  }
+
+  @Test("a mid-text question mark needs the same gap as a comma")
+  func questionGap() {
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: questionTokens(gap: 0), audioDuration: 2) == [false])
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: questionTokens(gap: 0.20), audioDuration: 2) == [true])
+    #expect(
+      ParakeetPunctuationTiming.filter(
+        text: "Stimmt? Ja", tokens: questionTokens(gap: 0), audioDuration: 2)?.text == "Stimmt Ja")
+    #expect(
+      ParakeetPunctuationTiming.filter(
+        text: "Stimmt? Ja", tokens: questionTokens(gap: 0.20), audioDuration: 2)?.text == "Stimmt? Ja")
+  }
+
+  @Test("a final exclamation mark is kept at 700 ms of tail and dropped at 100 ms")
+  func exclamationTail() {
+    let tokens = [word("Wirklich", 0.0, 0.6), mark("!", 0.6, 0.64)]
+    #expect(
+      ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 0.64 + 0.10) == [false])
+    #expect(
+      ParakeetPunctuationTiming.spokenMarks(tokens: tokens, audioDuration: 0.64 + 0.70) == [true])
+    #expect(
+      ParakeetPunctuationTiming.filter(text: "Wirklich!", tokens: tokens, audioDuration: 0.64 + 0.10)?.text
+        == "Wirklich")
+    #expect(
+      ParakeetPunctuationTiming.filter(text: "Wirklich!", tokens: tokens, audioDuration: 0.64 + 0.70)?.text
+        == "Wirklich!")
+  }
+
+  @Test("a spoken exclamation mark stays an exclamation mark through filter and finishPiece")
+  func spokenExclamationSurvives() {
+    let tokens = [word("Wirklich", 0.0, 0.6), mark("!", 0.6, 0.64)]
+    let filtered = ParakeetPunctuationTiming.filter(
+      text: "Wirklich!", tokens: tokens, audioDuration: 0.64 + 0.70)
+    #expect(filtered?.text == "Wirklich!")
+    #expect(
+      LiveDictation.finishPiece(filtered?.text ?? "", mode: .spokenOnly, timedMarks: true) == "Wirklich!")
+    // A period glued in front of the spoken "!". Timing keeps the "!" (it is the final mark, with
+    // a tail); finishPiece must not strip it back off. Without timings the old rule still drops
+    // the "!" and the "." is what remains — that is the "!" → "." bug.
+    let both = [word("Wirklich", 0.0, 0.6), mark(".", 0.6, 0.64), mark("!", 0.64, 0.68)]
+    let kept = ParakeetPunctuationTiming.filter(
+      text: "Wirklich.!", tokens: both, audioDuration: 0.68 + 0.70)
+    #expect(kept?.text == "Wirklich.!")
+    #expect(
+      LiveDictation.finishPiece(kept?.text ?? "", mode: .spokenOnly, timedMarks: true) == "Wirklich.!")
+    #expect(LiveDictation.finishPiece("Wirklich.!", mode: .spokenOnly) == "Wirklich.")
+    // The word itself, with the periods Parakeet put around it, becomes "!" and not ".".
+    #expect(
+      LiveDictation.finishPiece("Bitte Befund nachreichen. Ausrufezeichen.", mode: .spokenOnly)
+        == "Bitte Befund nachreichen!")
+    #expect(
+      LiveDictation.finishPiece(
+        "Bitte Befund nachreichen. Ausrufezeichen.", mode: .spokenOnly, timedMarks: true)
+        == "Bitte Befund nachreichen!")
+  }
+
+  @Test("spoken Semikolon and Strichpunkt become a semicolon, with and without timings")
+  func spokenSemicolon() {
+    let sentence = "Hüfte frei beweglich Semikolon Knie mit Erguss"
+    #expect(LiveDictation.finishPiece(sentence, mode: .spokenOnly) == "Hüfte frei beweglich; Knie mit Erguss")
+    #expect(
+      LiveDictation.finishPiece(sentence, mode: .spokenOnly, timedMarks: true)
+        == "Hüfte frei beweglich; Knie mit Erguss")
+    let strichpunkt = "Hüfte frei beweglich Strichpunkt Knie mit Erguss"
+    #expect(
+      LiveDictation.finishPiece(strichpunkt, mode: .spokenOnly) == "Hüfte frei beweglich; Knie mit Erguss")
+    #expect(
+      LiveDictation.finishPiece(strichpunkt, mode: .spokenOnly, timedMarks: true)
+        == "Hüfte frei beweglich; Knie mit Erguss")
   }
 }

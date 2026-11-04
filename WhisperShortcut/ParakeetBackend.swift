@@ -129,10 +129,10 @@ final class ParakeetBackend: @unchecked Sendable {
   ///     conditioning text; instead FluidAudio's CTC keyword spotter listens for these terms in the
   ///     audio and rescores the transcript where it hears one. Benchmarked on German practice
   ///     terms: 18/24 → 23/24, for ~0.2 s on a short clip. Empty → the plain, faster path.
-  ///   - spokenMarksOnly: "Only when spoken" punctuation. Parakeet's own commas and periods are
-  ///     kept only where the token timings show speech time behind them
+  ///   - spokenMarksOnly: "Only when spoken" punctuation. Parakeet's own commas, periods, "?" and
+  ///     "!" are kept only where the token timings show speech time behind them
   ///     (`ParakeetPunctuationTiming`); the rest are removed. When the marks in the text cannot be
-  ///     matched to the tokens, the old rule applies (commas out, periods stay).
+  ///     matched to the tokens, the old rule applies (commas, "?" and "!" out, periods stay).
   func transcribe(
     audioURL: URL, language: String?, vocabulary terms: [String], spokenMarksOnly: Bool = false
   ) async throws -> String {

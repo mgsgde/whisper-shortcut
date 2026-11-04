@@ -368,8 +368,8 @@ actor LocalSpeechService {
   ///   lever that actually removes the wait is streaming, not intra-file parallelism.
   /// - Parameter vocabulary: the Glossary as terms, for Parakeet (CTC vocabulary boosting).
   ///   Whisper ignores it and conditions on `prompt` instead.
-  /// - Parameter spokenMarksOnly: Parakeet only, "Only when spoken" punctuation: guessed commas and
-  ///   periods are removed by token timing (`ParakeetPunctuationTiming`). Whisper ignores it.
+  /// - Parameter spokenMarksOnly: Parakeet only, "Only when spoken" punctuation: guessed commas,
+  ///   periods, "?" and "!" are removed by token timing (`ParakeetPunctuationTiming`). Whisper ignores it.
   func transcribe(
     audioURL: URL, language: String? = nil, prompt: String? = nil,
     vocabulary: [String] = [],

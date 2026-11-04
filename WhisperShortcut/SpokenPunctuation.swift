@@ -10,10 +10,12 @@ import Foundation
 /// wichtigste Punkt"), so they are left alone. Only phrases that are almost never meant literally in
 /// dictation are converted, matched case-insensitively on whole words. The exception is the
 /// "Only when spoken" punctuation mode (`PunctuationMode.spokenOnly`): there the user has opted in
-/// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Schrägstrich"
-/// and "drei Pünktchen" are converted too. There the model's own commas and semicolons are
-/// removed (`stripModelPunctuation`) together with its guessed "?" and "!"; its "." and ":" are
-/// kept, because the model often writes a spoken "Punkt" as "." itself.
+/// to saying the marks, so "Punkt", "Komma", "Fragezeichen", "Ausrufezeichen", "Semikolon",
+/// "Strichpunkt", "Schrägstrich" and "drei Pünktchen" are converted too. There the model's own
+/// commas and semicolons are removed (`stripModelPunctuation`). Without token timings its guessed
+/// "?" and "!" are removed too; with timings (`timedMarks`) those marks were already kept or
+/// dropped by `ParakeetPunctuationTiming`, so they stay. Its "." and ":" are kept, because the
+/// model often writes a spoken "Punkt" as "." itself.
 enum SpokenPunctuation {
   /// Folded (`GlossaryDocument.fold`) single words the rules below turn into layout or marks.
   /// Mirrors the spoken words in `rules` and `spokenOnlyRules`; `ParakeetVocabularyGuard` never
@@ -83,6 +85,11 @@ enum SpokenPunctuation {
     // A sentence mark the model wrote right before the word ("Gut. Fragezeichen") is swallowed.
     rule(#"[ \t,;]*(?:[.!?][ \t]*)?\bfragezeichen\b[ \t,.;]*"#, "? \u{1}"),
     rule(#"[ \t,;]*(?:[.!?][ \t]*)?\bausrufezeichen\b[ \t,.;]*"#, "! \u{1}"),
+    // "Hüfte frei beweglich Semikolon Knie" → "Hüfte frei beweglich; Knie". "Strichpunkt" is the
+    // same mark. The words are in `commandWords`, so the glossary will not rewrite them; this is
+    // the rule that actually converts them. A comma the model put on either side is the pause,
+    // and goes. A period before the word stays ("usw. Semikolon"), the same way "Komma" leaves one.
+    rule(#"[ \t,]*\b(?:semikolon|strichpunkt)\b[ \t,.;]*"#, "; "),
     // "drei Pünktchen", "drei Puenktchen", "Auslassungspunkte" → "…", attached to the previous
     // word. Spaces and a stray comma or semicolon before it go; comma, period and semicolon after
     // it go too. Not "drei Punkte" (a score). Before "Punkt", so "Pünktchen" is not read as one.
@@ -102,24 +109,31 @@ enum SpokenPunctuation {
   ]
 
   /// Removes the marks an offline model guessed on its own, for `PunctuationMode.spokenOnly`:
-  /// commas, semicolons, question marks and exclamation marks. Only marks followed by whitespace
-  /// or the end of the text, so "1,2" and "a?b" survive. The model's "." and ":" stay: Parakeet
-  /// often turns a spoken "Punkt" into "." itself, and stripping it destroyed marks the user did
-  /// say. A "?" or "!" is different: the model guesses it from intonation ("Die Dosis stimmt?"),
-  /// while a spoken "Fragezeichen" / "Ausrufezeichen" is applied afterwards by `apply`, so the
-  /// user's own marks still work and never double. When a stripped "?" or "!" ended a sentence
-  /// the model capitalised the next word; that word is lower-cased again if it is a function
-  /// word ("Und weiter" → "und weiter"), nouns keep their capital (`lowercasingFunctionWord`).
+  /// commas, semicolons, and — when no token timings are available — question marks and
+  /// exclamation marks. Only marks followed by whitespace or the end of the text, so "1,2" and
+  /// "a?b" survive. The model's "." and ":" stay: Parakeet often turns a spoken "Punkt" into "."
+  /// itself, and stripping it destroyed marks the user did say. Without timings a "?" or "!" is
+  /// different from a period: the model guesses it from intonation ("Die Dosis stimmt?"), while a
+  /// spoken "Fragezeichen" / "Ausrufezeichen" is applied afterwards by `apply`, so the user's own
+  /// words still work and never double. Stripping the model's "!" in that pass is what left a
+  /// "." when Parakeet had written both ("nachreichen.!" → "nachreichen."): the period is kept
+  /// on purpose, the exclamation was not. When a stripped "?" or "!" ended a sentence the model
+  /// capitalised the next word; that word is lower-cased again if it is a function word
+  /// ("Und weiter" → "und weiter"), nouns keep their capital (`lowercasingFunctionWord`).
   /// A model comma glued to a kept period ("z. B.,") loses the comma alone. A spoken mark next
   /// to a kept model mark does not double: see `repeatedMarks` and `spokenOnlyRules`. Run before
   /// `apply`.
   ///
   /// - Parameter timedMarks: the text is Parakeet's, already filtered by token timing
-  ///   (`ParakeetPunctuationTiming`): the commas and periods left are spoken, so besides the "?"
-  ///   and "!" only the semicolons are removed here.
+  ///   (`ParakeetPunctuationTiming`). The commas, periods, "?" and "!" left are the ones the
+  ///   timing called spoken, so only semicolons are removed here. "?" and "!" stay as they are —
+  ///   removing them turned a spoken "!" into the model's leftover ".".
   static func stripModelPunctuation(from text: String, timedMarks: Bool = false) -> String {
     var result = (timedMarks ? semicolonRegex : stripRegex).stringByReplacingMatches(
       in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "")
+    // Timing already kept or dropped each "?" and "!". Running `guessedSentenceMarkRegex` here
+    // deleted a spoken "!" and left a "." Parakeet had written next to it.
+    guard !timedMarks else { return result }
     let resultNS = result as NSString
     let matches = guessedSentenceMarkRegex.matches(
       in: result, range: NSRange(location: 0, length: resultNS.length))
