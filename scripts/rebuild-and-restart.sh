@@ -143,12 +143,32 @@ identity_team() {
 }
 
 SIGN_ARGS=()
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/' || true)
+# Every Apple Development identity, not just the first: a machine can hold identities from several
+# teams (a personal one and an employer's), and `grep -m1` picked whichever the keychain listed
+# first. If that one belonged to another team, the script fell back to ad-hoc even though a usable
+# identity was right there — the exact case this fallback exists for.
+IDENTITIES=()
+while IFS= read -r line; do
+  IDENTITIES+=("$(printf '%s' "$line" | sed -E 's/.*"(.*)".*/\1/')")
+done < <(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" || true)
+
+IDENTITY=""
 IDENTITY_TEAM=""
+for candidate in "${IDENTITIES[@]}"; do
+  [[ -n "$candidate" ]] || continue
+  candidate_team=$(identity_team "$candidate")
+  if [[ -z "$REQUIRED_TEAM" || "$candidate_team" == "$REQUIRED_TEAM" ]]; then
+    IDENTITY="$candidate"
+    IDENTITY_TEAM="$candidate_team"
+    break
+  fi
+  # Remember the first non-matching one for the ad-hoc reason line below.
+  if [[ -z "$IDENTITY_TEAM" ]]; then
+    IDENTITY_TEAM="$candidate_team"
+  fi
+done
+
 if [[ -n "$IDENTITY" ]]; then
-  IDENTITY_TEAM=$(identity_team "$IDENTITY")
-fi
-if [[ -n "$IDENTITY" && ( -z "$REQUIRED_TEAM" || "$IDENTITY_TEAM" == "$REQUIRED_TEAM" ) ]]; then
   SIGN_ARGS=(-allowProvisioningUpdates)
   echo "🔏 Signing: $IDENTITY (project signing settings)"
 else
@@ -162,12 +182,12 @@ else
   cp "$ENTITLEMENTS_SRC" "$STRIPPED"
   /usr/libexec/PlistBuddy -c 'Delete :keychain-access-groups' "$STRIPPED" >/dev/null 2>&1 || true
   SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
-  if [[ -z "$IDENTITY" ]]; then
+  if [[ ${#IDENTITIES[@]} -eq 0 ]]; then
     ADHOC_REASON="no Apple Development identity"
   elif [[ -z "$IDENTITY_TEAM" ]]; then
     ADHOC_REASON="identity team unreadable, project team $REQUIRED_TEAM"
   else
-    ADHOC_REASON="identity team $IDENTITY_TEAM ≠ project team $REQUIRED_TEAM"
+    ADHOC_REASON="no identity for project team $REQUIRED_TEAM (found $IDENTITY_TEAM)"
   fi
   echo "🔏 Signing: ad-hoc ($ADHOC_REASON; legacy keychain, prompts on rebuilds)"
 fi
