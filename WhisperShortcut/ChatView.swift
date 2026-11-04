@@ -2458,6 +2458,17 @@ class ChatViewModel: ObservableObject {
     scrollAnchorStore.set(messageId, for: sessionId)
   }
 
+  /// True when `sessionId` was left scrolled to the bottom, so new content should keep pulling
+  /// it down. Recorded separately from the anchor: a bottom-read session still has a top message.
+  func isFollowingBottom(for sessionId: UUID) -> Bool {
+    scrollAnchorStore.isFollowing(sessionId)
+  }
+
+  /// Records whether `sessionId` is following the newest content.
+  func setFollowingBottom(_ isFollowing: Bool, for sessionId: UUID) {
+    scrollAnchorStore.setFollowing(isFollowing, for: sessionId)
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -3179,6 +3190,20 @@ private final class ChatScrollActions {
   var scrollToBottom: (() -> Void)?
 }
 
+/// The slice of `ScrollGeometry` the chat's follow-the-bottom logic needs, as one `Equatable`
+/// value so `.onScrollGeometryChange` fires only when one of these actually moved.
+private struct ChatScrollSnapshot: Equatable {
+  /// Vertical scroll offset. Only its *delta* is used (direction of travel), so the origin
+  /// convention does not matter.
+  var offsetY: CGFloat
+  var contentHeight: CGFloat
+  /// Bottom edge of the visible area in content coordinates.
+  var visibleMaxY: CGFloat
+
+  /// How far the content bottom sits below the visible bottom; negative when overscrolled.
+  var distanceFromBottom: CGFloat { contentHeight - visibleMaxY }
+}
+
 /// PreferenceKey that propagates the measured height of the hidden Text used to size the input field.
 private struct InputTextHeightKey: PreferenceKey {
   static var defaultValue: CGFloat = 0
@@ -3199,6 +3224,13 @@ struct ChatView: View {
   /// do not `@Published`-refresh the whole chat. Cleared on `scrollAnchorClearSignal` emissions.
   @State private var scrollPositionID: UUID? = nil
   @State private var scrollAnchorPersistTask: Task<Void, Never>? = nil
+  /// True while the list should follow new content (streaming deltas, appended messages, live
+  /// meeting notes). Set false the moment the user scrolls away from the bottom, so a reply that
+  /// keeps growing below the fold never yanks them back to where they were reading.
+  @State private var followsBottom: Bool = true
+  /// How close to the content bottom counts as "at the bottom". Generous enough that a wheel
+  /// notch or a trackpad bounce does not silently end the follow.
+  private static let followBottomThreshold: CGFloat = 40
   /// Suppresses persisting the scroll anchor while we re-apply it programmatically (during a
   /// tab switch), so the transient reset-to-top doesn't clobber the saved position before we
   /// restore it.
@@ -3708,6 +3740,17 @@ struct ChatView: View {
         .padding(.bottom, 28)
       }
       .scrollPosition(id: $scrollPositionID, anchor: .top)
+      // Follow new content (streaming deltas, appended messages, live meeting notes) only while
+      // the user is at the bottom. Content growth is detected as a change in content height, so
+      // one hook covers every append path instead of one per source.
+      .onScrollGeometryChange(for: ChatScrollSnapshot.self) { geometry in
+        ChatScrollSnapshot(
+          offsetY: geometry.contentOffset.y,
+          contentHeight: geometry.contentSize.height,
+          visibleMaxY: geometry.visibleRect.maxY)
+      } action: { old, new in
+        handleScrollGeometryChange(from: old, to: new, proxy: proxy)
+      }
       // Typing indicator lives OUTSIDE the LazyVStack as a floating overlay so its
       // 60fps TimelineView clock invalidates only its own subtree, not the whole
       // message list. Inside the list it forced a full LazyVStack/GeometryReader
@@ -3753,7 +3796,8 @@ struct ChatView: View {
         scrollActions.scrollToTop = { scrollToTop(proxy: proxy) }
         scrollActions.scrollToBottom = { scrollToBottom(proxy: proxy) }
         // Restore this session's saved reading position, or scroll to the latest messages if there
-        // is none. We never auto-scroll when new messages arrive — the user stays where they are.
+        // is none. `restoreSavedScroll` also decides whether the list follows new content: a
+        // restored anchor means the user was reading further up, so it must not be yanked down.
         restoreSavedScroll(proxy: proxy)
       }
       .task {
@@ -3929,12 +3973,16 @@ struct ChatView: View {
   }
 
   private func scrollToTop(proxy: ScrollViewProxy) {
+    followsBottom = false
+    viewModel.setFollowingBottom(false, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       proxy.scrollTo("listTop", anchor: .top)
     }
   }
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
+    followsBottom = true
+    viewModel.setFollowingBottom(true, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       if let lastId = viewModel.messages.last?.id {
         proxy.scrollTo(lastId, anchor: .bottom)
@@ -3944,18 +3992,73 @@ struct ChatView: View {
     }
   }
 
+  /// Follows content growth while the user is at the bottom, and stops following the moment they
+  /// scroll away.
+  ///
+  /// One hook covers every append path — a streaming delta, a new message, a live meeting note —
+  /// because all of them do the same thing to the scroll view: they make the content taller. The
+  /// alternative, one `.onChange` per source, would have to be repeated for each new kind of
+  /// content and would still miss the streaming bubble, whose text lives in a separate
+  /// `ObservableObject` and never reaches this view as a value.
+  private func handleScrollGeometryChange(
+    from old: ChatScrollSnapshot, to new: ChatScrollSnapshot, proxy: ScrollViewProxy
+  ) {
+    // The user's own movement wins over growth: if they scrolled up in the same frame that a
+    // delta landed, they meant to leave the bottom and must not be pulled back.
+    if abs(new.offsetY - old.offsetY) > 0.5 {
+      let nowFollowing = new.distanceFromBottom <= Self.followBottomThreshold
+      if nowFollowing != followsBottom {
+        followsBottom = nowFollowing
+        // Remembered per session so a tab switch back restores the user's actual choice instead
+        // of inferring it from the anchor.
+        viewModel.setFollowingBottom(nowFollowing, for: viewModel.currentSessionId)
+      }
+    }
+    guard new.contentHeight > old.contentHeight + 0.5, followsBottom else { return }
+    // Deferred by one runloop turn: the growth that triggered this callback is still being laid
+    // out, so scrolling from inside it would target the previous content height and land short
+    // of the new bottom.
+    Task { @MainActor in
+      guard followsBottom else { return }
+      followBottom(proxy: proxy)
+    }
+  }
+
+  /// Scrolls to the newest content without animation: a streaming reply grows several times a
+  /// second, and an animated scroll per delta would trail behind the text it is chasing.
+  private func followBottom(proxy: ScrollViewProxy) {
+    // Drop the id anchor first. A non-nil `scrollPositionID` (set by the user's last scroll)
+    // makes the lazy list re-resolve that id during layout, which would pull the viewport back to
+    // it and undo the follow. Clearing it is the documented safe operation: the offset is kept by
+    // the ScrollView's default behaviour and the persisted anchor is untouched.
+    if scrollPositionID != nil { scrollPositionID = nil }
+    // `listBottom` rather than the last message id: in a meeting the newest item can be a note,
+    // which is not in `viewModel.messages`.
+    proxy.scrollTo("listBottom", anchor: .bottom)
+  }
+
   /// Restores the session's saved top message, or scrolls to the latest messages when there is
   /// none (or the saved message no longer exists). Sets the `scrollPosition` binding and nudges
   /// the proxy so the position holds across the list recreation a resize/screen-move causes.
+  ///
+  /// The follow decision comes from the stored flag, not from the presence of an anchor: a session
+  /// the user read at the bottom still has a top message, and treating that as "was reading
+  /// further up" is what stopped the autoscroll after every tab switch.
   private func restoreSavedScroll(proxy: ScrollViewProxy) {
     let sessionId = viewModel.currentSessionId
+    let wasFollowing = viewModel.isFollowingBottom(for: sessionId)
     if let saved = viewModel.scrollAnchor(for: sessionId),
        viewModel.messages.contains(where: { $0.id == saved }) {
       DebugLogger.logUI("CHAT-SCROLL: restoring saved anchor \(saved.uuidString) session=\(sessionId)")
       scrollPositionID = saved
+      followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
+      // A session that was following the bottom is put back on the newest content, not on the
+      // anchor it happened to have: the anchor is only the layout starting point.
+      if wasFollowing { scrollToBottom(proxy: proxy) }
     } else {
       scrollPositionID = nil
+      followsBottom = true
       scrollToBottom(proxy: proxy)
     }
   }

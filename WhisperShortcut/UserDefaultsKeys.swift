@@ -10,6 +10,10 @@ enum UserDefaultsKeys {
   /// chat scroll view. Stored as [String: String]. Lets the scroll position survive window
   /// hide/show (incl. the cross-screen resize that recreates the list), tab switches, and relaunch.
   static let chatScrollAnchors = "chatScrollAnchors"
+  /// Per-session follow flag: sessions whose chat was left scrolled to the bottom, stored as an
+  /// array of session UUID strings. Without it a tab switch back to a live conversation stopped
+  /// the autoscroll, because a bottom-read session still has a top message.
+  static let chatScrollFollowing = "chatScrollFollowing"
 
   // MARK: - Settings Window
   static let settingsCloseOnFocusLoss = "settingsCloseOnFocusLoss"
