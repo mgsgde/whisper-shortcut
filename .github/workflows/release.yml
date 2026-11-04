@@ -102,10 +102,11 @@ jobs:
       # would mix incompatible objects. The prefix is the fallback for an older entry.
       - name: Build cache key
         id: cache_key
+        # v2: entries written by a single cold pass (v1) miss on FluidAudio, see Build and archive.
         run: |
           XCODE=$(xcodebuild -version | tr '\n' ' ' | sed -E 's/[^A-Za-z0-9.]+/-/g; s/-+$//')
-          echo "prefix=xcode-cas-${{ runner.os }}-${{ runner.arch }}-$XCODE-" >> "$GITHUB_OUTPUT"
-          echo "key=xcode-cas-${{ runner.os }}-${{ runner.arch }}-$XCODE-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}" >> "$GITHUB_OUTPUT"
+          echo "prefix=xcode-cas-v2-${{ runner.os }}-${{ runner.arch }}-$XCODE-" >> "$GITHUB_OUTPUT"
+          echo "key=xcode-cas-v2-${{ runner.os }}-${{ runner.arch }}-$XCODE-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}" >> "$GITHUB_OUTPUT"
           echo "key: $(tail -1 "$GITHUB_OUTPUT")"
 
       # An exact hit means this warm has nothing to compile. lookup-only avoids
@@ -198,22 +199,34 @@ jobs:
         if: steps.warm_lookup.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
-          xcodebuild archive \
-            -disableAutomaticPackageResolution \
-            -clonedSourcePackagesDirPath "$SPM_PATH" \
-            -derivedDataPath "$DERIVED_DATA_PATH" \
-            -project WhisperShortcut.xcodeproj \
-            -scheme WhisperShortcut \
-            -configuration Release \
-            -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
-            -skipPackagePluginValidation \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Developer ID Application" \
-            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
-            COMPILATION_CACHE_ENABLE_CACHING=YES \
-            COMPILATION_CACHE_CAS_PATH="$CAS_PATH" \
-            | tee "$RUNNER_TEMP/archive.log"
-          echo "Compilation cache: $(grep -c 'Cache hit' "$RUNNER_TEMP/archive.log" || true) hits, $(grep -c 'Cache miss' "$RUNNER_TEMP/archive.log" || true) misses"
+          archive() {
+            xcodebuild archive \
+              -disableAutomaticPackageResolution \
+              -clonedSourcePackagesDirPath "$SPM_PATH" \
+              -derivedDataPath "$DERIVED_DATA_PATH" \
+              -project WhisperShortcut.xcodeproj \
+              -scheme WhisperShortcut \
+              -configuration Release \
+              -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
+              -skipPackagePluginValidation \
+              CODE_SIGN_STYLE=Manual \
+              CODE_SIGN_IDENTITY="Developer ID Application" \
+              DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
+              COMPILATION_CACHE_ENABLE_CACHING=YES \
+              COMPILATION_CACHE_CAS_PATH="$CAS_PATH" \
+              | tee "$RUNNER_TEMP/archive$1.log"
+          }
+          archive 1
+          echo "Pass 1: Compilation cache: $(grep -c 'Cache hit' "$RUNNER_TEMP/archive1.log" || true) hits, $(grep -c 'Cache miss' "$RUNNER_TEMP/archive1.log" || true) misses"
+          # A single cold pass leaves FluidAudio (and the tiny LuxTtsG2pResources it imports) under keys
+          # that the next build does not look up, so every release recompiled FluidAudio (~5 min on CI).
+          # Measured 2026-11-04 on the FluidAudio package alone: pass 2 missed exactly those two targets,
+          # pass 3 hit all 168 jobs. A second pass on a fresh DerivedData writes the keys releases use.
+          if [ "$WARM_ONLY" = "true" ]; then
+            rm -rf "$DERIVED_DATA_PATH" "$RUNNER_TEMP/WhisperShortcut.xcarchive"
+            archive 2
+            echo "Pass 2: Compilation cache: $(grep -c 'Cache hit' "$RUNNER_TEMP/archive2.log" || true) hits, $(grep -c 'Cache miss' "$RUNNER_TEMP/archive2.log" || true) misses"
+          fi
 
       # A dry run keeps Xcode's per-task build log so the build's critical path can be read
       # with xclogparser instead of guessed from buffered console timestamps.
