@@ -253,6 +253,8 @@ class SettingsViewModel: ObservableObject {
                 NotificationCenter.default.post(
                   name: .chatFontDesignChanged, object: data.chatFontDesign)
               }),
+    .bool(\.chatFollowNewContent, key: UserDefaultsKeys.chatFollowNewContent,
+          default: SettingsDefaults.chatFollowNewContent),
 
     // Live Meeting
     .custom(\.liveMeetingChunkInterval,

@@ -2175,6 +2175,8 @@ struct SettingsDefaults {
   /// Prose typeface of the chat transcript. `.sans` (San Francisco) is what the chat has always
   /// used; serif and rounded are opt-in choices in Settings → Chat → Appearance.
   static let chatFontDesign: ChatFontDesign = .sans
+  /// Off by default: the chat never scrolls on its own unless the user opts in.
+  static let chatFollowNewContent = false
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false
@@ -2363,6 +2365,8 @@ struct SettingsData: Equatable {
   var showDockIcon: Bool = SettingsDefaults.showDockIcon
   /// Prose typeface of the chat transcript (Settings → Chat → Appearance).
   var chatFontDesign: ChatFontDesign = SettingsDefaults.chatFontDesign
+  /// Follow new chat content while at the bottom (Settings → Chat → Appearance).
+  var chatFollowNewContent: Bool = SettingsDefaults.chatFollowNewContent
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage

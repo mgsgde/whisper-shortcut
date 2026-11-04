@@ -112,6 +112,20 @@ struct ChatSettingsTab: View {
           await viewModel.saveSettings()
         }
       }
+
+      Toggle(isOn: $viewModel.data.chatFollowNewContent) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Scroll along with new text")
+            .font(.callout)
+          Text("Keeps the newest text in view while a reply or live meeting notes are being written. Scrolling up stops it.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.chatFollowNewContent) { _ in
+        Task { await viewModel.saveSettings() }
+      }
     }
   }
 
