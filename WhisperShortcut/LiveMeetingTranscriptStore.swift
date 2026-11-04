@@ -327,10 +327,23 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     if parts.isEmpty {
       return ""
     }
+    // When is this meeting? The stem carries the start time; without a parseable stem the meeting
+    // is by definition the one running now, so say that instead of leaving the model dateless.
+    let when: String
+    if let stem = currentMeetingFilenameStem,
+      let started = ChatDateContext.meetingLine(stem: stem, label: "Meeting started")
+    {
+      when = started
+    } else {
+      when = ChatDateContext.line(
+        label: "Meeting in progress, current date and time", at: Date())
+    }
     return """
       This chat is attached to a meeting that is being transcribed live. Everything said so far is \
       below — answer the user's questions from it, and quote timestamps like [12:34] when it helps \
       them find the moment.
+
+      \(when)
 
       """ + parts.joined(separator: "\n\n")
   }

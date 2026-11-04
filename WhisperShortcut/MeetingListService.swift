@@ -28,8 +28,14 @@ final class MeetingListService: ObservableObject {
     return f
   }()
 
+  /// Parses `Meeting-YYYY-MM-DD-HHMMSS` stems. Pinned to `en_US_POSIX` and the Gregorian calendar
+  /// for the same reason `LiveMeetingTranscriptStore.generateStem()` is: the stem is written with
+  /// those, so it must be read with those. A formatter that inherits the user's calendar would read
+  /// "2026" as a Buddhist or Japanese era year and date the meeting centuries off.
   private static let timestampFilenameFormatter: DateFormatter = {
     let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.calendar = Calendar(identifier: .gregorian)
     f.dateFormat = "yyyy-MM-dd-HHmmss"
     return f
   }()

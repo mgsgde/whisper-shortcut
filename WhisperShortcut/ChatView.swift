@@ -1860,10 +1860,11 @@ class ChatViewModel: ObservableObject {
     var text = offline
       ? AppConstants.defaultOfflineChatSystemPrompt
       : SystemPromptsStore.shared.loadChatSystemPrompt()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "EEEE, MMMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US")
-    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    // Date, weekday and zone at the very top: the model needs to know *when* "today", "tonight"
+    // or "last Tuesday" is. Day granularity on purpose — this is the cached prompt prefix, and a
+    // minute-precision clock here would invalidate the provider's cache every 60 seconds. The
+    // clock time goes at the end of the prompt, next to the other volatile parts.
+    text = "\(ChatDateContext.stableLine())\n\n\(text)"
     if offline {
       // No doc tools offline, so the app's own facts travel in the prompt.
       text += "\n\n---\n\n" + OfflineChatAppContext.current(
@@ -1894,6 +1895,10 @@ class ChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
     }
+    // The clock time sits at the end, after the volatile blocks (memory, meeting transcript), so
+    // the cached prefix above stays byte-identical between turns while the model still knows what
+    // time it is.
+    text += "\n\n\(ChatDateContext.timeOfDayLine())"
     return ["parts": [["text": text]]]
   }
 
@@ -2111,6 +2116,8 @@ class ChatViewModel: ObservableObject {
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
     let prompt = """
+      \(ChatDateContext.stableLine())
+
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2221,6 +2228,8 @@ class ChatViewModel: ObservableObject {
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
+      \(ChatDateContext.stableLine())
+
       Give this meeting a short title (2–4 words) that captures its main topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2698,6 +2707,12 @@ class ChatViewModel: ObservableObject {
     let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
+    // Date the meeting for the model: a transcript without a date cannot answer "what did we
+    // agree last Tuesday?". The stem carries the start time; an unparseable stem gets no line
+    // rather than an invented one.
+    if let when = ChatDateContext.meetingLine(stem: stem) {
+      parts.append(when)
+    }
     if !summaryDisk.isEmpty {
       parts.append("Meeting summary:\n\(summaryDisk)")
     }
