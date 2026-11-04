@@ -314,6 +314,6 @@ enum UserDefaultsKeys {
   static let mcpConnectedClients = "mcpConnectedClients"
 
   // MARK: - Updates
-  /// Sparkle channel for the direct build: "stable" (default) or "latest". See UpdateChannel.
+  /// Sparkle channel for the direct build: "stable" or "latest"; a missing value falls back to `UpdateChannel.defaultChannel`. See UpdateChannel.
   static let updateChannel = "updateChannel"
 }
