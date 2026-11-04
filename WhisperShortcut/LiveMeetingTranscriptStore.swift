@@ -356,6 +356,49 @@ final class LiveMeetingTranscriptStore: ObservableObject {
     liveNotes.append(note)
   }
 
+  /// Replaces one note after a hand edit, keeping its `id` and `startTime` — the timestamp is the
+  /// anchor that ties the note to the transcript, so only the bullets may change. A note whose
+  /// bullets were all deleted is removed instead of being left behind as a blank header.
+  /// Main thread, like `appendNote`. Unknown ids are ignored (the meeting may have been cleared).
+  func replaceNote(_ note: LiveMeetingNote) {
+    assert(Thread.isMainThread)
+    liveNotes = Self.applyingEdit(to: liveNotes, replacing: note)
+  }
+
+  /// Applies a hand edit to a note list: the edited note gets its new bullets, or disappears when
+  /// there are none left. Pure, so the live store and the on-disk path share one rule.
+  ///
+  /// Matched by `id`, falling back to `startTime`: notes read back from disk get fresh ids on every
+  /// read, so a caller holding a note from an earlier read still edits the right row.
+  static func applyingEdit(
+    to notes: [LiveMeetingNote], replacing edited: LiveMeetingNote
+  ) -> [LiveMeetingNote] {
+    let index = notes.firstIndex { $0.id == edited.id }
+      ?? notes.firstIndex { $0.startTime == edited.startTime }
+    guard let index else { return notes }
+    var result = notes
+    if edited.bullets.isEmpty {
+      result.remove(at: index)
+    } else {
+      let old = notes[index]
+      result[index] = LiveMeetingNote(id: old.id, startTime: old.startTime, bullets: edited.bullets)
+    }
+    return result
+  }
+
+  /// Turns the text of the note editor into bullets: one bullet per non-empty line, with a bullet
+  /// marker the user typed by hand ("- ", "* ", "• ") stripped so it is not doubled on disk.
+  static func bullets(fromDraft draft: String) -> [String] {
+    draft.components(separatedBy: .newlines).compactMap { rawLine in
+      var line = rawLine.trimmingCharacters(in: .whitespaces)
+      for marker in ["- ", "* ", "• "] where line.hasPrefix(marker) {
+        line = String(line.dropFirst(marker.count)).trimmingCharacters(in: .whitespaces)
+        break
+      }
+      return line.isEmpty ? nil : line
+    }
+  }
+
   // MARK: - Live notes serialization
   //
   // Notes live next to the transcript as a plain `.notes.md` file so they survive an app restart,

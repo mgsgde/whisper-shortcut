@@ -137,10 +137,14 @@ final class MeetingListService: ObservableObject {
   }
 
   /// Persists the full note list for a meeting. Rewrites the whole (small) file — notes are
-  /// append-only, so this is always the complete history.
+  /// append-only, so this is always the complete history. An empty list removes the file: after a
+  /// hand edit deleted the last note, a leftover file would resurrect it on the next read.
   func saveNotes(_ notes: [LiveMeetingNote], transcriptFileURL: URL) {
     let url = Self.notesURL(transcriptFileURL: transcriptFileURL)
-    guard !notes.isEmpty else { return }
+    guard !notes.isEmpty else {
+      try? FileManager.default.removeItem(at: url)
+      return
+    }
     do {
       try LiveMeetingTranscriptStore.notesMarkdown(notes)
         .write(to: url, atomically: true, encoding: .utf8)
