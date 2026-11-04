@@ -216,9 +216,18 @@ class ChatViewModel: ObservableObject {
   private var meetingCancellable: AnyCancellable?
   private var meetingFinishingCancellable: AnyCancellable?
   private var summaryCancellable: AnyCancellable?
+  private var meetingTranscriptCancellable: AnyCancellable?
   /// Meeting stems we've already attempted to backfill a title for this app run, so a missing or
   /// failed summary doesn't trigger a fresh API call every time the meeting is viewed.
   private var attemptedMeetingTitleStems: Set<String> = []
+  /// Meeting stems we've already titled from the live transcript this app run. One attempt per
+  /// meeting: the transcript grows every minute, and re-titling on each chunk would be a request
+  /// per chunk.
+  private var attemptedLiveMeetingTitleStems: Set<String> = []
+  /// Titles this app run wrote from a live transcript, keyed by session. The summary title is the
+  /// better one and may replace exactly these — but never a title the user typed, which is why the
+  /// *string* is remembered rather than a flag: a rename no longer matches and is left alone.
+  private var transcriptDerivedTitles: [UUID: String] = [:]
   /// Meeting stems we've already attempted to recover a missing summary for this app run, so opening
   /// the Summary tab repeatedly doesn't re-fire generation when the transcript truly has no summary.
   private var attemptedMeetingSummaryStems: Set<String> = []
@@ -544,6 +553,22 @@ class ChatViewModel: ObservableObject {
             guard let targetId = self.store.allSessions().first(where: { $0.isMeeting && $0.meetingStem == stem })?.id else { return }
             await self.generateMeetingTitle(targetId: targetId, summary: summary)
           }
+        }
+
+      // Title a running meeting from its live transcript instead of leaving the row on the bare
+      // "Meeting" placeholder until the summary exists — a meeting can run for an hour, and the
+      // summary only arrives after it ends. One attempt per meeting (see
+      // `attemptedLiveMeetingTitleStems`): the transcript grows every minute, and re-titling on
+      // each chunk would be a request per chunk.
+      meetingTranscriptCancellable = LiveMeetingTranscriptStore.shared.$chunks
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] chunks in
+          guard let self,
+                LiveMeetingTranscriptStore.shared.isSessionActive,
+                let targetId = self.meetingSessionId else { return }
+          let text = chunks.map(\.text).joined(separator: " ")
+          guard Self.hasEnoughTextForMeetingTitle(text) else { return }
+          Task { await self.generateLiveMeetingTitle(targetId: targetId, transcript: text) }
         }
     }
 
@@ -2126,6 +2151,14 @@ class ChatViewModel: ObservableObject {
     let userText = String(target.messages[userIdx].content.prefix(400))
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
+    // A project the user names explicitly ("Projekt ParkDepot") is a better title than anything the
+    // title model would invent, and it costs no request. Only the explicit form is trusted here:
+    // one exchange is too little text for the repetition scan to mean anything.
+    if let project = ChatTitleStyle.projectName(in: "\(userText)\n\(modelText)") {
+      applyGeneratedTitle(
+        project, targetId: sessionId, overwriteExisting: true, replacingTitle: nil, logLabel: "Project")
+      return
+    }
     let prompt = """
       \(ChatDateContext.stableLine())
 
@@ -2148,7 +2181,14 @@ class ChatViewModel: ObservableObject {
   /// rename is kept. With `overwriteExisting` false (meetings) the title is only set while the
   /// session is still untitled or holding the stale first-message fallback. Shared by both
   /// paths so the model id, length cap, and UI sync stay in one place.
-  private func generateAndApplyTitle(targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String) async {
+  ///
+  /// `replacingTitle` names one further title this call may overwrite: the transcript-derived
+  /// meeting title, which the summary title is meant to supersede. A user rename never matches it,
+  /// so a manual title still survives.
+  private func generateAndApplyTitle(
+    targetId: UUID, prompt: String, overwriteExisting: Bool, logLabel: String,
+    replacingTitle: String? = nil
+  ) async {
     // The title model is a Gemini call, which Offline Mode blocks; failing it only adds retries.
     if OfflineMode.isEnabled {
       DebugLogger.log("TITLE-\(logLabel.uppercased()): Skipping title generation (Offline Mode)")
@@ -2178,30 +2218,41 @@ class ChatViewModel: ObservableObject {
       }
       let title = Self.cleanTitleResponse((obj["title"] as? String) ?? "")
       guard !title.isEmpty else { return }
-      guard var updated = store.session(by: targetId) else { return }
-      // A stale meeting first-message fallback counts as "untitled" here: it must yield to the
-      // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
-      let isStaleMeetingFallback =
-        updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
-      if overwriteExisting {
-        guard Self.mayApplyGeneratedTitle(
-          current: updated.title,
-          firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
-        ) else {
-          DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
-          return
-        }
-      } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback {
-        return
-      }
-      updated.title = String(title.prefix(Self.maxSessionTitleLength))
-      store.save(updated)
-      if updated.id == session.id { session.title = updated.title }
-      refreshRecentSessions()
-      DebugLogger.log("GEMINI-CHAT: \(logLabel) title generated for \(targetId): \(title)")
+      applyGeneratedTitle(
+        title, targetId: targetId, overwriteExisting: overwriteExisting,
+        replacingTitle: replacingTitle, logLabel: logLabel)
     } catch {
       DebugLogger.log("GEMINI-CHAT: \(logLabel) title generation failed: \(error.logDescription)")
     }
+  }
+
+  /// The write half of `generateAndApplyTitle`, split out so a title that needs no model call (a
+  /// project name found in the text) goes through exactly the same guards, length cap and UI sync.
+  private func applyGeneratedTitle(
+    _ title: String, targetId: UUID, overwriteExisting: Bool, replacingTitle: String?, logLabel: String
+  ) {
+    guard var updated = store.session(by: targetId) else { return }
+    // A stale meeting first-message fallback counts as "untitled" here: it must yield to the
+    // summary-based title even under `overwriteExisting: false` (which only guards manual renames).
+    let isStaleMeetingFallback =
+      updated.isMeeting && updated.title == Self.meetingFirstMessageFallbackTitle(for: updated)
+    let isReplacingTranscriptTitle = replacingTitle != nil && updated.title == replacingTitle
+    if overwriteExisting {
+      guard Self.mayApplyGeneratedTitle(
+        current: updated.title,
+        firstMessageFallback: Self.meetingFirstMessageFallbackTitle(for: updated)
+      ) || isReplacingTranscriptTitle else {
+        DebugLogger.log("GEMINI-CHAT: \(logLabel) title kept for \(targetId) — renamed away from the first-message title")
+        return
+      }
+    } else if !(updated.title?.isEmpty ?? true), !isStaleMeetingFallback, !isReplacingTranscriptTitle {
+      return
+    }
+    updated.title = String(title.prefix(Self.maxSessionTitleLength))
+    store.save(updated)
+    if updated.id == session.id { session.title = updated.title }
+    refreshRecentSessions()
+    DebugLogger.log("GEMINI-CHAT: \(logLabel) title generated for \(targetId): \(title)")
   }
 
   /// Recovers a meeting title that the live `.chatMeetingSummaryReady` notification missed (e.g. no
@@ -2234,8 +2285,15 @@ class ChatViewModel: ObservableObject {
   }
 
   /// Titles a meeting chat (by session id) from its summary, unless it's already titled.
+  ///
+  /// A title this app run derived from the live transcript is not "already titled": the summary is
+  /// the better source, so it may replace exactly that string (see `replacingTitle`). A user rename
+  /// never matches and is kept.
   private func generateMeetingTitle(targetId: UUID, summary: String) async {
-    guard let target = store.session(by: targetId), Self.meetingTitleNeedsGeneration(target) else { return }
+    guard let target = store.session(by: targetId) else { return }
+    let transcriptTitle = transcriptDerivedTitles[targetId]
+    let mayReplaceTranscriptTitle = transcriptTitle != nil && target.title == transcriptTitle
+    guard Self.meetingTitleNeedsGeneration(target) || mayReplaceTranscriptTitle else { return }
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
@@ -2249,7 +2307,64 @@ class ChatViewModel: ObservableObject {
       Meeting summary:
       \(String(summaryText.prefix(1200)))
       """
-    await generateAndApplyTitle(targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting")
+    await generateAndApplyTitle(
+      targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting",
+      replacingTitle: mayReplaceTranscriptTitle ? transcriptTitle : nil)
+  }
+
+  /// Whether a live transcript already says enough to name the meeting.
+  ///
+  /// Deliberately crude: a title needs a topic, and a topic needs a few sentences. Waiting for
+  /// roughly 200 characters of speech keeps the first attempt from titling a meeting after "Hallo,
+  /// hört ihr mich?" — the transcript keeps growing, but `attemptedLiveMeetingTitleStems` allows
+  /// only one attempt per meeting, so an early attempt would be the only one.
+  static func hasEnoughTextForMeetingTitle(_ text: String) -> Bool {
+    text.trimmingCharacters(in: .whitespacesAndNewlines).count >= 200
+  }
+
+  /// Titles a running meeting from its live transcript, so the row stops reading "Meeting" long
+  /// before the summary exists. Runs at most once per meeting per app run.
+  ///
+  /// A project named in the transcript wins over a generated title and costs no request; otherwise
+  /// the title model names it from the first part of the transcript. The result is recorded in
+  /// `transcriptDerivedTitles` so the summary title may later replace it — and so a manual rename
+  /// (which no longer matches that string) is never overwritten.
+  private func generateLiveMeetingTitle(targetId: UUID, transcript: String) async {
+    guard let target = store.session(by: targetId),
+          let stem = target.meetingStem,
+          !attemptedLiveMeetingTitleStems.contains(stem),
+          Self.meetingTitleNeedsGeneration(target)
+    else { return }
+
+    let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard Self.hasEnoughTextForMeetingTitle(text) else { return }
+    attemptedLiveMeetingTitleStems.insert(stem)
+
+    if let project = ChatTitleStyle.projectName(in: text) {
+      applyGeneratedTitle(
+        project, targetId: targetId, overwriteExisting: false, replacingTitle: nil,
+        logLabel: "Meeting project")
+      if let applied = store.session(by: targetId)?.title, applied == project {
+        transcriptDerivedTitles[targetId] = applied
+      }
+      return
+    }
+
+    let prompt = """
+      Give this meeting a short title (2–4 words) that captures its main topic. \
+      Begin with a single emoji that fits the topic, then one space, then the words. \
+      Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
+      Example: 🤝 Vendor Negotiation
+
+      Transcript of the meeting so far:
+      \(String(text.prefix(1200)))
+      """
+    let before = store.session(by: targetId)?.title
+    await generateAndApplyTitle(
+      targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting live")
+    if let after = store.session(by: targetId)?.title, after != before {
+      transcriptDerivedTitles[targetId] = after
+    }
   }
 
   // MARK: - Local model messages (slash commands)

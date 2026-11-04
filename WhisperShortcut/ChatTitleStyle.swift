@@ -96,4 +96,129 @@ enum ChatTitleStyle: String, CaseIterable {
     guard style == .dateTopic, let topic, !topic.isEmpty else { return day }
     return "\(day) \(topic)"
   }
+
+  // MARK: - Project names
+
+  /// Words that make a capitalised phrase *look* like a proper noun without being one: sentence
+  /// openers and function words, weekdays and months, and the vocabulary every meeting shares.
+  /// A candidate made only of these is rejected, which is what keeps "Das Meeting" and
+  /// "Die Migration" out of the title.
+  private static let projectStopWords: Set<String> = [
+    // German function words and sentence openers
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "eines",
+    "und", "oder", "aber", "denn", "weil", "wenn", "dass", "ich", "wir", "sie", "er", "es",
+    "ihr", "du", "man", "heute", "morgen", "gestern", "jetzt", "dann", "hier", "dort",
+    "ja", "nein", "okay", "ok", "also", "gut", "super", "danke", "bitte", "hallo", "hi",
+    // English function words and sentence openers
+    "the", "a", "an", "and", "or", "but", "so", "we", "i", "you", "they", "he", "she", "it",
+    "this", "that", "these", "those", "today", "tomorrow", "yesterday", "now", "then",
+    "yes", "no", "hello", "thanks", "please",
+    // weekdays and months
+    "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag", "sonntag",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "januar", "februar", "märz", "april", "mai", "juni", "juli", "august", "september",
+    "oktober", "november", "dezember",
+    "january", "february", "march", "may", "june", "july", "october", "december",
+    // meeting vocabulary
+    "meeting", "call", "termin", "besprechung", "team", "update", "review", "sprint",
+    "daily", "standup", "kickoff", "retro", "retrospektive", "workshop", "onboarding",
+    "agenda", "protokoll", "notizen", "notes", "summary", "zusammenfassung", "projekt",
+    "project", "management", "planung", "planning", "status", "frage", "fragen", "punkt",
+    "punkte", "thema", "themen", "topic", "next", "steps", "action", "items",
+  ]
+
+  /// `Projekt X` / `Project X` — the one form that is unambiguous enough to trust on a single
+  /// mention. The capture stays case-sensitive: a lowercase word after "Projekt" is a sentence,
+  /// not a name.
+  private static let explicitProjectRegex = try! NSRegularExpression(
+    pattern: #"(?i:\b(?:projekt|project))\s+([A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:\s+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2})"#)
+
+  /// A capitalised phrase of one to three words — the raw material for the repetition scan.
+  ///
+  /// No `.` in the token class: it would let "Zeit. ParkDepot" match as a single two-word phrase
+  /// across a sentence boundary, which both hides the real name and invents a fake one.
+  private static let capitalisedPhraseRegex = try! NSRegularExpression(
+    pattern: #"[A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:\s+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2}"#)
+
+  /// A conservative guess at the project, product or client a text is about.
+  ///
+  /// This is a heuristic, not entity recognition. It knows exactly two signals:
+  ///
+  /// 1. an explicit `Projekt X` / `Project X` mention, trusted on a single occurrence;
+  /// 2. a capitalised phrase the text *repeats* — at least twice — which is either two or three
+  ///    words ("Park Depot") or a single CamelCase / all-caps token ("ParkDepot", "SAP").
+  ///
+  /// Everything else returns nil, and the caller falls back to a generated title. That asymmetry is
+  /// deliberate: a wrong project name in a sidebar is worse than no project name, so the function
+  /// stays silent whenever it is not sure. It does not know that "New York" is a place rather than
+  /// a client, it does not resolve pronouns or abbreviations, and it only looks at the text it is
+  /// handed — no transcript file, no chat history, no model.
+  static func projectName(in text: String) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    let ns = trimmed as NSString
+    let full = NSRange(location: 0, length: ns.length)
+
+    // 1. An explicit "Projekt X" / "Project X" needs no repetition to be believed.
+    if let match = explicitProjectRegex.firstMatch(in: trimmed, range: full),
+       let range = Range(match.range(at: 1), in: trimmed) {
+      let name = cleanProjectCandidate(String(trimmed[range]))
+      if isPlausibleProjectName(name) { return name }
+    }
+
+    // 2. Otherwise: a capitalised phrase the text repeats. Counting is what separates a name the
+    //    speaker keeps using from a noun that merely happened to start a sentence.
+    var counts: [String: (count: Int, firstLocation: Int, tokens: Int)] = [:]
+    for match in capitalisedPhraseRegex.matches(in: trimmed, range: full) {
+      guard let range = Range(match.range, in: trimmed) else { continue }
+      let name = cleanProjectCandidate(String(trimmed[range]))
+      guard isPlausibleProjectName(name) else { continue }
+      if var entry = counts[name] {
+        entry.count += 1
+        counts[name] = entry
+      } else {
+        counts[name] = (1, match.range.location, name.split(separator: " ").count)
+      }
+    }
+    return counts
+      .filter { $0.value.count >= 2 }
+      .filter { $0.value.tokens >= 2 || isCamelOrAcronym($0.key) }
+      .sorted {
+        if $0.value.count != $1.value.count { return $0.value.count > $1.value.count }
+        if $0.value.tokens != $1.value.tokens { return $0.value.tokens > $1.value.tokens }
+        return $0.value.firstLocation < $1.value.firstLocation
+      }
+      .first?.key
+  }
+
+  /// Trims punctuation and leading function words off a raw match, so "Die Migration" and
+  /// "Migration" count as the same candidate.
+  private static func cleanProjectCandidate(_ raw: String) -> String {
+    var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    name = name.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?\"'„“”()[]"))
+    var tokens = name.split(separator: " ").map(String.init)
+    while tokens.count > 1, let first = tokens.first,
+          projectStopWords.contains(first.lowercased()) {
+      tokens.removeFirst()
+    }
+    return tokens.joined(separator: " ")
+  }
+
+  /// A candidate survives only if at least one of its words is not meeting or function vocabulary.
+  private static func isPlausibleProjectName(_ name: String) -> Bool {
+    let tokens = name.split(separator: " ").map(String.init)
+    guard !tokens.isEmpty, tokens.count <= 3, name.count >= 2 else { return false }
+    return tokens.contains { !projectStopWords.contains($0.lowercased()) }
+  }
+
+  /// A single token is only trusted when its shape says "name": all caps ("SAP") or an internal
+  /// capital ("ParkDepot", "iPhone"). A plain capitalised word ("Magnus") is a person or a noun far
+  /// more often than a project.
+  private static func isCamelOrAcronym(_ name: String) -> Bool {
+    guard !name.contains(" ") else { return false }
+    let letters = name.filter(\.isLetter)
+    guard letters.count >= 2 else { return false }
+    if letters.allSatisfy({ $0.isUppercase }) { return true }
+    return name.dropFirst().contains(where: { $0.isUppercase })
+  }
 }

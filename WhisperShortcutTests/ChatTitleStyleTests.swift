@@ -153,4 +153,91 @@ struct ChatTitleStyleTests {
       messages: [ChatMessage(role: .user, content: "why does the build fail on CI")])
     #expect(ChatViewModel.derivedTopicTitle(for: session) == "why does the build fail on CI")
   }
+
+  // MARK: - Project names
+
+  /// The explicit form is the one signal trusted on a single mention — it is the user saying
+  /// "this is the project", not a guess about capitalisation.
+  @Test("An explicit Projekt/Project mention is used")
+  func explicitProjectMention() {
+    #expect(ChatTitleStyle.projectName(in: "Wir sprechen heute über das Projekt ParkDepot.") == "ParkDepot")
+    #expect(ChatTitleStyle.projectName(in: "Let's review project Northwind tomorrow.") == "Northwind")
+    #expect(ChatTitleStyle.projectName(in: "Projekt Neue Webseite: Status?") == "Neue Webseite")
+  }
+
+  /// A name the transcript keeps repeating is the next best signal. Two words minimum, because a
+  /// single capitalised word is a person or a noun far more often than a project.
+  @Test("A repeated multi-word name is used")
+  func repeatedMultiWordName() {
+    let text = """
+      Park Depot hat den Vertrag unterschrieben. Die Migration zu Park Depot läuft seit März, \
+      und Park Depot will im April live gehen.
+      """
+    #expect(ChatTitleStyle.projectName(in: text) == "Park Depot")
+  }
+
+  /// A CamelCase or all-caps token carries its own "this is a name" signal, so one word is enough —
+  /// but it still has to be repeated.
+  @Test("A repeated CamelCase or acronym token is used")
+  func repeatedCamelOrAcronym() {
+    #expect(ChatTitleStyle.projectName(in: "ParkDepot braucht mehr Zeit. ParkDepot liefert im Mai.") == "ParkDepot")
+    #expect(ChatTitleStyle.projectName(in: "SAP ist down. SAP meldet sich nicht.") == "SAP")
+  }
+
+  /// The conservative half: nothing confident found means nil, and the caller falls back to a
+  /// generated title. A wrong project name in a sidebar is worse than no project name.
+  @Test("No project mentioned yields nil")
+  func noProjectMentioned() {
+    #expect(ChatTitleStyle.projectName(in: "") == nil)
+    #expect(ChatTitleStyle.projectName(in: "   \n ") == nil)
+    // Ordinary meeting talk: capitalised sentence openers and meeting vocabulary only.
+    #expect(ChatTitleStyle.projectName(in: "Das Meeting war gut. Die Migration läuft. Wir sind zufrieden.") == nil)
+    #expect(ChatTitleStyle.projectName(in: "Heute besprechen wir den Status und die nächsten Schritte.") == nil)
+    // A single capitalised word is not enough, however often it appears.
+    #expect(ChatTitleStyle.projectName(in: "Magnus sagt ja. Magnus hat recht. Magnus macht das.") == nil)
+    // A one-off proper noun is not a project the meeting is about.
+    #expect(ChatTitleStyle.projectName(in: "Wir treffen uns in Berlin und reden über den Plan.") == nil)
+  }
+
+  // MARK: - Project name in the date row
+
+  /// The composed row the user actually reads: a project name takes the topic slot, so the date
+  /// style shows `2026-11-03 Park Depot` rather than a generated title.
+  @Test("A project name composes with the date in dateTopic")
+  func projectComposesWithDate() {
+    let date = Self.date(2026, 11, 3)
+    let project = ChatTitleStyle.projectName(in: "Projekt ParkDepot: Stand der Migration")
+    #expect(project == "ParkDepot")
+    #expect(ChatTitleStyle.title(topic: project, date: date, style: .dateTopic) == "2026-11-03 ParkDepot")
+    #expect(ChatTitleStyle.title(topic: project, date: date, style: .dateOnly) == "2026-11-03")
+    #expect(ChatTitleStyle.title(topic: project, date: date, style: .firstMessage) == "ParkDepot")
+  }
+
+  /// The meeting case end to end, without a model: a transcript-derived title is what the row
+  /// shows, and the date style puts the day in front of it.
+  @Test("A meeting titled from its transcript shows date and title")
+  @MainActor
+  func transcriptTitledMeetingShowsDateAndTitle() {
+    let session = ChatSession(
+      lastUpdated: Self.date(2026, 11, 5),
+      title: "🤝 Vendor Negotiation",
+      isMeeting: true,
+      meetingStem: "Meeting-2026-11-03-103649")
+    #expect(!ChatViewModel.meetingTitleNeedsGeneration(session))
+    #expect(ChatViewModel.derivedTopicTitle(for: session) == "🤝 Vendor Negotiation")
+    #expect(
+      ChatTitleStyle.title(
+        topic: ChatViewModel.derivedTopicTitle(for: session),
+        date: ChatTitleStyle.date(for: session),
+        style: .dateTopic) == "2026-11-03 🤝 Vendor Negotiation")
+  }
+
+  /// The trigger threshold is a pure predicate, so it can be pinned without a meeting or a model.
+  @Test("A meeting is only titled once the transcript says enough")
+  @MainActor
+  func transcriptThreshold() {
+    #expect(!ChatViewModel.hasEnoughTextForMeetingTitle("Hallo, hört ihr mich?"))
+    #expect(!ChatViewModel.hasEnoughTextForMeetingTitle(String(repeating: "a", count: 199)))
+    #expect(ChatViewModel.hasEnoughTextForMeetingTitle(String(repeating: "a", count: 200)))
+  }
 }
