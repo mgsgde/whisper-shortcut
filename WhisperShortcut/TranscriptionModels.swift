@@ -370,6 +370,23 @@ enum TranscriptionModel: String, CaseIterable {
     return provider.hasCredential
   }
 
+  /// True when the user has already *chosen* an offline model that is not on disk yet.
+  ///
+  /// This is the state `hasRequiredCredential == false` collapses together with "no API key", and
+  /// the two need different words: a key-less cloud model asks for a key, an undownloaded offline
+  /// model asks for a download. `credentialRequiredTitle` already draws that line for the popups
+  /// ("API Key Required" vs "Model Not Downloaded"); this is the same distinction for the menu bar
+  /// and onboarding, which used to tell an offline user to add a key.
+  var needsOfflineModelDownload: Bool {
+    Self.needsOfflineModelDownload(isOffline: isOffline, available: isOfflineModelAvailable())
+  }
+
+  /// Pure half of `needsOfflineModelDownload`, split out so the rule can be tested without
+  /// `ModelManager` and the on-disk model store.
+  static func needsOfflineModelDownload(isOffline: Bool, available: Bool) -> Bool {
+    isOffline && !available
+  }
+
   /// Popup title matching `apiKeyRequiredMessage`.
   var credentialRequiredTitle: String { provider.credentialRequiredTitle }
 

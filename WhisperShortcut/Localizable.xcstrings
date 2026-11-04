@@ -8141,6 +8141,16 @@
         }
       }
     },
+    "Download the selected offline model - click to configure" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gewähltes Offline-Modell laden – zum Einrichten klicken"
+          }
+        }
+      }
+    },
     "Download the selected offline model in Settings → Dictate, or pick a different transcription model." : {
       "localizations" : {
         "de" : {
@@ -21990,6 +22000,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut sitzt in Ihrer Menüleiste. Dort steht ⚠️, bis das Diktat eingerichtet ist. Klicken Sie darauf, wählen Sie Einstellungen … und tragen Sie einen Schlüssel ein oder laden Sie das Offline-Modell."
+          }
+        }
+      }
+    },
+    "WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and download the selected offline model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut sitzt in Ihrer Menüleiste. Dort steht ⚠️, bis das Diktat eingerichtet ist. Klicken Sie darauf, wählen Sie Einstellungen … und laden Sie das gewählte Offline-Modell."
           }
         }
       }
