@@ -456,8 +456,8 @@ class SpeechService {
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
   ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
-  ///   - punctuationMode: `.spokenOnly` makes offline Parakeet drop the commas and periods it
-  ///     guessed (`ParakeetPunctuationTiming`); every other engine and mode ignores it.
+  ///   - punctuationMode: `.spokenOnly` makes offline Parakeet drop the commas, periods, "?" and "!"
+  ///     it guessed (`ParakeetPunctuationTiming`); every other engine and mode ignores it.
   ///   - reportsProgress: When false, a chunked transcription (>45s audio) does not drive
   ///     the global chunk-progress delegate. Background transcriptions (streaming dictate
   ///     chunks) must pass false — the delegate mutates the app state machine, which

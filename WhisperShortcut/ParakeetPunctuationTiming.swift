@@ -3,23 +3,30 @@ import Foundation
 /// Tells a punctuation mark the speaker SAID from one Parakeet GUESSED, for
 /// `PunctuationMode.spokenOnly`.
 ///
-/// Parakeet writes a spoken "Komma" / "Punkt" as "," / "." itself, so the text alone cannot tell
-/// those apart from the commas and periods it adds from intonation. The token timings can: a
-/// spoken mark has speech time behind it (the speaker said a word and kept going or let the
-/// recording run on), a guessed mark sits flush against the next word or against the end of the
-/// audio. Measured with `LiveDictationPilotTests.punctuationTiming` over 6 voices and 228 marks:
+/// Parakeet writes a spoken "Komma" / "Punkt" / "Fragezeichen" / "Ausrufezeichen" as "," / "." /
+/// "?" / "!" itself, so the text alone cannot tell those apart from the marks it adds from
+/// intonation. The token timings can: a spoken mark has speech time behind it (the speaker said a
+/// word and kept going or let the recording run on), a guessed mark sits flush against the next
+/// word or against the end of the audio. Measured with `LiveDictationPilotTests.punctuationTiming`
+/// over 6 voices and 228 marks:
 ///
 /// - Mid-text ",": `gap to the next token >= 0.120 s` keeps 34 of 43 spoken and 0 of 34 guessed.
-/// - Final ".": `audio tail after the mark >= 0.240 s` keeps 27 of 38 spoken and 1 of 72 guessed.
+/// - Final ".": `audio tail after the mark >= 0.400 s`. Raised to 0.400 s on 2026-11-04 from
+///   live-piece measurements: 21/23 spoken vs 0/42 guessed piece-end marks.
 ///
-/// "?" and "!" are always guessed: a spoken "Fragezeichen" / "Ausrufezeichen" is applied by
-/// `SpokenPunctuation.apply` from the words, never taken from the model's mark.
+/// "?" and "!" use the same timing rule as "," and ".". Mid-text, the gap to the next token must
+/// be at least `minGapToNextToken`; a final mark needs an audio tail of at least
+/// `minTailAfterFinalMark`. A spoken "Fragezeichen" / "Ausrufezeichen" comes out of Parakeet as
+/// "?" / "!" with that signature, so the model's mark is kept when the timing says it was spoken.
+/// When no timings are available, `SpokenPunctuation.stripModelPunctuation` still drops the
+/// model's "?" and "!".
 enum ParakeetPunctuationTiming {
-  /// Mid-text mark ("," or "."): minimum silence to the next token for the mark to count as spoken.
+  /// Mid-text mark ("," "." "?" "!"): minimum silence to the next token for the mark to count as spoken.
   static let minGapToNextToken: TimeInterval = 0.120
-  /// Final mark: minimum audio left after it. Stricter than the mid-text gap because a recording
-  /// always runs a little past the last word.
-  static let minTailAfterFinalMark: TimeInterval = 0.240
+  /// Final mark ("," "." "?" "!"): minimum audio left after it. Stricter than the mid-text gap
+  /// because a recording always runs a little past the last word. 0.400 s since 2026-11-04
+  /// (was 0.240 s): on live pieces this keeps 21 of 23 spoken piece-end marks and 0 of 42 guessed.
+  static let minTailAfterFinalMark: TimeInterval = 0.400
 
   /// One Parakeet token with its timing, as plain values (the caller maps FluidAudio's type).
   struct Token: Equatable {
@@ -71,10 +78,11 @@ enum ParakeetPunctuationTiming {
   }
 
   /// One verdict per mark token, in order: true = the speaker said it, false = Parakeet guessed it.
+  /// "," "." "?" and "!" share one rule: a mark with a following token needs
+  /// `minGapToNextToken` of silence before that token; the last mark needs `minTailAfterFinalMark`
+  /// of audio after it.
   static func spokenMarks(tokens: [Token], audioDuration: TimeInterval) -> [Bool] {
     markIndexes(tokens).map { index in
-      let mark = bare(tokens[index])
-      if mark == "?" || mark == "!" { return false }
       if index == tokens.count - 1 {
         return audioDuration - tokens[index].end >= minTailAfterFinalMark
       }

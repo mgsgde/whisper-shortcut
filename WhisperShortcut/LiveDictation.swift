@@ -81,8 +81,10 @@ enum LiveDictation {
   /// fillers dropped, model punctuation stripped in "Only when spoken" mode, then the spoken
   /// layout commands. Edge line breaks ("neuer Absatz" at the very end of a piece) are kept —
   /// `LiveChunkJoiner` relies on them to lay out the next piece without adding a space after.
-  /// `timedMarks`: the piece's commas and periods were already filtered by token timing
-  /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken").
+  /// `timedMarks`: the piece's commas, periods, "?" and "!" were already filtered by token timing
+  /// (`ParakeetPunctuationTiming`, done in the decode for "Only when spoken"). Strip then removes
+  /// only semicolons; a "?" or "!" the timing kept stays. Without timings, model "?" and "!" are
+  /// still dropped.
   static func finishPiece(_ text: String, mode: PunctuationMode, timedMarks: Bool = false) -> String {
     let withoutFillers = removingFillers(text)
     let source =
