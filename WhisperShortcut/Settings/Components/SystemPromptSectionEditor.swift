@@ -155,7 +155,7 @@ struct SystemPromptSectionEditor: View {
       HStack(spacing: 12) {
         Button("Open Privacy & Security") {
           if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-            NSWorkspace.shared.open(url)
+            SystemSettingsOpener.open(url)
           }
         }
         .buttonStyle(.bordered)

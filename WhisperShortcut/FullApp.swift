@@ -201,7 +201,7 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     if alert.runModal() == .alertFirstButtonReturn,
       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
     {
-      NSWorkspace.shared.open(url)
+      Task { @MainActor in SystemSettingsOpener.open(url) }
     }
   }
 

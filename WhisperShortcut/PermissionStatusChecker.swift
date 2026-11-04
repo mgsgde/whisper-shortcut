@@ -67,9 +67,10 @@ enum PermissionStatusChecker {
       urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
     }
     if let url = URL(string: urlString) {
-      NSWorkspace.shared.open(url)
+      Task { @MainActor in SystemSettingsOpener.open(url) }
     } else {
-      NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+      let fallback = URL(fileURLWithPath: "/System/Applications/System Settings.app")
+      Task { @MainActor in SystemSettingsOpener.open(fallback) }
     }
   }
 
