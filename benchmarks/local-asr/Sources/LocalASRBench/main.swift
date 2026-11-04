@@ -42,6 +42,8 @@ while let argument = arguments.popFirst() {
 }
 
 func makeEngine(_ name: String) -> Engine? {
+  let primeLineDirectory = FileManager.default.homeDirectoryForCurrentUser
+    .appendingPathComponent("Library/Application Support/FluidAudio/Models/parakeet-primeline-de-coreml")
   switch name {
   case "whisper-turbo": return WhisperEngine(variant: "large-v3-v20240930_turbo", useGlossary: false)
   case "whisper-turbo+glossary": return WhisperEngine(variant: "large-v3-v20240930_turbo", useGlossary: true)
@@ -52,6 +54,22 @@ func makeEngine(_ name: String) -> Engine? {
   case "parakeet-redux": return ParakeetEngine(version: .redux, label: "redux", useVocabulary: false)
   case "parakeet-ultra+vocab": return ParakeetEngine(version: .ultra, label: "ultra", useVocabulary: true)
   case "parakeet-v3+vocab": return ParakeetEngine(version: .v3, label: "v3", useVocabulary: true)
+  case "parakeet-primeline":
+    return ParakeetEngine(version: .v3, label: "primeline", useVocabulary: false, localDirectory: primeLineDirectory)
+  case "parakeet-primeline+vocab":
+    return ParakeetEngine(version: .v3, label: "primeline", useVocabulary: true, localDirectory: primeLineDirectory)
+  case "parakeet-ultra+vocab-app":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyBoostingSession.itnDefaultConfig, nameOverride: "parakeet-ultra+vocab-app")
+  case "parakeet-ultra+vocab-gate":
+    return ParakeetEngine(
+      version: .ultra, label: "ultra", useVocabulary: true,
+      boostConfig: VocabularyRescorer.Config(
+        spotterRescueMinSimilarity: 0.30, spotterRescueMultiWordMinSimilarity: 0.50, confidentWordBiasGate: true),
+      nameOverride: "parakeet-ultra+vocab-gate")
+  case "nemotron-unified": return NemotronUnifiedEngine(useVocabulary: false)
+  case "nemotron-unified+vocab": return NemotronUnifiedEngine(useVocabulary: true)
   case "apple":
     if #available(macOS 26.0, *) { return AppleSpeechEngine(useContext: false) }
     return nil
