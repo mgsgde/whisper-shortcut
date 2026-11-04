@@ -92,6 +92,30 @@ struct ChatTitleStyleTests {
         == "2026-11-03 🤝 Vendor Negotiation")
   }
 
+  @Test("A chat keeps its creation date after being resumed")
+  func chatUsesCreatedAt() {
+    let session = ChatSession(
+      lastUpdated: Self.date(2026, 11, 5), title: "Budget chat", createdAt: Self.date(2026, 11, 3))
+    #expect(ChatTitleStyle.date(for: session) == Self.date(2026, 11, 3))
+  }
+
+  @Test("Legacy JSON without createdAt decodes and falls back to lastUpdated")
+  func legacyJSONWithoutCreatedAt() throws {
+    let json = """
+      {"id":"\(UUID().uuidString)","lastUpdated":0,"messages":[]}
+      """
+    let session = try JSONDecoder().decode(ChatSession.self, from: Data(json.utf8))
+    #expect(session.createdAt == nil)
+    #expect(ChatTitleStyle.date(for: session) == session.lastUpdated)
+  }
+
+  @Test("createdAt survives an encode/decode round trip")
+  func createdAtRoundTrip() throws {
+    let original = ChatSession(createdAt: Date(timeIntervalSince1970: 1_000))
+    let decoded = try JSONDecoder().decode(ChatSession.self, from: JSONEncoder().encode(original))
+    #expect(decoded.createdAt == original.createdAt)
+  }
+
   @Test("A normal chat takes its date from lastUpdated")
   func chatUsesLastUpdated() {
     let session = ChatSession(lastUpdated: Self.date(2026, 11, 3), title: "Budget chat")

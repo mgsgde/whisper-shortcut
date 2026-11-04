@@ -162,6 +162,8 @@ struct ChatMessage: Identifiable, Codable, Equatable {
 struct ChatSession: Codable {
   var id: UUID
   var lastUpdated: Date
+  /// When the session was created. nil for sessions saved before this field existed.
+  var createdAt: Date?
   var messages: [ChatMessage]
   var title: String?
   var archived: Bool
@@ -180,9 +182,10 @@ struct ChatSession: Codable {
   /// switched tabs before the error arrived. Cleared on the next successful send or retry.
   var lastSendError: String?
 
-  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, workspaceFolders: [String]? = nil, lastSendError: String? = nil) {
+  init(id: UUID = UUID(), lastUpdated: Date = Date(), messages: [ChatMessage] = [], title: String? = nil, archived: Bool = false, pinned: Bool = false, isMeeting: Bool = false, meetingStem: String? = nil, thinkingLevel: ThinkingLevel = .default, workspaceFolders: [String]? = nil, lastSendError: String? = nil, createdAt: Date? = nil) {
     self.id = id
     self.lastUpdated = lastUpdated
+    self.createdAt = createdAt
     self.messages = messages
     self.title = title
     self.archived = archived
@@ -196,7 +199,7 @@ struct ChatSession: Codable {
 
   private enum CodingKeys: String, CodingKey {
     case id, lastUpdated, messages, title, archived, pinned, isMeeting, meetingStem, thinkingLevel
-    case workspaceFolders, lastSendError
+    case workspaceFolders, lastSendError, createdAt
   }
 
   init(from decoder: Decoder) throws {
@@ -213,6 +216,7 @@ struct ChatSession: Codable {
     // Absent (every chat written before `/workspace` existed) stays nil = all shared folders.
     workspaceFolders = try c.decodeIfPresent([String].self, forKey: .workspaceFolders)
     lastSendError = try c.decodeIfPresent(String.self, forKey: .lastSendError)
+    createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -228,6 +232,7 @@ struct ChatSession: Codable {
     try c.encode(thinkingLevel, forKey: .thinkingLevel)
     try c.encodeIfPresent(workspaceFolders, forKey: .workspaceFolders)
     try c.encodeIfPresent(lastSendError, forKey: .lastSendError)
+    try c.encodeIfPresent(createdAt, forKey: .createdAt)
   }
 }
 
@@ -344,7 +349,7 @@ class ChatSessionStore {
       }
     }
 
-    let defaultSession = ChatSession()
+    let defaultSession = ChatSession(createdAt: Date())
     let file = SessionsFile(currentSessionId: defaultSession.id, sessions: [defaultSession])
     saveSessionsFile(file)
     return file
@@ -489,7 +494,7 @@ class ChatSessionStore {
   func load() -> ChatSession {
     let file = loadFile()
     return file.sessions.first(where: { $0.id == file.currentSessionId })
-      ?? file.sessions.first ?? ChatSession()
+      ?? file.sessions.first ?? ChatSession(createdAt: Date())
   }
 
   func save(_ session: ChatSession) {
@@ -678,7 +683,7 @@ class ChatSessionStore {
     if let next = next {
       file.currentSessionId = next.id
     } else {
-      let newSession = ChatSession()
+      let newSession = ChatSession(createdAt: Date())
       file.sessions.append(newSession)
       file.currentSessionId = newSession.id
     }
@@ -698,7 +703,7 @@ class ChatSessionStore {
 
   /// Creates a new empty session and sets it as current.
   func createNewSession() -> ChatSession {
-    let newSession = ChatSession()
+    let newSession = ChatSession(createdAt: Date())
     var file = loadFile()
     // If the user has a manual tab order, snapshot the full current effective
     // order (manual block + lastUpdated rest) so the new tab can be appended

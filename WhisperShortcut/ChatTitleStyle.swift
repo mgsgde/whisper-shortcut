@@ -64,14 +64,15 @@ enum ChatTitleStyle: String, CaseIterable {
 
   /// The date a session's row should carry.
   ///
-  /// A meeting takes it from its transcript stem, not from `lastUpdated`: the stem is when the
+  /// A normal chat takes it from `createdAt` (falling back to `lastUpdated` for chats saved before
+  /// that field existed), so resuming a chat does not re-date it. A meeting takes it from its transcript stem, not from `lastUpdated`: the stem is when the
   /// meeting happened, while `lastUpdated` moves every time the user asks a follow-up question
   /// about it — a note from Tuesday must not be dated Thursday because it was read again.
   static func date(for session: ChatSession) -> Date {
     if let stem = session.meetingStem, let meetingDate = MeetingListService.date(fromStem: stem) {
       return meetingDate
     }
-    return session.lastUpdated
+    return session.createdAt ?? session.lastUpdated
   }
 
   /// Applies `style` to an already-derived topic title.
