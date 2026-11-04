@@ -106,6 +106,10 @@ struct Row: Codable {
   let decodeSeconds: Double
   let refWords: Int
   let edits: Int
+  /// Pilot only: reference length and edit distance after spoken punctuation command words
+  /// are removed from both sides. 0 on every other dataset.
+  let refWordsWords: Int
+  let editsWords: Int
   let termsPresent: Int
   let termsHit: Int
   let error: String?
@@ -202,11 +206,17 @@ for engineName in options.engines {
     }
     let decode = (clock.now - start).seconds
     let ref = Metrics.normalize(clip.reference)
-    let edits = Metrics.editDistance(ref, Metrics.normalize(hypothesis))
+    let hyp = Metrics.normalize(hypothesis)
+    let edits = Metrics.editDistance(ref, hyp)
+    // Command-word WER is a pilot column. Other datasets keep 0 here and print "—".
+    let refWords = clip.dataset == "pilot" ? Metrics.droppingCommandWords(ref) : []
+    let hypWords = clip.dataset == "pilot" ? Metrics.droppingCommandWords(hyp) : []
+    let editsWords = clip.dataset == "pilot" ? Metrics.editDistance(refWords, hypWords) : 0
     let terms = Metrics.termRecall(terms: clip.terms, reference: clip.reference, hypothesis: hypothesis)
     let row = Row(
       engine: engine.name, dataset: clip.dataset, clip: clip.id, audioSeconds: clip.seconds,
-      decodeSeconds: decode, refWords: ref.count, edits: edits, termsPresent: terms.present,
+      decodeSeconds: decode, refWords: ref.count, edits: edits,
+      refWordsWords: refWords.count, editsWords: editsWords, termsPresent: terms.present,
       termsHit: terms.hit, error: failure, hypothesis: hypothesis, reference: clip.reference)
     rows.append(row)
     rowsHandle.write(try encoder.encode(row))
@@ -229,8 +239,8 @@ extension Duration {
 func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
   var lines: [String] = []
   if header {
-    lines.append("| engine | load s | 1st decode s | WER synth | WER real | terms synth | terms real | WER pilot | terms pilot | p50 <5s | p50 5–15s | p50 15–30s | p50 >30s | p90 all | errors |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| engine | load s | 1st decode s | WER synth | WER real | terms synth | terms real | WER pilot | WER pilot words | terms pilot | p50 <5s | p50 5–15s | p50 15–30s | p50 >30s | p90 all | errors |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
   }
   for summary in list {
     func wer(_ dataset: String) -> String {
@@ -238,6 +248,15 @@ func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
       let words = rows.map(\.refWords).reduce(0, +)
       guard words > 0 else { return "—" }
       return f(100 * Double(rows.map(\.edits).reduce(0, +)) / Double(words), 1) + " %"
+    }
+    /// Same corpus WER as `wer`, after spoken punctuation command words are removed from both
+    /// sides. Only the pilot set is measured; every other dataset prints "—".
+    func werWords(_ dataset: String) -> String {
+      guard dataset == "pilot" else { return "—" }
+      let rows = summary.rows.filter { $0.dataset == dataset && $0.error == nil }
+      let words = rows.map(\.refWordsWords).reduce(0, +)
+      guard words > 0 else { return "—" }
+      return f(100 * Double(rows.map(\.editsWords).reduce(0, +)) / Double(words), 1) + " %"
     }
     func terms(_ dataset: String) -> String {
       let rows = summary.rows.filter { $0.dataset == dataset }
@@ -252,7 +271,7 @@ func summaryTable(_ list: [EngineSummary], header: Bool = true) -> [String] {
     let failures = summary.rows.filter { $0.error != nil }.count
     lines.append(
       "| \(summary.name) | \(f(summary.loadSeconds)) | \(f(summary.firstDecodeSeconds)) | \(wer("synthetic")) | \(wer("real")) | "
-        + "\(terms("synthetic")) | \(terms("real")) | \(wer("pilot")) | \(terms("pilot")) | "
+        + "\(terms("synthetic")) | \(terms("real")) | \(wer("pilot")) | \(werWords("pilot")) | \(terms("pilot")) | "
         + perBucket.joined(separator: " | ")
         + " | \(f(Metrics.percentile(ok.map(\.decodeSeconds), 0.9))) | \(failures) |")
   }
