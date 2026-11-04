@@ -6,7 +6,7 @@ import Foundation
 /// Records through double-buffered AVAudioRecorders that rotate ONLY at silence
 /// boundaries (≥ `AppConstants.dictateChunkSilenceDuration` below the threshold, after
 /// `AppConstants.dictateChunkMinDuration`), mirroring LiveMeetingRecorder's proven
-/// pattern. There is deliberately no max-duration cut: continuous speech simply keeps
+/// pattern. The rotation silence threshold is relative to the measured noise floor (+10 dB, clamped -45…-30 dB). There is deliberately no max-duration cut: continuous speech simply keeps
 /// growing the current chunk, so seams only ever sit inside real pauses.
 ///
 /// In this slice the chunks are merged back into a single WAV on stop and delivered
@@ -65,6 +65,29 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   }
 
   private static let silenceThresholdDB: Float = -45
+  /// Margin above the measured noise floor that still counts as silence for chunk rotation.
+  private static let noiseFloorMarginDB: Float = 10
+  /// Upper clamp so very loud rooms never make real speech count as silence.
+  private static let maxAdaptiveSilenceThresholdDB: Float = -30
+  /// Samples below this are start-up artifacts of a fresh AVAudioRecorder and are ignored.
+  private static let noiseFloorIgnoreBelowDB: Float = -90
+  /// Max upward drift of the noise floor per decimated sample (0.2 s).
+  private static let noiseFloorMaxRisePerSampleDB: Float = 0.05
+
+  /// Fast fall, slow rise: the floor follows the quietest moments and barely moves during speech.
+  static func updatedNoiseFloor(current: Float?, sample: Float) -> Float? {
+    // A freshly started recorder reports -120…-160 dB for its first samples; not a real floor.
+    guard sample >= noiseFloorIgnoreBelowDB else { return current }
+    guard let current else { return sample }
+    if sample < current { return sample }
+    return current + min(sample - current, noiseFloorMaxRisePerSampleDB)
+  }
+
+  /// Silence threshold relative to the noise floor, clamped to `silenceThresholdDB`…`maxAdaptiveSilenceThresholdDB`.
+  static func adaptiveSilenceThreshold(noiseFloorDB: Float?) -> Float {
+    guard let noiseFloorDB else { return silenceThresholdDB }
+    return min(max(noiseFloorDB + noiseFloorMarginDB, silenceThresholdDB), maxAdaptiveSilenceThresholdDB)
+  }
   /// Metering runs at 20 Hz to drive the live level bars in the recording indicator.
   private static let meteringInterval: TimeInterval = 0.05
   /// Silence-tail and rotation logic run at the 0.2s cadence AudioRecorder was tuned for.
@@ -101,6 +124,8 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private var lastTwoMeterSamples: (Float, Float) = (-160, -160)
   private var meterSampleCount = 0
   private var consecutiveSilenceSamples = 0
+  private var noiseFloorDB: Float?
+  private var currentSilenceThresholdDB: Float { Self.adaptiveSilenceThreshold(noiseFloorDB: noiseFloorDB) }
   private var currentChunkWallStart: Date?
 
   private(set) var lastRecordingWasSilent: Bool = false
@@ -150,7 +175,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     lastRecordingWasSilent = peakPowerDuringRecording < Self.silenceThresholdDB
     lastPeakPowerDb = peakPowerDuringRecording
     DebugLogger.logAudio(
-      "AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, silent=\(lastRecordingWasSilent), chunks=\(chunkURLs.count + 1)"
+      "AUDIO: Recording peak \(String(format: "%.1f", peakPowerDuringRecording)) dB, threshold \(Self.silenceThresholdDB) dB, noiseFloor=\(String(format: "%.1f", noiseFloorDB ?? -160)) adaptiveThreshold=\(String(format: "%.1f", currentSilenceThresholdDB)) dB, silent=\(lastRecordingWasSilent), chunks=\(chunkURLs.count + 1)"
     )
 
     // Queued behind any in-flight record()/stop(), so it can never overtake a rotation.
@@ -212,6 +237,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meterSampleCount = 0
     meteringTickCount = 0
     consecutiveSilenceSamples = 0
+    noiseFloorDB = nil
     lastRecordingWasSilent = false
     sessionRotationPolicy = rotationPolicy
     if sessionRotationPolicy != .standard {
@@ -314,12 +340,13 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
 
     lastTwoMeterSamples = (lastTwoMeterSamples.1, power)
     meterSampleCount += 1
+    noiseFloorDB = Self.updatedNoiseFloor(current: noiseFloorDB, sample: power)
 
     guard isSessionActive, let wallStart = currentChunkWallStart,
       Date().timeIntervalSince(wallStart) >= sessionRotationPolicy.minDuration
     else { return }
 
-    if power < Self.silenceThresholdDB {
+    if power < currentSilenceThresholdDB {
       consecutiveSilenceSamples += 1
       if consecutiveSilenceSamples >= Self.rotationSilenceSamplesNeeded(for: sessionRotationPolicy) {
         rotateChunk()
@@ -336,7 +363,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     guard isSessionActive, let current = activeRecorder else { return }
     let completedURL = current.url
     let completedIndex = chunkURLs.count
-    let completedWasSilent = peakPowerDuringChunk < Self.silenceThresholdDB
+    let completedWasSilent = peakPowerDuringChunk < currentSilenceThresholdDB
     let wasRecorderAActive = isRecorderAActive
 
     do {
@@ -359,7 +386,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
       DispatchQueue.main.async {
         guard let self else { return }
         DebugLogger.logAudio(
-          "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (silent=\(completedWasSilent), \(completedURL.lastPathComponent))")
+          "AUDIO: Rotated dictate chunk \(completedIndex) at silence boundary (silent=\(completedWasSilent), noiseFloor=\(String(format: "%.1f", self.noiseFloorDB ?? -160)), threshold=\(String(format: "%.1f", self.currentSilenceThresholdDB)), \(completedURL.lastPathComponent))")
         self.onChunkFinalized?(completedURL, completedIndex, completedWasSilent)
       }
     }
@@ -406,7 +433,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     // runs in parallel with the merge. Only fires when rotations happened — single-chunk
     // recordings take the plain path.
     if !chunkURLs.isEmpty {
-      let tailWasSilent = peakPowerDuringChunk < Self.silenceThresholdDB
+      let tailWasSilent = peakPowerDuringChunk < currentSilenceThresholdDB
       onFinalChunk?(finalChunkURL, chunkURLs.count, tailWasSilent)
     }
     chunkURLs.append(finalChunkURL)
