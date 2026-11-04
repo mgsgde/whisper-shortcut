@@ -94,7 +94,11 @@ struct GeneralSettingsTab: View {
       .toggleStyle(.switch)
       .onChange(of: viewModel.data.showDockIcon) { _ in
         Task {
-          await viewModel.saveSettings()
+          // Only apply what was actually persisted. `saveSettings()` returns the validation error
+          // and writes nothing when another setting in this window is invalid (a duplicate
+          // shortcut, say); switching the activation policy anyway would show a Dock icon the
+          // stored preference does not have, and the next launch would silently take it away.
+          guard await viewModel.saveSettings() == nil else { return }
           DockIconPreference.apply()
         }
       }
