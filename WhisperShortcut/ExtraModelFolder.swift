@@ -139,16 +139,23 @@ enum ExtraModelFolder {
     return flat + [whisperKitTree, huggingFaceCache]
   }
 
-  /// The first WhisperKit model folder that exists in the user's folder, or nil.
+  /// The best WhisperKit model folder in the user's folder, or nil.
   ///
-  /// Existence only — completeness stays `ModelManager.isModelAvailable`'s job, so a folder that
-  /// is there but half-written still reports as not downloaded, exactly as in the app's own folder.
+  /// Completeness is preferred over order: a half-written copy in the first candidate location
+  /// used to win, and `isModelAvailable` then reported the model as not downloaded even though a
+  /// complete copy sat in a later candidate. So the first *complete* folder wins; only when none is
+  /// complete does the first existing one come back, which keeps the "folder is there but
+  /// incomplete" message the app's own folder gives.
   static func whisperModelURL(for variant: String) -> URL? {
     guard let folder = resolveFolderURL() else { return nil }
     return withAccess(to: folder) {
-      whisperCandidates(in: folder, variant: variant).first {
+      let existing = whisperCandidates(in: folder, variant: variant).filter {
         FileManager.default.fileExists(atPath: $0.path)
       }
+      if let complete = existing.first(where: { ModelManager.incompleteComponent(at: $0) == nil }) {
+        return complete
+      }
+      return existing.first
     }
   }
 
@@ -179,8 +186,21 @@ enum ExtraModelFolder {
       for repo in mlxRepoCandidates(in: folder, huggingFaceID: huggingFaceID) {
         if MLXModelPaths.hasRequiredFiles(at: repo) { return repo }
         let snapshots = repo.appendingPathComponent("snapshots")
-        guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path)
-        else { continue }
+        // A missing `snapshots` directory is the normal case for a plain repo checkout, so it is
+        // not an error. Any other failure (permission denied, an unreadable volume) is logged:
+        // silently continuing there makes the caller fall through to a fresh download of weights
+        // the user already has, which is the expensive way to hide a broken folder.
+        let hashes: [String]
+        do {
+          hashes = try FileManager.default.contentsOfDirectory(atPath: snapshots.path)
+        } catch let error as NSError where error.code == NSFileReadNoSuchFileError {
+          continue
+        } catch {
+          DebugLogger.logWarning(
+            "MODEL-FOLDER: Cannot read \(snapshots.path) — \(error.localizedDescription). "
+              + "Falling back to the app's own model directory.")
+          continue
+        }
         for hash in hashes.sorted() {
           let snapshot = snapshots.appendingPathComponent(hash)
           if MLXModelPaths.hasRequiredFiles(at: snapshot) { return snapshot }

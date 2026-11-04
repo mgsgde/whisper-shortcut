@@ -132,7 +132,19 @@ enum MLXModelPaths {
     for repoPath in candidates {
       if hasRequiredFiles(at: repoPath) { return repoPath }
       let snapshots = repoPath.appendingPathComponent("snapshots")
-      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else { continue }
+      // Missing `snapshots` is normal for a plain repo checkout; anything else is logged, because
+      // silently continuing sends the caller on to a fresh download of weights already on disk.
+      let hashes: [String]
+      do {
+        hashes = try FileManager.default.contentsOfDirectory(atPath: snapshots.path)
+      } catch let error as NSError where error.code == NSFileReadNoSuchFileError {
+        continue
+      } catch {
+        DebugLogger.logWarning(
+          "MLX: Cannot read \(snapshots.path) — \(error.localizedDescription). "
+            + "Falling back to the user's model folder.")
+        continue
+      }
       for hash in hashes {
         let snap = snapshots.appendingPathComponent(hash)
         if hasRequiredFiles(at: snap) { return snap }
