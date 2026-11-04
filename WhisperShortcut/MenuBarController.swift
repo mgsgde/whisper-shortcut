@@ -36,6 +36,7 @@ class MenuBarController: NSObject {
     case transcribeCancelledRecording = 120
     case runAgainWithoutTemplate = 131
     case liveDictate = 132
+    case liveMeeting = 133
     case addToGlossary = 121
     case finishSetup = 122
     case finishSetupSeparator = 126
@@ -498,6 +499,13 @@ class MenuBarController: NSObject {
     for row in Self.actionRows {
       menu.addItem(makeItem(row))
     }
+    // Live meeting sits with the other recording actions: it starts a recording, and it is the
+    // only way into a meeting without opening the chat window first. No key equivalent — the
+    // meeting hotkey is configurable elsewhere and a second binding would fight it. The title
+    // flips between start / resume / stop in `refreshMenu`.
+    menu.addItem(
+      createMenuItem(
+        "Start Meeting Transcription", action: #selector(toggleLiveMeeting), tag: .liveMeeting))
     menu.addItem(NSMenuItem.separator())
 
     // Recovering a dictation result. Both rows hide themselves while the history is empty, so a
@@ -1283,6 +1291,13 @@ class MenuBarController: NSObject {
     }
 
     updateTranscriptionHistoryItems(menu)
+
+    // The meeting row carries no shortcut, so it takes the plain title rather than the padded
+    // shortcut column `StatusMenuTitle.render` produces.
+    menu.item(withTag: MenuTag.liveMeeting.rawValue)?.title = String(
+      localized: Self.meetingRowTitle(
+        isActive: isLiveMeetingActive,
+        canResume: !LiveMeetingTranscriptStore.shared.chunks.isEmpty))
   }
 
   /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
@@ -2047,6 +2062,14 @@ class MenuBarController: NSObject {
   }
 
   // MARK: - Live Meeting Transcription
+  /// Title of the meeting row in the status menu. Pure, so the three states can be tested without
+  /// an `NSMenu`: a running meeting stops, a stopped one with transcript chunks resumes, and
+  /// anything else starts a fresh meeting.
+  static func meetingRowTitle(isActive: Bool, canResume: Bool) -> LocalizedStringResource {
+    if isActive { return "Stop Meeting Transcription" }
+    return canResume ? "Resume Meeting Transcription" : "Start Meeting Transcription"
+  }
+
   /// Hotkey handler: picks the right action based on current state.
   /// In-window buttons should post the explicit notification (start/resume/stop) instead.
   @objc func toggleLiveMeeting() {
