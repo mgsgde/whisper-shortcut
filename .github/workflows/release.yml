@@ -4,15 +4,38 @@ on:
   push:
     tags:
       - "v*"
+    # A cache saved on a tag is invisible to the next tag, so main warms it and
+    # tag builds only restore. Path filters are not applied to tag pushes, so
+    # every v* tag still triggers.
+    branches: [main]
+    paths:
+      - WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+      - .github/workflows/release.yml
+  # Dependencies change rarely; a daily warm keeps the cache from expiring
+  # between those pushes so the next tag is not a cold compile.
+  schedule:
+    - cron: "17 4 * * *"
   # Re-drive a tag that already exists. Six tags (v8.06..v8.11) failed to publish
   # and the only way back was `gh run rerun`, which needs the old run to still be
   # around. This does not need one.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing v* tag to (re-)release, e.g. v8.11"
-        required: true
+        description: "Existing v* tag to (re-)release, e.g. v8.11. Leave empty with warm_cache_only."
+        required: false
         type: string
+      # A warm fills the cache without cutting a release; a dry run exercises
+      # signing and notarization without publishing.
+      warm_cache_only:
+        description: "Only build to fill the compilation cache; no export, notarization or release"
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Run the whole pipeline but skip publishing (no Decide draft state, no Create Release)"
+        required: false
+        default: false
+        type: boolean
       draft:
         description: "Keep the release a draft (build, install the DMG, test, then publish by hand)"
         required: false
@@ -23,11 +46,23 @@ permissions:
   contents: write
   actions: read
 
+# WARM_ONLY is the string "true" or "false": a schedule, a branch push, or
+# warm_cache_only only fills the cache. Tag pushes stay full releases.
+env:
+  WARM_ONLY: ${{ github.event_name == 'schedule' || (github.event_name == 'push' && github.ref_type == 'branch') || inputs.warm_cache_only == true }}
+  # CAS and the cloned packages are what the cache action persists. Derived data
+  # is per job and stays out of the cache.
+  CAS_PATH: /Users/runner/xcode-cas
+  SPM_PATH: /Users/runner/spm-packages
+  DERIVED_DATA_PATH: /Users/runner/release-dd
+
 jobs:
   hermetic-tests:
     name: Hermetic tests
     runs-on: macos-latest
     timeout-minutes: 45
+    # A warm run never publishes, so the offline gate would only spend CI minutes.
+    if: ${{ !(github.event_name == 'schedule' || (github.event_name == 'push' && github.ref_type == 'branch') || inputs.warm_cache_only == true) }}
     # No secrets: the hermetic subset is offline and must stay that way.
     steps:
       - name: Checkout code
@@ -59,7 +94,48 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # A manual release needs a tag. A cache warm does not.
+      - name: Check inputs
+        run: if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$WARM_ONLY" != "true" ] && [ -z "${{ inputs.tag }}" ]; then echo "::error::tag is required unless warm_cache_only is set"; exit 1; fi
+
+      # The key must change with the compiler and Package.resolved, or a restore
+      # would mix incompatible objects. The prefix is the fallback for an older entry.
+      - name: Build cache key
+        id: cache_key
+        run: |
+          XCODE=$(xcodebuild -version | tr '\n' ' ' | sed -E 's/[^A-Za-z0-9.]+/-/g; s/-+$//')
+          echo "prefix=xcode-cas-${{ runner.os }}-${{ runner.arch }}-$XCODE-" >> "$GITHUB_OUTPUT"
+          echo "key=xcode-cas-${{ runner.os }}-${{ runner.arch }}-$XCODE-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}" >> "$GITHUB_OUTPUT"
+          echo "key: $(tail -1 "$GITHUB_OUTPUT")"
+
+      # An exact hit means this warm has nothing to compile. lookup-only avoids
+      # downloading a cache the job will not use.
+      - name: Check warm cache
+        id: warm_lookup
+        if: env.WARM_ONLY == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.CAS_PATH }}
+            ${{ env.SPM_PATH }}
+          key: ${{ steps.cache_key.outputs.key }}
+          lookup-only: true
+
+      # Content-addressed, so an older entry is safe; stale entries just miss.
+      - name: Restore build cache
+        id: cache_restore
+        if: env.WARM_ONLY != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ${{ env.CAS_PATH }}
+            ${{ env.SPM_PATH }}
+          key: ${{ steps.cache_key.outputs.key }}
+          restore-keys: ${{ steps.cache_key.outputs.prefix }}
+
+      # A warm run that already found the cache has nothing to compile.
       - name: Import signing certificate
+        if: steps.warm_lookup.outputs.cache-hit != 'true'
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -97,6 +173,7 @@ jobs:
           echo "Found certificate identity: $IDENTITY"
 
       - name: Install provisioning profile
+        if: steps.warm_lookup.outputs.cache-hit != 'true'
         env:
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
         run: |
@@ -115,18 +192,16 @@ jobs:
 
           echo "Installed provisioning profile: $PP_NAME ($PP_UUID)"
 
-      - name: Cache Swift packages
-        uses: actions/cache@v4
-        with:
-          path: ~/spm-packages
-          key: spm-${{ runner.os }}-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
+      # Write the content-addressed cache into CAS_PATH so the next tag restores
+      # it instead of compiling cold. The hit/miss line shows whether it did.
       - name: Build and archive
+        if: steps.warm_lookup.outputs.cache-hit != 'true'
         run: |
+          set -o pipefail
           xcodebuild archive \
             -disableAutomaticPackageResolution \
-            -clonedSourcePackagesDirPath "$HOME/spm-packages" \
+            -clonedSourcePackagesDirPath "$SPM_PATH" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             -project WhisperShortcut.xcodeproj \
             -scheme WhisperShortcut \
             -configuration Release \
@@ -134,9 +209,26 @@ jobs:
             -skipPackagePluginValidation \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
-            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }}
+            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
+            COMPILATION_CACHE_ENABLE_CACHING=YES \
+            COMPILATION_CACHE_CAS_PATH="$CAS_PATH" \
+            | tee "$RUNNER_TEMP/archive.log"
+          echo "Compilation cache: $(grep -c 'Cache hit' "$RUNNER_TEMP/archive.log" || true) hits, $(grep -c 'Cache miss' "$RUNNER_TEMP/archive.log" || true) misses"
 
+      # Only the default branch saves (schedule/push/dispatch on main); tag runs only
+      # restore, since a cache saved under a tag ref is invisible to the next tag.
+      - name: Save build cache
+        if: env.WARM_ONLY == 'true' && steps.warm_lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ env.CAS_PATH }}
+            ${{ env.SPM_PATH }}
+          key: ${{ steps.cache_key.outputs.key }}
+
+      # Warm runs stop once the cache is saved.
       - name: Export archive
+        if: env.WARM_ONLY != 'true'
         run: |
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/WhisperShortcut.xcarchive \
@@ -144,6 +236,7 @@ jobs:
             -exportOptionsPlist exportOptions-release.plist
 
       - name: Create DMG
+        if: env.WARM_ONLY != 'true'
         run: |
           APP_PATH="$RUNNER_TEMP/export/WhisperShortcut.app"
           DMG_PATH="$RUNNER_TEMP/WhisperShortcut.dmg"
@@ -168,6 +261,7 @@ jobs:
           echo "DMG_PATH=$DMG_PATH" >> $GITHUB_ENV
 
       - name: Sign DMG
+        if: env.WARM_ONLY != 'true'
         run: |
           # Unlock the keychain (needed for codesign)
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -185,6 +279,7 @@ jobs:
           echo "✅ DMG signed successfully"
 
       - name: Notarize app
+        if: env.WARM_ONLY != 'true'
         env:
           NOTARY_USERNAME: ${{ secrets.NOTARY_USERNAME }}
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
@@ -226,10 +321,12 @@ jobs:
           exit 1
 
       - name: Staple notarization ticket
+        if: env.WARM_ONLY != 'true'
         run: |
           xcrun stapler staple "$DMG_PATH"
 
       - name: Verify notarization
+        if: env.WARM_ONLY != 'true'
         run: |
           # Verify stapling
           xcrun stapler validate "$DMG_PATH"
@@ -242,6 +339,7 @@ jobs:
 
       - name: Get version from tag
         id: get_version
+        if: env.WARM_ONLY != 'true'
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
@@ -250,6 +348,7 @@ jobs:
           echo "Building version: $VERSION (tag $TAG)"
 
       - name: Sign update and build appcast
+        if: env.WARM_ONLY != 'true'
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
         run: |
@@ -303,6 +402,7 @@ jobs:
 
       - name: Prepare Release Notes
         id: release_notes
+        if: env.WARM_ONLY != 'true'
         run: |
           if [ -f ".github/RELEASE_NOTES.md" ]; then
             echo "✅ Found RELEASE_NOTES.md, using it for release body"
@@ -332,6 +432,7 @@ jobs:
       # Nothing is published unless the tests passed: this step sits before "Create
       # Release", so a failing test job fails this job before any release is touched.
       - name: Wait for hermetic tests
+        if: env.WARM_ONLY != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -360,8 +461,10 @@ jobs:
       # Decided right before publishing, not at the start: on 2026-10-19 v8.47 was set
       # back to draft by hand while this run was still building, and `draft: false`
       # published it again at the end. A release a human holds back stays held back.
+      # dry_run stops here so nothing is published.
       - name: Decide draft state
         id: draft_state
+        if: env.WARM_ONLY != 'true' && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.get_version.outputs.tag }}
@@ -392,6 +495,7 @@ jobs:
           echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
 
       - name: Create Release
+        if: env.WARM_ONLY != 'true' && inputs.dry_run != true
         uses: softprops/action-gh-release@v3
         with:
           files: |
