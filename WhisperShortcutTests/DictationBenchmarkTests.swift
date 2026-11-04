@@ -1,3 +1,4 @@
+import AVFoundation
 import CryptoKit
 import Foundation
 import Testing
@@ -129,8 +130,10 @@ enum DictationBenchmarkScoring {
     let den: Int
   }
 
-  /// Fixed order, the order the table prints in.
-  static let tagNames = ["spokenMarks", "noMarks", "guess", "numbers", "glossary", "fillers", "wordsStay", "joined"]
+  /// Tags that occur in `results`, sorted. The table's `tag.*` rows follow the corpus.
+  static func tagNames(in results: [CaseResult]) -> [String] {
+    Array(Set(results.flatMap(\.tags))).sorted()
+  }
 
   /// Metrics for one tier and mode. A metric whose denominator is 0 is omitted.
   static func metrics(_ results: [CaseResult]) -> [(name: String, metric: Metric)] {
@@ -147,11 +150,190 @@ enum DictationBenchmarkScoring {
     add("glossary", glossaryCases.filter(\.glossaryOK).count, glossaryCases.count)
     let totalWords = results.map(\.referenceWordCount).reduce(0, +)
     add("wordAccuracy", totalWords - results.map(\.wordDistance).reduce(0, +), totalWords)
-    for tag in tagNames {
+    for tag in tagNames(in: results) {
       let tagged = results.filter { $0.tags.contains(tag) }
       add("tag.\(tag)", tagged.filter(\.exact).count, tagged.count)
     }
     return out.map { (name: $0.0, metric: $0.1) }
+  }
+}
+
+// MARK: - Live pieces
+
+/// Cuts a recording into pieces the way Dictate Live does (`ChunkedDictateRecorder.RotationPolicy.live`):
+/// a piece is at least 1.5 s long and is cut after 0.6 s below −45 dB, which is three evaluations
+/// spaced 0.2 s apart. Windows are counted from the start of the recording, like the recorder's
+/// `meteringTickCount`, and a piece whose loudest window stays below −45 dB is silent.
+///
+/// It approximates the recorder's live metering offline (RMS of a 50 ms window vs
+/// AVAudioRecorder's averagePower), so a pause near the 0.6 s / −45 dB edge may cut differently
+/// than the app.
+enum LivePieceSplitter {
+  private static let windowSeconds = 0.05
+  private static let minPieceSeconds = 1.5
+  private static let silenceThresholdDB: Float = -45
+  private static let evaluationStride = 4
+  private static let silentEvaluationsToCut = 3
+  private static let outputSampleRate = 16_000.0
+
+  private struct SplitError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+  }
+
+  /// Pieces in order. A recording with no cut returns the original URL as its one piece.
+  static func split(_ url: URL, into dir: URL) throws -> [(url: URL, isSilent: Bool)] {
+    let (samples, sampleRate) = try readMono(url)
+    guard !samples.isEmpty, sampleRate > 0 else { return [(url: url, isSilent: true)] }
+
+    let window = max(1, Int((windowSeconds * sampleRate).rounded()))
+    let minSamples = Int((minPieceSeconds * sampleRate).rounded())
+    var ranges: [(start: Int, end: Int, peak: Float)] = []
+    var pieceStart = 0
+    var peak = -Float.infinity
+    var silentCount = 0
+    var windowNumber = 0
+    var offset = 0
+    while offset < samples.count {
+      let end = min(offset + window, samples.count)
+      windowNumber += 1
+      let power = windowPower(samples[offset..<end])
+      peak = max(peak, power)
+      if windowNumber % evaluationStride == 0, end - pieceStart >= minSamples {
+        if power < silenceThresholdDB {
+          silentCount += 1
+          if silentCount >= silentEvaluationsToCut {
+            ranges.append((start: pieceStart, end: end, peak: peak))
+            pieceStart = end
+            peak = -Float.infinity
+            silentCount = 0
+          }
+        } else {
+          silentCount = 0
+        }
+      }
+      offset = end
+    }
+    if pieceStart < samples.count {
+      ranges.append((start: pieceStart, end: samples.count, peak: peak))
+    }
+    if ranges.isEmpty { return [(url: url, isSilent: true)] }
+    if ranges.count == 1, ranges[0].start == 0, ranges[0].end == samples.count {
+      return [(url: url, isSilent: ranges[0].peak < silenceThresholdDB)]
+    }
+
+    let base = url.deletingPathExtension().lastPathComponent
+    var pieces: [(url: URL, isSilent: Bool)] = []
+    pieces.reserveCapacity(ranges.count)
+    for (index, range) in ranges.enumerated() {
+      let pieceURL = dir.appendingPathComponent("\(base)-live\(index + 1).wav")
+      try writeWAV(Array(samples[range.start..<range.end]), sampleRate: sampleRate, to: pieceURL)
+      pieces.append((url: pieceURL, isSilent: range.peak < silenceThresholdDB))
+    }
+    return pieces
+  }
+
+  private static func windowPower(_ samples: ArraySlice<Float>) -> Float {
+    var sum: Float = 0
+    for sample in samples { sum += sample * sample }
+    let rms = sqrt(sum / Float(samples.count))
+    return Float(20) * log10(max(rms, Float(1e-9)))
+  }
+
+  private static func readMono(_ url: URL) throws -> (samples: [Float], sampleRate: Double) {
+    let file = try AVAudioFile(forReading: url)
+    let format = file.processingFormat
+    let capacity = AVAudioFrameCount(file.length)
+    guard capacity > 0 else { return ([], format.sampleRate) }
+    guard
+      format.channelCount >= 1,
+      let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity)
+    else {
+      throw SplitError(message: "could not read \(url.lastPathComponent)")
+    }
+    try file.read(into: buffer)
+    let count = Int(buffer.frameLength)
+    guard count > 0, let channels = buffer.floatChannelData else {
+      throw SplitError(message: "\(url.lastPathComponent) is not float PCM")
+    }
+    let channelCount = Int(format.channelCount)
+    var samples = [Float](repeating: 0, count: count)
+    if channelCount == 1 {
+      samples.withUnsafeMutableBufferPointer { destination in
+        destination.baseAddress?.update(from: channels[0], count: count)
+      }
+    } else {
+      for index in 0..<count {
+        var sum: Float = 0
+        for channel in 0..<channelCount { sum += channels[channel][index] }
+        samples[index] = sum / Float(channelCount)
+      }
+    }
+    return (samples, format.sampleRate)
+  }
+
+  private static func writeWAV(_ samples: [Float], sampleRate: Double, to url: URL) throws {
+    guard !samples.isEmpty,
+      let sourceFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+      let sourceBuffer = AVAudioPCMBuffer(
+        pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(samples.count)),
+      let sourceChannels = sourceBuffer.floatChannelData
+    else {
+      throw SplitError(message: "could not build a buffer for \(url.lastPathComponent)")
+    }
+    sourceBuffer.frameLength = AVAudioFrameCount(samples.count)
+    samples.withUnsafeBufferPointer { source in
+      if let base = source.baseAddress {
+        sourceChannels[0].update(from: base, count: samples.count)
+      }
+    }
+
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatLinearPCM),
+      AVSampleRateKey: outputSampleRate,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false,
+    ]
+    let output = try AVAudioFile(
+      forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+    if abs(sampleRate - outputSampleRate) < 0.5 {
+      try output.write(from: sourceBuffer)
+      output.close()
+      return
+    }
+
+    guard
+      let outputFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: outputSampleRate, channels: 1, interleaved: false),
+      let converter = AVAudioConverter(from: sourceFormat, to: outputFormat)
+    else {
+      throw SplitError(message: "no converter to 16 kHz for \(url.lastPathComponent)")
+    }
+    let outFrames = AVAudioFrameCount(
+      (Double(samples.count) * outputSampleRate / sampleRate).rounded(.up)) + 256
+    guard let converted = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outFrames) else {
+      throw SplitError(message: "could not allocate a 16 kHz buffer for \(url.lastPathComponent)")
+    }
+    var consumed = false
+    var error: NSError?
+    let status = converter.convert(to: converted, error: &error) { _, outStatus in
+      if consumed {
+        outStatus.pointee = .endOfStream
+        return nil
+      }
+      consumed = true
+      outStatus.pointee = .haveData
+      return sourceBuffer
+    }
+    if let error { throw error }
+    guard status != .error, converted.frameLength > 0 else {
+      throw SplitError(message: "resample failed for \(url.lastPathComponent)")
+    }
+    try output.write(from: converted)
+    output.close()
   }
 }
 
@@ -260,9 +442,124 @@ struct DictationBenchmarkScoringTests {
       if let say = item.say {
         #expect(say.count == item.spoken.count, "\(item.id): say and spoken differ in count")
       }
-      for tag in item.tags {
-        #expect(Scoring.tagNames.contains(tag), "\(item.id): unknown tag \(tag)")
+      #expect(!item.tags.isEmpty, "\(item.id): no tags")
+    }
+    let scored = corpus.cases.map { item in
+      result(item.expected, [item.expected], tags: item.tags)
+    }
+    let metricNames = Set(Scoring.metrics(scored).map(\.name))
+    let tags = Set(corpus.cases.flatMap(\.tags))
+    #expect(tags.contains("pause"))
+    #expect(metricNames.isSuperset(of: Set(tags.map { "tag.\($0)" })))
+  }
+
+  /// 440 Hz at −10 dBFS, digital silence, then the tone again. Durations are seconds at 16 kHz.
+  private func toneSilenceTone(_ head: Double, _ silence: Double, _ tail: Double) -> [Float] {
+    let rate = 16_000.0
+    let amplitude = Float(pow(10.0, -10.0 / 20.0) * sqrt(2.0))
+    func tone(_ duration: Double) -> [Float] {
+      (0..<Int(duration * rate)).map { i in
+        amplitude * sin(2 * Float.pi * 440 * Float(i) / Float(rate))
       }
+    }
+    func zeros(_ duration: Double) -> [Float] {
+      Array(repeating: Float(0), count: Int(duration * rate))
+    }
+    return tone(head) + zeros(silence) + tone(tail)
+  }
+
+  private func writeWAV(_ samples: [Float], to url: URL) throws {
+    let sampleRate = 16_000.0
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatLinearPCM),
+      AVSampleRateKey: sampleRate,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false,
+    ]
+    let file = try AVAudioFile(
+      forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+    guard
+      let format = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false),
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+      let channel = buffer.floatChannelData
+    else {
+      throw NSError(domain: "DictationBenchmarkScoringTests", code: 1)
+    }
+    buffer.frameLength = AVAudioFrameCount(samples.count)
+    for (index, sample) in samples.enumerated() { channel[0][index] = sample }
+    try file.write(from: buffer)
+    file.close()
+  }
+
+  private func splitFixture(
+    _ samples: [Float],
+    _ check: (URL, [(url: URL, isSilent: Bool)]) throws -> Void
+  ) throws {
+    let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("live-piece-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let source = dir.appendingPathComponent("source.wav")
+    try writeWAV(samples, to: source)
+    try check(source, LivePieceSplitter.split(source, into: dir))
+  }
+
+  private func frames(_ url: URL) throws -> Int {
+    Int(try AVAudioFile(forReading: url).length)
+  }
+
+  @Test("2s tone, 1s silence, 2s tone cuts into two non-silent pieces")
+  func splitLongPause() throws {
+    try splitFixture(toneSilenceTone(2, 1, 2)) { source, pieces in
+      #expect(pieces.map(\.isSilent) == [false, false])
+      #expect(pieces.allSatisfy { $0.url != source })
+      // Silence counting starts at 1.6 s; the silent checks at 2.2, 2.4 and 2.6 s cut there.
+      let head = try frames(pieces[0].url)
+      let tail = try frames(pieces[1].url)
+      #expect(head == 41_600)
+      #expect(tail == 38_400)
+      let format = try AVAudioFile(forReading: pieces[0].url).fileFormat
+      #expect(format.sampleRate == 16_000)
+      #expect(format.channelCount == 1)
+      #expect(format.commonFormat == .pcmFormatInt16)
+    }
+  }
+
+  @Test("2s tone, 0.4s silence, 2s tone stays one piece")
+  func splitShortPause() throws {
+    try splitFixture(toneSilenceTone(2, 0.4, 2)) { source, pieces in
+      #expect(pieces.count == 1)
+      #expect(pieces[0].isSilent == false)
+      #expect(pieces[0].url == source)
+    }
+  }
+
+  @Test(
+    "1s tone, 1s silence, 1s tone cuts at 2.0s: the 1.5s minimum delays counting until 1.6s, then 1.6, 1.8 and 2.0s are the three silent checks"
+  )
+  func splitMinimumDurationStillCutsAtEndOfSilence() throws {
+    // The cut cannot happen before the piece is 1.5 s. Counting therefore starts at the 1.6 s
+    // check, inside the silence, and the checks at 1.6, 1.8 and 2.0 s are all silent, so the
+    // piece ends at 2.0 s. The last second of tone is a second non-silent piece.
+    try splitFixture(toneSilenceTone(1, 1, 1)) { _, pieces in
+      #expect(pieces.map(\.isSilent) == [false, false])
+      let head = try frames(pieces[0].url)
+      let tail = try frames(pieces[1].url)
+      #expect(head == 32_000)
+      #expect(tail == 16_000)
+    }
+  }
+
+  @Test("2s of digital silence is one silent piece")
+  func splitAllSilence() throws {
+    try splitFixture(Array(repeating: Float(0), count: 32_000)) { source, pieces in
+      #expect(pieces.count == 1)
+      #expect(pieces[0].isSilent == true)
+      #expect(pieces[0].url == source)
     }
   }
 }
@@ -280,10 +577,12 @@ struct DictationBenchmarkScoringTests {
 /// while that file exists and is younger than six hours, so a leftover file never turns a model
 /// download and minutes of decoding on in `run-tests.sh`.
 ///
-/// Decoding follows the app: glossary = corpus glossary + the case's `extraGlossary`, Parakeet gets
-/// it as `vocabulary`, Whisper as `prompt`; `finishPiece` with `timedMarks: true` as
-/// `MenuBarController.decodeLivePiece` does; dictations of one case are joined like back-to-back
-/// live dictations (`LiveChunkJoiner`, seeded with the previous character).
+/// Decoding follows the app: each dictation is cut into live pieces offline (`LivePieceSplitter`),
+/// silent pieces are skipped, and the rest are decoded one by one. Glossary = corpus glossary +
+/// the case's `extraGlossary`, Parakeet gets it as `vocabulary`, Whisper as `prompt`; `finishPiece`
+/// with `timedMarks: true` as `MenuBarController.decodeLivePiece` does. Pieces of one dictation
+/// share one `LiveChunkJoiner`, seeded with the previous character; dictations of one case are
+/// joined like back-to-back live dictations.
 ///
 /// Gate: a metric below the committed `baseline.json` fails the test. Nothing is gated for a tier
 /// when the corpus or that tier's audio changed, when it has missing recordings, or when the
@@ -378,12 +677,15 @@ struct DictationBenchmarkTests {
     defer { try? FileManager.default.removeItem(at: workDir) }
 
     var jsonTiers: [String: Any] = [:]
+    print(
+      "BENCH-NOTE\trun\tdictations are cut into live pieces offline (≥1.5 s, 0.6 s below −45 dB)")
 
     for tier in config.tiers {
       var missing: [String] = []
       // [mode: [CaseResult]]
       var results: [PunctuationMode: [DictationBenchmarkScoring.CaseResult]] = [:]
       var rawByCase: [String: [PunctuationMode: String]] = [:]
+      var pieceCountsByCase: [String: String] = [:]
 
       for item in corpus.cases {
         // Audio per dictation; one absent file makes the whole case MISSING in this tier.
@@ -405,31 +707,34 @@ struct DictationBenchmarkTests {
         }
 
         let glossary = corpus.glossary + (item.extraGlossary ?? [])
+        let splits = try audio.map { try LivePieceSplitter.split($0, into: workDir) }
+        pieceCountsByCase[item.id] = splits.map { String($0.count) }.joined(separator: ",")
         for mode in [PunctuationMode.spokenOnly, .automatic] {
           if mode == .automatic && item.automatic == nil { continue }
           var output = ""
           var rawPieces: [String] = []
-          for url in audio {
-            var raw: String
-            do {
-              if model.engine == .parakeet {
-                raw = try await LocalSpeechService.shared.transcribe(
-                  audioURL: url, language: "de", vocabulary: glossary,
-                  spokenMarksOnly: mode == .spokenOnly)
-              } else {
-                raw = try await LocalSpeechService.shared.transcribe(
-                  audioURL: url, language: "de", prompt: glossary.joined(separator: ", "),
-                  vocabulary: [], spokenMarksOnly: mode == .spokenOnly)
-              }
-            } catch TranscriptionError.noSpeechDetected {
-              raw = ""
-            }
-            rawPieces.append(raw)
-            let piece = LiveDictation.finishPiece(raw, mode: mode, timedMarks: true)
+          for split in splits {
             var joiner = LiveChunkJoiner()
             joiner.holdsPeriods = mode != .spokenOnly
             joiner.seed(output.last.map { .character($0) } ?? .unknown)
-            output += joiner.next(piece)
+            for piece in split where !piece.isSilent {
+              var raw: String
+              do {
+                if model.engine == .parakeet {
+                  raw = try await LocalSpeechService.shared.transcribe(
+                    audioURL: piece.url, language: "de", vocabulary: glossary,
+                    spokenMarksOnly: mode == .spokenOnly)
+                } else {
+                  raw = try await LocalSpeechService.shared.transcribe(
+                    audioURL: piece.url, language: "de", prompt: glossary.joined(separator: ", "),
+                    vocabulary: [], spokenMarksOnly: mode == .spokenOnly)
+                }
+              } catch TranscriptionError.noSpeechDetected {
+                raw = ""
+              }
+              rawPieces.append(raw)
+              output += joiner.next(LiveDictation.finishPiece(raw, mode: mode, timedMarks: true))
+            }
             output += joiner.finish()
           }
           let candidates =
@@ -459,7 +764,8 @@ struct DictationBenchmarkTests {
           print(
             "BENCH-CASE\t\(tier.name)\t\(mode.rawValue)\t\(item.id)\t\(result.exact ? "PASS" : "FAIL")\t"
               + "\(Self.oneLine(result.output))\t\(Self.oneLine(result.candidates[0]))\t"
-              + "\(Self.oneLine(rawByCase[item.id]?[mode] ?? ""))")
+              + "\(Self.oneLine(rawByCase[item.id]?[mode] ?? ""))\t"
+              + "pieces=\(pieceCountsByCase[item.id] ?? "")")
         }
       }
 

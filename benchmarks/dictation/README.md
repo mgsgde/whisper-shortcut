@@ -45,6 +45,12 @@ The script kills and restarts nothing; a running Dev build or the installed app 
   corpus). Without any of these the real tier is skipped, and the script says so.
 - **`baseline.json`** — the scores to hold, per model and tier. Scores only, no audio, no transcripts.
 
+Every dictation is cut into live pieces before it is decoded, offline, the way Dictate Live cuts a
+recording at a pause: a piece is at least 1.5 s long and ends after 0.6 s below −45 dB.
+`LivePieceSplitter` approximates the recorder's live metering (RMS of a 50 ms window against
+`AVAudioRecorder`'s averagePower), so a pause near that edge may cut differently than the app. A
+piece that stays below −45 dB is silent and is not decoded.
+
 ## The scores
 
 Per tier and mode, each a share between 0 and 1:
@@ -56,7 +62,7 @@ Per tier and mode, each a share between 0 and 1:
 | `noGuessedMarks` | sentences without a single mark too many — in "Only when spoken" the guesses the model must not keep |
 | `glossary` | Glossary sentences where every expected term is there and no other Glossary term crept in ("erreicht" must not become "Merkzeichen", "Komma" never "Kizomba") |
 | `wordAccuracy` | 1 − word error rate, marks and case ignored |
-| `tag.<tag>` | `exact` within one group of the corpus (`spokenMarks`, `noMarks`, `guess`, `numbers`, `glossary`, `fillers`, `wordsStay`, `joined`) |
+| `tag.<tag>` | `exact` within one group of the corpus. One row per tag that occurs, sorted (`fillers`, `glossary`, `guess`, `joined`, `noMarks`, `numbers`, `pause`, `spokenMarks`, `wordsStay`) |
 
 ## The gate
 
@@ -64,7 +70,7 @@ The test fails only when a score drops below its baseline. It does not gate a ti
 changed, and says why in a `BENCH-NOTE` line: a changed `corpus.json`, a different set of real
 recordings, a different macOS (the `say` voices change with it), or missing recordings. Then run
 with `--update-baseline` once, and commit `baseline.json` in the same commit as the change that
-moved it.
+moved it. `--update-baseline` never writes a tier with missing recordings.
 
 Raising the baseline is fair game whenever a change makes things better. **Lowering it is a human
 decision**: a model or post-processing change that drops a score needs Magnus's word, in its own

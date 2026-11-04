@@ -1,5 +1,5 @@
 {
-  "about": "Dictation benchmark corpus: invented German practice-style sentences, no patient data. `spoken` is one entry per dictation (one fn press); the real-voice recording is <id>.wav for one dictation, <id>-1.wav, <id>-2.wav … for several. `say` is the same text spelled for the macOS `say` voices where they would mispronounce it. `expected` / `alternatives` is the spokenOnly (\"Nur gesprochen\") result, `automatic` / `automaticAlternatives` the Automatic one (absent: not scored). `terms` are glossary words the output must contain exactly; every glossary word NOT in `terms` must be absent. Numbers are accepted as digits or words through `alternatives`, because Parakeet writes either.",
+  "about": "Dictation benchmark corpus: invented German practice-style sentences, no patient data. `spoken` is one entry per dictation (one fn press); the real-voice recording is <id>.wav for one dictation, <id>-1.wav, <id>-2.wav … for several. `say` is the same text spelled for the macOS `say` voices where they would mispronounce it. `expected` / `alternatives` is the spokenOnly (\"Nur gesprochen\") result, `automatic` / `automaticAlternatives` the Automatic one (absent: not scored). `terms` are glossary words the output must contain exactly; every glossary word NOT in `terms` must be absent. Numbers are accepted as digits or words through `alternatives`, because Parakeet writes either. Every dictation is cut into live pieces at pauses the way Dictate Live does (see LivePieceSplitter); `spoken` may describe a pause in brackets for the speaker, `say` then carries it as [[slnc ms]].",
   "glossary": ["GdB", "VersMedV", "ADL", "Merkzeichen"],
   "cases": [
     { "id": "komma-gangbild", "tags": ["spokenMarks"],
@@ -150,6 +150,13 @@
     { "id": "anschluss-schraegstrich", "tags": ["joined", "spokenMarks", "glossary"], "terms": ["ADL"],
       "spoken": ["Arbeitsmarkt Schrägstrich", "im ADL eingeschränkt Punkt"],
       "say": ["Arbeitsmarkt Schrägstrich", "im A D L eingeschränkt Punkt"],
-      "expected": "Arbeitsmarkt/im ADL eingeschränkt." }
+      "expected": "Arbeitsmarkt/im ADL eingeschränkt." },
+    { "id": "glossar-seiter", "tags": ["spokenMarks", "glossary"], "extraGlossary": ["Seiter", "TEP"],
+      "spoken": ["Ich arbeite mal weiter damit Punkt"],
+      "expected": "Ich arbeite mal weiter damit." },
+    { "id": "pause-weiter", "tags": ["spokenMarks", "pause"],
+      "spoken": ["Ich arbeite mal [1 Sekunde Pause, fn gedrückt halten] weiter damit Punkt"],
+      "say": ["Ich arbeite mal [[slnc 1000]] weiter damit Punkt"],
+      "expected": "Ich arbeite mal weiter damit." }
   ]
 }

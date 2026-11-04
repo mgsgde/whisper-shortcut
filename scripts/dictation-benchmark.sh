@@ -157,11 +157,19 @@ if update:
     entry = baseline.setdefault(run["model"], {"tiers": {}})
     entry["corpusHash"] = run["corpusHash"]
     entry.setdefault("tiers", {})
+    updated = []
     for name, tier in run["tiers"].items():
+        missing = tier.get("missing") or []
+        if missing:
+            preview = ", ".join(missing[:3])
+            print(f"Baseline NOT updated for {name}: {len(missing)} recordings missing ({preview}…)")
+            continue
         entry["tiers"][name] = tier
-    json.dump(baseline, open(path, "w"), indent=2, sort_keys=True, ensure_ascii=False)
-    open(path, "a").write("\n")
-    print("Baseline updated for tiers: " + ", ".join(run["tiers"]) + f" ({path})")
+        updated.append(name)
+    if updated:
+        json.dump(baseline, open(path, "w"), indent=2, sort_keys=True, ensure_ascii=False)
+        open(path, "a").write("\n")
+        print("Baseline updated for tiers: " + ", ".join(updated) + f" ({path})")
 PY
 PYSTATUS=$?
 [ $PYSTATUS -ne 0 ] && exit $PYSTATUS
