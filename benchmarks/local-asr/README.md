@@ -25,7 +25,7 @@ swift build -c release
 .build/release/LocalASRBench --skip-real --engines parakeet-ultra,apple
 ```
 
-Flags: `--engines a,b,…`, `--real-limit N`, `--max-seconds S` (default 120; real clips above it are dropped after picking), `--skip-real`, `--skip-synthetic`, `--out DIR`.
+Flags: `--engines a,b,…`, `--real-limit N`, `--max-seconds S` (default 120; real clips above it are dropped after picking), `--skip-real`, `--skip-synthetic`, `--pilot-corpus PATH`, `--pilot-audio DIR`, `--skip-pilot`, `--out DIR`.
 
 First run downloads the Parakeet models from HuggingFace (~500 MB v3, ~630 MB ultra, ~220 MB
 redux, ~100 MB CTC) into FluidAudio's cache and the German `SpeechTranscriber` asset through
@@ -44,6 +44,12 @@ Whisper uses the model the app already downloaded — the run fails that engine 
   as *distance from the cloud transcript the user accepted*. Numbers written as digits by one side
   and as words by the other count as errors against every engine alike. Term recall uses the
   user's Whisper Glossary, counted only where the reference contains the term.
+- **pilot** — the user reading the dictation-benchmark corpus (`benchmarks/dictation/corpus.json`,
+  branch `feat/dictation-benchmark`) in their own voice. Audio lives only in the private repo
+  (`business/pilot-praxis/benchmark-audio/magnus/`), passed with `--pilot-corpus` and
+  `--pilot-audio`. The reference is the spoken text, so spoken punctuation words ("Komma",
+  "Punkt") count as words and numbers said as words are scored against the engine's digits for
+  every engine alike.
 
 ## Output
 
