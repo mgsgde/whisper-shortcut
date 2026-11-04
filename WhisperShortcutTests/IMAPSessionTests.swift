@@ -89,6 +89,62 @@ struct IMAPSessionTests {
     #expect(String(decoding: body, as: UTF8.self) == "Hello World!")
   }
 
+  @Test(.timeLimit(.minutes(1))) func steadyStreamOutlivesIdleWindow() async throws {
+    var steps: [(delay: Duration, data: Data)] = [
+      (.milliseconds(250), Data("* 1 FETCH (UID 7 BODY[] {16}\r\n".utf8))
+    ]
+    for _ in 0..<8 { steps.append((.milliseconds(250), Data("ab".utf8))) }
+    steps.append((.milliseconds(250), Data(")\r\nA001 OK FETCH completed\r\n".utf8)))
+    let session = IMAPSession(
+      transport: PacedTransport(steps: steps), idleTimeout: .seconds(1), commandCap: .seconds(6))
+    var body = Data()
+    let elapsed = try await ContinuousClock().measure {
+      body = try await session.fetchBody(uid: 7)
+    }
+    #expect(String(decoding: body, as: UTF8.self) == String(repeating: "ab", count: 8))
+    #expect(elapsed > .seconds(2))
+  }
+
+  @Test(.timeLimit(.minutes(1))) func silenceLongerThanIdleTimesOut() async throws {
+    let steps: [(delay: Duration, data: Data)] = [
+      (.zero, Data("* 1 FETCH (UID 7 BODY[] {16}\r\n".utf8)),
+      (.milliseconds(1500), Data("abcdefghijklmnop".utf8)),
+    ]
+    let session = IMAPSession(
+      transport: PacedTransport(steps: steps), idleTimeout: .seconds(1), commandCap: .seconds(6))
+    let start = ContinuousClock.now
+    do {
+      _ = try await session.fetchBody(uid: 7)
+      Issue.record("a silent transport should time out")
+    } catch let error as IMAPError {
+      #expect(error == .timeout)
+    }
+    #expect(ContinuousClock.now - start < .seconds(1.4))
+  }
+
+  @Test(.timeLimit(.minutes(1))) func steadyStreamStopsAtCap() async throws {
+    var steps: [(delay: Duration, data: Data)] = [
+      (.milliseconds(250), Data("* 1 FETCH (UID 7 BODY[] {80}\r\n".utf8))
+    ]
+    for _ in 0..<40 { steps.append((.milliseconds(250), Data("ab".utf8))) }
+    steps.append((.milliseconds(250), Data(")\r\nA001 OK FETCH completed\r\n".utf8)))
+    let session = IMAPSession(
+      transport: PacedTransport(steps: steps), idleTimeout: .seconds(1), commandCap: .seconds(1.5))
+    let start = ContinuousClock.now
+    do {
+      _ = try await session.fetchBody(uid: 7)
+      Issue.record("a command streaming past the cap should time out")
+    } catch let error as IMAPError {
+      #expect(error == .timeout)
+    }
+    #expect(ContinuousClock.now - start < .seconds(2.5))
+  }
+
+  @Test func productionLimitsUnchanged() {
+    #expect(IMAPSession.defaultIdleTimeout == .seconds(20))
+    #expect(IMAPSession.defaultCommandCap == .seconds(120))
+  }
+
   @Test func examineReadsExists() async throws {
     let transport = ScriptedTransport(chunks: [
       "* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n* 1212 EXISTS\r\n* 0 RECENT\r\nA001 OK [READ-ONLY] EXAMINE completed\r\n",
@@ -211,4 +267,30 @@ final class ScriptedTransport: IMAPTransport, @unchecked Sendable {
     defer { lock.unlock() }
     return writes.map { String(decoding: $0, as: UTF8.self) }.joined()
   }
+}
+
+/// Replays reads with a delay before each, to exercise the idle and overall deadlines.
+final class PacedTransport: IMAPTransport, @unchecked Sendable {
+  private let lock = NSLock()
+  private var steps: [(delay: Duration, data: Data)]
+
+  init(steps: [(delay: Duration, data: Data)]) {
+    self.steps = steps
+  }
+
+  func open() async throws {}
+  func write(_ data: Data) async throws {}
+
+  func read() async throws -> Data {
+    lock.lock()
+    let delay = steps.first?.delay
+    lock.unlock()
+    guard let delay else { return Data() }
+    if delay > .zero { try await Task.sleep(for: delay) }
+    lock.lock()
+    defer { lock.unlock() }
+    return steps.isEmpty ? Data() : steps.removeFirst().data
+  }
+
+  func close() {}
 }
