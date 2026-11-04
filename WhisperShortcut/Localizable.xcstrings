@@ -13589,12 +13589,12 @@
         }
       }
     },
-    "Offline Mode and macOS permissions" : {
+    "Offline Mode, macOS permissions, and privacy" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Offline-Modus und macOS-Berechtigungen"
+            "value" : "Offline-Modus, macOS-Berechtigungen und Datenschutz"
           }
         }
       }
@@ -15396,12 +15396,12 @@
         }
       }
     },
-    "Privacy, welcome tour, shortcuts, reset, and support" : {
+    "What's new, support, and acknowledgements" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Datenschutz, Einführung, Tastenkürzel, Zurücksetzen und Support"
+            "value" : "Neuigkeiten, Support und Danksagungen"
           }
         }
       }
@@ -18466,12 +18466,12 @@
         }
       }
     },
-    "Shortcuts and app behavior" : {
+    "Shortcuts, app behavior, updates, and reset" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tastenkürzel und App-Verhalten"
+            "value" : "Tastenkürzel, App-Verhalten, Updates und Zurücksetzen"
           }
         }
       }
@@ -20104,12 +20104,12 @@
         }
       }
     },
-    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates." : {
+    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → General → Updates." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Update-Prüfung erreicht weiterhin github.com. Sie sendet nur die App-Version, nie Inhalte. Abschalten unter Einstellungen → Über → Updates."
+            "value" : "Die Update-Prüfung erreicht weiterhin github.com. Sie sendet nur die App-Version, nie Inhalte. Abschalten unter Einstellungen → Allgemein → Updates."
           }
         }
       }
@@ -22444,12 +22444,12 @@
         }
       }
     },
-    "You can revisit this tour any time from Settings → About." : {
+    "You can revisit this tour any time from Welcome Tour… in the menu bar." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese Tour finden Sie jederzeit wieder unter Einstellungen → Über."
+            "value" : "Diese Tour finden Sie jederzeit wieder unter „Einführung …“ in der Menüleiste."
           }
         }
       }
@@ -22464,12 +22464,12 @@
         }
       }
     },
-    "You just updated. Replay the Welcome Tour below, or read the full notes on GitHub." : {
+    "You just updated. Replay the Welcome Tour from the menu bar, or read the full notes on GitHub." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sie haben gerade aktualisiert. Sehen Sie sich unten die Einführung noch einmal an oder lesen Sie die vollständigen Hinweise auf GitHub."
+            "value" : "Sie haben gerade aktualisiert. Sehen Sie sich die Einführung über die Menüleiste (Einführung …) noch einmal an oder lesen Sie die vollständigen Hinweise auf GitHub."
           }
         }
       }

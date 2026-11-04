@@ -555,6 +555,13 @@ class MenuBarController: NSObject {
     menu.addItem(
       createMenuItem("Welcome Tour…", action: #selector(showWelcomeTour), tag: .welcomeTour))
 
+    #if !APP_STORE && canImport(Sparkle)
+    // The macOS convention is an app-menu "Check for Updates…"; a menu bar app's status menu is
+    // its app menu. The switch and channel picker stay in Settings → General → Updates.
+    menu.addItem(
+      createMenuItem("Check for Updates…", action: #selector(checkForUpdates)))
+    #endif
+
     // Feedback sits next to Settings, the macOS convention for it, and offers all three channels
     // rather than WhatsApp alone — a user without WhatsApp otherwise has no obvious way to reach
     // the developer at all. A submenu keeps this to one row: the status menu is the app's
@@ -689,6 +696,12 @@ class MenuBarController: NSObject {
   @objc private func showWelcomeTour() {
     WelcomeWindowController.shared.show()
   }
+
+  #if !APP_STORE && canImport(Sparkle)
+  @MainActor @objc private func checkForUpdates() {
+    UpdaterService.shared.checkForUpdates()
+  }
+  #endif
 
   private func setupDelegates() {
     audioRecorder.delegate = self

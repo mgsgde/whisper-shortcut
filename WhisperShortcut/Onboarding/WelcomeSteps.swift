@@ -1090,7 +1090,7 @@ struct WelcomeDoneStep: View {
       onboardingShortcutRecorder
         .frame(maxWidth: 560)
 
-      Text("You can revisit this tour any time from Settings → About.")
+      Text("You can revisit this tour any time from Welcome Tour… in the menu bar.")
         .font(.caption)
         .foregroundStyle(.tertiary)
         .multilineTextAlignment(.center)

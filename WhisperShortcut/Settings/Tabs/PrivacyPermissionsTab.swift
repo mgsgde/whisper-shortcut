@@ -27,6 +27,10 @@ struct PermissionsTab: View {
       #else
       PermissionsOverview(mode: .settings, includeAccessibility: true)
       #endif
+
+      SpacedSectionDivider()
+
+      PrivacySection()
     }
   }
 }
@@ -77,7 +81,7 @@ struct OfflineModeSection: View {
           offlineModeBullet("Chat can run on the same offline MLX models. Read Aloud uses on-device macOS voices. Smart Improvement and the Google and Trello integrations do not work — nothing runs them on-device.")
           offlineModeBullet("Requests to your own machine or local network still work, so a Whisper server or Ollama on this network stays available. Downloading a speech or MLX model from Hugging Face still works (it carries no content of yours).")
           #if !APP_STORE && canImport(Sparkle)
-          offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates.")
+          offlineModeBullet("The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → General → Updates.")
           #endif
           if !hasOfflineModel {
             OfflineModelDownloadCard {
@@ -117,8 +121,8 @@ struct OfflineModeSection: View {
   }
 }
 
-/// Privacy promise, open-source banner, and policy link. Shown on the About tab; the switch that
-/// actually changes behaviour lives in `OfflineModeSection` on Privacy & Permissions.
+/// Privacy promise, open-source banner, and policy link, at the end of Privacy & Permissions; the
+/// switch that actually changes behaviour is `OfflineModeSection` at the top of the same tab.
 struct PrivacySection: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
