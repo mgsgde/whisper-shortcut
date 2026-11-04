@@ -1209,9 +1209,13 @@ enum TTSModel: String, CaseIterable {
   /// Whether this TTS model may be offered while Offline Mode is on.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
-    // `.custom` is a server the user runs themselves (localhost or their own network), so it is
-    // the same kind of local option as the on-device voices.
-    return provider == .system || provider == .custom
+    // `.custom` is only local when its URL is (localhost / LAN); a remote own-server URL would
+    // leave the machine, so the same host rule as the network guard decides.
+    switch provider {
+    case .system: return true
+    case .custom: return apiEndpoint.isEmpty || OfflineMode.allows(URL(string: apiEndpoint))
+    default: return false
+    }
   }
 
   /// Models grouped for display in the Read Aloud picker (local options first, then cloud).
