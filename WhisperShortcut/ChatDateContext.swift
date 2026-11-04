@@ -17,12 +17,41 @@ enum ChatDateContext {
 
   /// Compact line with weekday, full date, time and time zone identifier, e.g.
   /// `Current date and time: Wednesday, November 4, 2026, 17:42 (Europe/Berlin).`
+  ///
+  /// Use this where the exact minute matters: a meeting that started at 14:30, a transcript line.
+  /// For a prompt prefix use `stableLine` instead — see its doc comment.
   static func line(
     now: Date = Date(),
     timeZone: TimeZone = .current,
     locale: Locale = .current
   ) -> String {
     line(label: currentLabel, at: now, timeZone: timeZone, locale: locale)
+  }
+
+  /// Day-granularity line for the **top** of a system prompt: weekday, date and zone, no clock
+  /// time, e.g. `Current date: Wednesday, November 4, 2026 (Europe/Berlin).`
+  ///
+  /// The prompt prefix is what providers cache (Anthropic's `cache_control` breakpoints, OpenAI's
+  /// `prompt_cache_key`, Gemini's implicit prefix cache). A minute-precision time in that prefix
+  /// changes the cached bytes every 60 seconds, so every turn pays full input price for the system
+  /// prompt *and* the tool definitions that follow it. A date changes once a day, which keeps the
+  /// prefix reusable; the clock time goes at the end of the prompt (`timeOfDayLine`), where the
+  /// volatile tail already lives.
+  static func stableLine(
+    now: Date = Date(),
+    timeZone: TimeZone = .current,
+    locale: Locale = .current
+  ) -> String {
+    "Current date: \(dateText(now, timeZone: timeZone, locale: locale)) (\(timeZone.identifier))."
+  }
+
+  /// The clock time on its own, for the volatile tail of a system prompt.
+  static func timeOfDayLine(
+    now: Date = Date(),
+    timeZone: TimeZone = .current,
+    locale: Locale = .current
+  ) -> String {
+    "Current time: \(timeText(now, timeZone: timeZone, locale: locale)) (\(timeZone.identifier))."
   }
 
   /// Same line with a caller-chosen label, for a moment that is not "now" — a meeting that

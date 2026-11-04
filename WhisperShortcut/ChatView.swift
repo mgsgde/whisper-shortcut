@@ -1860,10 +1860,11 @@ class ChatViewModel: ObservableObject {
     var text = offline
       ? AppConstants.defaultOfflineChatSystemPrompt
       : SystemPromptsStore.shared.loadChatSystemPrompt()
-    // Date, weekday, time and zone at the very top: the model needs to know *when* "today",
-    // "tonight" or "last Tuesday" is. Kept first (stable prefix) so the tool blocks below stay
-    // cacheable; only this line changes between turns.
-    text = "\(ChatDateContext.line())\n\n\(text)"
+    // Date, weekday and zone at the very top: the model needs to know *when* "today", "tonight"
+    // or "last Tuesday" is. Day granularity on purpose — this is the cached prompt prefix, and a
+    // minute-precision clock here would invalidate the provider's cache every 60 seconds. The
+    // clock time goes at the end of the prompt, next to the other volatile parts.
+    text = "\(ChatDateContext.stableLine())\n\n\(text)"
     if offline {
       // No doc tools offline, so the app's own facts travel in the prompt.
       text += "\n\n---\n\n" + OfflineChatAppContext.current(
@@ -1894,6 +1895,10 @@ class ChatViewModel: ObservableObject {
     if let extra = meetingContext, !extra.isEmpty {
       text = "\(text)\n\n---\n\n\(extra)"
     }
+    // The clock time sits at the end, after the volatile blocks (memory, meeting transcript), so
+    // the cached prefix above stays byte-identical between turns while the model still knows what
+    // time it is.
+    text += "\n\n\(ChatDateContext.timeOfDayLine())"
     return ["parts": [["text": text]]]
   }
 
@@ -2111,7 +2116,7 @@ class ChatViewModel: ObservableObject {
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
     let prompt = """
-      \(ChatDateContext.line())
+      \(ChatDateContext.stableLine())
 
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
@@ -2223,7 +2228,7 @@ class ChatViewModel: ObservableObject {
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
-      \(ChatDateContext.line())
+      \(ChatDateContext.stableLine())
 
       Give this meeting a short title (2–4 words) that captures its main topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
