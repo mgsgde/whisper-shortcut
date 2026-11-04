@@ -1,11 +1,12 @@
 import SwiftUI
 import AppKit
 
-/// General Settings Tab - shortcuts and app behavior preferences. API keys live in Accounts.
-/// Smart Improvement and About/Reset live in their own tabs to keep this screen focused.
+/// General Settings Tab - shortcuts, app behavior, updates, and Data & Reset. API keys live in
+/// Accounts, Smart Improvement in its own tab; About holds information only.
 struct GeneralSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  @State private var showResetToDefaultsConfirmation = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -16,6 +17,12 @@ struct GeneralSettingsTab: View {
       LaunchAtLoginSection(viewModel: viewModel)
 
       SpacedSectionDivider()
+
+      #if !APP_STORE && canImport(Sparkle)
+      UpdatesSection()
+
+      SpacedSectionDivider()
+      #endif
 
       LanguageSection()
 
@@ -35,6 +42,19 @@ struct GeneralSettingsTab: View {
         PopupNotificationsSection(viewModel: viewModel, includeToggle: false)
         RecordingSafeguardsSection(viewModel: viewModel)
       }
+
+      SpacedSectionDivider()
+
+      // Last on the page, where macOS apps put destructive actions.
+      ResetSection(viewModel: viewModel, showResetToDefaultsConfirmation: $showResetToDefaultsConfirmation)
+    }
+    .confirmationDialog("Reset app to default?", isPresented: $showResetToDefaultsConfirmation, titleVisibility: .visible) {
+      Button("Reset and quit app", role: .destructive) {
+        viewModel.resetAllDataAndRestart()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This will delete all settings, system prompts, model selection, chat sessions, meeting transcripts, and interaction data. API keys are preserved.\n\nThe app will close automatically after the reset. You can start it again from the menu bar or Applications. Continue?")
     }
   }
 
