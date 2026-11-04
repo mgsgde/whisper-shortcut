@@ -16887,6 +16887,16 @@
         }
       }
     },
+    "Resume Meeting Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription fortsetzen"
+          }
+        }
+      }
+    },
     "Resume reading aloud" : {
       "localizations" : {
         "de" : {
@@ -19128,6 +19138,16 @@
         }
       }
     },
+    "Start Meeting Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription starten"
+          }
+        }
+      }
+    },
     "Start or stop live meeting recording" : {
       "localizations" : {
         "de" : {
@@ -19240,6 +19260,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prompt-Diktat beenden"
+          }
+        }
+      }
+    },
+    "Stop Meeting Transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meeting-Transkription beenden"
           }
         }
       }
