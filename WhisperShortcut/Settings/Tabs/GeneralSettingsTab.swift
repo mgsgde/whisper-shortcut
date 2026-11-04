@@ -98,8 +98,12 @@ struct GeneralSettingsTab: View {
           // and writes nothing when another setting in this window is invalid (a duplicate
           // shortcut, say); switching the activation policy anyway would show a Dock icon the
           // stored preference does not have, and the next launch would silently take it away.
-          guard await viewModel.saveSettings() == nil else { return }
-          DockIconPreference.apply()
+          guard await viewModel.saveSettings() == nil else {
+            // Revert the toggle to the persisted value so the UI and the Dock policy agree.
+            viewModel.data.showDockIcon = DockIconPreference.isEnabled
+            return
+          }
+          DockIconPreference.apply(activate: true)
         }
       }
     }

@@ -215,6 +215,15 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     return false
   }
 
+  /// Dock icon click (only possible with the optional Dock icon): open Settings when no window is
+  /// visible, otherwise let AppKit raise the existing one.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      SettingsManager.shared.showSettings()
+    }
+    return true
+  }
+
   func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
       GoogleAccountOAuthService.shared.handleRedirect(url: url)

@@ -25,9 +25,18 @@ enum DockIconPreference {
   /// `applicationShouldTerminateAfterLastWindowClosed` returns `false` (FullApp.swift), so the
   /// menu-bar item and the background work survive.
   @MainActor
-  static func apply() {
+  static func apply(activate: Bool = false) {
     let enabled = isEnabled
     NSApp.setActivationPolicy(enabled ? .regular : .accessory)
+    if enabled && activate {
+      // Switching to .regular can leave the app inactive; bring it (and the Settings window the
+      // toggle lives in) to the front. Not done at launch, which must stay unobtrusive.
+      NSApp.activate(ignoringOtherApps: true)
+      for window in NSApp.windows where window.isVisible && window.canBecomeKey {
+        window.makeKeyAndOrderFront(nil)
+        break
+      }
+    }
     DebugLogger.log("DOCK-ICON: activation policy → \(enabled ? "regular (Dock icon shown)" : "accessory (menu bar only)")")
   }
 }
