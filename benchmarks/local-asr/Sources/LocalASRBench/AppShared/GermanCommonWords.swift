@@ -1,0 +1,1 @@
+../../../../../WhisperShortcut/GermanCommonWords.swift
