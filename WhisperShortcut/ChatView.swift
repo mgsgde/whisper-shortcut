@@ -1860,10 +1860,10 @@ class ChatViewModel: ObservableObject {
     var text = offline
       ? AppConstants.defaultOfflineChatSystemPrompt
       : SystemPromptsStore.shared.loadChatSystemPrompt()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "EEEE, MMMM d, yyyy"
-    formatter.locale = Locale(identifier: "en_US")
-    text = "Today's date: \(formatter.string(from: Date())).\n\n\(text)"
+    // Date, weekday, time and zone at the very top: the model needs to know *when* "today",
+    // "tonight" or "last Tuesday" is. Kept first (stable prefix) so the tool blocks below stay
+    // cacheable; only this line changes between turns.
+    text = "\(ChatDateContext.line())\n\n\(text)"
     if offline {
       // No doc tools offline, so the app's own facts travel in the prompt.
       text += "\n\n---\n\n" + OfflineChatAppContext.current(
@@ -2111,6 +2111,8 @@ class ChatViewModel: ObservableObject {
     // Strip image markers first — otherwise an image-led reply feeds base64 to the title model.
     let modelText = String(GeminiAPIClient.stripImageMarkers(target.messages[replyIdx].content).prefix(400))
     let prompt = """
+      \(ChatDateContext.line())
+
       Give this conversation a short title (2–3 words) that captures its core topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2221,6 +2223,8 @@ class ChatViewModel: ObservableObject {
     let summaryText = summary.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !summaryText.isEmpty else { return }
     let prompt = """
+      \(ChatDateContext.line())
+
       Give this meeting a short title (2–4 words) that captures its main topic. \
       Begin with a single emoji that fits the topic, then one space, then the words. \
       Reply with only the title on a single line — no quotes, no trailing punctuation, no explanation. \
@@ -2698,6 +2702,12 @@ class ChatViewModel: ObservableObject {
     let transcriptDisk = loadMeetingTranscriptFromDisk(stem: stem)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     if summaryDisk.isEmpty && transcriptDisk.isEmpty { return nil }
     var parts: [String] = []
+    // Date the meeting for the model: a transcript without a date cannot answer "what did we
+    // agree last Tuesday?". The stem carries the start time; an unparseable stem gets no line
+    // rather than an invented one.
+    if let when = ChatDateContext.meetingLine(stem: stem) {
+      parts.append(when)
+    }
     if !summaryDisk.isEmpty {
       parts.append("Meeting summary:\n\(summaryDisk)")
     }
