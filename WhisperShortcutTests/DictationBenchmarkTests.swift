@@ -618,14 +618,37 @@ struct DictationBenchmarkTests {
     String(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined().prefix(12))
   }
 
+  /// Synthesizes `text` to `url` with `/usr/bin/say`. Each attempt gets at most 30 s; a stalled
+  /// attempt is terminated, its partial file deleted, and retried once. A second timeout throws,
+  /// so the run fails loudly (2026-11-04: a benchmark run hung 50 min on a stalled `say`).
   private static func say(_ text: String, voice: String, to url: URL) throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-    process.arguments = ["-v", voice, "-o", url.path, "--data-format=LEI16@16000", text]
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-      throw NSError(domain: "DictationBenchmarkTests", code: Int(process.terminationStatus))
+    for attempt in 1...2 {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+      process.arguments = ["-v", voice, "-o", url.path, "--data-format=LEI16@16000", text]
+      try process.run()
+      let deadline = Date().addingTimeInterval(30)
+      while process.isRunning && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+      if process.isRunning {
+        process.terminate()
+        let killDeadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < killDeadline {
+          Thread.sleep(forTimeInterval: 0.1)
+        }
+        try? FileManager.default.removeItem(at: url)
+        if attempt == 2 {
+          throw NSError(
+            domain: "DictationBenchmarkTests", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "say timed out after 30 s for voice \(voice)"])
+        }
+        continue
+      }
+      guard process.terminationStatus == 0 else {
+        throw NSError(domain: "DictationBenchmarkTests", code: Int(process.terminationStatus))
+      }
+      return
     }
   }
 
