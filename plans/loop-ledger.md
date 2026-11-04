@@ -46,6 +46,7 @@ Status values: `proposed` · `applied` · `measured` · `rejected` · `supersede
 
 | Run | Date | Verdict (one line) | Entries added |
 | --- | ---- | ------------------ | ------------- |
+| 3 | 2026-11-04 | Interactive, on the operator's question: implementer delivered 3 merged PRs in 11 weeks (~1 % of ~300) while needing ≥9 PRs of its own repairs; 70 hourly re-gate retries of row #22 (10-23→27), a re-gate that tested the wrong commit (#309), and one of 7 parallel test runs at load 162 (#338). **Unloaded:** implementer-tick, night-awake, growth-review schedule (agent-loops was already off). **Kept:** model-audit, model-lineup-check, merge-train; usage-review weekly → monthly (1st, 08:47). Plists parked in `~/Library/LaunchAgents/disabled/`; re-enable with `mv` + `launchctl bootstrap`. Open implementer PR #341 is left for a manual merge/close | _(none)_ |
 | 2 | 2026-09-19 | Loops measure well, deliver little — 2 autonomous PRs in 7 weeks; finding→build path broken in 3 silent places (stub digest mailed as success, row 6 unpickable, ledgers uncommitted). Interactive, on the operator's question. | L10, L11, L12; L2 superseded; L7 TOO EARLY |
 | — | 2026-09-12 | Manual convergence pass with sabaki (not a scheduled run): layout, shared unattended rules, cadence gates, claim reproduction; the 2026-09-06 scheduled run was swallowed by the 20-day gate. | L8, L9; L7 applied |
 | 1 | 2026-08-20 | Implementer closed execution gap (I2→PR#45 in 2d); silent missed fires + unrecoverable kills remain binding. | L5, L6, L7 |
