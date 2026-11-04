@@ -49,6 +49,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedReadAloudVoiceSystem,
     UserDefaultsKeys.chatCloseOnFocusLoss,
     UserDefaultsKeys.settingsCloseOnFocusLoss,
+    UserDefaultsKeys.showDockIcon,
     UserDefaultsKeys.liveMeetingChunkInterval,
     UserDefaultsKeys.liveMeetingSafeguardDurationSeconds,
     UserDefaultsKeys.selectedTranscriptionModelForMeetings,
@@ -111,6 +112,7 @@ struct SettingsSlotRoundTripTests {
     data.readAloudVoiceSystem = "probe-system-voice"
     data.chatCloseOnFocusLoss = !SettingsDefaults.chatCloseOnFocusLoss
     data.settingsCloseOnFocusLoss = !SettingsDefaults.settingsCloseOnFocusLoss
+    data.showDockIcon = !SettingsDefaults.showDockIcon
     data.liveMeetingChunkInterval = .thirtySeconds
     data.liveMeetingSafeguardDuration = .twoHours
     data.selectedTranscriptionModelForMeetings = .gemini38Flash

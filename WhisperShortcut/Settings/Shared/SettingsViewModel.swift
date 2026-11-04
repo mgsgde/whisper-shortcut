@@ -242,6 +242,8 @@ class SettingsViewModel: ObservableObject {
           default: SettingsDefaults.chatCloseOnFocusLoss),
     .bool(\.settingsCloseOnFocusLoss, key: UserDefaultsKeys.settingsCloseOnFocusLoss,
           default: SettingsDefaults.settingsCloseOnFocusLoss),
+    .bool(\.showDockIcon, key: UserDefaultsKeys.showDockIcon,
+          default: SettingsDefaults.showDockIcon),
 
     // Live Meeting
     .custom(\.liveMeetingChunkInterval,

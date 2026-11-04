@@ -81,6 +81,31 @@ struct GeneralSettingsTab: View {
       .onChange(of: viewModel.data.settingsCloseOnFocusLoss) { _ in
         Task { await viewModel.saveSettings() }
       }
+
+      Toggle(isOn: $viewModel.data.showDockIcon) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Show a Dock icon")
+            .font(.callout)
+          Text("WhisperShortcut is a menu-bar app and normally has no Dock icon. Turn this on to get one, so you can switch to the app with ⌘-Tab. Takes effect immediately.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.showDockIcon) { _ in
+        Task {
+          // Only apply what was actually persisted. `saveSettings()` returns the validation error
+          // and writes nothing when another setting in this window is invalid (a duplicate
+          // shortcut, say); switching the activation policy anyway would show a Dock icon the
+          // stored preference does not have, and the next launch would silently take it away.
+          guard await viewModel.saveSettings() == nil else {
+            // Revert the toggle to the persisted value so the UI and the Dock policy agree.
+            viewModel.data.showDockIcon = DockIconPreference.isEnabled
+            return
+          }
+          DockIconPreference.apply(activate: true)
+        }
+      }
     }
   }
 }

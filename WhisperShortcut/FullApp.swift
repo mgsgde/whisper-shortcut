@@ -104,6 +104,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ModelSelectionReconciler.reconcileAll()
 
     migrateNotificationPositionDefault()
+    migrateSettingsCloseOnFocusLossToOff()
+
+    // The activation policy is not persisted by macOS, so the optional Dock icon has to be
+    // re-applied on every launch.
+    DockIconPreference.apply()
 
     // One line per system-prompt section (custom/default + length, never content), so a report of
     // "my prompt is gone" can be answered from the log. Also detects an unreadable file.
@@ -210,6 +215,15 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     return false
   }
 
+  /// Dock icon click (only possible with the optional Dock icon): open Settings when no window is
+  /// visible, otherwise let AppKit raise the existing one.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      SettingsManager.shared.showSettings()
+    }
+    return true
+  }
+
   func application(_ application: NSApplication, open urls: [URL]) {
     for url in urls {
       GoogleAccountOAuthService.shared.handleRedirect(url: url)
@@ -276,6 +290,24 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(
         NotificationPosition.centerBottom.rawValue, forKey: UserDefaultsKeys.notificationPosition)
       DebugLogger.log("MIGRATION: notificationPosition \(stored ?? "unset") → center-bottom")
+    }
+  }
+
+  /// One-shot migration (2026-11): the `settingsCloseOnFocusLoss` default moved true → false in
+  /// 7.62 ("the window vanishing on an outside click is surprising"), but builds before that had
+  /// already written `true` out explicitly — `SettingsViewModel.save()` persists every slot on any
+  /// settings change. Those installs therefore never saw the new default and kept losing the
+  /// window. This clears the stored value once; the toggle stays, so anyone who wants the old
+  /// behaviour can turn it back on in Settings → General → Advanced → Window Behavior.
+  private func migrateSettingsCloseOnFocusLossToOff() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    if defaults.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) {
+      defaults.set(false, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
+      DebugLogger.log(
+        "MIGRATION: settingsCloseOnFocusLoss true → false (window no longer closes on outside click)")
     }
   }
 

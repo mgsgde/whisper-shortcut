@@ -2175,6 +2175,9 @@ struct SettingsDefaults {
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false
+  /// Off by default: the app is a menu-bar app (`LSUIElement`). Turning this on gives it a Dock
+  /// icon so it can be reached with ⌘-Tab. See `DockIconPreference`.
+  static let showDockIcon = false
 
   // MARK: - Read Aloud (Chat TTS)
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
@@ -2354,6 +2357,7 @@ struct SettingsData: Equatable {
   var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
+  var showDockIcon: Bool = SettingsDefaults.showDockIcon
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
