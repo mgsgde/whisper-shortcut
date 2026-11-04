@@ -6240,15 +6240,11 @@ private struct MessageBubbleView: View {
     return Group {
       if visible {
         HStack(spacing: 2) {
-          // Read Aloud is absent from the App Store build: it copies the selection with ⌘C,
-          // which needs the Accessibility permission Apple rejects under Guideline 2.4.5.
-          #if !APP_STORE
           // Empty placeholder for TTS so an image-led reply doesn't read "generated image"
           // out loud; the read-aloud handler ignores empty text.
           ReadAloudButtonView(text: {
             GeminiAPIClient.stripImageMarkers(message.content, placeholder: "")
           })
-          #endif
           CopyReplyButtonView(text: { GeminiAPIClient.stripImageMarkers(message.content) })
           if hasMarker {
             DownloadImageButtonView(image: { GeminiAPIClient.firstImageMarker(in: message.content) })
