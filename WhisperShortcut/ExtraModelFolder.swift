@@ -29,8 +29,21 @@ enum ExtraModelFolder {
   }
 
   /// Stores a security-scoped bookmark for the chosen folder plus its display path.
+  /// Returns nil on success, or a user-facing reason the folder was refused.
+  ///
+  /// A folder that equals or contains one of the app's own model roots is refused: the app's own
+  /// downloads would then count as "external", and Delete would be blocked for them.
   @discardableResult
-  static func setFolder(_ url: URL) -> Bool {
+  static func setFolder(_ url: URL) -> String? {
+    let ownRoots = [
+      ModelManager.shared.rootDirectory, ParakeetBackend.modelsRoot, MLXModelPaths.hubDirectory,
+    ]
+    if ownRoots.contains(where: { ModelStore<OfflineModelType>.isInside($0, url) }) {
+      DebugLogger.logWarning("MODEL-FOLDER: Rejected \(url.path) — it contains the app's own model folder")
+      return String(
+        localized:
+          "This folder contains WhisperShortcut's own model folders. Choose a different folder — your own downloads would otherwise be treated as external and could not be deleted.")
+    }
     do {
       let bookmark = try url.bookmarkData(
         options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -39,18 +52,20 @@ enum ExtraModelFolder {
       // A different folder: drop the old lease before claiming the new one, so the app does not
       // keep a grant on a folder the user no longer uses.
       releaseLease()
+      invalidateCache()
       retainAccess(to: url)
       DebugLogger.log("MODEL-FOLDER: Model folder set to \(url.path)")
-      return true
+      return nil
     } catch {
       DebugLogger.logError(
         "MODEL-FOLDER: Failed to bookmark folder \(url.path): \(error.localizedDescription)")
-      return false
+      return String(localized: "The folder could not be saved. Choose a different folder.")
     }
   }
 
   static func clear() {
     releaseLease()
+    invalidateCache()
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.extraModelFolderBookmark)
     UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.extraModelFolderDisplayPath)
     DebugLogger.log("MODEL-FOLDER: Model folder cleared")
@@ -61,6 +76,10 @@ enum ExtraModelFolder {
   /// Resolves the stored bookmark to a URL, refreshing it if stale, and holds the security scope
   /// open for the rest of the process. Returns nil if no folder is configured or resolution failed.
   static func resolveFolderURL() -> URL? {
+    cacheLock.lock()
+    let cached = cachedFolderURL
+    cacheLock.unlock()
+    if let cached { return cached }
     guard let bookmark = UserDefaults.standard.data(forKey: UserDefaultsKeys.extraModelFolderBookmark)
     else { return nil }
     var isStale = false
@@ -77,6 +96,9 @@ enum ExtraModelFolder {
         if accessed { url.stopAccessingSecurityScopedResource() }
       }
       retainAccess(to: url)
+      cacheLock.lock()
+      cachedFolderURL = url
+      cacheLock.unlock()
       return url
     } catch {
       let path = displayPath
@@ -208,6 +230,30 @@ enum ExtraModelFolder {
       }
       return nil
     }
+  }
+
+  // MARK: - Resolution cache
+
+  private static let cacheLock = NSLock()
+  /// Resolving a bookmark is not free and callers sit in SwiftUI body evaluation. Dropped on
+  /// `setFolder` / `clear`; failures are not cached, so a remounted drive is picked up.
+  private static var cachedFolderURL: URL?
+  private static var loggedUses: [String: String] = [:]
+
+  private static func invalidateCache() {
+    cacheLock.lock()
+    cachedFolderURL = nil
+    loggedUses = [:]
+    cacheLock.unlock()
+  }
+
+  /// Logs "using X from the model folder" once per distinct resolved path, not once per lookup.
+  static func logUse(key: String, path: String, message: @autoclosure () -> String) {
+    cacheLock.lock()
+    let changed = loggedUses[key] != path
+    if changed { loggedUses[key] = path }
+    cacheLock.unlock()
+    if changed { DebugLogger.log(message()) }
   }
 
   // MARK: - Process-lifetime scope lease

@@ -160,7 +160,9 @@ enum MLXModelPaths {
     // weights they already have are used instead of downloaded again. Same completeness check as
     // above — a half-downloaded repo there stays unavailable.
     if let extra = ExtraModelFolder.mlxModelURL(for: type.huggingFaceID) {
-      DebugLogger.log("MLX: using \(type.huggingFaceID) from the user's model folder: \(extra.path)")
+      ExtraModelFolder.logUse(
+        key: "mlx-\(type.huggingFaceID)", path: extra.path,
+        message: "MLX: using \(type.huggingFaceID) from the user's model folder: \(extra.path)")
       return extra
     }
     return nil
