@@ -213,6 +213,18 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       // too destructive" case on the dictation path.
       DebugLogger.logWarning(
         "\(logPrefix): \(model.displayName) failed to load (\(error.logDescription)); treating as corrupt and re-downloading once")
+      // Weights in the user's own folder are read-only to us: never delete them and never
+      // download a second copy next to them. Surface the load error instead.
+      if isExternal(model) {
+        DebugLogger.logError(
+          "\(logPrefix): \(model.displayName) in the user's model folder failed to load; not re-downloading")
+        readyPhase[model] = nil
+        throw ModelStoreError.fileError(
+          String(
+            localized:
+              "The model in the folder you chose could not be loaded. It may be incomplete or damaged. Nothing was changed — replace it in Finder, or remove the model folder in Settings to download the model again."
+          ))
+      }
       try? removeFiles(of: model)
       await unload(model)
       try await download(model, isRetry: true)

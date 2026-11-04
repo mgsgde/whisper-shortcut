@@ -15,6 +15,7 @@ struct ModelFolderSection: View {
 
   @State private var hasFolder = ExtraModelFolder.hasFolder
   @State private var displayPath = ExtraModelFolder.displayPath
+  @State private var errorMessage: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -23,6 +24,13 @@ struct ModelFolderSection: View {
         systemImage: "folder",
         subtitle: "The app downloads offline models itself. If you already have the weights on disk — an LM Studio models folder, a Hugging Face cache, a shared drive — point the app at that folder and it uses them instead of downloading again. Nothing in your folder is moved, changed or deleted."
       )
+
+      if let errorMessage {
+        Text(errorMessage)
+          .font(.callout)
+          .foregroundColor(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
 
       if hasFolder {
         HStack(alignment: .center, spacing: 12) {
@@ -66,7 +74,11 @@ struct ModelFolderSection: View {
     panel.message = String(
       localized: "Choose a folder that already contains offline model weights")
     guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard ExtraModelFolder.setFolder(url) else { return }
+    if let reason = ExtraModelFolder.setFolder(url) {
+      errorMessage = reason
+      return
+    }
+    errorMessage = nil
     hasFolder = true
     displayPath = ExtraModelFolder.displayPath
     onChange()
