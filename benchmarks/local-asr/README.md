@@ -69,6 +69,41 @@ Engines run one after another, never side by side, so none competes with another
 
 ## Results
 
+### 2026-11-04 — successors to Parakeet Ultra, and the glossary gate (M1 Pro, macOS 26.6.2, FluidAudio 0.18.2)
+
+Candidates: German fine-tune of Parakeet v3 (`ValentinWeyer/parakeet-primeline-de-coreml`, unofficial
+Core ML conversion of `primeline/parakeet-primeline`, CC BY 4.0, fp16, 1.1 GB, loaded with
+`AsrModels.loadLocal`) and NVIDIA Nemotron Unified ASR 0.6B (`.nemotronMultilingual(.de)`, offline int8,
+new in FluidAudio 0.18.0). Sets: 10 synthetic, 60 real (cloud transcript as reference), 46 pilot
+(the user reading the dictation corpus, spoken text as reference).
+
+| engine | WER real | WER pilot | pilot without spoken-mark words | p50 <5 s | note |
+|---|---:|---:|---:|---:|---|
+| **parakeet-ultra** | **5.5 %** | 17.1 % | **6.3 %** | **0.09** | stays |
+| parakeet-primeline | 6.7 % | 16.0 % | 8.3 % | 0.20 | commas after nearly every word, writes "ss" for "ß", digits for spoken numbers; 2× size |
+| parakeet-primeline+vocab | 44.9 % | 70.8 % | 70.2 % | 0.30 | CTC boosting breaks on it |
+| nemotron-unified | 6.5 % | 18.3 % | 9.8 % | 0.16 | more mishearings on the user's voice ("Gh-strecke", "Kommers") |
+| nemotron-unified+vocab | 11.8 % | 20.2 % | 12.2 % | 0.19 | inserts glossary terms where none was said |
+
+The raw pilot WER is high for every engine because the reference keeps the spoken "Komma"/"Punkt"
+words, which engines turn into marks or drop; without them Ultra misses 13 of 205 words. The pilot
+set is 42 short sentences built around punctuation, numbers and glossary traps: good for "does it
+hear this voice and these terms", too small (one error ≈ 0.5 points) to rank close engines.
+
+**Glossary gate.** FluidAudio 0.18.2 added a confident-word gate (#1100) to vocabulary boosting;
+`itnDefaultConfig`, which the app used for its similarity floors, turns it off. With a two-term
+glossary holding a short surname, boosting rewrote confidently heard words into it ("weiter",
+"einer", "meiner"). Through the app's own guard (`+app` arms), on the 58 real clips both arms decoded:
+
+| arm | word errors / 1448 | terms synth | terms pilot |
+|---|---:|---:|---:|
+| parakeet-ultra (no glossary) | 59 (4.07 %) | 18/24 | 10/12 |
+| parakeet-ultra+app (shipped up to now) | 70 (4.83 %) | 23/24 | 10/12 |
+| parakeet-ultra+app-gate | 61 (4.21 %) | 23/24 | 10/12 |
+
+Same term recall, nine fewer false rewrites, no latency difference (a reversed-order rerun showed
+the first run's 0.1 s gap was run order). The app now builds its session with the floors plus the gate.
+
 ### 2026-09-29 — M1 Pro / 16 GB, macOS 26.6.2
 
 65 clips every engine decoded: 10 synthetic, 55 real (1–73 s; one 11-minute meeting recording was
