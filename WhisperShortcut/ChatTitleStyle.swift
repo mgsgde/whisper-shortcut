@@ -130,15 +130,19 @@ enum ChatTitleStyle: String, CaseIterable {
   /// `Projekt X` / `Project X` — the one form that is unambiguous enough to trust on a single
   /// mention. The capture stays case-sensitive: a lowercase word after "Projekt" is a sentence,
   /// not a name.
+  /// Same `[ \t]+` separator rule as `capitalisedPhraseRegex`: a newline after "Projekt" is a
+  /// line break, not a name.
   private static let explicitProjectRegex = try! NSRegularExpression(
-    pattern: #"(?i:\b(?:projekt|project))\s+([A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:\s+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2})"#)
+    pattern: #"(?i:\b(?:projekt|project))[ \t]+([A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:[ \t]+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2})"#)
 
   /// A capitalised phrase of one to three words — the raw material for the repetition scan.
   ///
   /// No `.` in the token class: it would let "Zeit. ParkDepot" match as a single two-word phrase
-  /// across a sentence boundary, which both hides the real name and invents a fake one.
+  /// across a sentence boundary, which both hides the real name and invents a fake one. The
+  /// separator is `[ \t]+`, not `\s+`: `\s` matches a newline, so a transcript line ending in
+  /// "Die Migration" would join the next line's capitalised word into one invented phrase.
   private static let capitalisedPhraseRegex = try! NSRegularExpression(
-    pattern: #"[A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:\s+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2}"#)
+    pattern: #"[A-ZÄÖÜ][\p{L}\p{N}&+_-]*(?:[ \t]+[A-ZÄÖÜ][\p{L}\p{N}&+_-]*){0,2}"#)
 
   /// A conservative guess at the project, product or client a text is about.
   ///
