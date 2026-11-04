@@ -3285,7 +3285,15 @@ struct ChatView: View {
   /// Note the pointer is over, so only that row shows its "Ask" affordance.
   @State private var hoveredNoteId: UUID? = nil
   /// Note currently being edited by hand, and its draft text (one bullet per line).
+  ///
+  /// The surface is part of the state because the same note is rendered twice — inline in the chat
+  /// stream and in the Notes tab — and both rows would otherwise open an editor bound to the same
+  /// draft, so typing in one would mirror into the other.
   @State private var editingNoteId: UUID? = nil
+  @State private var editingNoteSurface: NoteEditSurface? = nil
+  /// Session the draft belongs to. A tab switch must not carry a half-written note into another
+  /// meeting, where `editingNoteId` would match nothing and the draft would be lost silently.
+  @State private var editingNoteSessionId: UUID? = nil
   @State private var noteDraft: String = ""
   @FocusState private var noteEditorFocused: Bool
   /// Session id currently being renamed via the context-menu alert.
@@ -3865,6 +3873,12 @@ struct ChatView: View {
         // Switching tabs swaps the whole message list; restore the new session's position after
         // the swap settles so scrollPosition's own reset doesn't fight us.
         suppressAnchorSave = true
+        // A draft belongs to the meeting it was started in. Carrying it into another tab would
+        // leave an editor open on a note id that tab does not have, and the text would vanish
+        // without a word when the editor is dismissed.
+        if let editingSession = editingNoteSessionId, editingSession != viewModel.currentSessionId {
+          cancelNoteEdit()
+        }
         DispatchQueue.main.async {
           restoreSavedScroll(proxy: proxy)
           suppressAnchorSave = false
@@ -3895,7 +3909,7 @@ struct ChatView: View {
       Rectangle()
         .fill(ChatTheme.secondaryText.opacity(0.25))
         .frame(width: 2)
-      noteRow(note, hovered: hoveredNoteId == note.id)
+      noteRow(note, hovered: hoveredNoteId == note.id, surface: .chatStream)
     }
     .padding(.vertical, 2)
     .contentShape(Rectangle())
@@ -4250,19 +4264,26 @@ struct ChatView: View {
     .onAppear { viewModel.recoverMeetingSummaryIfNeeded() }
   }
 
+  /// Which of the two places a note is rendered is being edited. The same note appears inline in
+  /// the chat stream and in the Notes tab; without this, both rows would show an editor at once.
+  private enum NoteEditSurface: Equatable {
+    case chatStream
+    case notesTab
+  }
+
   /// One live note as it appears both in the Notes tab and inline in the chat stream.
   /// Hovering reveals "Ask" — the shortest path from "that bullet is interesting" to a question
   /// about it, without retyping what was said — and a pencil that turns the note into a text
   /// editor. Notes are written by a model and are often slightly wrong ("that was Tuesday, not
   /// Thursday"); fixing it in place beats re-reading it wrong for the rest of the meeting.
-  private func noteRow(_ note: LiveMeetingNote, hovered: Bool) -> some View {
+  private func noteRow(_ note: LiveMeetingNote, hovered: Bool, surface: NoteEditSurface) -> some View {
     HStack(alignment: .top, spacing: 8) {
       Text(note.timestampString)
         .font(.system(size: 12, weight: .medium, design: .monospaced))
         .foregroundColor(ChatTheme.secondaryText)
         .frame(minWidth: 46, alignment: .leading)
 
-      if editingNoteId == note.id {
+      if editingNoteId == note.id && editingNoteSurface == surface {
         noteEditor(note)
       } else {
         VStack(alignment: .leading, spacing: 4) {
@@ -4285,7 +4306,7 @@ struct ChatView: View {
         Spacer(minLength: 4)
 
         HStack(spacing: 4) {
-          Button(action: { beginNoteEdit(note) }) {
+          Button(action: { beginNoteEdit(note, surface: surface) }) {
             Image(systemName: "pencil")
               .font(.system(size: 10, weight: .medium))
               .foregroundColor(ChatTheme.secondaryText)
@@ -4360,14 +4381,22 @@ struct ChatView: View {
     )
   }
 
-  private func beginNoteEdit(_ note: LiveMeetingNote) {
-    noteDraft = note.bullets.joined(separator: "\n")
+  private func beginNoteEdit(_ note: LiveMeetingNote, surface: NoteEditSurface) {
+    // Prefilled *with* the bullet marker, not as bare lines: `bullets(fromDraft:)` strips one
+    // marker per line, so a bullet whose own text starts with "- " or "* " would lose it on every
+    // save. Writing the marker here makes the round trip stable and shows the user the shape the
+    // file has.
+    noteDraft = note.bullets.map { "- \($0)" }.joined(separator: "\n")
     editingNoteId = note.id
+    editingNoteSurface = surface
+    editingNoteSessionId = viewModel.currentSessionId
     noteEditorFocused = true
   }
 
   private func cancelNoteEdit() {
     editingNoteId = nil
+    editingNoteSurface = nil
+    editingNoteSessionId = nil
     noteDraft = ""
     noteEditorFocused = false
   }
@@ -4375,6 +4404,8 @@ struct ChatView: View {
   private func commitNoteEdit(_ note: LiveMeetingNote) {
     let bullets = LiveMeetingTranscriptStore.bullets(fromDraft: noteDraft)
     editingNoteId = nil
+    editingNoteSurface = nil
+    editingNoteSessionId = nil
     noteDraft = ""
     noteEditorFocused = false
     viewModel.saveNoteEdit(note, bullets: bullets)
@@ -4415,7 +4446,7 @@ struct ChatView: View {
         if !notes.isEmpty {
           LazyVStack(alignment: .leading, spacing: 10) {
             ForEach(notes) { note in
-              noteRow(note, hovered: hoveredNoteId == note.id)
+              noteRow(note, hovered: hoveredNoteId == note.id, surface: .notesTab)
                 .contentShape(Rectangle())
                 .onHover { inside in hoveredNoteId = inside ? note.id : nil }
             }

@@ -1210,8 +1210,15 @@ final class LiveMeetingSession: NSObject {
         segment: segment, recentNotes: recentNotes, model: model)
       let bullets = Self.parseBullets(raw)
       await MainActor.run {
-        // A straggler from a previous session must not write into the current meeting's state.
-        guard generation == self.sessionGeneration else { return }
+        // A straggler from a previous session must not write into the current meeting's state —
+        // and neither may a note that lands after this meeting ended. `sessionGeneration` alone
+        // does not catch that: it only changes at the next `start()`, so a generation still looks
+        // current while the meeting is being wrapped up. Writing then would re-persist the whole
+        // store over a file the user may already have hand-edited from the ended-meeting view.
+        guard self.isLive(generation) else {
+          DebugLogger.log("LIVE-MEETING-NOTES: Dropping note for a meeting that is no longer live")
+          return
+        }
         self.consecutiveNoteFailures = 0
         // An empty response is a valid answer: the prompt tells the model to stay silent when a
         // segment carries nothing worth remembering. The segment still counts as noted.

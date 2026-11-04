@@ -142,7 +142,15 @@ final class MeetingListService: ObservableObject {
   func saveNotes(_ notes: [LiveMeetingNote], transcriptFileURL: URL) {
     let url = Self.notesURL(transcriptFileURL: transcriptFileURL)
     guard !notes.isEmpty else {
-      try? FileManager.default.removeItem(at: url)
+      // Deleting is the correct write for "no notes left", but a failure here is not noise: the
+      // file would stay behind and the next read would resurrect notes the user just deleted.
+      guard FileManager.default.fileExists(atPath: url.path) else { return }
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch {
+        DebugLogger.logError(
+          "MEETING-LIBRARY: Removing empty notes file failed: \(error.logDescription)")
+      }
       return
     }
     do {

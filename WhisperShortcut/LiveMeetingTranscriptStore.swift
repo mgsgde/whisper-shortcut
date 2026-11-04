@@ -369,12 +369,20 @@ final class LiveMeetingTranscriptStore: ObservableObject {
   /// there are none left. Pure, so the live store and the on-disk path share one rule.
   ///
   /// Matched by `id`, falling back to `startTime`: notes read back from disk get fresh ids on every
-  /// read, so a caller holding a note from an earlier read still edits the right row.
+  /// read, so a caller holding a note from an earlier read still edits the right row. The fallback
+  /// only applies when the timestamp is unique — two notes can share a start time (a segment that
+  /// produced two notes), and picking the first of them would edit or delete the wrong one. An
+  /// ambiguous edit is dropped rather than guessed.
   static func applyingEdit(
     to notes: [LiveMeetingNote], replacing edited: LiveMeetingNote
   ) -> [LiveMeetingNote] {
-    let index = notes.firstIndex { $0.id == edited.id }
-      ?? notes.firstIndex { $0.startTime == edited.startTime }
+    let index: Int?
+    if let byID = notes.firstIndex(where: { $0.id == edited.id }) {
+      index = byID
+    } else {
+      let byStart = notes.indices.filter { notes[$0].startTime == edited.startTime }
+      index = byStart.count == 1 ? byStart[0] : nil
+    }
     guard let index else { return notes }
     var result = notes
     if edited.bullets.isEmpty {
