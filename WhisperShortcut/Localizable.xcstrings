@@ -15295,16 +15295,6 @@
         }
       }
     },
-    "Preparing report…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bericht wird vorbereitet …"
-          }
-        }
-      }
-    },
     "Press a key…" : {
       "localizations" : {
         "de" : {
@@ -17799,16 +17789,6 @@
         }
       }
     },
-    "See and share an anonymous summary of how you use the app" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eine anonyme Zusammenfassung Ihrer Nutzung ansehen und teilen"
-          }
-        }
-      }
-    },
     "See exactly what is sent" : {
       "localizations" : {
         "de" : {
@@ -18346,16 +18326,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Statistik teilen"
-          }
-        }
-      }
-    },
-    "Share Usage Report" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutzungsbericht teilen"
           }
         }
       }
@@ -20290,16 +20260,6 @@
         }
       }
     },
-    "This is everything the report contains. Nothing is sent automatically — pressing a send button opens your own mail or WhatsApp with this text prefilled." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das ist alles, was der Bericht enthält. Nichts wird automatisch gesendet: Eine Senden-Taste öffnet Ihr eigenes Mailprogramm oder WhatsApp mit diesem Text."
-          }
-        }
-      }
-    },
     "This is the complete content, as sent. One summary per day you use the app, plus a one-time note when you pass a setup step or use a feature for the first time. The server's code is public: github.com/mgsgde/whisper-shortcut/tree/main/server/telemetry" : {
       "localizations" : {
         "de" : {
@@ -20856,16 +20816,6 @@
         }
       }
     },
-    "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Smart Improvement ein, damit dies gesammelt wird"
-          }
-        }
-      }
-    },
     "Turn on \"Save usage data\" to start measuring." : {
       "localizations" : {
         "de" : {
@@ -21298,16 +21248,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nutzung"
-          }
-        }
-      }
-    },
-    "Usage report" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutzungsbericht"
           }
         }
       }
@@ -23929,6 +23869,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jede Version am Tag ihres Erscheinens, mit den neuesten Funktionen und Korrekturen. Beim Wechsel zurück zu Stabil bleibt Ihre Version; das nächste Update kommt, sobald Stabil neuer ist."
+          }
+        }
+      }
+    },
+    "Send my settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Einstellungen senden"
+          }
+        }
+      }
+    },
+    "Send My Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Einstellungen senden"
+          }
+        }
+      }
+    },
+    "Include my glossary" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mein Glossar mitsenden"
+          }
+        }
+      }
+    },
+    "Include my system prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine System-Prompts mitsenden"
+          }
+        }
+      }
+    },
+    "Glossary and prompts can contain names. Both stay out unless you tick them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glossar und Prompts können Namen enthalten. Beides bleibt draußen, solange Sie es nicht anhaken."
+          }
+        }
+      }
+    },
+    "Nothing leaves your Mac automatically. Send opens your own WhatsApp or mail with this text, and you press send there. Delete anything below that you don't want to share." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nichts verlässt Ihren Mac automatisch. Senden öffnet Ihr eigenes WhatsApp oder Mailprogramm mit diesem Text, und Sie schicken ihn dort selbst ab. Löschen Sie unten alles, was Sie nicht teilen möchten."
+          }
+        }
+      }
+    },
+    "Preparing…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird vorbereitet…"
+          }
+        }
+      }
+    },
+    "Share your settings with the developer when something didn't work. You see and can edit everything first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen Sie Ihre Einstellungen mit dem Entwickler, wenn etwas nicht funktioniert hat. Sie sehen vorher alles und können es bearbeiten."
+          }
+        }
+      }
+    },
+    "Start over" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neu beginnen"
+          }
+        }
+      }
+    },
+    "Too long to prefill. Sending copies it instead: paste it with ⌘V in the chat or email that opens." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu lang zum Vorausfüllen. Beim Senden wird der Text stattdessen kopiert: Fügen Sie ihn mit ⌘V in den Chat oder die E-Mail ein, die sich öffnet."
+          }
+        }
+      }
+    },
+    "What happened? (optional)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was ist passiert? (optional)"
+          }
+        }
+      }
+    },
+    "You edited the text below, so these are locked. Press Start over to change them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben den Text unten bearbeitet, daher sind diese Optionen gesperrt. Mit „Neu beginnen“ können Sie sie wieder ändern."
           }
         }
       }

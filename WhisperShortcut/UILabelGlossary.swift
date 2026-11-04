@@ -28,7 +28,7 @@ enum UILabelGlossary {
       ("Welcome Tour", String(localized: "Welcome Tour")),
       ("Shortcuts", String(localized: "Shortcuts")),
       ("Send Feedback", String(localized: "Send Feedback")),
-      ("Share Usage Report", String(localized: "Share Usage Report")),
+      ("Send My Settings", String(localized: "Send My Settings")),
     ]
   }
 
