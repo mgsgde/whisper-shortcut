@@ -111,19 +111,63 @@ if [[ "${CI:-}" != "true" ]]; then
 fi
 
 # Keychain items live in the data protection keychain, which needs the keychain-access-groups
-# entitlement and therefore a provisioning profile. With an Apple Development identity we use the
-# project's own signing (team Z59J7V26UT), which keeps the designated requirement stable, so
-# mic/TCC grants survive rebuilds. The direct target's Debug config (bundle ….whispershortcut.dev)
-# signs Manually with the "WhisperShortcut Dev (Mac Development)" profile: Xcode has no account
-# signed in, so Automatic signing cannot mint a managed profile for the .dev App ID. That profile
-# was made with `asc profiles create` and expires 2027-10-20 — renew it the same way
-# (WhisperShortcut/Docs/data-directories.md → "Debug build identity"). The App Store target stays
-# on Automatic signing; -allowProvisioningUpdates lets Xcode renew its team profile.
-# No identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped from a
-# copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back to the
-# legacy keychain.
+# entitlement and therefore a provisioning profile. With an Apple Development identity *from the
+# team the project requires* we use the project's own signing, which keeps the designated
+# requirement stable, so mic/TCC grants survive rebuilds. The direct target's Debug config (bundle
+# ….whispershortcut.dev) signs Manually with the "WhisperShortcut Dev (Mac Development)" profile:
+# Xcode has no account signed in, so Automatic signing cannot mint a managed profile for the .dev
+# App ID. That profile was made with `asc profiles create` and expires 2027-10-20 — renew it the
+# same way (WhisperShortcut/Docs/data-directories.md → "Debug build identity"). The App Store
+# target stays on Automatic signing; -allowProvisioningUpdates lets Xcode renew its team profile.
+#
+# The check is team-aware, not just "an identity exists": an identity from another team has no
+# profile for this project's team, so that branch would fail with "No profile for team '…'
+# matching '…' found" instead of falling back. The required team is read from the project
+# (DEVELOPMENT_TEAM in project.pbxproj, so a fork with its own team works) and compared with the
+# team id in the identity's certificate (organizationalUnitName). If either cannot be determined,
+# we do not guess: no required team keeps the old behaviour, an unreadable identity team means
+# ad-hoc.
+# No usable identity (e.g. cloners without an account) → ad-hoc, with the entitlement stripped
+# from a copy of the entitlements file (an ad-hoc build cannot carry it); the app then falls back
+# to the legacy keychain.
+REQUIRED_TEAM=$(sed -nE 's/.*DEVELOPMENT_TEAM = ([A-Z0-9]+);.*/\1/p' \
+  "$PROJECT_DIR/WhisperShortcut.xcodeproj/project.pbxproj" 2>/dev/null | head -n1 || true)
+
+# Team id of a codesigning identity's certificate: its organizationalUnitName. Empty when the
+# certificate cannot be read or parsed, which callers treat as "not the project's team".
+identity_team() {
+  local identity="$1" subject
+  subject=$(security find-certificate -c "$identity" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null) || return 0
+  printf '%s\n' "$subject" | sed -nE 's/^ *organizationalUnitName *= *(.*)$/\1/p' | head -n1
+}
+
 SIGN_ARGS=()
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Apple Development" | sed -E 's/.*"(.*)".*/\1/')
+# Every Apple Development identity, not just the first: a machine can hold identities from several
+# teams (a personal one and an employer's), and `grep -m1` picked whichever the keychain listed
+# first. If that one belonged to another team, the script fell back to ad-hoc even though a usable
+# identity was right there — the exact case this fallback exists for.
+IDENTITIES=()
+while IFS= read -r line; do
+  IDENTITIES+=("$(printf '%s' "$line" | sed -E 's/.*"(.*)".*/\1/')")
+done < <(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" || true)
+
+IDENTITY=""
+IDENTITY_TEAM=""
+for candidate in "${IDENTITIES[@]}"; do
+  [[ -n "$candidate" ]] || continue
+  candidate_team=$(identity_team "$candidate")
+  if [[ -z "$REQUIRED_TEAM" || "$candidate_team" == "$REQUIRED_TEAM" ]]; then
+    IDENTITY="$candidate"
+    IDENTITY_TEAM="$candidate_team"
+    break
+  fi
+  # Remember the first non-matching one for the ad-hoc reason line below.
+  if [[ -z "$IDENTITY_TEAM" ]]; then
+    IDENTITY_TEAM="$candidate_team"
+  fi
+done
+
 if [[ -n "$IDENTITY" ]]; then
   SIGN_ARGS=(-allowProvisioningUpdates)
   echo "🔏 Signing: $IDENTITY (project signing settings)"
@@ -138,7 +182,14 @@ else
   cp "$ENTITLEMENTS_SRC" "$STRIPPED"
   /usr/libexec/PlistBuddy -c 'Delete :keychain-access-groups' "$STRIPPED" >/dev/null 2>&1 || true
   SIGN_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= CODE_SIGN_ENTITLEMENTS="$STRIPPED")
-  echo "🔏 Signing: ad-hoc (no Apple Development identity; legacy keychain, prompts on rebuilds)"
+  if [[ ${#IDENTITIES[@]} -eq 0 ]]; then
+    ADHOC_REASON="no Apple Development identity"
+  elif [[ -z "$IDENTITY_TEAM" ]]; then
+    ADHOC_REASON="identity team unreadable, project team $REQUIRED_TEAM"
+  else
+    ADHOC_REASON="no identity for project team $REQUIRED_TEAM (found $IDENTITY_TEAM)"
+  fi
+  echo "🔏 Signing: ad-hoc ($ADHOC_REASON; legacy keychain, prompts on rebuilds)"
 fi
 
 # Sync the root README into the app bundle so Xcode's file-system-synchronized
