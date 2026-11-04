@@ -29,6 +29,11 @@ enum ParakeetVocabularyGuard {
   ///     ("im ADL" → "ADL" would swallow "im"),
   /// (e) no word of the span is a spoken-punctuation command word
   ///     (`SpokenPunctuation.commandWords`): "Komma" is never rewritten into "Kizomba".
+  /// (f) unless the folded span (punctuation stripped) equals the folded term, not every
+  ///     whitespace-separated word of the span is an ordinary German word
+  ///     (`GermanCommonWords`): "weiter" is never rewritten into "Seiter". A pure casing
+  ///     fix still passes ("GDB" → "GdB"), and a span with any uncommon word still passes
+  ///     ("Wir Belsäule" → "Wirbelsäule").
   static func accepts(_ replacement: Replacement, glossaryTerms: [String]) -> Bool {
     let original = replacement.originalSpan
     let term = replacement.term
@@ -63,6 +68,15 @@ enum ParakeetVocabularyGuard {
     for word in original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }) {
       let stripped = GlossaryDocument.fold(word.trimmingCharacters(in: .punctuationCharacters))
       if SpokenPunctuation.commandWords.contains(stripped) { return false }
+    }
+
+    if GlossaryDocument.fold(strippingPunctuation(original)) != foldedTerm {
+      let spanWords = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).compactMap {
+        piece -> String? in
+        let cleaned = strippingPunctuation(String(piece))
+        return cleaned.isEmpty ? nil : cleaned
+      }
+      if !spanWords.isEmpty, spanWords.allSatisfy(GermanCommonWords.contains) { return false }
     }
     return true
   }
@@ -205,5 +219,10 @@ enum ParakeetVocabularyGuard {
 
   private static func wordCount(_ text: String) -> Int {
     text.split { $0.isWhitespace || $0.isNewline }.count
+  }
+
+  /// Punctuation removed, whitespace kept ("weiter," → "weiter", "G d B" stays three words).
+  private static func strippingPunctuation(_ text: String) -> String {
+    String(text.unicodeScalars.filter { !CharacterSet.punctuationCharacters.contains($0) })
   }
 }

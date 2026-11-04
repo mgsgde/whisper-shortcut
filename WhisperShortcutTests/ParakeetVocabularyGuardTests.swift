@@ -181,4 +181,47 @@ struct ParakeetVocabularyGuardTests {
     #expect(
       ParakeetVocabularyGuard.restoreGlossaryCasing(in: "B125", glossaryTerms: ["B12"]) == "B125")
   }
+
+  private let everydayGlossary = [
+    "Seiter", "TEP", "PNP", "Wirbelsäule", "Methotrexat", "GdB",
+  ]
+
+  @Test("An ordinary German word is never replaced by a glossary term")
+  func rejectsOrdinaryGermanWord() {
+    for (span, term) in [
+      ("weiter", "Seiter"),
+      ("Weiter", "Seiter"),
+      ("weiter", "TEP"),
+      ("Prinzip", "PNP"),
+      ("im Prinzip", "PNP"),
+      ("Seite", "Seiter"),
+    ] {
+      #expect(
+        !ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: everydayGlossary),
+        "\(span) -> \(term)")
+    }
+    let original = "Ich arbeite mal weiter damit."
+    let applied = ParakeetVocabularyGuard.apply(
+      to: original,
+      replacements: [.init(originalSpan: "weiter", term: "Seiter")],
+      glossaryTerms: everydayGlossary)
+    #expect(applied.text == original)
+    #expect(applied.accepted == 0)
+    #expect(applied.rejected == 1)
+  }
+
+  @Test("A correction still passes when the span is not only ordinary words")
+  func acceptsCorrectionThatIsNotOnlyOrdinaryWords() {
+    for (span, term) in [
+      ("Wir Belsäule", "Wirbelsäule"),
+      ("Metotrexat", "Methotrexat"),
+      ("GDB", "GdB"),
+    ] {
+      #expect(
+        ParakeetVocabularyGuard.accepts(
+          .init(originalSpan: span, term: term), glossaryTerms: everydayGlossary),
+        "\(span) -> \(term)")
+    }
+  }
 }
