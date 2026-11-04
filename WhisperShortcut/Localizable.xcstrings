@@ -8383,6 +8383,16 @@
         }
       }
     },
+    "Edit this note" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Notiz bearbeiten"
+          }
+        }
+      }
+    },
     "Edited" : {
       "localizations" : {
         "de" : {
@@ -13855,6 +13865,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einmaliger Download, danach läuft es offline. Ihre Nachricht wird gesendet, sobald alles bereit ist."
+          }
+        }
+      }
+    },
+    "One bullet per line. Empty deletes the note." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Stichpunkt pro Zeile. Leer löscht die Notiz."
           }
         }
       }
