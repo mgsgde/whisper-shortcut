@@ -1,17 +1,24 @@
-## Dictate Live
-- **Text arrives reliably in Chrome.** In Chrome, Edge, Brave, Arc and other Chromium browsers, Dictate Live now types each piece instead of pasting it, because these browsers sometimes dropped a paste. In other apps, WhisperShortcut checks that each piece arrived and pastes it once more if it did not.
-- **The next dictation continues the last one.** A second Dictate Live in the same app now gets a space and the right capitalisation, even when the app does not let WhisperShortcut read the cursor. This is forgotten as soon as you click, type or switch apps.
+## Send My Settings
+- **One report for feedback.** In Settings ▸ About ▸ Support & Feedback, "Share Usage Report" is now "Send My Settings". It shows an editable text with your app and macOS version, your current settings and which prompts you changed, plus a "What happened?" field. You see everything before it is sent, and you can edit it.
+- Glossary and prompt texts are only included if you tick them. The usage summary is only included if "Save usage data" is on, and the button no longer needs that setting.
+- Sending opens your own WhatsApp or mail. If the text is too long for that, it is copied to the clipboard.
 
-## Spoken punctuation
+## Settings
+- **About holds information only:** What's New, Support & Feedback and Acknowledgements. Updates and Data & Reset are now in General, and the privacy promise is at the end of Privacy & Permissions.
+- **Check for Updates…** is now also in the menu bar menu.
+- System Settings now opens in front of floating WhisperShortcut windows instead of behind them.
+
+## Dictation
+- **The glossary no longer replaces ordinary German words.** For example, "weiter" no longer becomes "Seiter".
+- **Offline dictation (Parakeet):** updated speech engine with a glossary fix for some Macs on macOS 27.0.1, and model downloads that resume after an interruption.
+
+## Spoken punctuation (offline, Parakeet)
 With Punctuation set to "Only when spoken":
-- Commas and periods the model sets are kept only where you actually paused. Guessed question and exclamation marks are dropped.
-- After a dropped period, the next word is no longer capitalised ("mal weiter" instead of "mal. Weiter").
-- A comma glued to the next word gets its space.
-
-## Chat
-- **Fixed a freeze.** The Chat window could hang with high CPU when it showed meeting notes, a banner or the mail sign-in card.
+- A period at the end is kept only if you actually paused afterwards, so fewer guessed periods.
+- Question and exclamation marks you speak are kept now instead of becoming a period.
+- "Semikolon" and "Strichpunkt" become ";".
 
 ## Installation
 Download the DMG from the [releases page](https://github.com/mgsgde/whisper-shortcut/releases), open it, and drag WhisperShortcut to your Applications folder.
 
-**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.78...v8.79
+**Full changelog:** https://github.com/mgsgde/whisper-shortcut/compare/v8.79...v8.80
