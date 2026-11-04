@@ -1288,7 +1288,8 @@ class MenuBarController: NSObject {
   /// Swaps the menu-bar icon for ⚠️ when no API key (any provider) and no usable transcription is
   /// configured.
   private func applyMissingSetupWarningIfNeeded() {
-    let canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+    let model = TranscriptionModel.loadSelected()
+    let canTranscribe = model.hasRequiredCredential
     let hasAnyKey = ProviderCredentials.anyChatCredentialConfigured
 
     // Handle special case when no API key (any provider) and no usable transcription is configured.
@@ -1299,7 +1300,12 @@ class MenuBarController: NSObject {
       button.image = nil
       button.title = "⚠️"
       applyDevBadge(to: button)
-      button.toolTip = String(localized: "Add an API key or use an offline model - click to configure")
+      // "Needs a key" and "needs a download" are different states: a user who already picked an
+      // offline model must not be sent looking for an API key they do not need.
+      button.toolTip =
+        model.needsOfflineModelDownload
+        ? String(localized: "Download the selected offline model - click to configure")
+        : String(localized: "Add an API key or use an offline model - click to configure")
     }
   }
 

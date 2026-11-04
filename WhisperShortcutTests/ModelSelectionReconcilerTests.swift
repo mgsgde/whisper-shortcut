@@ -217,6 +217,21 @@ struct ModelSelectionReconcilerTests {
         == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
   }
 
+  @Test("A key-less cloud transcription slot falls back to a downloaded offline model, else stays")
+  func offlineFallbackTranscriptionRule() {
+    // The bug: OpenAI key removed, slot still on GPT Transcribe, turbo on disk.
+    #expect(
+      ModelSelectionReconciler.offlineFallbackTranscription(available: [.whisperLargeTurbo])
+        == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+    // The most accurate downloaded model wins, not the first one found.
+    #expect(
+      ModelSelectionReconciler.offlineFallbackTranscription(
+        available: [.whisperBase, .whisperLargeTurbo, .whisperTiny])
+        == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+    // Nothing on disk: leave the selection alone rather than point at a download.
+    #expect(ModelSelectionReconciler.offlineFallbackTranscription(available: []) == nil)
+  }
+
   @Test("Offline Mode moves the meeting summary and Smart Improvement slots onto the Dictate Prompt model and back")
   func meetingSummaryOfflineRoundTrip() {
     let suiteName = "ModelSelectionReconcilerTests.\(UUID().uuidString)"
