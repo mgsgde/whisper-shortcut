@@ -1557,6 +1557,43 @@ enum SettingsTab: String, CaseIterable {
     case .about: return "About"
     }
   }
+
+  /// Which sidebar section this tab is listed under. Purely presentational — the tab itself,
+  /// its content and its persisted raw value are unchanged.
+  var section: SettingsSection {
+    switch self {
+    case .general, .accounts, .permissions: return .general
+    case .speechToText, .speechToPrompt, .templates, .readAloud: return .dictation
+    case .chat, .meetings, .improvement: return .chatAndMeetings
+    case .screenshot, .aiApps, .about: return .more
+    }
+  }
+
+  /// The sidebar's sections, in display order.
+  static var sections: [SettingsSection] { SettingsSection.allCases }
+
+  /// A sidebar section header. Purely presentational: it groups tabs, it does not own settings.
+  enum SettingsSection: String, CaseIterable {
+    case general = "General"
+    case dictation = "Dictation"
+    case chatAndMeetings = "Chat & Meetings"
+    case more = "More"
+
+    /// The section header. English key, translated like every other user-visible string.
+    var displayName: LocalizedStringResource {
+      switch self {
+      case .general: return "General"
+      case .dictation: return "Dictation"
+      case .chatAndMeetings: return "Chat & Meetings"
+      case .more: return "More"
+      }
+    }
+
+    /// The tabs shown under this header, in `SettingsTab.allCases` order.
+    var tabs: [SettingsTab] {
+      SettingsTab.allCases.filter { $0.section == self }
+    }
+  }
 }
 
 // MARK: - Read Aloud Playback Speed
