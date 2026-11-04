@@ -822,6 +822,9 @@ extension Notification.Name {
   /// Posted when user presses Cmd+Down in Gemini chat window (scroll to bottom).
   static let chatScrollToBottom = Notification.Name("chatScrollToBottom")
   static let chatToggleSidebar = Notification.Name("chatToggleSidebar")
+  /// Posted when the user picks a different prose typeface in Settings → Chat → Appearance, so an
+  /// open chat window re-renders its transcript instead of waiting for a relaunch.
+  static let chatFontDesignChanged = Notification.Name("chatFontDesignChanged")
   /// Posted when the chat window is shown so the chat view can focus the message input field.
   static let chatFocusInput = Notification.Name("chatFocusInput")
   /// Posted to switch the chat window to Meeting view (e.g. when a live meeting starts).

@@ -669,6 +669,8 @@ struct ChatComposerTextView: NSViewRepresentable {
   @ObservedObject var controller: GeminiComposerController
   /// Shown while the composer is empty; reflects the currently selected model.
   var placeholder: String = String(localized: "Message Gemini…")
+  /// Prose typeface from Settings. Carried as an input so a change re-runs `updateNSView`.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
   var onSubmit: () -> Void
   var onCancel: () -> Void
   /// Return true if tab was consumed for slash-command completion.
@@ -810,9 +812,24 @@ struct ChatComposerTextView: NSViewRepresentable {
 
   func updateNSView(_ nsView: NSScrollView, context: Context) {
     context.coordinator.parent = self
-    if let tv = nsView.documentView as? ChatComposerNSTextView, tv.placeholder != placeholder {
-      tv.placeholder = placeholder
-      tv.needsDisplay = true
+    if let tv = nsView.documentView as? ChatComposerNSTextView {
+      if tv.placeholder != placeholder {
+        tv.placeholder = placeholder
+        tv.needsDisplay = true
+      }
+      // The prose typeface is a user setting and this text view is built once, so a change has to
+      // be applied here — otherwise the composer would keep the old font until the next relaunch.
+      let bodyFont = ChatTheme.bodyNSFont(size: ChatTheme.bodyFontSize)
+      if tv.font?.fontName != bodyFont.fontName {
+        tv.font = bodyFont
+        tv.typingAttributes[.font] = bodyFont
+        // Already-typed text carries its own font attribute; without this the composer would show
+        // the old typeface next to newly typed characters.
+        if let storage = tv.textStorage, storage.length > 0 {
+          storage.addAttribute(.font, value: bodyFont, range: NSRange(location: 0, length: storage.length))
+        }
+        tv.needsDisplay = true
+      }
     }
   }
 

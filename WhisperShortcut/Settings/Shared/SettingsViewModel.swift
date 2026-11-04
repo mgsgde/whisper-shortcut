@@ -245,6 +245,15 @@ class SettingsViewModel: ObservableObject {
     .bool(\.showDockIcon, key: UserDefaultsKeys.showDockIcon,
           default: SettingsDefaults.showDockIcon),
 
+    // Chat appearance. The notice is what makes a long-lived chat window re-render its
+    // transcript with the new typeface without being rebuilt.
+    .rawValue(\.chatFontDesign, key: UserDefaultsKeys.chatFontDesign,
+              default: SettingsDefaults.chatFontDesign,
+              onDidChange: { data in
+                NotificationCenter.default.post(
+                  name: .chatFontDesignChanged, object: data.chatFontDesign)
+              }),
+
     // Live Meeting
     .custom(\.liveMeetingChunkInterval,
             load: {
