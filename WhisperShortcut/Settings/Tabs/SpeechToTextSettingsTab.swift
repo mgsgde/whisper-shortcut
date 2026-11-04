@@ -406,14 +406,14 @@ struct SpeechToTextSettingsTab: View {
       SectionHeader(
         title: "Silence Hallucinations",
         systemImage: "waveform.slash",
-        subtitle: "Whisper was trained on subtitled video, so on breath or room noise it sometimes writes what a subtitle track says at the end of a clip — usually \"Thank you.\""
+        subtitle: "Speech models, Whisper especially, were trained on subtitled video, so on breath or room noise they sometimes write subtitle filler — usually \"Thank you.\" Applies to all transcription models."
       )
 
       Toggle(isOn: $viewModel.data.filterKnownWhisperHallucinations) {
         VStack(alignment: .leading, spacing: 2) {
-          Text("Filter known Whisper hallucinations")
+          Text("Filter known silence hallucinations")
             .font(.callout)
-          Text("Drops a transcript that is nothing but one of those phrases. A real sentence that merely contains one is kept.")
+          Text("Drops a short clip (under 2 seconds) whose transcript is nothing but one of those phrases. Longer clips and real sentences that merely contain one are kept.")
             .font(.caption)
             .foregroundColor(.secondary)
             .fixedSize(horizontal: false, vertical: true)

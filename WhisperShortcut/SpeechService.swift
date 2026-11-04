@@ -3003,7 +3003,9 @@ class SpeechService {
     }
 
     let normalized = TextProcessingUtility.normalizeTranscriptionText(content)
-    try TextProcessingUtility.validateSpeechText(normalized, mode: "TRANSCRIPTION-MODE")
+    try TextProcessingUtility.validateSpeechText(
+      normalized, mode: "TRANSCRIPTION-MODE",
+      audioSeconds: TextProcessingUtility.audioDurationSeconds(of: audioURL))
     return normalized
   }
 
@@ -3455,7 +3457,9 @@ class SpeechService {
         "GEMINI-TRANSCRIPTION: empty after glossary-echo retry — falling back to \(fallback.displayName)")
       return try await performTranscription(audioURL: audioURL, preferredModel: fallback)
     }
-    try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
+    try TextProcessingUtility.validateSpeechText(
+      text, mode: "TRANSCRIPTION-MODE",
+      audioSeconds: TextProcessingUtility.audioDurationSeconds(of: audioURL))
 
     let inlineElapsedTime = CFAbsoluteTimeGetCurrent() - inlineStartTime
     DebugLogger.logSpeech("SPEED: [\(model.displayName)] inline transcription total: \(String(format: "%.3f", inlineElapsedTime))s (\(String(format: "%.0f", inlineElapsedTime * 1000))ms)")

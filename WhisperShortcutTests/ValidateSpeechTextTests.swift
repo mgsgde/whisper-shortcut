@@ -125,7 +125,8 @@ struct ValidateSpeechTextTests {
   ])
   func phantomPhraseIsNoSpeech(text: String) {
     #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
+      try TextProcessingUtility.validateSpeechText(
+        text, mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
     }
   }
 
@@ -135,7 +136,8 @@ struct ValidateSpeechTextTests {
   @Test("The filter also applies to the offline LOCAL-SPEECH mode")
   func phantomPhraseAppliesToOfflineMode() {
     #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText("Thank you.", mode: "LOCAL-SPEECH")
+      try TextProcessingUtility.validateSpeechText(
+        "Thank you.", mode: "LOCAL-SPEECH", audioSeconds: 1.0)
     }
   }
 
@@ -149,6 +151,14 @@ struct ValidateSpeechTextTests {
   ])
   func realSentenceWithPhantomSubstringKept(text: String) throws {
     try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
+  }
+
+  /// A clip of 2 s or more, or of unknown length, that transcribes to a single phrase is real
+  /// dictation ("Vielen Dank" said on purpose), not silence filler.
+  @Test("A long or unknown-length clip keeps a single-phrase transcript", arguments: [2.0, 5.0, Double?.none])
+  func longClipKeepsPhrase(seconds: Double?) throws {
+    try TextProcessingUtility.validateSpeechText(
+      "Vielen Dank.", mode: "TRANSCRIPTION-MODE", audioSeconds: seconds)
   }
 
   @Test("Empty is still no speech, not a hallucination")
@@ -170,11 +180,13 @@ struct ValidateSpeechTextTests {
     }
 
     UserDefaults.standard.set(false, forKey: key)
-    try TextProcessingUtility.validateSpeechText("Thank you.", mode: "TRANSCRIPTION-MODE")
+    try TextProcessingUtility.validateSpeechText(
+      "Thank you.", mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
 
     UserDefaults.standard.set(true, forKey: key)
     #expect(throws: TranscriptionError.noSpeechDetected) {
-      try TextProcessingUtility.validateSpeechText("Thank you.", mode: "TRANSCRIPTION-MODE")
+      try TextProcessingUtility.validateSpeechText(
+      "Thank you.", mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
     }
   }
 

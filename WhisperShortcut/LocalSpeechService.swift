@@ -530,7 +530,8 @@ actor LocalSpeechService {
     }
 
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
-    try TextProcessingUtility.validateSpeechText(normalizedText, mode: "LOCAL-SPEECH")
+    try TextProcessingUtility.validateSpeechText(
+      normalizedText, mode: "LOCAL-SPEECH", audioSeconds: audioDuration)
     
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
@@ -895,33 +896,45 @@ actor LocalSpeechService {
   /// lever and stays rejected — see the `chunkingStrategy` doc comment on `transcribe`.
   ///
   /// Frames are 100 ms at the file's own rate, so no resampling is needed: `EnergyVAD` compares
-  /// RMS energy against a threshold, which does not depend on the sample rate. Only the first
-  /// channel is read; the recorder writes mono.
+  /// RMS energy against a threshold, which does not depend on the sample rate. The file is read
+  /// incrementally frame by frame, and all channels are considered (loudest channel per frame).
   private func hasVoiceActivity(in audioURL: URL) -> Bool? {
     do {
       let file = try AVAudioFile(
         forReading: audioURL, commonFormat: .pcmFormatFloat32, interleaved: false)
-      let frameCount = AVAudioFrameCount(file.length)
-      guard frameCount > 0,
+      let format = file.processingFormat
+      let sampleRate = format.sampleRate
+      let channelCount = Int(format.channelCount)
+      let frameLength = max(1, Int(sampleRate * 0.1))
+      guard file.length > 0, channelCount > 0,
             let buffer = AVAudioPCMBuffer(
-              pcmFormat: file.processingFormat, frameCapacity: frameCount)
+              pcmFormat: format, frameCapacity: AVAudioFrameCount(frameLength))
       else { return nil }
-      try file.read(into: buffer)
-      guard let channels = buffer.floatChannelData else { return nil }
-      let samples = Array(
-        UnsafeBufferPointer(start: channels[0], count: Int(buffer.frameLength)))
-      guard !samples.isEmpty else { return nil }
 
-      let vad = EnergyVAD(
-        sampleRate: Int(file.processingFormat.sampleRate),
-        frameLength: 0.1,
-        energyThreshold: Self.vadEnergyThreshold)
-      let activeChunks = vad.calculateActiveChunks(in: samples)
-      let seconds = Double(samples.count) / file.processingFormat.sampleRate
+      // Streamed in 100 ms frames; per frame the loudest channel decides, so a clip with speech
+      // on any channel counts. Same RMS-vs-threshold test as `EnergyVAD`.
+      var activeFrames = 0
+      var totalFrames = 0
+      while file.framePosition < file.length {
+        try file.read(into: buffer, frameCount: AVAudioFrameCount(frameLength))
+        let n = Int(buffer.frameLength)
+        if n == 0 { break }
+        guard let channels = buffer.floatChannelData else { return nil }
+        var frameRMS: Float = 0
+        for ch in 0..<channelCount {
+          var sumSquares: Float = 0
+          let samples = UnsafeBufferPointer(start: channels[ch], count: n)
+          for sample in samples { sumSquares += sample * sample }
+          frameRMS = max(frameRMS, (sumSquares / Float(n)).squareRoot())
+        }
+        totalFrames += 1
+        if frameRMS > Self.vadEnergyThreshold { activeFrames += 1 }
+      }
+      guard totalFrames > 0 else { return nil }
       DebugLogger.log(
-        "LOCAL-SPEECH: VAD gate — \(activeChunks.count) active chunk(s) in "
-          + "\(String(format: "%.2f", seconds))s")
-      return !activeChunks.isEmpty
+        "LOCAL-SPEECH: VAD gate — \(activeFrames)/\(totalFrames) active frame(s) in "
+          + "\(String(format: "%.2f", Double(file.length) / sampleRate))s")
+      return activeFrames > 0
     } catch {
       DebugLogger.logWarning(
         "LOCAL-SPEECH: Could not run the VAD gate (\(error.localizedDescription))")

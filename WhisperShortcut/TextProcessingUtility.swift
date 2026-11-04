@@ -5,6 +5,7 @@
 //  Shared text processing utilities for transcription normalization and validation
 //
 
+import AVFoundation
 import Foundation
 
 // MARK: - Text Processing Utility
@@ -495,7 +496,22 @@ enum TextProcessingUtility {
     mode.contains("TRANSCRIPTION") || mode.contains("LOCAL-SPEECH")
   }
 
-  static func validateSpeechText(_ text: String, mode: String = "TRANSCRIPTION-MODE") throws {
+  /// Longest clip for which a single-phrase transcript is treated as a silence hallucination.
+  /// Subtitle filler appears on short noise-only clips; a clip of 2 s or more that transcribes to
+  /// just "You" or "Vielen Dank" is far more likely a real, deliberate utterance. Unknown duration
+  /// (nil) keeps the transcript — the same fail-open rule the VAD gate follows.
+  static let hallucinationMaxClipSeconds: Double = 2.0
+
+  /// Duration of an audio file in seconds, nil when unreadable.
+  static func audioDurationSeconds(of url: URL) -> Double? {
+    guard let file = try? AVAudioFile(forReading: url), file.fileFormat.sampleRate > 0
+    else { return nil }
+    return Double(file.length) / file.fileFormat.sampleRate
+  }
+
+  static func validateSpeechText(
+    _ text: String, mode: String = "TRANSCRIPTION-MODE", audioSeconds: Double? = nil
+  ) throws {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     
     // Debug logging to see what Whisper actually returned
@@ -555,7 +571,8 @@ enum TextProcessingUtility {
     // through, and is the only defence on the cloud paths. User-switchable because the list
     // contains phrases someone could legitimately dictate on their own ("You", "Bye").
     if Self.isTranscriptionMode(mode), DictationPreferences.filterKnownWhisperHallucinations,
-       isKnownWhisperHallucination(trimmedText) {
+       isKnownWhisperHallucination(trimmedText),
+       let audioSeconds, audioSeconds < Self.hallucinationMaxClipSeconds {
       DebugLogger.log(
         "HALLUCINATION-FILTER: Dropped known Whisper silence hallucination "
           + "\(DebugLogger.redacted(trimmedText))")
