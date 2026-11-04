@@ -158,19 +158,30 @@ enum ChatTitleStyle: String, CaseIterable {
   /// a client, it does not resolve pronouns or abbreviations, and it only looks at the text it is
   /// handed — no transcript file, no chat history, no model.
   static func projectName(in text: String) -> String? {
+    explicitProjectName(in: text) ?? repeatedProjectName(in: text)
+  }
+
+  /// Only the `Projekt X` / `Project X` form: a name the user said outright, as opposed to one the
+  /// repetition scan inferred. Callers use it to protect an explicit name from being overwritten.
+  static func explicitProjectName(in text: String) -> String? {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
-    let ns = trimmed as NSString
-    let full = NSRange(location: 0, length: ns.length)
-
-    // 1. An explicit "Projekt X" / "Project X" needs no repetition to be believed.
+    let full = NSRange(location: 0, length: (trimmed as NSString).length)
     if let match = explicitProjectRegex.firstMatch(in: trimmed, range: full),
        let range = Range(match.range(at: 1), in: trimmed) {
       let name = cleanProjectCandidate(String(trimmed[range]))
       if isPlausibleProjectName(name) { return name }
     }
+    return nil
+  }
 
-    // 2. Otherwise: a capitalised phrase the text repeats. Counting is what separates a name the
+  private static func repeatedProjectName(in text: String) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    let ns = trimmed as NSString
+    let full = NSRange(location: 0, length: ns.length)
+
+    // The explicit form is handled by `explicitProjectName`; here: : a capitalised phrase the text repeats. Counting is what separates a name the
     //    speaker keeps using from a noun that merely happened to start a sentence.
     var counts: [String: (count: Int, firstLocation: Int, tokens: Int)] = [:]
     for match in capitalisedPhraseRegex.matches(in: trimmed, range: full) {
@@ -204,6 +215,10 @@ enum ChatTitleStyle: String, CaseIterable {
     while tokens.count > 1, let first = tokens.first,
           projectStopWords.contains(first.lowercased()) {
       tokens.removeFirst()
+    }
+    while tokens.count > 1, let last = tokens.last,
+          projectStopWords.contains(last.lowercased()) {
+      tokens.removeLast()
     }
     return tokens.joined(separator: " ")
   }

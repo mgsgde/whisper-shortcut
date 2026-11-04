@@ -224,6 +224,9 @@ class ChatViewModel: ObservableObject {
   /// meeting: the transcript grows every minute, and re-titling on each chunk would be a request
   /// per chunk.
   private var attemptedLiveMeetingTitleStems: Set<String> = []
+  /// Stems with a live-title call currently running, so concurrent triggers don't double-call
+  /// while a failed or offline attempt still leaves the one real attempt available.
+  private var inFlightLiveMeetingTitleStems: Set<String> = []
   /// Titles this app run wrote from a live transcript, keyed by session. The summary title is the
   /// better one and may replace exactly these — but never a title the user typed, which is why the
   /// *string* is remembered rather than a flag: a rename no longer matches and is left alone.
@@ -2333,19 +2336,25 @@ class ChatViewModel: ObservableObject {
     guard let target = store.session(by: targetId),
           let stem = target.meetingStem,
           !attemptedLiveMeetingTitleStems.contains(stem),
+          !inFlightLiveMeetingTitleStems.contains(stem),
           Self.meetingTitleNeedsGeneration(target)
     else { return }
 
     let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
     guard Self.hasEnoughTextForMeetingTitle(text) else { return }
-    attemptedLiveMeetingTitleStems.insert(stem)
+    inFlightLiveMeetingTitleStems.insert(stem)
+    defer { inFlightLiveMeetingTitleStems.remove(stem) }
 
     if let project = ChatTitleStyle.projectName(in: text) {
       applyGeneratedTitle(
         project, targetId: targetId, overwriteExisting: false, replacingTitle: nil,
         logLabel: "Meeting project")
       if let applied = store.session(by: targetId)?.title, applied == project {
-        transcriptDerivedTitles[targetId] = applied
+        attemptedLiveMeetingTitleStems.insert(stem)
+        // An explicitly named project is the user's own word: the summary title must not replace it.
+        if ChatTitleStyle.explicitProjectName(in: text) != project {
+          transcriptDerivedTitles[targetId] = applied
+        }
       }
       return
     }
@@ -2363,6 +2372,7 @@ class ChatViewModel: ObservableObject {
     await generateAndApplyTitle(
       targetId: targetId, prompt: prompt, overwriteExisting: false, logLabel: "Meeting live")
     if let after = store.session(by: targetId)?.title, after != before {
+      attemptedLiveMeetingTitleStems.insert(stem)
       transcriptDerivedTitles[targetId] = after
     }
   }

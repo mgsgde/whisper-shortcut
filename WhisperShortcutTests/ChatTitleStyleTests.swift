@@ -240,4 +240,24 @@ struct ChatTitleStyleTests {
     #expect(!ChatViewModel.hasEnoughTextForMeetingTitle(String(repeating: "a", count: 199)))
     #expect(ChatViewModel.hasEnoughTextForMeetingTitle(String(repeating: "a", count: 200)))
   }
+
+  @Test("Trailing stop-words are stripped from an explicit project name")
+  func trailingStopWordsStripped() {
+    #expect(ChatTitleStyle.projectName(in: "Projekt ParkDepot Meeting Termin heute") == "ParkDepot")
+    #expect(ChatTitleStyle.explicitProjectName(in: "Projekt ParkDepot Meeting Termin") == "ParkDepot")
+  }
+
+  @Test("explicitProjectName ignores names found only by repetition")
+  func explicitOnly() {
+    let text = "Wir sprechen über ParkDepot. ParkDepot ist wichtig."
+    #expect(ChatTitleStyle.projectName(in: text) == "ParkDepot")
+    #expect(ChatTitleStyle.explicitProjectName(in: text) == nil)
+  }
+
+  @Test("A generated title never replaces a user-renamed chat title")
+  @MainActor
+  func renamedTitleKept() {
+    #expect(!ChatViewModel.mayApplyGeneratedTitle(current: "My rename", firstMessageFallback: "hello"))
+    #expect(ChatViewModel.mayApplyGeneratedTitle(current: "hello", firstMessageFallback: "hello"))
+  }
 }
