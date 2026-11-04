@@ -98,6 +98,11 @@ actor LocalSpeechService {
   /// tuned: the gate only has to answer "is there any speech in this clip at all", and a higher
   /// value starts rejecting quiet dictation.
   private static let vadEnergyThreshold: Float = 0.02
+  /// How far above the −45 dB silence gate a clip's peak must sit before the VAD verdict is
+  /// overruled. A clip that is quiet overall (breath, room noise) stays gated; one with a clear
+  /// peak is decoded even when no 100 ms frame crossed the RMS threshold, because that is quiet
+  /// speech rather than silence.
+  private static let vadGatePeakMarginDB: Float = 15
   /// Matches typical Ollama `keep_alive` so Whisper Turbo is not held for the app's lifetime —
   /// but only for a model that is no longer selected, see `unloadIfNotSelected`.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
@@ -494,12 +499,28 @@ actor LocalSpeechService {
       // A gate, never a chunker: `.vad` chunking loses words at the seams (see the
       // `chunkingStrategy` doc comment on `transcribe`), so the clip is either decoded whole or
       // not at all.
+      //
+      // The gate is deliberately conservative. `EnergyVAD` answers "did any 100 ms frame exceed
+      // the RMS threshold", and quiet-but-real dictation can sit under it — dropping that would
+      // lose a recording the user actually made. So the verdict only counts when the clip is also
+      // quiet overall: a peak well above the silence gate contradicts "no speech" and is decoded
+      // anyway. The hallucination this gate exists for is breath and room noise, which is quiet on
+      // both measures.
       if let hasVoice = hasVoiceActivity(in: audioURL), !hasVoice {
-        DebugLogger.log(
-          "LOCAL-SPEECH: Skipping Whisper — no voice activity in the clip (VAD gate)")
-        ContextLogger.shared.logNoSpeechDetected(
-          source: "localVADGate", peakDb: "n/a", durationMs: "n/a", logPrefix: "LOCAL-SPEECH")
-        throw TranscriptionError.noSpeechDetected
+        let peakDb = peakPowerDecibels(of: audioURL)
+        let contradictsVAD = peakDb.map { $0 > Self.silenceThresholdDB + Self.vadGatePeakMarginDB } ?? false
+        if contradictsVAD {
+          DebugLogger.log(
+            "LOCAL-SPEECH: VAD found no active frame but peak is "
+              + "\(String(format: "%.1f", peakDb ?? 0)) dB — decoding anyway (fail-open)")
+        } else {
+          DebugLogger.log(
+            "LOCAL-SPEECH: Skipping Whisper — no voice activity in the clip (VAD gate)")
+          ContextLogger.shared.logNoSpeechDetected(
+            source: "localVADGate", peakDb: peakDb.map { String(format: "%.1f", $0) } ?? "n/a",
+            durationMs: "n/a", logPrefix: "LOCAL-SPEECH")
+          throw TranscriptionError.noSpeechDetected
+        }
       }
       (text, decodeElapsed) = try await transcribeWithWhisper(
         whisperKit, audioURL: audioURL, language: language, prompt: prompt,

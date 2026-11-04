@@ -80,19 +80,16 @@ struct SpeechToTextSettingsTab: View {
       // Usage Instructions Section
       usageInstructionsSection
 
-      // Advanced: cloud accuracy tuning and the offline hallucination filter. Both sections
-      // self-gate on the selected model, so the group only appears when one of them has content.
-      if viewModel.data.selectedTranscriptionModel.isGemini
-        || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
-        || viewModel.data.selectedTranscriptionModel.isOffline
-      {
-        SpacedSectionDivider()
-        AdvancedSettingsGroup {
-          tuningSection
-          if viewModel.data.selectedTranscriptionModel.isOffline {
-            hallucinationFilterSection
-          }
-        }
+      // Advanced: cloud accuracy tuning and the silence-hallucination filter. Each section
+      // self-gates on the selected model, so the group only appears when one of them has content.
+      //
+      // The filter is *not* offline-only: `validateSpeechText` applies it to every transcription
+      // path, and it is the only defence on the cloud ones. Hiding its switch behind an offline
+      // model made a setting that changes cloud transcripts unreachable for cloud users.
+      SpacedSectionDivider()
+      AdvancedSettingsGroup {
+        tuningSection
+        hallucinationFilterSection
       }
     }
   }
@@ -397,10 +394,12 @@ struct SpeechToTextSettingsTab: View {
 
   // MARK: - Hallucination Filter Section
 
-  /// Offline Whisper only: the phrase filter that drops a transcript consisting of nothing but a
-  /// known silence hallucination. The VAD gate in `LocalSpeechService` is not switchable — it is a
-  /// correctness fix, not a taste — but this list contains phrases a user could legitimately
-  /// dictate on their own ("You", "Bye"), so it is theirs to turn off.
+  /// The phrase filter that drops a transcript consisting of nothing but a known silence
+  /// hallucination. Applies to every transcription path — the VAD gate in `LocalSpeechService`
+  /// catches most of these before an offline decode, and this list is the only defence on the
+  /// cloud ones. The VAD gate itself is not switchable (a correctness fix, not a taste), but this
+  /// list contains phrases a user could legitimately dictate on their own ("You", "Bye"), so it
+  /// is theirs to turn off.
   @ViewBuilder
   private var hallucinationFilterSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {

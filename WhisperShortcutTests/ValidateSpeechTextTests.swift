@@ -100,6 +100,8 @@ struct ValidateSpeechTextTests {
     try TextProcessingUtility.validateSpeechText(
       "Please convert speech to text and use proper punctuation when you can.",
       mode: "TRANSCRIPTION-MODE")
+  }
+
   // MARK: - Whisper silence hallucinations
 
   /// The filter is a whole-transcript match against a closed set. These are the phrases measured
