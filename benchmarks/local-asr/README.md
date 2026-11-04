@@ -102,7 +102,13 @@ glossary holding a short surname, boosting rewrote confidently heard words into 
 | parakeet-ultra+app-gate | 61 (4.21 %) | 23/24 | 10/12 |
 
 Same term recall, nine fewer false rewrites, no latency difference (a reversed-order rerun showed
-the first run's 0.1 s gap was run order). The app now builds its session with the floors plus the gate.
+the first run's 0.1 s gap was run order).
+
+**Re-measured on top of #342** (the guard now refuses to rewrite ordinary German words,
+`GermanCommonWords`), 59 real clips, 1496 words: no glossary 87, `+app` 89, `+app-gate` 88 word
+errors; term recall unchanged. #342 already catches what the gate caught, so the gate is **not
+adopted** — the app keeps `itnDefaultConfig`. Re-run `parakeet-ultra+app,parakeet-ultra+app-gate`
+if the glossary grows or false rewrites come back.
 
 ### 2026-09-29 — M1 Pro / 16 GB, macOS 26.6.2
 
