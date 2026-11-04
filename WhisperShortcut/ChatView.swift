@@ -3306,6 +3306,10 @@ struct ChatView: View {
   @State private var meetingTab: MeetingTab = .chat
   /// True while a folder is being dragged over the window, so the drop target is visible.
   @State private var isFolderDropTargeted: Bool = false
+  /// The prose typeface the transcript is rendered with. Rendered prose carries its fonts, so a
+  /// change has to reach the bubbles as an input — this is that input, refreshed from the
+  /// notification the Settings picker posts.
+  @State private var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   /// Two surfaces, not three. The raw transcript used to be a tab of its own, but nobody reads a
   /// transcript — it gets pasted somewhere else, which is what the Copy button in the bar is for.
@@ -3417,7 +3421,7 @@ struct ChatView: View {
             }
             ChatInputAreaView(viewModel: viewModel, onTapScreenshotThumbnail: { data in
               previewImageData = data
-            })
+            }, fontDesign: fontDesign)
           }
         }
       }
@@ -3490,6 +3494,12 @@ struct ChatView: View {
     }
     .onReceive(NotificationCenter.default.publisher(for: .chatScrollToBottom)) { _ in
       scrollActions.scrollToBottom?()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .chatFontDesignChanged)) { _ in
+      // The transcript's fonts are baked into the rendered prose, so a typeface change only shows
+      // up once this view re-renders with the new value. The window, its sessions and the scroll
+      // position stay as they are.
+      fontDesign = ChatTheme.bodyFontDesign
     }
     .onAppear {
       if createNewSessionOnAppear, !hasTriggeredNewSessionOnAppear {
@@ -3732,7 +3742,8 @@ struct ChatView: View {
                     onEdit: message.id == lastUserMessageId && !viewModel.isSending
                       && ChatViewModel.editableTypedText(of: message.content) != nil
                       ? { viewModel.editAndResend(id: message.id, newText: $0) } : nil,
-                    isLatestTurn: message.id == lastUserMessageId || message.id == lastReplyId)
+                    isLatestTurn: message.id == lastUserMessageId || message.id == lastReplyId,
+                    fontDesign: fontDesign)
                     .id(message.id)
                 }
               }
@@ -3749,7 +3760,8 @@ struct ChatView: View {
               message: detached.message,
               streamingBuffer: detached.buffer,
               onTapAttachedImage: { previewImageData = $0 },
-              liveToolSteps: viewModel.currentToolSteps)
+              liveToolSteps: viewModel.currentToolSteps,
+              fontDesign: fontDesign)
               .id(detached.message.id)
           }
 
@@ -4648,6 +4660,8 @@ struct ChatView: View {
 struct ChatInputAreaView: View {
   @ObservedObject var viewModel: ChatViewModel
   var onTapScreenshotThumbnail: (Data) -> Void
+  /// Prose typeface from Settings, passed down to the AppKit composer.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
   /// Observed so the "what the chat can see" line keeps counting up while the meeting runs.
   @ObservedObject private var liveStore = LiveMeetingTranscriptStore.shared
   /// Observed so a command file added or fixed in Settings shows up in the autocomplete and the
@@ -5053,6 +5067,7 @@ struct ChatInputAreaView: View {
       ChatComposerTextView(
         controller: composer,
         placeholder: composerPlaceholder,
+        fontDesign: fontDesign,
         onSubmit: { submitComposer() },
         onCancel: {
           if viewModel.isSending { viewModel.cancelSend() }
@@ -5569,6 +5584,9 @@ private struct ModelReplyView: View {
   /// `updateNSView`; doing that per streamed token wedges the main thread, so we defer it
   /// until the message is final. See MessageBubbleView call site.
   var isStreaming: Bool = false
+  /// Prose typeface this reply is rendered with. Part of the view's identity so a change in
+  /// Settings invalidates the bubbles; also folded into the segment cache key below.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   /// Markdown parsing (`ReplyBlockBuilder.buildBlocks` + mergedSegments) is expensive and would otherwise run on
   /// every SwiftUI render of every assistant message — so switching chats re-parses the whole
@@ -5578,10 +5596,13 @@ private struct ModelReplyView: View {
 
   private static func cachedSegments(
     content: String, sources: [GroundingSource], groundingSupports: [GroundingSupport],
-    store: Bool
+    store: Bool, fontDesign: ChatFontDesign
   ) -> [ModelReplyRenderSegment] {
     var hasher = Hasher()
     hasher.combine(content)
+    // The parsed runs carry their fonts (ReplyBlockBuilder bakes `ChatTheme.bodyFont` in), so a
+    // typeface change must not be served from a cache entry built with the previous one.
+    hasher.combine(fontDesign.rawValue)
     for s in sources {
       hasher.combine(s.uri)
       hasher.combine(s.title)
@@ -5608,7 +5629,8 @@ private struct ModelReplyView: View {
 
   var body: some View {
     let segments = Self.cachedSegments(
-      content: content, sources: sources, groundingSupports: groundingSupports, store: !isStreaming)
+      content: content, sources: sources, groundingSupports: groundingSupports,
+      store: !isStreaming, fontDesign: fontDesign)
     return VStack(alignment: .leading, spacing: 18) {
       ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
         switch segment {
@@ -6175,13 +6197,15 @@ func parseUserMessagePastedXML(_ content: String) -> (sections: [UserMessagePast
 private struct StreamingModelReplyView: View {
   @ObservedObject var buffer: StreamingBuffer
   let fallback: ChatMessage
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   var body: some View {
     ModelReplyView(
       content: buffer.content,
       sources: fallback.sources,
       groundingSupports: fallback.groundingSupports,
-      isStreaming: true)
+      isStreaming: true,
+      fontDesign: fontDesign)
   }
 }
 
@@ -6201,6 +6225,9 @@ private struct MessageBubbleView: View {
   var isLatestTurn: Bool = false
   /// Set only on the detached streaming bubble: the turn's live tool steps.
   var liveToolSteps: ToolStepsBuffer? = nil
+  /// Prose typeface the transcript is rendered with. Passed in (rather than read from
+  /// `ChatTheme` inside the bubble) so a change in Settings actually invalidates the view.
+  var fontDesign: ChatFontDesign = ChatTheme.bodyFontDesign
 
   @State private var isHovered = false
   @State private var isEditing = false
@@ -6375,13 +6402,14 @@ private struct MessageBubbleView: View {
       VStack(alignment: .leading, spacing: 10) {
         toolStepsGroup
         if let buffer = streamingBuffer {
-          StreamingModelReplyView(buffer: buffer, fallback: message)
+          StreamingModelReplyView(buffer: buffer, fallback: message, fontDesign: fontDesign)
         } else {
           ModelReplyView(
             content: message.content,
             sources: message.sources,
             groundingSupports: message.groundingSupports,
-            isStreaming: false)
+            isStreaming: false,
+            fontDesign: fontDesign)
         }
       }
     }

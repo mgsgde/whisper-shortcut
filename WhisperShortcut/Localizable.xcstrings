@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Appearance" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darstellung"
+          }
+        }
+      }
+    },
+    "Chat Font" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat-Schrift"
+          }
+        }
+      }
+    },
+    "Rounded" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rounded"
+          }
+        }
+      }
+    },
+    "Sans" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sans"
+          }
+        }
+      }
+    },
+    "Serif" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serif"
+          }
+        }
+      }
+    },
     "The dictated text stays on the clipboard, so you can paste it again with ⌘V." : {
       "localizations" : {
         "de" : {
@@ -2296,6 +2346,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Text wird eingefügt, wenn Sie stoppen."
+          }
+        }
+      }
+    },
+    "The typeface the chat writes in. Sans is the macOS system font; Serif and Rounded are Apple's other system designs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Schriftart, in der der Chat schreibt. Sans ist die macOS-Systemschrift, Serif und Rounded sind Apples weitere Systemdesigns."
           }
         }
       }

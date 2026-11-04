@@ -10,6 +10,10 @@ struct ChatSettingsTab: View {
     VStack(alignment: .leading, spacing: 0) {
       modelSection
 
+      SpacedSectionDivider()
+
+      appearanceSection
+
       // Provider-specific setup appears under the picker only for the provider in use, the way
       // Settings → Dictate does it — neither is needed by anyone on a built-in model.
       switch viewModel.data.selectedChatModel.provider {
@@ -83,6 +87,32 @@ struct ChatSettingsTab: View {
         }
       }
     )
+  }
+
+  // MARK: - Appearance Section
+  @ViewBuilder
+  private var appearanceSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Appearance",
+        systemImage: "textformat",
+        subtitle: "The typeface the chat writes in. Sans is the macOS system font; Serif and Rounded are Apple's other system designs."
+      )
+
+      Picker("Chat Font", selection: $viewModel.data.chatFontDesign) {
+        ForEach(ChatFontDesign.allCases, id: \.self) { design in
+          Text(design.displayName)
+            .tag(design)
+        }
+      }
+      .pickerStyle(.menu)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onChange(of: viewModel.data.chatFontDesign) {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+    }
   }
 
   // MARK: - Window Behavior Section

@@ -93,6 +93,10 @@ enum UserDefaultsKeys {
   static let fnKeyDictation = "holdFnToDictate"
   static let dictateMode = "dictateMode"
 
+  // MARK: - Chat Appearance
+  /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
+  static let chatFontDesign = "chatFontDesign"
+
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"
   /// When true, captured screenshots (the Screenshot shortcut and the in-chat button) are also written
