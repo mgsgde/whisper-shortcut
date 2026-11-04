@@ -96,6 +96,8 @@ enum UserDefaultsKeys {
   // MARK: - Chat Appearance
   /// Prose typeface of the chat transcript (`ChatFontDesign` raw value). Absent → `.sans`.
   static let chatFontDesign = "chatFontDesign"
+  /// Bool: the chat follows new content (streaming replies, live notes) while at the bottom. Absent → off.
+  static let chatFollowNewContent = "chatFollowNewContent"
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = "screenshotInPromptMode"

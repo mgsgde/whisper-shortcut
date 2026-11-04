@@ -3274,6 +3274,9 @@ struct ChatView: View {
   /// meeting notes). Set false the moment the user scrolls away from the bottom, so a reply that
   /// keeps growing below the fold never yanks them back to where they were reading.
   @State private var followsBottom: Bool = true
+  /// Settings → Chat → Appearance → "Scroll along with new text". Off by default: the chat only
+  /// follows new content when the user opted in.
+  @AppStorage(UserDefaultsKeys.chatFollowNewContent) private var followNewContentEnabled: Bool = SettingsDefaults.chatFollowNewContent
   /// How close to the content bottom counts as "at the bottom". Generous enough that a wheel
   /// notch or a trackpad bounce does not silently end the follow.
   private static let followBottomThreshold: CGFloat = 40
@@ -4069,7 +4072,8 @@ struct ChatView: View {
   }
 
   /// Follows content growth while the user is at the bottom, and stops following the moment they
-  /// scroll away.
+  /// scroll away. The follow only happens when the user turned on "Scroll along with new text" in
+  /// Settings → Chat; the at-bottom flag is tracked either way.
   ///
   /// One hook covers every append path — a streaming delta, a new message, a live meeting note —
   /// because all of them do the same thing to the scroll view: they make the content taller. The
@@ -4090,12 +4094,12 @@ struct ChatView: View {
         viewModel.setFollowingBottom(nowFollowing, for: viewModel.currentSessionId)
       }
     }
-    guard new.contentHeight > old.contentHeight + 0.5, followsBottom else { return }
+    guard new.contentHeight > old.contentHeight + 0.5, followsBottom, followNewContentEnabled else { return }
     // Deferred by one runloop turn: the growth that triggered this callback is still being laid
     // out, so scrolling from inside it would target the previous content height and land short
     // of the new bottom.
     Task { @MainActor in
-      guard followsBottom else { return }
+      guard followsBottom && followNewContentEnabled else { return }
       followBottom(proxy: proxy)
     }
   }
@@ -4130,8 +4134,9 @@ struct ChatView: View {
       followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
       // A session that was following the bottom is put back on the newest content, not on the
-      // anchor it happened to have: the anchor is only the layout starting point.
-      if wasFollowing { scrollToBottom(proxy: proxy) }
+      // anchor it happened to have: the anchor is only the layout starting point. Only when the
+      // user turned on "Scroll along with new text" in Settings → Chat.
+      if wasFollowing && followNewContentEnabled { scrollToBottom(proxy: proxy) }
     } else {
       scrollPositionID = nil
       followsBottom = true

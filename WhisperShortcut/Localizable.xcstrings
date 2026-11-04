@@ -11,6 +11,26 @@
         }
       }
     },
+    "Scroll along with new text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei neuem Text mitscrollen"
+          }
+        }
+      }
+    },
+    "Keeps the newest text in view while a reply or live meeting notes are being written. Scrolling up stops it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hält den neuesten Text im Blick, während eine Antwort oder Live-Meeting-Notizen geschrieben werden. Hochscrollen beendet das."
+          }
+        }
+      }
+    },
     "Chat Font" : {
       "localizations" : {
         "de" : {
