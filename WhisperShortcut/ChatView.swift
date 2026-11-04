@@ -2458,6 +2458,17 @@ class ChatViewModel: ObservableObject {
     scrollAnchorStore.set(messageId, for: sessionId)
   }
 
+  /// True when `sessionId` was left scrolled to the bottom, so new content should keep pulling
+  /// it down. Recorded separately from the anchor: a bottom-read session still has a top message.
+  func isFollowingBottom(for sessionId: UUID) -> Bool {
+    scrollAnchorStore.isFollowing(sessionId)
+  }
+
+  /// Records whether `sessionId` is following the newest content.
+  func setFollowingBottom(_ isFollowing: Bool, for sessionId: UUID) {
+    scrollAnchorStore.setFollowing(isFollowing, for: sessionId)
+  }
+
   // MARK: - Tab navigation
 
   private func refreshRecentSessions() {
@@ -3963,6 +3974,7 @@ struct ChatView: View {
 
   private func scrollToTop(proxy: ScrollViewProxy) {
     followsBottom = false
+    viewModel.setFollowingBottom(false, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       proxy.scrollTo("listTop", anchor: .top)
     }
@@ -3970,6 +3982,7 @@ struct ChatView: View {
 
   private func scrollToBottom(proxy: ScrollViewProxy) {
     followsBottom = true
+    viewModel.setFollowingBottom(true, for: viewModel.currentSessionId)
     withAnimation(.easeOut(duration: 0.2)) {
       if let lastId = viewModel.messages.last?.id {
         proxy.scrollTo(lastId, anchor: .bottom)
@@ -3993,7 +4006,13 @@ struct ChatView: View {
     // The user's own movement wins over growth: if they scrolled up in the same frame that a
     // delta landed, they meant to leave the bottom and must not be pulled back.
     if abs(new.offsetY - old.offsetY) > 0.5 {
-      followsBottom = new.distanceFromBottom <= Self.followBottomThreshold
+      let nowFollowing = new.distanceFromBottom <= Self.followBottomThreshold
+      if nowFollowing != followsBottom {
+        followsBottom = nowFollowing
+        // Remembered per session so a tab switch back restores the user's actual choice instead
+        // of inferring it from the anchor.
+        viewModel.setFollowingBottom(nowFollowing, for: viewModel.currentSessionId)
+      }
     }
     guard new.contentHeight > old.contentHeight + 0.5, followsBottom else { return }
     // Deferred by one runloop turn: the growth that triggered this callback is still being laid
@@ -4021,16 +4040,22 @@ struct ChatView: View {
   /// Restores the session's saved top message, or scrolls to the latest messages when there is
   /// none (or the saved message no longer exists). Sets the `scrollPosition` binding and nudges
   /// the proxy so the position holds across the list recreation a resize/screen-move causes.
+  ///
+  /// The follow decision comes from the stored flag, not from the presence of an anchor: a session
+  /// the user read at the bottom still has a top message, and treating that as "was reading
+  /// further up" is what stopped the autoscroll after every tab switch.
   private func restoreSavedScroll(proxy: ScrollViewProxy) {
     let sessionId = viewModel.currentSessionId
+    let wasFollowing = viewModel.isFollowingBottom(for: sessionId)
     if let saved = viewModel.scrollAnchor(for: sessionId),
        viewModel.messages.contains(where: { $0.id == saved }) {
       DebugLogger.logUI("CHAT-SCROLL: restoring saved anchor \(saved.uuidString) session=\(sessionId)")
       scrollPositionID = saved
-      // A saved anchor means the user was reading further up when they left this session; new
-      // content must not pull them down from it.
-      followsBottom = false
+      followsBottom = wasFollowing
       proxy.scrollTo(saved, anchor: .top)
+      // A session that was following the bottom is put back on the newest content, not on the
+      // anchor it happened to have: the anchor is only the layout starting point.
+      if wasFollowing { scrollToBottom(proxy: proxy) }
     } else {
       scrollPositionID = nil
       followsBottom = true
