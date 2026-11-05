@@ -24242,6 +24242,76 @@
           }
         }
       }
+    },
+    "Date and topic" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datum und Thema"
+          }
+        }
+      }
+    },
+    "Date only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur Datum"
+          }
+        }
+      }
+    },
+    "First message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erste Nachricht"
+          }
+        }
+      }
+    },
+    "How chat and meeting rows are named in the sidebar." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie Chat- und Meeting-Zeilen in der Seitenleiste benannt werden."
+          }
+        }
+      }
+    },
+    "Session Titles" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel der Sitzungen"
+          }
+        }
+      }
+    },
+    "Title:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel:"
+          }
+        }
+      }
+    },
+    "Date styles put the day in front of the row, e.g. \"2026-11-03 Topic\". Meetings use the day they were recorded. Existing titles are not changed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datumsstile stellen den Tag vor die Zeile, z. B. „2026-11-03 Thema“. Meetings verwenden den Tag der Aufnahme. Bestehende Titel werden nicht geändert."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
