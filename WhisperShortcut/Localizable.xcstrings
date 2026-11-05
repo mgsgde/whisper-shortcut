@@ -1,6 +1,36 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Removed from %@'s settings. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus den Einstellungen von %@ entfernt. %@"
+          }
+        }
+      }
+    },
+    "WhisperShortcut wasn't in %@'s settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut war nicht in den Einstellungen von %@ eingetragen."
+          }
+        }
+      }
+    },
+    "Removes WhisperShortcut from %@'s settings. macOS asks once for access to the folder they live in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt WhisperShortcut aus den Einstellungen von %@. macOS fragt einmal nach Zugriff auf den Ordner, in dem sie liegen."
+          }
+        }
+      }
+    },
     "Appearance" : {
       "localizations" : {
         "de" : {
@@ -22170,6 +22200,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich in die Einstellungen von %@ einzutragen. Klicken Sie auf „Erlauben“."
+          }
+        }
+      }
+    },
+    "WhisperShortcut needs access to this folder once to remove itself from %@'s settings. Click Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich aus den Einstellungen von %@ zu entfernen. Klicken Sie auf „Erlauben“."
           }
         }
       }

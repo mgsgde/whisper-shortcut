@@ -36,9 +36,12 @@ struct AIAppsSettingsTab: View {
   /// says it is waiting instead of showing a connection that still holds the old entry.
   @State private var connectedAt: [MCPClient: Date] = [:]
   @State private var connecting: MCPClient?
+  @State private var disconnecting: MCPClient?
 
   private enum ConnectOutcome: Equatable {
     case connected
+    /// `removed` is false when the entry was already gone, so the card can say so honestly.
+    case disconnected(removed: Bool)
     case failed(String)
   }
 
@@ -333,7 +336,10 @@ struct AIAppsSettingsTab: View {
           }
         }
         Spacer()
-        connectButton(client)
+        HStack(spacing: 8) {
+          if isConnected(client) { disconnectButton(client) }
+          connectButton(client)
+        }
       }
 
       connectionStatus(client)
@@ -389,8 +395,7 @@ struct AIAppsSettingsTab: View {
       if connecting == client {
         ProgressView().controlSize(.small)
       } else {
-        Text(connectOutcome[client] == .connected || clients.client(matching: client.registryPrefix) != nil
-          ? ("Connect Again" as LocalizedStringKey) : "Connect")
+        Text(isConnected(client) ? ("Connect Again" as LocalizedStringKey) : "Connect")
       }
     }
     .buttonStyle(.borderedProminent)
@@ -399,8 +404,37 @@ struct AIAppsSettingsTab: View {
     // connects as soon as the server is up.
     // A test build runs next to the user's own instance with its own key and never starts the
     // server, so a Connect from it would point the user's real AI app at the wrong key.
-    .disabled(connecting != nil || setupToken.isEmpty || AppConstants.isSidecarInstance)
+    .disabled(connecting != nil || disconnecting != nil || setupToken.isEmpty || AppConstants.isSidecarInstance)
     .help(Text("Adds WhisperShortcut to \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
+    .pointerCursorOnHover()
+  }
+
+  /// Connected means: Connect wrote the entry this session, or the client has called in since.
+  /// A Disconnect in this session wins over an old registry record.
+  private func isConnected(_ client: MCPClient) -> Bool {
+    switch connectOutcome[client] {
+    case .connected: return true
+    case .disconnected: return false
+    default: return clients.client(matching: client.registryPrefix) != nil
+    }
+  }
+
+  /// Secondary to Connect Again: removing access is the rarer move, so it does not compete for
+  /// attention. No confirmation, since Connect puts it back in one click.
+  private func disconnectButton(_ client: MCPClient) -> some View {
+    Button {
+      disconnect(client)
+    } label: {
+      if disconnecting == client {
+        ProgressView().controlSize(.small)
+      } else {
+        Text("Disconnect")
+      }
+    }
+    .buttonStyle(.bordered)
+    .controlSize(.small)
+    .disabled(connecting != nil || disconnecting != nil || AppConstants.isSidecarInstance)
+    .help(Text("Removes WhisperShortcut from \(client.displayName)'s settings. macOS asks once for access to the folder they live in."))
     .pointerCursorOnHover()
   }
 
@@ -416,6 +450,17 @@ struct AIAppsSettingsTab: View {
         .foregroundColor(.orange)
         .fixedSize(horizontal: false, vertical: true)
         .textSelection(.enabled)
+    } else if case .disconnected(let removed) = connectOutcome[client] {
+      Label {
+        Text(removed
+          ? "Removed from \(client.displayName)'s settings. \(client.restartHint)"
+          : "WhisperShortcut wasn't in \(client.displayName)'s settings.")
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      } icon: {
+        Image(systemName: "minus.circle").foregroundColor(.secondary)
+      }
+      .font(.caption)
     } else if waiting {
       HStack(spacing: 6) {
         ProgressView().controlSize(.mini)
@@ -457,6 +502,24 @@ struct AIAppsSettingsTab: View {
       case .success:
         connectOutcome[client] = .connected
         connectedAt[client] = Date()
+      case .failure(let error):
+        if case .cancelled? = error as? MCPClientInstallerError { return }
+        connectOutcome[client] = .failed(error.localizedDescription)
+      }
+    }
+  }
+
+  private func disconnect(_ client: MCPClient) {
+    disconnecting = client
+    Task { @MainActor in
+      let result = await MCPClientInstaller.disconnect(client, serverName: Self.serverName)
+      disconnecting = nil
+      switch result {
+      case .success(let removed):
+        // Forget the last call-in too, or the card would keep showing "Connected · 2 min ago".
+        clients.forget(matching: client.registryPrefix)
+        connectedAt[client] = nil
+        connectOutcome[client] = .disconnected(removed: removed)
       case .failure(let error):
         if case .cancelled? = error as? MCPClientInstallerError { return }
         connectOutcome[client] = .failed(error.localizedDescription)
