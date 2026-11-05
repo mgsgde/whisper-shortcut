@@ -54,7 +54,8 @@ final class RecordingIndicatorModel: ObservableObject {
   @Published var scrubPosition: TimeInterval?
   /// Dictate Prompt: frequent instructions shown above the pill. Empty when the list is hidden.
   @Published var quickActions: [QuickAction] = []
-  /// nil until ↑/↓ moves into the list, so ↩ on an empty field means "use the speech".
+  /// The highlighted entry; nil means the text field, so ↩ on an empty field uses the speech.
+  /// Opens on the first entry when the last run picked one, else on the field.
   @Published var quickActionIndex: Int?
   @Published var quickActionsVisible = false
   /// Dictate Prompt: what the run will act on, shown in the card's header.
@@ -284,9 +285,11 @@ private enum QuickActionCardMetrics {
 /// bottom: what the run acts on, the quick actions (⌃1–9), a text field that has keyboard focus
 /// from the start, and the recording controls.
 ///
-/// Nothing is highlighted until ↑/↓ moves into the list, so ↩ on an empty field means the same as
-/// ✓ — stop and use what was spoken. Only ⌃digit picks an entry: a bare digit is just text, so a
-/// keystroke meant for the app underneath cannot fire an action.
+/// The list holds the instructions last run from the card, most recent first. When the last run
+/// picked an entry, the card opens with it highlighted, so ↩ runs it again; otherwise the field is
+/// selected and ↩ on it means the same as ✓ — stop and use what was spoken. ↑/↓ cycle through the
+/// entries and the field. Only ⌃digit picks an entry: a bare digit is just text, so a keystroke
+/// meant for the app underneath cannot fire an action.
 ///
 /// A dictation template bound to the app underneath shows in the header instead of the "nothing
 /// selected" warning: the user is dictating into a field on purpose, and the header says what
@@ -627,7 +630,7 @@ private struct QuickActionCardView: View {
     .frame(height: QuickActionCardMetrics.rowHeight)
     .background(
       RoundedRectangle(cornerRadius: 7, style: .continuous)
-        .fill(isTyping ? Color.white.opacity(0.16) : Color.white.opacity(0.06))
+        .fill(Color.white.opacity(isTyping || selectedIndex == nil ? 0.16 : 0.06))
     )
     .onAppear {
       // The panel takes key status as the card appears; focus on the next turn.
@@ -1053,17 +1056,18 @@ final class RecordingIndicatorManager {
     }
   }
 
-  /// Grows the pill into the Dictate Prompt card. Nothing starts highlighted, and the field
-  /// takes keyboard focus, so the user can type right away. `templateName`: the dictation template
+  /// Grows the pill into the Dictate Prompt card. `preselectFirst` highlights the first entry
+  /// (the last one run) so ↩ repeats it; otherwise nothing is highlighted. The field takes
+  /// keyboard focus either way, so the user can type right away. `templateName`: the dictation template
   /// bound to the app underneath; the card then shows even with no quick actions, so the header can
   /// say what stopping does. `templateChoices`: with two or more, the card opens the template
   /// picker on `templateChoiceIndex`, whose name `templateName` must be.
   func showQuickActions(
     _ actions: [QuickAction], context: QuickActionContext, templateName: String? = nil,
-    templateChoices: [String] = [], templateChoiceIndex: Int = 0
+    templateChoices: [String] = [], templateChoiceIndex: Int = 0, preselectFirst: Bool = false
   ) {
     model.quickActions = actions
-    model.quickActionIndex = nil
+    model.quickActionIndex = preselectFirst && !actions.isEmpty ? 0 : nil
     model.quickActionContext = context
     model.typedPrompt = ""
     model.templateName = templateName
@@ -1096,16 +1100,25 @@ final class RecordingIndicatorManager {
   func updateQuickActionContext(_ context: QuickActionContext) {
     guard model.quickActionsVisible else { return }
     model.quickActionContext = context
+    // An edit entry has nothing to act on: the preselected repeat gives way to the field.
+    if context == .nothingSelected, let index = model.quickActionIndex,
+      model.quickActions.indices.contains(index), model.quickActions[index].isEdit
+    {
+      model.quickActionIndex = nil
+    }
   }
 
-  /// ↓ from nothing lands on the first entry, ↑ on the last; after that it wraps.
+  /// Cycles entries and the field below them: ↓ from the field lands on the first entry, ↑ on
+  /// the last; ↓ past the last entry and ↑ past the first land on the field.
   func moveQuickActionSelection(by delta: Int) {
     guard model.quickActionsVisible, !model.quickActions.isEmpty else { return }
     let count = model.quickActions.count
-    let next = model.quickActionIndex.map { (($0 + delta) % count + count) % count }
-      ?? (delta > 0 ? 0 : count - 1)
-    model.quickActionIndex = next
-    DebugLogger.log("QUICK-ACTIONS: Highlight → entry \(next + 1)")
+    // Position `count` is the field.
+    let current = model.quickActionIndex ?? count
+    let position = ((current + delta) % (count + 1) + count + 1) % (count + 1)
+    model.quickActionIndex = position == count ? nil : position
+    DebugLogger.log(
+      "QUICK-ACTIONS: Highlight → \(position == count ? "field" : "entry \(position + 1)")")
   }
 
   /// Tab or a click on the template header: switch the bound template off or back on. The choice

@@ -257,6 +257,12 @@ enum UserDefaultsKeys {
   /// The user's own Dictate Prompt quick prompts, in display order. `[String]`. May contain
   /// blank entries while editing; readers drop them.
   static let dictatePromptCustomQuickActions = "dictatePromptCustomQuickActions"
+  /// Dictate Prompt instructions last run from the card (an entry or typed text), most recent
+  /// first. `[String]`, at most `QuickActionStore.cardEntries`. Leads the card's list.
+  static let dictatePromptRecentQuickActions = "dictatePromptRecentQuickActions"
+  /// Whether the last Dictate Prompt run picked a list entry. `Bool`. True → the card opens with
+  /// the first (most recent) entry highlighted; false or unset → on the text field.
+  static let dictatePromptPreselectRecent = "dictatePromptPreselectRecent"
   /// JSON-encoded `[DictationTemplate]`. Absent means no templates (today's behaviour).
   static let dictationTemplates = "dictationTemplates"
   /// JSON-encoded `ShortcutDefinition` for the generic template shortcut. Absent means

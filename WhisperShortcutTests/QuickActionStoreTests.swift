@@ -299,4 +299,28 @@ struct QuickActionStoreTests {
       includeLearned: true)
     #expect(actions.map(\.text) == ["translate to German."])
   }
+
+  @Test("The card lists recent instructions first, then ranked ones, three in all")
+  func cardListsRecentFirst() {
+    let ranked = QuickActionStore.ranked(from: [], forceFallback: true)
+    let card = QuickActionStore.cardList(recent: ["Übersetze ins Englische", "make it shorter."], ranked: ranked)
+    #expect(card.count == QuickActionStore.cardEntries)
+    #expect(card.map(\.text).prefix(2) == ["Übersetze ins Englische", "Make it shorter"])
+    // A recent text that also ranks keeps the ranked entry, so a built-in stays an edit.
+    #expect(card[1].isBuiltIn)
+    #expect(card[2].text == "Fix grammar and spelling")
+  }
+
+  @Test("Recording a use moves it to the front, drops its duplicate, keeps three")
+  func updatedRecentMovesToFront() {
+    let recent = ["Korrigiere", "Formuliere neu", "Formatiere neu"]
+    #expect(
+      QuickActionStore.updatedRecent(recent, using: " formuliere neu. ")
+        == ["formuliere neu.", "Korrigiere", "Formatiere neu"])
+    #expect(
+      QuickActionStore.updatedRecent(recent, using: "Kürzer")
+        == ["Kürzer", "Korrigiere", "Formuliere neu"])
+    let long = String(repeating: "word ", count: 20)
+    #expect(QuickActionStore.updatedRecent(recent, using: long) == recent)
+  }
 }

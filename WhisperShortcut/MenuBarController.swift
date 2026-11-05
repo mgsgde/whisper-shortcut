@@ -907,7 +907,8 @@ class MenuBarController: NSObject {
   private func offerQuickActionsIfNeeded() {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
-    let actions = QuickActionStore.shared.current()
+    let actions = QuickActionStore.shared.forCard()
+    let preselect = QuickActionStore.preselectsRecent
     let templateName = recording?.boundTemplate?.displayName
     guard !actions.isEmpty || templateName != nil else {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
@@ -935,12 +936,13 @@ class MenuBarController: NSObject {
     }
     // No capture means screenshot-selection mode: the model reads the selection off the screen.
     guard let capture = recording?.promptSelection else {
-      RecordingIndicatorManager.shared.showQuickActions(actions, context: .screenshot)
+      RecordingIndicatorManager.shared.showQuickActions(
+        actions, context: .screenshot, preselectFirst: preselect)
       DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
       return
     }
     RecordingIndicatorManager.shared.showQuickActions(
-      actions, context: .reading, templateName: templateName)
+      actions, context: .reading, templateName: templateName, preselectFirst: preselect)
     DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
     observePromptSelection(capture)
   }
@@ -968,6 +970,12 @@ class MenuBarController: NSObject {
     if !typed.isEmpty, recording?.quickActionRan == false {
       runPromptInstruction(typed, source: "typed")
       return
+    }
+    // The spoken instruction wins: the next card opens on the text field again.
+    if recording?.quickActionsOffered == true, recording?.quickActionRan == false,
+      recording?.boundTemplate == nil
+    {
+      QuickActionStore.recordUse(text: nil, fromEntry: false)
     }
     stopRecordingAfterTailDelay()
   }
@@ -999,6 +1007,7 @@ class MenuBarController: NSObject {
     recording?.quickActionRan = true
     recording?.quickActionInstruction = text
     recording?.isEditQuickAction = isEdit
+    QuickActionStore.recordUse(text: text, fromEntry: fromQuickAction)
     if fromQuickAction {
       TelemetryService.shared.count(.quickPrompt, .used)
     }
