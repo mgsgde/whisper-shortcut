@@ -311,6 +311,41 @@ struct QuickActionStoreTests {
     #expect(card[2].text == "Fix grammar and spelling")
   }
 
+  @Test("With own prompts the card keeps their order and highlights the last one where it stands")
+  func cardKeepsOwnOrder() {
+    let custom = ["Korrigiere, formuliere neu.", "Korrigiere nur Rechtschreibung", "Kürzer", "Weicher"]
+    let ranked = QuickActionStore.combined(
+      custom: custom, learned: [], forceFallback: false, includeLearned: true)
+    let card = QuickActionStore.card(
+      custom: custom, recent: ["kürzer", "Korrigiere, formuliere neu."], ranked: ranked,
+      preselect: true)
+    #expect(card.actions.map(\.text) == custom)
+    #expect(card.preselectIndex == 2)
+  }
+
+  @Test("With own prompts nothing is highlighted when the last run was spoken or typed elsewhere")
+  func cardOwnPromptsNoPreselect() {
+    let custom = ["Korrigiere", "Kürzer"]
+    let ranked = QuickActionStore.combined(
+      custom: custom, learned: [], forceFallback: false, includeLearned: true)
+    #expect(
+      QuickActionStore.card(custom: custom, recent: ["Kürzer"], ranked: ranked, preselect: false)
+        .preselectIndex == nil)
+    #expect(
+      QuickActionStore.card(custom: custom, recent: ["Übersetze"], ranked: ranked, preselect: true)
+        .preselectIndex == nil)
+  }
+
+  @Test("Without own prompts the card stays recent-first, three entries, first highlighted")
+  func cardWithoutOwnPrompts() {
+    let ranked = QuickActionStore.ranked(from: [], forceFallback: true)
+    let card = QuickActionStore.card(
+      custom: [" "], recent: ["Übersetze ins Englische"], ranked: ranked, preselect: true)
+    #expect(card.actions.count == QuickActionStore.cardEntries)
+    #expect(card.actions.first?.text == "Übersetze ins Englische")
+    #expect(card.preselectIndex == 0)
+  }
+
   @Test("Recording a use moves it to the front, drops its duplicate, keeps three")
   func updatedRecentMovesToFront() {
     let recent = ["Korrigiere", "Formuliere neu", "Formatiere neu"]
