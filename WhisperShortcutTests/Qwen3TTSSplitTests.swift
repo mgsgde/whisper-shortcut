@@ -2,9 +2,10 @@
 //  Qwen3TTSSplitTests.swift
 //  WhisperShortcutTests
 //
-//  The chunker decides how a long article is cut before it reaches the model. A bad cut is
-//  audible (a sentence split mid-clause) or expensive (a chunk far over the cap), so the rules
-//  are pinned here rather than only exercised through a 3 GB model.
+//  The splitter decides what one model call sees. It is one sentence per call — that is what
+//  keeps the voice stable (the first sentence becomes the speaker reference for the rest) and
+//  what makes the first audio arrive early. A bad cut is audible or expensive, so the rules are
+//  pinned here rather than only exercised through a 3 GB model.
 //
 
 import Foundation
@@ -12,54 +13,58 @@ import Testing
 
 @testable import WhisperShortcut_AppStore
 
-@Suite("Qwen3 TTS text splitting")
+@Suite("Qwen3 TTS sentence splitting")
 struct Qwen3TTSSplitTests {
 
-  @Test("Short text stays one chunk")
-  func shortTextIsOneChunk() {
-    let text = "Guten Tag. Dies ist ein kurzer Satz."
-    #expect(Qwen3TTSService.split(text, maxChars: 400) == [text])
+  @Test("One sentence per entry")
+  func oneSentencePerEntry() {
+    let text = "Guten Tag. Dies ist ein kurzer Satz. Und noch einer!"
+    let sentences = Qwen3TTSService.splitIntoSentences(text, maxChars: 400)
+    #expect(sentences == ["Guten Tag.", "Dies ist ein kurzer Satz.", "Und noch einer!"])
   }
 
-  @Test("Empty and whitespace-only text produce no chunks")
-  func emptyTextProducesNoChunks() {
-    #expect(Qwen3TTSService.split("", maxChars: 400).isEmpty)
-    #expect(Qwen3TTSService.split("   \n\t ", maxChars: 400).isEmpty)
+  @Test("A single sentence stays one entry")
+  func singleSentenceStaysWhole() {
+    let text = "Dies ist ein einzelner Satz ohne weitere Unterbrechung."
+    #expect(Qwen3TTSService.splitIntoSentences(text, maxChars: 400) == [text])
   }
 
-  @Test("Long text splits at sentence boundaries and loses nothing")
-  func longTextSplitsAtSentences() {
-    let sentence = "Dies ist ein Satz mit ausreichend Laenge fuer den Test. "
-    let text = String(repeating: sentence, count: 30)
-    let chunks = Qwen3TTSService.split(text, maxChars: 400)
-
-    #expect(chunks.count > 1)
-    for chunk in chunks {
-      #expect(chunk.count <= 400, "chunk over the cap: \(chunk.count)")
-      // A chunk must not start or end mid-word.
-      #expect(!chunk.hasPrefix(" "))
-      #expect(!chunk.hasSuffix(" "))
-    }
-    // Every sentence survives exactly once.
-    let rejoined = chunks.joined(separator: " ")
-    #expect(rejoined.components(separatedBy: "Test.").count == text.components(separatedBy: "Test.").count)
+  @Test("Empty and whitespace-only text produce no entries")
+  func emptyTextProducesNothing() {
+    #expect(Qwen3TTSService.splitIntoSentences("", maxChars: 400).isEmpty)
+    #expect(Qwen3TTSService.splitIntoSentences("   \n\t ", maxChars: 400).isEmpty)
   }
 
-  @Test("A single sentence longer than the cap is cut at a word boundary")
+  @Test("Sentences are not merged, however short they are")
+  func shortSentencesAreNotMerged() {
+    // The old chunker packed sentences up to a character cap. That is exactly what made the
+    // voice drift: one call covered several sentences, and the next call started a new speaker.
+    let text = "Ja. Nein. Vielleicht. Doch."
+    #expect(Qwen3TTSService.splitIntoSentences(text, maxChars: 400).count == 4)
+  }
+
+  @Test("A sentence longer than the cap is cut at a word boundary")
   func longSentenceSplitsAtWords() {
-    let text = String(repeating: "wort ", count: 200)
-    let chunks = Qwen3TTSService.split(text, maxChars: 100)
+    let text = String(repeating: "wort ", count: 200) + "."
+    let sentences = Qwen3TTSService.splitIntoSentences(text, maxChars: 100)
 
-    #expect(chunks.count > 1)
-    for chunk in chunks {
-      #expect(chunk.count <= 100, "chunk over the cap: \(chunk.count)")
-      #expect(!chunk.hasPrefix(" "))
+    #expect(sentences.count > 1)
+    for sentence in sentences {
+      #expect(sentence.count <= 100, "entry over the cap: \(sentence.count)")
+      #expect(!sentence.hasPrefix(" "))
     }
   }
 
   @Test("A decimal point does not split a sentence")
   func decimalPointDoesNotSplit() {
     let text = "Der Wert liegt bei 3.5 Prozent und das ist korrekt."
-    #expect(Qwen3TTSService.split(text, maxChars: 400) == [text])
+    #expect(Qwen3TTSService.splitIntoSentences(text, maxChars: 400) == [text])
+  }
+
+  @Test("No text is lost across the split")
+  func noTextIsLost() {
+    let text = "Erster Satz. Zweiter Satz! Dritter Satz? Vierter Satz."
+    let sentences = Qwen3TTSService.splitIntoSentences(text, maxChars: 400)
+    #expect(sentences.joined(separator: " ") == text)
   }
 }

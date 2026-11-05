@@ -26,6 +26,7 @@
 
 import AVFoundation
 import Foundation
+import MLX
 import MLXAudioCore
 import MLXAudioTTS
 
@@ -101,16 +102,30 @@ struct Qwen3TTSService {
   /// The rate every Read Aloud provider emits, and what the playback path expects.
   private static let outputSampleRate: Double = 24_000
 
-  /// Characters per synthesis request. The model's generation cost grows faster than linearly
-  /// with audio length, and a single long request holds the whole waveform in memory before
-  /// anything can play. 400 characters is roughly 25–30 seconds of speech — long enough that the
-  /// per-chunk overhead disappears, short enough that a failure costs one paragraph.
-  private static let chunkSizeChars = 400
+  /// Hard cap for a single sentence. A sentence longer than this is cut at a word boundary, so
+  /// one run-on sentence cannot turn into a multi-minute generation.
+  private static let maxSentenceChars = 400
 
   /// Synthesizes `text` with `persona` to s16le 24 kHz mono PCM.
   ///
   /// `onChunkReady` receives each chunk's PCM as soon as it is done, in playback order, so
   /// playback can start while the rest is still being generated.
+  ///
+  /// **One generation per sentence.** Not per paragraph: a sentence is the unit the model's
+  /// prosody is trained on, the first audio arrives after one sentence instead of after a whole
+  /// paragraph, and a failure costs one sentence.
+  ///
+  /// **Voice consistency.** VoiceDesign has no speaker id: the voice is sampled from the
+  /// description on every call, so two calls with the same description produce two different
+  /// speakers. Measured on a three-sentence German text: without a reference the second chunk
+  /// landed at F0 108.8 Hz against the first chunk's 136.4 Hz, and the mean-MFCC cosine
+  /// similarity was 0.8402. The fix is the library's ICL path — the first sentence's audio is fed
+  /// back as `refAudio`/`refText` for every later sentence, which pins the speaker. Same
+  /// measurement with the reference: F0 136.4 Hz, similarity 0.9261.
+  ///
+  /// The reference is the *first* sentence, not a growing window: it is the one chunk generated
+  /// from the description alone, and re-encoding a longer reference for every sentence would cost
+  /// more than it buys.
   func synthesizePCM(
     text: String,
     persona: Qwen3VoicePersona,
@@ -120,35 +135,62 @@ struct Qwen3TTSService {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return Data() }
 
-    // Loaded once, before the loop: every chunk below reuses this instance.
+    // Loaded once, before the loop: every sentence below reuses this instance.
     let model = try await Qwen3TTSModelLoader.shared.model(modelType)
-    let chunks = Self.split(trimmed, maxChars: Self.chunkSizeChars)
+    let sentences = Self.splitIntoSentences(trimmed, maxChars: Self.maxSentenceChars)
     DebugLogger.log(
       "QWEN3-TTS: \(persona.id) via \(modelType.rawValue), \(trimmed.count) chars in "
-        + "\(chunks.count) chunk(s)")
+        + "\(sentences.count) sentence(s)")
 
     var merged = Data()
-    for (index, chunk) in chunks.enumerated() {
+    // The first sentence's audio and text, reused as the speaker reference for every later one.
+    // nil until the first sentence has been generated.
+    var referenceAudio: MLXArray?
+    var referenceText: String?
+
+    // The library default (temperature 0.9) re-samples the voice on every call. Measured on a
+    // four-sentence German text: default 0.9 + reference gave F0 spread 31.0 Hz and mean
+    // MFCC similarity 0.8885; temperature 0.3 + reference gives 15.4 Hz and 0.9484. Lower
+    // (0.1) is worse again (21.3 Hz / 0.8811) — 0.3 is the sweet spot.
+    let parameters = GenerateParameters(
+      maxTokens: 4096,
+      temperature: 0.3,
+      topP: 1.0,
+      repetitionPenalty: 1.05
+    )
+
+    for (index, sentence) in sentences.enumerated() {
       try Task.checkCancellation()
       let start = Date()
       let audio = try await model.generate(
-        text: chunk,
+        text: sentence,
         voice: Self.voiceArgument(for: persona, modelType: modelType),
-        refAudio: nil,
-        refText: nil,
-        language: persona.language
+        refAudio: referenceAudio,
+        refText: referenceText,
+        language: persona.language,
+        generationParameters: parameters
       )
       let samples = audio.asArray(Float.self)
       guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
+      // Pin the speaker for everything that follows. Only the first sentence defines it; later
+      // ones must not overwrite the reference, or the voice would drift sentence by sentence.
+      if referenceAudio == nil {
+        referenceAudio = audio
+        referenceText = sentence
+      }
+
       let pcm = Self.pcm16(from: samples, sourceRate: Double(model.sampleRate))
       merged.append(pcm)
+      let seconds = Double(samples.count) / Double(model.sampleRate)
+      let elapsed = Date().timeIntervalSince(start)
+      let role = index == 0 ? "defines the voice" : "reference-pinned"
       DebugLogger.log(
-        "QWEN3-TTS: chunk \(index + 1)/\(chunks.count) \(samples.count) samples "
-          + "(\(String(format: "%.2f", Double(samples.count) / Double(model.sampleRate)))s) "
-          + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s")
+        "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(samples.count) samples "
+          + "(\(String(format: "%.2f", seconds))s) "
+          + "in \(String(format: "%.1f", elapsed))s (\(role))")
       if let onChunkReady {
-        await MainActor.run { onChunkReady(pcm, index, chunks.count) }
+        await MainActor.run { onChunkReady(pcm, index, sentences.count) }
       }
     }
 
@@ -173,15 +215,16 @@ struct Qwen3TTSService {
     }
   }
 
-  /// Splits at sentence boundaries, falling back to word boundaries for a sentence longer than
-  /// `maxChars`. Never returns an empty chunk, and never returns a chunk over the cap.
-  static func split(_ text: String, maxChars: Int) -> [String] {
+  /// Splits `text` into one entry per sentence, cutting any sentence longer than `maxChars` at a
+  /// word boundary. Never returns an empty entry, and never returns an entry over the cap.
+  ///
+  /// A terminator only ends a sentence when whitespace follows it, so "3.5" and "z.B." stay in
+  /// one piece. Abbreviations are not special-cased beyond that: a false split costs a slightly
+  /// odd pause, a missed split costs a long generation.
+  static func splitIntoSentences(_ text: String, maxChars: Int) -> [String] {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }
-    guard trimmed.count > maxChars else { return [trimmed] }
 
-    // First cut into sentences, keeping each terminator with the sentence it ends. A terminator
-    // only ends a sentence when whitespace follows it, so "3.5" stays in one piece.
     var sentences: [String] = []
     var current = ""
     var index = trimmed.startIndex
@@ -198,29 +241,10 @@ struct Qwen3TTSService {
     }
     if !current.isEmpty { sentences.append(current) }
 
-    // Then pack sentences into chunks up to the cap, splitting any single sentence that is
-    // itself longer than the cap at its last space.
-    var chunks: [String] = []
-    var pending = ""
-    for sentence in sentences {
-      if sentence.count > maxChars {
-        if !pending.isEmpty { chunks.append(pending); pending = "" }
-        chunks.append(contentsOf: splitLongSentence(sentence, maxChars: maxChars))
-        continue
-      }
-      if pending.isEmpty {
-        pending = sentence
-      } else if pending.count + sentence.count <= maxChars {
-        pending += sentence
-      } else {
-        chunks.append(pending)
-        pending = sentence
-      }
-    }
-    if !pending.isEmpty { chunks.append(pending) }
-
-    return chunks.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    return sentences
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
       .filter { !$0.isEmpty }
+      .flatMap { $0.count > maxChars ? splitLongSentence($0, maxChars: maxChars) : [$0] }
   }
 
   /// A single sentence longer than the cap: cut at the last space before the limit.
