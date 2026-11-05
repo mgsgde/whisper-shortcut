@@ -24242,6 +24242,126 @@
           }
         }
       }
+    },
+    "Ask this URL for its model list. Works for any host, not only localhost." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt diese URL nach ihrer Modellliste. Funktioniert für jeden Host, nicht nur für localhost."
+          }
+        }
+      }
+    },
+    "Check" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfen"
+          }
+        }
+      }
+    },
+    "Find servers…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suchen…"
+          }
+        }
+      }
+    },
+    "From this server…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von diesem Server…"
+          }
+        }
+      }
+    },
+    "Known models…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekannte Modelle…"
+          }
+        }
+      }
+    },
+    "No answer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Antwort"
+          }
+        }
+      }
+    },
+    "No server answered on the usual ports (8000, 1234, 4000, 11434, 8080). Start your server, or type its URL above." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf den üblichen Ports (8000, 1234, 4000, 11434, 8080) hat kein Server geantwortet. Starten Sie Ihren Server, oder geben Sie seine URL oben ein."
+          }
+        }
+      }
+    },
+    "Probe the usual local ports (8000, 1234, 4000, 11434, 8080) for an OpenAI-compatible server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüft die üblichen lokalen Ports (8000, 1234, 4000, 11434, 8080) auf einen OpenAI-kompatiblen Server."
+          }
+        }
+      }
+    },
+    "Speech-to-text models known to work behind an OpenAI-compatible server. They run on that server, not in this app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spracherkennungsmodelle, die hinter einem OpenAI-kompatiblen Server nachweislich funktionieren. Sie laufen auf diesem Server, nicht in dieser App."
+          }
+        }
+      }
+    },
+    "The model ids this server reported on /v1/models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modell-IDs, die dieser Server unter /v1/models gemeldet hat."
+          }
+        }
+      }
+    },
+    "Unknown server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbekannter Server"
+          }
+        }
+      }
+    },
+    "Use this server's base URL." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Basis-URL dieses Servers verwenden."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
