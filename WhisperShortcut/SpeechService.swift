@@ -344,14 +344,17 @@ class SpeechService {
   ///
   /// Deliberately narrow, because a rejected spelling normally stays a legitimate word elsewhere
   /// in the same speaker's vocabulary:
-  /// - Only multi-word rejected forms are rewritten. Bare "Cloud" is left alone — "Google Cloud",
-  ///   "Sovereign Cloud" and "Cloud-Anbieter" are all frequent in this corpus, and the phrase is
-  ///   what makes the intent unambiguous.
-  /// - A match preceded by another capitalised word is left alone, so "Google Cloud CLI" survives
-  ///   while "die Cloud CLI" is corrected. German capitalises nouns, which makes the preceding
-  ///   token a decent signal for exactly the compounds that must not be touched.
+  /// - Multi-word rejected forms are rewritten when they stand on their own. Bare "Cloud" is left
+  ///   alone — "Google Cloud", "Sovereign Cloud" and "Cloud-Anbieter" are all frequent in this
+  ///   corpus, and the phrase is what makes the intent unambiguous.
+  /// - A multi-word match preceded by another capitalised word is left alone, so "Google Cloud
+  ///   CLI" survives while "die Cloud CLI" is corrected. German capitalises nouns, which makes
+  ///   the preceding token a decent signal for exactly the compounds that must not be touched.
+  /// - A one-word rejected form is rewritten only when the correct form is itself one capitalised
+  ///   word and a personal title stands immediately before the mishearing (`Frau Dr. Läufer` →
+  ///   `Läuffer`). Bare nouns stay ("Der Läufer", "die Daten").
   ///
-  /// Both rules fail toward changing nothing, i.e. toward the behaviour before this existed.
+  /// Every rule fails toward changing nothing, i.e. toward the behaviour before this existed.
   private func correctingRejectedSpellings(in text: String) -> String {
     guard !text.isEmpty else { return text }
     let corrections = parsedGlossary().corrections
@@ -361,6 +364,14 @@ class SpeechService {
     for correction in corrections {
       for rejected in correction.rejected where rejected.contains(" ") {
         result = Self.replacingRejectedSpelling(
+          rejected, with: correction.correct, in: result)
+      }
+    }
+    for correction in corrections where !correction.correct.contains(" ")
+      && correction.correct.first?.isUppercase == true
+    {
+      for rejected in correction.rejected where !rejected.contains(" ") {
+        result = Self.replacingRejectedNameAfterTitle(
           rejected, with: correction.correct, in: result)
       }
     }
@@ -389,6 +400,25 @@ class SpeechService {
       result = (result as NSString).replacingCharacters(in: match.range, with: correct)
     }
     return result
+  }
+
+  /// Rewrites a one-word rejected spelling only when a personal title stands immediately before it
+  /// (`Frau Dr. Läufer` → `Frau Dr. Läuffer`). The title is what makes the token unambiguously a
+  /// name; the same spelling as a bare noun must stay ("Läufer" = runner, "Daten" rejected for
+  /// "Datev"). Boundaries are lookarounds rather than `\b`, because a dotted title such as "Dr."
+  /// has its word boundary on the period, not after the abbreviation.
+  static func replacingRejectedNameAfterTitle(
+    _ rejected: String, with correct: String, in text: String
+  ) -> String {
+    let escaped = NSRegularExpression.escapedPattern(for: rejected)
+    let pattern =
+      #"(?<![\p{L}\p{N}])(Frau|Herrn|Herr|Fr\.|Hr\.|Dr\.|Prof\.|Doktor|Professor)(\s+)"#
+      + escaped
+      + #"(?![\p{L}\p{N}])"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+    let template = "$1$2" + NSRegularExpression.escapedTemplate(for: correct)
+    let range = NSRange(location: 0, length: (text as NSString).length)
+    return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
   }
 
   /// True when the token immediately before `location` begins with an uppercase letter — the
