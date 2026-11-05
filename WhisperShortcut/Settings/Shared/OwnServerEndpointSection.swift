@@ -36,6 +36,25 @@ struct OwnServerEndpointSection: View {
   @State private var showsSummary = false
   @State private var showsAdvanced = false
 
+  /// Discovery is transient by design: the results are what answered a moment ago, not a setting,
+  /// so they live in view state and never in `UserDefaults`.
+  @State private var isProbing = false
+  @State private var hasProbed = false
+  @State private var discoveredServers: [DiscoveredServer] = []
+  @State private var isChecking = false
+  @State private var hasChecked = false
+  @State private var checkedServer: DiscoveredServer?
+  /// Model ids the last successful probe reported, for the "From this server…" menu. Empty until
+  /// something answered, which is what hides that menu.
+  @State private var probedModelIDs: [String] = []
+  /// The URL `probedModelIDs` belongs to. Kept so a URL change can tell "the user typed something
+  /// else" (clear the list) from "the form was just filled with the server we probed" (keep it).
+  @State private var probedBaseURL: String?
+  /// The in-flight probes, so a newer click or an edited URL can cancel the older answer instead
+  /// of letting it land on a form that no longer describes it.
+  @State private var probeTask: Task<Void, Never>?
+  @State private var checkTask: Task<Void, Never>?
+
   private struct HeaderEntry: Identifiable {
     var id = UUID()
     var key: String
@@ -63,7 +82,12 @@ struct OwnServerEndpointSection: View {
     }
     // Reconciling on every keystroke moved Dictate Prompt off this server before its URL was
     // complete, and the form vanished under the cursor. Settle the selections once editing ends.
-    .onDisappear { ModelSelectionReconciler.reconcileAll() }
+    .onDisappear {
+      // A probe that outlives the form would write into a view that is gone.
+      probeTask?.cancel()
+      checkTask?.cancel()
+      ModelSelectionReconciler.reconcileAll()
+    }
     // An AI app may have changed a model id through MCP while the window was open.
     .onReceive(NotificationCenter.default.publisher(for: .settingsChangedExternally)) { _ in
       reloadFromPreferences()
@@ -101,19 +125,50 @@ struct OwnServerEndpointSection: View {
       presetRow
 
       fieldRow("Base URL:") {
-        TextField("http://localhost:4000/v1", text: $endpointURL)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onChange(of: endpointURL) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
-          }
+        HStack(spacing: 8) {
+          TextField("http://localhost:4000/v1", text: $endpointURL)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: SettingsConstants.textFieldHeight)
+            .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+            .onChange(of: endpointURL) { _, newValue in
+              UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+              // The "Reachable · N models" line and the model menu describe the URL that was
+              // probed. Once the URL changes they describe a different server, so they are
+              // cleared rather than left standing as a stale claim about the new one.
+              resetCheckState()
+            }
+
+          Button("Check") { checkTypedURL() }
+            .controlSize(.small)
+            .fixedSize()
+            .disabled(isChecking || endpointURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Ask this URL for its model list. Works for any host, not only localhost.")
+        }
       } caption: {
         Text("Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+
+        if isChecking {
+          HStack(spacing: 6) {
+            ProgressView().controlSize(.small)
+            Text("Checking…")
+              .font(.caption)
+              .foregroundColor(.secondary)
+          }
+        } else if hasChecked {
+          if let checkedServer {
+            Label(
+              "Reachable · \(checkedServer.modelIDs.count) models",
+              systemImage: "checkmark.circle.fill")
+              .labelStyle(OwnServerStatusLabelStyle(tint: .green))
+          } else {
+            Label("No answer", systemImage: "xmark.circle")
+              .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
+          }
+        }
 
         if pointsAtOpenRouter {
           Label(
@@ -124,6 +179,8 @@ struct OwnServerEndpointSection: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
+
+      discoveryRow
 
       fieldRow("API key:") {
         HStack(spacing: 8) {
@@ -141,6 +198,7 @@ struct OwnServerEndpointSection: View {
           .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
           .onChange(of: apiKey) { _, newValue in
             _ = KeychainManager.shared.save(newValue, for: .customOpenAIChatAPIKey)
+            resetCheckState(force: true)
           }
 
           Button(action: { isKeyVisible.toggle() }) {
@@ -177,14 +235,45 @@ struct OwnServerEndpointSection: View {
   private var modelFields: some View {
     if route.showsTranscriptionModel {
       fieldRow("Dictate model:") {
-        TextField(SettingsDefaults.customTranscriptionModelID, text: $transcriptionModelID)
-          .textFieldStyle(.roundedBorder)
-          .font(.system(.body, design: .monospaced))
-          .frame(height: SettingsConstants.textFieldHeight)
-          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
-          .onChange(of: transcriptionModelID) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionModelID)
+        HStack(spacing: 8) {
+          TextField(SettingsDefaults.customTranscriptionModelID, text: $transcriptionModelID)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.body, design: .monospaced))
+            .frame(height: SettingsConstants.textFieldHeight)
+            .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+            .onChange(of: transcriptionModelID) { _, newValue in
+              UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionModelID)
+            }
+
+          Menu("Known models…") {
+            ForEach(KnownSpeechModels.all) { model in
+              Button {
+                setTranscriptionModel(model.repoID)
+              } label: {
+                Text(verbatim: "\(model.displayName) · \(model.sizeLabel)")
+              }
+              .help(model.note)
+            }
           }
+          .controlSize(.small)
+          .fixedSize()
+          .help("Speech-to-text models known to work behind an OpenAI-compatible server. They run on that server, not in this app.")
+
+          if !probedModelIDs.isEmpty {
+            Menu("From this server…") {
+              ForEach(probedModelIDs, id: \.self) { modelID in
+                Button {
+                  setTranscriptionModel(modelID)
+                } label: {
+                  Text(verbatim: modelID)
+                }
+              }
+            }
+            .controlSize(.small)
+            .fixedSize()
+            .help("The model ids this server reported on /v1/models.")
+          }
+        }
       } caption: {
         Text(route == .dictatePrompt
           ? "Transcribes your spoken instruction first, e.g. whisper-1 or the model name in your LiteLLM config."
@@ -221,6 +310,120 @@ struct OwnServerEndpointSection: View {
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  // MARK: - Discovery
+
+  /// Sits directly under the Base URL row rather than inside its caption: the caption is prose
+  /// about URL shaping, and a button plus a result list inside it pushed the API-key field down
+  /// every time a probe found something. Aligned to the field column so it reads as part of the
+  /// URL field it fills.
+  private var discoveryRow: some View {
+    HStack(alignment: .top, spacing: 16) {
+      Spacer().frame(width: SettingsConstants.labelWidth)
+
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 8) {
+          Button("Find servers…") { findServers() }
+            .controlSize(.small)
+            .fixedSize()
+            .disabled(isProbing)
+            .help("Probe the usual local ports (8000, 1234, 4000, 11434, 8080) for an OpenAI-compatible server.")
+
+          if isProbing {
+            ProgressView().controlSize(.small)
+          }
+        }
+
+        if !discoveredServers.isEmpty {
+          VStack(alignment: .leading, spacing: 2) {
+            ForEach(discoveredServers) { server in
+              Button {
+                apply(server)
+              } label: {
+                Text("\(server.host) · \(server.kind.displayName) · \(server.modelIDs.count) models")
+                  .font(.caption)
+              }
+              .buttonStyle(.link)
+              .help("Use this server's base URL.")
+            }
+          }
+        } else if hasProbed && !isProbing {
+          Text("No server answered on the usual ports (8000, 1234, 4000, 11434, 8080). Start your server, or type its URL above.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .frame(maxWidth: SettingsConstants.apiKeyMaxWidth, alignment: .leading)
+
+      Spacer(minLength: 0)
+    }
+  }
+
+  private func findServers() {
+    probeTask?.cancel()
+    isProbing = true
+    hasProbed = false
+    probeTask = Task {
+      let servers = await LocalServerDiscovery.probeAll()
+      guard !Task.isCancelled else { return }
+      discoveredServers = servers
+      hasProbed = true
+      isProbing = false
+      // A found server is also the best source for the model menu, so a probe that returns
+      // exactly one server fills it without a second click.
+      if servers.count == 1 {
+        probedModelIDs = servers[0].modelIDs
+        probedBaseURL = servers[0].baseURL
+      }
+    }
+  }
+
+  /// The only path that probes a URL the user typed, and it is always a click.
+  ///
+  /// The key is sent along: a server behind auth answers 401 without it, and "No answer" for a
+  /// server that is running fine is the one wrong answer this feature must not give.
+  private func checkTypedURL() {
+    let typed = endpointURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    checkTask?.cancel()
+    isChecking = true
+    hasChecked = false
+    checkTask = Task {
+      let server = await LocalServerDiscovery.probe(
+        baseURL: typed, apiKey: apiKey, headers: headerDictionary)
+      guard !Task.isCancelled else { return }
+      checkedServer = server
+      hasChecked = true
+      isChecking = false
+      probedModelIDs = server?.modelIDs ?? []
+      probedBaseURL = server?.baseURL
+    }
+  }
+
+  /// Drops everything a probe said about the previous URL, key or headers. Called when one of those changes, so
+  /// the status line and the model menu never describe a server the form no longer points at.
+  private func resetCheckState(force: Bool = false) {
+    let trimmed = endpointURL.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard force || probedBaseURL != trimmed else { return }
+    checkTask?.cancel()
+    checkTask = nil
+    isChecking = false
+    hasChecked = false
+    checkedServer = nil
+    probedModelIDs = []
+    probedBaseURL = nil
+  }
+
+  /// Fills the URL field. It does not normalise or validate: whatever the server reported is what
+  /// the field holds, and the user may still edit it to any port.
+  private func apply(_ server: DiscoveredServer) {
+    UserDefaults.standard.set(server.baseURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
+    // Recorded before the reload: the reload writes `endpointURL`, whose `onChange` clears the
+    // probe state for any URL it does not recognise. Setting it first makes that check a no-op.
+    probedModelIDs = server.modelIDs
+    probedBaseURL = server.baseURL
+    reloadFromPreferences()
   }
 
   // MARK: - Presets
@@ -492,12 +695,30 @@ struct OwnServerEndpointSection: View {
     headers.append(HeaderEntry(key: "", value: ""))
   }
 
+  /// Writes the model id and mirrors it into the field, so the field shows the pick immediately
+  /// instead of waiting for a reload from preferences.
+  private func setTranscriptionModel(_ modelID: String) {
+    UserDefaults.standard.set(modelID, forKey: UserDefaultsKeys.customTranscriptionModelID)
+    transcriptionModelID = modelID
+  }
+
   private func removeHeader(id: UUID) {
     headers.removeAll { $0.id == id }
     saveHeaders()
   }
 
+  /// Named headers as the real requests send them (empty names dropped).
+  private var headerDictionary: [String: String] {
+    var result: [String: String] = [:]
+    for header in headers {
+      let name = header.key.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !name.isEmpty { result[name] = header.value }
+    }
+    return result
+  }
+
   private func saveHeaders() {
+    resetCheckState(force: true)
     _ = KeychainManager.shared.saveCustomTranscriptionHeaders(headers.map { ["key": $0.key, "value": $0.value] })
   }
 }
