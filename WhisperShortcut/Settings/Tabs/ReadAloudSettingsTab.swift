@@ -137,50 +137,51 @@ struct ReadAloudSettingsTab: View {
     let hasFrozenVoice = Qwen3VoiceReferenceStore.hasReference(for: persona.id)
 
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      HStack(alignment: .center, spacing: 16) {
-        Button {
-          showResetVoiceConfirmation = true
-        } label: {
-          Label(
-            hasFrozenVoice ? "New voice" : "No voice saved yet",
-            systemImage: hasFrozenVoice ? "arrow.triangle.2.circlepath" : "waveform.slash"
-          )
+      // One row per control, the explanatory caption spanning the full width below both —
+      // the caption's length must not push the buttons out of alignment.
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .center, spacing: 16) {
+          Button {
+            showResetVoiceConfirmation = true
+          } label: {
+            Label(
+              hasFrozenVoice ? "New voice" : "No voice saved yet",
+              systemImage: hasFrozenVoice ? "arrow.triangle.2.circlepath" : "waveform.slash"
+            )
+          }
+          .disabled(!hasFrozenVoice)
+
+          Divider()
+            .frame(height: 14)
+
+          Button {
+            showingPersonaEditor = true
+          } label: {
+            Label("My own voices…", systemImage: "person.crop.square.badge.plus")
+          }
         }
-        .disabled(!hasFrozenVoice)
         .padding(.leading, SettingsConstants.labelWidth + 16)
 
-        if hasFrozenVoice {
-          Text("Discards the saved voice. The next Read Aloud creates a new one.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-        } else {
-          Text("The voice is created automatically on the first Read Aloud with this persona.")
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-        Spacer()
-      }
-      .confirmationDialog(
-        "Draw a new voice for \"\(persona.summary)\"?",
-        isPresented: $showResetVoiceConfirmation,
-        titleVisibility: .visible
-      ) {
-        Button("New voice", role: .destructive) {
-          Qwen3VoiceReferenceStore.removeReference(for: persona.id)
-        }
-      } message: {
-        Text("The current voice is discarded. The next Read Aloud with this persona creates and saves a new one.")
-      }
-
-      HStack(alignment: .center, spacing: 16) {
-        Button {
-          showingPersonaEditor = true
-        } label: {
-          Label("My own voices…", systemImage: "person.crop.square.badge.plus")
-        }
+        Text(
+          hasFrozenVoice
+            ? "The saved voice is discarded; the next Read Aloud creates a new one."
+            : "The voice is created automatically on the first Read Aloud with this persona."
+        )
+        .font(.caption)
+        .foregroundColor(.secondary)
         .padding(.leading, SettingsConstants.labelWidth + 16)
-        Spacer()
       }
+    }
+    .confirmationDialog(
+      "Draw a new voice for \"\(persona.summary)\"?",
+      isPresented: $showResetVoiceConfirmation,
+      titleVisibility: .visible
+    ) {
+      Button("New voice", role: .destructive) {
+        Qwen3VoiceReferenceStore.removeReference(for: persona.id)
+      }
+    } message: {
+      Text("The current voice is discarded. The next Read Aloud with this persona creates and saves a new one.")
     }
     .sheet(isPresented: $showingPersonaEditor) {
       Qwen3PersonaEditorView()

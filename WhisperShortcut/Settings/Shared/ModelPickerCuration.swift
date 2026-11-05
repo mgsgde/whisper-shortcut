@@ -65,6 +65,9 @@ protocol PickerCuratedModel: Hashable {
   /// would select for this user. `nil` = not a stand-in: on-device models, which have their own
   /// step in the fallback order, and models the reconciler never substitutes.
   var pickerStandInRank: Int? { get }
+  /// The provider group the model belongs to, for provider-level curation rules (see the
+  /// on-device rule in `ModelPickerCuration`).
+  var pickerProvider: String { get }
 }
 
 // `pickerTitle` on each model below is the name on the tile: `displayName` minus the "(Offline)" /
@@ -114,6 +117,20 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
     feature(Self.best(candidates, by: \.pickerSpeedRank), as: .fastest)
     // On-device models never need a key, so the Offline slot does not depend on credentials.
     feature(Self.best(visible, by: \.pickerOfflineRank), as: .offline)
+
+    // An on-device provider whose whole catalogue fits in two tiles is a first-class choice, not
+    // "More models" clutter: the Read Aloud picker hid both Qwen3 voices behind the disclosure
+    // under the cloud tiles — the opposite of the picker's own offline-first curation. Larger
+    // offline families (the seven Whisper/Parakeet dictation models) stay curated: featuring
+    // all of them would flood the top row.
+    let offlineProviders = Dictionary(grouping: visible.filter { $0.pickerOfflineRank != nil }) {
+      $0.pickerProvider
+    }
+    for (_, models) in offlineProviders where models.count <= 2 {
+      for model in models where !featured.contains { $0.model == model } {
+        featured.append(Featured(model: model, badges: []))
+      }
+    }
 
     if visible.count < Self.disclosureThreshold {
       // Short lists (Read Aloud in Offline Mode, a Mac with one provider) stay fully visible.
@@ -243,6 +260,8 @@ extension TranscriptionModel: PickerCuratedModel {
     return nil
   }
 
+  var pickerProvider: String { provider.rawValue }
+
   /// The models under "More models" that are their provider's own pick, for the "Best Gemini
   /// pick" tile badge. The top row carries one recommendation; someone with a Gemini *and* an
   /// OpenAI key otherwise met four Gemini tiles behind the disclosure with nothing saying which
@@ -315,6 +334,8 @@ extension PromptModel: PickerCuratedModel {
     guard let index = order.firstIndex(of: provider) else { return nil }
     return index * 2 + (self == provider.defaultChatModel ? 0 : 1)
   }
+
+  var pickerProvider: String { provider.rawValue }
 }
 
 // MARK: - Read Aloud
@@ -350,4 +371,14 @@ extension TTSModel: PickerCuratedModel {
   /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
   /// leaving every rank `nil` lets the curation reach the same model through its Offline step.
   var pickerStandInRank: Int? { nil }
+
+  var pickerProvider: String {
+    switch provider {
+    case .gemini: return "gemini"
+    case .openai: return "openai"
+    case .xai: return "xai"
+    case .system: return "system"
+    case .localMLX: return "qwen3"
+    }
+  }
 }

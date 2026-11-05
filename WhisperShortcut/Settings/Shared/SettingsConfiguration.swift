@@ -1113,7 +1113,7 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return String(localized: "macOS (On-Device)")
-    case .qwen3VoiceDesign: return String(localized: "Qwen3 TTS VoiceDesign (On-Device)")
+    case .qwen3VoiceDesign: return String(localized: "Qwen3 TTS VoiceDesign 1.7B (On-Device)")
     case .qwen3CustomVoice: return String(localized: "Qwen3 TTS CustomVoice 0.6B (On-Device)")
     }
   }

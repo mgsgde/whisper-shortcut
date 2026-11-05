@@ -18,6 +18,7 @@ private enum FakeModel: String, CaseIterable, PickerCuratedModel {
   var pickerSupersededBy: FakeModel? { self == .oldFlash ? .newFlash : nil }
   var pickerSetupBadge: String? { nil }
   var pickerStandInRank: Int? { self == .extra1 ? 0 : nil }
+  var pickerProvider: String { "fake" }
 }
 
 @Suite("Curated model pickers")
@@ -208,7 +209,9 @@ struct ModelPickerCurationTests {
     let readAloud = ModelPickerCuration(
       models: TTSModel.allCases, recommended: SettingsDefaults.readAloudModel,
       selected: SettingsDefaults.readAloudModel, isUsable: { _ in true })
-    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS])
+    // The two Qwen3 voices are a two-tile on-device provider: they belong above the disclosure,
+    // not behind "More models" under the cloud tiles. Order follows the picker's list order.
+    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice])
     #expect(readAloud.featured.first?.badges == [.recommended, .fastest])
   }
 
