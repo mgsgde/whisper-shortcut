@@ -58,6 +58,13 @@ struct AccountsSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // After the hosted providers: the same "connect a provider here" promise, for a server the
+      // user runs themselves. It used to be reachable only from the model pickers in the feature
+      // tabs, where nobody looking for a provider would think to look.
+      OwnServerAccountsSection()
+
+      SpacedSectionDivider()
+
       AccountsGroupHeader(
         title: "Connected Services",
         subtitle: "Optional. Lets the chat look things up for you. Everything is read-only unless a section says otherwise."

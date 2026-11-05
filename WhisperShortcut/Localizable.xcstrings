@@ -13959,12 +13959,12 @@
         }
       }
     },
-    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key." : {
+    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key. Dictate and spoken Dictate Prompt need /audio/transcriptions — LM Studio and mlx_lm.server do not serve it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel."
+            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel. Diktieren und gesprochenes Dictate Prompt benötigen /audio/transcriptions — LM Studio und mlx_lm.server bieten das nicht an."
           }
         }
       }
@@ -24259,6 +24259,146 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auch häufig genutzte Prompts anzeigen"
+          }
+        }
+      }
+    },
+    "An OpenAI-compatible server you run or rent: LiteLLM, Azure OpenAI, Vertex AI, OpenInference, or a local one such as LM Studio, MLX or oMLX. One URL and key for Dictate, Dictate Prompt and Chat — the server must also serve /audio/transcriptions for Dictate and spoken Dictate Prompt. LM Studio and mlx_lm.server are chat-only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein OpenAI-kompatibler Server, den Sie betreiben oder mieten: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder ein lokaler wie LM Studio, MLX oder oMLX. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat — der Server muss für Diktieren und gesprochenes Dictate Prompt auch /audio/transcriptions anbieten. LM Studio und mlx_lm.server können nur Chat."
+          }
+        }
+      }
+    },
+    "LM Studio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LM Studio"
+          }
+        }
+      }
+    },
+    "Local…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokal …"
+          }
+        }
+      }
+    },
+    "MLX" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MLX"
+          }
+        }
+      }
+    },
+    "Not set up yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht eingerichtet."
+          }
+        }
+      }
+    },
+    "Presets for a server on this Mac: LM Studio, MLX, oMLX." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlagen für einen Server auf diesem Mac: LM Studio, MLX, oMLX."
+          }
+        }
+      }
+    },
+    "Set up…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten …"
+          }
+        }
+      }
+    },
+    "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modell-ID, die Ihr Server erwartet; sie muss zu dem passen, was der Server tatsächlich ausliefert. Bei Azure der Name Ihres Deployments."
+          }
+        }
+      }
+    },
+    "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wendet sie dann auf den markierten Text an. Bei Azure: Ihr Deployment-Name. Er muss zu dem passen, was der Server tatsächlich ausliefert."
+          }
+        }
+      }
+    },
+    "Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The port is part of the URL — type whatever your server listens on. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Der Port gehört zur URL – tragen Sie ein, worauf Ihr Server hört. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
+          }
+        }
+      }
+    },
+    "http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded. Chat only: LM Studio does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:1234/v1, der Standardport von LM Studio. Das Chat-Modell ist `local-model`; LM Studio ordnet das dem zu, was Sie geladen haben. Nur Chat: LM Studio bietet /audio/transcriptions nicht an, Diktieren und gesprochenes Dictate Prompt können es also nicht nutzen."
+          }
+        }
+      }
+    },
+    "http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves. Dictate and Dictate Prompt work only when oMLX runs with audio support (v0.3.0+, included in the Homebrew and DMG builds; pip needs 'omlx[audio]')." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:8000/v1, der Standardport von oMLX. Das Chat-Modell ist `local-model`; oMLX ordnet das dem Modell zu, das es ausliefert. Diktieren und Dictate Prompt funktionieren nur, wenn oMLX mit Audio-Unterstützung läuft (ab v0.3.0, in den Homebrew- und DMG-Builds enthalten; pip benötigt 'omlx[audio]')."
+          }
+        }
+      }
+    },
+    "http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with. Chat only: mlx_lm.server does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:8000/v1, der Standardport von mlx_lm.server und mlx-audio. Das Chat-Modell ist das Hugging-Face-Repository, mit dem der Server gestartet wurde. Nur Chat: mlx_lm.server bietet /audio/transcriptions nicht an, Diktieren und gesprochenes Dictate Prompt können es also nicht nutzen."
+          }
+        }
+      }
+    },
+    "oMLX" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "oMLX"
           }
         }
       }
