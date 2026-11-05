@@ -15,20 +15,20 @@
         },
         "missing": [],
         "spokenOnly": {
-          "exact": 0.643,
-          "glossary": 0.769,
-          "noGuessedMarks": 0.929,
-          "spokenMarksKept": 0.894,
+          "exact": 0.738,
+          "glossary": 0.846,
+          "noGuessedMarks": 0.952,
+          "spokenMarksKept": 0.936,
           "tag.fillers": 0.5,
-          "tag.glossary": 0.538,
+          "tag.glossary": 0.692,
           "tag.guess": 0.5,
           "tag.joined": 0.75,
           "tag.noMarks": 0.857,
           "tag.numbers": 0.444,
-          "tag.pause": 0,
-          "tag.spokenMarks": 0.517,
+          "tag.pause": 1,
+          "tag.spokenMarks": 0.655,
           "tag.wordsStay": 1,
-          "wordAccuracy": 0.926
+          "wordAccuracy": 0.936
         }
       },
       "say-Anna": {
@@ -44,20 +44,20 @@
         },
         "missing": [],
         "spokenOnly": {
-          "exact": 0.643,
-          "glossary": 0.923,
+          "exact": 0.69,
+          "glossary": 1,
           "noGuessedMarks": 0.976,
-          "spokenMarksKept": 0.809,
+          "spokenMarksKept": 0.83,
           "tag.fillers": 0,
-          "tag.glossary": 0.615,
+          "tag.glossary": 0.692,
           "tag.guess": 0.75,
           "tag.joined": 0.75,
           "tag.noMarks": 0.857,
           "tag.numbers": 0.556,
           "tag.pause": 0,
-          "tag.spokenMarks": 0.517,
+          "tag.spokenMarks": 0.586,
           "tag.wordsStay": 1,
-          "wordAccuracy": 0.892
+          "wordAccuracy": 0.902
         }
       },
       "say-Eddy": {
@@ -73,20 +73,20 @@
         },
         "missing": [],
         "spokenOnly": {
-          "exact": 0.429,
-          "glossary": 0.692,
+          "exact": 0.452,
+          "glossary": 0.769,
           "noGuessedMarks": 1,
-          "spokenMarksKept": 0.745,
+          "spokenMarksKept": 0.766,
           "tag.fillers": 0,
-          "tag.glossary": 0.462,
+          "tag.glossary": 0.538,
           "tag.guess": 0.5,
           "tag.joined": 0.5,
           "tag.noMarks": 0.643,
           "tag.numbers": 0.222,
           "tag.pause": 1,
-          "tag.spokenMarks": 0.31,
+          "tag.spokenMarks": 0.345,
           "tag.wordsStay": 1,
-          "wordAccuracy": 0.745
+          "wordAccuracy": 0.75
         }
       }
     }
