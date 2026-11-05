@@ -2221,6 +2221,7 @@ struct SettingsDefaults {
   // permission (it simulates a ⌘V keystroke). Keeping it opt-in means a fresh
   // install never requires Accessibility, which it must not for its core features
   // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
+  // An unset key does not use this constant: `AutoPasteDefault.effectiveDefault`.
   static let autoPasteAfterDictation = false
 
   /// OFF by default: with auto-paste on, the text is already at the cursor, but some users
@@ -2308,6 +2309,44 @@ struct SettingsDefaults {
   static let errorMessage = ""
   static let isLoading = false
   static let showAlert = false
+}
+
+/// Whether auto-paste is on when the user has never written `autoPasteAfterDictation`.
+///
+/// A plain `true` default would make `autoPasteIfEnabled` show the Accessibility dialog after
+/// every dictation until the permission is granted. The direct build therefore follows the
+/// permission: on once it is granted, off until then, and never a prompt for a user who left
+/// the setting alone. The App Store build cannot paste (Guideline 2.4.5), so its default stays
+/// off. A value the user stored still wins — nothing here writes the key.
+enum AutoPasteDefault {
+  /// Fallback used wherever the key is missing. False in the App Store build; in the direct
+  /// build, true exactly when Accessibility is already granted.
+  static var effectiveDefault: Bool {
+    #if APP_STORE
+      return false
+    #else
+      return resolved(
+        stored: nil,
+        accessibilityGranted: AccessibilityPermissionManager.hasAccessibilityPermission())
+    #endif
+  }
+
+  /// Pure decision. `stored` is the user's toggle when the key exists, and nil when it does not.
+  /// A stored value always wins. When unset, the result is `accessibilityGranted` — callers pass
+  /// that in, so a test does not need the process's real Accessibility state. The App Store
+  /// build does not consult this for its own default; `effectiveDefault` is false there.
+  static func resolved(stored: Bool?, accessibilityGranted: Bool) -> Bool {
+    if let stored { return stored }
+    return accessibilityGranted
+  }
+
+  /// The value in effect now: the stored bool, or `effectiveDefault` when the key was never written.
+  static var currentValue: Bool {
+    let defaults = UserDefaults.standard
+    let key = UserDefaultsKeys.autoPasteAfterDictation
+    guard defaults.object(forKey: key) != nil else { return effectiveDefault }
+    return defaults.bool(forKey: key)
+  }
 }
 
 // MARK: - Settings Data Models

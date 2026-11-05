@@ -156,6 +156,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     Task {
       await MainActor.run {
         DispatchQueue.main.asyncAfter(deadline: .now() + Constants.settingsDelay) {
+          #if !APP_STORE
+          // Started from the disk image (or Downloads): offer the move to Applications before
+          // onboarding asks for any permission — grants to a translocated copy do not stick.
+          // True means a copy in Applications is starting and this process is quitting.
+          if ApplicationsFolderMove.offerIfNeeded() { return }
+          #endif
           let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
           if !hasCompletedOnboarding {
             WelcomeWindowController.shared.show()

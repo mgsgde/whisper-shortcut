@@ -3863,9 +3863,10 @@ class MenuBarController: NSObject {
     // clipboard for the user to paste manually.
     return false
     #else
-    return UserDefaults.standard.object(forKey: UserDefaultsKeys.autoPasteAfterDictation) != nil
-      ? UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation)
-      : SettingsDefaults.autoPasteAfterDictation
+    // Stored true/false wins. When the user has never set the toggle, auto-paste is on only
+    // once Accessibility is granted (`AutoPasteDefault.effectiveDefault`) — a missing grant
+    // stays off, so this path never raises the permission dialog on its own.
+    return AutoPasteDefault.currentValue
     #endif
   }
 

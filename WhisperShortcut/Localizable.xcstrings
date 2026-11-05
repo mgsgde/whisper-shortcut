@@ -24262,6 +24262,622 @@
           }
         }
       }
+    },
+    "%@ Recording AI prompt — meeting still recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ KI-Anweisung wird aufgenommen – Meeting wird weiter aufgenommen"
+          }
+        }
+      }
+    },
+    "Change Input Source" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabequelle ändern"
+          }
+        }
+      }
+    },
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Deprecated – no longer available to new users. Consider switching to %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veraltet – für neue Nutzer nicht mehr verfügbar. Wechseln Sie am besten zu %@."
+          }
+        }
+      }
+    },
+    "Dictation language:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache:"
+          }
+        }
+      }
+    },
+    "Don’t see WhisperShortcut in the list? Drag this icon into the list." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut fehlt in der Liste? Ziehen Sie dieses Symbol in die Liste."
+          }
+        }
+      }
+    },
+    "Drag into the Accessibility list" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Liste der Bedienungshilfen ziehen"
+          }
+        }
+      }
+    },
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Failed to create audio buffer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiopuffer konnte nicht angelegt werden"
+          }
+        }
+      }
+    },
+    "Failed to create audio format" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioformat konnte nicht angelegt werden"
+          }
+        }
+      }
+    },
+    "Fn dictation won’t work yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn funktioniert noch nicht"
+          }
+        }
+      }
+    },
+    "Free the Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste freigeben"
+          }
+        }
+      }
+    },
+    "Free the 🌐 key above, or turn off Fn dictation, to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie oben die 🌐-Taste frei oder schalten Sie Diktieren mit Fn aus, um fortzufahren."
+          }
+        }
+      }
+    },
+    "Free the 🌐 key for WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste für WhisperShortcut freigeben"
+          }
+        }
+      }
+    },
+    "Free the 🌐 key?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste freigeben?"
+          }
+        }
+      }
+    },
+    "If macOS then asks for your password or Touch ID, that request comes from macOS itself — WhisperShortcut never sees it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt macOS danach nach Ihrem Passwort oder Touch ID, kommt diese Abfrage von macOS selbst – WhisperShortcut sieht sie nie."
+          }
+        }
+      }
+    },
+    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit schon vorhandenen Servern), beenden Sie Claude und öffnen Sie es wieder. Braucht Node.js."
+          }
+        }
+      }
+    },
+    "Invalid Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Anmeldung"
+          }
+        }
+      }
+    },
+    "Move Here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hierher bewegen"
+          }
+        }
+      }
+    },
+    "Move WhisperShortcut to Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut in den Ordner „Programme“ bewegen?"
+          }
+        }
+      }
+    },
+    "Move WhisperShortcut yourself" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut selbst bewegen"
+          }
+        }
+      }
+    },
+    "Move and Relaunch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewegen und neu starten"
+          }
+        }
+      }
+    },
+    "Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Node.js."
+          }
+        }
+      }
+    },
+    "No audio was generated for this text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Text wurde kein Audio erzeugt"
+          }
+        }
+      }
+    },
+    "Offline Mode and macOS permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus und macOS-Berechtigungen"
+          }
+        }
+      }
+    },
+    "Open Applications Folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner „Programme“ öffnen"
+          }
+        }
+      }
+    },
+    "Preparing report…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht wird vorbereitet …"
+          }
+        }
+      }
+    },
+    "Privacy, welcome tour, shortcuts, reset, and support" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz, Einführung, Tastenkürzel, Zurücksetzen und Support"
+          }
+        }
+      }
+    },
+    "Processing AI prompt... Please wait" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Anweisung wird verarbeitet … Bitte warten"
+          }
+        }
+      }
+    },
+    "Processing text-to-speech... Please wait" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachausgabe wird erzeugt … Bitte warten"
+          }
+        }
+      }
+    },
+    "Quit WhisperShortcut, then drag it from the disk image window into the Applications folder and open it from there. If macOS asks for your password, that is macOS confirming the copy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden Sie WhisperShortcut, ziehen Sie die App dann aus dem Fenster des Disk-Images in den Ordner „Programme“ und öffnen Sie sie von dort. Fragt macOS nach Ihrem Passwort, bestätigt macOS damit nur das Kopieren."
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        }
+      }
+    },
+    "Replace the copy in Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kopie im Ordner „Programme“ ersetzen?"
+          }
+        }
+      }
+    },
+    "See and share an anonymous summary of how you use the app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine anonyme Zusammenfassung Ihrer Nutzung ansehen und teilen"
+          }
+        }
+      }
+    },
+    "Share Usage Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsbericht teilen"
+          }
+        }
+      }
+    },
+    "Shortcuts and app behavior" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel und App-Verhalten"
+          }
+        }
+      }
+    },
+    "Show Emoji & Symbols" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emoji & Symbole einblenden"
+          }
+        }
+      }
+    },
+    "Start Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierfunktion starten"
+          }
+        }
+      }
+    },
+    "Taken from your Mac’s language. Choose Auto-detect if you switch languages while dictating." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus der Sprache Ihres Macs übernommen. Wählen Sie „Automatisch erkennen“, wenn Sie beim Diktieren die Sprache wechseln."
+          }
+        }
+      }
+    },
+    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Update-Prüfung erreicht weiterhin github.com. Sie sendet nur die App-Version, nie Inhalte. Abschalten unter Einstellungen → Über → Updates."
+          }
+        }
+      }
+    },
+    "The 🌐 key is free. Press Fn once to start dictating, again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die 🌐-Taste ist frei. Fn einmal drücken zum Starten, noch einmal zum Stoppen."
+          }
+        }
+      }
+    },
+    "There already is a WhisperShortcut in the Applications folder. It goes to the Trash and this one takes its place. Your settings and keys are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Ordner „Programme“ liegt bereits ein WhisperShortcut. Er wandert in den Papierkorb, und diese Version tritt an seine Stelle. Ihre Einstellungen und Schlüssel bleiben erhalten."
+          }
+        }
+      }
+    },
+    "This is everything the report contains. Nothing is sent automatically — pressing a send button opens your own mail or WhatsApp with this text prefilled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist alles, was der Bericht enthält. Nichts wird automatisch gesendet: Eine Senden-Taste öffnet Ihr eigenes Mailprogramm oder WhatsApp mit diesem Text."
+          }
+        }
+      }
+    },
+    "Transcribing [%lld/%lld] - %lld active" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription [%lld/%lld] – %lld aktiv"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation and use %@ instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn ausschalten und stattdessen %@ verwenden"
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen Diktieren mit Fn ausschalten"
+          }
+        }
+      }
+    },
+    "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Smart Improvement ein, damit dies gesammelt wird"
+          }
+        }
+      }
+    },
+    "Usage report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsbericht"
+          }
+        }
+      }
+    },
+    "When you press 🌐 Fn, macOS currently does “%@” instead, so your dictation does not start. To fix this, set “Press 🌐 key to” to “Do Nothing” — once, and Fn dictates from then on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie 🌐 Fn drücken, führt macOS derzeit stattdessen „%@“ aus – Ihr Diktat startet deshalb nicht. Stellen Sie einmalig „Drücken der 🌐-Taste“ auf „Keine Aktion“, danach diktieren Sie mit Fn."
+          }
+        }
+      }
+    },
+    "WhisperShortcut - Click to record" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut – zum Aufnehmen klicken"
+          }
+        }
+      }
+    },
+    "WhisperShortcut app icon, draggable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut-App-Symbol, ziehbar"
+          }
+        }
+      }
+    },
+    "WhisperShortcut is running from the downloaded disk image or another temporary place. From there, macOS does not keep its permissions, and it is missing from the Accessibility list. Move it to the Applications folder and open it from there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut läuft direkt aus dem geladenen Disk-Image oder von einem anderen vorläufigen Ort. Dort behält macOS die Berechtigungen nicht, und die App fehlt in der Liste der Bedienungshilfen. Bewegen Sie sie in den Ordner „Programme“ und öffnen Sie sie von dort."
+          }
+        }
+      }
+    },
+    "WhisperShortcut will change one macOS setting: System Settings → Keyboard → “Press 🌐 key to” becomes “Do Nothing”. Pressing 🌐 Fn then only starts and stops your dictation. You can change it back there at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut ändert eine macOS-Einstellung: Systemeinstellungen → Tastatur → „Drücken der 🌐-Taste“ wird auf „Keine Aktion“ gesetzt. 🌐 Fn startet und stoppt dann nur noch Ihr Diktat. Sie können das dort jederzeit zurückstellen."
+          }
+        }
+      }
+    },
+    "You can revisit this tour any time from Settings → About." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Tour finden Sie jederzeit wieder unter Einstellungen → Über."
+          }
+        }
+      }
+    },
+    "You just updated. Replay the Welcome Tour below, or read the full notes on GitHub." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben gerade aktualisiert. Sehen Sie sich unten die Einführung noch einmal an oder lesen Sie die vollständigen Hinweise auf GitHub."
+          }
+        }
+      }
+    },
+    "macOS did not accept the change. Keyboard settings are open: choose “Do Nothing” next to “Press 🌐 key to”, then come back here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat die Änderung nicht übernommen. Die Tastatur-Einstellungen sind geöffnet: Wählen Sie bei „Drücken der 🌐-Taste“ die Option „Keine Aktion“ und kehren Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "macOS needs your OK to copy WhisperShortcut into the Applications folder. Click “Move Here”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS braucht Ihr Einverständnis, um WhisperShortcut in den Ordner „Programme“ zu kopieren. Klicken Sie auf „Hierher bewegen“."
+          }
+        }
+      }
+    },
+    "⏳ Processing AI prompt..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ KI-Anweisung wird verarbeitet …"
+          }
+        }
+      }
+    },
+    "⏳ Processing text-to-speech..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Sprachausgabe wird erzeugt …"
+          }
+        }
+      }
+    },
+    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Anmeldung fehlgeschlagen\n\nIhr API-Schlüssel ist ungültig oder abgelaufen.\nPrüfen Sie in den Einstellungen den API-Schlüssel für den gewählten Anbieter."
+          }
+        }
+      }
+    },
+    "❌ Invalid Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Ungültige Anmeldung"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

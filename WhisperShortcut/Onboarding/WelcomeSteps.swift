@@ -133,6 +133,12 @@ struct WelcomeDictationSetupStep: View {
   @Binding var choice: DictationChoice?
   @ObservedObject var setup: OnboardingSetupState
   @AppStorage(UserDefaultsKeys.offlineModeEnabled) private var offlineMode = false
+  /// Shown and changeable under Offline, so the language the app just picked from the Mac's is
+  /// visible right where it was set (`DictationLanguagePreselect`).
+  @AppStorage(UserDefaultsKeys.whisperLanguage) private var dictationLanguage: WhisperLanguage =
+    SettingsDefaults.whisperLanguage
+  /// The language on screen came from the Mac's language on this visit, not from the user.
+  @State private var languageFromMac = false
   @State private var showOtherProviders = false
   @State private var showPrivacyDetails = false
 
@@ -266,6 +272,10 @@ struct WelcomeDictationSetupStep: View {
       OfflineMode.switchTo(false, reason: "onboarding chose Cloud")
     }
     if value == .cloud { OnboardingTranscriptionChoice.preferCloud() }
+    // Only while the language is still Auto, and only to one the offline model can transcribe.
+    if value == .offline, DictationLanguagePreselect.applyForOfflineOnboarding() != nil {
+      languageFromMac = true
+    }
     setup.refresh()
   }
 
@@ -274,6 +284,8 @@ struct WelcomeDictationSetupStep: View {
   @ViewBuilder
   private var offlineDetails: some View {
     OnboardingOfflineRow(onReady: { setup.refresh() })
+
+    dictationLanguageRow
 
     // For regulated dictation (patient findings, case notes): the recording may not leave the
     // device, and neither may Chat or anything else. Offered here, where the user just said
@@ -292,6 +304,38 @@ struct WelcomeDictationSetupStep: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 4)
+  }
+
+  /// "Dictation language: German", changeable on the spot. Lists only what the offline model can
+  /// transcribe (plus whatever is stored, so the picker never shows an empty selection).
+  private var dictationLanguageRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(spacing: 8) {
+        Text("Dictation language:")
+          .font(.callout)
+        Picker("Dictation language", selection: $dictationLanguage) {
+          ForEach(offlineLanguageOptions, id: \.self) { language in
+            Text(language.displayName).tag(language)
+          }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .fixedSize()
+        Spacer(minLength: 0)
+      }
+      if languageFromMac && dictationLanguage != .auto {
+        Text("Taken from your Mac’s language. Choose Auto-detect if you switch languages while dictating.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(.horizontal, 14)
+  }
+
+  private var offlineLanguageOptions: [WhisperLanguage] {
+    let model = DictationLanguagePreselect.onboardingOfflineModel
+    return WhisperLanguage.allCases.filter { $0 == dictationLanguage || model.supports($0) }
   }
 
   @ViewBuilder
@@ -763,6 +807,8 @@ struct WelcomeTryItStep: View {
 
 struct WelcomePermissionsStep: View {
   @Binding var micStatus: PermissionStatus
+  /// False while Fn dictation is on and macOS still owns the 🌐 key; Continue waits for it.
+  var fnSetupResolved: Bool = true
 
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
@@ -788,7 +834,11 @@ struct WelcomePermissionsStep: View {
         .padding(.bottom, 8)
       }
 
-      if micStatus == .granted {
+      if (micStatus == .granted || micStatus == .denied) && !fnSetupResolved {
+        Label("Free the 🌐 key above, or turn off Fn dictation, to continue.", systemImage: "exclamationmark.circle")
+          .font(.caption)
+          .foregroundStyle(.orange)
+      } else if micStatus == .granted {
         Label("Ready to continue.", systemImage: "checkmark.circle.fill")
           .font(.caption)
           .foregroundStyle(.green)
@@ -813,16 +863,37 @@ struct WelcomePermissionsStep: View {
 ///
 /// Fn arrives already on when the 🌐 key is free (`SettingsDefaults.fnKeyDictation`): it is the
 /// most comfortable trigger, and here is where one grant covers both features. When macOS still
-/// uses the 🌐 key itself, Fn stays off by default and turning it on shows how to free the key.
+/// uses the 🌐 key itself, Fn stays off by default and turning it on shows `GlobeKeyConflictCard`;
+/// Continue then waits until the key is freed or Fn is turned off again (`WelcomeStep.canAdvance`).
 struct OnboardingAccessibilityCard: View {
   @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
-  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
-    SettingsDefaults.autoPasteAfterDictation
+  /// What auto-paste does now: the stored choice, or `AutoPasteDefault.effectiveDefault` while the
+  /// key is unset. Not `@AppStorage`: its default is fixed when the card appears, and assigning
+  /// it would write the key — a user who only grants Accessibility must not get a stored
+  /// preference. `@State` so a flip redraws the switch and fires `featureToggle`'s `onChange`;
+  /// `refreshStatus` re-reads it, so granting Accessibility turns the unset default on visibly.
+  @State private var autoPasteShown = AutoPasteDefault.currentValue
 
-  /// Live Accessibility status and 🌐 setting, so the card reflects what the user just changed in
-  /// System Settings. Refreshed on appear and whenever the app reactivates.
+  /// Writes the key only when the user flips the switch.
+  private var autoPasteEnabled: Binding<Bool> {
+    Binding(
+      get: { autoPasteShown },
+      set: { newValue in
+        autoPasteShown = newValue
+        UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+      }
+    )
+  }
+
+  /// Live Accessibility status, so the card reflects what the user just changed in System
+  /// Settings. Refreshed on appear and whenever the app reactivates. The 🌐 setting is
+  /// `GlobeKeyStatus`, which the conflict card refreshes itself.
   @State private var axStatus: PermissionStatus = PermissionStatusChecker.status(for: .accessibility)
-  @State private var globeUsage: GlobeKeyUsage = .current
+  /// The user asked for Accessibility from here (toggle or button), so macOS showed its prompt or
+  /// System Settings.
+  @State private var requestedAccessibility = false
+  /// …and came back (or asked a second time) without the grant: time for the drag fallback.
+  @State private var returnedWithoutGrant = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -846,17 +917,19 @@ struct OnboardingAccessibilityCard: View {
         title: "Dictate with 🌐 Fn",
         detail: "Press Fn once to start, again to stop. The quickest way to dictate.")
 
-      if fnEnabled, let systemAction = globeUsage.systemSettingsLabel {
-        GlobeKeyConflictNote(systemAction: systemAction)
-          .padding(.leading, 2)
+      if fnEnabled {
+        GlobeKeyConflictCard(onTurnOffFn: {
+          DebugLogger.log("ONBOARDING: turned Fn dictation off from the 🌐 conflict card")
+          fnEnabled = false
+        })
       }
 
       featureToggle(
-        $autoPasteEnabled,
+        autoPasteEnabled,
         title: "Auto-paste",
         detail: "Puts dictated text straight at your cursor (a simulated ⌘V). Without it, your text is copied and you paste it yourself.")
 
-      if fnEnabled || autoPasteEnabled {
+      if fnEnabled || autoPasteShown {
         HStack(spacing: 8) {
           PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
@@ -869,6 +942,8 @@ struct OnboardingAccessibilityCard: View {
           if axStatus != .granted {
             Button {
               // Native prompt the first time, the System Settings pane once it was answered.
+              if requestedAccessibility { returnedWithoutGrant = true }
+              requestedAccessibility = true
               AccessibilityPermissionManager.requestAccessibilityAtOptIn()
               refreshStatus()
             } label: {
@@ -879,10 +954,15 @@ struct OnboardingAccessibilityCard: View {
             .pointerCursorOnHover()
           }
         }
+
+        if returnedWithoutGrant && axStatus != .granted {
+          AccessibilityDragFallback()
+        }
       }
     }
     .onAppear(perform: refreshStatus)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      if requestedAccessibility { returnedWithoutGrant = true }
       refreshStatus()
     }
   }
@@ -906,6 +986,7 @@ struct OnboardingAccessibilityCard: View {
     .onChange(of: isOn.wrappedValue) { newValue in
       guard newValue else { return }
       // Request now (native prompt + pre-registration), matching the Settings opt-in path.
+      if axStatus != .granted { requestedAccessibility = true }
       AccessibilityPermissionManager.requestAccessibilityAtOptIn()
       refreshStatus()
     }
@@ -913,33 +994,41 @@ struct OnboardingAccessibilityCard: View {
 
   private func refreshStatus() {
     axStatus = PermissionStatusChecker.status(for: .accessibility)
-    globeUsage = .current
+    autoPasteShown = AutoPasteDefault.currentValue
+    GlobeKeyStatus.shared.refresh()
   }
 }
 
-/// Shown when Fn dictation is on but macOS still reacts to the 🌐 key itself, so one press
-/// would also open the emoji picker / switch input / start Apple Dictation. The app never
-/// changes that system setting; it names the item and opens the pane.
-struct GlobeKeyConflictNote: View {
-  /// The current "Press 🌐 key to" item, from `GlobeKeyUsage.systemSettingsLabel`.
-  let systemAction: String
-
+/// Shown on the permissions step when the user went to System Settings for Accessibility and came
+/// back without the grant. Usually WhisperShortcut is simply missing from the list — a pilot user
+/// (2026-11-02) had to find it with "+" and a file picker, then met a Touch ID prompt she did not
+/// trust. Dragging the icon into the list adds the app in one move.
+struct AccessibilityDragFallback: View {
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(.orange)
-        .font(.caption)
-      Text("Your 🌐 key also does “\(systemAction)”. In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Spacer(minLength: 8)
-      Button("Open Keyboard Settings") {
-        GlobeKeyUsage.openKeyboardSettings()
+    HStack(alignment: .center, spacing: 12) {
+      Image(nsImage: NSApp.applicationIconImage)
+        .resizable()
+        .frame(width: 48, height: 48)
+        // A file URL of the running bundle — what System Settings accepts when an app is dropped
+        // on its Accessibility list.
+        .onDrag { NSItemProvider(object: Bundle.main.bundleURL as NSURL) }
+        .help(Text("Drag into the Accessibility list"))
+        .accessibilityLabel(Text("WhisperShortcut app icon, draggable"))
+      VStack(alignment: .leading, spacing: 4) {
+        Text("Don’t see WhisperShortcut in the list? Drag this icon into the list.")
+          .font(.callout)
+          .fontWeight(.medium)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("If macOS then asks for your password or Touch ID, that request comes from macOS itself — WhisperShortcut never sees it.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
-      .controlSize(.small)
-      .pointerCursorOnHover()
+      Spacer(minLength: 0)
     }
+    .padding(10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .cardChrome()
   }
 }
 
