@@ -251,16 +251,19 @@ struct Qwen3VoicePersona: Identifiable, Hashable {
   static var `default`: Qwen3VoicePersona { all[0] }
 
   /// Resolves a stored id, falling back to the default when it is empty or no longer offered.
-  /// Same contract as `ReadAloudPreferences.voice(for:)` for the cloud providers.
+  /// Same contract as `ReadAloudPreferences.voice(for:)` for the cloud providers. Custom
+  /// personas come after the built-ins, so a deleted custom persona falls back cleanly.
   static func persona(for id: String) -> Qwen3VoicePersona {
     let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .default }
+    if let custom = Qwen3CustomPersonas.persona(for: trimmed) { return custom }
     return all.first { $0.id == trimmed } ?? .default
   }
 
-  /// The picker's rows, in catalogue order (German narrators first, then the rest).
+  /// The picker's rows, in catalogue order (German narrators first, then the rest, then the
+  /// user's own personas).
   static var pickerVoices: [TTSVoice] {
-    all.map { TTSVoice(id: $0.id, gender: $0.gender, descriptor: $0.summary) }
+    (all + Qwen3CustomPersonas.all).map { TTSVoice(id: $0.id, gender: $0.gender, descriptor: $0.summary) }
   }
 
   // MARK: - CustomVoice speakers

@@ -117,15 +117,17 @@ struct Qwen3TTSService {
   ///
   /// **Voice consistency.** VoiceDesign has no speaker id: the voice is sampled from the
   /// description on every call, so two calls with the same description produce two different
-  /// speakers. Measured on a three-sentence German text: without a reference the second chunk
-  /// landed at F0 108.8 Hz against the first chunk's 136.4 Hz, and the mean-MFCC cosine
-  /// similarity was 0.8402. The fix is the library's ICL path — the first sentence's audio is fed
-  /// back as `refAudio`/`refText` for every later sentence, which pins the speaker. Same
-  /// measurement with the reference: F0 136.4 Hz, similarity 0.9261.
+  /// speakers. The fix is the library's ICL path — a reference clip (audio + transcript) is fed
+  /// back as `refAudio`/`refText` for every sentence, which pins the speaker. Measured on a
+  /// four-sentence German text: no reference gave F0 spread 20.7 Hz and mean MFCC similarity
+  /// 0.8764; with a reference 15.4 Hz and 0.9484.
   ///
-  /// The reference is the *first* sentence, not a growing window: it is the one chunk generated
-  /// from the description alone, and re-encoding a longer reference for every sentence would cost
-  /// more than it buys.
+  /// **The reference is frozen per persona, not per text** (`Qwen3VoiceReferenceStore`). The
+  /// first Read Aloud with a persona synthesizes a short calibration sentence, stores it, and
+  /// from then on every Read Aloud — in any session — starts from that same clip, so a persona
+  /// is the same voice forever. "Reset voice" in Settings deletes the clip; the next Read Aloud
+  /// generates and stores a new one. CustomVoice personas skip all of this: their speaker is a
+  /// fixed id, the checkpoint does not drift.
   func synthesizePCM(
     text: String,
     persona: Qwen3VoicePersona,
@@ -143,10 +145,20 @@ struct Qwen3TTSService {
         + "\(sentences.count) sentence(s)")
 
     var merged = Data()
-    // The first sentence's audio and text, reused as the speaker reference for every later one.
-    // nil until the first sentence has been generated.
+    // The speaker reference for every sentence: the persona's frozen clip when one exists,
+    // otherwise nil until the first sentence has defined the voice.
     var referenceAudio: MLXArray?
     var referenceText: String?
+
+    if modelType == .voiceDesign {
+      if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id) {
+        referenceAudio = MLXArray(cached.samples)
+        referenceText = cached.text
+        DebugLogger.log(
+          "QWEN3-TTS: using frozen voice reference for \(persona.id) "
+            + "(\(cached.samples.count) samples)")
+      }
+    }
 
     // The library default (temperature 0.9) re-samples the voice on every call. Measured on a
     // four-sentence German text: default 0.9 + reference gave F0 spread 31.0 Hz and mean
@@ -158,6 +170,30 @@ struct Qwen3TTSService {
       topP: 1.0,
       repetitionPenalty: 1.05
     )
+
+    // When the persona has no frozen clip yet, the first generation of this Read Aloud is the
+    // calibration: a fixed short sentence, spoken once, stored, and used as the reference for
+    // every sentence of every future Read Aloud with this persona. It is *not* part of the
+    // playback audio.
+    let needsCalibration = modelType == .voiceDesign && referenceAudio == nil
+    if needsCalibration {
+      let calibration = Self.calibrationText(for: persona.language)
+      DebugLogger.log("QWEN3-TTS: calibrating voice for \(persona.id)")
+      let clip = try await model.generate(
+        text: calibration,
+        voice: Self.voiceArgument(for: persona, modelType: modelType),
+        refAudio: nil,
+        refText: nil,
+        language: persona.language,
+        generationParameters: parameters
+      )
+      let clipSamples = clip.asArray(Float.self)
+      guard !clipSamples.isEmpty else { throw Qwen3TTSError.emptyAudio }
+      Qwen3VoiceReferenceStore.store(
+        samples: clipSamples, sampleRate: model.sampleRate, text: calibration, for: persona.id)
+      referenceAudio = clip
+      referenceText = calibration
+    }
 
     for (index, sentence) in sentences.enumerated() {
       try Task.checkCancellation()
@@ -173,8 +209,9 @@ struct Qwen3TTSService {
       let samples = audio.asArray(Float.self)
       guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
-      // Pin the speaker for everything that follows. Only the first sentence defines it; later
-      // ones must not overwrite the reference, or the voice would drift sentence by sentence.
+      // Without a frozen clip the first sentence is still the one that defines the voice (the
+      // calibration above failed to store, e.g. disk full). Later sentences must never
+      // overwrite the reference, or the voice would drift sentence by sentence.
       if referenceAudio == nil {
         referenceAudio = audio
         referenceText = sentence
@@ -184,7 +221,7 @@ struct Qwen3TTSService {
       merged.append(pcm)
       let seconds = Double(samples.count) / Double(model.sampleRate)
       let elapsed = Date().timeIntervalSince(start)
-      let role = index == 0 ? "defines the voice" : "reference-pinned"
+      let role = index == 0 && !needsCalibration ? "defines the voice" : "reference-pinned"
       DebugLogger.log(
         "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(samples.count) samples "
           + "(\(String(format: "%.2f", seconds))s) "
@@ -196,6 +233,12 @@ struct Qwen3TTSService {
 
     DebugLogger.log("QWEN3-TTS: \(persona.id) total \(merged.count) bytes")
     return merged
+  }
+
+  /// The calibration sentence for a persona's frozen voice reference. Delegates to the store so
+  /// the text and its on-disk consumer live in one place.
+  static func calibrationText(for language: String) -> String {
+    Qwen3VoiceReferenceStore.calibrationText(for: language)
   }
 
   /// What the model's `voice` argument means differs by checkpoint: VoiceDesign takes the

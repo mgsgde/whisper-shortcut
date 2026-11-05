@@ -5,6 +5,9 @@ struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
+  @State private var showResetVoiceConfirmation = false
+  @State private var showingPersonaEditor = false
+
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       modelSection
@@ -114,7 +117,83 @@ struct ReadAloudSettingsTab: View {
 
         Spacer()
       }
+
+      // Only the Qwen3 VoiceDesign checkpoint has a freezable voice: its speaker is sampled
+      // from a description, so the frozen reference is what makes a persona stable. CustomVoice
+      // speakers are fixed ids and cloud voices are fixed catalogues — nothing to manage.
+      if model.qwen3ModelType == .voiceDesign {
+        qwen3VoiceManagement
+      }
     }
+  }
+
+  // MARK: - Qwen3 Voice Management
+  /// Reset for the selected persona's frozen voice, plus the user's own personas. Kept to two
+  /// plain-language controls: a "new voice" button whose whole effect is one sentence of
+  /// explanation, and an editor behind one "manage" toggle. No technical terms on the surface.
+  @ViewBuilder
+  private var qwen3VoiceManagement: some View {
+    let persona = Qwen3VoicePersona.persona(for: voiceSelectionOfQwen3Persona)
+    let hasFrozenVoice = Qwen3VoiceReferenceStore.hasReference(for: persona.id)
+
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      HStack(alignment: .center, spacing: 16) {
+        Button {
+          showResetVoiceConfirmation = true
+        } label: {
+          Label(
+            hasFrozenVoice ? "New voice" : "No voice saved yet",
+            systemImage: hasFrozenVoice ? "arrow.triangle.2.circlepath" : "waveform.slash"
+          )
+        }
+        .disabled(!hasFrozenVoice)
+        .padding(.leading, SettingsConstants.labelWidth + 16)
+
+        if hasFrozenVoice {
+          Text("Discards the saved voice. The next Read Aloud creates a new one.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        } else {
+          Text("The voice is created automatically on the first Read Aloud with this persona.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+        Spacer()
+      }
+      .confirmationDialog(
+        "Draw a new voice for \"\(persona.summary)\"?",
+        isPresented: $showResetVoiceConfirmation,
+        titleVisibility: .visible
+      ) {
+        Button("New voice", role: .destructive) {
+          Qwen3VoiceReferenceStore.removeReference(for: persona.id)
+        }
+      } message: {
+        Text("The current voice is discarded. The next Read Aloud with this persona creates and saves a new one.")
+      }
+
+      HStack(alignment: .center, spacing: 16) {
+        Button {
+          showingPersonaEditor = true
+        } label: {
+          Label("My own voices…", systemImage: "person.crop.square.badge.plus")
+        }
+        .padding(.leading, SettingsConstants.labelWidth + 16)
+        Spacer()
+      }
+    }
+    .sheet(isPresented: $showingPersonaEditor) {
+      Qwen3PersonaEditorView()
+    }
+  }
+
+  /// The persona id the picker currently shows, regardless of which catalogue it came from.
+  private var voiceSelectionOfQwen3Persona: String {
+    let model = viewModel.data.selectedReadAloudModel
+    let provider = model.provider
+    let stored = viewModel.data.readAloudVoice(for: provider)
+    let voices = model.availableVoices
+    return voices.contains(where: { $0.id == stored }) ? stored : model.defaultVoice
   }
 
   // MARK: - Playback Speed Section
