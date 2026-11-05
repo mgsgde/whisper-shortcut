@@ -907,8 +907,7 @@ class MenuBarController: NSObject {
   private func offerQuickActionsIfNeeded() {
     guard recording?.quickActionsOffered == false else { return }
     recording?.quickActionsOffered = true
-    let actions = QuickActionStore.shared.forCard()
-    let preselect = QuickActionStore.preselectsRecent
+    let (actions, preselectIndex) = QuickActionStore.shared.forCard()
     let templateName = recording?.boundTemplate?.displayName
     guard !actions.isEmpty || templateName != nil else {
       DebugLogger.log("QUICK-ACTIONS: No entries — list stays hidden")
@@ -937,12 +936,12 @@ class MenuBarController: NSObject {
     // No capture means screenshot-selection mode: the model reads the selection off the screen.
     guard let capture = recording?.promptSelection else {
       RecordingIndicatorManager.shared.showQuickActions(
-        actions, context: .screenshot, preselectFirst: preselect)
+        actions, context: .screenshot, preselectIndex: preselectIndex)
       DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries (screenshot selection)")
       return
     }
     RecordingIndicatorManager.shared.showQuickActions(
-      actions, context: .reading, templateName: templateName, preselectFirst: preselect)
+      actions, context: .reading, templateName: templateName, preselectIndex: preselectIndex)
     DebugLogger.log("QUICK-ACTIONS: Showing \(actions.count) entries")
     observePromptSelection(capture)
   }

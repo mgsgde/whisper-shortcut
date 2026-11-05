@@ -128,10 +128,27 @@ final class QuickActionStore {
       includeLearned: Self.learnedEnabled)
   }
 
-  /// What the ⌘2 card lists: the instructions last run from it, most recent first, then
-  /// `current()` fills up to `cardEntries`. Cache and UserDefaults only.
-  func forCard() -> [QuickAction] {
-    Self.cardList(recent: Self.storedRecentTexts(), ranked: current())
+  /// What the ⌘2 card lists, and which entry it opens on. Cache and UserDefaults only.
+  func forCard() -> (actions: [QuickAction], preselectIndex: Int?) {
+    Self.card(
+      custom: Self.storedCustomTexts(), recent: Self.storedRecentTexts(), ranked: current(),
+      preselect: Self.preselectsRecent)
+  }
+
+  /// With prompts of the user's own, the card lists `ranked` (theirs, then learned ones) in its
+  /// fixed order, so ⌃n always runs the same prompt; it shows `cardEntries` rows and scrolls to
+  /// the rest. The last one run is highlighted where it stands instead of moving to the top.
+  /// Without, it lists the last instructions run first (`cardList`) and highlights the first.
+  static func card(
+    custom: [String], recent: [String], ranked: [QuickAction], preselect: Bool
+  ) -> (actions: [QuickAction], preselectIndex: Int?) {
+    guard !customActions(from: custom).isEmpty else {
+      let list = cardList(recent: recent, ranked: ranked)
+      return (list, preselect && !list.isEmpty ? 0 : nil)
+    }
+    guard preselect, let last = recent.first else { return (ranked, nil) }
+    let key = normalizeKey(last.trimmingCharacters(in: .whitespacesAndNewlines))
+    return (ranked, ranked.firstIndex { $0.key == key })
   }
 
   /// Recent texts first (an entry that also ranks keeps its flags, so a built-in default stays

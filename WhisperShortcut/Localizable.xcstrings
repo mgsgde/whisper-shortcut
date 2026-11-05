@@ -24162,6 +24162,26 @@
           }
         }
       }
+    },
+    "%lld prompts · ⌃1–⌃%lld · ↑↓" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld Prompts · ⌃1–⌃%2$lld · ↑↓"
+          }
+        }
+      }
+    },
+    "%lld quick prompts, Control-1 to Control-%lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld Schnell-Prompts, Control-1 bis Control-%2$lld"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
