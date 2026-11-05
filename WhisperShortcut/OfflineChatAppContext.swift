@@ -80,11 +80,11 @@ enum OfflineChatAppContext {
     if let currentModel {
       lines.append("")
       lines.append(
-        "You are \(currentModel.displayName), running in-process on this Mac with MLX (4-bit). Asked whether a model works: you can only confirm that \(currentModel.displayName) works, because you are answering. For any other model, say you cannot test it from here and tell the user to switch to it with its slash command and ask again.")
+        "You are \(currentModel.displayName), running in-process on this Mac with MLX (\(currentModel.quantisationLabel)). Asked whether a model works: you can only confirm that \(currentModel.displayName) works, because you are answering. For any other model, say you cannot test it from here and tell the user to switch to it with its slash command and ask again.")
     }
     lines.append("")
-    lines.append("Offline Chat models (switch with the model menu in the message box, or type the slash command):")
-    for model in LocalLLMModelType.allCases {
+    lines.append("Offline Chat models (switch in the message box's model menu, or type the slash command):")
+    for model in LocalLLMModelType.allCases where model.baseModel == model {
       lines.append("- \(summary(of: model))")
     }
 
@@ -104,22 +104,26 @@ enum OfflineChatAppContext {
     return lines.joined(separator: "\n")
   }
 
-  /// One line per catalogue entry. The exhaustive switch makes a new model a compile error here
-  /// until its trade-off is written down.
+  /// One line per model family: name, slash command, download size, and whether Dictate Prompt
+  /// can use it.
+  ///
+  /// Deliberately terse. This block is prefilled on every offline message and
+  /// `OfflineChatAppContextTests.realReadmeStaysWithinBudget` caps it at 6,200 characters, so the
+  /// nineteen-entry catalogue does not fit per-model prose. Size is the fact the assistant cannot
+  /// look up anywhere else; the RAM floor is not, because Settings shows it next to the model and
+  /// it follows from the size.
+  ///
+  /// The 6-bit and 8-bit variants are deliberately *not* listed. They are the same model at a
+  /// higher precision, and naming each one with its own slash command cost ~190 characters — more
+  /// than the whole budget had left (the nine family lines already sit at 6,196 of 6,200). The
+  /// model menu in the message box lists every entry, so a user can still switch to a variant;
+  /// what the assistant loses is the ability to recite a variant's alias, which is the cheaper
+  /// thing to lose than a budget that is paid on every offline message.
+  /// One model line *without* its list marker: the caller owns the `- `, so the bullet is not
+  /// written twice ("- - Qwen3.5 4B …").
   static func summary(of model: LocalLLMModelType) -> String {
-    let command = "/\(model.promptModel.shortAlias)"
-    let ram = model.minimumPhysicalMemoryGB > 0
-      ? "needs \(model.minimumPhysicalMemoryGB) GB RAM or more, "
-      : ""
-    let uses = model.supportsDictatePrompt ? "Chat and Dictate Prompt" : "Chat only"
-    let tradeoff: String
-    switch model {
-    case .qwen34BInstruct2507:
-      tradeoff = "the default; fast, good at editing and short answers, thinner general knowledge"
-    case .qwen359B:
-      tradeoff = "slower, knows more and answers open questions better; too free with Dictate Prompt edits, so it is not offered there"
-    }
-    return "\(model.displayName) (\(command), \(model.estimatedSizeLabel) download, \(ram)\(uses)): \(tradeoff)."
+    let dictatePrompt = model.supportsDictatePrompt ? " (Dictate Prompt)" : ""
+    return "\(model.displayName) /\(model.promptModel.shortAlias) \(model.estimatedSizeLabel)\(dictatePrompt)"
   }
 
   /// "Name: first sentence" for every `- **Name**: …` bullet under `## Features`.

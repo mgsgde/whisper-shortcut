@@ -24242,6 +24242,408 @@
           }
         }
       }
+    },
+    "4-bit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4-bit"
+          }
+        }
+      }
+    },
+    "6-bit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "6-bit"
+          }
+        }
+      }
+    },
+    "8-bit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8-bit"
+          }
+        }
+      }
+    },
+    "Gemma 4 12B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 12B (offline)"
+          }
+        }
+      }
+    },
+    "Gemma 4 12B 6-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 12B 6-bit (offline)"
+          }
+        }
+      }
+    },
+    "Gemma 4 12B 8-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 12B 8-bit (offline)"
+          }
+        }
+      }
+    },
+    "Gemma 4 26B A4B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 26B A4B (offline)"
+          }
+        }
+      }
+    },
+    "LFM2.5 1.2B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LFM2.5 1.2B (offline)"
+          }
+        }
+      }
+    },
+    "LFM2.5 1.2B 6-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LFM2.5 1.2B 6-bit (offline)"
+          }
+        }
+      }
+    },
+    "LFM2.5 1.2B 8-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LFM2.5 1.2B 8-bit (offline)"
+          }
+        }
+      }
+    },
+    "LFM2.5 8B A1B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LFM2.5 8B A1B (offline)"
+          }
+        }
+      }
+    },
+    "Larger, needs more RAM" : {
+      "comment" : "Offline model list group: entries with a high RAM floor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größer, braucht mehr RAM"
+          }
+        }
+      }
+    },
+    "Quality" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualität"
+          }
+        }
+      }
+    },
+    "Qwen3.5 2B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 2B (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.5 4B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 4B (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.5 4B 6-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 4B 6-bit (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.5 4B 8-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 4B 8-bit (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.5 9B 6-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 9B 6-bit (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.5 9B 8-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.5 9B 8-bit (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.6 35B A3B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.6 35B A3B (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.6 35B A3B 6-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.6 35B A3B 6-bit (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3.6 35B A3B 8-bit (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3.6 35B A3B 8-bit (offline)"
+          }
+        }
+      }
+    },
+    "Smaller and faster" : {
+      "comment" : "Offline model list group: entries that fit a small Mac",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleiner und schneller"
+          }
+        }
+      }
+    },
+    "mlx-community/LFM2.5-1.2B-Instruct-4bit • In-process MLX, no server to install • ~0.7 GB • Offline • Chat only, needs 8 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/LFM2.5-1.2B-Instruct-4bit • MLX in der App, ohne Server • ca. 0,7 GB • Offline • Nur Chat, braucht 8 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/LFM2.5-1.2B-Instruct-6bit • In-process MLX, no server to install • ~1.0 GB • Offline • Chat only, needs 8 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/LFM2.5-1.2B-Instruct-6bit • MLX in der App, ohne Server • ca. 1,0 GB • Offline • Nur Chat, braucht 8 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/LFM2.5-1.2B-Instruct-8bit • In-process MLX, no server to install • ~1.2 GB • Offline • Chat only, needs 8 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/LFM2.5-1.2B-Instruct-8bit • MLX in der App, ohne Server • ca. 1,2 GB • Offline • Nur Chat, braucht 8 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/LFM2.5-8B-A1B-MLX-4bit • In-process MLX, no server to install • ~4.8 GB • Offline • Chat only, needs 16 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/LFM2.5-8B-A1B-MLX-4bit • MLX in der App, ohne Server • ca. 4,8 GB • Offline • Nur Chat, braucht 16 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-2B-4bit • In-process MLX, no server to install • ~1.7 GB • Offline • Needs 8 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-2B-4bit • MLX in der App, ohne Server • ca. 1,7 GB • Offline • Braucht 8 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-4B-4bit • In-process MLX, no server to install • ~3.1 GB • Offline • Needs 16 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-4B-4bit • MLX in der App, ohne Server • ca. 3,1 GB • Offline • Braucht 16 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-4B-6bit • In-process MLX, no server to install • ~4.1 GB • Offline • Chat only, needs 16 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-4B-6bit • MLX in der App, ohne Server • ca. 4,1 GB • Offline • Nur Chat, braucht 16 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-4B-8bit • In-process MLX, no server to install • ~5.2 GB • Offline • Chat only, needs 16 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-4B-8bit • MLX in der App, ohne Server • ca. 5,2 GB • Offline • Nur Chat, braucht 16 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-9B-6bit • In-process MLX, no server to install • ~8.2 GB • Offline • Chat only, needs 24 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-9B-6bit • MLX in der App, ohne Server • ca. 8,2 GB • Offline • Nur Chat, braucht 24 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.5-9B-8bit • In-process MLX, no server to install • ~10.5 GB • Offline • Chat only, needs 24 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.5-9B-8bit • MLX in der App, ohne Server • ca. 10,5 GB • Offline • Nur Chat, braucht 24 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.6-35B-A3B-4bit • In-process MLX, no server to install • ~20.4 GB • Offline • Chat only, needs 64 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.6-35B-A3B-4bit • MLX in der App, ohne Server • ca. 20,4 GB • Offline • Nur Chat, braucht 64 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.6-35B-A3B-6bit • In-process MLX, no server to install • ~29.1 GB • Offline • Chat only, needs 64 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.6-35B-A3B-6bit • MLX in der App, ohne Server • ca. 29,1 GB • Offline • Nur Chat, braucht 64 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/Qwen3.6-35B-A3B-8bit • In-process MLX, no server to install • ~37.7 GB • Offline • Chat only, needs 96 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/Qwen3.6-35B-A3B-8bit • MLX in der App, ohne Server • ca. 37,7 GB • Offline • Nur Chat, braucht 96 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-12B-it-4bit • In-process MLX, no server to install • ~6.8 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-12B-it-4bit • MLX in der App, ohne Server • ca. 6,8 GB • Offline • Nur Chat, braucht 32 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-12B-it-6bit • In-process MLX, no server to install • ~9.8 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-12B-it-6bit • MLX in der App, ohne Server • ca. 9,8 GB • Offline • Nur Chat, braucht 32 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-12B-it-8bit • In-process MLX, no server to install • ~12.7 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-12B-it-8bit • MLX in der App, ohne Server • ca. 12,7 GB • Offline • Nur Chat, braucht 32 GB RAM"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-26b-a4b-it-4bit • In-process MLX, no server to install • ~15.4 GB • Offline • Chat only, needs 48 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-26b-a4b-it-4bit • MLX in der App, ohne Server • ca. 15,4 GB • Offline • Nur Chat, braucht 48 GB RAM"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

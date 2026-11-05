@@ -16,18 +16,102 @@ import MLXLMCommon
 // MARK: - Model catalogue
 
 enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
+  /// First in `allCases`, so it stays first in every picker: this is the recommended entry and the
+  /// Dictate Prompt fallback (`byPreference`).
   case qwen34BInstruct2507 = "qwen3-4b-instruct-2507"
-  case qwen359B = "qwen3.5-9b"
   // Qwen3 8B was removed 2026-09-30: on the offline Dictate Prompt benchmark it scored 30/36 rule
   // checks vs 34/36 for 4B Instruct, appended instead of editing on every round of
   // `edit-not-append`, and ran at twice the latency (plans/model-audits/2026-09-30-offline-prompt.md).
   // Persisted selections forward via `PromptModel.migrateLegacyPromptRawValue`; its weights are
   // removed by `MLXModelPaths.removeRetiredWeights`.
 
+  // Added 2026-11-03, ordered by download size ascending (which is also ascending within each
+  // family) so the list reads as a ladder from "runs on any Mac" to "needs a lot of RAM". Every
+  // repo, `model_type` and size was verified against Hugging Face and against the `model_type`
+  // registrations in mlx-swift-lm 3.32.3 (`Libraries/MLXLLM/LLMModelFactory.swift`).
+  //
+  // Since 2026-11-04 five of these families also carry their 6-bit and 8-bit quantisations. They
+  // are the *same* model at a higher precision, not bigger models, so each one sits directly
+  // behind its 4-bit sibling and `baseModel` is what groups them in the pickers. The 4-bit entry
+  // stays the default, the recommended one, and the one the benchmark notes refer to: it is the
+  // smallest and fastest. Quantisation does not change `model_type`, so the loader needs no new
+  // architecture support — every repo below was checked against Hugging Face (repo exists,
+  // `model_type` unchanged, total size measured from the `siblings` blob sizes).
+  //
+  // Deliberately *not* added, because the brief scoped the quantisation pass to the five families
+  // above: Qwen3 4B Instruct, Qwen3.5 2B, LFM2.5 8B A1B and Gemma 4 26B A4B stay 4-bit only.
+  // (Repos do exist for three of them — Qwen3-4B-Instruct-2507-{6,8}bit, Qwen3.5-2B-{6,8}bit,
+  // gemma-4-26b-a4b-it-{6,8}bit — and LFM2.5 8B A1B has an 8-bit but no 6-bit repo.)
+  case lfm2512B = "lfm2.5-1.2b-instruct"
+  case lfm2512B6bit = "lfm2.5-1.2b-instruct-6bit"
+  case lfm2512B8bit = "lfm2.5-1.2b-instruct-8bit"
+  case qwen352B = "qwen3.5-2b"
+  case qwen354B = "qwen3.5-4b"
+  case qwen354B6bit = "qwen3.5-4b-6bit"
+  case qwen354B8bit = "qwen3.5-4b-8bit"
+  case lfm258BA1B = "lfm2.5-8b-a1b"
+  case qwen359B = "qwen3.5-9b"
+  case qwen359B6bit = "qwen3.5-9b-6bit"
+  case qwen359B8bit = "qwen3.5-9b-8bit"
+  case gemma412B = "gemma-4-12b-it"
+  case gemma412B6bit = "gemma-4-12b-it-6bit"
+  case gemma412B8bit = "gemma-4-12b-it-8bit"
+  case gemma426BA4B = "gemma-4-26b-a4b-it"
+  case qwen3635BA3B = "qwen3.6-35b-a3b"
+  case qwen3635BA3B6bit = "qwen3.6-35b-a3b-6bit"
+  case qwen3635BA3B8bit = "qwen3.6-35b-a3b-8bit"
+
   var displayName: String {
     switch self {
     case .qwen34BInstruct2507: return "Qwen3 4B Instruct"
+    case .lfm2512B: return "LFM2.5 1.2B"
+    case .lfm2512B6bit: return "LFM2.5 1.2B (6-bit)"
+    case .lfm2512B8bit: return "LFM2.5 1.2B (8-bit)"
+    case .qwen352B: return "Qwen3.5 2B"
+    case .qwen354B: return "Qwen3.5 4B"
+    case .qwen354B6bit: return "Qwen3.5 4B (6-bit)"
+    case .qwen354B8bit: return "Qwen3.5 4B (8-bit)"
+    case .lfm258BA1B: return "LFM2.5 8B A1B"
     case .qwen359B: return "Qwen3.5 9B"
+    case .qwen359B6bit: return "Qwen3.5 9B (6-bit)"
+    case .qwen359B8bit: return "Qwen3.5 9B (8-bit)"
+    case .gemma412B: return "Gemma 4 12B"
+    case .gemma412B6bit: return "Gemma 4 12B (6-bit)"
+    case .gemma412B8bit: return "Gemma 4 12B (8-bit)"
+    case .gemma426BA4B: return "Gemma 4 26B A4B"
+    case .qwen3635BA3B: return "Qwen3.6 35B A3B"
+    case .qwen3635BA3B6bit: return "Qwen3.6 35B A3B (6-bit)"
+    case .qwen3635BA3B8bit: return "Qwen3.6 35B A3B (8-bit)"
+    }
+  }
+
+  /// The family this entry belongs to — the 4-bit entry itself for a family that ships only one
+  /// quantisation. Grouping code keys on this so the variants of one model stay together instead
+  /// of reading as three unrelated models in a list of twenty.
+  var baseModel: LocalLLMModelType {
+    switch self {
+    case .lfm2512B6bit, .lfm2512B8bit: return .lfm2512B
+    case .qwen354B6bit, .qwen354B8bit: return .qwen354B
+    case .qwen359B6bit, .qwen359B8bit: return .qwen359B
+    case .gemma412B6bit, .gemma412B8bit: return .gemma412B
+    case .qwen3635BA3B6bit, .qwen3635BA3B8bit: return .qwen3635BA3B
+    case .qwen34BInstruct2507, .lfm2512B, .qwen352B, .qwen354B, .lfm258BA1B, .qwen359B,
+         .gemma412B, .gemma426BA4B, .qwen3635BA3B:
+      return self
+    }
+  }
+
+  /// "4-bit" / "6-bit" / "8-bit": the precision this repo ships, i.e. the axis a user picks on
+  /// within one family. Higher is closer to the unquantised model and costs RAM and speed.
+  var quantisationLabel: String {
+    switch self {
+    case .lfm2512B6bit, .qwen354B6bit, .qwen359B6bit, .gemma412B6bit, .qwen3635BA3B6bit:
+      return String(localized: "6-bit", comment: "Model quantisation level")
+    case .lfm2512B8bit, .qwen354B8bit, .qwen359B8bit, .gemma412B8bit, .qwen3635BA3B8bit:
+      return String(localized: "8-bit", comment: "Model quantisation level")
+    case .qwen34BInstruct2507, .lfm2512B, .qwen352B, .qwen354B, .lfm258BA1B, .qwen359B,
+         .gemma412B, .gemma426BA4B, .qwen3635BA3B:
+      return String(localized: "4-bit", comment: "Model quantisation level")
     }
   }
 
@@ -35,14 +119,51 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   var huggingFaceID: String {
     switch self {
     case .qwen34BInstruct2507: return "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    case .lfm2512B: return "mlx-community/LFM2.5-1.2B-Instruct-4bit"
+    case .lfm2512B6bit: return "mlx-community/LFM2.5-1.2B-Instruct-6bit"
+    case .lfm2512B8bit: return "mlx-community/LFM2.5-1.2B-Instruct-8bit"
+    case .qwen352B: return "mlx-community/Qwen3.5-2B-4bit"
+    case .qwen354B: return "mlx-community/Qwen3.5-4B-4bit"
+    case .qwen354B6bit: return "mlx-community/Qwen3.5-4B-6bit"
+    case .qwen354B8bit: return "mlx-community/Qwen3.5-4B-8bit"
+    case .lfm258BA1B: return "mlx-community/LFM2.5-8B-A1B-MLX-4bit"
     case .qwen359B: return "mlx-community/Qwen3.5-9B-MLX-4bit"
+    case .qwen359B6bit: return "mlx-community/Qwen3.5-9B-6bit"
+    case .qwen359B8bit: return "mlx-community/Qwen3.5-9B-8bit"
+    case .gemma412B: return "mlx-community/gemma-4-12B-it-4bit"
+    case .gemma412B6bit: return "mlx-community/gemma-4-12B-it-6bit"
+    case .gemma412B8bit: return "mlx-community/gemma-4-12B-it-8bit"
+    case .gemma426BA4B: return "mlx-community/gemma-4-26b-a4b-it-4bit"
+    case .qwen3635BA3B: return "mlx-community/Qwen3.6-35B-A3B-4bit"
+    case .qwen3635BA3B6bit: return "mlx-community/Qwen3.6-35B-A3B-6bit"
+    case .qwen3635BA3B8bit: return "mlx-community/Qwen3.6-35B-A3B-8bit"
     }
   }
 
+  /// Sum of the repo's file sizes on Hugging Face, in MB (decimal, matching `estimatedSizeLabel`).
+  /// Measured 2026-11-04 from the `siblings` blob sizes of each repo, not estimated from the
+  /// parameter count: 6-bit and 8-bit are not a fixed multiple of the 4-bit size.
   var estimatedSizeMB: Int {
     switch self {
     case .qwen34BInstruct2507: return 2300
+    case .lfm2512B: return 663
+    case .lfm2512B6bit: return 956
+    case .lfm2512B8bit: return 1248
+    case .qwen352B: return 1749
+    case .qwen354B: return 3061
+    case .qwen354B6bit: return 4112
+    case .qwen354B8bit: return 5164
+    case .lfm258BA1B: return 4782
     case .qwen359B: return 5600
+    case .qwen359B6bit: return 8215
+    case .qwen359B8bit: return 10453
+    case .gemma412B: return 6773
+    case .gemma412B6bit: return 9761
+    case .gemma412B8bit: return 12749
+    case .gemma426BA4B: return 15374
+    case .qwen3635BA3B: return 20429
+    case .qwen3635BA3B6bit: return 29089
+    case .qwen3635BA3B8bit: return 37748
     }
   }
 
@@ -70,18 +191,46 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   /// benchmark Qwen3.5 9B scored 28/36, formalised casual text and translated EN→DE
   /// (plans/model-audits/2026-09-30-offline-prompt.md); for Chat Q&A it beat the 4B
   /// (plans/model-audits/2026-10-18-offline-chat-larger-model.md).
+  ///
+  /// Deliberately conservative for the 2026-11-03 entries: only the two small Qwen3.5 models join
+  /// Dictate Prompt. The same benchmark showed larger models scoring *worse* on the rule checks
+  /// (30/36 for 8B vs 34/36 for 4B) while running slower, so a new entry stays chat-only until it
+  /// has been measured on the edit benchmark — a bigger model is not a better editor.
+  ///
+  /// The 2026-11-04 quantised variants are chat-only too, including Qwen3.5 4B's, whose 4-bit
+  /// sibling *is* a Dictate Prompt model: a higher-precision copy of a model has never been run
+  /// through the edit benchmark, and the benchmark measures the 4-bit weights. Adding it on the
+  /// strength of its sibling would put an unmeasured model in the one feature where the app's own
+  /// numbers say precision is not the bottleneck.
   var supportsDictatePrompt: Bool {
     switch self {
-    case .qwen34BInstruct2507: return true
-    case .qwen359B: return false
+    case .qwen34BInstruct2507, .qwen352B, .qwen354B: return true
+    case .lfm2512B, .lfm2512B6bit, .lfm2512B8bit, .qwen354B6bit, .qwen354B8bit,
+         .lfm258BA1B, .qwen359B, .qwen359B6bit, .qwen359B8bit, .gemma412B, .gemma412B6bit,
+         .gemma412B8bit, .gemma426BA4B, .qwen3635BA3B, .qwen3635BA3B6bit, .qwen3635BA3B8bit:
+      return false
     }
   }
 
-  /// Physical RAM (GiB) a Mac needs before this entry is offered.
+  /// Physical RAM (GiB) a Mac needs before this entry is offered. Roughly twice the download size,
+  /// rounded up to a common Mac configuration: the weights are only half of it, the rest is the OS
+  /// plus the KV cache, which grows with the context the chat fills.
+  ///
+  /// For a quantised variant the same rule is applied to its own measured size, and the result is
+  /// never allowed below its 4-bit sibling's floor — a family must not become *easier* to run at a
+  /// higher precision. That is why Qwen3.5 4B's 6-bit and 8-bit stay at 16 GB (2× their size is
+  /// 8.2 / 10.3 GB) and Gemma 4 12B's 6-bit stays at 32 GB (2× is 19.5 GB, but its 4-bit sibling
+  /// already needs 32).
   var minimumPhysicalMemoryGB: Int {
     switch self {
     case .qwen34BInstruct2507: return 0
-    case .qwen359B: return 16
+    case .lfm2512B, .lfm2512B6bit, .lfm2512B8bit, .qwen352B: return 8
+    case .qwen354B, .qwen354B6bit, .qwen354B8bit, .lfm258BA1B, .qwen359B: return 16
+    case .qwen359B6bit, .qwen359B8bit: return 24
+    case .gemma412B, .gemma412B6bit, .gemma412B8bit: return 32
+    case .gemma426BA4B: return 48
+    case .qwen3635BA3B, .qwen3635BA3B6bit: return 64
+    case .qwen3635BA3B8bit: return 96
     }
   }
 
@@ -100,6 +249,20 @@ enum LocalLLMModelType: String, CaseIterable, DownloadableModel {
   }
 
   static var offerable: [LocalLLMModelType] { allCases.filter(\.isOfferable) }
+
+  /// The families in `allCases` order (ascending download size), each with its entries. Grouping
+  /// key for the download list: three rows named "Qwen3.5 4B", "… 6-bit", "… 8-bit" belong under
+  /// one header, not scattered through a list of nineteen.
+  static func families(in models: [LocalLLMModelType]) -> [(base: LocalLLMModelType, models: [LocalLLMModelType])] {
+    var order: [LocalLLMModelType] = []
+    var grouped: [LocalLLMModelType: [LocalLLMModelType]] = [:]
+    for model in models {
+      let base = model.baseModel
+      if grouped[base] == nil { order.append(base) }
+      grouped[base, default: []].append(model)
+    }
+    return order.map { (base: $0, models: grouped[$0] ?? []) }
+  }
 
   var promptModel: PromptModel {
     PromptModel.forLocalLLMModel(self)

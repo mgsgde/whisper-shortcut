@@ -193,13 +193,47 @@ enum PromptModel: String, CaseIterable {
   // In-process MLX models (no server). One enum case per catalogue entry; weights download like
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
+  case localMLXLFM2512B = "local-mlx-lfm2.5-1.2b"
+  case localMLXLFM2512B6bit = "local-mlx-lfm2.5-1.2b-6bit"
+  case localMLXLFM2512B8bit = "local-mlx-lfm2.5-1.2b-8bit"
+  case localMLXQwen352B = "local-mlx-qwen3.5-2b"
+  case localMLXQwen354B = "local-mlx-qwen3.5-4b"
+  case localMLXQwen354B6bit = "local-mlx-qwen3.5-4b-6bit"
+  case localMLXQwen354B8bit = "local-mlx-qwen3.5-4b-8bit"
+  case localMLXLFM258BA1B = "local-mlx-lfm2.5-8b-a1b"
   case localMLXQwen359B = "local-mlx-qwen3.5-9b"
+  case localMLXQwen359B6bit = "local-mlx-qwen3.5-9b-6bit"
+  case localMLXQwen359B8bit = "local-mlx-qwen3.5-9b-8bit"
+  case localMLXGemma412B = "local-mlx-gemma-4-12b-it"
+  case localMLXGemma412B6bit = "local-mlx-gemma-4-12b-it-6bit"
+  case localMLXGemma412B8bit = "local-mlx-gemma-4-12b-it-8bit"
+  case localMLXGemma426BA4B = "local-mlx-gemma-4-26b-a4b-it"
+  case localMLXQwen3635BA3B = "local-mlx-qwen3.6-35b-a3b"
+  case localMLXQwen3635BA3B6bit = "local-mlx-qwen3.6-35b-a3b-6bit"
+  case localMLXQwen3635BA3B8bit = "local-mlx-qwen3.6-35b-a3b-8bit"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
+    case .lfm2512B: return .localMLXLFM2512B
+    case .lfm2512B6bit: return .localMLXLFM2512B6bit
+    case .lfm2512B8bit: return .localMLXLFM2512B8bit
+    case .qwen352B: return .localMLXQwen352B
+    case .qwen354B: return .localMLXQwen354B
+    case .qwen354B6bit: return .localMLXQwen354B6bit
+    case .qwen354B8bit: return .localMLXQwen354B8bit
+    case .lfm258BA1B: return .localMLXLFM258BA1B
     case .qwen359B: return .localMLXQwen359B
+    case .qwen359B6bit: return .localMLXQwen359B6bit
+    case .qwen359B8bit: return .localMLXQwen359B8bit
+    case .gemma412B: return .localMLXGemma412B
+    case .gemma412B6bit: return .localMLXGemma412B6bit
+    case .gemma412B8bit: return .localMLXGemma412B8bit
+    case .gemma426BA4B: return .localMLXGemma426BA4B
+    case .qwen3635BA3B: return .localMLXQwen3635BA3B
+    case .qwen3635BA3B6bit: return .localMLXQwen3635BA3B6bit
+    case .qwen3635BA3B8bit: return .localMLXQwen3635BA3B8bit
     }
   }
 
@@ -207,7 +241,24 @@ enum PromptModel: String, CaseIterable {
   var localMLXModelType: LocalLLMModelType? {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
+    case .localMLXLFM2512B: return .lfm2512B
+    case .localMLXLFM2512B6bit: return .lfm2512B6bit
+    case .localMLXLFM2512B8bit: return .lfm2512B8bit
+    case .localMLXQwen352B: return .qwen352B
+    case .localMLXQwen354B: return .qwen354B
+    case .localMLXQwen354B6bit: return .qwen354B6bit
+    case .localMLXQwen354B8bit: return .qwen354B8bit
+    case .localMLXLFM258BA1B: return .lfm258BA1B
     case .localMLXQwen359B: return .qwen359B
+    case .localMLXQwen359B6bit: return .qwen359B6bit
+    case .localMLXQwen359B8bit: return .qwen359B8bit
+    case .localMLXGemma412B: return .gemma412B
+    case .localMLXGemma412B6bit: return .gemma412B6bit
+    case .localMLXGemma412B8bit: return .gemma412B8bit
+    case .localMLXGemma426BA4B: return .gemma426BA4B
+    case .localMLXQwen3635BA3B: return .qwen3635BA3B
+    case .localMLXQwen3635BA3B6bit: return .qwen3635BA3B6bit
+    case .localMLXQwen3635BA3B8bit: return .qwen3635BA3B8bit
     default: return nil
     }
   }
@@ -258,8 +309,42 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "Local Server (Ollama / LM Studio)")
     case .localMLXQwen34BInstruct:
       return String(localized: "Qwen3 4B Instruct (Offline)")
+    case .localMLXLFM2512B:
+      return String(localized: "LFM2.5 1.2B (Offline)")
+    case .localMLXLFM2512B6bit:
+      return String(localized: "LFM2.5 1.2B 6-bit (Offline)")
+    case .localMLXLFM2512B8bit:
+      return String(localized: "LFM2.5 1.2B 8-bit (Offline)")
+    case .localMLXQwen352B:
+      return String(localized: "Qwen3.5 2B (Offline)")
+    case .localMLXQwen354B:
+      return String(localized: "Qwen3.5 4B (Offline)")
+    case .localMLXQwen354B6bit:
+      return String(localized: "Qwen3.5 4B 6-bit (Offline)")
+    case .localMLXQwen354B8bit:
+      return String(localized: "Qwen3.5 4B 8-bit (Offline)")
+    case .localMLXLFM258BA1B:
+      return String(localized: "LFM2.5 8B A1B (Offline)")
     case .localMLXQwen359B:
       return String(localized: "Qwen3.5 9B (Offline)")
+    case .localMLXQwen359B6bit:
+      return String(localized: "Qwen3.5 9B 6-bit (Offline)")
+    case .localMLXQwen359B8bit:
+      return String(localized: "Qwen3.5 9B 8-bit (Offline)")
+    case .localMLXGemma412B:
+      return String(localized: "Gemma 4 12B (Offline)")
+    case .localMLXGemma412B6bit:
+      return String(localized: "Gemma 4 12B 6-bit (Offline)")
+    case .localMLXGemma412B8bit:
+      return String(localized: "Gemma 4 12B 8-bit (Offline)")
+    case .localMLXGemma426BA4B:
+      return String(localized: "Gemma 4 26B A4B (Offline)")
+    case .localMLXQwen3635BA3B:
+      return String(localized: "Qwen3.6 35B A3B (Offline)")
+    case .localMLXQwen3635BA3B6bit:
+      return String(localized: "Qwen3.6 35B A3B 6-bit (Offline)")
+    case .localMLXQwen3635BA3B8bit:
+      return String(localized: "Qwen3.6 35B A3B 8-bit (Offline)")
     }
   }
 
@@ -294,7 +379,24 @@ enum PromptModel: String, CaseIterable {
     case .chatGPTPlanChat:   return "chatgpt"
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
+    case .localMLXLFM2512B: return "mlxlfm12b"
+    case .localMLXLFM2512B6bit: return "mlxlfm12b6"
+    case .localMLXLFM2512B8bit: return "mlxlfm12b8"
+    case .localMLXQwen352B: return "mlx352b"
+    case .localMLXQwen354B: return "mlx354b"
+    case .localMLXQwen354B6bit: return "mlx354b6"
+    case .localMLXQwen354B8bit: return "mlx354b8"
+    case .localMLXLFM258BA1B: return "mlxlfm8b"
     case .localMLXQwen359B: return "mlx9b"
+    case .localMLXQwen359B6bit: return "mlx9b6"
+    case .localMLXQwen359B8bit: return "mlx9b8"
+    case .localMLXGemma412B: return "mlxgemma12b"
+    case .localMLXGemma412B6bit: return "mlxgemma12b6"
+    case .localMLXGemma412B8bit: return "mlxgemma12b8"
+    case .localMLXGemma426BA4B: return "mlxgemma26b"
+    case .localMLXQwen3635BA3B: return "mlx3635b"
+    case .localMLXQwen3635BA3B6bit: return "mlx3635b6"
+    case .localMLXQwen3635BA3B8bit: return "mlx3635b8"
     }
   }
 
@@ -342,8 +444,42 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "Runs fully on your Mac via a local OpenAI-compatible server (Ollama / LM Studio) • No API key, no cloud • Audio is transcribed locally first, then rewritten by the local model • Configure endpoint + model in Dictate Prompt settings")
     case .localMLXQwen34BInstruct:
       return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
+    case .localMLXLFM2512B:
+      return String(localized: "mlx-community/LFM2.5-1.2B-Instruct-4bit • In-process MLX, no server to install • ~0.7 GB • Offline • Chat only, needs 8 GB RAM")
+    case .localMLXLFM2512B6bit:
+      return String(localized: "mlx-community/LFM2.5-1.2B-Instruct-6bit • In-process MLX, no server to install • ~1.0 GB • Offline • Chat only, needs 8 GB RAM")
+    case .localMLXLFM2512B8bit:
+      return String(localized: "mlx-community/LFM2.5-1.2B-Instruct-8bit • In-process MLX, no server to install • ~1.2 GB • Offline • Chat only, needs 8 GB RAM")
+    case .localMLXQwen352B:
+      return String(localized: "mlx-community/Qwen3.5-2B-4bit • In-process MLX, no server to install • ~1.7 GB • Offline • Needs 8 GB RAM")
+    case .localMLXQwen354B:
+      return String(localized: "mlx-community/Qwen3.5-4B-4bit • In-process MLX, no server to install • ~3.1 GB • Offline • Needs 16 GB RAM")
+    case .localMLXQwen354B6bit:
+      return String(localized: "mlx-community/Qwen3.5-4B-6bit • In-process MLX, no server to install • ~4.1 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXQwen354B8bit:
+      return String(localized: "mlx-community/Qwen3.5-4B-8bit • In-process MLX, no server to install • ~5.2 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXLFM258BA1B:
+      return String(localized: "mlx-community/LFM2.5-8B-A1B-MLX-4bit • In-process MLX, no server to install • ~4.8 GB • Offline • Chat only, needs 16 GB RAM")
     case .localMLXQwen359B:
       return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXQwen359B6bit:
+      return String(localized: "mlx-community/Qwen3.5-9B-6bit • In-process MLX, no server to install • ~8.2 GB • Offline • Chat only, needs 24 GB RAM")
+    case .localMLXQwen359B8bit:
+      return String(localized: "mlx-community/Qwen3.5-9B-8bit • In-process MLX, no server to install • ~10.5 GB • Offline • Chat only, needs 24 GB RAM")
+    case .localMLXGemma412B:
+      return String(localized: "mlx-community/gemma-4-12B-it-4bit • In-process MLX, no server to install • ~6.8 GB • Offline • Chat only, needs 32 GB RAM")
+    case .localMLXGemma412B6bit:
+      return String(localized: "mlx-community/gemma-4-12B-it-6bit • In-process MLX, no server to install • ~9.8 GB • Offline • Chat only, needs 32 GB RAM")
+    case .localMLXGemma412B8bit:
+      return String(localized: "mlx-community/gemma-4-12B-it-8bit • In-process MLX, no server to install • ~12.7 GB • Offline • Chat only, needs 32 GB RAM")
+    case .localMLXGemma426BA4B:
+      return String(localized: "mlx-community/gemma-4-26b-a4b-it-4bit • In-process MLX, no server to install • ~15.4 GB • Offline • Chat only, needs 48 GB RAM")
+    case .localMLXQwen3635BA3B:
+      return String(localized: "mlx-community/Qwen3.6-35B-A3B-4bit • In-process MLX, no server to install • ~20.4 GB • Offline • Chat only, needs 64 GB RAM")
+    case .localMLXQwen3635BA3B6bit:
+      return String(localized: "mlx-community/Qwen3.6-35B-A3B-6bit • In-process MLX, no server to install • ~29.1 GB • Offline • Chat only, needs 64 GB RAM")
+    case .localMLXQwen3635BA3B8bit:
+      return String(localized: "mlx-community/Qwen3.6-35B-A3B-8bit • In-process MLX, no server to install • ~37.7 GB • Offline • Chat only, needs 96 GB RAM")
     }
   }
   
@@ -352,7 +488,12 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
       return .low
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXLFM2512B6bit,
+         .localMLXLFM2512B8bit, .localMLXQwen352B, .localMLXQwen354B, .localMLXQwen354B6bit,
+         .localMLXQwen354B8bit, .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXQwen359B6bit,
+         .localMLXQwen359B8bit, .localMLXGemma412B, .localMLXGemma412B6bit,
+         .localMLXGemma412B8bit, .localMLXGemma426BA4B, .localMLXQwen3635BA3B,
+         .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       return .freeOffline
     case .gemini31Pro, .geminiImagePro:
       return .medium
@@ -389,7 +530,12 @@ enum PromptModel: String, CaseIterable {
       return .chatGPTPlan
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXLFM2512B6bit,
+         .localMLXLFM2512B8bit, .localMLXQwen352B, .localMLXQwen354B, .localMLXQwen354B6bit,
+         .localMLXQwen354B8bit, .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXQwen359B6bit,
+         .localMLXQwen359B8bit, .localMLXGemma412B, .localMLXGemma412B6bit,
+         .localMLXGemma412B8bit, .localMLXGemma426BA4B, .localMLXQwen3635BA3B,
+         .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       return .localMLX
     }
   }
@@ -503,7 +649,12 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct,
+         .localMLXLFM2512B, .localMLXLFM2512B6bit, .localMLXLFM2512B8bit, .localMLXQwen352B,
+         .localMLXQwen354B, .localMLXQwen354B6bit, .localMLXQwen354B8bit, .localMLXLFM258BA1B,
+         .localMLXQwen359B, .localMLXQwen359B6bit, .localMLXQwen359B8bit, .localMLXGemma412B,
+         .localMLXGemma412B6bit, .localMLXGemma412B8bit, .localMLXGemma426BA4B,
+         .localMLXQwen3635BA3B, .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       return false
     default:
       return true
@@ -521,7 +672,9 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXQwen352B, .localMLXQwen354B,
+         .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXGemma412B, .localMLXGemma426BA4B,
+         .localMLXQwen3635BA3B:
       return true
     // Not offered at all in the App Store build (OpenAI approval pending).
     case .chatGPTPlanChat:
@@ -589,7 +742,13 @@ enum PromptModel: String, CaseIterable {
     case .grok43, .grok47,
          .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
+         .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXLFM2512B6bit,
+         .localMLXLFM2512B8bit, .localMLXQwen352B, .localMLXQwen354B, .localMLXQwen354B6bit,
+         .localMLXQwen354B8bit, .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXQwen359B6bit,
+         .localMLXQwen359B8bit, .localMLXGemma412B, .localMLXGemma412B6bit,
+         .localMLXGemma412B8bit, .localMLXGemma426BA4B, .localMLXQwen3635BA3B,
+         .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       return nil
     }
   }
@@ -632,7 +791,13 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
+         .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXLFM2512B6bit,
+         .localMLXLFM2512B8bit, .localMLXQwen352B, .localMLXQwen354B, .localMLXQwen354B6bit,
+         .localMLXQwen354B8bit, .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXQwen359B6bit,
+         .localMLXQwen359B8bit, .localMLXGemma412B, .localMLXGemma412B6bit,
+         .localMLXGemma412B8bit, .localMLXGemma426BA4B, .localMLXQwen3635BA3B,
+         .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -647,7 +812,12 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .localMLXQwen34BInstruct, .localMLXLFM2512B, .localMLXLFM2512B6bit,
+         .localMLXLFM2512B8bit, .localMLXQwen352B, .localMLXQwen354B, .localMLXQwen354B6bit,
+         .localMLXQwen354B8bit, .localMLXLFM258BA1B, .localMLXQwen359B, .localMLXQwen359B6bit,
+         .localMLXQwen359B8bit, .localMLXGemma412B, .localMLXGemma412B6bit,
+         .localMLXGemma412B8bit, .localMLXGemma426BA4B, .localMLXQwen3635BA3B,
+         .localMLXQwen3635BA3B6bit, .localMLXQwen3635BA3B8bit:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:

@@ -136,6 +136,8 @@ struct PromptModelSelectionView: View {
 
   /// The "More models" remainder, grouped by provider with image-generation models split out
   /// (Nano Banana generates images, not chat replies). A single group renders as a plain grid.
+  /// The offline group is split once more, by model family, so the 4/6/8-bit variants of one
+  /// model sit under one caption instead of reading as three unrelated models.
   @ViewBuilder
   private func groupedGrids(_ models: [PromptModel]) -> some View {
     let groups = Self.modelGroups(models)
@@ -144,11 +146,33 @@ struct PromptModelSelectionView: View {
         ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
           if index > 0 { Divider().padding(.vertical, 10) }
           groupHeader(symbol: group.symbol, title: group.title, subtitle: group.subtitle)
-          modelGrid(group.models)
+          groupGrid(group.models)
         }
       } else {
-        modelGrid(models)
+        groupGrid(models)
       }
+    }
+  }
+
+  /// A group's tiles: the offline group by model family, everything else as one grid.
+  @ViewBuilder
+  private func groupGrid(_ models: [PromptModel]) -> some View {
+    if models.allSatisfy({ $0.provider == .localMLX }) {
+      let families = LocalLLMModelType.families(in: models.compactMap(\.localMLXModelType))
+      VStack(alignment: .leading, spacing: 10) {
+        ForEach(families, id: \.base) { family in
+          // A family with one entry needs no caption: the tile already names the model.
+          if family.models.count > 1 {
+            Text(verbatim: family.base.displayName)
+              .font(.caption)
+              .foregroundColor(.secondary)
+              .padding(.horizontal, 4)
+          }
+          modelGrid(family.models.compactMap(PromptModel.forLocalLLMModel))
+        }
+      }
+    } else {
+      modelGrid(models)
     }
   }
 

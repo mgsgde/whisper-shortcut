@@ -291,7 +291,24 @@ extension PromptModel: PickerCuratedModel {
   var pickerTitle: String {
     switch self {
     case .localMLXQwen34BInstruct: return "Qwen3 4B Instruct"
+    case .localMLXLFM2512B: return "LFM2.5 1.2B"
+    case .localMLXLFM2512B6bit: return "LFM2.5 1.2B 6-bit"
+    case .localMLXLFM2512B8bit: return "LFM2.5 1.2B 8-bit"
+    case .localMLXQwen352B: return "Qwen3.5 2B"
+    case .localMLXQwen354B: return "Qwen3.5 4B"
+    case .localMLXQwen354B6bit: return "Qwen3.5 4B 6-bit"
+    case .localMLXQwen354B8bit: return "Qwen3.5 4B 8-bit"
+    case .localMLXLFM258BA1B: return "LFM2.5 8B A1B"
     case .localMLXQwen359B: return "Qwen3.5 9B"
+    case .localMLXQwen359B6bit: return "Qwen3.5 9B 6-bit"
+    case .localMLXQwen359B8bit: return "Qwen3.5 9B 8-bit"
+    case .localMLXGemma412B: return "Gemma 4 12B"
+    case .localMLXGemma412B6bit: return "Gemma 4 12B 6-bit"
+    case .localMLXGemma412B8bit: return "Gemma 4 12B 8-bit"
+    case .localMLXGemma426BA4B: return "Gemma 4 26B A4B"
+    case .localMLXQwen3635BA3B: return "Qwen3.6 35B A3B"
+    case .localMLXQwen3635BA3B6bit: return "Qwen3.6 35B A3B 6-bit"
+    case .localMLXQwen3635BA3B8bit: return "Qwen3.6 35B A3B 8-bit"
     default: return displayName
     }
   }

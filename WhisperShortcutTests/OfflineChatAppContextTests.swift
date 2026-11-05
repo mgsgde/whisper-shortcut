@@ -29,18 +29,28 @@ struct OfflineChatAppContextTests {
       ])
   }
 
+  /// One line per family, not per catalogue entry: the 6-bit and 8-bit variants are the same model
+  /// at a higher precision and the block is prefilled on every offline message, so it names the
+  /// family and its 4-bit alias. The model menu still lists every entry.
   @Test func blockNamesTheRunningModelAndEveryOfflineModel() {
     let block = OfflineChatAppContext.block(
       readme: Self.readme, currentModel: .qwen359B,
       shortcuts: [("Chat", "⌘ + 3")], appVersion: "9.99")
     #expect(block.contains("WhisperShortcut 9.99"))
     #expect(block.contains("You are Qwen3.5 9B"))
-    for model in LocalLLMModelType.allCases {
+    for model in LocalLLMModelType.allCases where model.baseModel == model {
       #expect(block.contains(model.displayName))
       #expect(block.contains("/\(model.promptModel.shortAlias)"))
     }
     #expect(block.contains("Chat ⌘ + 3"))
     #expect(!block.contains("Not a feature"))
+    let lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    #expect(!lines.contains { $0.hasPrefix("- - ") })
+    for model in LocalLLMModelType.allCases where model.baseModel == model {
+      let modelLines = lines.filter { $0.contains(model.displayName) && $0.hasPrefix("- ") }
+      #expect(!modelLines.isEmpty)
+      #expect(modelLines.allSatisfy { !$0.dropFirst(2).hasPrefix("- ") })
+    }
   }
 
   @Test func noModelLineForANonOfflineModel() {
