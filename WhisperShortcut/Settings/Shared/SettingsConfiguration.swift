@@ -2177,6 +2177,9 @@ struct SettingsDefaults {
   static let chatFontDesign: ChatFontDesign = .sans
   /// Off by default: the chat never scrolls on its own unless the user opts in.
   static let chatFollowNewContent = false
+  /// First-message titles stay the default: an existing user's sidebar must look unchanged until
+  /// they opt into date-based rows in Settings → Chat. See `ChatTitleStyle`.
+  static let chatTitleStyle: ChatTitleStyle = .firstMessage
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false
@@ -2361,6 +2364,7 @@ struct SettingsData: Equatable {
   var selectedImprovementModel: PromptModel = SettingsDefaults.selectedImprovementModel
   var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
+  var chatTitleStyle: ChatTitleStyle = SettingsDefaults.chatTitleStyle
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
   var showDockIcon: Bool = SettingsDefaults.showDockIcon
   /// Prose typeface of the chat transcript (Settings → Chat → Appearance).

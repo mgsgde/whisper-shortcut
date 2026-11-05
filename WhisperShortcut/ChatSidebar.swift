@@ -17,6 +17,10 @@ struct ChatSidebar: View {
   @State private var renameDraft: String = ""
   @FocusState private var renameFieldFocused: Bool
   @State private var hoveredResultId: UUID? = nil
+  /// Not read directly — `ChatViewModel.displayTitle(for:)` reads the style itself. This exists so
+  /// the sidebar redraws its rows when the user changes the style in Settings; a plain UserDefaults
+  /// read is invisible to the view graph.
+  @AppStorage(UserDefaultsKeys.chatTitleStyle) private var chatTitleStyleRaw: String = SettingsDefaults.chatTitleStyle.rawValue
 
   // Global search state — one query, results across both chats and meetings.
   @State private var searchQuery: String = ""
