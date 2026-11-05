@@ -23,7 +23,7 @@ struct OwnServerAccountsSection: View {
       SectionHeader(
         title: "Own server",
         systemImage: "server.rack",
-        subtitle: "An OpenAI-compatible server you run or rent: LiteLLM, Azure OpenAI, Vertex AI, OpenInference, or a local one such as LM Studio, MLX or oMLX. One URL and key for Dictate, Dictate Prompt and Chat — the server must also serve /audio/transcriptions for Dictate and spoken Dictate Prompt. LM Studio and mlx_lm.server are chat-only."
+        subtitle: "Connect your own OpenAI-compatible endpoint — LiteLLM, Azure OpenAI, Vertex AI, OpenInference, or a local one such as LM Studio, MLX or oMLX. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. The server must also serve /audio/transcriptions for Dictate and spoken Dictate Prompt — LM Studio and mlx_lm.server are chat-only."
       )
 
       if showsForm {
