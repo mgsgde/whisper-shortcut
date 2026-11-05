@@ -80,13 +80,16 @@ struct SpeechToTextSettingsTab: View {
       // Usage Instructions Section
       usageInstructionsSection
 
-      if viewModel.data.selectedTranscriptionModel.isGemini
-        || viewModel.data.selectedTranscriptionModel == .openRouterTranscription
-      {
-        SpacedSectionDivider()
-        AdvancedSettingsGroup {
-          tuningSection
-        }
+      // Advanced: cloud accuracy tuning and the silence-hallucination filter. Each section
+      // self-gates on the selected model, so the group only appears when one of them has content.
+      //
+      // The filter is *not* offline-only: `validateSpeechText` applies it to every transcription
+      // path, and it is the only defence on the cloud ones. Hiding its switch behind an offline
+      // model made a setting that changes cloud transcripts unreachable for cloud users.
+      SpacedSectionDivider()
+      AdvancedSettingsGroup {
+        tuningSection
+        hallucinationFilterSection
       }
     }
   }
@@ -389,7 +392,42 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
+  // MARK: - Hallucination Filter Section
+
+  /// The phrase filter that drops a transcript consisting of nothing but a known silence
+  /// hallucination. Applies to every transcription path — the VAD gate in `LocalSpeechService`
+  /// catches most of these before an offline decode, and this list is the only defence on the
+  /// cloud ones. The VAD gate itself is not switchable (a correctness fix, not a taste), but this
+  /// list contains phrases a user could legitimately dictate on their own ("You", "Bye"), so it
+  /// is theirs to turn off.
+  @ViewBuilder
+  private var hallucinationFilterSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Silence Hallucinations",
+        systemImage: "waveform.slash",
+        subtitle: "Speech models, Whisper especially, were trained on subtitled video, so on breath or room noise they sometimes write subtitle filler — usually \"Thank you.\" Applies to all transcription models."
+      )
+
+      Toggle(isOn: $viewModel.data.filterKnownWhisperHallucinations) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Filter known silence hallucinations")
+            .font(.callout)
+          Text("Drops a short clip (under 2 seconds) whose transcript is nothing but one of those phrases. Longer clips and real sentences that merely contain one are kept.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .toggleStyle(.switch)
+      .onChange(of: viewModel.data.filterKnownWhisperHallucinations) { _ in
+        Task { await viewModel.saveSettings() }
+      }
+    }
+  }
+
   // MARK: - Offline Models Section
+
   @ViewBuilder
   private var offlineModelsSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {

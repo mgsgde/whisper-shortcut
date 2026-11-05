@@ -179,6 +179,9 @@ class SettingsViewModel: ObservableObject {
               default: SettingsDefaults.transcriptionThinkingEffort),
     .string(\.openRouterTranscriptionModelID, key: UserDefaultsKeys.openRouterTranscriptionModelID,
             default: SettingsDefaults.openRouterTranscriptionModelID),
+    .bool(\.filterKnownWhisperHallucinations,
+          key: UserDefaultsKeys.filterKnownWhisperHallucinations,
+          default: SettingsDefaults.filterKnownWhisperHallucinations),
 
     // Notifications
     .bool(\.showPopupNotifications, key: UserDefaultsKeys.showPopupNotifications,

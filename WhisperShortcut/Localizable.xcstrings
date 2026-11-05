@@ -24242,6 +24242,46 @@
           }
         }
       }
+    },
+    "Drops a short clip (under 2 seconds) whose transcript is nothing but one of those phrases. Longer clips and real sentences that merely contain one are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwirft einen kurzen Clip (unter 2 Sekunden), dessen Transkript nur aus einer dieser Phrasen besteht. Längere Clips und echte Sätze, die eine davon lediglich enthalten, bleiben erhalten."
+          }
+        }
+      }
+    },
+    "Filter known silence hallucinations" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekannte Stille-Halluzinationen filtern"
+          }
+        }
+      }
+    },
+    "Silence Hallucinations" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stille-Halluzinationen"
+          }
+        }
+      }
+    },
+    "Speech models, Whisper especially, were trained on subtitled video, so on breath or room noise they sometimes write subtitle filler — usually \"Thank you.\" Applies to all transcription models." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachmodelle, besonders Whisper, wurden mit untertitelten Videos trainiert. Bei Atemgeräuschen oder Raumrauschen schreiben sie deshalb manchmal Untertitel-Füllsatz — meist „Thank you.“ Gilt für alle Transkriptionsmodelle."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
