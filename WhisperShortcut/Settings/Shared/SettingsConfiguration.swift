@@ -602,6 +602,17 @@ enum PromptModel: String, CaseIterable {
     }
   }
 
+  /// Thinking level Dictate Prompt sends. Chat's `high` and `medium` become `low` (the
+  /// measured 4–5× latency win); `low` and `minimal` stay. Nil when the model has no
+  /// `thinkingLevel` (non-Gemini, or a Gemini model with no thinking knob).
+  var dictatePromptThinkingLevel: String? {
+    guard let level = geminiThinkingConfig?["thinkingLevel"] as? String else { return nil }
+    switch level {
+    case "high", "medium": return "low"
+    default: return level
+    }
+  }
+
   var isGemini: Bool {
     return provider == .gemini
   }

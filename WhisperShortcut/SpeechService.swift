@@ -1347,6 +1347,19 @@ class SpeechService {
     return content
   }
 
+  /// Generation config for a Gemini Dictate Prompt request. Nil when the model has no thinking
+  /// level, so that request stays without a `generationConfig`. `thinkingBudget` is never set:
+  /// 3.x models ignore it and can leak reasoning-channel tokens when it is sent.
+  static func dictatePromptGenerationConfig(
+    for model: PromptModel
+  ) -> GeminiChatRequest.GeminiGenerationConfig? {
+    guard let level = model.dictatePromptThinkingLevel else { return nil }
+    return GeminiChatRequest.GeminiGenerationConfig(
+      responseModalities: nil,
+      speechConfig: nil,
+      thinkingConfig: .init(thinkingLevel: level, thinkingBudget: nil))
+  }
+
   /// Performs a Gemini Dictate Prompt request: prepends history, appends the caller-built
   /// user-turn parts, attaches the system instruction, sends the request with retry, and
   /// extracts + normalizes the text response.
@@ -1377,7 +1390,7 @@ class SpeechService {
       contents: contents,
       systemInstruction: systemInstruction,
       tools: nil,
-      generationConfig: nil,
+      generationConfig: Self.dictatePromptGenerationConfig(for: model),
       model: nil
     )
     request.httpBody = try JSONEncoder().encode(chatRequest)
