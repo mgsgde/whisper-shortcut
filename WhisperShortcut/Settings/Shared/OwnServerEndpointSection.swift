@@ -53,7 +53,7 @@ struct OwnServerEndpointSection: View {
         SectionHeader(
           title: "Own server",
           systemImage: "server.rack",
-          subtitle: "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key."
+          subtitle: "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key. Dictate and spoken Dictate Prompt need /audio/transcriptions — LM Studio and mlx_lm.server do not serve it."
         )
       }
 
@@ -264,19 +264,19 @@ struct OwnServerEndpointSection: View {
         OpenAIChatPreferences.applyLMStudioPreset()
         reloadFromPreferences()
       }
-      .help("http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded.")
+      .help("http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded. Chat only: LM Studio does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it.")
 
       Button("MLX") {
         OpenAIChatPreferences.applyMLXPreset()
         reloadFromPreferences()
       }
-      .help("http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with.")
+      .help("http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with. Chat only: mlx_lm.server does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it.")
 
       Button("oMLX") {
         OpenAIChatPreferences.applyoMLXPreset()
         reloadFromPreferences()
       }
-      .help("http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves.")
+      .help("http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves. Dictate and Dictate Prompt work only when oMLX runs with audio support (v0.3.0+, included in the Homebrew and DMG builds; pip needs 'omlx[audio]').")
     }
     .controlSize(.small)
     .fixedSize()
