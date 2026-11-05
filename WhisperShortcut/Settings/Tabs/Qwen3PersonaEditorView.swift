@@ -215,8 +215,12 @@ struct Qwen3PersonaFormView: View {
     Qwen3CustomPersonas.save(
       Qwen3VoicePersona(
         id: id, gender: gender, summary: trimmedName, language: language, prompt: trimmedPrompt))
-    // A changed description must not keep the old frozen voice — the voice is the description.
-    if existing != nil {
+    // Only a changed description (or language) invalidates the frozen voice — the voice is the
+    // description. Renaming or flipping the gender label keeps it; a needless reset costs a
+    // full calibration generation on the 1.7B checkpoint.
+    if let existing,
+      existing.prompt != trimmedPrompt || existing.language != language
+    {
       Qwen3VoiceReferenceStore.removeReference(for: id)
     }
   }

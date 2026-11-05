@@ -122,12 +122,17 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
     // "More models" clutter: the Read Aloud picker hid both Qwen3 voices behind the disclosure
     // under the cloud tiles — the opposite of the picker's own offline-first curation. Larger
     // offline families (the seven Whisper/Parakeet dictation models) stay curated: featuring
-    // all of them would flood the top row.
-    let offlineProviders = Dictionary(grouping: visible.filter { $0.pickerOfflineRank != nil }) {
-      $0.pickerProvider
+    // all of them would flood the top row. Groups iterate in first-seen list order so the tile
+    // order is stable between renders.
+    var offlineProviders: [String: [Model]] = [:]
+    var offlineProviderOrder: [String] = []
+    for model in visible where model.pickerOfflineRank != nil {
+      let key = model.pickerProvider
+      if offlineProviders[key] == nil { offlineProviderOrder.append(key) }
+      offlineProviders[key, default: []].append(model)
     }
-    for (_, models) in offlineProviders where models.count <= 2 {
-      for model in models where !featured.contains { $0.model == model } {
+    for key in offlineProviderOrder where offlineProviders[key]!.count <= 2 {
+      for model in offlineProviders[key]! where !featured.contains { $0.model == model } {
         featured.append(Featured(model: model, badges: []))
       }
     }

@@ -226,6 +226,14 @@ struct ModelPickerCurationTests {
     let onDevice = PromptModel.allCases.filter { $0.pickerOfflineRank != nil }
     let allLocal = onDevice.allSatisfy { $0.provider == .local || $0.provider == .localMLX }
     #expect(allLocal)
+    // The two-tile on-device rule reaches the Chat picker too: both local MLX chat models are
+    // featured above the disclosure, not hidden behind "More models". Pinned so the reach is
+    // intended behaviour, not an accident of the Read Aloud fix.
+    let chat = ModelPickerCuration(
+      models: PromptModel.allCases, recommended: SettingsDefaults.selectedChatModel,
+      selected: SettingsDefaults.selectedChatModel, isUsable: { _ in true })
+    let featuredChat = chat.featured.map(\.model)
+    #expect(featuredChat.contains { $0.provider == .localMLX })
   }
 
   @Test("Speed ranks never feature on-device models as Fastest")

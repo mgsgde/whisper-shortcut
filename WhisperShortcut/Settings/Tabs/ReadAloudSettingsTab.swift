@@ -7,6 +7,9 @@ struct ReadAloudSettingsTab: View {
 
   @State private var showResetVoiceConfirmation = false
   @State private var showingPersonaEditor = false
+  /// Bumped whenever the frozen voice or the custom-persona list changes, so the reset button
+  /// and the picker re-render — disk state alone does not trigger SwiftUI.
+  @State private var voiceCacheGeneration = 0
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -133,6 +136,8 @@ struct ReadAloudSettingsTab: View {
   /// explanation, and an editor behind one "manage" toggle. No technical terms on the surface.
   @ViewBuilder
   private var qwen3VoiceManagement: some View {
+    // Reads the generation counter so a reset re-renders this whole block.
+    let _ = voiceCacheGeneration
     let persona = Qwen3VoicePersona.persona(for: voiceSelectionOfQwen3Persona)
     let hasFrozenVoice = Qwen3VoiceReferenceStore.hasReference(for: persona.id)
 
@@ -179,11 +184,15 @@ struct ReadAloudSettingsTab: View {
     ) {
       Button("New voice", role: .destructive) {
         Qwen3VoiceReferenceStore.removeReference(for: persona.id)
+        voiceCacheGeneration += 1
       }
     } message: {
       Text("The current voice is discarded. The next Read Aloud with this persona creates and saves a new one.")
     }
-    .sheet(isPresented: $showingPersonaEditor) {
+    .sheet(isPresented: $showingPersonaEditor, onDismiss: {
+      // The editor can add, edit or delete personas — refresh the picker and the reset row.
+      voiceCacheGeneration += 1
+    }) {
       Qwen3PersonaEditorView()
     }
   }

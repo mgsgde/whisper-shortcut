@@ -57,13 +57,26 @@ actor Qwen3TTSModelLoader {
 
   private var loadedType: Qwen3ModelType?
   private var loaded: SpeechGenerationModel?
+  private var inFlightType: Qwen3ModelType?
   private var inFlight: Task<SpeechGenerationModel, Error>?
 
   /// Loads (or returns) the model for `type`. The cached instance is reused for every chunk of a
   /// long text — that is the point of caching it here rather than in the caller.
+  ///
+  /// A concurrent request for a *different* checkpoint must not join the in-flight load: it
+  /// would receive the other checkpoint's model and synthesize with a voice string that makes
+  /// no sense for it (a CustomVoice `"speaker, instruction"` read as a VoiceDesign description).
+  /// So the join only happens when the types match; otherwise the joiner waits for the running
+  /// load to finish (the actor serializes state, the model load itself runs off-actor) and then
+  /// starts its own.
   func model(_ type: Qwen3ModelType) async throws -> SpeechGenerationModel {
     if let loaded, loadedType == type { return loaded }
-    if let inFlight { return try await inFlight.value }
+    if let inFlight, inFlightType == type { return try await inFlight.value }
+    if let inFlight {
+      // A different checkpoint is loading. Wait it out so the two loads do not race the
+      // `loaded` slot, then load ours.
+      _ = try? await inFlight.value
+    }
 
     let task = Task<SpeechGenerationModel, Error> {
       // Load from the app's own model folder, not the shared HuggingFace cache: the app's
@@ -82,7 +95,11 @@ actor Qwen3TTSModelLoader {
       return model
     }
     inFlight = task
-    defer { inFlight = nil }
+    inFlightType = type
+    defer {
+      inFlight = nil
+      inFlightType = nil
+    }
     let model = try await task.value
     loaded = model
     loadedType = type
@@ -174,7 +191,9 @@ struct Qwen3TTSService {
     // When the persona has no frozen clip yet, the first generation of this Read Aloud is the
     // calibration: a fixed short sentence, spoken once, stored, and used as the reference for
     // every sentence of every future Read Aloud with this persona. It is *not* part of the
-    // playback audio.
+    // playback audio. An empty calibration degrades to per-run pinning (the first sentence
+    // defines the voice) instead of failing the whole Read Aloud — the user asked to hear text,
+    // not to calibrate.
     let needsCalibration = modelType == .voiceDesign && referenceAudio == nil
     if needsCalibration {
       let calibration = Self.calibrationText(for: persona.language)
@@ -188,11 +207,14 @@ struct Qwen3TTSService {
         generationParameters: parameters
       )
       let clipSamples = clip.asArray(Float.self)
-      guard !clipSamples.isEmpty else { throw Qwen3TTSError.emptyAudio }
-      Qwen3VoiceReferenceStore.store(
-        samples: clipSamples, sampleRate: model.sampleRate, text: calibration, for: persona.id)
-      referenceAudio = clip
-      referenceText = calibration
+      if clipSamples.isEmpty {
+        DebugLogger.log("QWEN3-TTS: calibration returned no audio; falling back to per-run pinning")
+      } else {
+        Qwen3VoiceReferenceStore.store(
+          samples: clipSamples, sampleRate: model.sampleRate, text: calibration, for: persona.id)
+        referenceAudio = clip
+        referenceText = calibration
+      }
     }
 
     for (index, sentence) in sentences.enumerated() {

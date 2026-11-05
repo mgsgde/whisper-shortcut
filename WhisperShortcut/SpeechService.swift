@@ -2458,7 +2458,7 @@ class SpeechService {
 
     if model.provider == .localMLX {
       return try await speakWithQwen3Voice(
-        trimmedText, personaID: voice, onChunkReady: onChunkReady)
+        trimmedText, model: model, personaID: voice, onChunkReady: onChunkReady)
     }
 
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
@@ -2510,10 +2510,13 @@ class SpeechService {
   /// model, so the weights are paid for once per Read Aloud, not once per chunk.
   func speakWithQwen3Voice(
     _ text: String,
+    model: TTSModel? = nil,
     personaID: String? = nil,
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
   ) async throws -> Data {
-    let model = ReadAloudPreferences.model
+    // The caller already resolved the model it dispatched on; re-reading UserDefaults here
+    // could pair a persona resolved for a different checkpoint than the one this run uses.
+    let model = model ?? ReadAloudPreferences.model
     guard let modelType = model.qwen3ModelType else {
       throw TranscriptionError.networkError("Qwen3 voice selected for a non-Qwen3 model")
     }
@@ -2527,10 +2530,13 @@ class SpeechService {
     }
 
     if !Qwen3ModelManager.shared.isModelAvailable(modelType) {
+      // `defer`, not a plain call after: a failed download must also dismiss the popup, or the
+      // "Processing" window stays on screen with nothing running behind it. Same shape as the
+      // dictation branch above.
+      defer { PopupNotificationWindow.dismissProcessing() }
       try await Qwen3ModelManager.shared.ensureReady(modelType) { status in
         PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Read Aloud")
       }
-      PopupNotificationWindow.dismissProcessing()
     }
     return try await Qwen3TTSService.shared.synthesizePCM(
       text: text, persona: persona, modelType: modelType, onChunkReady: onChunkReady)

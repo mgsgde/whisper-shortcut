@@ -929,8 +929,11 @@ enum TTSProvider {
     case .xai: return ChatModelProvider.grok.hasCredential
     case .system: return true
     // No key, but the weights have to be on disk — same "is it usable right now" question the
-    // macOS voice answers with `true`.
-    case .localMLX: return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
+    // macOS voice answers with `true`. Either checkpoint counts: a user who downloaded only
+    // CustomVoice has a working on-device provider.
+    case .localMLX:
+      return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
+        || Qwen3ModelManager.shared.isModelAvailable(.customVoice)
     }
   }
 

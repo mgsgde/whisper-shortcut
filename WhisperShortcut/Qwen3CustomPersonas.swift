@@ -55,8 +55,10 @@ enum Qwen3CustomPersonas {
   }
 
   /// A slug that is safe as a filename fragment and collision-free against existing ids.
+  /// Diacritics fold first so "Ärztin" becomes "aerztin", not "rztin".
   static func uniqueID(for name: String) -> String {
-    let base = "custom-" + name
+    let folded = name.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US"))
+    let base = "custom-" + folded
       .lowercased()
       .map { character in
         character.isLetter && character.isASCII || character.isNumber ? character : "-"
