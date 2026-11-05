@@ -702,7 +702,9 @@ class SpeechService {
     templateName: String? = nil,
     selectedText: String? = nil,
     recordingWasSilent: Bool = false,
-    selectionIsFromService: Bool = false
+    selectionIsFromService: Bool = false,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -711,7 +713,9 @@ class SpeechService {
         isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
         templateName: templateName, selectedText: selectedText,
         recordingWasSilent: recordingWasSilent,
-        selectionIsFromService: selectionIsFromService)
+        selectionIsFromService: selectionIsFromService,
+        fieldContext: fieldContext,
+        fieldAllowsWindowImage: fieldAllowsWindowImage)
     }
 
     currentPromptTask = task
@@ -922,7 +926,9 @@ class SpeechService {
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
     templateInstruction: String? = nil, templateName: String? = nil, selectedText: String?,
     recordingWasSilent: Bool = false,
-    selectionIsFromService: Bool = false
+    selectionIsFromService: Bool = false,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
@@ -1007,19 +1013,22 @@ class SpeechService {
       return try await executePromptWithGemini(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
     case .openai:
       return try await executePromptWithOpenAI(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
     // Text-only providers share `executePromptWithLocal`. The model id, the transcription
     // step and the provider tag are decided inside.
     case .local, .localMLX, .customOpenAI:
       return try await executePromptWithLocal(
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
-        promptStarted: promptStarted, providerLabel: providerLabel)
+        promptStarted: promptStarted, providerLabel: providerLabel,
+        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -1139,6 +1148,9 @@ class SpeechService {
     let screenshot: Data?
     /// Introduces the screenshot. Only meaningful when `screenshot` is non-nil.
     let screenshotLabel: String
+    /// Focused-field context for a compose turn. Request-only: conversation history stores the
+    /// selection, never this block.
+    let fieldBlock: String?
     /// The selection with its header, or — on a compose turn — the NO SELECTED TEXT marker. Nil only
     /// in screenshot-selection mode, where the selection is the highlighted region of the image.
     let selectionBlock: String?
@@ -1159,11 +1171,15 @@ class SpeechService {
     modelAcceptsImages: Bool,
     supportsScreenshot: Bool,
     usesScreenshotSelection: Bool,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true,
     logPrefix: String
   ) async throws -> DictatePromptEnvelope {
     // A template turn never captures or sends a screenshot, and never uses the screenshot-selection
-    // system prompt. Dictate Prompt keeps today's screenshot decision.
+    // system prompt.
     let screenshotSelectionMode = usesScreenshotSelection && !promptTurnKind.isTemplate
+    let isComposeTurn = Self.isComposeTurn(
+      usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
 
     // An audio-only model can't receive the screenshot at all, so in screenshot-selection mode the
     // request would carry neither the selection nor an image. Reject with something actionable.
@@ -1173,37 +1189,56 @@ class SpeechService {
         String(localized: "This Dictate Prompt model can't read the on-screen selection. Pick a Gemini Dictate Prompt model instead."))
     }
 
-    // In screenshot-selection mode the screenshot always goes, regardless of the user setting,
-    // since it is the sole source of the selected text. A template turn sends none at all.
-    let wantsScreenshot = !promptTurnKind.isTemplate && supportsScreenshot
-      && (screenshotSelectionMode || screenshotInPromptModeEnabled())
+    // Screenshot-selection mode (App Store) always sends the front window, with a full-display
+    // fallback, because the image is the selection. Every other turn sends a front window only
+    // when the field is missing or short — and never for a password field.
+    let settingEnabled = screenshotInPromptModeEnabled()
+    let wantsFieldImage = fieldAllowsWindowImage && PromptScreenContextDecision.wantsWindowImage(
+      isComposeTurn: isComposeTurn,
+      field: fieldContext,
+      settingEnabled: settingEnabled,
+      modelAcceptsImages: modelAcceptsImages,
+      isTemplate: promptTurnKind.isTemplate)
+    let wantsScreenshot = supportsScreenshot && (screenshotSelectionMode || wantsFieldImage)
     var screenshot: Data?
+    var imageLabel = "none"
     if wantsScreenshot && modelAcceptsImages {
       if screenshotSelectionMode {
         screenshot = await ChatWindowManager.shared.captureFrontWindowForPromptMode()
         if screenshot != nil {
-          DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: image=window")
+          imageLabel = "window"
         } else {
           screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
-          let source = screenshot == nil ? "none" : "screen"
-          DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: image=\(source) (front window unavailable)")
+          imageLabel = screenshot == nil ? "none" : "screen"
         }
       } else {
-        screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+        screenshot = await ChatWindowManager.shared.captureFrontWindowForPromptMode()
+        imageLabel = screenshot == nil ? "none" : "window"
       }
-      if screenshot == nil {
-        if screenshotSelectionMode {
-          DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
-          throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
-        }
-        DebugLogger.logWarning("\(logPrefix): Screenshot capture returned nothing — sending without it")
+      if screenshot == nil && !screenshotSelectionMode {
+        DebugLogger.logWarning("\(logPrefix): Front window capture returned nothing — sending without it")
       }
     } else if wantsScreenshot {
       DebugLogger.log("\(logPrefix): Screenshot dropped — model does not accept image input.")
     }
 
-    let isComposeTurn = Self.isComposeTurn(
-      usesScreenshotSelection: screenshotSelectionMode, selectedText: clipboardContext)
+    let fieldLabel = fieldContext.map { String($0.totalCount) } ?? "none"
+    let reason = Self.promptContextReason(
+      screenshotSelectionMode: screenshotSelectionMode,
+      isTemplate: promptTurnKind.isTemplate,
+      isComposeTurn: isComposeTurn,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
+      settingEnabled: settingEnabled,
+      modelAcceptsImages: modelAcceptsImages,
+      supportsScreenshot: supportsScreenshot,
+      fieldCount: fieldContext?.totalCount,
+      imageLabel: imageLabel)
+    DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: field=\(fieldLabel) image=\(imageLabel) reason=\(reason)")
+    if screenshotSelectionMode && wantsScreenshot && modelAcceptsImages && screenshot == nil {
+      DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
+      throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
+    }
+
     let selectionBlock = Self.promptSelectionBlock(
       turnKind: promptTurnKind, clipboardContext: clipboardContext, isComposeTurn: isComposeTurn)
     if case .template = promptTurnKind, let context = clipboardContext, !context.isEmpty {
@@ -1230,11 +1265,36 @@ class SpeechService {
       screenshot: screenshot,
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
-        : "Current screen:",
+        : "Front window of the app the user is writing in (context only, do not describe it):",
+      fieldBlock: PromptScreenContextDecision.fieldBlock(fieldContext, isComposeTurn: isComposeTurn),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
         usesScreenshotSelection: screenshotSelectionMode))
+  }
+
+  /// Label for the one `PROMPT-CONTEXT` line. Counts and labels only.
+  private static func promptContextReason(
+    screenshotSelectionMode: Bool,
+    isTemplate: Bool,
+    isComposeTurn: Bool,
+    fieldAllowsWindowImage: Bool,
+    settingEnabled: Bool,
+    modelAcceptsImages: Bool,
+    supportsScreenshot: Bool,
+    fieldCount: Int?,
+    imageLabel: String
+  ) -> String {
+    if screenshotSelectionMode {
+      return imageLabel == "none" ? "screenshot-failed" : "screenshot-selection"
+    }
+    if isTemplate { return "template" }
+    if !isComposeTurn { return "edit" }
+    if !fieldAllowsWindowImage { return "secure" }
+    if !settingEnabled { return "setting-off" }
+    if !modelAcceptsImages || !supportsScreenshot { return "no-image" }
+    if let fieldCount, fieldCount >= PromptScreenContextDecision.minimumFieldChars { return "field" }
+    return imageLabel == "none" ? "no-window" : (fieldCount == nil ? "no-field" : "short-field")
   }
 
   /// Dictate Prompt: stored prompt (or the screenshot prompt) plus style blocks, as today.
@@ -1334,6 +1394,10 @@ class SpeechService {
         fileData: nil,
         url: nil))
     }
+    if let fieldBlock = envelope.fieldBlock {
+      parts.append(GeminiChatRequest.GeminiChatPart(
+        text: fieldBlock, inlineData: nil, fileData: nil, url: nil))
+    }
     if let selectionBlock = envelope.selectionBlock {
       parts.append(GeminiChatRequest.GeminiChatPart(
         text: selectionBlock, inlineData: nil, fileData: nil, url: nil))
@@ -1351,6 +1415,9 @@ class SpeechService {
         "type": "image_url",
         "image_url": ["url": "data:image/jpeg;base64,\(screenshot.base64EncodedString())"],
       ])
+    }
+    if let fieldBlock = envelope.fieldBlock {
+      content.append(["type": "text", "text": fieldBlock])
     }
     if let selectionBlock = envelope.selectionBlock {
       content.append(["type": "text", "text": selectionBlock])
@@ -1553,7 +1620,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     guard let credential = await credentialProvider.getCredential() else {
       throw TranscriptionError.noGoogleAPIKey
@@ -1577,6 +1646,8 @@ class SpeechService {
       modelAcceptsImages: true,
       supportsScreenshot: true,
       usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
     let historyContents = Self.promptHistoryContents(
@@ -1694,7 +1765,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     let apiKey = try ProviderCredentials.require(.openAI)
 
@@ -1720,6 +1793,8 @@ class SpeechService {
       modelAcceptsImages: model.supportsImageInput,
       supportsScreenshot: true,
       usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
     // Kept for the agent path, which builds its own request from the same ingredients.
@@ -1794,6 +1869,9 @@ class SpeechService {
       if let screenshot = envelope.screenshot {
         parts.append(["text": envelope.screenshotLabel])
         parts.append(["inline_data": ["mime_type": "image/jpeg", "data": screenshot.base64EncodedString()]])
+      }
+      if let fieldBlock = envelope.fieldBlock {
+        parts.append(["text": fieldBlock])
       }
       if let selectionBlock = envelope.selectionBlock {
         parts.append(["text": selectionBlock])
@@ -1964,7 +2042,9 @@ class SpeechService {
     model: PromptModel,
     textInstruction: String? = nil,
     promptStarted: ContinuousClock.Instant,
-    providerLabel: String
+    providerLabel: String,
+    fieldContext: FocusedFieldSnapshot? = nil,
+    fieldAllowsWindowImage: Bool = true
   ) async throws -> String {
     // Three shapes share this path. MLX takes the picker's rawValue and resolves the weights
     // itself. A local server takes the tag the user typed. The custom endpoint sends the sentinel
@@ -2074,12 +2154,18 @@ class SpeechService {
       modelAcceptsImages: false,
       supportsScreenshot: false,
       usesScreenshotSelection: promptUsesScreenshotSelection,
+      fieldContext: fieldContext,
+      fieldAllowsWindowImage: fieldAllowsWindowImage,
       logPrefix: "PROMPT-MODE-LOCAL")
 
     let dictationHeader = Self.additionalDictationHeader(
       turnKind: promptTurnKind, hasSelection: clipboardContext != nil)
     var userText = ""
+    if let fieldBlock = envelope.fieldBlock {
+      userText += fieldBlock
+    }
     if let selectionBlock = envelope.selectionBlock {
+      if !userText.isEmpty { userText += "\n\n" }
       userText += selectionBlock
     }
     if let dictationHeader {

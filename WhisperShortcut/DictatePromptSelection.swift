@@ -131,6 +131,18 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   private var text: String?
   private var waiters: [CheckedContinuation<String?, Never>] = []
 
+  /// Focused-field snapshot taken at shortcut press. Independent of the selection slot.
+  private var fieldResolved = false
+  private var field: FocusedFieldSnapshot?
+  /// False when the field was a password field, secure input, or a password manager.
+  private var fieldAllowsWindowImage = true
+  private var fieldWaiters: [(id: UUID, continuation: CheckedContinuation<FieldSlot, Never>)] = []
+
+  private struct FieldSlot {
+    let snapshot: FocusedFieldSnapshot?
+    let allowsWindowImage: Bool
+  }
+
   init(isFromService: Bool = false) {
     self.isFromService = isFromService
   }
@@ -139,6 +151,7 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   static func resolved(_ text: String?) -> DictatePromptSelectionCapture {
     let capture = DictatePromptSelectionCapture()
     capture.resolve(text)
+    capture.resolveField(nil)
     return capture
   }
 
@@ -146,6 +159,7 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   static func fromService(_ text: String) -> DictatePromptSelectionCapture {
     let capture = DictatePromptSelectionCapture(isFromService: true)
     capture.resolve(text)
+    capture.resolveField(nil)
     return capture
   }
 
@@ -163,6 +177,70 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
     waiters = []
     lock.unlock()
     for waiter in pending { waiter.resume(returning: normalized) }
+  }
+
+  /// First call wins. `allowsWindowImage` is false for a password field or password manager, so a
+  /// missing snapshot there is not a reason to attach a window image.
+  func resolveField(_ field: FocusedFieldSnapshot?, allowsWindowImage: Bool = true) {
+    lock.lock()
+    guard !fieldResolved else {
+      lock.unlock()
+      return
+    }
+    fieldResolved = true
+    self.field = field
+    self.fieldAllowsWindowImage = allowsWindowImage
+    let pending = fieldWaiters
+    fieldWaiters = []
+    lock.unlock()
+    let slot = FieldSlot(snapshot: field, allowsWindowImage: allowsWindowImage)
+    for waiter in pending {
+      waiter.continuation.resume(returning: slot)
+    }
+  }
+
+  /// The field snapshot, or nil when nothing was readable. Nil if the slot is still unresolved
+  /// when `timeout` elapses — it does not hang.
+  func fieldValue(timeout: Duration = .milliseconds(400)) async -> FocusedFieldSnapshot? {
+    await fieldSlot(timeout: timeout).snapshot
+  }
+
+  /// Whether a missing field may fall back to a front-window image. Unresolved after `timeout`
+  /// counts as allowed: the read has not reported a password field.
+  func fieldAllowsWindowImage(timeout: Duration = .milliseconds(400)) async -> Bool {
+    await fieldSlot(timeout: timeout).allowsWindowImage
+  }
+
+  private func fieldSlot(timeout: Duration) async -> FieldSlot {
+    let id = UUID()
+    return await withCheckedContinuation { continuation in
+      lock.lock()
+      if fieldResolved {
+        let slot = FieldSlot(snapshot: field, allowsWindowImage: fieldAllowsWindowImage)
+        lock.unlock()
+        continuation.resume(returning: slot)
+        return
+      }
+      fieldWaiters.append((id, continuation))
+      lock.unlock()
+      Task {
+        try? await Task.sleep(for: timeout)
+        self.resumeFieldIfPending(id)
+      }
+    }
+  }
+
+  /// Resumes a waiter that is still pending with "no field". A resolve that already ran removed
+  /// the waiter, so this does not resume twice.
+  private func resumeFieldIfPending(_ id: UUID) {
+    lock.lock()
+    guard let index = fieldWaiters.firstIndex(where: { $0.id == id }) else {
+      lock.unlock()
+      return
+    }
+    let waiter = fieldWaiters.remove(at: index)
+    lock.unlock()
+    waiter.continuation.resume(returning: FieldSlot(snapshot: nil, allowsWindowImage: true))
   }
 
   /// The selected text, or nil for "nothing selected — compose". Suspends only while the copy poll

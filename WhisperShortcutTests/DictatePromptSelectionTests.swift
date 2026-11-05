@@ -174,6 +174,35 @@ struct DictatePromptSelectionTests {
     #expect(decoded.loadMs == 1200)
   }
 
+  @Test("The field slot resolves once and does not hang")
+  func fieldSlot() async {
+    let notes = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "Hello", textAfterCaret: "")
+    let capture = DictatePromptSelectionCapture()
+    async let pending = capture.fieldValue(timeout: .milliseconds(400))
+    try? await Task.sleep(for: .milliseconds(20))
+    capture.resolveField(notes)
+    #expect(await pending == notes)
+    capture.resolveField(FocusedFieldSnapshot(appName: "Other", textBeforeCaret: "no", textAfterCaret: ""))
+    #expect(await capture.fieldValue() == notes)
+
+    let secure = DictatePromptSelectionCapture()
+    secure.resolveField(nil, allowsWindowImage: false)
+    #expect(await secure.fieldValue() == nil)
+    #expect(await secure.fieldAllowsWindowImage() == false)
+    secure.resolveField(notes, allowsWindowImage: true)
+    #expect(await secure.fieldAllowsWindowImage() == false)
+
+    #expect(await DictatePromptSelectionCapture.resolved("x").fieldValue() == nil)
+    #expect(await DictatePromptSelectionCapture.fromService("x").fieldValue() == nil)
+    #expect(await DictatePromptSelectionCapture.resolved(nil).fieldAllowsWindowImage())
+
+    let hung = DictatePromptSelectionCapture()
+    let started = ContinuousClock.now
+    #expect(await hung.fieldValue(timeout: .milliseconds(40)) == nil)
+    let elapsed = started.duration(to: .now)
+    #expect(elapsed < .milliseconds(300))
+  }
+
   @Test("The output rule tells the model what a compose turn means")
   func outputRuleCoversCompose() {
     #expect(AppConstants.promptModeOutputRule.contains("NO SELECTED TEXT"))
