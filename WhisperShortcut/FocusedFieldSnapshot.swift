@@ -62,7 +62,7 @@ struct FocusedFieldSnapshot: Equatable, Sendable {
   static func readResult() -> ReadResult {
     let frontmost = NSWorkspace.shared.frontmostApplication
     let bundleID = frontmost?.bundleIdentifier
-    if let bundleID, bundleID == Bundle.main.bundleIdentifier {
+    if let bundleID, let ownBundleID = Bundle.main.bundleIdentifier, bundleID == ownBundleID {
       return ReadResult(snapshot: nil, bundleID: bundleID, reason: "own app", allowsWindowImage: true)
     }
     if isExcluded(bundleID: bundleID) {
