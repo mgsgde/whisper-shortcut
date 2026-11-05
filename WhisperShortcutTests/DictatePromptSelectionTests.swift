@@ -199,6 +199,7 @@ struct DictatePromptSelectionTests {
     let hung = DictatePromptSelectionCapture()
     let started = ContinuousClock.now
     #expect(await hung.fieldValue(timeout: .milliseconds(40)) == nil)
+    #expect(await hung.fieldAllowsWindowImage(timeout: .milliseconds(40)) == false)
     let elapsed = started.duration(to: .now)
     #expect(elapsed < .milliseconds(300))
   }

@@ -51,6 +51,16 @@ struct FocusedFieldSnapshotTests {
     for bundleID in FocusedFieldSnapshot.excludedBundleIDs {
       #expect(FocusedFieldSnapshot.isExcluded(bundleID: bundleID))
     }
+    let alsoExcluded = [
+      "com.dashlane.Dashlane",
+      "me.proton.pass.electron",
+      "com.markmcguill.strongbox.mac",
+      "in.sinew.Enpass-Desktop",
+      "com.hicknhacksoftware.MacPass",
+    ]
+    for bundleID in alsoExcluded {
+      #expect(FocusedFieldSnapshot.excludedBundleIDs.contains(bundleID))
+    }
     #expect(!FocusedFieldSnapshot.isExcluded(bundleID: "com.apple.Notes"))
     #expect(!FocusedFieldSnapshot.isExcluded(bundleID: nil))
   }

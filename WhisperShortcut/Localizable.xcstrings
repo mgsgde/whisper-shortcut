@@ -3092,12 +3092,12 @@
         }
       }
     },
-    "Adds a picture of the front window, never the whole screen, only when the text field is empty or unreadable. Never in password fields or password managers. Needs Screen Recording permission." : {
+    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers. Needs Screen Recording permission." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern. Benötigt die Berechtigung „Bildschirmaufnahme“."
+            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern. Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -7825,6 +7825,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dictate Prompt kann Kalender, Aufgaben, E-Mail, Trello und freigegebene Ordner lesen, wenn eine Anweisung eine Information braucht."
+          }
+        }
+      }
+    },
+    "Dictate Prompt does not read password manager windows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest keine Fenster von Passwort-Managern."
           }
         }
       }

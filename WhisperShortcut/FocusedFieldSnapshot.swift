@@ -26,11 +26,22 @@ struct FocusedFieldSnapshot: Equatable, Sendable {
     "com.apple.keychainaccess",
     "com.apple.Passwords",
     "org.keepassxc.keepassxc",
+    "com.dashlane.Dashlane",
+    "me.proton.pass.electron",
+    "com.markmcguill.strongbox.mac",
+    "in.sinew.Enpass-Desktop",
+    "com.hicknhacksoftware.MacPass",
   ]
 
   static func isExcluded(bundleID: String?) -> Bool {
     guard let bundleID else { return false }
     return excludedBundleIDs.contains(bundleID)
+  }
+
+  /// The frontmost app is a password manager. `SpeechService` has no AppKit import, so the
+  /// bundle-id read stays here.
+  static var frontmostIsExcluded: Bool {
+    isExcluded(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
   }
 
   /// Keeps the `beforeLimit` characters nearest the caret and the `afterLimit` characters

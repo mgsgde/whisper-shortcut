@@ -124,7 +124,7 @@ struct SpeechToPromptSettingsTab: View {
         Spacer()
       }
 
-      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty or unreadable. Never in password fields or password managers. Needs Screen Recording permission.")
+      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers. Needs Screen Recording permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)

@@ -134,7 +134,8 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   /// Focused-field snapshot taken at shortcut press. Independent of the selection slot.
   private var fieldResolved = false
   private var field: FocusedFieldSnapshot?
-  /// False when the field was a password field, secure input, or a password manager.
+  /// False when the field was a password field, secure input, or a password manager, and when
+  /// the read had not finished before the waiter's timeout.
   private var fieldAllowsWindowImage = true
   private var fieldWaiters: [(id: UUID, continuation: CheckedContinuation<FieldSlot, Never>)] = []
 
@@ -206,7 +207,7 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   }
 
   /// Whether a missing field may fall back to a front-window image. Unresolved after `timeout`
-  /// counts as allowed: the read has not reported a password field.
+  /// counts as not allowed: an unfinished read might have been a password field.
   func fieldAllowsWindowImage(timeout: Duration = .milliseconds(400)) async -> Bool {
     await fieldSlot(timeout: timeout).allowsWindowImage
   }
@@ -230,8 +231,9 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
     }
   }
 
-  /// Resumes a waiter that is still pending with "no field". A resolve that already ran removed
-  /// the waiter, so this does not resume twice.
+  /// Resumes a waiter that is still pending with no field and no window image. A resolve that
+  /// already ran removed the waiter, so this does not resume twice. Privacy first: an unfinished
+  /// read might have been a password field.
   private func resumeFieldIfPending(_ id: UUID) {
     lock.lock()
     guard let index = fieldWaiters.firstIndex(where: { $0.id == id }) else {
@@ -240,7 +242,7 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
     }
     let waiter = fieldWaiters.remove(at: index)
     lock.unlock()
-    waiter.continuation.resume(returning: FieldSlot(snapshot: nil, allowsWindowImage: true))
+    waiter.continuation.resume(returning: FieldSlot(snapshot: nil, allowsWindowImage: false))
   }
 
   /// The selected text, or nil for "nothing selected — compose". Suspends only while the copy poll

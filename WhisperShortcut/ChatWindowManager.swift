@@ -84,6 +84,9 @@ class ChatWindowManager {
   /// Returns JPEG data (max 1920 px wide, 80 % quality) or nil on failure (missing permission, no display, etc.).
   @MainActor
   func captureScreenForPromptMode() async -> Data? {
+    if FocusedFieldSnapshot.isExcluded(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) {
+      return nil
+    }
     var content: SCShareableContent
     let now = Date()
     var fromCache = false
@@ -171,7 +174,8 @@ class ChatWindowManager {
   /// is frontmost — the caller decides whether a full-display capture may stand in.
   @MainActor
   func captureFrontWindowForPromptMode() async -> Data? {
-    if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier {
+    let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    if frontmost == Bundle.main.bundleIdentifier || FocusedFieldSnapshot.isExcluded(bundleID: frontmost) {
       return nil
     }
     guard let windowID = ScreenshotDisplayPicker.frontmostWindowID() else { return nil }
@@ -218,7 +222,8 @@ class ChatWindowManager {
   }
 
   /// JPEG of `image`, scaled so the longer side is at most `maxLongerSide`. Images already
-  /// within that limit are encoded as they are.
+  /// within that limit are encoded as they are. Nil when a needed downscale context cannot be
+  /// created: the full-size image is never sent.
   private static func jpegData(_ image: CGImage, maxLongerSide: Int, quality: CGFloat) -> Data? {
     let longer = max(image.width, image.height)
     let finalImage: CGImage
@@ -227,18 +232,16 @@ class ChatWindowManager {
       let newWidth = image.width >= image.height ? maxLongerSide : max(1, Int(CGFloat(image.width) * scale))
       let newHeight = image.height > image.width ? maxLongerSide : max(1, Int(CGFloat(image.height) * scale))
       let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-      if let ctx = CGContext(
+      guard let ctx = CGContext(
         data: nil, width: newWidth, height: newHeight,
         bitsPerComponent: 8, bytesPerRow: 0,
         space: colorSpace,
         bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-      ) {
-        ctx.interpolationQuality = .medium
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
-        finalImage = ctx.makeImage() ?? image
-      } else {
-        finalImage = image
-      }
+      ) else { return nil }
+      ctx.interpolationQuality = .medium
+      ctx.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+      guard let scaled = ctx.makeImage() else { return nil }
+      finalImage = scaled
     } else {
       finalImage = image
     }

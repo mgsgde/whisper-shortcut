@@ -1192,8 +1192,10 @@ class SpeechService {
     }
 
     // Screenshot-selection mode (App Store) always sends the front window, with a full-display
-    // fallback, because the image is the selection. Every other turn sends a front window only
-    // when the field is missing or short — and never for a password field.
+    // fallback, because the image is the selection. A password manager is refused instead.
+    // Every other turn sends a front window only when the field is missing or short — and
+    // never for a password field.
+    let frontmostExcluded = FocusedFieldSnapshot.frontmostIsExcluded
     let settingEnabled = screenshotInPromptModeEnabled()
     let wantsFieldImage = fieldAllowsWindowImage && PromptScreenContextDecision.wantsWindowImage(
       isComposeTurn: isComposeTurn,
@@ -1234,9 +1236,14 @@ class SpeechService {
       modelAcceptsImages: modelAcceptsImages,
       supportsScreenshot: supportsScreenshot,
       fieldCount: fieldContext?.totalCount,
-      imageLabel: imageLabel)
+      imageLabel: imageLabel,
+      frontmostExcluded: frontmostExcluded)
     DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: field=\(fieldLabel) image=\(imageLabel) reason=\(reason)")
     if screenshotSelectionMode && wantsScreenshot && modelAcceptsImages && screenshot == nil {
+      if frontmostExcluded {
+        throw TranscriptionError.networkError(
+          String(localized: "Dictate Prompt does not read password manager windows."))
+      }
       DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
       throw TranscriptionError.networkError(Self.screenshotSelectionCaptureFailedMessage)
     }
@@ -1286,9 +1293,11 @@ class SpeechService {
     modelAcceptsImages: Bool,
     supportsScreenshot: Bool,
     fieldCount: Int?,
-    imageLabel: String
+    imageLabel: String,
+    frontmostExcluded: Bool
   ) -> String {
     if screenshotSelectionMode {
+      if frontmostExcluded { return "password-manager" }
       return imageLabel == "none" ? "screenshot-failed" : "screenshot-selection"
     }
     if isTemplate { return "template" }

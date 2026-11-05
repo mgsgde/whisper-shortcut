@@ -157,6 +157,12 @@ enum DictatePromptAgent {
         var options = baseOptions
         options.useGrounding = false
         options.disableBuiltInTools = true
+        // `.default` would leave Gemini 4 Argon and 3.1 Pro at "high" on a tool lookup.
+        // `.low` stays valid for Flash-Lite (`thinkingLevel: low`, not `minimal`).
+        // Other providers stay at `.default`: GPT-Audio rejects `reasoning_effort`.
+        if baseOptions.thinkingLevel == .default, PromptModel(rawValue: requestModel)?.isGemini == true {
+          options.thinkingLevel = .low
+        }
         return options
       },
       toolContext: { ChatToolContext(workspaceScope: .all) },
