@@ -450,7 +450,8 @@ enum MCPSettingsCatalog {
     let defaults = deps.defaults
 
     func boolSetting(
-      id: String, title: String, category: String, key: String, defaultValue: Bool,
+      id: String, title: String, category: String, key: String,
+      defaultValue: @autoclosure @escaping () -> Bool,
       proposalOnly: Bool = false, unavailableReason: @escaping () -> String? = { nil },
       enablingRefused: @escaping () -> String? = { nil },
       afterApply: @escaping (Bool) -> Void = { _ in }
@@ -458,7 +459,9 @@ enum MCPSettingsCatalog {
       MCPSetting(
         id: id, title: title, category: category, kind: .bool, proposalOnly: proposalOnly,
         unavailableReason: unavailableReason,
-        read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue },
+        // Re-read the default on every read. The catalog is built once and kept, and auto-paste's
+        // unset value follows the Accessibility permission, which can change after that.
+        read: { defaults.object(forKey: key) != nil ? defaults.bool(forKey: key) : defaultValue() },
         validate: { value in
           guard let b = value as? Bool else { return "\(title) needs true or false." }
           if b, let reason = enablingRefused() { return reason }
@@ -1054,7 +1057,7 @@ enum MCPSettingsCatalog {
     // without Accessibility — matching `dictate_prompt.screenshot_context`'s pattern below.
     settings.append(boolSetting(
       id: "clipboard.auto_paste", title: "Auto-paste after dictation", category: "clipboard",
-      key: UserDefaultsKeys.autoPasteAfterDictation, defaultValue: SettingsDefaults.autoPasteAfterDictation,
+      key: UserDefaultsKeys.autoPasteAfterDictation, defaultValue: AutoPasteDefault.effectiveDefault,
       enablingRefused: {
         deps.hasAccessibilityPermission() ? nil : "Needs the Accessibility permission, which the user has to grant themselves."
       }))

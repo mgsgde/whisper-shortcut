@@ -540,7 +540,7 @@ struct TelemetryEnvironment {
       providers: providers,
       offlineWhisperModel: OfflineModelType.byAccuracy.contains { ModelManager.shared.isModelAvailable($0) },
       smartImprovement: ContextLoggingPreference.storedFlag,
-      autoPaste: UserDefaults.standard.bool(forKey: UserDefaultsKeys.autoPasteAfterDictation),
+      autoPaste: AutoPasteDefault.currentValue,
       writingStyle: UserDefaults.standard.bool(forKey: UserDefaultsKeys.writingStyleEnabled),
       mcpEnabled: UserDefaults.standard.bool(forKey: UserDefaultsKeys.mcpServerEnabled),
       googleConnected: KeychainManager.shared.has(.googleCalendarRefreshToken),

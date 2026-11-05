@@ -867,8 +867,19 @@ struct WelcomePermissionsStep: View {
 /// Continue then waits until the key is freed or Fn is turned off again (`WelcomeStep.canAdvance`).
 struct OnboardingAccessibilityCard: View {
   @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
-  @AppStorage(UserDefaultsKeys.autoPasteAfterDictation) private var autoPasteEnabled =
-    SettingsDefaults.autoPasteAfterDictation
+  /// The stored auto-paste choice, or `AutoPasteDefault.effectiveDefault` while the key is unset.
+  /// Not `@AppStorage`: its default is fixed when the card appears, and assigning the property
+  /// would write the key. A user who only grants Accessibility must not get a stored preference.
+  private var autoPasteEnabled: Binding<Bool> {
+    Binding(
+      get: {
+        UserDefaults.standard.bool(
+          forKey: UserDefaultsKeys.autoPasteAfterDictation,
+          default: AutoPasteDefault.effectiveDefault)
+      },
+      set: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.autoPasteAfterDictation) }
+    )
+  }
 
   /// Live Accessibility status, so the card reflects what the user just changed in System
   /// Settings. Refreshed on appear and whenever the app reactivates. The 🌐 setting is
@@ -910,11 +921,11 @@ struct OnboardingAccessibilityCard: View {
       }
 
       featureToggle(
-        $autoPasteEnabled,
+        autoPasteEnabled,
         title: "Auto-paste",
         detail: "Puts dictated text straight at your cursor (a simulated ⌘V). Without it, your text is copied and you paste it yourself.")
 
-      if fnEnabled || autoPasteEnabled {
+      if fnEnabled || autoPasteEnabled.wrappedValue {
         HStack(spacing: 8) {
           PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
