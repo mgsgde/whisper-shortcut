@@ -98,4 +98,18 @@ final class MCPClientRegistry: ObservableObject {
       DispatchQueue.main.async { apply() }
     }
   }
+
+  /// Drops every client whose lowercased name has the given prefix (lowercased), and persists.
+  func forget(matching prefix: String) {
+    func apply() {
+      let lowered = prefix.lowercased()
+      clients.removeAll { $0.name.lowercased().hasPrefix(lowered) }
+      persist()
+    }
+    if Thread.isMainThread {
+      apply()
+    } else {
+      DispatchQueue.main.async { apply() }
+    }
+  }
 }

@@ -146,4 +146,155 @@ struct MCPClientInstallerTests {
     #expect(out.hasSuffix(codexBlock))
     #expect(out.components(separatedBy: "whisper-shortcut").count == 2)
   }
+
+  @Test("removeJSON: drops our entry and keeps other servers and top-level keys")
+  func removeJSONKeepsOthers() throws {
+    let existing = """
+      {"numStartups": 7, "projects": {"/a": {"x": 1}},
+       "mcpServers": {"other": {"command": "foo", "url": "http://127.0.0.1/x"},
+                      "whisper-shortcut": {"url": "old"}}}
+      """
+    let out = try #require(
+      try MCPClientInstaller.removeJSON(existing: Data(existing.utf8), serverName: name))
+    let root = try object(out)
+    #expect(root["numStartups"] as? Int == 7)
+    #expect((root["projects"] as? [String: Any])?["/a"] != nil)
+    let servers = try #require(root["mcpServers"] as? [String: Any])
+    #expect(servers[name] == nil)
+    let other = try #require(servers["other"] as? [String: Any])
+    #expect(other["command"] as? String == "foo")
+    #expect(other["url"] as? String == "http://127.0.0.1/x")
+    let text = String(decoding: out, as: UTF8.self)
+    #expect(text.contains("http://127.0.0.1/x"))
+    #expect(text.hasSuffix("\n"))
+  }
+
+  @Test("removeJSON: an absent entry, or no mcpServers, removes nothing")
+  func removeJSONAbsent() throws {
+    let otherOnly = #"{"mcpServers": {"other": {"command": "foo"}}, "theme": "dark"}"#
+    #expect(try MCPClientInstaller.removeJSON(existing: Data(otherOnly.utf8), serverName: name) == nil)
+    #expect(try MCPClientInstaller.removeJSON(existing: Data(#"{"theme": "dark"}"#.utf8), serverName: name) == nil)
+  }
+
+  @Test("removeJSON: nil and blank input remove nothing")
+  func removeJSONBlank() throws {
+    #expect(try MCPClientInstaller.removeJSON(existing: nil, serverName: name) == nil)
+    #expect(try MCPClientInstaller.removeJSON(existing: Data(), serverName: name) == nil)
+    #expect(try MCPClientInstaller.removeJSON(existing: Data("  \n\t".utf8), serverName: name) == nil)
+  }
+
+  @Test("removeJSON: non-object JSON is refused")
+  func removeJSONNonObject() {
+    #expect(throws: (any Error).self) {
+      try MCPClientInstaller.removeJSON(existing: Data("[1,2]".utf8), serverName: name)
+    }
+    #expect(throws: (any Error).self) {
+      try MCPClientInstaller.removeJSON(existing: Data("not json".utf8), serverName: name)
+    }
+  }
+
+  @Test("removeJSON: dropping the last server leaves an empty mcpServers object")
+  func removeJSONLastEntry() throws {
+    let existing = #"{"theme": "dark", "mcpServers": {"whisper-shortcut": {"url": "old"}}}"#
+    let out = try #require(
+      try MCPClientInstaller.removeJSON(existing: Data(existing.utf8), serverName: name))
+    let root = try object(out)
+    let servers = try #require(root["mcpServers"] as? [String: Any])
+    #expect(servers.isEmpty)
+    #expect(root["theme"] as? String == "dark")
+    let expectedRoot: [String: Any] = ["mcpServers": [String: Any](), "theme": "dark"]
+    var expected = try JSONSerialization.data(
+      withJSONObject: expectedRoot, options: [.prettyPrinted, .withoutEscapingSlashes, .sortedKeys])
+    expected.append(0x0A)
+    #expect(out == expected)
+  }
+
+  @Test("removeCodex: table and sub-table go, other tables stay, no double blank lines")
+  func removeCodexTables() {
+    let existing = """
+      model = "gpt"
+
+
+      [mcp_servers.whisper-shortcut]
+      url = "old"
+
+      [mcp_servers.whisper-shortcut.env]
+      A = "b"
+
+      [mcp_servers.after]
+      command = "y"
+
+      [profiles.x]
+      k = 1
+
+      """
+    let expected = """
+      model = "gpt"
+
+      [mcp_servers.after]
+      command = "y"
+
+      [profiles.x]
+      k = 1
+
+      """
+    let out = MCPClientInstaller.removeCodex(existing: existing, serverName: name)
+    #expect(out == expected)
+    #expect(out?.contains("\n\n\n") == false)
+    #expect(out?.hasSuffix("\n") == true)
+    #expect(out?.hasSuffix("\n\n") == false)
+
+    let atEnd = """
+      model = "gpt"
+
+      [mcp_servers.other]
+      command = "x"
+
+      [mcp_servers.whisper-shortcut]
+      url = "old"
+      """
+    #expect(
+      MCPClientInstaller.removeCodex(existing: atEnd, serverName: name)
+        == "model = \"gpt\"\n\n[mcp_servers.other]\ncommand = \"x\"\n")
+  }
+
+  @Test("removeCodex: a quoted server table and its sub-table are dropped")
+  func removeCodexQuotedHeader() {
+    let existing = """
+      model = "gpt"
+
+      [mcp_servers."whisper-shortcut"]
+      url = "old"
+
+      [mcp_servers."whisper-shortcut".env]
+      A = "b"
+
+      [mcp_servers.other]
+      command = "x"
+      """
+    let expected = """
+      model = "gpt"
+
+      [mcp_servers.other]
+      command = "x"
+
+      """
+    #expect(MCPClientInstaller.removeCodex(existing: existing, serverName: name) == expected)
+  }
+
+  @Test("removeCodex: no matching table returns nil; only our table returns empty")
+  func removeCodexAbsentOrOnlyOurs() {
+    #expect(MCPClientInstaller.removeCodex(existing: nil, serverName: name) == nil)
+    #expect(MCPClientInstaller.removeCodex(existing: "", serverName: name) == nil)
+    let other = "model = \"gpt\"\n\n[mcp_servers.other]\ncommand = \"x\"\n"
+    #expect(MCPClientInstaller.removeCodex(existing: other, serverName: name) == nil)
+    let only = """
+      [mcp_servers.whisper-shortcut]
+      url = "old"
+
+      [mcp_servers.whisper-shortcut.env]
+      A = "b"
+      """
+    #expect(MCPClientInstaller.removeCodex(existing: only, serverName: name) == "")
+  }
 }

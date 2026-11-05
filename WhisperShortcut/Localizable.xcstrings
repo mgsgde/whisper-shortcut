@@ -22174,6 +22174,16 @@
         }
       }
     },
+    "WhisperShortcut needs access to this folder once to remove itself from %@'s settings. Click Allow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut braucht einmal Zugriff auf diesen Ordner, um sich aus den Einstellungen von %@ zu entfernen. Klicken Sie auf „Erlauben“."
+          }
+        }
+      }
+    },
     "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
       "localizations" : {
         "de" : {

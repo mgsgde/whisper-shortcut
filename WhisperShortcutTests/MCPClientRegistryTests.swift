@@ -93,6 +93,20 @@ final class MCPClientRegistryTests: XCTestCase {
     XCTAssertTrue(reloaded.clients.isEmpty)
   }
 
+  func testForgetMatchingPrefixRemovesClaudeAIAndKeepsClaudeCode() {
+    let defaults = freshDefaults()
+    let registry = MCPClientRegistry(defaults: defaults)
+    registry.record(name: "claude-ai", version: "1.0", access: .write, at: Date(timeIntervalSince1970: 1_000))
+    registry.record(name: "Claude-AI", version: "2.0", access: .read, at: Date(timeIntervalSince1970: 2_000))
+    registry.record(name: "claude-code", version: "1.0", access: .read, at: Date(timeIntervalSince1970: 3_000))
+
+    registry.forget(matching: "claude-ai")
+
+    XCTAssertEqual(registry.clients.map(\.name), ["claude-code"])
+    let reloaded = MCPClientRegistry(defaults: defaults)
+    XCTAssertEqual(reloaded.clients.map(\.name), ["claude-code"])
+  }
+
   // MARK: - Dispatcher hook
 
   func testDispatcherInitializeCallsOnInitializeWithClientInfoAndAccess() throws {
