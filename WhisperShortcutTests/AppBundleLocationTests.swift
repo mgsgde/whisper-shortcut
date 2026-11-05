@@ -52,4 +52,13 @@ struct AppBundleLocationTests {
         == .developerBuild)
     #expect(!AppBundleLocation.developerBuild.shouldOfferMove)
   }
+
+  @Test("Not Now is remembered for that path only")
+  func declinedPath() {
+    let downloads = "/Users/anna/Downloads/WhisperShortcut.app"
+    let desktop = "/Users/anna/Desktop/WhisperShortcut.app"
+    #expect(ApplicationsFolderMove.shouldOffer(currentPath: downloads, declinedPath: nil))
+    #expect(!ApplicationsFolderMove.shouldOffer(currentPath: downloads, declinedPath: downloads))
+    #expect(ApplicationsFolderMove.shouldOffer(currentPath: desktop, declinedPath: downloads))
+  }
 }

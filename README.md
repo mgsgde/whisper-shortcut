@@ -93,7 +93,7 @@ To change a shortcut, open Settings → General, click **Record** next to it and
 1. Configure a Dictate shortcut in Settings → General.
 2. Choose a Gemini, OpenAI, OpenRouter, own-server, or Whisper transcription model.
 3. Press the shortcut (or the Fn key, if you turned that on), speak, then stop recording.
-4. The transcription inserts at the cursor when auto-paste is on (Settings → Clipboard Behavior; off by default; direct-download only). It is always copied to the clipboard as a backup.
+4. The transcription inserts at the cursor when auto-paste is on (Settings → Clipboard Behavior; on once you grant Accessibility; direct-download only). It is always copied to the clipboard as a backup.
 
 Longer recordings (roughly ten seconds and up) start transcribing in the background while you speak, on Gemini, OpenAI, Grok, and on-device Whisper. Pressing Stop only waits for the last chunk. If any chunk fails, the app transcribes the full recording instead, so you still get a complete result.
 

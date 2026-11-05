@@ -42,7 +42,7 @@ struct PermissionsOverview: View {
         Divider()
         permissionRow(
           name: PermissionKind.accessibility.displayName,
-          description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General.",
+          description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Auto-paste is on once you grant this; switch it off in Settings → General → Clipboard Behavior.",
           required: false,
           status: axStatus,
           actions: accessibilityActions
