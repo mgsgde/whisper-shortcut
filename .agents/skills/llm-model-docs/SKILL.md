@@ -73,6 +73,15 @@ Adding a `PromptModel` case is not done until all of these are handled (the comp
 - `ChatModelCommandResolver` — the `/model` version branches (`"3.6"`, `"3.5"`, …) and the `isFlash`/`isFlashLite`/`isPro` helpers
 - `migrateLegacyPromptRawValue` — forward any raw value that the provider retired or renamed
 
+### Adding or upgrading an offline speech model — run the dictation benchmark
+
+A new `OfflineModelType` (a new Parakeet or Whisper version, another engine), a FluidAudio /
+WhisperKit bump, or a change to the post-processing (`SpokenPunctuation`,
+`ParakeetPunctuationTiming`, `ParakeetVocabularyGuard`, `LiveChunkJoiner`) is not done until
+`bash scripts/dictation-benchmark.sh --model <raw value>` has run and its table is quoted in the PR.
+A score below `benchmarks/dictation/baseline.json` fails it; lowering the baseline is Magnus's call.
+How to read it and when to re-baseline: `benchmarks/dictation/README.md`.
+
 When deciding between "Flash"/"mini"/"lite" variants and the flagship variant, pick by **role intent**:
 
 - **Transcription default** → cheap-fast Flash/Lite tier (it runs on every dictation). Flagship is overkill.
