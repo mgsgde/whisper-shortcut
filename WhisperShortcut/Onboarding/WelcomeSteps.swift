@@ -867,17 +867,21 @@ struct WelcomePermissionsStep: View {
 /// Continue then waits until the key is freed or Fn is turned off again (`WelcomeStep.canAdvance`).
 struct OnboardingAccessibilityCard: View {
   @AppStorage(UserDefaultsKeys.fnKeyDictation) private var fnEnabled = SettingsDefaults.fnKeyDictation
-  /// The stored auto-paste choice, or `AutoPasteDefault.effectiveDefault` while the key is unset.
-  /// Not `@AppStorage`: its default is fixed when the card appears, and assigning the property
-  /// would write the key. A user who only grants Accessibility must not get a stored preference.
+  /// What auto-paste does now: the stored choice, or `AutoPasteDefault.effectiveDefault` while the
+  /// key is unset. Not `@AppStorage`: its default is fixed when the card appears, and assigning
+  /// it would write the key — a user who only grants Accessibility must not get a stored
+  /// preference. `@State` so a flip redraws the switch and fires `featureToggle`'s `onChange`;
+  /// `refreshStatus` re-reads it, so granting Accessibility turns the unset default on visibly.
+  @State private var autoPasteShown = AutoPasteDefault.currentValue
+
+  /// Writes the key only when the user flips the switch.
   private var autoPasteEnabled: Binding<Bool> {
     Binding(
-      get: {
-        UserDefaults.standard.bool(
-          forKey: UserDefaultsKeys.autoPasteAfterDictation,
-          default: AutoPasteDefault.effectiveDefault)
-      },
-      set: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.autoPasteAfterDictation) }
+      get: { autoPasteShown },
+      set: { newValue in
+        autoPasteShown = newValue
+        UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.autoPasteAfterDictation)
+      }
     )
   }
 
@@ -925,7 +929,7 @@ struct OnboardingAccessibilityCard: View {
         title: "Auto-paste",
         detail: "Puts dictated text straight at your cursor (a simulated ⌘V). Without it, your text is copied and you paste it yourself.")
 
-      if fnEnabled || autoPasteEnabled.wrappedValue {
+      if fnEnabled || autoPasteShown {
         HStack(spacing: 8) {
           PermissionStatusBadge(status: axStatus)
           Text(axStatus == .granted
@@ -990,6 +994,7 @@ struct OnboardingAccessibilityCard: View {
 
   private func refreshStatus() {
     axStatus = PermissionStatusChecker.status(for: .accessibility)
+    autoPasteShown = AutoPasteDefault.currentValue
     GlobeKeyStatus.shared.refresh()
   }
 }
