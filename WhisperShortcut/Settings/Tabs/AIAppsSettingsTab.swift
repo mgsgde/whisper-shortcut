@@ -170,9 +170,9 @@ struct AIAppsSettingsTab: View {
     case .read:
       return String(localized: "AI apps can read meetings and your setup, never change anything.")
     case .propose:
-      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Each change opens here for you to accept, edit or decline. Connect your AI app again below so it gets the new access.")
     case .apply:
-      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Changes apply at once and can be undone below. Instructions, model changes and screenshot context still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
     }
   }
 

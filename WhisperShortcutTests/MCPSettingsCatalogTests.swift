@@ -415,7 +415,10 @@ struct MCPSettingsCatalogTests {
   @Test("Proposal-only toggles require approval and stay pending at apply level")
   func proposalOnlyTogglesRequireApproval() {
     let env = MCPTestEnv(level: .apply)
-    let ids = ["writing_style.enabled", "dictate_prompt.tools_enabled", "chat.claude_web_search"]
+    let ids = [
+      "writing_style.enabled", "dictate_prompt.tools_enabled", "chat.claude_web_search",
+      "dictation.transcription_model", "meetings.transcription_model", "dictate_prompt.screenshot_context",
+    ]
     let listed = env.tools().call(name: "get_settings", arguments: [:], access: .write)
     let settings = obj(listed)["settings"] as? [[String: Any]] ?? []
     for id in ids {
@@ -490,7 +493,11 @@ struct MCPSettingsCatalogTests {
       arguments: ["changes": ["meetings.transcription_model": NSNull()], "rationale": "r"],
       access: .write)
     #expect(!r.isError)
-    #expect(obj(r)["status"] as? String == "applied")
+    #expect(obj(r)["status"] as? String == "pending_review")
+    #expect(setting.read() as? String == model.rawValue, "a proposal must not clear the key yet")
+    guard case .success = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
+      Issue.record("accept failed"); return
+    }
     #expect(setting.read() is NSNull)
     #expect(env.testDefaults.object(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) == nil)
   }

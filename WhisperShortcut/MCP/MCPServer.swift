@@ -48,66 +48,95 @@ final class MCPServer: ObservableObject {
   /// Cached after the first read: every request and every Settings redraw asks for it, and a
   /// failed Keychain write must not mint a different key on each call.
   private var cachedToken: String?
+  private var cachedWriteToken: String?
+  /// Accounts whose latest `saveSecret` returned false. `saveSecret` still keeps that value in
+  /// its session cache, so the next lookup must not be treated as a token that was stored.
+  private var unpersistedAccounts = Set<String>()
 
-  /// nil only on a transient Keychain failure (`.failed`) — never mint/cache a replacement then,
-  /// or a momentary glitch would silently invalidate the token every configured MCP client holds.
+  /// nil when the Keychain cannot be read or the new token could not be stored. Never cache a
+  /// token that was not saved — a later request would hand clients a key that disappears on restart.
   func token() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     if let cachedToken { return cachedToken }
-    switch KeychainManager.shared.secretLookup(account: Self.tokenAccount) {
-    case .found(let existing) where !existing.isEmpty:
-      cachedToken = existing
-      return existing
-    case .found, .notFound:
-      let fresh = makeAndStoreToken()
-      cachedToken = fresh
-      return fresh
-    case .failed(let status):
-      DebugLogger.logError("MCP-SERVER: Keychain read failed for the read token: status=\(status)")
-      return nil
-    }
+    guard let fresh = loadOrCreateToken(account: Self.tokenAccount, label: "read token") else { return nil }
+    cachedToken = fresh
+    return fresh
   }
 
   func regenerateToken() {
-    let fresh = makeAndStoreToken()
-    stateLock.lock(); cachedToken = fresh; stateLock.unlock()
+    guard let fresh = makeAndStoreToken() else {
+      stateLock.lock()
+      if cachedToken == nil { unpersistedAccounts.insert(Self.tokenAccount) }
+      stateLock.unlock()
+      return
+    }
+    stateLock.lock()
+    unpersistedAccounts.remove(Self.tokenAccount)
+    cachedToken = fresh
+    stateLock.unlock()
     DebugLogger.log("MCP-SERVER: Token regenerated")
     objectWillChange.send()
   }
 
-  private var cachedWriteToken: String?
-
-  /// Grants read and write. Created on first use, cached like the read token. nil only on a
-  /// transient Keychain failure — see `token()`.
+  /// Grants read and write. Created on first use, cached like the read token. nil when the
+  /// Keychain cannot be read or the new token could not be stored — see `token()`.
   func writeToken() -> String? {
     stateLock.lock(); defer { stateLock.unlock() }
     if let cachedWriteToken { return cachedWriteToken }
-    switch KeychainManager.shared.secretLookup(account: Self.writeTokenAccount) {
-    case .found(let existing) where !existing.isEmpty:
-      cachedWriteToken = existing
-      return existing
-    case .found, .notFound:
-      let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
-      cachedWriteToken = fresh
-      return fresh
-    case .failed(let status):
-      DebugLogger.logError("MCP-SERVER: Keychain read failed for the write token: status=\(status)")
-      return nil
-    }
+    guard let fresh = loadOrCreateToken(account: Self.writeTokenAccount, label: "write token") else { return nil }
+    cachedWriteToken = fresh
+    return fresh
   }
 
   func regenerateWriteToken() {
-    let fresh = makeAndStoreToken(account: Self.writeTokenAccount)
-    stateLock.lock(); cachedWriteToken = fresh; stateLock.unlock()
+    guard let fresh = makeAndStoreToken(account: Self.writeTokenAccount) else {
+      stateLock.lock()
+      if cachedWriteToken == nil { unpersistedAccounts.insert(Self.writeTokenAccount) }
+      stateLock.unlock()
+      return
+    }
+    stateLock.lock()
+    unpersistedAccounts.remove(Self.writeTokenAccount)
+    cachedWriteToken = fresh
+    stateLock.unlock()
     DebugLogger.log("MCP-SERVER: Write token regenerated")
     objectWillChange.send()
   }
 
-  private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String {
+  /// Caller holds `stateLock`. Returns a token only when it is already in the Keychain or was just
+  /// saved there. The caller caches that value; nil is not cached.
+  private func loadOrCreateToken(account: String, label: String) -> String? {
+    switch KeychainManager.shared.secretLookup(account: account) {
+    case .found(let existing) where !existing.isEmpty:
+      if unpersistedAccounts.contains(account) { return nil }
+      return existing
+    case .found, .notFound:
+      guard let fresh = makeAndStoreToken(account: account) else {
+        unpersistedAccounts.insert(account)
+        return nil
+      }
+      unpersistedAccounts.remove(account)
+      return fresh
+    case .failed(let status):
+      DebugLogger.logError("MCP-SERVER: Keychain read failed for the \(label): status=\(status)")
+      return nil
+    }
+  }
+
+  /// nil when random bytes could not be drawn or the Keychain refused the write. The value is
+  /// not cached by the caller in that case.
+  private func makeAndStoreToken(account: String = MCPServer.tokenAccount) -> String? {
     var bytes = [UInt8](repeating: 0, count: 32)
-    _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    let randomStatus = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+    guard randomStatus == errSecSuccess else {
+      DebugLogger.logError("MCP-SERVER: Could not generate a token (SecRandomCopyBytes status=\(randomStatus))")
+      return nil
+    }
     let token = bytes.map { String(format: "%02x", $0) }.joined()
-    _ = KeychainManager.shared.saveSecret(token, account: account)
+    guard KeychainManager.shared.saveSecret(token, account: account) else {
+      DebugLogger.logError("MCP-SERVER: Could not store the token in the Keychain (account \(account))")
+      return nil
+    }
     return token
   }
 
@@ -258,7 +287,8 @@ final class MCPServer: ObservableObject {
 
     if let origin = request.header("origin") {
       let host = URL(string: origin)?.host ?? ""
-      if host != "localhost" && host != "127.0.0.1" {
+      // `URL.host` for `http://[::1]:1` is `::1` on current Foundation and `[::1]` on some versions.
+      if !isLoopbackOriginHost(host) {
         return .json(["error": "forbidden origin"], status: 403)
       }
     }
@@ -289,6 +319,10 @@ final class MCPServer: ObservableObject {
     }
     guard let response = dispatcher.dispatch(parsed, access: access) else { return .empty(202) }
     return .json(response)
+  }
+
+  static func isLoopbackOriginHost(_ host: String) -> Bool {
+    host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
   }
 
   private static func constantTimeEqual(_ a: String, _ b: String) -> Bool {

@@ -667,6 +667,7 @@ enum MCPSettingsCatalog {
     // respected. Reads through the injected `defaults` with the same migration helper the real
     // loader (`TranscriptionModel.loadSelected()`, which hardcodes `.standard` and has
     // write-side-effects the catalog's `read` must not have) uses.
+    // Always a proposal: a meeting or email an AI app reads could contain text meant to change the model.
     settings.append(MCPSetting(
       id: "dictation.transcription_model", title: "Dictation model", category: "models",
       kind: .enumeration(options: {
@@ -679,6 +680,7 @@ enum MCPSettingsCatalog {
             reason: $0.pickerSetupBadge)
         }
       }),
+      proposalOnly: true,
       read: {
         guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModel) else {
           return SettingsDefaults.selectedTranscriptionModel.rawValue
@@ -762,6 +764,7 @@ enum MCPSettingsCatalog {
     // MARK: meetings.transcription_model
     // JSON null clears the key. `TranscriptionModel.loadSelectedForMeeting()` treats a missing key
     // as "same as dictation" — that is the fallback the Settings loader already uses.
+    // Always a proposal: a meeting or email an AI app reads could contain text meant to change the model.
     settings.append(MCPSetting(
       id: "meetings.transcription_model", title: "Meeting transcription model", category: "models",
       kind: .enumeration(options: {
@@ -774,6 +777,7 @@ enum MCPSettingsCatalog {
             reason: $0.pickerSetupBadge)
         }
       }),
+      proposalOnly: true,
       read: {
         guard let raw = defaults.string(forKey: UserDefaultsKeys.selectedTranscriptionModelForMeetings) else {
           return NSNull()
@@ -1159,6 +1163,7 @@ enum MCPSettingsCatalog {
     settings.append(boolSetting(
       id: "dictate_prompt.screenshot_context", title: "Screenshot context", category: "dictate_prompt",
       key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
+      proposalOnly: true,
       enablingRefused: {
         deps.hasScreenRecordingPermission()
           ? nil

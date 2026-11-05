@@ -122,4 +122,28 @@ struct MCPClientInstallerTests {
     #expect(out.hasSuffix(codexBlock))
     #expect(out.components(separatedBy: "[mcp_servers.whisper-shortcut]").count == 2)
   }
+
+  @Test("Codex: a quoted server table is dropped, leaving exactly one whisper-shortcut table")
+  func codexQuotedHeader() {
+    let existing = """
+      model = "gpt"
+
+      [mcp_servers."whisper-shortcut"]
+      url = "old"
+
+      [mcp_servers."whisper-shortcut".env]
+      A = "b"
+
+      [mcp_servers.other]
+      command = "x"
+
+      """
+    let out = MCPClientInstaller.mergeCodex(existing: existing, serverName: name, url: url, token: token)
+    #expect(!out.contains("old"))
+    #expect(!out.contains("A = \"b\""))
+    #expect(!out.contains("[mcp_servers.\"whisper-shortcut\"]"))
+    #expect(out.contains("[mcp_servers.other]\ncommand = \"x\"\n"))
+    #expect(out.hasSuffix(codexBlock))
+    #expect(out.components(separatedBy: "whisper-shortcut").count == 2)
+  }
 }
