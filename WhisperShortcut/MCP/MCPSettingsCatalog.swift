@@ -87,6 +87,7 @@ struct MCPSetting {
     case string(maxLength: Int)
     case enumeration(options: () -> [Option])
     case shortcut
+    case stringList(maxItems: Int, maxLength: Int)
   }
 
   let id: String
@@ -230,6 +231,11 @@ enum MCPSettingsCatalog {
       if value is NSNull { return "Disabled" }
       guard let dict = value as? [String: Any], let def = shortcutDefinition(from: dict) else { return "Disabled" }
       return def.displayStringWithSeparator
+    case .stringList:
+      let items = ((value as? [Any]) ?? []).compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      if items.isEmpty { return "(none)" }
+      return items.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " / ")
     }
   }
 
@@ -284,6 +290,8 @@ enum MCPSettingsCatalog {
     case "Use my writing style in Dictate Prompt": return String(localized: "Use my writing style in Dictate Prompt")
     case "Let Dictate Prompt use read-only tools": return String(localized: "Let Dictate Prompt use read-only tools")
     case "Let Claude search the web": return String(localized: "Let Claude search the web")
+    case "Quick prompts": return String(localized: "Quick prompts")
+    case "Also show often-used prompts": return String(localized: "Also show often-used prompts")
     default: return english
     }
   }
@@ -1164,6 +1172,42 @@ enum MCPSettingsCatalog {
           ? nil
           : "Grant Screen Recording in Settings → Permissions first."
       }))
+
+    // MARK: dictate_prompt.quick_prompts — read live on every ⌘2 by QuickActionStore.current().
+    let quickPromptsTitle = "Quick prompts"
+    let quickPromptsMaxItems = QuickActionStore.maxCustomEntries
+    let quickPromptsMaxLength = 300
+    func cleanedQuickPrompts(_ value: Any) -> (items: [String]?, error: String?) {
+      guard let raw = value as? [Any], raw.allSatisfy({ $0 is String }) else {
+        return (nil, "\(quickPromptsTitle) needs a list of strings.")
+      }
+      let items = raw.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      if items.count > quickPromptsMaxItems {
+        return (nil, "\(quickPromptsTitle): at most \(quickPromptsMaxItems) entries.")
+      }
+      if let i = items.firstIndex(where: { $0.count > quickPromptsMaxLength }) {
+        return (nil, "\(quickPromptsTitle): entry \(i + 1) is longer than \(quickPromptsMaxLength) characters.")
+      }
+      return (items, nil)
+    }
+    settings.append(MCPSetting(
+      id: "dictate_prompt.quick_prompts", title: quickPromptsTitle, category: "dictate_prompt",
+      kind: .stringList(maxItems: quickPromptsMaxItems, maxLength: quickPromptsMaxLength),
+      read: { defaults.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) ?? [] },
+      validate: { value in cleanedQuickPrompts(value).error },
+      apply: { value in
+        let result = cleanedQuickPrompts(value)
+        if let error = result.error { throw MCPConfigError(message: error) }
+        defaults.set(result.items ?? [], forKey: UserDefaultsKeys.dictatePromptCustomQuickActions)
+      },
+      normalizeForLabel: { cleanedQuickPrompts($0).items ?? $0 }))
+
+    // MARK: dictate_prompt.learned_quick_prompts
+    settings.append(boolSetting(
+      id: "dictate_prompt.learned_quick_prompts", title: "Also show often-used prompts",
+      category: "dictate_prompt", key: UserDefaultsKeys.dictatePromptLearnedQuickActionsEnabled,
+      defaultValue: true))
 
     // MARK: improvement.auto_run_interval — picker stores the Int raw value (days; 0 = off).
     settings.append(enumSetting(
