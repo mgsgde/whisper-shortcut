@@ -89,13 +89,19 @@ enum MCPClientInstaller {
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
 
+  /// Claude Desktop only launches local MCP servers as stdio processes. This executable is the
+  /// bridge: `--mcp-stdio` forwards stdin to the HTTP endpoint. The URL and bearer token travel
+  /// in the environment, not on the command line.
   static func mergeClaudeDesktop(
-    existing: Data?, serverName: String, url: String, token: String, mcpRemotePackage: String
+    existing: Data?, serverName: String, url: String, token: String, executablePath: String
   ) throws -> Data {
     let entry: [String: Any] = [
-      "command": "npx",
-      "args": ["-y", mcpRemotePackage, url, "--header", "Authorization:${AUTH_HEADER}"],
-      "env": ["AUTH_HEADER": "Bearer \(token)"],
+      "command": executablePath,
+      "args": [MCPStdioBridge.argument],
+      "env": [
+        MCPStdioBridge.urlEnv: url,
+        MCPStdioBridge.authEnv: "Bearer \(token)",
+      ],
     ]
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
@@ -146,7 +152,7 @@ enum MCPClientInstaller {
   /// Returns the written file's URL. `MCPClientInstallerError.cancelled` means the user dismissed the panel.
   @MainActor
   static func connect(
-    _ client: MCPClient, url: String, token: String, mcpRemotePackage: String, serverName: String
+    _ client: MCPClient, url: String, token: String, serverName: String
   ) async -> Result<URL, Error> {
     let configFolder = client.configFolder
     // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
@@ -195,7 +201,7 @@ enum MCPClientInstaller {
       case .claudeDesktop:
         output = try mergeClaudeDesktop(
           existing: existingData, serverName: serverName, url: url, token: token,
-          mcpRemotePackage: mcpRemotePackage)
+          executablePath: Bundle.main.executablePath ?? "")
       case .codex:
         let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
         output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)

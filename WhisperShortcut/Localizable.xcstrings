@@ -3522,6 +3522,16 @@
         }
       }
     },
+    "Anthropic's agent, in Terminal and in the Code tab of the Claude app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Agent von Anthropic, im Terminal und im Code-Tab der Claude-App."
+          }
+        }
+      }
+    },
     "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key" : {
       "localizations" : {
         "de" : {
@@ -10456,16 +10466,6 @@
         }
       }
     },
-    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit schon vorhandenen Servern), beenden Sie Claude und öffnen Sie es wieder. Braucht Node.js."
-          }
-        }
-      }
-    },
     "In person" : {
       "localizations" : {
         "de" : {
@@ -12583,16 +12583,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel fehlt"
-          }
-        }
-      }
-    },
-    "Needs Node.js." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Benötigt Node.js."
           }
         }
       }
@@ -20120,6 +20110,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme ist zu kurz zum Transkribieren."
+          }
+        }
+      }
+    },
+    "The regular chat in the Claude app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der normale Chat in der Claude-App."
           }
         }
       }

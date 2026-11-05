@@ -630,6 +630,10 @@ class FullWhisperShortcut {
   private static var delegate: NSApplicationDelegate?
 
   static func main() {
+    // Claude Desktop launches this binary as its stdio MCP server. That process must not
+    // become a second menu-bar app, so the bridge runs before NSApplication exists.
+    if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }
+
     let app = NSApplication.shared
     // LSUIElement = true in Info.plist handles the menu bar app behavior
 
