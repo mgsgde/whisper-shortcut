@@ -9568,6 +9568,16 @@
         }
       }
     },
+    "Gemma 4 26B A4B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 26B A4B (offline)"
+          }
+        }
+      }
+    },
     "General" : {
       "comment" : "Settings tab",
       "localizations" : {
@@ -12241,6 +12251,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minimal"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-26B-A4B-it-qat-4bit • MLX in der App, ohne Server • ca. 15,6 GB • Offline • Nur Chat, braucht 32 GB RAM"
           }
         }
       }
