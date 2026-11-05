@@ -1136,6 +1136,7 @@ enum MCPSettingsCatalog {
     voiceSetting(id: "read_aloud.voice.openai", title: "OpenAI voice", provider: .openai)
     voiceSetting(id: "read_aloud.voice.xai", title: "xAI voice", provider: .xai)
     voiceSetting(id: "read_aloud.voice.system", title: "macOS voice", provider: .system)
+    voiceSetting(id: "read_aloud.voice.qwen3", title: "Qwen3 voice", provider: .localMLX)
 
     // MARK: screenshot.save_enabled — refused turning ON without a folder chosen (MCP never opens
     // the picker); `enablingRefused`, not `unavailableReason`, so the entry stays visible and OFF

@@ -176,7 +176,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .gemini35FlashLite: return 6
     case .gemini38Flash: return 7
     case .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
-         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .selfHostedTranscription,
+         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .qwen3ASR, .selfHostedTranscription,
          .openRouterTranscription:
       return nil
     }
@@ -193,6 +193,9 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperSmall: return 3
     case .whisperBase: return 4
     case .whisperTiny: return 5
+    // Qwen3-ASR is the multilingual fallback, not a German-accuracy pick: it sits behind the
+    // Whisper family so the offline list still leads with the fastest accurate option.
+    case .qwen3ASR: return 6
     default: return nil
     }
   }
@@ -208,6 +211,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperLarge: return "Whisper Large"
     case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
     case .parakeetUltra: return "Parakeet Ultra"
+    case .qwen3ASR: return "Qwen3 ASR 1.7B"
     default: return displayName
     }
   }
@@ -323,10 +327,19 @@ extension TTSModel: PickerCuratedModel {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
     case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS: return nil
+    case .qwen3VoiceDesign, .qwen3CustomVoice: return nil
     }
   }
 
-  var pickerOfflineRank: Int? { provider == .system ? 0 : nil }
+  var pickerOfflineRank: Int? {
+    switch provider {
+    case .system: return 0
+    // Behind the macOS voice: it is instant, Qwen3 has to generate first. CustomVoice is the
+    // faster of the two checkpoints, so it sits ahead of VoiceDesign.
+    case .localMLX: return self == .qwen3CustomVoice ? 1 : 2
+    default: return nil
+    }
+  }
 
   var pickerSupersededBy: TTSModel? { nil }
 

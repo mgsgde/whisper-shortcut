@@ -299,6 +299,8 @@ enum UserDefaultsKeys {
   static let selectedReadAloudVoiceOpenAI = "selectedReadAloudVoiceOpenAI"
   static let selectedReadAloudVoiceXAI = "selectedReadAloudVoiceXAI"
   static let selectedReadAloudVoiceSystem = "selectedReadAloudVoiceSystem"
+  /// Qwen3-TTS VoiceDesign persona id (see `Qwen3VoicePersonas`).
+  static let selectedReadAloudVoiceQwen3 = "selectedReadAloudVoiceQwen3"
 
   /// Snapshot of model selections taken when Offline Mode is turned on, restored when it is
   /// turned off. Dictionary of UserDefaults key → raw value. See `ModelSelectionReconciler`.

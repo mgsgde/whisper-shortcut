@@ -86,6 +86,11 @@ enum TranscriptionModel: String, CaseIterable {
   /// FluidAudio. Same accuracy as turbo on the user's German at ~1/20 of the wait
   /// (`benchmarks/local-asr/README.md`). Raw value matches `OfflineModelType.parakeetUltra`.
   case parakeetUltra = "parakeet-ultra"
+  /// Offline, MLX: Qwen3-ASR 1.7B (8-bit) through `mlx-audio-swift`. Not a WhisperKit/Parakeet
+  /// engine, so it is its own case rather than an `OfflineModelType`: it covers 11 languages
+  /// including German, Chinese, Japanese and Korean, which is the gap Parakeet's 25 European
+  /// languages leaves. See `Qwen3ASRService`.
+  case qwen3ASR = "qwen3-asr-1.7b"
 
   // OpenAI transcription models (cloud, OpenAI API key required).
   // `gpt-transcribe` is OpenAI's recommended starting model; the gpt-4o pair is explicitly
@@ -138,6 +143,8 @@ enum TranscriptionModel: String, CaseIterable {
       return String(localized: "Whisper Large v3 Turbo (Offline)")
     case .parakeetUltra:
       return String(localized: "Parakeet Ultra (Offline)")
+    case .qwen3ASR:
+      return String(localized: "Qwen3 ASR 1.7B (Offline)")
     case .openAIGPTTranscribe:
       return "GPT Transcribe"
     case .openAIGPT4oTranscribe:
@@ -247,7 +254,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini4Argon, .gemini31Pro, .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
          .whisperLarge, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe, .xaiTranscribe,
-         .selfHostedTranscription, .openRouterTranscription:
+         .selfHostedTranscription, .openRouterTranscription, .qwen3ASR:
       return false
     }
   }
@@ -262,7 +269,7 @@ enum TranscriptionModel: String, CaseIterable {
     case .gemini31Pro:
       return .medium
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .parakeetUltra:
+         .whisperLargeTurbo, .parakeetUltra, .qwen3ASR:
       return .freeOffline
     case .openAIGPTTranscribe:
       return .low
@@ -305,6 +312,8 @@ enum TranscriptionModel: String, CaseIterable {
       return String(localized: "OpenAI Whisper Large v3 Turbo • Large-v3 accuracy at a fraction of the time • ~1.6GB • Offline")
     case .parakeetUltra:
       return String(localized: "NVIDIA Parakeet Ultra • Turbo's accuracy, about 20× faster • 25 European languages • ~700MB • Offline")
+    case .qwen3ASR:
+      return String(localized: "Alibaba's Qwen3 ASR 1.7B • 11 languages incl. German, Chinese, Japanese, Korean • ~2.5GB • Offline")
     case .openAIGPTTranscribe:
       return String(localized: "OpenAI's current transcription model • $0.0045/min • Glossary sent as keyword hints • Ignores the Dictation prompt")
     case .openAIGPT4oTranscribe:
@@ -555,6 +564,11 @@ enum TranscriptionModel: String, CaseIterable {
   /// Checks if this model is an offline model and if it's available
   /// - Returns: True if the model is offline and available, false otherwise
   func isOfflineModelAvailable() -> Bool {
+    // Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it has no
+    // `OfflineModelType`; its availability comes from its own store.
+    if self == .qwen3ASR {
+      return Qwen3ModelManager.shared.isModelAvailable(.asr)
+    }
     guard isOffline, let offlineModelType = offlineModelType else {
       return false
     }
@@ -583,7 +597,7 @@ enum TranscriptionModel: String, CaseIterable {
     // Parakeet shares the class: what matters here is "not Gemini, so Gemini re-listening adds
     // information", not which on-device engine produced the transcript.
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .parakeetUltra:
+         .whisperLargeTurbo, .parakeetUltra, .qwen3ASR:
       return .offlineWhisper
     case .openAIGPTTranscribe, .openAIGPT4oTranscribe, .openAIGPT4oMiniTranscribe:
       return .openAIAudio

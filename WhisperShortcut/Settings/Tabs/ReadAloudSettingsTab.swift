@@ -40,12 +40,33 @@ struct ReadAloudSettingsTab: View {
   // MARK: - Voice Model Section
   @ViewBuilder
   private var modelSection: some View {
-    TTSModelSelectionView(
-      selectedModel: $viewModel.data.selectedReadAloudModel,
-      onModelChanged: {
-        Task { await viewModel.saveSettings() }
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      TTSModelSelectionView(
+        selectedModel: $viewModel.data.selectedReadAloudModel,
+        onModelChanged: {
+          Task { await viewModel.saveSettings() }
+        }
+      )
+
+      // The Qwen3 voice models are multi-gigabyte downloads, so they get their own row here
+      // rather than being fetched silently on the first Read Aloud — a menu-bar app must not
+      // start a multi-gigabyte download because someone pressed a shortcut.
+      if let qwen3Type = viewModel.data.selectedReadAloudModel.qwen3ModelType,
+        Qwen3ModelType.isSupportedOnThisMac
+      {
+        ModelDownloadRow(
+          store: Qwen3ModelManager.shared,
+          model: qwen3Type,
+          downloadedMessage: String(
+            localized: "\(qwen3Type.displayName) was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster."),
+          onError: { viewModel.showError($0) }
+        ) {
+          Text(qwen3Type == .customVoice ? "Fastest" : "German voices")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
       }
-    )
+    }
   }
 
   // MARK: - Voice Section
