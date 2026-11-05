@@ -83,9 +83,11 @@ struct MCPConfigTools {
     ("dictation", .dictation), ("whisper_glossary", .whisperGlossary),
     ("dictate_prompt", .promptMode), ("chat", .chat), ("read_aloud_rewrite", .readAloudRewrite),
   ]
-  /// Always a proposal, at every access level: applied to everything the user dictates, to the
-  /// in-app model itself, or the only way to remove glossary lines.
-  static let alwaysProposalSections: Set<String> = ["dictation", "chat", "whisper_glossary"]
+  /// Always a proposal, at every access level. A meeting or an email an AI app reads could contain
+  /// text meant to change these instructions, or to remove glossary lines.
+  static let alwaysProposalSections: Set<String> = [
+    "dictation", "chat", "whisper_glossary", "dictate_prompt", "read_aloud_rewrite",
+  ]
 
   /// The only settings `get_configuration` reads: model names, nothing else.
   static let settingsKeys: [String: String] = [
@@ -96,10 +98,12 @@ struct MCPConfigTools {
     "meeting_summary_model": UserDefaultsKeys.selectedMeetingSummaryModel,
   ]
 
-  static let readToolNames: Set<String> = ["get_configuration", "get_recent_interactions", "get_settings"]
+  static let readToolNames: Set<String> = [
+    "get_configuration", "get_recent_interactions", "get_settings", "get_proposal_status",
+  ]
   static let writeToolNames: Set<String> = [
     "add_glossary_terms", "update_system_prompt", "update_writing_style_profile", "save_command",
-    "delete_command", "get_proposal_status", "report_problem", "update_settings",
+    "delete_command", "report_problem", "update_settings",
   ]
 
   func handles(_ name: String) -> Bool {
@@ -153,6 +157,14 @@ struct MCPConfigTools {
       ] as [String: Any],
       "annotations": ["title": "Get Settings", "readOnlyHint": true, "openWorldHint": false],
     ],
+    [
+      "name": "get_proposal_status",
+      "description": "Reports whether a proposal made earlier is pending, accepted or declined.",
+      "inputSchema": [
+        "type": "object", "properties": ["id": ["type": "string"]], "required": ["id"],
+      ] as [String: Any],
+      "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
+    ],
   ]
 
   private static func write(
@@ -180,7 +192,7 @@ struct MCPConfigTools {
       annotations: ["readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false]),
     write(
       "update_system_prompt", "Update System Prompt",
-      "Replaces one system prompt section with the full new text (max 5,000 characters). dictation, chat and whisper_glossary always wait for the user to accept them in WhisperShortcut; dictate_prompt and read_aloud_rewrite follow the user's access level. Read the current text first and change as little as possible.",
+      "Replaces one system prompt section with the full new text (max 5,000 characters). dictation, whisper_glossary, dictate_prompt, chat and read_aloud_rewrite always wait for the user to accept them in WhisperShortcut. Read the current text first and change as little as possible.",
       [
         "section": ["type": "string", "enum": sectionNames],
         "content": ["type": "string", "description": "The complete new text of the section."],
@@ -229,15 +241,6 @@ struct MCPConfigTools {
       ] as [String: Any],
       "_meta": ["anthropic/requiresUserInteraction": true],
       "annotations": ["title": "Report Problem", "readOnlyHint": false, "destructiveHint": false, "openWorldHint": false],
-    ],
-    [
-      "name": "get_proposal_status",
-      "description": "Reports whether a proposal made earlier is pending, accepted or declined.",
-      "inputSchema": [
-        "type": "object", "properties": ["id": ["type": "string"]], "required": ["id"],
-      ] as [String: Any],
-      // Read-only: unlike the other write-set tools, it needs no "_meta" requiresUserInteraction hint.
-      "annotations": ["title": "Get Proposal Status", "readOnlyHint": true, "openWorldHint": false],
     ],
     write(
       "update_settings", "Update Settings",

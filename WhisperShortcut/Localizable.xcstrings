@@ -3522,6 +3522,16 @@
         }
       }
     },
+    "Anthropic's agent, in Terminal and in the Code tab of the Claude app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Agent von Anthropic, im Terminal und im Code-Tab der Claude-App."
+          }
+        }
+      }
+    },
     "Anthropic's Claude Haiku 5.5 • Fastest, cheapest Claude • Text + images • 1M context • Requires Anthropic API key" : {
       "localizations" : {
         "de" : {
@@ -4609,12 +4619,12 @@
         }
       }
     },
-    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+    "Changes apply at once and can be undone below. Instructions, model changes and screenshot context still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen, Modellwechsel und Screenshot-Kontext warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
           }
         }
       }
@@ -8383,12 +8393,12 @@
         }
       }
     },
-    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+    "Each change opens here for you to accept, edit or decline. Connect your AI app again below so it gets the new access." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
           }
         }
       }
@@ -10452,16 +10462,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit bereits vorhandenen Servern) und starten Sie Claude neu."
-          }
-        }
-      }
-    },
-    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit schon vorhandenen Servern), beenden Sie Claude und öffnen Sie es wieder. Braucht Node.js."
           }
         }
       }
@@ -12583,16 +12583,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schlüssel fehlt"
-          }
-        }
-      }
-    },
-    "Needs Node.js." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Benötigt Node.js."
           }
         }
       }
@@ -20120,6 +20110,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Aufnahme ist zu kurz zum Transkribieren."
+          }
+        }
+      }
+    },
+    "The regular chat in the Claude app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der normale Chat in der Claude-App."
           }
         }
       }

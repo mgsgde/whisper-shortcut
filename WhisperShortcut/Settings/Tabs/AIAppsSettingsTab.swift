@@ -25,8 +25,6 @@ struct AIAppsSettingsTab: View {
   /// Changes listed under "Changed by AI apps"; the full record stays in `mcp-changes.jsonl`.
   private static let visibleChanges = 5
 
-  /// Pinned so a new `mcp-remote` release can't change what users paste. Bump deliberately.
-  private static let mcpRemotePackage = "mcp-remote@0.14.3"
   private static let serverName = "whisper-shortcut"
 
   @State private var copiedItem: String?
@@ -84,13 +82,14 @@ struct AIAppsSettingsTab: View {
 
           setupCard(
             .claudeCode,
+            note: "Anthropic's agent, in Terminal and in the Code tab of the Claude app.",
             manualInstruction: "Run in Terminal, then start a new Claude Code session:",
             code: claudeCodeCommand
           )
 
           setupCard(
             .claudeDesktop,
-            note: "Needs Node.js.",
+            note: "The regular chat in the Claude app.",
             manualInstruction: "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude.",
             code: claudeDesktopConfig
           )
@@ -171,9 +170,9 @@ struct AIAppsSettingsTab: View {
     case .read:
       return String(localized: "AI apps can read meetings and your setup, never change anything.")
     case .propose:
-      return String(localized: "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Each change opens here for you to accept, edit or decline. Connect your AI app again below so it gets the new access.")
     case .apply:
-      return String(localized: "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
+      return String(localized: "Changes apply at once and can be undone below. Instructions, model changes and screenshot context still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access.")
     }
   }
 
@@ -452,8 +451,7 @@ struct AIAppsSettingsTab: View {
     connecting = client
     Task { @MainActor in
       let result = await MCPClientInstaller.connect(
-        client, url: server.endpointURL, token: setupToken,
-        mcpRemotePackage: Self.mcpRemotePackage, serverName: Self.serverName)
+        client, url: server.endpointURL, token: setupToken, serverName: Self.serverName)
       connecting = nil
       switch result {
       case .success:
@@ -475,17 +473,22 @@ struct AIAppsSettingsTab: View {
     "claude mcp remove --scope user \(Self.serverName) 2>/dev/null; claude mcp add --transport http --scope user \(Self.serverName) \(server.endpointURL) --header \"Authorization: Bearer \(setupToken)\""
   }
 
-  /// `mcp-remote` bridges Claude Desktop's stdio-only local config to our HTTP endpoint. The key
-  /// travels in `env` rather than in `args` — mcp-remote's documented way to pass a header value
-  /// that contains a space.
+  /// Claude Desktop only launches local MCP servers as stdio processes. This app's binary is the
+  /// bridge (`--mcp-stdio`): it reads JSON-RPC on stdin and forwards it to the HTTP endpoint.
+  /// The access key travels in the environment, not on the command line.
   private var claudeDesktopConfig: String {
-    """
+    let executable = Bundle.main.executablePath
+      ?? "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut"
+    return """
     {
       "mcpServers": {
         "\(Self.serverName)": {
-          "command": "npx",
-          "args": ["-y", "\(Self.mcpRemotePackage)", "\(server.endpointURL)", "--header", "Authorization:${AUTH_HEADER}"],
-          "env": { "AUTH_HEADER": "Bearer \(setupToken)" }
+          "command": "\(executable)",
+          "args": ["\(MCPStdioBridge.argument)"],
+          "env": {
+            "\(MCPStdioBridge.urlEnv)": "\(server.endpointURL)",
+            "\(MCPStdioBridge.authEnv)": "Bearer \(setupToken)"
+          }
         }
       }
     }

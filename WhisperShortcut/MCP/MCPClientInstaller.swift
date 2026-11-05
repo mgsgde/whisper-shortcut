@@ -89,13 +89,19 @@ enum MCPClientInstaller {
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
 
+  /// Claude Desktop only launches local MCP servers as stdio processes. This executable is the
+  /// bridge: `--mcp-stdio` forwards stdin to the HTTP endpoint. The URL and bearer token travel
+  /// in the environment, not on the command line.
   static func mergeClaudeDesktop(
-    existing: Data?, serverName: String, url: String, token: String, mcpRemotePackage: String
+    existing: Data?, serverName: String, url: String, token: String, executablePath: String
   ) throws -> Data {
     let entry: [String: Any] = [
-      "command": "npx",
-      "args": ["-y", mcpRemotePackage, url, "--header", "Authorization:${AUTH_HEADER}"],
-      "env": ["AUTH_HEADER": "Bearer \(token)"],
+      "command": executablePath,
+      "args": [MCPStdioBridge.argument],
+      "env": [
+        MCPStdioBridge.urlEnv: url,
+        MCPStdioBridge.authEnv: "Bearer \(token)",
+      ],
     ]
     return try mergeJSON(existing: existing, serverName: serverName, entry: entry)
   }
@@ -119,13 +125,16 @@ enum MCPClientInstaller {
 
   static func mergeCodex(existing: String?, serverName: String, url: String, token: String) -> String {
     let header = "[mcp_servers.\(serverName)]"
+    let quotedHeader = "[mcp_servers.\"\(serverName)\"]"
     let subPrefix = "[mcp_servers.\(serverName)."
+    let quotedSubPrefix = "[mcp_servers.\"\(serverName)\"."
     var kept: [Substring] = []
     var skipping = false
     for line in (existing ?? "").split(separator: "\n", omittingEmptySubsequences: false) {
       let trimmed = line.trimmingCharacters(in: .whitespaces)
       if trimmed.hasPrefix("[") {
-        skipping = (trimmed == header || trimmed.hasPrefix(subPrefix))
+        skipping = trimmed == header || trimmed == quotedHeader
+          || trimmed.hasPrefix(subPrefix) || trimmed.hasPrefix(quotedSubPrefix)
       }
       if !skipping { kept.append(line) }
     }
@@ -146,7 +155,7 @@ enum MCPClientInstaller {
   /// Returns the written file's URL. `MCPClientInstallerError.cancelled` means the user dismissed the panel.
   @MainActor
   static func connect(
-    _ client: MCPClient, url: String, token: String, mcpRemotePackage: String, serverName: String
+    _ client: MCPClient, url: String, token: String, serverName: String
   ) async -> Result<URL, Error> {
     let configFolder = client.configFolder
     // A client that never ran has no config folder yet (`~/.codex`), and a hidden folder that does
@@ -182,10 +191,16 @@ enum MCPClientInstaller {
       let file = configFolder.appendingPathComponent(client.configFileName)
       let existed = fm.fileExists(atPath: file.path)
       let existingData = existed ? try Data(contentsOf: file) : nil
+      // `Data.write(.atomic)` replaces the inode, so the previous mode would be lost. Read it
+      // first. The backup is a new file and holds other apps' bearer tokens.
+      let originalPermissions: NSNumber? = existed
+        ? (try fm.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)
+        : nil
 
       if let existingData {
         let backup = configFolder.appendingPathComponent(client.configFileName + ".whispershortcut-backup")
         try existingData.write(to: backup, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
       }
 
       let output: Data
@@ -195,12 +210,15 @@ enum MCPClientInstaller {
       case .claudeDesktop:
         output = try mergeClaudeDesktop(
           existing: existingData, serverName: serverName, url: url, token: token,
-          mcpRemotePackage: mcpRemotePackage)
+          executablePath: Bundle.main.executablePath ?? "")
       case .codex:
         let text = existingData.flatMap { String(data: $0, encoding: .utf8) }
         output = Data(mergeCodex(existing: text, serverName: serverName, url: url, token: token).utf8)
       }
       try output.write(to: file, options: .atomic)
+      // A file that did not exist yet is owner-only. An existing file keeps the mode it had.
+      let permissions = originalPermissions ?? NSNumber(value: 0o600)
+      try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: file.path)
       DebugLogger.logSuccess("MCP-INSTALL: connected \(client.displayName) at \(file.path)")
       return .success(file)
     } catch {

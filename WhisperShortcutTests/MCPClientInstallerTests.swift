@@ -55,24 +55,28 @@ struct MCPClientInstallerTests {
     }
     #expect(throws: (any Error).self) {
       try MCPClientInstaller.mergeClaudeDesktop(
-        existing: Data("not json".utf8), serverName: name, url: url, token: token, mcpRemotePackage: "mcp-remote")
+        existing: Data("not json".utf8), serverName: name, url: url, token: token,
+        executablePath: "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut")
     }
   }
 
-  @Test("Claude Desktop: entry uses npx mcp-remote with the literal AUTH_HEADER placeholder")
+  @Test("Claude Desktop: entry runs this app as the stdio bridge")
   func claudeDesktopShape() throws {
+    let executable = "/Applications/WhisperShortcut.app/Contents/MacOS/WhisperShortcut"
     let existing = #"{"mcpServers": {"other": {"command": "x"}}, "theme": "dark"}"#
     let out = try MCPClientInstaller.mergeClaudeDesktop(
-      existing: Data(existing.utf8), serverName: name, url: url, token: token, mcpRemotePackage: "mcp-remote@0.1.0")
+      existing: Data(existing.utf8), serverName: name, url: url, token: token, executablePath: executable)
     let root = try object(out)
     #expect(root["theme"] as? String == "dark")
     let servers = try #require(root["mcpServers"] as? [String: Any])
     #expect(servers["other"] != nil)
     let entry = try #require(servers[name] as? [String: Any])
-    #expect(entry["command"] as? String == "npx")
-    #expect(
-      entry["args"] as? [String] == ["-y", "mcp-remote@0.1.0", url, "--header", "Authorization:${AUTH_HEADER}"])
-    #expect((entry["env"] as? [String: String])?["AUTH_HEADER"] == "Bearer tok123")
+    #expect(entry["command"] as? String == executable)
+    #expect(entry["args"] as? [String] == ["--mcp-stdio"])
+    let env = try #require(entry["env"] as? [String: String])
+    #expect(env["WHISPERSHORTCUT_MCP_URL"] == url)
+    #expect(env["WHISPERSHORTCUT_MCP_AUTH"] == "Bearer tok123")
+    #expect(String(decoding: out, as: UTF8.self).contains("http://127.0.0.1:47823/mcp"))
   }
 
   private var codexBlock: String {
@@ -117,5 +121,29 @@ struct MCPClientInstallerTests {
     #expect(out.hasPrefix("model = \"gpt\"\n"))
     #expect(out.hasSuffix(codexBlock))
     #expect(out.components(separatedBy: "[mcp_servers.whisper-shortcut]").count == 2)
+  }
+
+  @Test("Codex: a quoted server table is dropped, leaving exactly one whisper-shortcut table")
+  func codexQuotedHeader() {
+    let existing = """
+      model = "gpt"
+
+      [mcp_servers."whisper-shortcut"]
+      url = "old"
+
+      [mcp_servers."whisper-shortcut".env]
+      A = "b"
+
+      [mcp_servers.other]
+      command = "x"
+
+      """
+    let out = MCPClientInstaller.mergeCodex(existing: existing, serverName: name, url: url, token: token)
+    #expect(!out.contains("old"))
+    #expect(!out.contains("A = \"b\""))
+    #expect(!out.contains("[mcp_servers.\"whisper-shortcut\"]"))
+    #expect(out.contains("[mcp_servers.other]\ncommand = \"x\"\n"))
+    #expect(out.hasSuffix(codexBlock))
+    #expect(out.components(separatedBy: "whisper-shortcut").count == 2)
   }
 }

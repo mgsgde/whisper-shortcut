@@ -1,3 +1,4 @@
+import Darwin
 import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
@@ -58,6 +59,48 @@ struct MCPServerTests {
     guard case .tooLarge = LoopbackHTTPServer.parse(Data("POST /mcp HTTP/1.1\r\nContent-Length: 2000000\r\n\r\n".utf8)) else { Issue.record("expected tooLarge"); return }
   }
 
+  @Test("Transfer-Encoding is refused before the body, and 411 and 503 have reason phrases")
+  func transferEncoding() {
+    let raw = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+    guard case .lengthRequired = LoopbackHTTPServer.parse(Data(raw.utf8)) else {
+      Issue.record("expected lengthRequired"); return
+    }
+    #expect(LoopbackHTTPServer.reason(411) == "Length Required")
+    #expect(LoopbackHTTPServer.reason(503) == "Service Unavailable")
+  }
+
+  @Test("A Transfer-Encoding request is answered 411 length required")
+  func transferEncodingSocket() throws {
+    let server = try LoopbackHTTPServer(port: 0) { _ in HTTPResponse.json(["ok": true]) }
+    defer { server.stop() }
+    let fd = socket(AF_INET, SOCK_STREAM, 0)
+    #expect(fd >= 0)
+    defer { close(fd) }
+    var noSigPipe: Int32 = 1
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+    var timeout = timeval(tv_sec: 2, tv_usec: 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    var addr = sockaddr_in()
+    addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_port = server.port.bigEndian
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+    let connected = withUnsafePointer(to: &addr) {
+      $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+    #expect(connected == 0)
+    let request = "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+    let sent = request.withCString { send(fd, $0, strlen($0), 0) }
+    #expect(sent == request.utf8.count)
+    var buf = [UInt8](repeating: 0, count: 1024)
+    let n = recv(fd, &buf, buf.count, 0)
+    let text = String(bytes: buf.prefix(max(n, 0)), encoding: .utf8) ?? ""
+    #expect(text.hasPrefix("HTTP/1.1 411 Length Required"))
+    #expect(text.contains("{\"error\":\"length required\"}"))
+  }
+
   // MARK: handle
 
   @Test("Auth, origin, method and path checks")
@@ -67,6 +110,10 @@ struct MCPServerTests {
     #expect(handle(req(auth: "Bearer nope"), t).status == 401)
     #expect(handle(req(origin: "https://evil.example"), t).status == 403)
     #expect(handle(req(origin: "http://localhost:3000", body: "{}"), t).status != 403)
+    #expect(handle(req(origin: "http://[::1]:1", body: "{}"), t).status != 403)
+    #expect(MCPServer.isLoopbackOriginHost("::1"))
+    #expect(MCPServer.isLoopbackOriginHost("[::1]"))
+    #expect(!MCPServer.isLoopbackOriginHost("evil.example"))
     let get = handle(req("GET"), t)
     #expect(get.status == 405)
     #expect(get.headers["Allow"] == "POST")
@@ -89,7 +136,7 @@ struct MCPServerTests {
     let list = try #require((r["result"] as? [String: Any])?["tools"] as? [[String: Any]])
     #expect(Set(list.compactMap { $0["name"] as? String }) == [
       "get_live_transcript", "list_meetings", "get_meeting", "search_meetings",
-      "get_configuration", "get_recent_interactions", "get_settings",
+      "get_configuration", "get_recent_interactions", "get_settings", "get_proposal_status",
     ])
   }
 
