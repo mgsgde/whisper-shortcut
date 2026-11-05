@@ -24182,6 +24182,26 @@
           }
         }
       }
+    },
+    "Quick prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnell-Prompts"
+          }
+        }
+      }
+    },
+    "Also show often-used prompts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch häufig genutzte Prompts anzeigen"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
