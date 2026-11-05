@@ -166,6 +166,86 @@ class ChatWindowManager {
     return jpegData
   }
 
+  /// Captures the frontmost app's topmost normal window for Dictate Prompt. JPEG, at most 1400 px
+  /// on the longer side, quality 0.75. Nil on any failure, including when WhisperShortcut itself
+  /// is frontmost — the caller decides whether a full-display capture may stand in.
+  @MainActor
+  func captureFrontWindowForPromptMode() async -> Data? {
+    if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier {
+      return nil
+    }
+    guard let windowID = ScreenshotDisplayPicker.frontmostWindowID() else { return nil }
+
+    var content: SCShareableContent
+    let now = Date()
+    if let cached = cachedShareableContent,
+       let ts = cachedShareableContentDate,
+       now.timeIntervalSince(ts) < shareableContentCacheDuration {
+      content = cached
+    } else {
+      do {
+        content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        cachedShareableContent = content
+        cachedShareableContentDate = now
+      } catch {
+        return nil
+      }
+    }
+
+    if !content.windows.contains(where: { $0.windowID == windowID }),
+       let fresh = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) {
+      content = fresh
+      cachedShareableContent = fresh
+      cachedShareableContentDate = Date()
+    }
+
+    guard let window = content.windows.first(where: { $0.windowID == windowID }) else { return nil }
+    let filter = SCContentFilter(desktopIndependentWindow: window)
+
+    var config = SCStreamConfiguration()
+    config.capturesAudio = false
+    config.width = Int(filter.contentRect.width) * Int(filter.pointPixelScale)
+    config.height = Int(filter.contentRect.height) * Int(filter.pointPixelScale)
+    guard config.width > 0, config.height > 0 else { return nil }
+
+    let cgImage: CGImage? = await withCheckedContinuation { continuation in
+      SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) { image, _ in
+        continuation.resume(returning: image)
+      }
+    }
+    guard let cgImage else { return nil }
+    return Self.jpegData(cgImage, maxLongerSide: 1400, quality: 0.75)
+  }
+
+  /// JPEG of `image`, scaled so the longer side is at most `maxLongerSide`. Images already
+  /// within that limit are encoded as they are.
+  private static func jpegData(_ image: CGImage, maxLongerSide: Int, quality: CGFloat) -> Data? {
+    let longer = max(image.width, image.height)
+    let finalImage: CGImage
+    if longer > maxLongerSide, longer > 0 {
+      let scale = CGFloat(maxLongerSide) / CGFloat(longer)
+      let newWidth = image.width >= image.height ? maxLongerSide : max(1, Int(CGFloat(image.width) * scale))
+      let newHeight = image.height > image.width ? maxLongerSide : max(1, Int(CGFloat(image.height) * scale))
+      let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+      if let ctx = CGContext(
+        data: nil, width: newWidth, height: newHeight,
+        bitsPerComponent: 8, bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+      ) {
+        ctx.interpolationQuality = .medium
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: newWidth, height: newHeight))
+        finalImage = ctx.makeImage() ?? image
+      } else {
+        finalImage = image
+      }
+    } else {
+      finalImage = image
+    }
+    let rep = NSBitmapImageRep(cgImage: finalImage)
+    return rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
+  }
+
   /// Captures the display that contains the chat window, excluding this app's windows via ScreenCaptureKit.
   /// Returns PNG data or nil on failure (e.g. no Screen Recording permission).
   @MainActor

@@ -1179,7 +1179,18 @@ class SpeechService {
       && (screenshotSelectionMode || screenshotInPromptModeEnabled())
     var screenshot: Data?
     if wantsScreenshot && modelAcceptsImages {
-      screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+      if screenshotSelectionMode {
+        screenshot = await ChatWindowManager.shared.captureFrontWindowForPromptMode()
+        if screenshot != nil {
+          DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: image=window")
+        } else {
+          screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+          let source = screenshot == nil ? "none" : "screen"
+          DebugLogger.log("\(logPrefix): PROMPT-CONTEXT: image=\(source) (front window unavailable)")
+        }
+      } else {
+        screenshot = await ChatWindowManager.shared.captureScreenForPromptMode()
+      }
       if screenshot == nil {
         if screenshotSelectionMode {
           DebugLogger.logError("\(logPrefix): Screenshot capture failed in screenshot-selection mode")
