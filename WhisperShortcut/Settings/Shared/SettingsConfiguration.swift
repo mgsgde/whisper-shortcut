@@ -2260,6 +2260,8 @@ struct SettingsDefaults {
   static let dictateMode: DictateMode = .dictate
 
   // MARK: - Screenshot Settings
+  /// Front window as fallback: when the focused field is empty or unreadable, Dictate Prompt
+  /// attaches a picture of that window, never the whole screen. The key is unchanged.
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
 

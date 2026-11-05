@@ -1,4 +1,6 @@
+#if !APP_STORE
 import ScreenCaptureKit
+#endif
 import SwiftUI
 
 /// Dictate Prompt Settings Tab — model, screen context, tools and prompt. The shortcut is set in General.
@@ -76,14 +78,21 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var screenshotContextSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      #if APP_STORE
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "Send a screenshot of your screen with each spoken Dictate Prompt, so the model sees what you see."
+        subtitle: "Dictate Prompt reads your selection from a picture of the front window, never the whole screen. Needs Screen Recording permission."
+      )
+      #else
+      SectionHeader(
+        title: "Screen Context",
+        systemImage: "menubar.dock.rectangle",
+        subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
       )
 
       HStack(alignment: .center, spacing: 16) {
-        Text("Include screenshot:")
+        Text("Front window as fallback:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
@@ -110,15 +119,16 @@ struct SpeechToPromptSettingsTab: View {
           }
         ))
           .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Screenshot context")
+          .accessibilityLabel("Front window as fallback")
 
         Spacer()
       }
 
-      Text("Needs Screen Recording permission.")
+      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty or unreadable. Never in password fields or password managers. Needs Screen Recording permission.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+      #endif
     }
   }
 

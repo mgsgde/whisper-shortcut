@@ -3092,6 +3092,16 @@
         }
       }
     },
+    "Adds a picture of the front window, never the whole screen, only when the text field is empty or unreadable. Never in password fields or password managers. Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern. Benötigt die Berechtigung „Bildschirmaufnahme“."
+          }
+        }
+      }
+    },
     "Adds one short model call before reading." : {
       "localizations" : {
         "de" : {
@@ -7899,6 +7909,16 @@
         }
       }
     },
+    "Dictate Prompt reads your selection from a picture of the front window, never the whole screen. Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest Ihre Markierung aus einem Bild des vorderen Fensters, nie vom ganzen Bildschirm. Benötigt die Berechtigung „Bildschirmaufnahme“."
+          }
+        }
+      }
+    },
     "Dictate Prompt runs offline too — %@ is ready." : {
       "localizations" : {
         "de" : {
@@ -9474,6 +9494,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Französisch"
+          }
+        }
+      }
+    },
+    "Front window as fallback" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall"
+          }
+        }
+      }
+    },
+    "Front window as fallback:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall:"
           }
         }
       }
@@ -21970,6 +22010,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn eingeschaltet, kommt das, was Sie vor dem Diktat kopiert hatten, gleich nach dem Einfügen zurück in die Zwischenablage, damit das Diktat sie nicht überschreibt. Braucht automatisches Einfügen."
+          }
+        }
+      }
+    },
+    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
           }
         }
       }
