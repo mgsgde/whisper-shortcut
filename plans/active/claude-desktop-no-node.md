@@ -1,6 +1,6 @@
 # Claude Desktop without Node.js
 
-**Status:** building (2026-11-05)
+**Status:** built, PR open (2026-11-05). Bridge verified against the running app (sandboxed App Store build): initialize, tools/list, tools/call. Not yet verified inside Claude Desktop itself.
 
 ## Problem
 
