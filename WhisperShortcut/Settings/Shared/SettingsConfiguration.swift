@@ -1235,10 +1235,13 @@ enum TTSModel: String, CaseIterable {
   }
 
   /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
+  /// Qwen3 needs Apple silicon (MLX) — on an Intel Mac the tiles would end in a multi-gigabyte
+  /// download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
      .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
+      .filter { $0.qwen3ModelType == nil || Qwen3ModelType.isSupportedOnThisMac }
   }
 
   /// Maps removed/renamed persisted raw values onto current cases.

@@ -3,9 +3,11 @@ import Foundation
 // MARK: - Curated model pickers
 //
 // Every model picker (Dictate, Dictate Prompt, Read Aloud, Chat, Meeting Transcription / Summary,
-// Smart Improvement) opens with at most three tiles — Recommended · Fastest · Offline — and keeps
-// the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles per
-// picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
+// Smart Improvement) opens with the three slots Recommended · Fastest · Offline, plus every model
+// of an on-device provider whose whole catalogue fits two tiles (both Qwen3 voices in Read
+// Aloud, both local MLX chat models in Chat) — and keeps the rest behind "More models". The
+// 2026-10-19 UX review found 16–18 near-identical tiles per picker (five Gemini Flash variants
+// nobody could tell apart); the curation is the fix.
 //
 // What is featured is decided here, from data on the model enums, never from string lists in the
 // views: `pickerSpeedRank` names the fastest, `pickerOfflineRank` the on-device pick,
@@ -131,8 +133,9 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
       if offlineProviders[key] == nil { offlineProviderOrder.append(key) }
       offlineProviders[key, default: []].append(model)
     }
-    for key in offlineProviderOrder where offlineProviders[key]!.count <= 2 {
-      for model in offlineProviders[key]! where !featured.contains { $0.model == model } {
+    for key in offlineProviderOrder {
+      guard let models = offlineProviders[key], models.count <= 2 else { continue }
+      for model in models where !featured.contains { $0.model == model } {
         featured.append(Featured(model: model, badges: []))
       }
     }

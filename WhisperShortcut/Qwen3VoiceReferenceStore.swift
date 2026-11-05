@@ -52,13 +52,18 @@ enum Qwen3VoiceReferenceStore {
   static func reference(for personaID: String) -> (samples: [Float], sampleRate: Int, text: String)? {
     let url = fileURL(for: personaID)
     guard let data = try? Data(contentsOf: url),
-      let decoded = try? JSONDecoder().decode(ReferenceFile.self, from: data)
+      let decoded = try? JSONDecoder().decode(ReferenceFile.self, from: data),
+      decoded.version == 1
     else { return nil }
-    guard let raw = Data(base64Encoded: decoded.samples) else { return nil }
+    guard let raw = Data(base64Encoded: decoded.samples), raw.count % MemoryLayout<Float>.size == 0
+    else { return nil }
+    // loadUnaligned: the base64-decoded buffer has no alignment guarantee, and plain `load`
+    // requires natural alignment.
     let floats = raw.withUnsafeBytes { buffer -> [Float] in
-      guard let base = buffer.baseAddress else { return [] }
-      let count = raw.count / MemoryLayout<Float>.size
-      return (0..<count).map { base.load(fromByteOffset: $0 * MemoryLayout<Float>.size, as: Float.self) }
+      guard !buffer.isEmpty else { return [] }
+      return (0..<raw.count / MemoryLayout<Float>.size).map {
+        buffer.loadUnaligned(fromByteOffset: $0 * MemoryLayout<Float>.size, as: Float.self)
+      }
     }
     guard floats.count > 0 else { return nil }
     return (floats, decoded.sampleRate, decoded.text)
@@ -70,13 +75,19 @@ enum Qwen3VoiceReferenceStore {
     FileManager.default.fileExists(atPath: fileURL(for: personaID).path)
   }
 
-  /// Freezes a persona's voice. `samples` must be the mono Float waveform of `text`.
+  /// Stores a persona's voice. `samples` must be the mono Float waveform of `text`. Failures
+  /// (disk full, unwritable directory) are logged, not thrown — the caller's fallback is
+  /// per-run voice pinning, which the next Read Aloud retries as a fresh calibration.
   static func store(samples: [Float], sampleRate: Int, text: String, for personaID: String) {
     let raw = samples.withUnsafeBufferPointer { Data(buffer: $0) }
     let file = ReferenceFile(version: 1, sampleRate: sampleRate, text: text, samples: raw.base64EncodedString())
     guard let data = try? JSONEncoder().encode(file) else { return }
-    try? data.write(to: fileURL(for: personaID), options: .atomic)
-    DebugLogger.log("QWEN3-TTS: stored voice reference for \(personaID) (\(samples.count) samples)")
+    do {
+      try data.write(to: fileURL(for: personaID), options: .atomic)
+      DebugLogger.log("QWEN3-TTS: stored voice reference for \(personaID) (\(samples.count) samples)")
+    } catch {
+      DebugLogger.logWarning("QWEN3-TTS: could not store voice reference for \(personaID): \(error)")
+    }
   }
 
   /// Discards a persona's frozen voice. The next Read Aloud generates a new one.

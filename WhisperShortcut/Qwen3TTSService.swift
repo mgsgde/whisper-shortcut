@@ -96,9 +96,16 @@ actor Qwen3TTSModelLoader {
     }
     inFlight = task
     inFlightType = type
+    // Ownership-checked teardown: a concurrent joiner for another checkpoint may have
+    // registered its own task by the time ours finishes (resumption order of two waiters on
+    // one Task is unspecified). Clearing unconditionally would wipe that registration and
+    // let a third caller start a duplicate load of the same checkpoint. `Task` is a struct,
+    // so identity is tracked via the type slot the registration itself wrote.
     defer {
-      inFlight = nil
-      inFlightType = nil
+      if inFlightType == type {
+        inFlight = nil
+        inFlightType = nil
+      }
     }
     let model = try await task.value
     loaded = model
@@ -168,12 +175,18 @@ struct Qwen3TTSService {
     var referenceText: String?
 
     if modelType == .voiceDesign {
-      if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id) {
+      if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
+        cached.sampleRate == model.sampleRate
+      {
         referenceAudio = MLXArray(cached.samples)
         referenceText = cached.text
         DebugLogger.log(
           "QWEN3-TTS: using frozen voice reference for \(persona.id) "
             + "(\(cached.samples.count) samples)")
+      } else if Qwen3VoiceReferenceStore.hasReference(for: persona.id) {
+        // A reference exists but does not fit the loaded checkpoint (sample-rate mismatch from a
+        // future model update). Treat it as absent: the calibration below writes a fresh one.
+        DebugLogger.log("QWEN3-TTS: frozen voice reference for \(persona.id) does not match the model; recalibrating")
       }
     }
 
@@ -234,7 +247,8 @@ struct Qwen3TTSService {
       // Without a frozen clip the first sentence is still the one that defines the voice (the
       // calibration above failed to store, e.g. disk full). Later sentences must never
       // overwrite the reference, or the voice would drift sentence by sentence.
-      if referenceAudio == nil {
+      let referenceWasNil = referenceAudio == nil
+      if referenceWasNil {
         referenceAudio = audio
         referenceText = sentence
       }
@@ -243,7 +257,7 @@ struct Qwen3TTSService {
       merged.append(pcm)
       let seconds = Double(samples.count) / Double(model.sampleRate)
       let elapsed = Date().timeIntervalSince(start)
-      let role = index == 0 && !needsCalibration ? "defines the voice" : "reference-pinned"
+      let role = referenceWasNil ? "defines the voice" : "reference-pinned"
       DebugLogger.log(
         "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(samples.count) samples "
           + "(\(String(format: "%.2f", seconds))s) "
@@ -283,9 +297,10 @@ struct Qwen3TTSService {
   /// Splits `text` into one entry per sentence, cutting any sentence longer than `maxChars` at a
   /// word boundary. Never returns an empty entry, and never returns an entry over the cap.
   ///
-  /// A terminator only ends a sentence when whitespace follows it, so "3.5" and "z.B." stay in
-  /// one piece. Abbreviations are not special-cased beyond that: a false split costs a slightly
-  /// odd pause, a missed split costs a long generation.
+  /// A terminator only ends a sentence when whitespace follows it, so "3.5" stays in one piece.
+  /// That rule does *not* protect spaced abbreviations ("z. B. das ist…" splits after "z."),
+  /// and none are special-cased: a false split costs a slightly odd pause, a missed split costs
+  /// a long generation.
   static func splitIntoSentences(_ text: String, maxChars: Int) -> [String] {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }

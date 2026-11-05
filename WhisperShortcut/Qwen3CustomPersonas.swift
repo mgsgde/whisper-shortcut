@@ -55,13 +55,17 @@ enum Qwen3CustomPersonas {
   }
 
   /// A slug that is safe as a filename fragment and collision-free against existing ids.
-  /// Diacritics fold first so "Ärztin" becomes "aerztin", not "rztin".
+  /// Diacritics fold first so "Ärztin" becomes "aerztin"; "ß" is a base letter that folding
+  /// leaves alone, so it is replaced explicitly before the fold.
   static func uniqueID(for name: String) -> String {
-    let folded = name.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US"))
+    let folded = name
+      .replacingOccurrences(of: "ß", with: "ss")
+      .folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US"))
     let base = "custom-" + folded
       .lowercased()
       .map { character in
-        character.isLetter && character.isASCII || character.isNumber ? character : "-"
+        (character.isLetter && character.isASCII) || (character.isNumber && character.isASCII)
+          ? character : "-"
       }
       .reduce(into: "") { $0.append($1) }
       .split(separator: "-")

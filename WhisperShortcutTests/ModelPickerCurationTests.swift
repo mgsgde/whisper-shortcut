@@ -233,7 +233,8 @@ struct ModelPickerCurationTests {
       models: PromptModel.allCases, recommended: SettingsDefaults.selectedChatModel,
       selected: SettingsDefaults.selectedChatModel, isUsable: { _ in true })
     let featuredChat = chat.featured.map(\.model)
-    #expect(featuredChat.contains { $0.provider == .localMLX })
+    let featuredLocalMLX = featuredChat.filter { $0.provider == .localMLX }
+    #expect(featuredLocalMLX.count == PromptModel.allCases.filter { $0.provider == .localMLX }.count)
   }
 
   @Test("Speed ranks never feature on-device models as Fastest")
