@@ -50,6 +50,7 @@ struct MCPSettingsCatalogTests {
     case .enumeration(let options):
       return options().first(where: \.available)?.value ?? options().first?.value
     case .shortcut: return NSNull()
+    case .stringList: return ["Korrigiere."]
     }
   }
 
@@ -75,6 +76,55 @@ struct MCPSettingsCatalogTests {
       let values = options().map(\.value)
       #expect(current == nil || values.contains(current!), "\(setting.id) current value not in its options")
     }
+  }
+
+  // MARK: - dictate_prompt.quick_prompts
+
+  private func setQuickPrompts(_ env: MCPTestEnv, _ value: Any) -> MCPToolResult {
+    env.tools().call(
+      name: "update_settings",
+      arguments: ["changes": ["dictate_prompt.quick_prompts": value], "rationale": "r"], access: .write)
+  }
+
+  @Test("quick_prompts stores the trimmed non-blank list in order")
+  func quickPromptsStored() {
+    let env = MCPTestEnv(level: .apply)
+    let r = setQuickPrompts(env, ["  A  ", "", "B"])
+    #expect(!r.isError)
+    #expect(env.testDefaults.stringArray(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == ["A", "B"])
+  }
+
+  @Test("quick_prompts rejects more than 9 entries and writes nothing")
+  func quickPromptsTooMany() {
+    let env = MCPTestEnv(level: .apply)
+    let r = setQuickPrompts(env, (1...10).map { "P\($0)" })
+    #expect(r.isError)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == nil)
+  }
+
+  @Test("quick_prompts rejects an entry over 300 characters")
+  func quickPromptsTooLong() {
+    let env = MCPTestEnv(level: .apply)
+    let r = setQuickPrompts(env, [String(repeating: "x", count: 301)])
+    #expect(r.isError)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == nil)
+  }
+
+  @Test("quick_prompts rejects a non-array value")
+  func quickPromptsNotArray() {
+    let env = MCPTestEnv(level: .apply)
+    let r = setQuickPrompts(env, "A")
+    #expect(r.isError)
+    #expect(env.testDefaults.object(forKey: UserDefaultsKeys.dictatePromptCustomQuickActions) == nil)
+  }
+
+  @Test("get_settings lists quick_prompts as a string_list with max_items 9")
+  func quickPromptsListed() {
+    let env = MCPTestEnv()
+    let r = env.tools().call(name: "get_settings", arguments: ["category": "dictate_prompt"], access: .write)
+    let entry = (obj(r)["settings"] as? [[String: Any]])?.first { $0["id"] as? String == "dictate_prompt.quick_prompts" }
+    #expect(entry?["type"] as? String == "string_list")
+    #expect(entry?["max_items"] as? Int == 9)
   }
 
   // MARK: - get_settings
