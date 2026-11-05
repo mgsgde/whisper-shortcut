@@ -319,6 +319,11 @@ enum UserDefaultsKeys {
   /// See `CloudModelOffer`.
   static let cloudModelOfferDeclinedProviders = "cloudModelOfferDeclinedProviders"
 
+  /// Bundle path for which the user chose Not Now on the move-to-Applications offer.
+  /// The same path is not offered again; a different path (a new download) is.
+  /// See `ApplicationsFolderMove.shouldOffer`.
+  static let applicationsMoveDeclinedPath = "applicationsMoveDeclinedPath"
+
   // MARK: - MCP Server
 
   /// Whether the local read-only MCP server (meeting transcripts for Claude & other AI apps) runs.

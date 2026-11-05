@@ -42,6 +42,20 @@ enum AppBundleLocation: Equatable {
   }
 }
 
+/// Whether to offer moving this copy into Applications. The dialog is direct-build only;
+/// the decision is here so the App Store test target can cover "Not Now".
+enum ApplicationsFolderMove {
+  /// Passed to the relaunched copy, so a copy that still is not in Applications explains the
+  /// manual way instead of offering the move a second time.
+  static let movedArgument = "--moved-to-applications"
+
+  /// True unless this exact bundle path was already declined with Not Now. A different path
+  /// (a new download) is offered again.
+  static func shouldOffer(currentPath: String, declinedPath: String?) -> Bool {
+    currentPath != declinedPath
+  }
+}
+
 #if !APP_STORE
   /// Offers to move the app into `/Applications` when it runs from anywhere else, most of all
   /// straight from the mounted disk image.
@@ -56,11 +70,7 @@ enum AppBundleLocation: Equatable {
   /// attribute on its copy. If it does not, the relaunched copy may be translocated again; the
   /// `movedArgument` check below then shows the drag-it-yourself instructions instead of looping.
   @MainActor
-  enum ApplicationsFolderMove {
-    /// Passed to the relaunched copy, so a copy that still is not in Applications explains the
-    /// manual way instead of offering the move a second time.
-    static let movedArgument = "--moved-to-applications"
-
+  extension ApplicationsFolderMove {
     /// Shows the offer when the app runs outside Applications. Returns true when the app is
     /// relaunching from Applications and about to quit — the caller then skips the rest of launch.
     @discardableResult
@@ -73,6 +83,11 @@ enum AppBundleLocation: Equatable {
         let location = AppBundleLocation.classify(
           bundlePath: bundleURL.path, homeDirectory: realHomeDirectory)
         guard location.shouldOfferMove else { return false }
+        let declinedPath = UserDefaults.standard.string(forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
+        guard shouldOffer(currentPath: bundleURL.path, declinedPath: declinedPath) else {
+          DebugLogger.log("APP-LOCATION: Not Now already chosen for this path")
+          return false
+        }
         DebugLogger.log("APP-LOCATION: running from \(location) (\(bundleURL.path))")
 
         if ProcessInfo.processInfo.arguments.contains(movedArgument) {
@@ -92,6 +107,7 @@ enum AppBundleLocation: Equatable {
         alert.addButton(withTitle: String(localized: "Not Now"))
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else {
+          UserDefaults.standard.set(bundleURL.path, forKey: UserDefaultsKeys.applicationsMoveDeclinedPath)
           DebugLogger.log("APP-LOCATION: user chose Not Now")
           return false
         }

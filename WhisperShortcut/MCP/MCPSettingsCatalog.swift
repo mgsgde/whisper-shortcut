@@ -1172,7 +1172,7 @@ enum MCPSettingsCatalog {
     // MARK: dictate_prompt.screenshot_context — on needs Screen Recording already granted.
     // The Settings toggle prompts via SCShareableContent; MCP only reads the injected check.
     settings.append(boolSetting(
-      id: "dictate_prompt.screenshot_context", title: "Screenshot context", category: "dictate_prompt",
+      id: "dictate_prompt.screenshot_context", title: "Front window as fallback", category: "dictate_prompt",
       key: UserDefaultsKeys.screenshotInPromptMode, defaultValue: SettingsDefaults.screenshotInPromptMode,
       proposalOnly: true,
       enablingRefused: {

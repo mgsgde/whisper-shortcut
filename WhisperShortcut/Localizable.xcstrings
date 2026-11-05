@@ -3092,6 +3092,16 @@
         }
       }
     },
+    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers. Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern. Benötigt die Berechtigung „Bildschirmaufnahme“."
+          }
+        }
+      }
+    },
     "Adds one short model call before reading." : {
       "localizations" : {
         "de" : {
@@ -7819,6 +7829,16 @@
         }
       }
     },
+    "Dictate Prompt does not read password manager windows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest keine Fenster von Passwort-Managern."
+          }
+        }
+      }
+    },
     "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack." : {
       "localizations" : {
         "de" : {
@@ -7895,6 +7915,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell für Dictate Prompt"
+          }
+        }
+      }
+    },
+    "Dictate Prompt reads your selection from a picture of the front window, never the whole screen. Needs Screen Recording permission." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest Ihre Markierung aus einem Bild des vorderen Fensters, nie vom ganzen Bildschirm. Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -9474,6 +9504,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Französisch"
+          }
+        }
+      }
+    },
+    "Front window as fallback" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall"
+          }
+        }
+      }
+    },
+    "Front window as fallback:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall:"
           }
         }
       }
@@ -14935,12 +14985,12 @@
         }
       }
     },
-    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General." : {
+    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Auto-paste is on once you grant this; switch it off in Settings → General → Clipboard Behavior." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Standardmäßig aus, einschalten unter Einstellungen → Allgemein."
+            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Es ist eingeschaltet, sobald Sie dies gewähren; schalten Sie es unter Einstellungen → Allgemein → Zwischenablage aus."
           }
         }
       }
@@ -21970,6 +22020,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn eingeschaltet, kommt das, was Sie vor dem Diktat kopiert hatten, gleich nach dem Einfügen zurück in die Zwischenablage, damit das Diktat sie nicht überschreibt. Braucht automatisches Einfügen."
+          }
+        }
+      }
+    },
+    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
           }
         }
       }

@@ -24,10 +24,25 @@ enum ScreenshotDisplayPicker {
     return candidates.first?.id
   }
 
-  /// Center of the topmost normal window of the frontmost application, in global display
-  /// coordinates. `CGWindowListCopyWindowInfo` lists on-screen windows front to back and reports
-  /// bounds without needing Screen Recording.
+  /// Topmost layer-0 on-screen window of the frontmost application. `CGWindowListCopyWindowInfo`
+  /// lists on-screen windows front to back and reports bounds without needing Screen Recording.
+  /// Nil when that app has no such window, or the window number cannot be read.
+  static func frontmostWindowID() -> CGWindowID? {
+    frontmostLayerZeroWindow()?.id
+  }
+
+  /// Center of the same window `frontmostWindowID()` returns, in global display coordinates.
   static func frontmostWindowCenter() -> CGPoint? {
+    guard let bounds = frontmostLayerZeroWindow()?.bounds else { return nil }
+    return CGPoint(x: bounds.midX, y: bounds.midY)
+  }
+
+  private struct LayerZeroWindow {
+    let id: CGWindowID?
+    let bounds: CGRect
+  }
+
+  private static func frontmostLayerZeroWindow() -> LayerZeroWindow? {
     guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
       let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
         as? [[String: Any]]
@@ -39,7 +54,19 @@ enum ScreenshotDisplayPicker {
         let bounds = CGRect(dictionaryRepresentation: boundsDict),
         bounds.width > 1, bounds.height > 1
       else { continue }
-      return CGPoint(x: bounds.midX, y: bounds.midY)
+      return LayerZeroWindow(id: cgWindowID(window[kCGWindowNumber as String]), bounds: bounds)
+    }
+    return nil
+  }
+
+  /// `kCGWindowNumber` arrives as `NSNumber`. A missing or zero id is nil; the bounds still stand
+  /// so `frontmostWindowCenter()` keeps working.
+  private static func cgWindowID(_ raw: Any?) -> CGWindowID? {
+    if let id = raw as? UInt32, id != 0 { return id }
+    if let id = raw as? Int, id > 0, id <= Int(UInt32.max) { return CGWindowID(id) }
+    if let number = raw as? NSNumber {
+      let id = number.int64Value
+      if id > 0, id <= Int64(UInt32.max) { return CGWindowID(id) }
     }
     return nil
   }

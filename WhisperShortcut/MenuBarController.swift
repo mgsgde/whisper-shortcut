@@ -3193,14 +3193,31 @@ class MenuBarController: NSObject {
       job: job,
       produce: {
         // Bounded by the copy poll (≤ 0.5 s after the shortcut press), so in practice already
-        // resolved by the time a recording has been spoken and stopped.
-        let selectedText = await selection?.value()
+        // resolved by the time a recording has been spoken and stopped. The field snapshot is
+        // the same capture, including on a retry.
+        let selectedText: String?
+        let fieldContext: FocusedFieldSnapshot?
+        let fieldAllowsWindowImage: Bool
+        if let selection {
+          async let text = selection.value()
+          async let field = selection.fieldValue()
+          async let allowsImage = selection.fieldAllowsWindowImage()
+          selectedText = await text
+          fieldContext = await field
+          fieldAllowsWindowImage = await allowsImage
+        } else {
+          selectedText = nil
+          fieldContext = nil
+          fieldAllowsWindowImage = true
+        }
         let result = try await self.speechService.executePrompt(
           audioURL: audioURL, mode: .togglePrompting, instruction: instruction,
           isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
           templateName: templateName, selectedText: selectedText,
           recordingWasSilent: recordingWasSilent,
-          selectionIsFromService: selection?.isFromService ?? false)
+          selectionIsFromService: selection?.isFromService ?? false,
+          fieldContext: fieldContext,
+          fieldAllowsWindowImage: fieldAllowsWindowImage)
         undictatedWords = self.speechService.lastPromptUnsupportedWords
         if self.speechService.lastPromptReplyTruncated {
           // The text is still pasted; the user just has to know its end may be missing.
@@ -3593,6 +3610,21 @@ class MenuBarController: NSObject {
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
     let selection = DictatePromptSelectionCapture()
+    #if !APP_STORE
+    // The field as it is at shortcut press, before ⌘C moves the selection. Counts and the
+    // bundle id only — the text itself is never logged.
+    Task.detached(priority: .userInitiated) {
+      let result = FocusedFieldSnapshot.readResult()
+      if let field = result.snapshot {
+        let bundleID = result.bundleID ?? "unknown"
+        DebugLogger.log("PROMPT-CONTEXT: field read (\(field.totalCount) chars, app=\(bundleID))")
+        selection.resolveField(field)
+      } else {
+        DebugLogger.log("PROMPT-CONTEXT: no readable field (\(result.reason))")
+        selection.resolveField(nil, allowsWindowImage: result.allowsWindowImage)
+      }
+    }
+    #endif
     let before = NSPasteboard.general.changeCount
     let copyStarted = Date()
     simulateCopy()
