@@ -76,14 +76,19 @@ struct FocusedFieldSnapshotTests {
   @Test("The field block is compose-only and marks the caret")
   func fieldBlockText() {
     let notes = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "Hello ", textAfterCaret: "world")
-    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: true) ==
+    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: true, isTemplate: false) ==
       "TEXT FIELD THE RESULT WILL BE INSERTED INTO (app: Notes). Context only: match its language, tone and names, and continue or answer it. Do not repeat it. [CURSOR] marks where the result goes:\nHello [CURSOR]world")
     let unnamed = FocusedFieldSnapshot(appName: nil, textBeforeCaret: "Hi", textAfterCaret: "")
-    #expect(PromptScreenContextDecision.fieldBlock(unnamed, isComposeTurn: true)?.contains("(app: unknown)") == true)
-    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: false) == nil)
-    #expect(PromptScreenContextDecision.fieldBlock(nil, isComposeTurn: true) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(unnamed, isComposeTurn: true, isTemplate: false)?.contains("(app: unknown)") == true)
+    #expect(PromptScreenContextDecision.fieldBlock(notes, isComposeTurn: false, isTemplate: false) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(nil, isComposeTurn: true, isTemplate: false) == nil)
     let empty = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "", textAfterCaret: "")
-    #expect(PromptScreenContextDecision.fieldBlock(empty, isComposeTurn: true) == nil)
+    #expect(PromptScreenContextDecision.fieldBlock(empty, isComposeTurn: true, isTemplate: false) == nil)
+  }
+
+  @Test("A template turn with a long field gets no field block")
+  func fieldBlockTemplate() {
+    #expect(PromptScreenContextDecision.fieldBlock(field(500), isComposeTurn: true, isTemplate: true) == nil)
   }
 
   private func field(_ count: Int) -> FocusedFieldSnapshot {

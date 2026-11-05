@@ -1028,7 +1028,9 @@ class SpeechService {
         audioURL: audioURL, clipboardContext: clipboardContext, mode: mode,
         model: selectedPromptModel, textInstruction: textInstruction,
         promptStarted: promptStarted, providerLabel: providerLabel,
-        fieldContext: fieldContext, fieldAllowsWindowImage: fieldAllowsWindowImage)
+        // Small on-device models over-apply field context and were never tested with it.
+        fieldContext: selectedPromptModel.provider == .customOpenAI ? fieldContext : nil,
+        fieldAllowsWindowImage: fieldAllowsWindowImage)
     case .grok:
       // Defensive: the supportsDictatePrompt guard above already excludes Grok, but throw
       // rather than crash the menu-bar app if a future model/provider change reaches here.
@@ -1266,7 +1268,8 @@ class SpeechService {
       screenshotLabel: screenshotSelectionMode
         ? "Screenshot of the current screen. The text to edit is the currently selected/highlighted region:"
         : "Front window of the app the user is writing in (context only, do not describe it):",
-      fieldBlock: PromptScreenContextDecision.fieldBlock(fieldContext, isComposeTurn: isComposeTurn),
+      fieldBlock: PromptScreenContextDecision.fieldBlock(
+        fieldContext, isComposeTurn: isComposeTurn, isTemplate: promptTurnKind.isTemplate),
       selectionBlock: selectionBlock,
       history: history,
       systemPrompt: systemPrompt(logPrefix: logPrefix, clipboardContext: clipboardContext,
