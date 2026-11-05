@@ -6,12 +6,10 @@ import Foundation
 /// paths. URLSession is thread-safe and pools connections per host, so one instance is
 /// strictly better than each call site spinning up its own with identical config.
 enum LLMHTTPSession {
+  private static let redirectGuard = LLMHTTPRedirectGuard()
+
   static let shared: URLSession = {
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 60
-    config.timeoutIntervalForResource = 300
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    makeSession(requestTimeout: 60, resourceTimeout: 300)
   }()
 
   /// Session for the non-LLM integrations (Google, Trello, the OpenRouter catalog and OAuth
@@ -19,10 +17,92 @@ enum LLMHTTPSession {
   /// Offline Mode guard — a session the app configures itself can. Default timeouts are kept:
   /// these are short REST calls, not the long-running model requests `shared` is tuned for.
   static let integrations: URLSession = {
-    let config = URLSessionConfiguration.default
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    makeSession(requestTimeout: nil, resourceTimeout: nil)
   }()
+
+  /// Shared factory so a caller with different timeouts (own-server transcription) still
+  /// installs the offline-mode protocol and the redirect guard that strips credentials.
+  static func makeSession(requestTimeout: TimeInterval?, resourceTimeout: TimeInterval?) -> URLSession {
+    let config = URLSessionConfiguration.default
+    if let requestTimeout { config.timeoutIntervalForRequest = requestTimeout }
+    if let resourceTimeout { config.timeoutIntervalForResource = resourceTimeout }
+    OfflineModeURLProtocol.install(on: config)
+    return URLSession(configuration: config, delegate: redirectGuard, delegateQueue: nil)
+  }
+}
+
+/// Cross-host redirects must not carry API credentials. A 307 from a LiteLLM box (or a
+/// compromised tenant) to another host would otherwise forward `Authorization`, `api-key`
+/// and Cloudflare Access secrets in the follow-up request.
+enum LLMHTTPRedirectPolicy {
+  static let secretHeaderNames: Set<String> = [
+    "authorization",
+    "api-key",
+    "x-api-key",
+    "x-goog-api-key",
+    "cf-access-client-id",
+    "cf-access-client-secret",
+  ]
+
+  /// The request to follow. Same scheme, host, and effective port keeps headers.
+  /// https defaults to 443 and http to 80, so `https://h` and `https://h:443` are one origin.
+  /// A scheme downgrade (`https://h` → `http://h`), or a host or port change, strips
+  /// credential headers, including any extra names the caller configured.
+  static func follow(
+    original: URLRequest,
+    proposed: URLRequest,
+    extraSecretHeaderNames: [String] = []
+  ) -> URLRequest {
+    if isSameOrigin(original.url, proposed.url) { return proposed }
+    return strippingSecrets(proposed, extraNames: extraSecretHeaderNames)
+  }
+
+  /// Scheme plus host plus the port a client actually connects to. A missing port is 443 for
+  /// https and 80 for http, so an explicit default port is not a different origin.
+  private static func isSameOrigin(_ from: URL?, _ to: URL?) -> Bool {
+    guard let from, let to else { return false }
+    guard from.scheme?.lowercased() == to.scheme?.lowercased() else { return false }
+    guard from.host?.lowercased() == to.host?.lowercased() else { return false }
+    return effectivePort(of: from) == effectivePort(of: to)
+  }
+
+  private static func effectivePort(of url: URL) -> Int? {
+    if let port = url.port { return port }
+    switch url.scheme?.lowercased() {
+    case "https": return 443
+    case "http": return 80
+    default: return nil
+    }
+  }
+
+  static func strippingSecrets(_ request: URLRequest, extraNames: [String] = []) -> URLRequest {
+    var names = secretHeaderNames
+    for name in extraNames { names.insert(name.lowercased()) }
+    var next = request
+    for (key, _) in request.allHTTPHeaderFields ?? [:] where names.contains(key.lowercased()) {
+      next.setValue(nil, forHTTPHeaderField: key)
+    }
+    return next
+  }
+}
+
+private final class LLMHTTPRedirectGuard: NSObject, URLSessionTaskDelegate {
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    let original = task.originalRequest ?? request
+    // Header names were snapshotted when the request was built (`extraHeaders`).
+    // Reading the Keychain again on every hop would take that lock per redirect.
+    completionHandler(
+      LLMHTTPRedirectPolicy.follow(
+        original: original,
+        proposed: request,
+        extraSecretHeaderNames: CustomEndpointPreferences.extraHeaderNamesSnapshot))
+  }
 }
 
 // MARK: - Chat Stream Event (provider-agnostic)
@@ -166,7 +246,13 @@ struct ChatRequestOptions {
   /// When true the provider sends no built-in tools (e.g. Gemini's `code_execution`). Pure text
   /// transforms (Read Aloud rewrite, Smart Improvement) set this so the model returns only prose,
   /// never code or tool output. Ignored by providers that don't auto-enable built-ins.
+  /// Dictate Prompt sets this on every round; it must not be read as "final round".
   var disableBuiltInTools: Bool = false
+
+  /// True only on the agent's last synthesis round. `ChatAgentRunner` sets this after the
+  /// caller's options closure. Anthropic keeps `tools` and sends `tool_choice: none` when it
+  /// is set. `disableBuiltInTools` does not imply this.
+  var isFinalRound: Bool = false
 
   /// Stable per-conversation identifier that improves provider prompt-cache hit rates — OpenAI
   /// maps it to `prompt_cache_key`, Grok to the `x-grok-conv-id` header. `nil` for one-shot
@@ -210,6 +296,11 @@ struct ChatRequestOptions {
 /// Abstraction over different LLM chat APIs (Gemini, Grok/xAI, etc.).
 /// Each provider translates the unified interface into its native API format.
 protocol LLMChatProvider {
+  /// When true, the final agent round still sends tool declarations. Anthropic rejects a
+  /// history that contains `tool_use` / `tool_result` once `tools` is omitted, and instead
+  /// wants `tool_choice: none`. Everyone else drops the tools so the model must answer.
+  var requiresToolsOnFinalRound: Bool { get }
+
   /// Streams a chat reply. Returns an async stream of `ChatStreamEvent`.
   ///
   /// - Parameters:
@@ -250,6 +341,8 @@ protocol LLMChatProvider {
 }
 
 extension LLMChatProvider {
+  var requiresToolsOnFinalRound: Bool { false }
+
   /// Provider-agnostic single-shot text generation. Routes through `generateStructured` with a
   /// one-field `{ text }` schema, so features like meeting summaries / speaker consolidation work
   /// uniformly on Gemini, OpenAI, and Grok without a per-provider endpoint. Returns the generated
@@ -414,9 +507,11 @@ enum OpenAICompatibleStream {
     let headers: [String: String]
     /// Prefix for this provider's `DebugLogger` lines, e.g. `OPENAI-CHAT-STREAM`.
     let logTag: String
-    /// Maps a non-2xx status + body to the error the user should see. Providers differ sharply
+    /// Maps a non-2xx response + body to the error the user should see. Providers differ sharply
     /// here — xAI folds "out of credits" into 429, a local server's 404 means "model not pulled".
-    let mapHTTPError: (Int, String) -> Error
+    /// The response is how a 429 keeps its `Retry-After`; without one the delay stays nil and
+    /// the pre-first-token loop treats the limit as permanent.
+    let mapHTTPError: (HTTPURLResponse, String) -> Error
     /// Maps a transport failure (connection refused, host unreachable) before any HTTP status
     /// exists. Only the local provider needs this; the default rethrows unchanged.
     var mapTransportError: (Error) -> Error = { $0 }
@@ -475,7 +570,7 @@ enum OpenAICompatibleStream {
       for try await b in bytes { errData.append(b) }
       let text = String(data: errData, encoding: .utf8) ?? ""
       DebugLogger.logError("\(config.logTag): HTTP \(http.statusCode) body=\(text.prefix(500))")
-      throw config.mapHTTPError(http.statusCode, text)
+      throw config.mapHTTPError(http, text)
     }
     return bytes
   }
@@ -1075,7 +1170,7 @@ enum OpenAIResponsesAPIConverter {
 /// Maps a provider HTTP error into a typed `TranscriptionError` without leaking raw JSON.
 enum ChatProviderHTTPError {
   static func map(
-    provider: String, status: Int, body: String, invalidKey: Error? = nil
+    provider: String, status: Int, body: String, response: HTTPURLResponse? = nil, invalidKey: Error? = nil
   ) -> Error {
     if (status == 401 || status == 403), let invalidKey {
       return invalidKey
@@ -1083,11 +1178,13 @@ enum ChatProviderHTTPError {
     if status == 429 {
       // OpenAI reports "no credit on the account" as 429 insufficient_quota. That is a billing
       // problem with a top-up link, not a rate limit to wait out (same rule as the transcription
-      // path and the classic Dictate Prompt request).
+      // path and the classic Dictate Prompt request) — a `Retry-After` on that body changes nothing.
+      // Any other 429 keeps the server's delay. Nil means "no delay advertised", which the
+      // pre-first-token loop treats as a permanent cap and does not retry.
       if body.contains("insufficient_quota") {
         return TranscriptionError.billingRequired(topUpURL: TranscriptionError.openAIBillingURL)
       }
-      return TranscriptionError.rateLimited(retryAfter: nil)
+      return RetryBackoff.rateLimitedError(from: response)
     }
     if (500...599).contains(status) {
       return TranscriptionError.serverError(status)

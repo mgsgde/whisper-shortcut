@@ -88,6 +88,10 @@ class SpeechService {
   /// The running Dictate Prompt turn is an edit quick action ("Fix grammar and spelling"); read by
   /// the nothing-selected guard in `recordPromptTurn`. Set per turn in `performPrompt`.
   private var promptIsEditQuickAction = false
+  /// True when this turn reads the selection from a screenshot. A macOS Service already supplied
+  /// the text, so that path stays off even when the model would otherwise use a screenshot.
+  /// Set per turn in `performPrompt`, same as `promptIsEditQuickAction`.
+  private var promptUsesScreenshotSelection = false
   private var currentTTSTask: Task<Data, Error>?
 
   init(
@@ -452,6 +456,8 @@ class SpeechService {
   ///   - preferredModel: If set (e.g. for live meeting), use this model; otherwise use the global Dictate selection.
   ///   - promptOverride: If set, use this prompt instead of the user's dictation prompt.
   ///   - cancellable: When false, skips the cancellation slot (e.g. live-meeting chunks).
+  ///   - punctuationMode: `.spokenOnly` makes offline Parakeet drop the commas, periods, "?" and "!"
+  ///     it guessed (`ParakeetPunctuationTiming`); every other engine and mode ignores it.
   ///   - reportsProgress: When false, a chunked transcription (>45s audio) does not drive
   ///     the global chunk-progress delegate. Background transcriptions (streaming dictate
   ///     chunks) must pass false — the delegate mutates the app state machine, which
@@ -461,11 +467,12 @@ class SpeechService {
     preferredModel: TranscriptionModel? = nil,
     promptOverride: String? = nil,
     cancellable: Bool = true,
-    reportsProgress: Bool = true
+    reportsProgress: Bool = true,
+    punctuationMode: PunctuationMode = .automatic
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
-      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress)
+      let transcript = try await self.performTranscription(audioURL: audioURL, preferredModel: preferredModel, promptOverride: promptOverride, reportsProgress: reportsProgress, punctuationMode: punctuationMode)
       // Applied here rather than per-provider: every path (offline Whisper, Gemini inline /
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
       // return through this one call. Both the trailing glossary-echo strip and the
@@ -500,11 +507,21 @@ class SpeechService {
       }
     }
 
-    return try await task.value
+    return try await Self.value(of: task)
+  }
+
+  /// `task` is unstructured, so cancelling the awaiting caller (streaming dictate chunks, which
+  /// pass `cancellable: false`) would not reach the running work without this.
+  static func value<T>(of task: Task<T, Error>) async throws -> T {
+    try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   // MARK: - Transcription Mode (Private Implementation)
-  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true) async throws -> String {
+  private func performTranscription(audioURL: URL, preferredModel: TranscriptionModel? = nil, promptOverride: String? = nil, reportsProgress: Bool = true, punctuationMode: PunctuationMode = .automatic) async throws -> String {
     let startTime = CFAbsoluteTimeGetCurrent()
     let model = preferredModel ?? TranscriptionModel.loadSelected()
 
@@ -574,7 +591,8 @@ class SpeechService {
 
       // Transcribe using local service
       let result = try await LocalSpeechService.shared.transcribe(
-        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary)
+        audioURL: audioURL, language: languageString, prompt: whisperPrompt, vocabulary: vocabulary,
+        spokenMarksOnly: punctuationMode == .spokenOnly)
       let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
       DebugLogger.logSpeech("SPEED: Whisper transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
       return result
@@ -653,7 +671,8 @@ class SpeechService {
     templateInstruction: String? = nil,
     templateName: String? = nil,
     selectedText: String? = nil,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false
   ) async throws -> String {
     // Create and store task for cancellation support
     let task = Task<String, Error> {
@@ -661,7 +680,8 @@ class SpeechService {
         audioURL: audioURL, mode: mode, instruction: instruction,
         isEditQuickAction: isEditQuickAction, templateInstruction: templateInstruction,
         templateName: templateName, selectedText: selectedText,
-        recordingWasSilent: recordingWasSilent)
+        recordingWasSilent: recordingWasSilent,
+        selectionIsFromService: selectionIsFromService)
     }
 
     currentPromptTask = task
@@ -827,6 +847,14 @@ class SpeechService {
     !usesScreenshotSelection && selectedText == nil
   }
 
+  /// Screenshot-selection mode follows the model, unless a macOS Service already handed over the
+  /// selected text. That text is the selection; a screenshot would discard it.
+  static func usesScreenshotSelection(
+    modelUsesScreenshotSelection: Bool, selectionIsFromService: Bool
+  ) -> Bool {
+    modelUsesScreenshotSelection && !selectionIsFromService
+  }
+
   /// Request knobs for the on-device Dictate Prompt path. In Offline Mode — where a practice
   /// dictates clinical notes — decoding is greedy (temperature 0), so a note is reordered, not
   /// sampled; outside it the model keeps its default temperature, which reads better for free
@@ -863,7 +891,8 @@ class SpeechService {
   private func performPrompt(
     audioURL: URL, mode: PromptMode, instruction: String? = nil, isEditQuickAction: Bool,
     templateInstruction: String? = nil, templateName: String? = nil, selectedText: String?,
-    recordingWasSilent: Bool = false
+    recordingWasSilent: Bool = false,
+    selectionIsFromService: Bool = false
   ) async throws -> String {
     let promptStarted = ContinuousClock.now
     lastPromptUnsupportedWords = []
@@ -873,16 +902,18 @@ class SpeechService {
     promptIsEditQuickAction = false
     // Which model runs decides where the selection comes from, so it has to be known first: a
     // local text model takes the copied text even in the App Store build, because a screenshot
-    // reaches it as nothing at all.
+    // reaches it as nothing at all. A selection from a macOS Service is already text.
     let selectedPromptModel = getPromptModel()
-    let usesScreenshotSelection = selectedPromptModel.dictatePromptUsesScreenshotSelection
+    promptUsesScreenshotSelection = Self.usesScreenshotSelection(
+      modelUsesScreenshotSelection: selectedPromptModel.dictatePromptUsesScreenshotSelection,
+      selectionIsFromService: selectionIsFromService)
 
     // In screenshot-selection mode the copied text is ignored so the model relies solely on the
     // highlighted region in the screenshot. Sent as captured, only trimmed: `cleanText` caps
     // character runs at 3 ("20000" -> "2000") and strips URL query strings, which silently
     // corrupts the text the user asked to edit. A template turn does not use that mode; the
     // selection captured for a non-screenshot model is still the text it formats.
-    let clipboardContext: String? = usesScreenshotSelection
+    let clipboardContext: String? = promptUsesScreenshotSelection
       ? nil
       : DictatePromptSelectionDecision.selectionText(from: selectedText)
 
@@ -893,7 +924,7 @@ class SpeechService {
     // instruction arrived with it.
     promptTurnKind = Self.decidePromptTurnKind(
       templateInstruction: templateInstruction, templateName: templateName,
-      usesScreenshotSelection: usesScreenshotSelection, selectedText: clipboardContext,
+      usesScreenshotSelection: promptUsesScreenshotSelection, selectedText: clipboardContext,
       textInstruction: textInstruction)
     promptIsEditQuickAction = isEditQuickAction && !promptTurnKind.isTemplate
     if case .template(let turn) = promptTurnKind {
@@ -1491,13 +1522,13 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: true,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-GEMINI")
     var userParts = geminiUserParts(from: envelope)
     let historyContents = Self.promptHistoryContents(
       mode: mode,
       isComposeTurn: Self.isComposeTurn(
-        usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+        usesScreenshotSelection: promptUsesScreenshotSelection,
         selectedText: clipboardContext),
       turnKind: promptTurnKind)
 
@@ -1634,7 +1665,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: model.supportsImageInput,
       supportsScreenshot: true,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-OPENAI")
     var userContent = openAIUserContent(from: envelope)
     // Kept for the agent path, which builds its own request from the same ingredients.
@@ -1988,7 +2019,7 @@ class SpeechService {
       clipboardContext: clipboardContext,
       modelAcceptsImages: false,
       supportsScreenshot: false,
-      usesScreenshotSelection: model.dictatePromptUsesScreenshotSelection,
+      usesScreenshotSelection: promptUsesScreenshotSelection,
       logPrefix: "PROMPT-MODE-LOCAL")
 
     let dictationHeader = Self.additionalDictationHeader(
@@ -3219,14 +3250,12 @@ class SpeechService {
   /// would still cut a long LAN dictation after the Task deadline was raised
   /// (a 5-minute recording needs 330s). Cloud providers keep `LLMHTTPSession.shared`.
   /// The Task deadline remains the precise cap; this session only raises the ceiling
-  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`.
+  /// to `NetworkDeadline.selfHostedTranscriptionTimeoutCap`. Built through
+  /// `LLMHTTPSession.makeSession` so a redirect strips the bearer token and
+  /// Cloudflare Access headers the same way chat does.
   private static let selfHostedTranscriptionSession: URLSession = {
-    let config = URLSessionConfiguration.default
     let cap = NetworkDeadline.selfHostedTranscriptionTimeoutCap
-    config.timeoutIntervalForRequest = cap
-    config.timeoutIntervalForResource = cap
-    OfflineModeURLProtocol.install(on: config)
-    return URLSession(configuration: config)
+    return LLMHTTPSession.makeSession(requestTimeout: cap, resourceTimeout: cap)
   }()
 
   /// POSTs `request` and retries once on HTTP 429 with exponential backoff. Returns the

@@ -47,6 +47,10 @@ final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
 
+  /// `NSApp.servicesProvider` is not guaranteed to retain its object. Held for the process lifetime
+  /// so the three selection Services stay registered.
+  private var selectionServices: SelectionServicesProvider?
+
   /// POSIX signal handlers held for the lifetime of the app. Without these, a
   /// default `pkill` / `kill` (which sends SIGTERM) terminates the process
   /// immediately and `applicationWillTerminate` never runs — meaning
@@ -100,6 +104,11 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     ModelSelectionReconciler.reconcileAll()
 
     migrateNotificationPositionDefault()
+    migrateSettingsCloseOnFocusLossToOff()
+
+    // The activation policy is not persisted by macOS, so the optional Dock icon has to be
+    // re-applied on every launch.
+    DockIconPreference.apply()
 
     // One line per system-prompt section (custom/default + length, never content), so a report of
     // "my prompt is gone" can be answered from the log. Also detects an unreadable file.
@@ -129,6 +138,12 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     // Initialize the full menu bar controller
     menuBarController = MenuBarController()
     menuBarController?.resumeInterruptedMeetingIfNeeded()
+
+    if let controller = menuBarController {
+      selectionServices = SelectionServicesProvider(controller: controller)
+      NSApp.servicesProvider = selectionServices
+      NSUpdateDynamicServices()
+    }
 
     // Accessibility permissions will be checked when user actually tries to use prompt features
 
@@ -197,13 +212,22 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     if alert.runModal() == .alertFirstButtonReturn,
       let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
     {
-      NSWorkspace.shared.open(url)
+      Task { @MainActor in SystemSettingsOpener.open(url) }
     }
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
     // CRITICAL: MenuBar apps should NEVER terminate when windows close
     return false
+  }
+
+  /// Dock icon click (only possible with the optional Dock icon): open Settings when no window is
+  /// visible, otherwise let AppKit raise the existing one.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if !flag {
+      SettingsManager.shared.showSettings()
+    }
+    return true
   }
 
   func application(_ application: NSApplication, open urls: [URL]) {
@@ -272,6 +296,24 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       defaults.set(
         NotificationPosition.centerBottom.rawValue, forKey: UserDefaultsKeys.notificationPosition)
       DebugLogger.log("MIGRATION: notificationPosition \(stored ?? "unset") → center-bottom")
+    }
+  }
+
+  /// One-shot migration (2026-11): the `settingsCloseOnFocusLoss` default moved true → false in
+  /// 7.62 ("the window vanishing on an outside click is surprising"), but builds before that had
+  /// already written `true` out explicitly — `SettingsViewModel.save()` persists every slot on any
+  /// settings change. Those installs therefore never saw the new default and kept losing the
+  /// window. This clears the stored value once; the toggle stays, so anyone who wants the old
+  /// behaviour can turn it back on in Settings → General → Advanced → Window Behavior.
+  private func migrateSettingsCloseOnFocusLossToOff() {
+    let defaults = UserDefaults.standard
+    guard !defaults.bool(forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    else { return }
+    defaults.set(true, forKey: UserDefaultsKeys.didMigrateSettingsCloseOnFocusLossToOff)
+    if defaults.bool(forKey: UserDefaultsKeys.settingsCloseOnFocusLoss) {
+      defaults.set(false, forKey: UserDefaultsKeys.settingsCloseOnFocusLoss)
+      DebugLogger.log(
+        "MIGRATION: settingsCloseOnFocusLoss true → false (window no longer closes on outside click)")
     }
   }
 
@@ -479,7 +521,8 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
   }
 
 
-  private func setupEditMenu() {
+  /// Builds the top-level Edit item with its standard text editing submenu.
+  static func makeEditMenuItem() -> NSMenuItem {
     // Create Edit menu with standard text editing commands
     let editMenu = NSMenu(title: String(localized: "Edit"))
 
@@ -528,10 +571,16 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     selectAllItem.target = nil  // Will be handled by first responder
     editMenu.addItem(selectAllItem)
 
+    // Titles are localized, so never look up a menu item by title; set the submenu on the item itself.
+    let editMenuItem = NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: "")
+    editMenuItem.submenu = editMenu
+    return editMenuItem
+  }
+
+  private func setupEditMenu() {
     // Add Edit and Chat menus to main menu
     let mainMenu = NSApp.mainMenu ?? NSMenu()
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Edit"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Edit")?.submenu = editMenu
+    mainMenu.addItem(FullAppDelegate.makeEditMenuItem())
 
     let chatMenu = NSMenu(title: String(localized: "Chat"))
     let newChatItem = NSMenuItem(
@@ -561,8 +610,9 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
     clearChatItem.target = self
     chatMenu.addItem(clearChatItem)
 
-    mainMenu.addItem(NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: ""))
-    mainMenu.item(withTitle: "Chat")?.submenu = chatMenu
+    let chatMenuItem = NSMenuItem(title: String(localized: "Chat"), action: nil, keyEquivalent: "")
+    chatMenuItem.submenu = chatMenu
+    mainMenu.addItem(chatMenuItem)
 
     NSApp.mainMenu = mainMenu
   }
@@ -586,6 +636,10 @@ class FullWhisperShortcut {
   private static var delegate: NSApplicationDelegate?
 
   static func main() {
+    // Claude Desktop launches this binary as its stdio MCP server. That process must not
+    // become a second menu-bar app, so the bridge runs before NSApplication exists.
+    if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }
+
     let app = NSApplication.shared
     // LSUIElement = true in Info.plist handles the menu bar app behavior
 

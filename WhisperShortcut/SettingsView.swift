@@ -167,7 +167,7 @@ struct SettingsView: View {
   private func description(for tab: SettingsTab) -> LocalizedStringKey {
     switch tab {
     case .general:
-      return "Shortcuts and app behavior"
+      return "Shortcuts, app behavior, updates, and reset"
     case .accounts:
       return "API keys, OpenRouter, and connected services"
     case .speechToText:
@@ -189,9 +189,9 @@ struct SettingsView: View {
     case .aiApps:
       return "Connect Claude and other AI apps to set up WhisperShortcut and read your meetings"
     case .permissions:
-      return "Offline Mode and macOS permissions"
+      return "Offline Mode, macOS permissions, and privacy"
     case .about:
-      return "Privacy, welcome tour, shortcuts, reset, and support"
+      return "What's new, support, and acknowledgements"
     }
   }
 

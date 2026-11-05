@@ -209,15 +209,6 @@ enum RequestOrigin: String {
 }
 
 // MARK: - System Prompt History Entry
-struct SystemPromptHistoryEntry: Codable {
-  let ts: String
-  let source: String
-  let previousLength: Int
-  let newLength: Int
-  let content: String
-  /// Gemini model used for this improvement (e.g. "Gemini 3.1 Pro"). Optional for backward compatibility with existing JSONL lines.
-  let model: String?
-}
 
 /// Single history file entry for any system prompt section (system-prompts-history.jsonl).
 struct UnifiedSystemPromptHistoryEntry: Codable {
@@ -242,8 +233,8 @@ class ContextLogger {
   private let queue = DispatchQueue(label: "com.whisper-shortcut.contextlogger", qos: .utility)
   /// Directory name on disk; kept as "UserContext" for compatibility with existing installs.
   private let contextDirectoryName = "UserContext"
-  /// Subdirectory of UserContext holding short-lived dictation WAVs for Smart Improvement audio verification.
-  private let audioSamplesDirectoryName = "audio-samples"
+  /// Subdirectory of UserContext holding dictation WAVs for Smart Improvement audio verification.
+  static let audioSamplesDirectoryName = "audio-samples"
   private let rotationDays = 90
   /// Maximum number of lines kept in history JSONL files that have no date-based rotation
   /// (system-prompts-history.jsonl, user-context-history.jsonl). Oldest lines are trimmed.
@@ -288,7 +279,7 @@ class ContextLogger {
   }()
 
   private lazy var audioSamplesDirectoryURL: URL = {
-    contextDirectoryURL.appendingPathComponent(audioSamplesDirectoryName)
+    contextDirectoryURL.appendingPathComponent(Self.audioSamplesDirectoryName)
   }()
 
   private init() {
@@ -316,6 +307,7 @@ class ContextLogger {
     let fm = FileManager.default
     guard fm.fileExists(atPath: contextDirectoryURL.path) else { return }
     try fm.removeItem(at: contextDirectoryURL)
+    DebugLogger.closeContextErrorLogHandles()
     DebugLogger.log("USER-CONTEXT: Deleted all context data at \(contextDirectoryURL.path)")
   }
 
@@ -619,8 +611,11 @@ class ContextLogger {
 
   /// Lists all WAV files currently in the audio sample pool, oldest first.
   func audioSampleURLs() -> [URL] {
-    let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return [] }
+    Self.audioSampleURLs(in: audioSamplesDirectoryURL)
+  }
+
+  static func audioSampleURLs(in directory: URL) -> [URL] {
+    guard let contents = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
     return contents
       .filter { $0.pathExtension.lowercased() == "wav" }
       .sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -664,12 +659,18 @@ class ContextLogger {
   }
 
   /// Removes the entire audio sample pool. Returns the number of files deleted.
-  /// Used when wiping all data; Smart Improvement no longer calls this — audio is now retained across
-  /// runs and bounded by age (see `pruneExpiredAudioSamples`).
+  /// Used when wiping all data and when "Learn from how I use WhisperShortcut" is switched off;
+  /// Smart Improvement no longer calls this — audio is retained across runs and bounded by age
+  /// (see `pruneExpiredAudioSamples`).
   @discardableResult
   func clearAudioSamples() -> Int {
+    Self.clearAudioSamples(in: audioSamplesDirectoryURL)
+  }
+
+  @discardableResult
+  static func clearAudioSamples(in directory: URL) -> Int {
     let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(at: audioSamplesDirectoryURL, includingPropertiesForKeys: nil) else { return 0 }
+    guard let contents = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return 0 }
     var deleted = 0
     for url in contents {
       if (try? fm.removeItem(at: url)) != nil { deleted += 1 }
@@ -681,13 +682,22 @@ class ContextLogger {
   /// in each filename (UTC, format `yyyyMMdd'T'HHmmssSSS-XXXXXX.wav`). Audio is retained across Smart
   /// Improvement runs so terms from older dictations stay verifiable; this keeps the pool bounded by
   /// age. Files whose name can't be parsed are kept. Returns the number of files deleted.
+  /// Also run from `performRotation` so clips expire on launch, not only when an improvement run starts.
   @discardableResult
   func pruneExpiredAudioSamples() -> Int {
+    Self.pruneExpiredAudioSamples(
+      in: audioSamplesDirectoryURL,
+      now: Date(),
+      retentionDays: AppConstants.audioSampleRetentionDays)
+  }
+
+  @discardableResult
+  static func pruneExpiredAudioSamples(in directory: URL, now: Date, retentionDays: Int) -> Int {
     let fm = FileManager.default
-    let cutoff = Date().addingTimeInterval(-Double(AppConstants.audioSampleRetentionDays) * 86_400)
+    let urls = audioSampleURLs(in: directory)
+    let cutoff = now.addingTimeInterval(-Double(retentionDays) * 86_400)
     let formatter = UserContextLog.makeFileNameDateFormatter(dateFormat: "yyyyMMdd'T'HHmmssSSS")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    let urls = audioSampleURLs()
     var deleted = 0
     for url in urls {
       let stamp = url.deletingPathExtension().lastPathComponent.components(separatedBy: "-").first ?? ""
@@ -695,7 +705,7 @@ class ContextLogger {
       if captured < cutoff, (try? fm.removeItem(at: url)) != nil { deleted += 1 }
     }
     if deleted > 0 {
-      DebugLogger.logAudio("AUDIO-VERIFY: prune-age deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) olderThanDays=\(AppConstants.audioSampleRetentionDays)")
+      DebugLogger.logAudio("AUDIO-VERIFY: prune-age deleted=\(deleted) remaining=\(max(0, urls.count - deleted)) olderThanDays=\(retentionDays)")
     }
     return deleted
   }
@@ -739,52 +749,55 @@ class ContextLogger {
 
   // MARK: - Data Management
 
-  func deleteAllData() {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let fm = FileManager.default
-      do {
-        let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
-        for fileURL in contents {
-          try fm.removeItem(at: fileURL)
-        }
-        DebugLogger.log("USER-CONTEXT: Deleted all context data")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to delete context data: \(error.logDescription)")
-      }
-    }
-  }
-
   func performRotation() {
     queue.async { [weak self] in
       guard let self else { return }
-      let fm = FileManager.default
-      let cutoffDate = Calendar.current.date(byAdding: .day, value: -self.rotationDays, to: Date()) ?? Date()
-
-      do {
-        let contents = try fm.contentsOfDirectory(at: self.contextDirectoryURL, includingPropertiesForKeys: nil)
-        for fileURL in contents {
-          let filename = fileURL.lastPathComponent
-
-          if let stream = UserContextLog.Stream.allCases.first(where: { filename.hasPrefix($0.rawValue) }),
-             let fileDate = UserContextLog.fileDay(in: filename, stream: stream),
-             fileDate < cutoffDate {
-            try fm.removeItem(at: fileURL)
-            DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
-          } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
-            // Line-count rotation for history files that have no date in their name
-            self.trimJSONLFile(at: fileURL, maxLines: self.historyFileMaxLines)
-          }
-        }
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.logDescription)")
-      }
+      Self.performMaintenance(
+        in: self.contextDirectoryURL,
+        now: Date(),
+        rotationDays: self.rotationDays,
+        historyFileMaxLines: self.historyFileMaxLines)
     }
+  }
+
+  /// Launch maintenance for one context directory: dated logs, history JSONL, and expired
+  /// dictation audio. `audio-samples/` has no date in its name, so the log loop never enters it;
+  /// clips used to live until the next improvement run, which never comes once learning is idle.
+  static func performMaintenance(
+    in directory: URL, now: Date, rotationDays: Int, historyFileMaxLines: Int,
+    audioRetentionDays: Int = AppConstants.audioSampleRetentionDays
+  ) {
+    let fm = FileManager.default
+    let cutoffDate = Calendar.current.date(byAdding: .day, value: -rotationDays, to: now) ?? now
+
+    do {
+      let contents = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+      for fileURL in contents {
+        let filename = fileURL.lastPathComponent
+
+        if let stream = UserContextLog.Stream.allCases.first(where: { filename.hasPrefix($0.rawValue) }),
+           let fileDate = UserContextLog.fileDay(in: filename, stream: stream),
+           fileDate < cutoffDate {
+          try fm.removeItem(at: fileURL)
+          DebugLogger.log("USER-CONTEXT: Rotated old log file: \(filename)")
+        } else if filename == "system-prompts-history.jsonl" || filename == "user-context-history.jsonl" {
+          // Line-count rotation for history files that have no date in their name
+          trimJSONLFile(at: fileURL, maxLines: historyFileMaxLines)
+        }
+      }
+    } catch {
+      DebugLogger.logError("USER-CONTEXT: Rotation error: \(error.logDescription)")
+    }
+
+    _ = pruneExpiredAudioSamples(
+      in: directory.appendingPathComponent(audioSamplesDirectoryName),
+      now: now,
+      retentionDays: audioRetentionDays)
   }
 
   /// Keeps only the last `maxLines` non-empty lines in a JSONL file, discarding the oldest entries.
   /// Called on the serial queue already; no further synchronisation needed.
-  private func trimJSONLFile(at url: URL, maxLines: Int) {
+  private static func trimJSONLFile(at url: URL, maxLines: Int) {
     guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
     let lines = content.components(separatedBy: "\n").filter { !$0.isEmpty }
     guard lines.count > maxLines else { return }
@@ -795,13 +808,6 @@ class ContextLogger {
     } catch {
       DebugLogger.logError("USER-CONTEXT: Failed to trim \(url.lastPathComponent): \(error.logDescription)")
     }
-  }
-
-  // MARK: - User Context Loading (deprecated; User Context section removed)
-
-  /// No longer used; User Context section was removed from system prompts. Returns nil.
-  func loadUserContext() -> String? {
-    nil
   }
 
   /// Appends one entry to the unified system prompts history (system-prompts-history.jsonl).
@@ -833,19 +839,6 @@ class ContextLogger {
         DebugLogger.logError("USER-CONTEXT: Failed to append system prompts history: \(error.logDescription)")
       }
     }
-  }
-
-  /// Truncates at the last sentence or word boundary before maxChars so text is never cut mid-phrase.
-  private static func truncateAtBoundary(_ text: String, maxChars: Int) -> String {
-    let prefix = String(text.prefix(maxChars))
-    let sentenceEnds: Set<Character> = [".", "!", "?", "\n"]
-    if let i = prefix.lastIndex(where: { sentenceEnds.contains($0) }) {
-      return String(prefix[...i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    if let i = prefix.lastIndex(of: " ") {
-      return String(prefix[..<i]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    return prefix.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   // MARK: - File Listing (for derivation)
@@ -881,7 +874,6 @@ class ContextLogger {
     contextDirectoryURL
   }
 
-  /// Removes the suggested system prompt file so it does not reappear after Apply.
   /// Removes all suggested-*.txt files (and rationale sidecars). Called at start of a Smart Improvement run to discard stale suggestions from prior crashed/aborted runs.
   func deleteAllSuggestedFiles() {
     let fm = FileManager.default
@@ -894,14 +886,9 @@ class ContextLogger {
     }
   }
 
+  /// Removes the suggested system prompt file so it does not reappear after Apply.
   func deleteSuggestedSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-prompt-mode-system-prompt.txt")
-    try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Removes the suggested user context file so it does not reappear after Apply.
-  func deleteSuggestedUserContextFile() {
-    let url = contextDirectoryURL.appendingPathComponent("suggested-user-context.md")
     try? FileManager.default.removeItem(at: url)
   }
 
@@ -921,61 +908,6 @@ class ContextLogger {
   func deleteSuggestedChatSystemPromptFile() {
     let url = contextDirectoryURL.appendingPathComponent("suggested-gemini-chat-system-prompt.txt")
     try? FileManager.default.removeItem(at: url)
-  }
-
-  /// Appends one entry to the system prompt history JSONL (for Dictate (transcription) or Dictate Prompt).
-  /// File name: system-prompt-history-{suffix}.jsonl (e.g. dictation, prompt-mode).
-  /// Called when auto-improvement applies a new system prompt. History is removed when context data is deleted.
-  func appendSystemPromptHistory(historyFileSuffix: String, previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "system-prompt-history-\(historyFileSuffix).jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended system prompt history (\(historyFileSuffix))")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append system prompt history: \(error.logDescription)")
-      }
-    }
-  }
-
-  /// Appends one entry to the user context history JSONL (user-context-history.jsonl).
-  /// Same entry shape as system prompt history (ts, source, previousLength, newLength, content, model). Called when auto-improvement applies suggested user context. History is removed when context data is deleted.
-  func appendUserContextHistory(previousLength: Int, newLength: Int, content: String, model: String? = nil) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      let entry = SystemPromptHistoryEntry(
-        ts: UserContextLog.nowString(),
-        source: PromptHistorySource.auto.rawValue,
-        previousLength: previousLength,
-        newLength: newLength,
-        content: content,
-        model: model
-      )
-      let filename = "user-context-history.jsonl"
-      let fileURL = self.contextDirectoryURL.appendingPathComponent(filename)
-
-      do {
-        let data = try JSONEncoder().encode(entry)
-        try UserContextLog.appendLine(data, to: fileURL)
-
-        DebugLogger.log("USER-CONTEXT: Appended user context history")
-      } catch {
-        DebugLogger.logError("USER-CONTEXT: Failed to append user context history: \(error.logDescription)")
-      }
-    }
   }
 
   // MARK: - Private Helpers

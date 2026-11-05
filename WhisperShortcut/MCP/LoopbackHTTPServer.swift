@@ -58,6 +58,8 @@ final class LoopbackHTTPServer {
     case complete(HTTPRequest)
     case tooLarge
     case malformed
+    /// `Transfer-Encoding` is present. This server only accepts `Content-Length`.
+    case lengthRequired
   }
 
   /// The port actually bound (differs from the requested one when 0 was passed).
@@ -158,6 +160,9 @@ final class LoopbackHTTPServer {
         onFailure("accept failed (errno \(errno): \(String(cString: strerror(errno))))")
         return
       }
+      // Before any write, including the busy 503. A client that already went away must not raise SIGPIPE.
+      var noSigPipe: Int32 = 1
+      setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
       guard connectionSemaphore.wait(timeout: .now()) == .success else {
         // At the concurrency cap: reject fast instead of queuing behind in-flight connections.
         write(client, HTTPResponse.json(["error": "busy"], status: 503))
@@ -176,8 +181,6 @@ final class LoopbackHTTPServer {
     var timeout = timeval(tv_sec: 5, tv_usec: 0)
     setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-    var noSigPipe: Int32 = 1
-    setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
 
     // SO_RCVTIMEO only bounds a single recv(); a client that trickles bytes slowly (one byte every
     // 4s) would otherwise hold this thread indefinitely. This caps the whole read phase instead.
@@ -195,6 +198,9 @@ final class LoopbackHTTPServer {
         return
       case .malformed:
         write(client, HTTPResponse.json(["error": "bad request"], status: 400))
+        return
+      case .lengthRequired:
+        write(client, HTTPResponse.json(["error": "length required"], status: 411))
         return
       case .incomplete:
         if DispatchTime.now() >= deadline { return }  // too slow — drop without a response
@@ -235,7 +241,9 @@ final class LoopbackHTTPServer {
     case 403: return "Forbidden"
     case 404: return "Not Found"
     case 405: return "Method Not Allowed"
+    case 411: return "Length Required"
     case 413: return "Payload Too Large"
+    case 503: return "Service Unavailable"
     default: return "Status"
     }
   }
@@ -262,6 +270,8 @@ final class LoopbackHTTPServer {
       let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
       headers[name] = value
     }
+
+    if headers["transfer-encoding"] != nil { return .lengthRequired }
 
     var contentLength = 0
     if let raw = headers["content-length"] {

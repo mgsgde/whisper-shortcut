@@ -134,26 +134,38 @@ actor GoogleCalendarAPIClient {
 
   // MARK: - Update Event
 
-  func updateEvent(eventId: String, summary: String? = nil, startISO: String? = nil,
-                   endISO: String? = nil, timeZone: String? = nil,
-                   location: String? = nil, description: String? = nil,
-                   recurrence: [String]? = nil, allDay: Bool = false) async throws -> [String: Any] {
-    DebugLogger.logNetwork("GOOGLE-CALENDAR: updateEvent id=\(eventId) allDay=\(allDay) recurrence=\(recurrence ?? [])")
+  /// PATCH merges nested objects, so the old `dateTime`/`timeZone` would survive next to a new
+  /// `date` (and vice versa) and Google rejects the event. Explicit nulls clear the other form.
+  func updateEventBody(summary: String? = nil, startISO: String? = nil, endISO: String? = nil,
+                       timeZone: String? = nil, location: String? = nil, description: String? = nil,
+                       recurrence: [String]? = nil, allDay: Bool = false) throws -> [String: Any] {
     let tz = timeZone ?? TimeZone.current.identifier
 
     var body: [String: Any] = [:]
     if let summary { body["summary"] = summary }
     if let startISO {
-      body["start"] = try startEndField(isStart: true, iso: startISO, timeZone: tz, allDay: allDay)
+      body["start"] = try startEndField(isStart: true, iso: startISO, timeZone: tz, allDay: allDay,
+                                        clearingOtherForm: true)
     }
     if let endISO {
       body["end"] = try startEndField(isStart: false, iso: endISO, timeZone: tz, allDay: allDay,
-                                      startISO: startISO)
+                                      startISO: startISO, clearingOtherForm: true)
     }
     if let location { body["location"] = location }
     if let description { body["description"] = description }
     if let recurrence = normalizedRecurrence(recurrence) { body["recurrence"] = recurrence }
     guard !body.isEmpty else { throw CalendarAPIError.noFieldsToUpdate }
+    return body
+  }
+
+  func updateEvent(eventId: String, summary: String? = nil, startISO: String? = nil,
+                   endISO: String? = nil, timeZone: String? = nil,
+                   location: String? = nil, description: String? = nil,
+                   recurrence: [String]? = nil, allDay: Bool = false) async throws -> [String: Any] {
+    DebugLogger.logNetwork("GOOGLE-CALENDAR: updateEvent id=\(eventId) allDay=\(allDay) recurrence=\(recurrence ?? [])")
+    let body = try updateEventBody(
+      summary: summary, startISO: startISO, endISO: endISO, timeZone: timeZone,
+      location: location, description: description, recurrence: recurrence, allDay: allDay)
 
     let encoded = encodedPathComponent(eventId)
     guard let url = URL(string: "\(baseURL)/calendars/primary/events/\(encoded)") else {
@@ -329,18 +341,25 @@ actor GoogleCalendarAPIClient {
   /// date is exclusive per the Calendar API, so a single all-day event whose end is not
   /// strictly after the start is bumped to the day after the start.
   private func startEndField(isStart: Bool, iso: String, timeZone: String, allDay: Bool,
-                             startISO: String? = nil) throws -> [String: Any] {
+                             startISO: String? = nil, clearingOtherForm: Bool = false) throws -> [String: Any] {
     if allDay {
       guard var date = dateOnly(iso, timeZone: timeZone) else { throw CalendarAPIError.invalidDateFormat }
       if !isStart, let startISO, let startDate = dateOnly(startISO, timeZone: timeZone), date <= startDate {
         date = addingDay(to: startDate, timeZone: timeZone) ?? date
       }
-      return ["date": date]
+      var field: [String: Any] = ["date": date]
+      if clearingOtherForm {
+        field["dateTime"] = NSNull()
+        field["timeZone"] = NSNull()
+      }
+      return field
     }
     guard let normalized = normalizeToISO8601(iso, timeZone: timeZone) else {
       throw CalendarAPIError.invalidDateFormat
     }
-    return ["dateTime": normalized, "timeZone": timeZone]
+    var field: [String: Any] = ["dateTime": normalized, "timeZone": timeZone]
+    if clearingOtherForm { field["date"] = NSNull() }
+    return field
   }
 
   /// Extracts the calendar date ("yyyy-MM-dd") of an instant, interpreted in `timeZone`.

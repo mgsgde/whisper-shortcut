@@ -217,17 +217,21 @@ def decide_lane(proposal, existing, gaps, in_flight):
 
 
 def load_proposals(paths):
-    out = []
+    """Returns (proposals, readable_paths). A file that parsed but held nothing still counts as
+    readable: it was consumed, and leaving it in `incoming` only makes the log say "0 proposal(s)
+    from 2 file(s)" every tick."""
+    out, readable = [], []
     for path in paths:
         try:
             data = json.load(open(path, encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
             log(f"WARN: unreadable proposal file {path}: {exc}")
             continue
+        readable.append(path)
         for item in (data if isinstance(data, list) else [data]):
             if isinstance(item, dict):
                 out.append((path, item))
-    return out
+    return out, readable
 
 
 def send_mail(subject, body, no_mail=False, verdict_args=()):
@@ -303,7 +307,7 @@ def main():
                 f"({row['deadline']!r}) — it will never build. Give it one or flag it ASK.")
 
     gaps = open_gap_numbers()
-    proposals = load_proposals(files)
+    proposals, readable_files = load_proposals(files)
     log(f"{len(proposals)} proposal(s) from {len(files)} file(s) · {len(open_auto)} in flight · "
         f"{len(parked)} parked · cap {MAX_INFLIGHT}")
 
@@ -371,13 +375,6 @@ def main():
     for row in ripe:
         queue_edit("set-flag", str(row["num"]), "BUILD")
         log(f"🟢 promoted #{row['num']} — veto window ended {row['deadline']}")
-
-    if not args.dry_run:
-        archive = os.path.join(incoming, "archive")
-        os.makedirs(archive, exist_ok=True)
-        for path in {p for p, _ in proposals}:
-            if os.path.dirname(path) == incoming:
-                shutil.move(path, os.path.join(archive, os.path.basename(path)))
 
     if announcements or ripe or released:
         lines = []
@@ -450,15 +447,27 @@ def main():
     # in the shared checkout would sweep that work into a commit titled "Groom implementer
     # queue". Naming the path makes the commit contain exactly this file, whatever the index
     # holds.
+    committed = True
     if (filed or ripe or released) and not args.dry_run:
-        subprocess.run(
+        committed = subprocess.run(
             ["git", "commit", "-m",
              f"Groom implementer queue: {len(filed)} filed, {len(released)} released, "
              f"{len(ripe)} promoted\n\n"
              "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>",
              "--", "plans/implementer-queue.md"],
             cwd=REPO_ROOT, capture_output=True, check=False,
-        )
+        ).returncode == 0
+        if not committed:
+            log("WARN: the queue commit failed — proposal files stay in incoming, the next tick retries")
+
+    # Archive LAST, and only once the rows they produced are committed: a file moved away before
+    # a failed commit is a proposal nobody will read again. Unreadable files stay put on purpose.
+    if committed and not args.dry_run:
+        archive = os.path.join(incoming, "archive")
+        os.makedirs(archive, exist_ok=True)
+        for path in readable_files:
+            if os.path.dirname(path) == incoming:
+                shutil.move(path, os.path.join(archive, os.path.basename(path)))
     log(f"done — {len(filed)} filed, {len(released)} released, {len(ripe)} promoted")
 
 

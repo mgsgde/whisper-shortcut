@@ -8,6 +8,10 @@ import SwiftUI
 /// files, so every fix to the reveal button, the Keychain-failure warning, or the
 /// don't-blank-on-failed-read rule had to be made four times.
 struct APIKeyEntrySection: View {
+  /// Long enough that a paste or typed key is one Keychain write, short enough
+  /// that leaving the field still persists before the user dictates.
+  static let saveDelay: Duration = .milliseconds(500)
+
   let provider: APIKeyProvider
 
   /// Where the typed key lives. Google binds `viewModel.data.googleAPIKey` because
@@ -20,6 +24,7 @@ struct APIKeyEntrySection: View {
 
   @State private var isKeyVisible: Bool = false
   @State private var keychainSaveError: OSStatus?
+  @State private var saveTask: Task<Void, Never>?
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
@@ -56,14 +61,19 @@ struct APIKeyEntrySection: View {
             key = stored
           }
         }
+        .onDisappear { flushSave() }
         .onChange(of: key) { _, newValue in
           // `onAppear` loading the stored key also fires this. Treat that as a load, not a save:
           // otherwise merely opening Settings → Accounts rewrites every key and pops the
           // "use the cloud models instead?" offer, which promises to ask only when a key is saved.
-          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
-          Task {
-            keychainSaveError = await provider.store(newValue)
+          // Back at the stored key (e.g. backspace within the debounce window): drop the pending
+          // save, or it would still write the intermediate value.
+          guard newValue != (KeychainManager.shared.get(provider.credential) ?? "") else {
+            saveTask?.cancel()
+            saveTask = nil
+            return
           }
+          scheduleSave(newValue)
         }
 
         Button(action: { isKeyVisible.toggle() }) {
@@ -99,6 +109,25 @@ struct APIKeyEntrySection: View {
         }
         .fixedSize(horizontal: false, vertical: true)
       }
+    }
+  }
+
+  private func scheduleSave(_ value: String) {
+    saveTask?.cancel()
+    saveTask = Task { @MainActor in
+      try? await Task.sleep(for: Self.saveDelay)
+      guard !Task.isCancelled else { return }
+      keychainSaveError = await provider.store(value)
+    }
+  }
+
+  private func flushSave() {
+    saveTask?.cancel()
+    saveTask = nil
+    let value = key
+    guard value != (KeychainManager.shared.get(provider.credential) ?? "") else { return }
+    Task { @MainActor in
+      keychainSaveError = await provider.store(value)
     }
   }
 

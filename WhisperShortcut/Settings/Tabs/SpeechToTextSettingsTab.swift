@@ -11,6 +11,14 @@ struct SpeechToTextSettingsTab: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      #if !APP_STORE
+      // First, and next to the model picker: Live depends on the model, so the requirement and
+      // its one-click fix sit where the cause is.
+      dictateModeSection
+
+      SpacedSectionDivider()
+      #endif
+
       // Transcription Model Section
       modelSection
 
@@ -24,6 +32,13 @@ struct SpeechToTextSettingsTab: View {
       // Language Section (only for Whisper)
       if !viewModel.data.selectedTranscriptionModel.isGemini {
         languageSection
+        SpacedSectionDivider()
+      }
+
+      // Punctuation (offline models only: they are the ones that add marks on their own and
+      // write spoken marks out as words)
+      if viewModel.data.selectedTranscriptionModel.isOffline {
+        punctuationSection
         SpacedSectionDivider()
       }
 
@@ -108,6 +123,14 @@ struct SpeechToTextSettingsTab: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(.top, SettingsConstants.internalSectionSpacing)
+    #else
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Add a term from anywhere: select it, then right-click → Services → Add to WhisperShortcut Glossary. No model is involved, so this also works while Offline Mode is on. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    .padding(.top, SettingsConstants.internalSectionSpacing)
     #endif
   }
 
@@ -145,6 +168,39 @@ struct SpeechToTextSettingsTab: View {
             .fontWeight(.medium)
             .foregroundColor(.secondary)
         }
+      }
+    }
+  }
+
+  // MARK: - Punctuation Section
+  @ViewBuilder
+  private var punctuationSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Punctuation",
+        systemImage: "text.quote",
+        subtitle: "Offline models set periods and commas on their own. Choose Only when spoken to set every mark yourself."
+      )
+
+      Picker("Punctuation", selection: $viewModel.data.punctuationMode) {
+        ForEach(PunctuationMode.allCases, id: \.self) { mode in
+          Text(mode.displayName)
+            .tag(mode)
+        }
+      }
+      .pickerStyle(.menu)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onChange(of: viewModel.data.punctuationMode) {
+        Task {
+          await viewModel.saveSettings()
+        }
+      }
+
+      if viewModel.data.punctuationMode == .spokenOnly {
+        Text("Only when spoken: no punctuation is added by itself. Say „Punkt“, „Komma“, „Fragezeichen“, „Ausrufezeichen“, „Doppelpunkt“ or „Schrägstrich“. German, offline models.")
+          .font(.callout)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
   }
@@ -188,6 +244,97 @@ struct SpeechToTextSettingsTab: View {
       }
     }
   }
+
+  #if !APP_STORE
+  // MARK: - Dictate Mode Section
+
+  /// Recomputed on every render, so switching the model below updates the warning at once.
+  private var liveUnavailable: LiveDictation.Unavailable? {
+    let model = viewModel.data.selectedTranscriptionModel
+    return LiveDictation.unavailableReason(
+      model: model, downloaded: model.isOfflineModelAvailable(),
+      appleSilicon: LiveDictation.isAppleSilicon, duringMeeting: false)
+  }
+
+  private var dictateModeSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Mode",
+        systemImage: "text.cursor",
+        subtitle: "What the Dictate shortcut and 🌐 Fn do. The Dictate Live shortcut always starts Dictate Live."
+      )
+
+      Picker("Mode", selection: Binding(
+        get: { viewModel.data.dictateMode },
+        set: { newValue in
+          DebugLogger.log("SETTINGS: Dictate mode set to \(newValue.rawValue)")
+          viewModel.data.dictateMode = newValue
+          Task { await viewModel.saveSettings() }
+        }
+      )) {
+        ForEach(DictateMode.allCases, id: \.self) { mode in
+          Text(mode.displayName).tag(mode)
+        }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .fixedSize()
+
+      switch viewModel.data.dictateMode {
+      case .dictate:
+        modeCaption("The text is inserted when you stop.")
+      case .live:
+        if let liveUnavailable {
+          // Selectable anyway: refusing the click silently looked like a broken control.
+          liveUnavailableWarning(liveUnavailable)
+        } else {
+          modeCaption("Text appears at the cursor after each pause, transcribed offline by Parakeet Ultra.")
+        }
+      }
+    }
+  }
+
+  private func modeCaption(_ text: LocalizedStringKey) -> some View {
+    Text(text)
+      .font(.callout)
+      .foregroundColor(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private func liveUnavailableWarning(_ reason: LiveDictation.Unavailable) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(.orange)
+      VStack(alignment: .leading, spacing: 2) {
+        // `message` points to Settings → Dictate, which is this tab.
+        Group {
+          if reason == .notParakeet {
+            Text("Dictate Live works with the offline Parakeet Ultra model. Select it below.")
+          } else {
+            Text(verbatim: reason.message)
+          }
+        }
+          .font(.callout)
+          .fixedSize(horizontal: false, vertical: true)
+        Text("Until then, the Dictate shortcut and Fn start nothing.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+      }
+      Spacer(minLength: 8)
+      if reason == .notParakeet && TranscriptionModel.parakeetUltra.isOfflineModelAvailable() {
+        Button("Use Parakeet Ultra") {
+          DebugLogger.log("SETTINGS: Dictate Live warning — switched Dictate model to Parakeet Ultra")
+          viewModel.data.selectedTranscriptionModel = .parakeetUltra
+          Task { await viewModel.saveSettings() }
+        }
+        .controlSize(.small)
+        .pointerCursorOnHover()
+      }
+    }
+    .padding(10)
+    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+  }
+  #endif
 
   // MARK: - Transcription Tuning Section
 

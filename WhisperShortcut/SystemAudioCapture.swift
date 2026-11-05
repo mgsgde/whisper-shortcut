@@ -98,10 +98,8 @@ struct OutputRoute: Equatable {
   let transportType: UInt32
   let dataSource: UInt32?
 
-  /// Headphone data source on a built-in device ('hdpn'). Not a CoreAudio API constant — these
+  /// Speaker data source on a built-in device ('ispk'). Not a CoreAudio API constant — these
   /// codes are device-specific values, not part of the transport-type enum.
-  private static let headphoneDataSource: UInt32 = 0x6864_706e
-  /// Speaker data source on a built-in device ('ispk').
   private static let speakerDataSource: UInt32 = 0x6973_706b
 
   var isLikelySpeaker: Bool {
@@ -397,7 +395,6 @@ struct SystemAudioPermissionHeuristic {
 final class SystemAudioCapture {
 
   let buffer = SystemAudioBuffer()
-  var onOutputRouteChange: ((OutputRoute?) -> Void)?
   var onPermissionSuspectedChange: ((Bool) -> Void)?
   /// Main thread. Fired when the tap could not be started or restarted; the capture has already
   /// stopped itself.
@@ -416,7 +413,6 @@ final class SystemAudioCapture {
   // Owned by `controlQueue`.
   private var ownProcessObjectID = AudioObjectID(kAudioObjectUnknown)
   private var processTapID = AudioObjectID(kAudioObjectUnknown)
-  private var tapUUID: UUID?
   private var tapFormat = AudioStreamBasicDescription()
   private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
   private var ioProcID: AudioDeviceIOProcID?
@@ -554,7 +550,6 @@ final class SystemAudioCapture {
           _ = self.peakMeter.takeAndReset()
           let elapsed = String(format: "%.2f", Date().timeIntervalSince(startedAt))
           DebugLogger.logAudio("SYSTEM-AUDIO: started tap \(summary) after \(elapsed)s")
-          self.onOutputRouteChange?(OutputRoute.current())
         }
       } catch {
         // Already logged inside setUpCaptureGraph().
@@ -648,7 +643,6 @@ final class SystemAudioCapture {
       throw NSError(domain: "SystemAudioCapture", code: Int(status))
     }
     processTapID = newTapID
-    tapUUID = uuid
 
     var tapFormatAddress = AudioObjectPropertyAddress(
       mSelector: kAudioTapPropertyFormat,
@@ -830,7 +824,6 @@ final class SystemAudioCapture {
     ioProcID = nil
     aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
     processTapID = AudioObjectID(kAudioObjectUnknown)
-    tapUUID = nil
   }
 
   private static func destroyGraph(
@@ -947,7 +940,6 @@ final class SystemAudioCapture {
           self.lastPeakLog = Date()
           self.peakWindowsLogged = 0
           _ = self.peakMeter.takeAndReset()
-          self.onOutputRouteChange?(OutputRoute.current())
           if self.restartPending {
             self.restartPending = false
             self.handleDefaultOutputDeviceChanged()

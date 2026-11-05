@@ -232,7 +232,7 @@ actor TrelloAPIClient {
       throw TrelloAPIError.unauthorized
     }
     guard (200..<300).contains(http.statusCode) else {
-      let body = String(data: data, encoding: .utf8) ?? ""
+      let body = Self.redactingSecretsForLog(String(data: data, encoding: .utf8) ?? "")
       DebugLogger.logError("TRELLO: HTTP \(http.statusCode) body=\(body.prefix(300))")
       throw TrelloAPIError.requestFailed(http.statusCode, body)
     }
@@ -240,6 +240,28 @@ actor TrelloAPIClient {
   }
 
   // MARK: - Helpers
+
+  /// Error text with credential values removed. The rest of the body stays so a
+  /// failure is still diagnosable. Trello keys are 32 hex characters and tokens
+  /// are 64; card ids are 24 and are left in place.
+  static func redactingSecretsForLog(_ text: String) -> String {
+    var text = replacing(
+      text,
+      pattern: #"(?i)\b((?:key|token)(?:=|%3[Dd]))[^&\s"'<>]*"#,
+      template: "$1REDACTED")
+    text = replacing(
+      text,
+      pattern: #"(?i)("(?:key|token)"\s*:\s*")[^"]*(")"#,
+      template: "$1REDACTED$2")
+    text = replacing(text, pattern: #"\b[0-9a-fA-F]{32,}\b"#, template: "REDACTED")
+    return text
+  }
+
+  private static func replacing(_ text: String, pattern: String, template: String) -> String {
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+    let range = NSRange(text.startIndex..., in: text)
+    return regex.stringByReplacingMatches(in: text, range: range, withTemplate: template)
+  }
 
   private func encodedPathComponent(_ value: String) -> String {
     var allowed = CharacterSet.urlPathAllowed

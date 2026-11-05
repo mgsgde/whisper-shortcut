@@ -113,6 +113,19 @@ extension UpdaterService: SPUUpdaterDelegate {
       DebugLogger.log("UPDATER: update cycle finished with error: \(error.logDescription)")
     } else {
       DebugLogger.log("UPDATER: update cycle finished")
+      // Sparkle only reports "no update" here, never the feed's newest version, so the log
+      // cannot compare the two without new plumbing. Record what the client is and which
+      // channel it reads: a "no update found" on Stable may simply mean the channel is
+      // behind the newest release, not that the app is current. Latest sees every release.
+      let channel = UpdateChannel.current()
+      let hint =
+        channel == .stable
+        ? "; on Stable this can mean the channel is behind the newest release"
+        : "; Latest sees every published release"
+      DebugLogger.log(
+        "UPDATER: no update found for \(AppConstants.appVersion) (build \(AppConstants.appBuildNumber)) "
+          + "on channel \(channel.rawValue)" + hint
+      )
     }
   }
 }

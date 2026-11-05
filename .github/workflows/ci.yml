@@ -2,11 +2,18 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
   workflow_call:
 
-# Offline unit tests only. No secrets, no .env, no live provider calls.
+# Offline unit tests + unsigned compile of the direct scheme. No secrets, no .env,
+# no live provider calls. The hermetic job already builds WhisperShortcut-AppStore;
+# this compile job catches `#if APP_STORE` drift in the direct/GitHub build.
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   hermetic-tests:
@@ -21,6 +28,13 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: spm-home-${{ runner.os }}-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-home-${{ runner.os }}-
 
       - name: Run hermetic tests
         env:
@@ -54,3 +68,41 @@ jobs:
           path: ${{ runner.temp }}/TestResults.xcresult
           retention-days: 7
           if-no-files-found: warn
+
+  compile-schemes:
+    name: Compile ${{ matrix.scheme }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [WhisperShortcut]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: spm-home-${{ runner.os }}-${{ hashFiles('WhisperShortcut.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: spm-home-${{ runner.os }}-
+
+      - name: Compile ${{ matrix.scheme }} (unsigned Debug)
+        run: |
+          xcodebuild build \
+            -project WhisperShortcut.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-${{ matrix.scheme }}" \
+            -skipPackagePluginValidation \
+            -disableAutomaticPackageResolution \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=

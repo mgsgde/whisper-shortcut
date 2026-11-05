@@ -17,7 +17,10 @@
 usage_limit_pattern() {
     # Keep "not your usage limit" out: Claude uses that phrase for a server-side throttle that
     # is explicitly not the plan quota, and waiting hours for it would be waiting for nothing.
-    printf '%s' 'hit your (session|weekly|opus|sonnet) limit|usage limit reached|you.?ve hit your usage limit|resource_exhausted|rate_limit_error|rate limit exceeded|spend limit reached|out of extra usage|request rejected \(429\)|too many requests'
+    # Cursor's quota exit reads "ActionRequiredError: Increase limits for faster responses You're
+    # out of usage. Switch to Auto, …" and carries no reset time — run_agent_cli then takes its
+    # no-reset backoff path and, past the wait cap, defers (exit 77) instead of failing the run.
+    printf '%s' 'hit your (session|weekly|opus|sonnet) limit|usage limit reached|you.?ve hit your usage limit|resource_exhausted|rate_limit_error|rate limit exceeded|spend limit reached|out of extra usage|you.?re out of usage|increase limits for faster responses|request rejected \(429\)|too many requests'
 }
 
 usage_limit_in_log() {
@@ -111,6 +114,10 @@ if [[ "${BASH_SOURCE[0]}" == "$0" && "${1:-}" == "--self-test" ]]; then
     usage_limit_in_log "$tmp" || { echo "FAIL: spend limit not detected"; exit 1; }
     epoch=$(parse_usage_reset_epoch "$tmp")
     [[ "$epoch" == "1786233600" ]] || { echo "FAIL: UTC date parsed as $epoch, want 1786233600"; exit 1; }
+
+    printf '%s\n' "ActionRequiredError: Increase limits for faster responses You're out of usage. Switch to Auto, or ask your admin to increase your limit to continue." >"$tmp"
+    usage_limit_in_log "$tmp" || { echo "FAIL: Cursor 'out of usage' not detected"; exit 1; }
+    [[ -z "$(parse_usage_reset_epoch "$tmp")" ]] || { echo "FAIL: Cursor message has no reset time but one was parsed"; exit 1; }
 
     printf '%s\n' "API Error: Server is temporarily limiting requests (not your usage limit)" >"$tmp"
     if usage_limit_in_log "$tmp"; then

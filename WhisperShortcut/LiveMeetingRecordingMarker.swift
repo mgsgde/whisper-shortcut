@@ -28,9 +28,11 @@ enum LiveMeetingRecordingMarker {
     case notifyInterrupted(stem: String)
   }
 
+  static let fileName = "live-meeting-recording.json"
+
   private static var fileURL: URL {
     AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent("live-meeting-recording.json")
+      .appendingPathComponent(fileName)
   }
 
   // MARK: - Decision (pure, unit-tested)

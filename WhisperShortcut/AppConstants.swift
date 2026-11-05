@@ -202,6 +202,16 @@ Output rules (CRITICAL):
   static let readAloudRewriteMaxGrowth: Double = 1.3
   static let readAloudRewriteGrowthGuardMinChars = 200
 
+  // MARK: - Auto-paste timing
+  /// Pause between writing the result to the pasteboard and posting ⌘V.
+  static let autoPastePreDelay: Duration = .milliseconds(150)
+  /// How long after ⌘V the user's previous clipboard is put back. Slow receivers (browser, Citrix,
+  /// RDP) read the pasteboard lazily; restoring earlier would make them paste the old content.
+  static let clipboardRestoreDelay: TimeInterval = 3.0
+  /// Gap after each Dictate Live piece's ⌘V before the next piece may replace the pasteboard; short
+  /// on purpose, since `clipboardRestoreDelay` would stall live text.
+  static let livePieceGapDelay: TimeInterval = 0.4
+
   // MARK: - Support Contact
   static let whatsappSupportNumber = "+4917641952181"
   static let githubRepositoryURL = "https://github.com/mgsgde/whisper-shortcut"
@@ -592,8 +602,9 @@ Transcript:
   /// so a file-count cap alone can let the pool grow to hundreds of MB; the oldest samples are evicted
   /// until the pool fits under both caps.
   static let audioSampleMaxTotalBytes: Int = 200_000_000
-  /// Audio older than this many days is pruned at the start of each Smart Improvement run. Matches the
-  /// text-analysis window (`contextTier3Days`) so audio and text cover the same period.
+  /// Audio older than this many days is pruned on every launch (`ContextLogger.performRotation`)
+  /// and at the start of each Smart Improvement run. Matches the text-analysis window
+  /// (`contextTier3Days`) so audio and text cover the same period.
   static let audioSampleRetentionDays: Int = 30
   /// Maximum audio clips attached to a single focus's Gemini request during Smart Improvement. Clips
   /// are chosen content-aware: one representative clip per recurring candidate term (newest first),

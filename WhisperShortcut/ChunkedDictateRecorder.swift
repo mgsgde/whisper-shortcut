@@ -30,6 +30,28 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   /// at least one rotation happened — single-chunk sessions never call this.
   var onFinalChunk: ((URL, Int, Bool) -> Void)?
 
+  /// When a chunk may be rotated out: at least `minDuration` long, and only after `silenceDuration`
+  /// of continuous silence. `.standard` is what Dictate has always used (streaming Dictate wants
+  /// few, long chunks); `.live` cuts at every short pause for Dictate Live, where each piece is
+  /// inserted at the cursor as soon as it is decoded (plans/active/live-dictate-insert.md).
+  struct RotationPolicy: Equatable {
+    let minDuration: TimeInterval
+    let silenceDuration: TimeInterval
+
+    static let standard = RotationPolicy(
+      minDuration: AppConstants.dictateChunkMinDuration,
+      silenceDuration: AppConstants.dictateChunkSilenceDuration)
+    /// Dragon-like: a piece after ~0.6 s of silence (three 0.2 s samples), never shorter than 1.5 s
+    /// — Parakeet rejects audio under 0.3 s, and a fragment of a word decodes badly.
+    static let live = RotationPolicy(minDuration: 1.5, silenceDuration: 0.6)
+  }
+
+  /// The policy for the next recording. Set before `startRecording`; every recording's stop puts it
+  /// back to `.standard`, so only the recording it was set for uses another one.
+  var rotationPolicy: RotationPolicy = .standard
+  /// The policy of the running session, fixed at its start.
+  private var sessionRotationPolicy: RotationPolicy = .standard
+
   // MARK: - Constants
   private enum Constants {
     static let sampleRate: Double = 24000.0
@@ -47,13 +69,10 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
   private static let meteringInterval: TimeInterval = 0.05
   /// Silence-tail and rotation logic run at the 0.2s cadence AudioRecorder was tuned for.
   private static let silenceSampleDecimation = 4
-  /// Decimated samples of continuous silence needed to rotate a chunk out.
-  private static let rotationSilenceSamplesNeeded = max(
-    1,
-    Int(
-      ceil(
-        AppConstants.dictateChunkSilenceDuration
-          / (meteringInterval * Double(silenceSampleDecimation)))))
+  /// Decimated samples of continuous silence needed to rotate a chunk out under `policy`.
+  static func rotationSilenceSamplesNeeded(for policy: RotationPolicy) -> Int {
+    max(1, Int(ceil(policy.silenceDuration / (meteringInterval * Double(silenceSampleDecimation)) - 1e-9)))
+  }
 
   /// `AVAudioRecorder.record()` and `.stop()` both block on CoreAudio's I/O thread —
   /// `AudioQueueXPC_Bridge::Start` and `AQ::API::Queue::AwaitAllPendingCallbacks` have each
@@ -122,6 +141,9 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     // Deliberately not gated on `recorder.isRecording`: a stop that lands in the window
     // before the async `record()` has flipped that flag must still end the session.
     // `isSessionActive` is our own state and is the authoritative signal.
+    // Reset even when nothing runs: a start that never began (permission prompt still open) must
+    // not hand Dictate Live's short-pause cutting to whatever starts the recorder later.
+    rotationPolicy = .standard
     guard isSessionActive, let recorder = activeRecorder else { return false }
     isSessionActive = false
 
@@ -141,6 +163,7 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meteringTimer?.invalidate()
     meteringTimer = nil
     isSessionActive = false
+    rotationPolicy = .standard
     // Stops go to audioQueue; the closure's own strong refs keep the recorders alive past
     // the nil-out below. The files deleted here are already-rotated chunks — never the
     // recorder's own open file — so the deletion does not race the stop.
@@ -190,6 +213,11 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meteringTickCount = 0
     consecutiveSilenceSamples = 0
     lastRecordingWasSilent = false
+    sessionRotationPolicy = rotationPolicy
+    if sessionRotationPolicy != .standard {
+      DebugLogger.logAudio(
+        "AUDIO: Chunk rotation for this recording: min \(sessionRotationPolicy.minDuration)s, silence \(sessionRotationPolicy.silenceDuration)s")
+    }
     isSessionActive = true
 
     do {
@@ -288,12 +316,12 @@ class ChunkedDictateRecorder: NSObject, DictationAudioRecording {
     meterSampleCount += 1
 
     guard isSessionActive, let wallStart = currentChunkWallStart,
-      Date().timeIntervalSince(wallStart) >= AppConstants.dictateChunkMinDuration
+      Date().timeIntervalSince(wallStart) >= sessionRotationPolicy.minDuration
     else { return }
 
     if power < Self.silenceThresholdDB {
       consecutiveSilenceSamples += 1
-      if consecutiveSilenceSamples >= Self.rotationSilenceSamplesNeeded {
+      if consecutiveSilenceSamples >= Self.rotationSilenceSamplesNeeded(for: sessionRotationPolicy) {
         rotateChunk()
       }
     } else {

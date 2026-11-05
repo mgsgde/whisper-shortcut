@@ -122,16 +122,29 @@ final class DictatePromptSelectionCapture: @unchecked Sendable {
   static let lateCopyWatch: TimeInterval = 2.0
   static let pollInterval: Duration = .milliseconds(15)
 
+  /// True when a macOS Service supplied this selection. That text is the selection itself, so
+  /// Dictate Prompt must not switch to screenshot-selection mode and ignore it.
+  let isFromService: Bool
+
   private let lock = NSLock()
   private var isResolved = false
   private var text: String?
   private var waiters: [CheckedContinuation<String?, Never>] = []
 
-  init() {}
+  init(isFromService: Bool = false) {
+    self.isFromService = isFromService
+  }
 
   /// Already decided at creation (the App Store clipboard path).
   static func resolved(_ text: String?) -> DictatePromptSelectionCapture {
     let capture = DictatePromptSelectionCapture()
+    capture.resolve(text)
+    return capture
+  }
+
+  /// Selected text a macOS Service handed over. Resolved immediately: there is no pasteboard poll.
+  static func fromService(_ text: String) -> DictatePromptSelectionCapture {
+    let capture = DictatePromptSelectionCapture(isFromService: true)
     capture.resolve(text)
     return capture
   }

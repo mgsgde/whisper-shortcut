@@ -35,7 +35,6 @@ struct OwnServerEndpointSection: View {
   /// parse half-way through would otherwise fold the form away under the cursor.
   @State private var showsSummary = false
   @State private var showsAdvanced = false
-  @State private var showsTenantNotes = false
 
   private struct HeaderEntry: Identifiable {
     var id = UUID()
@@ -397,6 +396,9 @@ struct OwnServerEndpointSection: View {
           if route == .dictate {
             Label("No key: fine for a local speech server without auth.", systemImage: "info.circle")
               .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
+          } else if OpenAIChatPreferences.allowsKeylessRequests(baseURL: endpointURL) {
+            Label("No key: fine for a local server without auth.", systemImage: "info.circle")
+              .labelStyle(OwnServerStatusLabelStyle(tint: .secondary))
           } else {
             Label("Chat needs this server's key.", systemImage: "exclamationmark.circle.fill")
               .labelStyle(OwnServerStatusLabelStyle(tint: .orange))
@@ -438,8 +440,8 @@ struct OwnServerEndpointSection: View {
 
   // MARK: - State
 
-  /// Dictate runs without a key (a local Whisper server needs none); Chat and Dictate Prompt's
-  /// rewrite step do not.
+  /// Dictate runs without a key. Chat and Dictate Prompt do too when the host is local
+  /// (`OpenAIChatPreferences.allowsKeylessRequests`); a remote host still needs a key.
   private var isReadyForRoute: Bool {
     switch route {
     case .dictate: return CustomEndpointPreferences.isTranscriptionConfigured
@@ -453,7 +455,7 @@ struct OwnServerEndpointSection: View {
     return components.port.map { "\(host):\($0)" } ?? host
   }
 
-  /// Dictate works against a keyless local Whisper server; Chat does not.
+  /// Dictate's key is optional. Chat and Dictate Prompt ask for one unless the host is local.
   private var keyPlaceholder: LocalizedStringKey {
     route == .dictate ? "Optional for a local server" : "This server's API key"
   }

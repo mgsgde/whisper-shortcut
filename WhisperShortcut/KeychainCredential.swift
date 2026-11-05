@@ -32,6 +32,18 @@ enum KeychainCredential: String, CaseIterable {
   /// validation, "has any key" checks).
   case chatGPTPlan = "chatgpt-plan-credentials"
 
+  /// The chat provider this credential is the API key of; nil for tokens and endpoint settings.
+  var chatProvider: ChatModelProvider? {
+    switch self {
+    case .google: return .gemini
+    case .xai: return .grok
+    case .anthropic: return .anthropic
+    case .openAI, .legacyOpenAI: return .openai
+    case .openRouter: return .openRouter
+    default: return nil
+    }
+  }
+
   /// Keychain account name this credential is stored under.
   var accountName: String { rawValue }
 

@@ -35,6 +35,10 @@ extension MCPConfigTools {
     case .shortcut:
       out["type"] = "shortcut"
       out["format"] = MCPSettingsCatalog.shortcutFormatHint
+    case .stringList(let maxItems, let maxLength):
+      out["type"] = "string_list"
+      out["max_items"] = maxItems
+      out["max_length"] = maxLength
     }
     return out
   }

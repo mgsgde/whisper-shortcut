@@ -118,6 +118,22 @@ struct ChatAgentRunnerTests {
     #expect(provider.requests.last?.disableBuiltIns == true)
   }
 
+  @Test("Anthropic keeps tool declarations on the final round; others drop them")
+  func anthropicKeepsToolsOnFinalRound() {
+    let tools = [tool]
+    let other = ScriptedProvider([])
+    #expect(
+      ChatAgentRunner.declarationsForRound(tools, isFinalRound: true, provider: other).isEmpty)
+    #expect(
+      ChatAgentRunner.declarationsForRound(
+        tools, isFinalRound: true, provider: AnthropicChatProvider.shared
+      ).count == 1)
+    #expect(
+      ChatAgentRunner.declarationsForRound(
+        tools, isFinalRound: false, provider: AnthropicChatProvider.shared
+      ).count == 1)
+  }
+
   @Test("An undeclared tool is refused even when it needs no approval")
   func undeclaredToolRefused() async throws {
     let provider = ScriptedProvider([

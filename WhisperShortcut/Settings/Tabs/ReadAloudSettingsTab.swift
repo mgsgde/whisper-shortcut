@@ -173,8 +173,14 @@ struct ReadAloudSettingsTab: View {
         subtitle: nil
       )
 
-      // Selection-based Read Aloud copies via ⌘C (Accessibility); no shortcut in the App Store build.
-      #if !APP_STORE
+      // Selection-based Read Aloud copies via ⌘C (Accessibility) in the direct build. The App
+      // Store build receives the selection from a macOS Service instead.
+      #if APP_STORE
+      Text("In this version, select text, then right-click → Services → Read Aloud with WhisperShortcut. To give it a keyboard shortcut, open System Settings → Keyboard → Keyboard Shortcuts → Services → Text.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+      #else
       ShortcutHintRow(label: "Shortcut:", shortcut: viewModel.data.readAloud)
       #endif
 

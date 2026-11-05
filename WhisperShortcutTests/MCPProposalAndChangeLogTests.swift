@@ -27,7 +27,7 @@ struct MCPProposalAndChangeLogTests {
     #expect(env.proposals.pending.isEmpty)
     #expect(env.changeLog.changes.first?.id == changeID)
     #expect(env.changeLog.changes.first?.viaProposal == true)
-    let status = env.tools().call(name: "get_proposal_status", arguments: ["id": id], access: .write)
+    let status = env.tools().call(name: "get_proposal_status", arguments: ["id": id], access: .read)
     #expect(obj(status)["status"] as? String == "accepted")
   }
 
@@ -152,7 +152,11 @@ struct MCPProposalAndChangeLogTests {
     env.systemPrompts.updateSection(.promptMode, content: "Old rule.")
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
-    let id = obj(r)["change_id"] as? String ?? ""
+    #expect(obj(r)["status"] as? String == "pending_review")
+    guard case .success(let id) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
+      Issue.record("accept failed"); return
+    }
+    #expect(env.systemPrompts.loadSection(.promptMode) == "New rule.")
     #expect(env.changeLog.undo(id) == .undone)
     #expect(env.systemPrompts.loadSection(.promptMode) == "Old rule.")
     #expect(env.changeLog.changes.first?.undoneAt != nil)
@@ -166,7 +170,10 @@ struct MCPProposalAndChangeLogTests {
     env.systemPrompts.updateSection(.promptMode, content: "Old rule.")
     let r = env.tools().call(name: "update_system_prompt",
       arguments: ["section": "dictate_prompt", "content": "New rule.", "rationale": "r"], access: .write)
-    let id = obj(r)["change_id"] as? String ?? ""
+    guard case .success(let id) = env.proposals.accept(obj(r)["id"] as? String ?? "") else {
+      Issue.record("accept failed"); return
+    }
+    #expect(env.systemPrompts.loadSection(.promptMode) == "New rule.")
     env.systemPrompts.updateSection(.promptMode, content: "Manual edit.")
     #expect(env.changeLog.undo(id) == .conflict(current: "Manual edit."))
     #expect(env.systemPrompts.loadSection(.promptMode) == "Manual edit.")

@@ -68,7 +68,7 @@ struct ChunkRetryPolicy {
         // Check if this is a rate limit or quota error with retry info
         if let transcriptionError = error as? TranscriptionError {
           switch transcriptionError {
-          case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
+          case .rateLimited(let retryAfter, _, _), .quotaExceeded(let retryAfter):
             // Only pause other chunks when the error is retryable (transient rate limit).
             if transcriptionError.isRetryable {
               await coordinator.reportRateLimit(retryAfter: retryAfter)

@@ -80,6 +80,12 @@ struct DebugLogger {
   // MARK: - File Logging
   private static let fileLogger = FileLogger.shared
   private static let errorFileWriter = ErrorFileWriter.shared
+
+  /// Closes cached error-log handles. Call after deleting the UserContext directory so later
+  /// error lines create a new `errors-*.log` instead of writing to an unlinked inode.
+  static func closeContextErrorLogHandles() {
+    errorFileWriter.resetHandles()
+  }
   
   // MARK: - Modern os_log Methods
   
@@ -385,6 +391,15 @@ struct DebugLogger {
   
 }
 
+/// A cached `FileHandle` is invalid once its path is gone (Delete context data removes
+/// `UserContext/` under the handle). `ErrorFileWriter` reopens when this is false; the
+/// reopen itself is what the test drives.
+enum CachedWritableFile {
+  static func isStillOnDisk(path: String) -> Bool {
+    FileManager.default.fileExists(atPath: path)
+  }
+}
+
 // MARK: - File Logger
 /// Private file logger for writing logs to daily files
 private class FileLogger {
@@ -583,10 +598,13 @@ private class FileLogger {
 // MARK: - Error File Writer (context directory)
 /// Writes error and crash entries to UserContext/errors-YYYY-MM-DD.log for diagnostics.
 /// Uses the same Application Support path as the context directory so all app data stays in one place.
-private class ErrorFileWriter {
-  static let shared = ErrorFileWriter()
+final class ErrorFileWriter {
+  static let shared = ErrorFileWriter(suppressWritesDuringTests: true)
 
   private let logDirectory: URL
+  /// The process-wide writer must not append to the user's real error log from the test
+  /// host. A test instance passes false and a temporary directory.
+  private let suppressWritesDuringTests: Bool
   private let dateFormatter: DateFormatter
   private let timeFormatter: DateFormatter
   private var fileHandles: [String: FileHandle] = [:]
@@ -594,9 +612,18 @@ private class ErrorFileWriter {
   private static let logRetentionDays = 30
   private var currentDate: String?
 
-  init() {
-    logDirectory = AppSupportPaths.whisperShortcutApplicationSupportURL()
-      .appendingPathComponent("UserContext")
+  private convenience init(suppressWritesDuringTests: Bool) {
+    self.init(
+      logDirectory: AppSupportPaths.whisperShortcutApplicationSupportURL()
+        .appendingPathComponent("UserContext"),
+      suppressWritesDuringTests: suppressWritesDuringTests)
+  }
+
+  /// Writes into `logDirectory`. Tests pass a temporary directory and
+  /// `suppressWritesDuringTests: false` so a write is observable.
+  init(logDirectory: URL, suppressWritesDuringTests: Bool) {
+    self.logDirectory = logDirectory
+    self.suppressWritesDuringTests = suppressWritesDuringTests
     try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
 
     dateFormatter = DateFormatter()
@@ -621,8 +648,8 @@ private class ErrorFileWriter {
       || NSClassFromString("XCTestCase") != nil
   }()
 
-  fileprivate func write(message: String) {
-    guard !Self.isRunningTests else { return }
+  func write(message: String) {
+    if suppressWritesDuringTests, Self.isRunningTests { return }
     fileQueue.async { [weak self] in
       guard let self = self else { return }
       let today = self.dateFormatter.string(from: Date())
@@ -643,9 +670,27 @@ private class ErrorFileWriter {
     }
   }
 
+  /// Blocks until writes queued so far have finished. Tests use this to observe the file.
+  func waitForPendingWrites() {
+    fileQueue.sync {}
+  }
+
+  fileprivate func resetHandles() {
+    fileQueue.sync {
+      closeAllHandles()
+      currentDate = nil
+    }
+  }
+
   private func getFileHandle(for date: String) -> FileHandle? {
-    if let existingHandle = fileHandles[date] { return existingHandle }
     let logFile = logDirectory.appendingPathComponent("errors-\(date).log")
+    if let existingHandle = fileHandles[date] {
+      if CachedWritableFile.isStillOnDisk(path: logFile.path) {
+        return existingHandle
+      }
+      existingHandle.closeFile()
+      fileHandles.removeValue(forKey: date)
+    }
     if !FileManager.default.fileExists(atPath: logFile.path) {
       FileManager.default.createFile(atPath: logFile.path, contents: nil, attributes: nil)
     }

@@ -71,6 +71,57 @@ struct ModelSelectionReconcilerTests {
         == .openaiGPT5Mini)
   }
 
+  @Test("A keyed provider is not enough: a model the slot does not offer is replaced")
+  func selectionMustBeOneOfTheCandidates() {
+    // Users already migrated in v8.48 hold `openrouter-chat` in the Dictate Prompt slot.
+    let dictate = PromptModel.dictatePromptCapableModels
+    #expect(!dictate.contains(.openRouterChat))
+    let allKeyed: (ChatModelProvider) -> Bool = { _ in true }
+    #expect(!ModelSelectionReconciler.selectionIsUsable(.openRouterChat, among: dictate, hasKey: allKeyed))
+    #expect(ModelSelectionReconciler.selectionIsUsable(.gemini38Flash, among: dictate, hasKey: allKeyed))
+    // Candidate but key-less is still unusable.
+    #expect(!ModelSelectionReconciler.selectionIsUsable(.gemini38Flash, among: dictate, hasKey: { $0 == .openRouter }))
+
+    // Replacement tiers for the Dictate Prompt slot, in order.
+    // 1. preferred: a Gemini key wins; OpenRouter is not a Dictate Prompt candidate.
+    #expect(
+      ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: { $0 == .gemini || $0 == .openRouter })
+        == .gemini38Flash)
+    // 2. offline fallback for an OpenRouter-only user (Apple Silicon: the MLX default is a candidate).
+    let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
+    let openRouterOnly: (ChatModelProvider) -> Bool = { $0 == .openRouter || $0 == .local || $0 == .localMLX }
+    #expect(ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: openRouterOnly) == nil)
+    if dictate.contains(offline) {
+      #expect(ModelSelectionReconciler.keylessOfflineModel(among: dictate, hasKey: openRouterOnly) == offline)
+    }
+  }
+
+  @Test("When preferred and offline both yield nothing, a non-candidate still moves")
+  func nonCandidateAlwaysMoves() {
+    let fallback = SettingsDefaults.selectedPromptModel
+    let customOnly: (ChatModelProvider) -> Bool = { $0 == .customOpenAI || $0 == .local || $0 == .localMLX }
+    // Only a custom endpoint is keyed: `providerPreference` skips it and the key blocks the offline pick.
+    let dictate = PromptModel.dictatePromptCapableModels
+    #expect(ModelSelectionReconciler.preferredPromptModel(among: dictate, hasKey: customOnly) == nil)
+    #expect(ModelSelectionReconciler.keylessOfflineModel(among: dictate, hasKey: customOnly) == nil)
+    let moved = ModelSelectionReconciler.lastResortReplacement(
+      among: dictate, fallback: fallback, hasKey: customOnly)
+    #expect(moved == .customOpenAIEndpoint)
+    #expect(moved.map { dictate.contains($0) } == true)
+
+    // Intel-like list (no MLX default among the candidates), no keys at all: the factory default.
+    let intel: [PromptModel] = [.gemini38Flash, .openaiGPT4oAudio, .localModel]
+    #expect(ModelSelectionReconciler.keylessOfflineModel(among: intel, hasKey: { _ in false }) == nil)
+    #expect(
+      ModelSelectionReconciler.lastResortReplacement(
+        among: intel, fallback: .gemini38Flash, hasKey: { $0 == .local }) == .gemini38Flash)
+    // A keyed cloud candidate beats the factory default.
+    #expect(
+      ModelSelectionReconciler.lastResortReplacement(
+        among: intel, fallback: .gemini38Flash, hasKey: { $0 == .openai }) == .openaiGPT4oAudio)
+    #expect(ModelSelectionReconciler.lastResortReplacement(among: [], fallback: fallback, hasKey: { _ in true }) == nil)
+  }
+
   @Test("Key-less fallback picks the offline MLX default only when no cloud provider has a key")
   func keylessOfflineModelRule() {
     let offline = PromptModel.forLocalLLMModel(LocalLLMModelType.defaultModel)
@@ -164,6 +215,21 @@ struct ModelSelectionReconcilerTests {
     #expect(
       ModelSelectionReconciler.offlineTranscriptionReplacement(downloaded: .whisperLargeTurbo)
         == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+  }
+
+  @Test("A key-less cloud transcription slot falls back to a downloaded offline model, else stays")
+  func offlineFallbackTranscriptionRule() {
+    // The bug: OpenAI key removed, slot still on GPT Transcribe, turbo on disk.
+    #expect(
+      ModelSelectionReconciler.offlineFallbackTranscription(available: [.whisperLargeTurbo])
+        == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+    // The most accurate downloaded model wins, not the first one found.
+    #expect(
+      ModelSelectionReconciler.offlineFallbackTranscription(
+        available: [.whisperBase, .whisperLargeTurbo, .whisperTiny])
+        == TranscriptionModel.forOfflineModel(.whisperLargeTurbo))
+    // Nothing on disk: leave the selection alone rather than point at a download.
+    #expect(ModelSelectionReconciler.offlineFallbackTranscription(available: []) == nil)
   }
 
   @Test("Offline Mode moves the meeting summary and Smart Improvement slots onto the Dictate Prompt model and back")

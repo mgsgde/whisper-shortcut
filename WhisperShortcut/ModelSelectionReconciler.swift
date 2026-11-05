@@ -7,8 +7,10 @@ import Foundation
 /// provider the user *does* have a key for — so a single API key is enough to use every feature
 /// (transcription, dictate prompt, chat, meeting summary, smart improvement, read aloud).
 ///
-/// It never changes a selection whose provider already has a key, so explicit choices made when
-/// multiple keys are present are preserved. Offline Whisper and self-hosted transcription need no
+/// It keeps a selection whose provider has a key and that the slot actually offers
+/// (`selectionIsUsable`), so explicit choices made when multiple keys are present are preserved.
+/// A keyed selection the slot does not offer (e.g. `openrouter-chat` left in Dictate Prompt by an
+/// old migration) is rewritten. Offline Whisper and self-hosted transcription need no
 /// key and are left untouched.
 ///
 /// Run it at launch, after an API key is entered, and when settings load.
@@ -310,19 +312,41 @@ enum ModelSelectionReconciler {
       DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(upgrade.rawValue) (key added)")
       return
     }
-    if hasKey(current.provider) { return }
+    if selectionIsUsable(current, among: candidates, hasKey: { hasKey($0) }) { return }
     if let replacement = preferredPromptModel(among: candidates, hasKey: { hasKey($0) }) {
       UserDefaults.standard.set(replacement.rawValue, forKey: key)
-      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider))")
+      DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue) (no key for \(current.provider), or not offered for this feature)")
       return
     }
     guard offlineWhenKeyless,
       let offline = keylessOfflineModel(among: candidates, hasKey: { hasKey($0) })
-    else { return }
+    else {
+      // A selection the slot does not offer must still move (Intel without the MLX default, or only
+      // a custom-endpoint key, which `providerPreference` skips and which blocks the offline pick).
+      // A merely key-less candidate stays: nothing better exists and the user may add the key.
+      if !candidates.contains(current),
+        let forced = lastResortReplacement(among: candidates, fallback: fallback, hasKey: { hasKey($0) })
+      {
+        UserDefaults.standard.set(forced.rawValue, forKey: key)
+        DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(forced.rawValue) (not offered for this feature)")
+      }
+      return
+    }
     UserDefaults.standard.set(offline.rawValue, forKey: key)
     setKeylessOfflineFallback(
       key: key, record: KeylessOfflineRecord(fallback: offline, previous: current))
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(offline.rawValue) (no cloud key — offline)")
+  }
+
+  /// A stored selection can stay only if it is one of the slot's `candidates` *and* its provider has
+  /// a key. A key alone is not enough: `openrouter-chat` ended up in the Dictate Prompt slot via the
+  /// v8.48 custom-endpoint migration, has a key, and still throws in `SpeechService.performPrompt`
+  /// because it cannot take audio.
+  static func selectionIsUsable(
+    _ current: PromptModel, among candidates: [PromptModel],
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> Bool {
+    candidates.contains(current) && hasKeyForProvider(current.provider)
   }
 
   /// The offline MLX default, when it is among `candidates` (Apple Silicon) and no cloud provider
@@ -349,12 +373,29 @@ enum ModelSelectionReconciler {
     among candidates: [PromptModel],
     hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
   ) -> PromptModel? {
-    func isKeyedCloud(_ model: PromptModel) -> Bool {
-      model.provider != .local && model.provider != .localMLX && hasKeyForProvider(model.provider)
+    if let previous, candidates.contains(previous), isKeyedCloud(previous, hasKey: hasKeyForProvider) {
+      return previous
     }
-    if let previous, candidates.contains(previous), isKeyedCloud(previous) { return previous }
     return preferredPromptModel(among: candidates, hasKey: hasKeyForProvider)
-      ?? candidates.first(where: isKeyedCloud)
+      ?? candidates.first(where: { isKeyedCloud($0, hasKey: hasKeyForProvider) })
+  }
+
+  private static func isKeyedCloud(
+    _ model: PromptModel, hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> Bool {
+    model.provider != .local && model.provider != .localMLX && hasKeyForProvider(model.provider)
+  }
+
+  /// Where a selection the slot does not offer goes when neither `preferredPromptModel` nor the
+  /// offline fallback applies: the first keyed cloud candidate (same third tier as
+  /// `keylessUpgrade`, covering custom-endpoint and Anthropic keys), else the slot's factory
+  /// default, else its first candidate. Nil only for an empty candidate list.
+  static func lastResortReplacement(
+    among candidates: [PromptModel], fallback: PromptModel,
+    hasKey hasKeyForProvider: (ChatModelProvider) -> Bool
+  ) -> PromptModel? {
+    candidates.first(where: { isKeyedCloud($0, hasKey: hasKeyForProvider) })
+      ?? (candidates.contains(fallback) ? fallback : candidates.first)
   }
 
   struct KeylessOfflineRecord {
@@ -523,10 +564,41 @@ enum ModelSelectionReconciler {
     }
   }
 
+  /// Moves a cloud transcription slot whose provider has no key onto a provider that does.
+  ///
+  /// With no key at all it used to return silently, which left the slot stuck on a cloud model
+  /// that could only fail: a user who added an OpenAI key for Read Aloud, let `CloudModelOffer`
+  /// move both dictation slots to GPT Transcribe, and then removed the key kept POSTing meeting
+  /// chunks to api.openai.com (401 `invalidAPIKey`) while a downloaded offline model sat unused on
+  /// disk. The fallback below is what ends that state — but only onto a model that is actually
+  /// there, so it never invents a selection the user cannot run.
   private static func replaceTranscriptionSelection(key: String, current: TranscriptionModel) {
-    guard let provider = providerPreference.first(where: { hasKey($0) }) else { return }
+    guard let provider = providerPreference.first(where: { hasKey($0) }) else {
+      // No provider has a key. A provider that is keyed but has no transcription model (OpenRouter)
+      // still returns above, so the keyed path stays exactly as it was.
+      guard let offline = downloadedOfflineTranscription() else { return }
+      UserDefaults.standard.set(offline.rawValue, forKey: key)
+      DebugLogger.log(
+        "MODEL-RECONCILE: \(key): \(current.rawValue) → \(offline.rawValue) (no key, offline model available)")
+      return
+    }
     guard let replacement = transcriptionReplacement(for: provider) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     DebugLogger.log("MODEL-RECONCILE: \(key): \(current.rawValue) → \(replacement.rawValue)")
+  }
+
+  /// The best offline model the user has actually downloaded, or nil when none is on disk.
+  private static func downloadedOfflineTranscription() -> TranscriptionModel? {
+    offlineFallbackTranscription(
+      available: OfflineModelType.allCases.filter { ModelManager.shared.isModelAvailable($0) })
+  }
+
+  /// The pure half of the decision above, split out so the choice can be tested without
+  /// `ModelManager` and the on-disk model store. Unlike `offlineTranscriptionReplacement`, this
+  /// never falls back to a model that still needs downloading — a key-less slot that cannot run
+  /// anything is better left alone than pointed at a download the user never asked for.
+  static func offlineFallbackTranscription(available: [OfflineModelType]) -> TranscriptionModel? {
+    guard let best = OfflineModelType.byAccuracy.last(where: available.contains) else { return nil }
+    return TranscriptionModel.forOfflineModel(best)
   }
 }

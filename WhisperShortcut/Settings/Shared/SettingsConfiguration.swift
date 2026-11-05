@@ -194,12 +194,14 @@ enum PromptModel: String, CaseIterable {
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
   case localMLXQwen359B = "local-mlx-qwen3.5-9b"
+  case localMLXGemma426BA4B = "local-mlx-gemma-4-26b-a4b"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
     case .qwen359B: return .localMLXQwen359B
+    case .gemma426BA4B: return .localMLXGemma426BA4B
     }
   }
 
@@ -208,13 +210,9 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
     case .localMLXQwen359B: return .qwen359B
+    case .localMLXGemma426BA4B: return .gemma426BA4B
     default: return nil
     }
-  }
-
-  /// Every in-process MLX model offered on this Mac (Chat; Dictate Prompt narrows it via `supportsDictatePrompt`).
-  static var localMLXModels: [PromptModel] {
-    LocalLLMModelType.offerable.map(\.promptModel)
   }
 
   var displayName: String {
@@ -265,6 +263,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "Qwen3 4B Instruct (Offline)")
     case .localMLXQwen359B:
       return String(localized: "Qwen3.5 9B (Offline)")
+    case .localMLXGemma426BA4B:
+      return String(localized: "Gemma 4 26B A4B (Offline)")
     }
   }
 
@@ -300,6 +300,7 @@ enum PromptModel: String, CaseIterable {
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
     case .localMLXQwen359B: return "mlx9b"
+    case .localMLXGemma426BA4B: return "mlxgemma"
     }
   }
 
@@ -349,6 +350,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
     case .localMLXQwen359B:
       return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXGemma426BA4B:
+      return String(localized: "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM")
     }
   }
   
@@ -357,7 +360,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
       return .low
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .freeOffline
     case .gemini31Pro, .geminiImagePro:
       return .medium
@@ -394,7 +397,7 @@ enum PromptModel: String, CaseIterable {
       return .chatGPTPlan
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .localMLX
     }
   }
@@ -508,7 +511,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return false
     default:
       return true
@@ -526,7 +529,7 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return true
     // Not offered at all in the App Store build (OpenAI approval pending).
     case .chatGPTPlanChat:
@@ -594,7 +597,7 @@ enum PromptModel: String, CaseIterable {
     case .grok43, .grok47,
          .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil
     }
   }
@@ -637,7 +640,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -652,7 +655,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
@@ -1331,6 +1334,28 @@ enum ConfirmAboveDuration: Double, CaseIterable {
   }
 }
 
+// MARK: - Dictate Mode
+enum DictateMode: String, CaseIterable {
+  case dictate
+  case live
+
+  var displayName: String {
+    switch self {
+    case .dictate: return String(localized: "Dictate")
+    case .live: return String(localized: "Dictate Live")
+    }
+  }
+
+  /// Loads value from UserDefaults or returns SettingsDefaults.dictateMode.
+  static func loadFromUserDefaults() -> DictateMode {
+    if let raw = UserDefaults.standard.string(forKey: UserDefaultsKeys.dictateMode),
+       let mode = DictateMode(rawValue: raw) {
+      return mode
+    }
+    return SettingsDefaults.dictateMode
+  }
+}
+
 // MARK: - Meeting Safeguard Duration (Live Meeting)
 enum MeetingSafeguardDuration: Double, CaseIterable {
   case never = 0
@@ -1383,6 +1408,32 @@ enum ImproveFromUsageAutoRunInterval: Int, CaseIterable {
     case .every14Days: return String(localized: "Every 14 days")
     case .every30Days: return String(localized: "Every 30 days")
     }
+  }
+}
+
+// MARK: - Punctuation Mode
+/// Offline dictation only. `automatic`: the model punctuates. `spokenOnly`: model punctuation is
+/// stripped and only spoken marks ("Punkt", "Komma", …) are written (`SpokenPunctuation`).
+enum PunctuationMode: String, CaseIterable {
+  case automatic
+  case spokenOnly
+
+  var displayName: String {
+    switch self {
+    case .automatic: return String(localized: "Automatic")
+    case .spokenOnly: return String(localized: "Only when spoken")
+    }
+  }
+
+  /// The mode a dictation actually runs with. "Only when spoken" is an offline-dictation setting:
+  /// cloud models and meeting segments always keep the model's punctuation.
+  static func effective(stored: PunctuationMode, isOffline: Bool, duringMeeting: Bool) -> PunctuationMode {
+    isOffline && !duringMeeting ? stored : .automatic
+  }
+
+  static var current: PunctuationMode {
+    UserDefaults.standard.string(forKey: UserDefaultsKeys.punctuationMode)
+      .flatMap(PunctuationMode.init(rawValue:)) ?? SettingsDefaults.punctuationMode
   }
 }
 
@@ -1728,6 +1779,40 @@ enum OpenRouterChatPreferences {
       keyToAdopt: (!hasAccountKey && !proxy.isEmpty) ? proxy : nil)
   }
 
+  /// New raw value for a slot still set to the custom-endpoint sentinel, or nil to leave it.
+  ///
+  /// Dictate Prompt cannot move to `openRouterChat`: that model fails `supportsDictatePrompt` and
+  /// `SpeechService.performPrompt` throws. The slot takes `dictatePromptReplacement` only when that
+  /// model can run Dictate Prompt (the preferred-model helper's pick); otherwise it stays put.
+  static func migratedSelectionRawValue(
+    key: String, current: String?, dictatePromptReplacement: String?
+  ) -> String? {
+    let old = PromptModel.customOpenAIEndpoint.rawValue
+    guard current == old else { return nil }
+    if key == UserDefaultsKeys.selectedPromptModel {
+      guard let replacement = dictatePromptReplacement, replacement != old,
+        let model = PromptModel(rawValue: replacement), model.supportsDictatePrompt
+      else { return nil }
+      return replacement
+    }
+    return PromptModel.openRouterChat.rawValue
+  }
+
+  /// Applies `migratedSelectionRawValue` to every entry. Keys that stay put are copied through.
+  static func migratedSelections(
+    _ selections: [String: String], dictatePromptReplacement: String?
+  ) -> [String: String] {
+    var updated = selections
+    for (key, value) in selections {
+      if let rewritten = migratedSelectionRawValue(
+        key: key, current: value, dictatePromptReplacement: dictatePromptReplacement)
+      {
+        updated[key] = rewritten
+      }
+    }
+    return updated
+  }
+
   /// One-time move of an OpenRouter-pointed custom endpoint onto the OpenRouter provider. Idempotent:
   /// once the custom URL is cleared the plan is nil.
   @MainActor
@@ -1750,8 +1835,10 @@ enum OpenRouterChatPreferences {
     defaults.removeObject(forKey: UserDefaultsKeys.customOpenAIChatModelID)
     KeychainManager.shared.delete(.customOpenAIChatAPIKey)
 
-    let old = PromptModel.customOpenAIEndpoint.rawValue
-    let new = PromptModel.openRouterChat.rawValue
+    let dictatePromptReplacement = ModelSelectionReconciler.preferredPromptModel(
+      among: PromptModel.dictatePromptCapableModels,
+      hasKey: { $0.hasCredential }
+    )?.rawValue
     let selectionKeys = [
       UserDefaultsKeys.selectedChatModel,
       UserDefaultsKeys.selectedPromptModel,
@@ -1759,17 +1846,26 @@ enum OpenRouterChatPreferences {
       UserDefaultsKeys.selectedMeetingSummaryModel,
       UserDefaultsKeys.selectedReadAloudModel,
     ]
-    for key in selectionKeys where defaults.string(forKey: key) == old {
-      defaults.set(new, forKey: key)
+    var selections: [String: String] = [:]
+    for key in selectionKeys {
+      if let value = defaults.string(forKey: key) { selections[key] = value }
+    }
+    let rewritten = migratedSelections(selections, dictatePromptReplacement: dictatePromptReplacement)
+    for (key, value) in rewritten where selections[key] != value {
+      defaults.set(value, forKey: key)
     }
     // The pre-Offline-Mode snapshot restores these same slots later; rewrite it too.
+    // Dictate Prompt is excluded from the OpenRouter rewrite there as well.
     if var snapshot = defaults.dictionary(forKey: UserDefaultsKeys.offlineModePreOfflineSelections) {
-      var changed = false
-      for (key, value) in snapshot where (value as? String) == old {
-        snapshot[key] = new
-        changed = true
+      var strings: [String: String] = [:]
+      for (key, value) in snapshot {
+        if let string = value as? String { strings[key] = string }
       }
-      if changed { defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections) }
+      let migrated = migratedSelections(strings, dictatePromptReplacement: dictatePromptReplacement)
+      if migrated != strings {
+        for (key, value) in migrated { snapshot[key] = value }
+        defaults.set(snapshot, forKey: UserDefaultsKeys.offlineModePreOfflineSelections)
+      }
     }
     DebugLogger.log(
       "OPENROUTER-CHAT: migrated custom endpoint → OpenRouter provider (model=\(plan.modelID ?? modelID))")
@@ -1849,9 +1945,24 @@ enum OpenAIChatPreferences {
 
   static var resolvedAPIKey: String? { resolvedCredential?.key }
 
-  /// True when URL + any usable API key are set — required before the Custom endpoint model can run.
+  /// True when the Custom endpoint can run: a base URL plus a usable key, or a keyless local
+  /// host (a Whisper box on the LAN does not need — and must not receive — the OpenAI key).
   static var isConfigured: Bool {
-    customEndpointBaseURL != nil && resolvedAPIKey != nil
+    guard let base = customEndpointBaseURL else { return false }
+    if resolvedAPIKey != nil { return true }
+    return allowsKeylessRequests(baseURL: base)
+  }
+
+  /// A local/LAN host can be called without any API key. Used so Chat and Dictate Prompt stay
+  /// selectable for a keyless Whisper / Ollama box after the OpenAI-key fallback is withheld
+  /// from `http://` URLs.
+  static func allowsKeylessRequests(baseURL: String) -> Bool {
+    guard let host = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
+      .host
+    else {
+      return false
+    }
+    return OfflineMode.isLocalHost(host)
   }
 
   static func isCustomEndpointModel(_ model: String) -> Bool {
@@ -2040,6 +2151,7 @@ struct SettingsDefaults {
   static let screenshotCapture: ShortcutDefinition? = nil
   static let readAloud: ShortcutDefinition? = nil
   static let addToGlossary: ShortcutDefinition? = nil
+  static let liveDictate: ShortcutDefinition? = nil
 
   // MARK: - Model & Prompt Settings
   // Chat defaults to 3.8 Flash — the current Gemini workhorse (GA 2026-09-02), same
@@ -2068,9 +2180,17 @@ struct SettingsDefaults {
   static let selectedPromptModel = PromptModel.gemini38Flash
   static let selectedChatModel = PromptModel.gemini38Flash
   static let chatCloseOnFocusLoss = true
+  /// Prose typeface of the chat transcript. `.sans` (San Francisco) is what the chat has always
+  /// used; serif and rounded are opt-in choices in Settings → Chat → Appearance.
+  static let chatFontDesign: ChatFontDesign = .sans
+  /// Off by default: the chat never scrolls on its own unless the user opts in.
+  static let chatFollowNewContent = false
   // Off by default: a Settings window that vanishes when you click elsewhere (e.g. to copy an
   // API key from a browser) is surprising. Users can opt back in via the Behavior section.
   static let settingsCloseOnFocusLoss = false
+  /// Off by default: the app is a menu-bar app (`LSUIElement`). Turning this on gives it a Dock
+  /// icon so it can be reached with ⌘-Tab. See `DockIconPreference`.
+  static let showDockIcon = false
 
   // MARK: - Read Aloud (Chat TTS)
   /// Default Read Aloud TTS model when the user hasn't picked one. User selection is persisted
@@ -2083,6 +2203,7 @@ struct SettingsDefaults {
 
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
+  static let punctuationMode = PunctuationMode.automatic
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2106,6 +2227,9 @@ struct SettingsDefaults {
   /// still reach for ⌘V afterwards (pasting the same dictation into a second window). Putting
   /// the old clipboard back would break that, so restoring stays a deliberate choice.
   static let restoreClipboardAfterPaste = false
+  /// OFF by default: emptying the clipboard breaks the habit of pasting the same dictation a second
+  /// time. Practices where a stale ⌘V could paste one patient's text into another's note turn it on.
+  static let clearClipboardAfterAutoPaste = false
 
   // MARK: - Fn Key Dictation
   // Off in the App Store build: observing the Fn key needs Accessibility (Guideline 2.4.5).
@@ -2120,6 +2244,8 @@ struct SettingsDefaults {
       return GlobeKeyUsage.isFree
     #endif
   }
+
+  static let dictateMode: DictateMode = .dictate
 
   // MARK: - Screenshot Settings
   static let screenshotInPromptMode = true
@@ -2200,6 +2326,7 @@ struct SettingsData: Equatable {
   var screenshotCapture: ShortcutDefinition? = SettingsDefaults.screenshotCapture
   var readAloud: ShortcutDefinition? = SettingsDefaults.readAloud
   var addToGlossary: ShortcutDefinition? = SettingsDefaults.addToGlossary
+  var liveDictate: ShortcutDefinition? = SettingsDefaults.liveDictate
 
   // MARK: - Transcription tuning
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
@@ -2243,9 +2370,15 @@ struct SettingsData: Equatable {
   var selectedReadAloudModel: TTSModel = SettingsDefaults.readAloudModel
   var chatCloseOnFocusLoss: Bool = SettingsDefaults.chatCloseOnFocusLoss
   var settingsCloseOnFocusLoss: Bool = SettingsDefaults.settingsCloseOnFocusLoss
+  var showDockIcon: Bool = SettingsDefaults.showDockIcon
+  /// Prose typeface of the chat transcript (Settings → Chat → Appearance).
+  var chatFontDesign: ChatFontDesign = SettingsDefaults.chatFontDesign
+  /// Follow new chat content while at the bottom (Settings → Chat → Appearance).
+  var chatFollowNewContent: Bool = SettingsDefaults.chatFollowNewContent
 
   // MARK: - Whisper Language Settings
   var whisperLanguage: WhisperLanguage = SettingsDefaults.whisperLanguage
+  var punctuationMode: PunctuationMode = SettingsDefaults.punctuationMode
 
   // MARK: - Notification Settings
   var showPopupNotifications: Bool = SettingsDefaults.showPopupNotifications
@@ -2259,9 +2392,11 @@ struct SettingsData: Equatable {
   // MARK: - Auto-Paste Settings
   var autoPasteAfterDictation: Bool = SettingsDefaults.autoPasteAfterDictation
   var restoreClipboardAfterPaste: Bool = SettingsDefaults.restoreClipboardAfterPaste
+  var clearClipboardAfterAutoPaste: Bool = SettingsDefaults.clearClipboardAfterAutoPaste
 
   // MARK: - Fn Key Dictation
   var fnKeyDictation: Bool = SettingsDefaults.fnKeyDictation
+  var dictateMode: DictateMode = SettingsDefaults.dictateMode
 
   // MARK: - Screenshot Settings
   var screenshotInPromptMode: Bool = SettingsDefaults.screenshotInPromptMode
@@ -2292,6 +2427,7 @@ enum SettingsFocusField: Hashable {
   case screenshotCapture
   case readAloudShortcut
   case addToGlossaryShortcut
+  case liveDictateShortcut
   /// A dictation template's own shortcut (Settings → Dictate Prompt → Templates).
   case templateShortcut(UUID)
   /// The generic template shortcut that starts the last-used template (same section).

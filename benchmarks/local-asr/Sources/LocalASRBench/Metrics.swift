@@ -16,6 +16,12 @@ enum Metrics {
     return String(cleaned).split(separator: " ").map(String.init)
   }
 
+  /// `normalize`d words with spoken punctuation commands removed ("Komma", "Punkt", …).
+  /// A word counts when `GlossaryDocument.fold` of it is in `SpokenPunctuation.commandWords`.
+  static func droppingCommandWords(_ words: [String]) -> [String] {
+    words.filter { !SpokenPunctuation.commandWords.contains(GlossaryDocument.fold($0)) }
+  }
+
   /// Word-level edit distance (substitutions + insertions + deletions).
   static func editDistance(_ ref: [String], _ hyp: [String]) -> Int {
     if ref.isEmpty { return hyp.count }

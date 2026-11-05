@@ -25,7 +25,7 @@ struct WhatsNewSection: View {
       Text("What's new in \(currentVersion)")
         .font(.callout)
         .fontWeight(.semibold)
-      Text("You just updated. Replay the Welcome Tour below, or read the full notes on GitHub.")
+      Text("You just updated. Replay the Welcome Tour from the menu bar, or read the full notes on GitHub.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

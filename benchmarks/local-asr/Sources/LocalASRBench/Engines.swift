@@ -84,6 +84,13 @@ final class ParakeetEngine: Engine {
   let name: String
   private let version: AsrModelVersion
   private let useVocabulary: Bool
+  /// Exact model folder. `AsrModels.load(from:version:)` would resolve
+  /// `<parent>/<version.repo.folderName>` and silently load stock v3.
+  private let localDirectory: URL?
+  private let boostConfig: VocabularyRescorer.Config?
+  /// When true, vocabulary replacements go through the app's guard
+  /// (`ParakeetVocabularyGuard`) instead of FluidAudio's rewritten text.
+  private let appGuard: Bool
   private var manager: AsrManager?
   private var ctcModels: CtcModels?
   /// Boosting sessions are built per vocabulary (tokenising the terms is not free), and the two
@@ -91,14 +98,26 @@ final class ParakeetEngine: Engine {
   private var boosting: [String: VocabularyBoostingSession] = [:]
   private let converter = AudioConverter()
 
-  init(version: AsrModelVersion, label: String, useVocabulary: Bool) {
+  init(
+    version: AsrModelVersion, label: String, useVocabulary: Bool, localDirectory: URL? = nil,
+    boostConfig: VocabularyRescorer.Config? = nil, nameOverride: String? = nil,
+    appGuard: Bool = false
+  ) {
     self.version = version
     self.useVocabulary = useVocabulary
-    self.name = "parakeet-\(label)" + (useVocabulary ? "+vocab" : "")
+    self.localDirectory = localDirectory
+    self.boostConfig = boostConfig
+    self.appGuard = appGuard
+    self.name = nameOverride ?? ("parakeet-\(label)" + (useVocabulary ? "+vocab" : ""))
   }
 
   func load() async throws {
-    let models = try await AsrModels.downloadAndLoad(version: version)
+    let models: AsrModels
+    if let localDirectory {
+      models = try AsrModels.loadLocal(from: localDirectory, version: version)
+    } else {
+      models = try await AsrModels.downloadAndLoad(version: version)
+    }
     let manager = AsrManager(config: .default)
     try await manager.loadModels(models)
     self.manager = manager
@@ -123,12 +142,29 @@ final class ParakeetEngine: Engine {
       session = cached
     } else {
       let context = CustomVocabularyContext(terms: vocabulary.map { CustomVocabularyTerm(text: $0) })
-      session = try await VocabularyBoostingSession(vocabulary: context, ctcModels: ctcModels)
+      session = try await VocabularyBoostingSession(
+        vocabulary: context, ctcModels: ctcModels, config: boostConfig)
       boosting[key] = session
     }
     let rescored = await session.rescore(
       text: result.text, tokenTimings: result.tokenTimings ?? [], audioSamples: samples)
-    return rescored?.text ?? result.text
+    guard appGuard else { return rescored?.text ?? result.text }
+    // Same order as ParakeetBackend.VocabularyBooster.rescore: accept only
+    // shouldReplace hits that name a term, then the app guard, then casing.
+    guard let rescored, rescored.wasModified else {
+      return ParakeetVocabularyGuard.restoreGlossaryCasing(
+        in: result.text, glossaryTerms: vocabulary)
+    }
+    let candidates = rescored.replacements.filter(\.shouldReplace).compactMap {
+      replacement -> ParakeetVocabularyGuard.Replacement? in
+      guard let term = replacement.replacementWord else { return nil }
+      return ParakeetVocabularyGuard.Replacement(
+        originalSpan: replacement.originalWord, term: term)
+    }
+    let applied = ParakeetVocabularyGuard.apply(
+      to: result.text, replacements: candidates, glossaryTerms: vocabulary)
+    return ParakeetVocabularyGuard.restoreGlossaryCasing(
+      in: applied.text, glossaryTerms: vocabulary)
   }
 
   func unload() async {
@@ -136,6 +172,55 @@ final class ParakeetEngine: Engine {
     manager = nil
     ctcModels = nil
     boosting = [:]
+  }
+}
+
+// MARK: - Nemotron Unified (FluidAudio offline batch, German prompt)
+
+/// Offline 15 s-window Nemotron. Vocabulary boosting, when on, is configured on the manager
+/// (its default rescorer config is the ITN one) and reused until the term list changes.
+final class NemotronUnifiedEngine: Engine {
+  let name: String
+  private let useVocabulary: Bool
+  private var manager: UnifiedAsrManager?
+  private var ctcModels: CtcModels?
+  /// Joined term list last passed to `configureVocabularyBoosting`. Nil until the first non-empty list.
+  private var configuredVocabularyKey: String?
+  private let converter = AudioConverter()
+
+  init(useVocabulary: Bool) {
+    self.useVocabulary = useVocabulary
+    self.name = "nemotron-unified" + (useVocabulary ? "+vocab" : "")
+  }
+
+  func load() async throws {
+    let manager = UnifiedAsrManager(config: UnifiedConfig(family: .nemotronMultilingual(.de)))
+    try await manager.loadModels()
+    self.manager = manager
+    if useVocabulary {
+      ctcModels = try await CtcModels.downloadAndLoad(variant: .ctc110m)
+    }
+  }
+
+  func transcribe(_ clip: Clip, vocabulary: [String], rawGlossary: String) async throws -> String {
+    guard let manager else { throw NSError(domain: "bench", code: 3) }
+    let samples = try converter.resampleAudioFile(clip.url)
+    if useVocabulary, let ctcModels, !vocabulary.isEmpty {
+      let key = vocabulary.joined(separator: "\u{1F}")
+      if configuredVocabularyKey != key {
+        let context = CustomVocabularyContext(terms: vocabulary.map { CustomVocabularyTerm(text: $0) })
+        try await manager.configureVocabularyBoosting(vocabulary: context, ctcModels: ctcModels)
+        configuredVocabularyKey = key
+      }
+    }
+    return try await manager.transcribe(samples).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  func unload() async {
+    await manager?.cleanup()
+    manager = nil
+    ctcModels = nil
+    configuredVocabularyKey = nil
   }
 }
 

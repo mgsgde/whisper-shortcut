@@ -365,7 +365,12 @@ class ChunkTTSService {
                         await accumulator.addError(index: chunkError.index, error: chunkError.error)
                         await gate?.fail(index: chunkError.index)
 
-                        DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.logDescription)")
+                        if ModelManager.isCancellation(chunkError.error) {
+                          DebugLogger.log(
+                            "TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) cancelled")
+                        } else {
+                          DebugLogger.logError("TTS-CHUNK-SERVICE: Chunk \(chunkError.index + 1)/\(totalChunks) failed: \(chunkError.error.logDescription)")
+                        }
 
                         // Notify delegate that chunk failed (no retry at this level - retries happen in processChunk)
                         await MainActor.run {
@@ -386,7 +391,7 @@ class ChunkTTSService {
         // Handle results
         if audioChunks.isEmpty {
             // Check if all errors are cancellation errors - if so, propagate as CancellationError
-            let allCancelled = errors.allSatisfy { $0.error is CancellationError }
+            let allCancelled = errors.allSatisfy { ModelManager.isCancellation($0.error) }
             if allCancelled {
                 DebugLogger.log("TTS-CHUNK-SERVICE: All chunks were cancelled - propagating cancellation")
                 throw CancellationError()

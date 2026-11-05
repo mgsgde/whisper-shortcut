@@ -24,6 +24,7 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedChatModel,
     UserDefaultsKeys.selectedImprovementModel,
     UserDefaultsKeys.whisperLanguage,
+    UserDefaultsKeys.punctuationMode,
     UserDefaultsKeys.transcriptionTemperature,
     UserDefaultsKeys.transcriptionThinkingEffort,
     UserDefaultsKeys.openRouterTranscriptionModelID,
@@ -34,7 +35,9 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.confirmAboveDurationSeconds,
     UserDefaultsKeys.autoPasteAfterDictation,
     UserDefaultsKeys.restoreClipboardAfterPaste,
+    UserDefaultsKeys.clearClipboardAfterAutoPaste,
     UserDefaultsKeys.fnKeyDictation,
+    UserDefaultsKeys.dictateMode,
     UserDefaultsKeys.screenshotInPromptMode,
     UserDefaultsKeys.screenshotSaveEnabled,
     UserDefaultsKeys.readAloudSmartRewriteEnabled,
@@ -46,6 +49,9 @@ struct SettingsSlotRoundTripTests {
     UserDefaultsKeys.selectedReadAloudVoiceSystem,
     UserDefaultsKeys.chatCloseOnFocusLoss,
     UserDefaultsKeys.settingsCloseOnFocusLoss,
+    UserDefaultsKeys.showDockIcon,
+    UserDefaultsKeys.chatFontDesign,
+    UserDefaultsKeys.chatFollowNewContent,
     UserDefaultsKeys.liveMeetingChunkInterval,
     UserDefaultsKeys.liveMeetingSafeguardDurationSeconds,
     UserDefaultsKeys.selectedTranscriptionModelForMeetings,
@@ -83,6 +89,7 @@ struct SettingsSlotRoundTripTests {
     data.selectedChatModel = .grok43
     data.selectedImprovementModel = .claudeSonnet55
     data.whisperLanguage = .de
+    data.punctuationMode = .spokenOnly
     data.transcriptionTemperature = .balanced
     data.transcriptionThinkingEffort = .high
     data.openRouterTranscriptionModelID = "probe/openrouter-model"
@@ -93,7 +100,9 @@ struct SettingsSlotRoundTripTests {
     data.confirmAboveDuration = .tenMinutes
     data.autoPasteAfterDictation = !SettingsDefaults.autoPasteAfterDictation
     data.restoreClipboardAfterPaste = !SettingsDefaults.restoreClipboardAfterPaste
+    data.clearClipboardAfterAutoPaste = !SettingsDefaults.clearClipboardAfterAutoPaste
     data.fnKeyDictation = !SettingsDefaults.fnKeyDictation
+    data.dictateMode = .live
     data.screenshotInPromptMode = !SettingsDefaults.screenshotInPromptMode
     data.screenshotSaveEnabled = !SettingsDefaults.screenshotSaveEnabled
     data.readAloudSmartRewriteEnabled = !SettingsDefaults.readAloudSmartRewriteEnabled
@@ -105,6 +114,9 @@ struct SettingsSlotRoundTripTests {
     data.readAloudVoiceSystem = "probe-system-voice"
     data.chatCloseOnFocusLoss = !SettingsDefaults.chatCloseOnFocusLoss
     data.settingsCloseOnFocusLoss = !SettingsDefaults.settingsCloseOnFocusLoss
+    data.showDockIcon = !SettingsDefaults.showDockIcon
+    data.chatFontDesign = .serif
+    data.chatFollowNewContent = !SettingsDefaults.chatFollowNewContent
     data.liveMeetingChunkInterval = .thirtySeconds
     data.liveMeetingSafeguardDuration = .twoHours
     data.selectedTranscriptionModelForMeetings = .gemini38Flash

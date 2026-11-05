@@ -151,4 +151,49 @@ enum Datasets {
       .filter { !$0.isEmpty }
     return (raw, terms)
   }
+
+  // MARK: - Pilot: the user's own voice reading a known corpus
+
+  private struct PilotCorpus: Decodable {
+    struct Item: Decodable {
+      let id: String
+      let spoken: [String]
+    }
+
+    let glossary: [String]
+    let cases: [Item]
+  }
+
+  /// One clip per spoken line. A single line is `<id>.wav`; several are `<id>-1.wav`,
+  /// `<id>-2.wav`, …. A missing wav is skipped. `[...]` spans are not part of the reference.
+  static func pilot(corpus: URL, audioDir: URL) throws -> [Clip] {
+    let decoded = try JSONDecoder().decode(PilotCorpus.self, from: Data(contentsOf: corpus))
+    var clips: [Clip] = []
+    for item in decoded.cases {
+      let multiple = item.spoken.count != 1
+      for (offset, spoken) in item.spoken.enumerated() {
+        let id = multiple ? "\(item.id)-\(offset + 1)" : item.id
+        let url = audioDir.appendingPathComponent("\(id).wav")
+        guard FileManager.default.fileExists(atPath: url.path) else { continue }
+        clips.append(Clip(
+          id: id, dataset: "pilot", url: url, seconds: try duration(of: url),
+          reference: pilotReference(spoken), terms: decoded.glossary))
+      }
+    }
+    return clips
+  }
+
+  /// Drops every `[...]` span, then collapses whitespace. Spoken words stay, including
+  /// punctuation words ("Komma") and numbers said as words.
+  private static func pilotReference(_ spoken: String) -> String {
+    var text = spoken
+    let pattern = "\\[[^\\[\\]]*\\]"
+    while text.range(of: pattern, options: .regularExpression) != nil {
+      text = text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+    }
+    return text
+      .components(separatedBy: .whitespacesAndNewlines)
+      .filter { !$0.isEmpty }
+      .joined(separator: " ")
+  }
 }

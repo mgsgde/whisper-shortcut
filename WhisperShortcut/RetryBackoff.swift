@@ -22,7 +22,7 @@ enum RetryBackoff {
   static func isPermanentRateLimit(_ error: Error) -> Bool {
     guard let te = error as? TranscriptionError else { return false }
     switch te {
-    case .rateLimited(nil, _), .quotaExceeded(nil):
+    case .rateLimited(nil, _, _), .quotaExceeded(nil):
       return true
     default:
       return false
@@ -34,6 +34,104 @@ enum RetryBackoff {
   /// billing problem and never resolves on its own.
   static func isPermanentRateLimit(responseBody: String) -> Bool {
     responseBody.contains("insufficient_quota")
+  }
+
+  /// Seconds to wait before retrying, taken from a rate-limit response.
+  ///
+  /// `Retry-After` wins (delta-seconds or an HTTP-date). Otherwise `retry-after-ms`, otherwise
+  /// the reset of the exhausted `anthropic-ratelimit-*` bucket. Nothing parseable returns nil, and a
+  /// nil delay stays a permanent block (`isPermanentRateLimit`). The value is the raw delay the
+  /// server asked for (for absolute timestamps: timestamp minus `now`), with no skew buffer: it is
+  /// what the ceiling check (`maxAutomaticRetryWait`) and the "please wait N seconds" message
+  /// use. `clockSkewBuffer` is added only when actually sleeping (`preFirstTokenDelay`), and only
+  /// for delays that were derived from an absolute timestamp (see `serverDelay`).
+  static func retryAfter(from response: HTTPURLResponse, now: Date = Date()) -> TimeInterval? {
+    serverDelay(from: response, now: now)?.seconds
+  }
+
+  /// `retryAfter(from:)` plus its provenance: `isAbsolute` is true when the seconds were computed
+  /// as "server timestamp minus our clock" (HTTP-date `Retry-After`, Anthropic `*-reset`), false
+  /// for a delta the server stated directly (`Retry-After: 12`, `retry-after-ms`). Only absolute
+  /// delays are exposed to clock skew, so only they get `clockSkewBuffer` when sleeping; a delta
+  /// of `0` is a plain "retry now" and keeps the `minAutomaticRetryWait` floor.
+  static func serverDelay(
+    from response: HTTPURLResponse, now: Date = Date()
+  ) -> (seconds: TimeInterval, isAbsolute: Bool)? {
+    if let header = response.value(forHTTPHeaderField: "Retry-After")?
+      .trimmingCharacters(in: .whitespacesAndNewlines), !header.isEmpty {
+      if let seconds = nonNegativeSeconds(header) { return (seconds, false) }
+      if let date = httpDate(from: header) {
+        return (max(0, date.timeIntervalSince(now)), true)
+      }
+    }
+    if let header = response.value(forHTTPHeaderField: "retry-after-ms"),
+       let milliseconds = nonNegativeSeconds(header) {
+      return (milliseconds / 1000, false)
+    }
+    return anthropicReset(in: response, now: now).map { ($0, true) }
+  }
+
+  /// The chat providers' 429 mapping: the raw server delay plus its provenance, so
+  /// `preFirstTokenDelay` can buffer absolute waits only. No parseable delay stays a permanent
+  /// block (`isPermanentRateLimit`).
+  static func rateLimitedError(from response: HTTPURLResponse?, now: Date = Date()) -> TranscriptionError {
+    let delay = response.flatMap { serverDelay(from: $0, now: now) }
+    return .rateLimited(retryAfter: delay?.seconds, isAbsolute: delay?.isAbsolute ?? false)
+  }
+
+  /// Added to an *absolute-derived* server delay when sleeping (`preFirstTokenDelay`), never to
+  /// the stored `retryAfter`, the transient/ceiling gate, or a delta-seconds delay: the server's
+  /// clock and ours differ, and a fast client clock would otherwise turn an HTTP-date / Anthropic
+  /// `*-reset` delta into 0 and retry hot. Same 2s as `RateLimitCoordinator`. A ~60s reset
+  /// therefore stays transient and sleeps ~62s.
+  static let clockSkewBuffer: TimeInterval = 2
+
+  private static func nonNegativeSeconds(_ raw: String) -> TimeInterval? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let value = TimeInterval(trimmed), value >= 0, value.isFinite else { return nil }
+    return value
+  }
+
+  /// IMF-fixdate, the only HTTP-date form current APIs send (`Sun, 06 Nov 1994 08:49:37 GMT`).
+  private static func httpDate(from raw: String) -> Date? {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+    return formatter.date(from: raw)
+  }
+
+  /// When the bucket that blocked us reopens. `Retry-After` is authoritative when the server sent
+  /// one; these timestamps are the fallback. Anthropic meters requests and (input/output) tokens
+  /// separately and reports each bucket's `-remaining` and `-reset`. The 429 comes from the bucket
+  /// at `remaining: 0`, which is often the token bucket resetting much later than the request
+  /// bucket, so waiting only for the soonest reset retries into a guaranteed second 429. Take the
+  /// latest reset among exhausted buckets; if no bucket reports `remaining`, the latest of all.
+  private static func anthropicReset(in response: HTTPURLResponse, now: Date) -> TimeInterval? {
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime]
+    let isoFractional = ISO8601DateFormatter()
+    isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let prefix = "anthropic-ratelimit-"
+    let resetSuffix = "-reset"
+    let remainingSuffix = "-remaining"
+    var resets: [String: TimeInterval] = [:]
+    var exhausted: Set<String> = []
+    for (key, value) in response.allHeaderFields {
+      guard let name = (key as? String)?.lowercased(), name.hasPrefix(prefix),
+            let raw = value as? String else { continue }
+      let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      if name.hasSuffix(resetSuffix) {
+        let bucket = String(name.dropFirst(prefix.count).dropLast(resetSuffix.count))
+        guard let date = iso.date(from: trimmed) ?? isoFractional.date(from: trimmed) else { continue }
+        resets[bucket] = max(0, date.timeIntervalSince(now))
+      } else if name.hasSuffix(remainingSuffix) {
+        let bucket = String(name.dropFirst(prefix.count).dropLast(remainingSuffix.count))
+        if let remaining = Double(trimmed), remaining <= 0 { exhausted.insert(bucket) }
+      }
+    }
+    let blocking = resets.filter { exhausted.contains($0.key) }
+    return (blocking.isEmpty ? resets : blocking).values.max()
   }
 
   /// How long to wait before the next attempt.
@@ -65,11 +163,33 @@ enum RetryBackoff {
   /// cover a Wi-Fi blip or 5xx before the first byte.
   static let preFirstTokenMaxAttempts = 3
 
+  /// Longest a chat stream will automatically sit on a rate limit before the first token.
+  /// The user is watching an empty reply, and with `preFirstTokenMaxAttempts` the waits add up
+  /// (two retries at 60s is ~2 min of silence), so this is deliberately well below the 120s
+  /// `RateLimitCoordinator` uses for background work. A longer server delay is a quota window:
+  /// failing fast with the error beats blocking the reply (the full delay stays on the error
+  /// for the message).
+  static let maxAutomaticRetryWait: TimeInterval = 60
+
+  /// Floor for a pre-first-token retry sleep. A server that says `Retry-After: 0` (or an
+  /// already-past HTTP-date) would otherwise get an immediate hot retry.
+  static let minAutomaticRetryWait: TimeInterval = 1
+
+  /// Seconds to show in a "please wait N seconds" message: never below the floor, so a
+  /// `Retry-After: 0` does not read "wait 0 seconds".
+  static func displayedWaitSeconds(_ retryAfter: TimeInterval) -> Int {
+    max(Int(minAutomaticRetryWait), Int(retryAfter))
+  }
+
   /// Pre-first-token stream failures that are worth retrying (Wi-Fi blip, 5xx, transient
-  /// rate limits). Auth, cancel, and permanent spending-cap 429s are not.
+  /// rate limits). Auth, cancel, permanent spending-cap 429s, and a delay past
+  /// `maxAutomaticRetryWait` are not.
   static func isTransientPreFirstToken(_ error: Error) -> Bool {
     if error is CancellationError { return false }
     if isPermanentRateLimit(error) { return false }
+    if let wait = (error as? TranscriptionError)?.retryAfter, wait > maxAutomaticRetryWait {
+      return false
+    }
     if let urlError = error as? URLError {
       switch urlError.code {
       case .cancelled:
@@ -98,6 +218,25 @@ enum RetryBackoff {
     }
   }
 
+  /// Sleep before pre-first-token retry number `attempt`. `isTransientPreFirstToken` already
+  /// rejects a raw server delay past `maxAutomaticRetryWait`; here the server delay gets
+  /// `clockSkewBuffer` on top only when that delay came from an absolute timestamp
+  /// (`retryAfterIsAbsolute`), and the whole sleep is floored at `minAutomaticRetryWait`
+  /// (so delta `Retry-After: 0` sleeps 1s, an already-past absolute time sleeps 2s).
+  static func preFirstTokenDelay(attempt: Int, error: Error) -> TimeInterval {
+    let te = error as? TranscriptionError
+    let serverOrUnavailable = te?.isServerOrUnavailable ?? false
+    let buffer = (te?.retryAfterIsAbsolute ?? false) ? clockSkewBuffer : 0
+    return max(
+      minAutomaticRetryWait,
+      delay(
+        attempt: attempt,
+        retryAfter: te?.retryAfter,
+        base: serverOrUnavailable ? 2.0 : 1.0,
+        exponential: serverOrUnavailable,
+        buffer: buffer))
+  }
+
   /// Retries `operation` on transient pre-stream failures only. Callers must not invoke this
   /// after the first token has been yielded.
   static func withPreFirstTokenRetry<T>(
@@ -114,12 +253,7 @@ enum RetryBackoff {
         guard isTransientPreFirstToken(error), attempt < preFirstTokenMaxAttempts else {
           throw error
         }
-        let te = error as? TranscriptionError
-        let delaySeconds = delay(
-          attempt: attempt,
-          retryAfter: te?.retryAfter,
-          base: (te?.isServerOrUnavailable ?? false) ? 2.0 : 1.0,
-          exponential: te?.isServerOrUnavailable ?? false)
+        let delaySeconds = preFirstTokenDelay(attempt: attempt, error: error)
         DebugLogger.log(
           "\(logTag)-RETRY: Attempt \(attempt) failed, retrying in \(String(format: "%.1f", delaySeconds))s: \(error.logDescription)")
         await sleep(delaySeconds)

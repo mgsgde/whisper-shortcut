@@ -37,7 +37,7 @@ struct LanguageSection: View {
         Spacer()
 
         Button("Change in System Settings…") {
-          NSWorkspace.shared.open(Self.languageSettingsURL)
+          SystemSettingsOpener.open(Self.languageSettingsURL)
         }
       }
 

@@ -95,7 +95,7 @@ enum GlobeKeyUsage: Equatable {
     guard let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") else {
       return
     }
-    NSWorkspace.shared.open(url)
+    Task { @MainActor in SystemSettingsOpener.open(url) }
   }
 
   /// Maps Apple's `AppleFnUsageType` integer. Anything else, including a missing value, is

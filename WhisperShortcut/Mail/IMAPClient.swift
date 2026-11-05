@@ -186,9 +186,11 @@ actor IMAPSession {
 
   /// A command fails when no byte moves (read or write) for this long. Resets on every transfer,
   /// so a large literal on a slow but steady link keeps going.
-  private static let idleTimeout: Duration = .seconds(20)
+  static let defaultIdleTimeout: Duration = .seconds(20)
   /// Hard cap for one command however steadily bytes arrive.
-  private static let commandCap: Duration = .seconds(120)
+  static let defaultCommandCap: Duration = .seconds(120)
+  private let idleTimeout: Duration
+  private let commandCap: Duration
 
   /// Idle deadline that restarts per transfer, bounded by the overall cap of the command.
   struct Deadline: Sendable {
@@ -202,16 +204,23 @@ actor IMAPSession {
   }
   private static let maxLiteralBytes = 2_000_000
 
-  init(transport: IMAPTransport, host: String = "") {
+  init(
+    transport: IMAPTransport,
+    host: String = "",
+    idleTimeout: Duration = IMAPSession.defaultIdleTimeout,
+    commandCap: Duration = IMAPSession.defaultCommandCap
+  ) {
     self.transport = transport
     self.host = host
+    self.idleTimeout = idleTimeout
+    self.commandCap = commandCap
   }
 
   func login(user: String, password: String) async throws {
     try Self.rejectLineBreaks(user: user, password: password)
     secrets = [password]
     DebugLogger.log("IMAP: connecting host=\(host.isEmpty ? "?" : host)")
-    let greeting = try await readResponse(before: Self.deadline())
+    let greeting = try await readResponse(before: makeDeadline())
     try checkGreeting(greeting)
     let caps = try await run([.text(" CAPABILITY")], authenticating: false)
     let blob = caps.map(\.textJoined).joined(separator: " ").uppercased()
@@ -334,7 +343,7 @@ actor IMAPSession {
   }
 
   private func run(_ pieces: [Piece], authenticating: Bool) async throws -> [ServerResponse] {
-    let deadline = Self.deadline()
+    let deadline = makeDeadline()
     let tag = nextTag()
     try await send(tag: tag, pieces: pieces, before: deadline, authenticating: authenticating)
     return try await collect(tag: tag, before: deadline, authenticating: authenticating)
@@ -508,7 +517,11 @@ actor IMAPSession {
     _ operation: @Sendable @escaping () async throws -> T
   ) async throws -> T {
     let limit = deadline.next()
-    if ContinuousClock.now >= limit { throw IMAPError.timeout }
+    let hitsCap = limit >= deadline.cap
+    if ContinuousClock.now >= limit {
+      DebugLogger.log("IMAP: timeout limit=\(hitsCap ? "cap" : "idle")")
+      throw IMAPError.timeout
+    }
     return try await withThrowingTaskGroup(of: RaceResult<T>.self) { group in
       group.addTask {
         do {
@@ -548,7 +561,10 @@ actor IMAPSession {
         return value
       case .failed(let error):
         throw error
-      case .timedOut, .cancelled, .none:
+      case .timedOut:
+        DebugLogger.log("IMAP: timeout limit=\(hitsCap ? "cap" : "idle")")
+        throw IMAPError.timeout
+      case .cancelled, .none:
         throw IMAPError.timeout
       }
     }
@@ -669,7 +685,7 @@ actor IMAPSession {
     return result
   }
 
-  private static func deadline() -> Deadline {
+  private func makeDeadline() -> Deadline {
     Deadline(cap: ContinuousClock.now.advanced(by: commandCap), idle: idleTimeout)
   }
 

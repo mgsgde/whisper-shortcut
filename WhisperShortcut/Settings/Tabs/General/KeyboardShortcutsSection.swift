@@ -45,6 +45,8 @@ struct KeyboardShortcutsSection: View {
       // Glossary is not a `ShortcutAction` (see that enum). Same App Store exclusion as Read Aloud.
       #if !APP_STORE
       row("Add to Glossary:", $viewModel.data.addToGlossary, .addToGlossaryShortcut)
+      // Text at the cursor while speaking; pastes, so the same App Store exclusion.
+      row("Dictate Live:", $viewModel.data.liveDictate, .liveDictateShortcut)
       #endif
 
       row("Open Chat:", $viewModel.data.openChat, .toggleChat)

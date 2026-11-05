@@ -119,8 +119,8 @@ enum AppState: Equatable {
     var statusText: String {
       switch self {
       case .transcribing: return String(localized: "⏳ Transcribing audio...")
-      case .prompting: return String(localized: "⏳ Processing AI prompt...")
-      case .ttsProcessing: return String(localized: "⏳ Processing text-to-speech...")
+      case .prompting: return String(localized: "⏳ Processing Dictate Prompt...")
+      case .ttsProcessing: return String(localized: "⏳ Preparing Read Aloud...")
       case .splitting: return String(localized: "✂️ Splitting audio into chunks...")
       case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
@@ -134,13 +134,13 @@ enum AppState: Equatable {
     var tooltip: String {
       switch self {
       case .transcribing: return String(localized: "Transcribing audio... Please wait")
-      case .prompting: return String(localized: "Processing AI prompt... Please wait")
-      case .ttsProcessing: return String(localized: "Processing text-to-speech... Please wait")
+      case .prompting: return String(localized: "Processing Dictate Prompt... Please wait")
+      case .ttsProcessing: return String(localized: "Preparing Read Aloud... Please wait")
       case .splitting: return String(localized: "Audio is long - splitting into chunks for processing...")
       case .processingChunks(let statuses, _):
         let active = statuses.filter { $0 == .active }.count
         let done = statuses.filter { $0 == .completed }.count
-        return String(localized: "Transcribing [\(done)/\(statuses.count)] - \(active) active")
+        return String(localized: "Transcribing \(done) of \(statuses.count) — \(active) still in progress")
       case .merging(let context):
         return context == .tts
           ? String(localized: "All chunks complete - merging audio...")
@@ -221,7 +221,7 @@ extension AppState {
   /// Current tooltip text
   var tooltip: String {
     switch self {
-    case .idle: return String(localized: "WhisperShortcut - Click to record")
+    case .idle: return String(localized: "WhisperShortcut — Click to open the menu")
     case .recording(let mode): return mode.tooltip
     case .processing(let mode): return mode.tooltip
     case .speaking: return String(localized: "Reading aloud... Click menu to stop")
@@ -331,6 +331,13 @@ extension AppState {
   /// Return to idle state (use for completion, cancel, or error recovery).
   func finish() -> AppState {
     return .idle
+  }
+
+  /// State after a stop found no recorder running. A live meeting keeps `.recording(.liveMeeting)`:
+  /// it owns its own recorder, so "nothing running" here says nothing about the meeting.
+  func afterStopFoundNothingRunning() -> AppState {
+    guard case .recording(let mode) = self, mode != .liveMeeting else { return self }
+    return finish()
   }
 }
 

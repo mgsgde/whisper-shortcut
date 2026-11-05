@@ -252,9 +252,6 @@ enum TranscriptionModel: String, CaseIterable {
     }
   }
 
-  /// Gemini 2.0 family was removed from this enum; no transcription option is deprecated in-app.
-  var isDeprecated: Bool { false }
-
   var costLevel: CostLevel {
     switch self {
     case .gemini31FlashLite, .gemini35FlashLite,
@@ -371,6 +368,23 @@ enum TranscriptionModel: String, CaseIterable {
     // "is *this* Whisper file downloaded".
     if provider == .offline { return isOfflineModelAvailable() }
     return provider.hasCredential
+  }
+
+  /// True when the user has already *chosen* an offline model that is not on disk yet.
+  ///
+  /// This is the state `hasRequiredCredential == false` collapses together with "no API key", and
+  /// the two need different words: a key-less cloud model asks for a key, an undownloaded offline
+  /// model asks for a download. `credentialRequiredTitle` already draws that line for the popups
+  /// ("API Key Required" vs "Model Not Downloaded"); this is the same distinction for the menu bar
+  /// and onboarding, which used to tell an offline user to add a key.
+  var needsOfflineModelDownload: Bool {
+    Self.needsOfflineModelDownload(isOffline: isOffline, available: isOfflineModelAvailable())
+  }
+
+  /// Pure half of `needsOfflineModelDownload`, split out so the rule can be tested without
+  /// `ModelManager` and the on-disk model store.
+  static func needsOfflineModelDownload(isOffline: Bool, available: Bool) -> Bool {
+    isOffline && !available
   }
 
   /// Popup title matching `apiKeyRequiredMessage`.
@@ -1067,7 +1081,9 @@ enum TranscriptionError: Error, Equatable {
   case permissionDenied
   case notFound
   case modelDeprecated
-  case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil)
+  /// `isAbsolute`: `retryAfter` was derived from a server timestamp (HTTP-date, Anthropic
+  /// `*-reset`) rather than stated as a delta, so a sleep on it should add `RetryBackoff.clockSkewBuffer`.
+  case rateLimited(retryAfter: TimeInterval?, topUpURL: URL? = nil, isAbsolute: Bool = false)
   case quotaExceeded(retryAfter: TimeInterval?)
   /// Billing must be enabled (e.g. 400 FAILED_PRECONDITION "enable billing" from Gemini API).
   ///
@@ -1118,7 +1134,7 @@ enum TranscriptionError: Error, Equatable {
   var title: String {
     switch self {
     case .noGoogleAPIKey: return String(localized: "No Google API Key")
-    case .invalidAPIKey: return String(localized: "Invalid Authentication")
+    case .invalidAPIKey: return String(localized: "Invalid API Key")
     case .incorrectAPIKey: return String(localized: "Incorrect API Key")
     case .countryNotSupported: return String(localized: "Country Not Supported")
     case .invalidRequest: return String(localized: "Invalid Request")
@@ -1153,18 +1169,24 @@ enum TranscriptionError: Error, Equatable {
   /// Returns the retry delay if this error has one
   var retryAfter: TimeInterval? {
     switch self {
-    case .rateLimited(let retryAfter, _), .quotaExceeded(let retryAfter):
+    case .rateLimited(let retryAfter, _, _), .quotaExceeded(let retryAfter):
       return retryAfter
     default:
       return nil
     }
   }
 
+  /// True when `retryAfter` came from an absolute server timestamp (exposed to clock skew).
+  var retryAfterIsAbsolute: Bool {
+    if case .rateLimited(_, _, let isAbsolute) = self { return isAbsolute }
+    return false
+  }
+
   /// Where an OpenAI API account adds credit — the fix for 429 `insufficient_quota`.
   static let openAIBillingURL = URL(string: "https://platform.openai.com/settings/organization/billing")!
 
   var topUpURL: URL? {
-    if case .rateLimited(_, let url) = self { return url }
+    if case .rateLimited(_, let url, _) = self { return url }
     if case .billingRequired(let url) = self { return url }
     return nil
   }
@@ -1176,7 +1198,7 @@ enum TranscriptionError: Error, Equatable {
     case .networkError, .requestTimeout, .localProcessingTimeout, .resourceTimeout, .serverError, .serviceUnavailable, .slowDown, .emptyModelReply:
       return true
     // Rate limited and quota exceeded are retryable if we have a retry delay
-    case .rateLimited(let retryAfter, _):
+    case .rateLimited(let retryAfter, _, _):
       return retryAfter != nil
     case .quotaExceeded(let retryAfter):
       return retryAfter != nil

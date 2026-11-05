@@ -1042,6 +1042,9 @@ struct WelcomeDoneStep: View {
   /// when no provider key is set and the selected transcription model cannot run.
   @State private var canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
   @State private var hasAnyCredential = ProviderCredentials.anyChatCredentialConfigured
+  /// True when the user already picked an offline model that is not downloaded yet — the state that
+  /// must ask for a download, not for an API key.
+  @State private var needsOfflineModelDownload = TranscriptionModel.loadSelected().needsOfflineModelDownload
   @StateObject private var settingsViewModel = SettingsViewModel()
   @FocusState private var focusedField: SettingsFocusField?
 
@@ -1163,7 +1166,7 @@ struct WelcomeDoneStep: View {
       onboardingShortcutRecorder
         .frame(maxWidth: 560)
 
-      Text("You can revisit this tour any time from Settings → About.")
+      Text("You can revisit this tour any time from Welcome Tour… in the menu bar.")
         .font(.caption)
         .foregroundStyle(.tertiary)
         .multilineTextAlignment(.center)
@@ -1305,6 +1308,9 @@ struct WelcomeDoneStep: View {
   private var dictationReady: Bool { canTranscribe && micStatus == .granted }
 
   private var menuBarHint: Text {
+    if !canTranscribe && needsOfflineModelDownload {
+      return Text("WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and download the selected offline model.")
+    }
     if !canTranscribe && !hasAnyCredential {
       return Text("WhisperShortcut lives in your menu bar. It shows ⚠️ until dictation is set up — click it, choose Settings…, and add a key or download the offline model.")
     }
@@ -1318,7 +1324,9 @@ struct WelcomeDoneStep: View {
   }
 
   private func refreshStatuses() {
-    canTranscribe = TranscriptionModel.loadSelected().hasRequiredCredential
+    let model = TranscriptionModel.loadSelected()
+    canTranscribe = model.hasRequiredCredential
+    needsOfflineModelDownload = model.needsOfflineModelDownload
     hasAnyCredential = ProviderCredentials.anyChatCredentialConfigured
     micStatus = PermissionStatusChecker.status(for: .microphone)
     axStatus = PermissionStatusChecker.status(for: .accessibility)
