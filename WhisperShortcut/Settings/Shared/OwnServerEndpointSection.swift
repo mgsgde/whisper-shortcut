@@ -24,6 +24,10 @@ struct OwnServerEndpointSection: View {
 
   let route: Route
 
+  /// Set on the Accounts tab, where the surrounding card already carries the title and the status
+  /// line. The feature tabs render the header because there it is the only thing naming the form.
+  var showsHeader: Bool = true
+
   @State private var endpointURL: String = ""
   @State private var chatModelID: String = ""
   @State private var transcriptionModelID: String = ""
@@ -45,11 +49,13 @@ struct OwnServerEndpointSection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Own server",
-        systemImage: "server.rack",
-        subtitle: "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key."
-      )
+      if showsHeader {
+        SectionHeader(
+          title: "Own server",
+          systemImage: "server.rack",
+          subtitle: "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key."
+        )
+      }
 
       if showsSummary {
         summary
@@ -110,7 +116,7 @@ struct OwnServerEndpointSection: View {
             UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
           }
       } caption: {
-        Text("Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat.")
+        Text("Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The port is part of the URL — type whatever your server listens on. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -207,8 +213,8 @@ struct OwnServerEndpointSection: View {
           }
       } caption: {
         Text(route == .dictatePrompt
-          ? "Then applies it to your selected text. On Azure, your deployment name."
-          : "The model id your server expects. On Azure, your deployment name.")
+          ? "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves."
+          : "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -226,7 +232,8 @@ struct OwnServerEndpointSection: View {
   // MARK: - Presets
 
   /// Presets fill the URL shape (and a plausible chat model): the part that is easy to get wrong.
-  /// Small and short-named so all four fit the field column at the window's minimum width.
+  /// Small and short-named so all four fit the field column at the window's minimum width; the
+  /// local servers live behind one "Local…" menu because a fifth and sixth button would overflow.
   private var presetRow: some View {
     fieldRow("Fill in:") {
       HStack(spacing: 6) {
@@ -242,10 +249,38 @@ struct OwnServerEndpointSection: View {
         presetButton("Vertex", help: "The Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id.") {
           OpenAIChatPreferences.applyVertexAIPreset()
         }
+        localPresetMenu
       }
     } caption: {
       EmptyView()
     }
+  }
+
+  /// The local servers a user runs on this Mac. A menu rather than three more buttons: the row is
+  /// already full at the window's minimum width, and these are the same kind of choice.
+  private var localPresetMenu: some View {
+    Menu("Local…") {
+      Button("LM Studio") {
+        OpenAIChatPreferences.applyLMStudioPreset()
+        reloadFromPreferences()
+      }
+      .help("http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded.")
+
+      Button("MLX") {
+        OpenAIChatPreferences.applyMLXPreset()
+        reloadFromPreferences()
+      }
+      .help("http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with.")
+
+      Button("oMLX") {
+        OpenAIChatPreferences.applyoMLXPreset()
+        reloadFromPreferences()
+      }
+      .help("http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves.")
+    }
+    .controlSize(.small)
+    .fixedSize()
+    .help("Presets for a server on this Mac: LM Studio, MLX, oMLX.")
   }
 
   private func presetButton(_ title: LocalizedStringKey, help: LocalizedStringKey, apply: @escaping () -> Void) -> some View {

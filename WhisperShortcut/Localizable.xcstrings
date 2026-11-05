@@ -24242,6 +24242,146 @@
           }
         }
       }
+    },
+    "An OpenAI-compatible server you run or rent: LiteLLM, Azure OpenAI, Vertex AI, OpenInference, or a local one such as LM Studio, MLX or oMLX. One URL and key for Dictate, Dictate Prompt and Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein OpenAI-kompatibler Server, den Sie betreiben oder mieten: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder ein lokaler wie LM Studio, MLX oder oMLX. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat."
+          }
+        }
+      }
+    },
+    "LM Studio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LM Studio"
+          }
+        }
+      }
+    },
+    "Local…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokal …"
+          }
+        }
+      }
+    },
+    "MLX" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MLX"
+          }
+        }
+      }
+    },
+    "Not set up yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht eingerichtet."
+          }
+        }
+      }
+    },
+    "Presets for a server on this Mac: LM Studio, MLX, oMLX." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlagen für einen Server auf diesem Mac: LM Studio, MLX, oMLX."
+          }
+        }
+      }
+    },
+    "Set up…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten …"
+          }
+        }
+      }
+    },
+    "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modell-ID, die Ihr Server erwartet; sie muss zu dem passen, was der Server tatsächlich ausliefert. Bei Azure der Name Ihres Deployments."
+          }
+        }
+      }
+    },
+    "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wendet sie dann auf den markierten Text an. Bei Azure: Ihr Deployment-Name. Er muss zu dem passen, was der Server tatsächlich ausliefert."
+          }
+        }
+      }
+    },
+    "Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The port is part of the URL — type whatever your server listens on. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Der Port gehört zur URL – tragen Sie ein, worauf Ihr Server hört. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
+          }
+        }
+      }
+    },
+    "http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:1234/v1, der Standardport von LM Studio. Das Chat-Modell ist `local-model`; LM Studio ordnet das dem zu, was Sie geladen haben."
+          }
+        }
+      }
+    },
+    "http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:8000/v1, der Standardport von oMLX. Das Chat-Modell ist `local-model`; oMLX ordnet das dem Modell zu, das es ausliefert."
+          }
+        }
+      }
+    },
+    "http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:8000/v1, der Standardport von mlx_lm.server und mlx-audio. Das Chat-Modell ist das Hugging-Face-Repository, mit dem der Server gestartet wurde."
+          }
+        }
+      }
+    },
+    "oMLX" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "oMLX"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
