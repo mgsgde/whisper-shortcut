@@ -11784,22 +11784,22 @@
         }
       }
     },
-    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit and reopen the app." : {
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, open Privacy & Security › Full Disk Access, drag WhisperShortcut from the Finder window that opens into the list, turn it on, then quit and reopen the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben geben Sie WhisperShortcut unter Systemeinstellungen › Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie wieder."
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben öffnen Sie Datenschutz & Sicherheit › Festplattenvollzugriff, ziehen Sie WhisperShortcut aus dem Finder-Fenster, das sich öffnet, in die Liste, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
           }
         }
       }
     },
-    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app." : {
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Open Privacy & Security, drag WhisperShortcut from the Finder window into the Full Disk Access list, turn it on, then quit and reopen the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Geben Sie WhisperShortcut unter Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie erneut."
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Öffnen Sie Datenschutz & Sicherheit, ziehen Sie WhisperShortcut aus dem Finder-Fenster in die Liste „Festplattenvollzugriff“, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
           }
         }
       }

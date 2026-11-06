@@ -4410,7 +4410,7 @@ extension MenuBarController: AudioRecorderDelegate {
         shortTitle: String(localized: "Microphone Access Needed"),
         message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
         dismissProcessingFirst: false,
-        retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
+        retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
         retryActionTitle: "Open System Settings",
         changesAppState: !meetingOwnsState
       )

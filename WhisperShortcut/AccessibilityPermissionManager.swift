@@ -49,6 +49,8 @@ class AccessibilityPermissionManager {
 
     switch response {
     case .alertFirstButtonReturn:
+      // Re-register the entry before the deep link so it exists even after a tccutil reset.
+      PermissionStatusChecker.requestAccessibilityAccess()
       PermissionStatusChecker.openSystemSettings(for: .accessibility)
     case .alertSecondButtonReturn:
       // Clears the stale TCC entry left behind by a differently-signed copy (App Store vs

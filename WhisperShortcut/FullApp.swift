@@ -203,16 +203,14 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
       macOS blocked access to system-prompts.md (\(reason)). Until that is fixed, dictation uses the \
       default prompts instead of yours. Your file has not been changed.
 
-      To fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit \
-      and reopen the app.
+      To fix it, open Privacy & Security › Full Disk Access, drag WhisperShortcut from the Finder \
+      window that opens into the list, turn it on, then quit and reopen the app.
       """)
     alert.addButton(withTitle: String(localized: "Open Privacy & Security"))
     alert.addButton(withTitle: String(localized: "Later"))
     NSApp.activate(ignoringOtherApps: true)
-    if alert.runModal() == .alertFirstButtonReturn,
-      let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
-    {
-      Task { @MainActor in SystemSettingsOpener.open(url) }
+    if alert.runModal() == .alertFirstButtonReturn {
+      PermissionStatusChecker.openFullDiskAccessSettings()
     }
   }
 

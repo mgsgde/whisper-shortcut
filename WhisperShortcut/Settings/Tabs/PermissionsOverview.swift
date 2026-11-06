@@ -151,24 +151,20 @@ struct PermissionsOverview: View {
     }
   }
 
-  /// Screen Recording has no completion-handler request API: `CGRequestScreenCaptureAccess()`
-  /// shows the native prompt + pre-registers the app the first time, then silently no-ops. So we
-  /// fire it, and if still not granted shortly after, deep-link into System Settings.
+  /// Same path as "Open System Settings": request access (which pre-registers the app), then
+  /// deep-link if it is still not granted. Refresh now and again once the prompt can settle.
   private func requestScreenRecording() {
-    let granted = PermissionStatusChecker.requestScreenRecordingAccess()
+    PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
     refresh()
-    guard !granted else { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
       refresh()
-      if PermissionStatusChecker.status(for: .screenRecording) != .granted {
-        PermissionStatusChecker.openSystemSettings(for: .screenRecording)
-      }
     }
   }
 
   private func openSettingsButton(for kind: PermissionKind) -> some View {
     Button {
-      PermissionStatusChecker.openSystemSettings(for: kind)
+      PermissionStatusChecker.requestThenOpenSystemSettings(for: kind)
+      refresh()
     } label: {
       actionLabel(String(localized: "Open System Settings"), systemImage: "arrow.up.right.square")
     }

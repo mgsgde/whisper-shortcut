@@ -1522,7 +1522,7 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
         PopupNotificationWindow.showError(
           "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
           title: "Microphone Access Needed",
-          retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
+          retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
           retryActionTitle: "Open System Settings"
         )
         return

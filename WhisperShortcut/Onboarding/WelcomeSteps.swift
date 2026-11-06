@@ -1282,7 +1282,7 @@ struct WelcomeDoneStep: View {
       badgeContent(icon: "exclamationmark.circle.fill", color: .orange, text: "Needs a model")
     } else if let missing = missingRequirement(for: feature) {
       Button {
-        PermissionStatusChecker.openSystemSettings(for: missing)
+        PermissionStatusChecker.requestThenOpenSystemSettings(for: missing)
       } label: {
         badgeContent(
           icon: "xmark.circle.fill", color: .red, text: "Needs \(missing.displayName)")
