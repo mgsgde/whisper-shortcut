@@ -2285,7 +2285,8 @@ class MenuBarController: NSObject {
     retryActionTitle: LocalizedStringResource = "Retry",
     dismissAction: (() -> Void)? = nil,
     topUpURL: URL? = nil,
-    changesAppState: Bool = true
+    changesAppState: Bool = true,
+    showsSupport: Bool = true
   ) {
     if dismissProcessingFirst {
       PopupNotificationWindow.dismissProcessing()
@@ -2293,7 +2294,7 @@ class MenuBarController: NSObject {
     if changesAppState {
       appState = appState.showError(shortTitle)
     }
-    PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
+    PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL, showsSupport: showsSupport)
   }
 
   private static func telemetryArea(for mode: AppState.RecordingMode) -> TelemetryArea {
@@ -4407,12 +4408,13 @@ extension MenuBarController: AudioRecorderDelegate {
     // privacy pane instead of leaving the user with only "Contact Support".
     if errorDomain == "WhisperShortcut" && errorCode == 1001 {
       presentError(
-        shortTitle: String(localized: "Microphone Access Needed"),
-        message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
+        shortTitle: String(localized: "Microphone Is Off"),
+        message: String(localized: "Turn on WhisperShortcut under Privacy & Security › Microphone."),
         dismissProcessingFirst: false,
         retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
         retryActionTitle: "Open System Settings",
-        changesAppState: !meetingOwnsState
+        changesAppState: !meetingOwnsState,
+        showsSupport: false
       )
       return
     }
@@ -4680,7 +4682,8 @@ extension MenuBarController: ShortcutDelegate {
       "Turn on WhisperShortcut under Screen & System Audio Recording, then quit and reopen WhisperShortcut.",
       title: "Screen Recording Is Off",
       retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
-      retryActionTitle: "Open System Settings")
+      retryActionTitle: "Open System Settings",
+      showsSupport: false)
   }
 
   /// Read Aloud for text a macOS Service already supplied. No clipboard snapshot: the pasteboard

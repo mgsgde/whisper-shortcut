@@ -3092,16 +3092,6 @@
         }
       }
     },
-    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers. Needs Screen Recording permission." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern. Benötigt die Berechtigung „Bildschirmaufnahme“."
-          }
-        }
-      }
-    },
     "Adds one short model call before reading." : {
       "localizations" : {
         "de" : {
@@ -4253,7 +4243,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Automatisches Einfügen setzt diktierten Text am Cursor ein, indem es ⌘V simuliert. Das erlaubt macOS nur mit der Berechtigung Bedienungshilfen.\n\nDas Diktat funktioniert auch ohne: Ihr Text liegt immer in der Zwischenablage, Sie fügen ihn mit ⌘V selbst ein.\n\nUm automatisches Einfügen einzuschalten, klicken Sie auf „Systemeinstellungen öffnen“. Dort:\n1. Datenschutz & Sicherheit → Bedienungshilfen öffnen\n2. WhisperShortcut einschalten\n\nSchon in der Liste, aber es geht trotzdem nicht? Das passiert nach einem Wechsel zwischen App-Store- und GitHub-Version, macOS merkt sich die alte Kopie. Entfernen Sie WhisperShortcut mit der Taste − aus der Liste und fügen Sie es wieder hinzu. Oder klicken Sie auf „Befehl zum Zurücksetzen kopieren“ und führen Sie ihn im Terminal aus, um den alten Eintrag zu löschen."
+            "value" : "Automatisches Einfügen setzt diktierten Text am Cursor ein, indem es ⌘V simuliert. Das erlaubt macOS nur mit der Berechtigung Bedienungshilfen.\n\nDas Diktat funktioniert auch ohne: Ihr Text liegt immer in der Zwischenablage, Sie fügen ihn mit ⌘V selbst ein.\n\nUm automatisches Einfügen einzuschalten, klicken Sie auf „Systemeinstellungen öffnen“. Dort:\n1. Datenschutz & Sicherheit → Bedienungshilfen öffnen\n2. WhisperShortcut einschalten\n\nSchon in der Liste, aber es geht trotzdem nicht? Das passiert nach einem Wechsel zwischen App-Store- und GitHub-Version, macOS merkt sich die alte Kopie. Entfernen Sie WhisperShortcut mit der Schaltfläche − aus der Liste und fügen Sie es wieder hinzu. Oder klicken Sie auf „Befehl zum Zurücksetzen kopieren“ und führen Sie ihn im Terminal aus, um den alten Eintrag zu löschen."
           }
         }
       }
@@ -7919,16 +7909,6 @@
         }
       }
     },
-    "Dictate Prompt reads your selection from a picture of the front window, never the whole screen. Needs Screen Recording permission." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dictate Prompt liest Ihre Markierung aus einem Bild des vorderen Fensters, nie vom ganzen Bildschirm. Benötigt die Berechtigung „Bildschirmaufnahme“."
-          }
-        }
-      }
-    },
     "Dictate Prompt runs offline too — %@ is ready." : {
       "localizations" : {
         "de" : {
@@ -9404,16 +9384,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Für OpenRouter wählen Sie stattdessen OpenRouter in der Modellauswahl. Es nutzt das Konto aus Einstellungen → Konten, ohne dass Sie hier URL oder Schlüssel eintragen."
-          }
-        }
-      }
-    },
-    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Patientendaten oder Fallnotizen: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Datenschutz & Berechtigungen."
           }
         }
       }
@@ -10947,7 +10917,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst, wenn Sie WhisperShortcut beenden und neu öffnen. Nutzen Sie dafür die Taste unten."
+            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst, wenn Sie WhisperShortcut beenden und neu öffnen. Nutzen Sie dafür die Schaltfläche unten."
           }
         }
       }
@@ -12225,16 +12195,6 @@
         }
       }
     },
-    "Microphone Access Needed" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofonzugriff nötig"
-          }
-        }
-      }
-    },
     "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut." : {
       "localizations" : {
         "de" : {
@@ -12693,16 +12653,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Konto, Sie bezahlen den Anbieter"
-          }
-        }
-      }
-    },
-    "Needs Screen Recording permission." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -13799,26 +13749,6 @@
         }
       }
     },
-    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
-          }
-        }
-      }
-    },
-    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
-          }
-        }
-      }
-    },
     "Offline Mode keeps no usage logs, so there is nothing to measure." : {
       "localizations" : {
         "de" : {
@@ -14121,16 +14051,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur lesen"
-          }
-        }
-      }
-    },
-    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten, Sie ändern alles später unter Einstellungen → Datenschutz & Berechtigungen."
           }
         }
       }
@@ -15240,7 +15160,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Benötigt die Berechtigung „Bedienungshilfen“."
+            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Braucht die Berechtigung „Bedienungshilfen“."
           }
         }
       }
@@ -15551,17 +15471,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenschutz"
-          }
-        }
-      }
-    },
-    "Privacy & Permissions" : {
-      "comment" : "Settings tab",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datenschutz & Berechtigungen"
           }
         }
       }
@@ -17763,7 +17672,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bildschirmaufnahme fehlgeschlagen. Datenschutz & Berechtigungen wird geöffnet …"
+            "value" : "Bildschirmaufnahme fehlgeschlagen. Berechtigungen & Datenschutz wird geöffnet …"
           }
         }
       }
@@ -19754,16 +19663,6 @@
         }
       }
     },
-    "System Audio Not Recorded" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Systemton wird nicht aufgenommen"
-          }
-        }
-      }
-    },
     "System Prompt" : {
       "localizations" : {
         "de" : {
@@ -20150,16 +20049,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die nächste Änderung, die Sie annehmen, wird ab dann gemessen."
-          }
-        }
-      }
-    },
-    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
           }
         }
       }
@@ -22064,16 +21953,6 @@
         }
       }
     },
-    "Whether anything may leave this Mac, and what WhisperShortcut can access on it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ob etwas diesen Mac verlassen darf und worauf WhisperShortcut hier zugreifen kann."
-          }
-        }
-      }
-    },
     "Which model answers in the chat. Keys and accounts live under Accounts." : {
       "localizations" : {
         "de" : {
@@ -22160,16 +22039,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut – Klicken Sie, um das Menü zu öffnen"
-          }
-        }
-      }
-    },
-    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
           }
         }
       }
@@ -22294,22 +22163,12 @@
         }
       }
     },
-    "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut braucht Zugriff auf das Mikrofon, um aufzunehmen. Öffnen Sie Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Mikrofon und aktivieren Sie WhisperShortcut."
-          }
-        }
-      }
-    },
     "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut braucht die Berechtigung für Bildschirmaufnahmen, um Bildschirmfotos zu machen. Prüfen Sie sie unter „Datenschutz & Berechtigungen“ und beenden und öffnen Sie WhisperShortcut danach neu, damit die Änderung wirkt."
+            "value" : "WhisperShortcut braucht die Berechtigung für Bildschirmaufnahme, um Bildschirmfotos zu machen. Prüfen Sie sie unter „Berechtigungen & Datenschutz“ und beenden und öffnen Sie WhisperShortcut danach neu, damit die Änderung wirkt."
           }
         }
       }
@@ -22660,16 +22519,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sie können das auch im Chat ändern lassen, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
-          }
-        }
-      }
-    },
-    "You can change this anytime in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das können Sie jederzeit unter Einstellungen → Datenschutz & Berechtigungen ändern."
           }
         }
       }
@@ -23935,7 +23784,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Benötigt Bedienungshilfen."
+            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Braucht Bedienungshilfen."
           }
         }
       }
@@ -25178,8 +25027,179 @@
           }
         }
       }
+    },
+    "Permissions & Privacy" : {
+      "comment" : "Settings tab",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen & Datenschutz"
+          }
+        }
+      }
+    },
+    "What WhisperShortcut may access on this Mac, and whether anything may leave it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worauf WhisperShortcut auf diesem Mac zugreifen darf und ob etwas den Mac verlassen darf."
+          }
+        }
+      }
+    },
+    "System Audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudio"
+          }
+        }
+      }
+    },
+    "Lets meeting transcripts include the other participants. macOS asks the first time you record a meeting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Meeting-Transkripte auch die anderen Teilnehmer enthalten. macOS fragt beim ersten Meeting danach."
+          }
+        }
+      }
+    },
+    "Other features ask for access the first time you use them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Funktionen fragen beim ersten Benutzen nach Zugriff."
+          }
+        }
+      }
+    },
+    "Asks on first use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt beim ersten Benutzen"
+          }
+        }
+      }
+    },
+    "Microphone Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon ist aus"
+          }
+        }
+      }
+    },
+    "Turn on WhisperShortcut under Privacy & Security › Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie WhisperShortcut unter Datenschutz & Sicherheit › Mikrofon ein."
+          }
+        }
+      }
+    },
+    "System Audio Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudio ist aus"
+          }
+        }
+      }
+    },
+    "WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht, deshalb wird nur Ihr Mikrofon aufgenommen. Schalten Sie WhisperShortcut unter Datenschutz & Sicherheit › Bildschirm- & Systemaudioaufnahme ein."
+          }
+        }
+      }
+    },
+    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Patientendaten oder Fallnotizen: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten, Sie ändern alles später unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "You can change this anytime in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das können Sie jederzeit unter Einstellungen → Berechtigungen & Datenschutz ändern."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Berechtigungen & Datenschutz aus."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Berechtigungen & Datenschutz aus."
+          }
+        }
+      }
+    },
+    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern."
+          }
+        }
+      }
+    },
+    "Dictate Prompt reads your selection from a picture of the front window, never the whole screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest Ihre Markierung aus einem Bild des vorderen Fensters, nie vom ganzen Bildschirm."
+          }
+        }
+      }
     }
-
   },
   "version" : "1.0"
 }
+

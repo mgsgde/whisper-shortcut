@@ -4614,16 +4614,16 @@ struct ChatView: View {
   private var systemAudioBlockedNoticeRow: some View {
     HStack(spacing: 8) {
       Image(systemName: "speaker.slash.fill")
-        .font(.system(size: 11))
+        .font(.caption)
         .foregroundColor(.orange)
-      Text("The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut.")
-        .font(.system(size: 11))
+      Text("WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording.")
+        .font(.caption)
         .foregroundColor(ChatTheme.primaryText.opacity(0.85))
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 8)
       Button(action: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) }) {
         Text("Open System Settings")
-          .font(.system(size: 11, weight: .medium))
+          .font(.caption.weight(.medium))
           .foregroundColor(ChatTheme.primaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 3)

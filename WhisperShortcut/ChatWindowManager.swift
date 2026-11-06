@@ -191,7 +191,8 @@ class ChatWindowManager {
       retryAction: {
         PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
       },
-      retryActionTitle: "Allow…"
+      retryActionTitle: "Allow…",
+      showsSupport: false
     )
   }
 
@@ -202,6 +203,12 @@ class ChatWindowManager {
   func captureFrontWindowForPromptMode() async -> Data? {
     let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     if frontmost == Bundle.main.bundleIdentifier || FocusedFieldSnapshot.isExcluded(bundleID: frontmost) {
+      return nil
+    }
+    // Preflight does not prompt. SCShareableContent below would, so a Dictate Prompt turn must
+    // not be the thing that raises the Screen Recording dialog.
+    guard CGPreflightScreenCaptureAccess() else {
+      Self.notePromptScreenshotSkipped()
       return nil
     }
     guard let windowID = ScreenshotDisplayPicker.frontmostWindowID() else { return nil }

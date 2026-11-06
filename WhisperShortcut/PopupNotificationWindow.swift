@@ -56,7 +56,8 @@ enum PopupKind: Equatable {
     }
   }
 
-  /// Error popups always include Contact Support, so the layout reserves a button row.
+  /// Error popups carry a button row when they have an action. Contact Support is added only
+  /// when the window's `showsSupport` is true; permission popups pass false.
   var hasActionButtons: Bool { self == .error }
 
   /// Auto-hide interval, or nil when no timer should be scheduled.
@@ -145,10 +146,14 @@ class PopupNotificationWindow: NSWindow {
   private var wasRetried: Bool = false
   private var customDisplayDuration: TimeInterval?
   private var topUpURL: URL?
+  /// When false, the error popup omits Contact Support. Permission popups pass false so the
+  /// row holds only their own button (Open System Settings / Allow…).
+  private let showsSupport: Bool
 
   // MARK: - Initialization
-  init(title: String, text: String, kind: PopupKind = .success, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = String(localized: "Retry"), dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  init(title: String, text: String, kind: PopupKind = .success, modelInfo: String? = nil, retryAction: (() -> Void)? = nil, retryActionTitle: String = String(localized: "Retry"), dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil, showsSupport: Bool = true) {
     self.kind = kind
+    self.showsSupport = showsSupport
     // Create window with specific style for notifications
     super.init(
       contentRect: NSRect(x: 0, y: 0, width: Constants.defaultWindowWidth, height: 100),
@@ -182,7 +187,9 @@ class PopupNotificationWindow: NSWindow {
       if topUpURL != nil {
         buttons.append(makeActionButton(title: String(localized: "Top up"), action: #selector(topUpButtonClicked)))
       }
-      buttons.append(makeActionButton(title: String(localized: "Contact Support"), action: #selector(whatsappButtonClicked)))
+      if showsSupport {
+        buttons.append(makeActionButton(title: String(localized: "Contact Support"), action: #selector(whatsappButtonClicked)))
+      }
       actionButtons = buttons
     }
     layoutContent()
@@ -1062,12 +1069,12 @@ extension PopupNotificationWindow {
     }
   }
 
-  static func showError(_ error: LocalizedStringResource, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
-    showError(verbatim: String(localized: error), title: title, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, signInAction: signInAction, customDisplayDuration: customDisplayDuration, topUpURL: topUpURL)
+  static func showError(_ error: LocalizedStringResource, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil, showsSupport: Bool = true) {
+    showError(verbatim: String(localized: error), title: title, retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, signInAction: signInAction, customDisplayDuration: customDisplayDuration, topUpURL: topUpURL, showsSupport: showsSupport)
   }
 
   /// `showError` for text that is already final (a formatted error, user content).
-  static func showError(verbatim error: String, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil) {
+  static func showError(verbatim error: String, title: LocalizedStringResource = "Error", retryAction: (() -> Void)? = nil, retryActionTitle: LocalizedStringResource = "Retry", dismissAction: (() -> Void)? = nil, signInAction: (() -> Void)? = nil, customDisplayDuration: TimeInterval? = nil, topUpURL: URL? = nil, showsSupport: Bool = true) {
     let titleText = String(localized: title)
     present(ignoresPreference: true) {
       PopupNotificationWindow(
@@ -1079,7 +1086,8 @@ extension PopupNotificationWindow {
         dismissAction: dismissAction,
         signInAction: signInAction,
         customDisplayDuration: customDisplayDuration,
-        topUpURL: topUpURL
+        topUpURL: topUpURL,
+        showsSupport: showsSupport
       )
     }
   }

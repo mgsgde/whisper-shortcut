@@ -186,10 +186,11 @@ final class LiveMeetingSession: NSObject {
     guard !didShowSystemAudioAlert else { return }
     didShowSystemAudioAlert = true
     PopupNotificationWindow.showError(
-      "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only.",
-      title: "System Audio Not Recorded",
+      "WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording.",
+      title: "System Audio Is Off",
       retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
-      retryActionTitle: "Open System Settings")
+      retryActionTitle: "Open System Settings",
+      showsSupport: false)
   }
 
   // MARK: - Session state
@@ -1520,10 +1521,11 @@ extension LiveMeetingSession: LiveMeetingRecorderDelegate {
       let nsError = error as NSError
       if nsError.domain == "LiveMeetingRecorder" && nsError.code == 2001 {
         PopupNotificationWindow.showError(
-          "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
-          title: "Microphone Access Needed",
+          "Turn on WhisperShortcut under Privacy & Security › Microphone.",
+          title: "Microphone Is Off",
           retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
-          retryActionTitle: "Open System Settings"
+          retryActionTitle: "Open System Settings",
+          showsSupport: false
         )
         return
       }
