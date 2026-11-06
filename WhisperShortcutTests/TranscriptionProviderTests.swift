@@ -73,7 +73,7 @@ struct TranscriptionProviderTests {
     #expect(
       offline == [
         .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge, .whisperLargeTurbo,
-        .parakeetUltra,
+        .parakeetUltra, .qwen3ASR,
       ])
 
     for model in offline {

@@ -3,9 +3,11 @@ import Foundation
 // MARK: - Curated model pickers
 //
 // Every model picker (Dictate, Dictate Prompt, Read Aloud, Chat, Meeting Transcription / Summary,
-// Smart Improvement) opens with at most three tiles — Recommended · Fastest · Offline — and keeps
-// the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles per
-// picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
+// Smart Improvement) opens with the three slots Recommended · Fastest · Offline, plus every model
+// of an on-device provider whose whole catalogue fits two tiles (both Qwen3 voices in Read
+// Aloud, both local MLX chat models in Chat) — and keeps the rest behind "More models". The
+// 2026-10-19 UX review found 16–18 near-identical tiles per picker (five Gemini Flash variants
+// nobody could tell apart); the curation is the fix.
 //
 // What is featured is decided here, from data on the model enums, never from string lists in the
 // views: `pickerSpeedRank` names the fastest, `pickerOfflineRank` the on-device pick,
@@ -65,6 +67,9 @@ protocol PickerCuratedModel: Hashable {
   /// would select for this user. `nil` = not a stand-in: on-device models, which have their own
   /// step in the fallback order, and models the reconciler never substitutes.
   var pickerStandInRank: Int? { get }
+  /// The provider group the model belongs to, for provider-level curation rules (see the
+  /// on-device rule in `ModelPickerCuration`).
+  var pickerProvider: String { get }
 }
 
 // `pickerTitle` on each model below is the name on the tile: `displayName` minus the "(Offline)" /
@@ -114,6 +119,26 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
     feature(Self.best(candidates, by: \.pickerSpeedRank), as: .fastest)
     // On-device models never need a key, so the Offline slot does not depend on credentials.
     feature(Self.best(visible, by: \.pickerOfflineRank), as: .offline)
+
+    // An on-device provider whose whole catalogue fits in two tiles is a first-class choice, not
+    // "More models" clutter: the Read Aloud picker hid both Qwen3 voices behind the disclosure
+    // under the cloud tiles — the opposite of the picker's own offline-first curation. Larger
+    // offline families (the seven Whisper/Parakeet dictation models) stay curated: featuring
+    // all of them would flood the top row. Groups iterate in first-seen list order so the tile
+    // order is stable between renders.
+    var offlineProviders: [String: [Model]] = [:]
+    var offlineProviderOrder: [String] = []
+    for model in visible where model.pickerOfflineRank != nil {
+      let key = model.pickerProvider
+      if offlineProviders[key] == nil { offlineProviderOrder.append(key) }
+      offlineProviders[key, default: []].append(model)
+    }
+    for key in offlineProviderOrder {
+      guard let models = offlineProviders[key], models.count <= 2 else { continue }
+      for model in models where !featured.contains { $0.model == model } {
+        featured.append(Featured(model: model, badges: []))
+      }
+    }
 
     if visible.count < Self.disclosureThreshold {
       // Short lists (Read Aloud in Offline Mode, a Mac with one provider) stay fully visible.
@@ -176,7 +201,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .gemini35FlashLite: return 6
     case .gemini38Flash: return 7
     case .gemini4Argon, .gemini31Pro, .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium,
-         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .selfHostedTranscription,
+         .whisperLarge, .whisperLargeTurbo, .parakeetUltra, .qwen3ASR, .selfHostedTranscription,
          .openRouterTranscription:
       return nil
     }
@@ -193,6 +218,9 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperSmall: return 3
     case .whisperBase: return 4
     case .whisperTiny: return 5
+    // Qwen3-ASR is the multilingual fallback, not a German-accuracy pick: it sits behind the
+    // Whisper family so the offline list still leads with the fastest accurate option.
+    case .qwen3ASR: return 6
     default: return nil
     }
   }
@@ -208,6 +236,7 @@ extension TranscriptionModel: PickerCuratedModel {
     case .whisperLarge: return "Whisper Large"
     case .whisperLargeTurbo: return "Whisper Large v3 Turbo"
     case .parakeetUltra: return "Parakeet Ultra"
+    case .qwen3ASR: return "Qwen3 ASR 1.7B"
     default: return displayName
     }
   }
@@ -238,6 +267,8 @@ extension TranscriptionModel: PickerCuratedModel {
     if self == .openRouterTranscription { return rank }
     return nil
   }
+
+  var pickerProvider: String { provider.rawValue }
 
   /// The models under "More models" that are their provider's own pick, for the "Best Gemini
   /// pick" tile badge. The top row carries one recommendation; someone with a Gemini *and* an
@@ -312,6 +343,8 @@ extension PromptModel: PickerCuratedModel {
     guard let index = order.firstIndex(of: provider) else { return nil }
     return index * 2 + (self == provider.defaultChatModel ? 0 : 1)
   }
+
+  var pickerProvider: String { provider.rawValue }
 }
 
 // MARK: - Read Aloud
@@ -324,10 +357,18 @@ extension TTSModel: PickerCuratedModel {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
     case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS: return nil
+    case .qwen3VoiceDesign: return nil
     }
   }
 
-  var pickerOfflineRank: Int? { provider == .system ? 0 : nil }
+  var pickerOfflineRank: Int? {
+    switch provider {
+    case .system: return 0
+    // Behind the macOS voice: it is instant, Qwen3 has to generate first.
+    case .localMLX: return 1
+    default: return nil
+    }
+  }
 
   var pickerSupersededBy: TTSModel? { nil }
 
@@ -338,4 +379,14 @@ extension TTSModel: PickerCuratedModel {
   /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
   /// leaving every rank `nil` lets the curation reach the same model through its Offline step.
   var pickerStandInRank: Int? { nil }
+
+  var pickerProvider: String {
+    switch provider {
+    case .gemini: return "gemini"
+    case .openai: return "openai"
+    case .xai: return "xai"
+    case .system: return "system"
+    case .localMLX: return "qwen3"
+    }
+  }
 }

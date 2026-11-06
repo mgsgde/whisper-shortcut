@@ -18,6 +18,7 @@ private enum FakeModel: String, CaseIterable, PickerCuratedModel {
   var pickerSupersededBy: FakeModel? { self == .oldFlash ? .newFlash : nil }
   var pickerSetupBadge: String? { nil }
   var pickerStandInRank: Int? { self == .extra1 ? 0 : nil }
+  var pickerProvider: String { "fake" }
 }
 
 @Suite("Curated model pickers")
@@ -208,7 +209,9 @@ struct ModelPickerCurationTests {
     let readAloud = ModelPickerCuration(
       models: TTSModel.allCases, recommended: SettingsDefaults.readAloudModel,
       selected: SettingsDefaults.readAloudModel, isUsable: { _ in true })
-    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS])
+    // The Qwen3 voice is a one-tile on-device provider: it belongs above the disclosure, not
+    // behind "More models" under the cloud tiles. Order follows the picker's list order.
+    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS, .qwen3VoiceDesign])
     #expect(readAloud.featured.first?.badges == [.recommended, .fastest])
   }
 
@@ -223,6 +226,17 @@ struct ModelPickerCurationTests {
     let onDevice = PromptModel.allCases.filter { $0.pickerOfflineRank != nil }
     let allLocal = onDevice.allSatisfy { $0.provider == .local || $0.provider == .localMLX }
     #expect(allLocal)
+    // The two-tile on-device rule reaches the Chat picker too: the offerable local MLX chat
+    // models are featured above the disclosure, not hidden behind "More models". Pinned so the
+    // reach is intended behaviour, not an accident of the Read Aloud fix. Offerable, not
+    // allCases: a machine with too little RAM filters 8B-class entries out, and the CI runner
+    // is exactly such a machine.
+    let chat = ModelPickerCuration(
+      models: PromptModel.chatModels, recommended: SettingsDefaults.selectedChatModel,
+      selected: SettingsDefaults.selectedChatModel, isUsable: { _ in true })
+    let featuredChat = chat.featured.map(\.model)
+    let featuredLocalMLX = featuredChat.filter { $0.provider == .localMLX }
+    #expect(featuredLocalMLX.count == PromptModel.chatModels.filter { $0.provider == .localMLX }.count)
   }
 
   @Test("Speed ranks never feature on-device models as Fastest")
