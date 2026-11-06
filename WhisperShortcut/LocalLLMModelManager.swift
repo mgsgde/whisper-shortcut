@@ -138,11 +138,32 @@ enum MLXModelPaths {
     for repoPath in candidates {
       if hasRequiredFiles(at: repoPath) { return repoPath }
       let snapshots = repoPath.appendingPathComponent("snapshots")
-      guard let hashes = try? FileManager.default.contentsOfDirectory(atPath: snapshots.path) else { continue }
+      // Missing `snapshots` is normal for a plain repo checkout; anything else is logged, because
+      // silently continuing sends the caller on to a fresh download of weights already on disk.
+      let hashes: [String]
+      do {
+        hashes = try FileManager.default.contentsOfDirectory(atPath: snapshots.path)
+      } catch let error as NSError where error.code == NSFileReadNoSuchFileError {
+        continue
+      } catch {
+        DebugLogger.logWarning(
+          "MLX: Cannot read \(snapshots.path) — \(error.localizedDescription). "
+            + "Falling back to the user's model folder.")
+        continue
+      }
       for hash in hashes {
         let snap = snapshots.appendingPathComponent(hash)
         if hasRequiredFiles(at: snap) { return snap }
       }
+    }
+    // Then the folder the user pointed us at (LM Studio, a Hugging Face cache, a shared drive), so
+    // weights they already have are used instead of downloaded again. Same completeness check as
+    // above — a half-downloaded repo there stays unavailable.
+    if let extra = ExtraModelFolder.mlxModelURL(for: type.huggingFaceID) {
+      ExtraModelFolder.logUse(
+        key: "mlx-\(type.huggingFaceID)", path: extra.path,
+        message: "MLX: using \(type.huggingFaceID) from the user's model folder: \(extra.path)")
+      return extra
     }
     return nil
   }

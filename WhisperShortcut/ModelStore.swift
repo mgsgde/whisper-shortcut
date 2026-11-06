@@ -213,6 +213,18 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
       // too destructive" case on the dictation path.
       DebugLogger.logWarning(
         "\(logPrefix): \(model.displayName) failed to load (\(error.logDescription)); treating as corrupt and re-downloading once")
+      // Weights in the user's own folder are read-only to us: never delete them and never
+      // download a second copy next to them. Surface the load error instead.
+      if isExternal(model) {
+        DebugLogger.logError(
+          "\(logPrefix): \(model.displayName) in the user's model folder failed to load; not re-downloading")
+        readyPhase[model] = nil
+        throw ModelStoreError.fileError(
+          String(
+            localized:
+              "The model in the folder you chose could not be loaded. It may be incomplete or damaged. Nothing was changed — replace it in Finder, or remove the model folder in Settings to download the model again."
+          ))
+      }
       try? removeFiles(of: model)
       await unload(model)
       try await download(model, isRetry: true)
@@ -336,7 +348,40 @@ class ModelStore<Model: DownloadableModel>: ObservableObject {
     guard let modelPath = resolveModelPath(for: model) else {
       throw ModelStoreError.fileError(String(localized: "Model not found"))
     }
+    // A model resolved from the user's own model folder (`ExtraModelFolder`) is theirs, not ours.
+    // Delete must never reach into it: the app promises that folder is read-only, and a user who
+    // pointed us at a shared drive would otherwise lose weights we merely borrowed.
+    //
+    // The test is "is it inside the folder the user picked", NOT "is it outside `rootDirectory`".
+    // Parakeet keeps its weights under `Application Support/FluidAudio/Models`, which is outside
+    // `rootDirectory` by design; asking the wrong question would have hidden its Delete button and
+    // refused to remove a download the app itself made.
+    guard !ExtraModelFolder.contains(modelPath) else {
+      DebugLogger.logWarning(
+        "\(logPrefix): refusing to delete \(modelPath.path) — it is inside the user's model folder")
+      throw ModelStoreError.fileError(
+        String(
+          localized:
+            "This model is in the folder you chose, not in WhisperShortcut's own folder. Nothing was deleted — remove it yourself in Finder if you want the space back."
+        ))
+    }
     try fileManager.removeItem(at: deletionTarget(for: modelPath))
+  }
+
+  /// True when `model` resolves into the user's own model folder rather than the app's. Settings
+  /// offers no Delete for those — the weights are the user's, and the app only reads them.
+  nonisolated func isExternal(_ model: Model) -> Bool {
+    guard let path = resolveModelPath(for: model) else { return false }
+    return ExtraModelFolder.contains(path)
+  }
+
+  /// Whether `url` lies inside `directory`, symlinks resolved so a link out of a folder cannot be
+  /// mistaken for a file that really sits in it.
+  nonisolated static func isInside(_ url: URL, _ directory: URL) -> Bool {
+    let target = url.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    let root = directory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+    guard target.count >= root.count else { return false }
+    return Array(target.prefix(root.count)) == root
   }
 
   // MARK: - Size

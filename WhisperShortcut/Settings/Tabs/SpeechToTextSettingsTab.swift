@@ -29,6 +29,12 @@ struct SpeechToTextSettingsTab: View {
 
       SpacedSectionDivider()
 
+      // Where those models may come from. Right after the list, because it changes what the list
+      // reports as downloaded.
+      ModelFolderSection { modelManager.objectWillChange.send() }
+
+      SpacedSectionDivider()
+
       // Language Section (only for Whisper)
       if !viewModel.data.selectedTranscriptionModel.isGemini {
         languageSection
