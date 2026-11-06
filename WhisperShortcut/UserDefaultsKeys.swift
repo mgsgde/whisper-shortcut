@@ -126,6 +126,10 @@ enum UserDefaultsKeys {
   /// the app in System Settings). macOS suppresses the prompt after a prior denial, so once this
   /// is set we deep-link into System Settings instead of re-prompting.
   static let hasShownAccessibilityPrompt = "hasShownAccessibilityPrompt"
+  /// Whether this app has called a Screen Recording request API (`CGRequestScreenCaptureAccess`
+  /// or `SCShareableContent`). `CGPreflightScreenCaptureAccess` cannot tell "never asked" from
+  /// "denied"; once this is set, a missing grant is `.denied`.
+  static let hasRequestedScreenRecording = "hasRequestedScreenRecording"
   static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   static let hasCompletedOnboarding = "hasCompletedOnboarding"
   /// WelcomeStep.rawValue the onboarding tour is currently on. Persisted so a mid-tour

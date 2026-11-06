@@ -297,7 +297,7 @@ struct WelcomeDictationSetupStep: View {
         .onChange(of: offlineMode) { isOn in
           OfflineMode.switchTo(isOn, reason: "during onboarding")
         }
-      Text("For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions.")
+      Text("For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Permissions & Privacy.")
         .font(.caption)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -815,14 +815,21 @@ struct WelcomePermissionsStep: View {
       WelcomeStepHeader(
         systemImage: "checkmark.shield",
         title: "macOS permissions",
-        subtitle: "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions.")
+        subtitle: "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Permissions & Privacy.")
 
       ScrollView {
         // The same overview used in Settings → Privacy & Permissions and on permission errors —
         // one component, one behavior. Accessibility is omitted here on purpose
         // (App Store Guideline 2.4.5: don't imply the app needs it up front).
         VStack(alignment: .leading, spacing: 14) {
-          PermissionsOverview(mode: .onboarding, onMicStatusChange: { micStatus = $0 })
+          PermissionsOverview(
+            mode: .onboarding,
+            includeScreenRecording: false,
+            onMicStatusChange: { micStatus = $0 })
+          Text("Other features ask for access the first time you use them.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
           // Accessibility appears only for the two features that need it (Fn dictation,
           // auto-paste), and only in the direct build: the App Store build has neither
           // (Guideline 2.4.5).
@@ -1274,15 +1281,20 @@ struct WelcomeDoneStep: View {
     .padding(.vertical, 10)
   }
 
-  /// Green "Ready" when every required permission is granted; otherwise a red, tappable badge
-  /// naming the first missing permission and opening the right System Settings pane.
+  /// Green "Ready" when every required permission is granted. Screen Recording alone is not a
+  /// red badge: macOS asks the first time that feature is used. Any other missing permission
+  /// (the microphone, Accessibility) stays a red, tappable badge that opens System Settings.
   @ViewBuilder
   private func statusBadge(for feature: ShortcutFeature) -> some View {
     if feature.needsTranscriptionModel && !canTranscribe {
       badgeContent(icon: "exclamationmark.circle.fill", color: .orange, text: "Needs a model")
+    } else if asksOnFirstUse(feature) {
+      Text("Asks on first use")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     } else if let missing = missingRequirement(for: feature) {
       Button {
-        PermissionStatusChecker.openSystemSettings(for: missing)
+        PermissionStatusChecker.requestThenOpenSystemSettings(for: missing)
       } label: {
         badgeContent(
           icon: "xmark.circle.fill", color: .red, text: "Needs \(missing.displayName)")
@@ -1293,6 +1305,12 @@ struct WelcomeDoneStep: View {
     } else {
       badgeContent(icon: "checkmark.circle.fill", color: .green, text: "Ready")
     }
+  }
+
+  /// True when Screen Recording is the only requirement that is not granted.
+  private func asksOnFirstUse(_ feature: ShortcutFeature) -> Bool {
+    let missing = feature.requirements.filter { status(for: $0) != .granted }
+    return missing.count == 1 && missing[0] == .screenRecording
   }
 
   private func badgeContent(icon: String, color: Color, text: LocalizedStringKey) -> some View {

@@ -87,6 +87,12 @@ class ChatWindowManager {
     if FocusedFieldSnapshot.isExcluded(bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) {
       return nil
     }
+    // Preflight does not prompt. SCShareableContent below would, so a Dictate Prompt turn must
+    // not be the thing that raises the Screen Recording dialog.
+    guard CGPreflightScreenCaptureAccess() else {
+      Self.notePromptScreenshotSkipped()
+      return nil
+    }
     var content: SCShareableContent
     let now = Date()
     var fromCache = false
@@ -169,6 +175,27 @@ class ChatWindowManager {
     return jpegData
   }
 
+  /// Shown at most once per launch when Dictate Prompt skips its screenshot because Screen
+  /// Recording is not granted. The log is written on every skip.
+  @MainActor
+  private static var didNotePromptScreenshotSkipped = false
+
+  @MainActor
+  private static func notePromptScreenshotSkipped() {
+    DebugLogger.log("GEMINI-SCREENSHOT: Screen Recording not granted, prompt sent without screenshot")
+    guard !didNotePromptScreenshotSkipped else { return }
+    didNotePromptScreenshotSkipped = true
+    PopupNotificationWindow.showError(
+      "To give Dictate Prompt your screen as context, allow Screen Recording.",
+      title: "Sent Without Screenshot",
+      retryAction: {
+        PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
+      },
+      retryActionTitle: "Allow…",
+      showsSupport: false
+    )
+  }
+
   /// Captures the frontmost app's topmost normal window for Dictate Prompt. JPEG, at most 1400 px
   /// on the longer side, quality 0.75. Nil on any failure, including when WhisperShortcut itself
   /// is frontmost — the caller decides whether a full-display capture may stand in.
@@ -176,6 +203,12 @@ class ChatWindowManager {
   func captureFrontWindowForPromptMode() async -> Data? {
     let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     if frontmost == Bundle.main.bundleIdentifier || FocusedFieldSnapshot.isExcluded(bundleID: frontmost) {
+      return nil
+    }
+    // Preflight does not prompt. SCShareableContent below would, so a Dictate Prompt turn must
+    // not be the thing that raises the Screen Recording dialog.
+    guard CGPreflightScreenCaptureAccess() else {
+      Self.notePromptScreenshotSkipped()
       return nil
     }
     guard let windowID = ScreenshotDisplayPicker.frontmostWindowID() else { return nil }

@@ -1,12 +1,15 @@
 #if !APP_STORE
 import ScreenCaptureKit
 #endif
+import AppKit
 import SwiftUI
 
 /// Dictate Prompt Settings Tab — model, screen context, tools and prompt. The shortcut is set in General.
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  /// Live Screen Recording status for the caption under Front window as fallback.
+  @State private var screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -82,8 +85,9 @@ struct SpeechToPromptSettingsTab: View {
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "Dictate Prompt reads your selection from a picture of the front window, never the whole screen. Needs Screen Recording permission."
+        subtitle: "Dictate Prompt reads your selection from a picture of the front window, never the whole screen."
       )
+      screenRecordingStatusRow
       #else
       SectionHeader(
         title: "Screen Context",
@@ -107,7 +111,10 @@ struct SpeechToPromptSettingsTab: View {
               Task {
                 do {
                   _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                 } catch {
+                  // The call itself is the request, including when macOS refuses it.
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                   DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
                 }
               }
@@ -124,12 +131,41 @@ struct SpeechToPromptSettingsTab: View {
         Spacer()
       }
 
-      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers. Needs Screen Recording permission.")
+      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+      screenRecordingStatusRow
       #endif
     }
+    .onAppear(perform: refreshScreenRecordingStatus)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      refreshScreenRecordingStatus()
+    }
+  }
+
+  /// Live Screen Recording status, plus Allow… while it is not granted.
+  @ViewBuilder
+  private var screenRecordingStatusRow: some View {
+    HStack(spacing: 8) {
+      PermissionStatusBadge(status: screenRecordingStatus)
+      if screenRecordingStatus != .granted {
+        Button("Allow…") {
+          PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
+          refreshScreenRecordingStatus()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            refreshScreenRecordingStatus()
+          }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .pointerCursorOnHover()
+      }
+    }
+  }
+
+  private func refreshScreenRecordingStatus() {
+    screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 
   // MARK: - Usage Instructions

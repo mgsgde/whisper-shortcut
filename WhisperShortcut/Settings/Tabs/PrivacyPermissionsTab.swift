@@ -7,18 +7,10 @@ struct PermissionsTab: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       SectionHeader(
-        title: "Privacy & Permissions",
+        title: "Permissions & Privacy",
         systemImage: "lock.shield",
-        subtitle: "Whether anything may leave this Mac, and what WhisperShortcut can access on it."
+        subtitle: "What WhisperShortcut may access on this Mac, and whether anything may leave it."
       )
-
-      Spacer().frame(height: SettingsConstants.sectionSpacing)
-
-      OfflineModeSection()
-
-      Spacer().frame(height: SettingsConstants.sectionSpacing)
-
-      UsageStatisticsSection()
 
       Spacer().frame(height: SettingsConstants.sectionSpacing)
 
@@ -27,6 +19,14 @@ struct PermissionsTab: View {
       #else
       PermissionsOverview(mode: .settings, includeAccessibility: true)
       #endif
+
+      SpacedSectionDivider()
+
+      OfflineModeSection()
+
+      Spacer().frame(height: SettingsConstants.sectionSpacing)
+
+      UsageStatisticsSection()
 
       SpacedSectionDivider()
 

@@ -2285,7 +2285,8 @@ class MenuBarController: NSObject {
     retryActionTitle: LocalizedStringResource = "Retry",
     dismissAction: (() -> Void)? = nil,
     topUpURL: URL? = nil,
-    changesAppState: Bool = true
+    changesAppState: Bool = true,
+    showsSupport: Bool = true
   ) {
     if dismissProcessingFirst {
       PopupNotificationWindow.dismissProcessing()
@@ -2293,7 +2294,7 @@ class MenuBarController: NSObject {
     if changesAppState {
       appState = appState.showError(shortTitle)
     }
-    PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL)
+    PopupNotificationWindow.showError(verbatim: message ?? shortTitle, title: .verbatim(shortTitle), retryAction: retryAction, retryActionTitle: retryActionTitle, dismissAction: dismissAction, topUpURL: topUpURL, showsSupport: showsSupport)
   }
 
   private static func telemetryArea(for mode: AppState.RecordingMode) -> TelemetryArea {
@@ -2686,7 +2687,7 @@ class MenuBarController: NSObject {
   private func startLiveDictation() -> Bool {
     guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
       DebugLogger.logWarning("LIVE-DICTATE: Not started — Accessibility permission missing")
-      AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+      AccessibilityPermissionManager.requestAtUseTime(for: .dictateLive)
       return false
     }
     let model = TranscriptionModel.loadSelected()
@@ -3605,7 +3606,7 @@ class MenuBarController: NSObject {
             : "clipboard unchanged or our own write, running as compose"))
       return (true, selection)
     }
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return (false, nil) }
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .dictatePrompt) { return (false, nil) }
     // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
@@ -3679,7 +3680,7 @@ class MenuBarController: NSObject {
   /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
   /// that still works in Offline Mode, where every model-driven learning route is switched off.
   @objc internal func addSelectionToGlossary() {
-    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .glossary) else { return }
     captureClipboardRestorePointIfEnabled()
     let before = NSPasteboard.general.changeCount
     simulateCopy()
@@ -3919,7 +3920,7 @@ class MenuBarController: NSObject {
       let generation = pasteGeneration
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
-        AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+        AccessibilityPermissionManager.requestAtUseTime(for: .autoPaste)
         // Nothing was pasted, so the result has to stay on the clipboard for the user's own ⌘V.
         clipboardManager.discardRestorePoint()
         return false
@@ -4407,12 +4408,13 @@ extension MenuBarController: AudioRecorderDelegate {
     // privacy pane instead of leaving the user with only "Contact Support".
     if errorDomain == "WhisperShortcut" && errorCode == 1001 {
       presentError(
-        shortTitle: String(localized: "Microphone Access Needed"),
-        message: "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut.",
+        shortTitle: String(localized: "Microphone Is Off"),
+        message: String(localized: "Turn on WhisperShortcut under Privacy & Security › Microphone."),
         dismissProcessingFirst: false,
-        retryAction: { PermissionStatusChecker.openSystemSettings(for: .microphone) },
+        retryAction: { PermissionStatusChecker.requestThenOpenSystemSettings(for: .microphone) },
         retryActionTitle: "Open System Settings",
-        changesAppState: !meetingOwnsState
+        changesAppState: !meetingOwnsState,
+        showsSupport: false
       )
       return
     }
@@ -4668,20 +4670,20 @@ extension MenuBarController: ShortcutDelegate {
     }
   }
 
-  /// Surfaces the missing Screen Recording permission to the user. The global screenshot
-  /// shortcut otherwise fails silently. Triggers the native consent prompt the first time
-  /// (which registers the app in System Settings and offers a direct "Open System Settings"
-  /// button) and always shows a popup so there is visible feedback afterwards too.
+  /// Surfaces a missing Screen Recording permission. The first time, only the native macOS
+  /// prompt is shown — it registers the app and has its own Open System Settings button.
+  /// After that request, a popup explains how to turn Screen Recording on and offers to open
+  /// System Settings. The shortcut otherwise fails silently.
   private static func showScreenRecordingPermissionError() {
+    let alreadyRequested = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasRequestedScreenRecording)
     PermissionStatusChecker.requestScreenRecordingAccess()
+    if !alreadyRequested { return }
     PopupNotificationWindow.showError(
-      "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect.",
-      title: "Screen Recording Permission Needed",
-      retryAction: {
-        SettingsManager.shared.showPrivacyPermissions()
-      },
-      retryActionTitle: "Review Permissions"
-    )
+      "Turn on WhisperShortcut under Screen & System Audio Recording, then quit and reopen WhisperShortcut.",
+      title: "Screen Recording Is Off",
+      retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
+      retryActionTitle: "Open System Settings",
+      showsSupport: false)
   }
 
   /// Read Aloud for text a macOS Service already supplied. No clipboard snapshot: the pasteboard
@@ -4739,7 +4741,7 @@ extension MenuBarController: ShortcutDelegate {
     default:
       return
     }
-    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .readAloud) else { return }
 
     // A blind delay isn't enough: some apps respond to Cmd+C slower than others, and a fixed
     // wait either reads the stale clipboard (too short) or stalls Read Aloud (too long). Poll

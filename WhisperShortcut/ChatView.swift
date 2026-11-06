@@ -728,9 +728,18 @@ class ChatViewModel: ObservableObject {
         ScreenshotSaveLocation.save(data)
       }
     } else {
-      errorMessage = String(localized: "Screen capture failed. Opening Privacy & Permissions...")
-      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Privacy & Permissions")
-      SettingsManager.shared.showPrivacyPermissions()
+      switch PermissionStatusChecker.status(for: .screenRecording) {
+      case .granted:
+        errorMessage = String(localized: "Screen capture failed. Please try again.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil while Screen Recording is granted")
+      case .notDetermined:
+        PermissionStatusChecker.requestScreenRecordingAccess()
+        errorMessage = String(localized: "Allow Screen Recording in the macOS dialog, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording not set up, native prompt requested")
+      default:
+        errorMessage = String(localized: "Screenshots need Screen Recording. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording is off")
+      }
     }
   }
 
@@ -4605,16 +4614,16 @@ struct ChatView: View {
   private var systemAudioBlockedNoticeRow: some View {
     HStack(spacing: 8) {
       Image(systemName: "speaker.slash.fill")
-        .font(.system(size: 11))
+        .font(.caption)
         .foregroundColor(.orange)
-      Text("The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut.")
-        .font(.system(size: 11))
+      Text("WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording.")
+        .font(.caption)
         .foregroundColor(ChatTheme.primaryText.opacity(0.85))
         .fixedSize(horizontal: false, vertical: true)
       Spacer(minLength: 8)
       Button(action: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) }) {
         Text("Open System Settings")
-          .font(.system(size: 11, weight: .medium))
+          .font(.caption.weight(.medium))
           .foregroundColor(ChatTheme.primaryText)
           .padding(.horizontal, 8)
           .padding(.vertical, 3)
