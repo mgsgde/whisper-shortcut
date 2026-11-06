@@ -67,7 +67,7 @@ struct ReadAloudSettingsTab: View {
             localized: "\(qwen3Type.displayName) was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster."),
           onError: { viewModel.showError($0) }
         ) {
-          Text(qwen3Type == .customVoice ? "Fastest" : "German voices")
+          Text("German voices")
             .font(.caption)
             .foregroundColor(.secondary)
         }
@@ -122,8 +122,8 @@ struct ReadAloudSettingsTab: View {
       }
 
       // Only the Qwen3 VoiceDesign checkpoint has a freezable voice: its speaker is sampled
-      // from a description, so the frozen reference is what makes a persona stable. CustomVoice
-      // speakers are fixed ids and cloud voices are fixed catalogues — nothing to manage.
+      // from a description, so the frozen reference is what makes a persona stable. Cloud voices
+      // are fixed catalogues — nothing to manage.
       if model.qwen3ModelType == .voiceDesign {
         qwen3VoiceManagement
       }

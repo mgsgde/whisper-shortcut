@@ -356,16 +356,15 @@ extension TTSModel: PickerCuratedModel {
     case .gemini38FlashLiteTTS: return 1
     case .gemini38FlashTTS: return 2
     case .openAIGpt4oMiniTTS, .grokVoiceTTS, .systemMacOS: return nil
-    case .qwen3VoiceDesign, .qwen3CustomVoice: return nil
+    case .qwen3VoiceDesign: return nil
     }
   }
 
   var pickerOfflineRank: Int? {
     switch provider {
     case .system: return 0
-    // Behind the macOS voice: it is instant, Qwen3 has to generate first. CustomVoice is the
-    // faster of the two checkpoints, so it sits ahead of VoiceDesign.
-    case .localMLX: return self == .qwen3CustomVoice ? 1 : 2
+    // Behind the macOS voice: it is instant, Qwen3 has to generate first.
+    case .localMLX: return 1
     default: return nil
     }
   }
