@@ -45,11 +45,12 @@ kill_unprotected() {
   return 0
 }
 
-# True when the installed release (or any process started from /Applications/WhisperShortcut*) runs.
+# True when the installed release runs (MCP helper processes started with --mcp-stdio do not count: they own no hotkeys).
 release_running() {
   local pid cmd
   for pid in $(pgrep -f "^/Applications/WhisperShortcut" 2>/dev/null || true); do
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    [[ "$cmd" == *" --mcp-stdio"* ]] && continue
     [[ "$cmd" == /Applications/WhisperShortcut* ]] && return 0
   done
   return 1
