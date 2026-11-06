@@ -3644,6 +3644,19 @@ class MenuBarController: NSObject {
         guard DictatePromptSelectionDecision.acceptsCopy(
           changeCountBefore: before, changeCountAfter: after, string: text)
         else { continue }
+        // VS Code-family editors copy the whole line for ⌘C without a selection — not a selection.
+        let customData = NSPasteboard.general.data(
+          forType: NSPasteboard.PasteboardType("org.chromium.web-custom-data"))
+        let editorData = NSPasteboard.general.string(
+          forType: NSPasteboard.PasteboardType("vscode-editor-data"))
+        if DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+          customData: customData, vscodeEditorData: editorData)
+        {
+          selection.resolve(nil)
+          clipboardManager.noteSelectionCopy(atChangeCount: after)
+          DebugLogger.log("\(logPrefix): ⌘C copied the whole line from an empty editor selection — compose turn")
+          return
+        }
         selection.resolve(text)
         clipboardManager.noteSelectionCopy(atChangeCount: after)
         DebugLogger.log("\(logPrefix): Captured selection (\(text?.count ?? 0) chars)")
