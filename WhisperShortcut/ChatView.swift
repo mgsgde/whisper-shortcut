@@ -728,9 +728,18 @@ class ChatViewModel: ObservableObject {
         ScreenshotSaveLocation.save(data)
       }
     } else {
-      errorMessage = String(localized: "Screen capture failed. Opening Privacy & Permissions...")
-      DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil, opening Privacy & Permissions")
-      SettingsManager.shared.showPrivacyPermissions()
+      switch PermissionStatusChecker.status(for: .screenRecording) {
+      case .granted:
+        errorMessage = String(localized: "Screen capture failed. Please try again.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil while Screen Recording is granted")
+      case .notDetermined:
+        PermissionStatusChecker.requestScreenRecordingAccess()
+        errorMessage = String(localized: "Allow Screen Recording in the macOS dialog, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording not set up, native prompt requested")
+      default:
+        errorMessage = String(localized: "Screenshots need Screen Recording. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen WhisperShortcut.")
+        DebugLogger.logWarning("GEMINI-CHAT: Screen capture returned nil; Screen Recording is off")
+      }
     }
   }
 

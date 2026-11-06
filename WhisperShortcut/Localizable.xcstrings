@@ -25048,6 +25048,136 @@
           }
         }
       }
+    },
+    "Allow Screen Recording in the macOS dialog, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben Sie die Bildschirmaufnahme im macOS-Dialog und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "Allow…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben …"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        }
+      }
+    },
+    "Needed after turning on Screen Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nötig, nachdem Sie die Bildschirmaufnahme eingeschaltet haben."
+          }
+        }
+      }
+    },
+    "Not set up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht eingerichtet"
+          }
+        }
+      }
+    },
+    "Screen Recording Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme ist aus"
+          }
+        }
+      }
+    },
+    "Screen capture failed. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto fehlgeschlagen. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Screenshots need Screen Recording. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshots brauchen die Bildschirmaufnahme. Schalten Sie sie unter Systemeinstellungen › Datenschutz & Sicherheit › Bildschirm- & Systemaudioaufnahme ein und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "Sent Without Screenshot" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Screenshot gesendet"
+          }
+        }
+      }
+    },
+    "To give Dictate Prompt your screen as context, allow Screen Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Dictate Prompt Ihren Bildschirm als Kontext bekommt, erlauben Sie die Bildschirmaufnahme."
+          }
+        }
+      }
+    },
+    "Turn On in System Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Systemeinstellungen einschalten"
+          }
+        }
+      }
+    },
+    "Turn on WhisperShortcut under Screen & System Audio Recording, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie WhisperShortcut unter „Bildschirm- & Systemaudioaufnahme“ ein und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "macOS may offer to quit and reopen WhisperShortcut — that's fine, the tour continues where you left off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS bietet eventuell an, WhisperShortcut neu zu öffnen – kein Problem, die Tour geht an derselben Stelle weiter."
+          }
+        }
+      }
     }
 
   },

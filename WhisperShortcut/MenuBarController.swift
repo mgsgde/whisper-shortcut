@@ -4668,20 +4668,19 @@ extension MenuBarController: ShortcutDelegate {
     }
   }
 
-  /// Surfaces the missing Screen Recording permission to the user. The global screenshot
-  /// shortcut otherwise fails silently. Triggers the native consent prompt the first time
-  /// (which registers the app in System Settings and offers a direct "Open System Settings"
-  /// button) and always shows a popup so there is visible feedback afterwards too.
+  /// Surfaces a missing Screen Recording permission. The first time, only the native macOS
+  /// prompt is shown — it registers the app and has its own Open System Settings button.
+  /// After that request, a popup explains how to turn Screen Recording on and offers to open
+  /// System Settings. The shortcut otherwise fails silently.
   private static func showScreenRecordingPermissionError() {
+    let alreadyRequested = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasRequestedScreenRecording)
     PermissionStatusChecker.requestScreenRecordingAccess()
+    if !alreadyRequested { return }
     PopupNotificationWindow.showError(
-      "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect.",
-      title: "Screen Recording Permission Needed",
-      retryAction: {
-        SettingsManager.shared.showPrivacyPermissions()
-      },
-      retryActionTitle: "Review Permissions"
-    )
+      "Turn on WhisperShortcut under Screen & System Audio Recording, then quit and reopen WhisperShortcut.",
+      title: "Screen Recording Is Off",
+      retryAction: { PermissionStatusChecker.openSystemSettings(for: .screenRecording) },
+      retryActionTitle: "Open System Settings")
   }
 
   /// Read Aloud for text a macOS Service already supplied. No clipboard snapshot: the pasteboard

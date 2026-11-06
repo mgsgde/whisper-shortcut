@@ -32,7 +32,7 @@ struct PermissionsOverview: View {
         description: "Records what you say for dictation and Dictate Prompt. Audio is sent only to the provider you chose, then deleted.",
         required: true,
         status: micStatus,
-        actions: micActions,
+        actions: primaryAction(for: .microphone, status: micStatus, required: true),
         hint: micStatus == .denied
           ? "macOS won't ask again — enable it in System Settings → Microphone, then return here. You can skip this and grant it later."
           : nil
@@ -45,7 +45,7 @@ struct PermissionsOverview: View {
           description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Auto-paste is on once you grant this; switch it off in Settings → General → Clipboard Behavior.",
           required: false,
           status: axStatus,
-          actions: accessibilityActions
+          actions: primaryAction(for: .accessibility, status: axStatus, required: false)
         )
       }
 
@@ -55,19 +55,19 @@ struct PermissionsOverview: View {
         description: "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
         required: false,
         status: screenStatus,
-        actions: screenActions,
+        actions: primaryAction(for: .screenRecording, status: screenStatus, required: false),
         // macOS caches the Screen Recording grant per process: a running app keeps showing the
         // old status until relaunch. Point users at the Quit & Reopen button below.
-        hint: screenStatus == .granted
-          ? nil
-          : mode == .settings
+        hint: screenStatus == .denied
+          ? mode == .settings
             ? "Just enabled it in System Settings? macOS only applies the change after you quit and reopen WhisperShortcut — use the button below."
-            : "Just enabled it in System Settings? macOS only applies the change after WhisperShortcut restarts — finish this tour first, then quit and reopen."
+            : "macOS may offer to quit and reopen WhisperShortcut — that's fine, the tour continues where you left off."
+          : nil
       )
 
-      // Relaunch affordance: Screen Recording / Accessibility grants only take effect after a full
-      // restart — the single biggest place users get stuck ("granted it, still doesn't work").
-      // Omitted during onboarding: relaunching mid-setup would restart the whole flow.
+      // Relaunch affordance: a Screen Recording grant only takes effect after a full restart.
+      // Accessibility updates live. Omitted during onboarding: relaunching mid-setup would
+      // restart the whole flow.
       if mode == .settings {
         HStack(spacing: 10) {
           Button(action: relaunchApp) {
@@ -76,7 +76,7 @@ struct PermissionsOverview: View {
           }
           .buttonStyle(.bordered)
           .pointerCursorOnHover()
-          Text("Needed for Screen Recording or Accessibility changes to take effect.")
+          Text("Needed after turning on Screen Recording.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -93,83 +93,57 @@ struct PermissionsOverview: View {
 
   // MARK: - Actions (native request first, then deep-link)
 
-  /// Fixed width for the right-hand action column so every row's buttons share one trailing edge,
-  /// stack vertically, and never truncate their labels regardless of how the description text wraps.
-  private static let actionColumnWidth: CGFloat = 220
+  /// Fixed width for the right-hand action column so every row's button shares one trailing edge
+  /// and never truncates its label — including the German "In Systemeinstellungen einschalten".
+  private static let actionColumnWidth: CGFloat = 250
 
-  /// Right-aligned, equal-width button column shared by all permission rows.
-  private func actionStack<Content: View>(@ViewBuilder _ content: () -> Content) -> AnyView {
-    AnyView(
-      VStack(alignment: .trailing, spacing: 8) {
-        content()
-      }
-      .frame(width: Self.actionColumnWidth)
-    )
-  }
+  /// One button per row. Granted rows leave the column empty. Not-yet-requested rows ask macOS.
+  /// Denied rows open System Settings. Onboarding highlights only the required microphone row.
+  private func primaryAction(for kind: PermissionKind, status: PermissionStatus, required: Bool) -> AnyView {
+    let prominent = required || mode == .settings
+    let title: String
+    let systemImage: String
+    let action: () -> Void
 
-  private var micActions: AnyView {
-    actionStack {
-      if micStatus == .notDetermined {
-        Button {
+    switch status {
+    case .granted, .notApplicable:
+      return AnyView(EmptyView().frame(width: Self.actionColumnWidth))
+    case .notDetermined:
+      title = String(localized: "Allow…")
+      systemImage = "checkmark.shield"
+      action = {
+        switch kind {
+        case .microphone:
           PermissionStatusChecker.requestMicrophoneAccess { _ in refresh() }
-        } label: {
-          actionLabel(String(localized: "Grant Access"), systemImage: "mic")
-        }
-        .buttonStyle(.borderedProminent)
-        .pointerCursorOnHover()
-      }
-      openSettingsButton(for: .microphone)
-    }
-  }
-
-  private var screenActions: AnyView {
-    actionStack {
-      if screenStatus != .granted {
-        Button(action: requestScreenRecording) {
-          actionLabel(String(localized: "Grant Access"), systemImage: "rectangle.inset.filled.and.person.filled")
-        }
-        .buttonStyle(.borderedProminent)
-        .pointerCursorOnHover()
-      }
-      openSettingsButton(for: .screenRecording)
-    }
-  }
-
-  private var accessibilityActions: AnyView {
-    actionStack {
-      if axStatus != .granted {
-        Button {
-          AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+        case .screenRecording:
+          PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
           refresh()
-        } label: {
-          actionLabel(String(localized: "Grant Access"), systemImage: "accessibility")
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            refresh()
+          }
+        case .accessibility:
+          AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .autoPaste)
+          refresh()
         }
-        .buttonStyle(.borderedProminent)
-        .pointerCursorOnHover()
       }
-      openSettingsButton(for: .accessibility)
+    case .denied:
+      title = String(localized: "Turn On in System Settings")
+      systemImage = "arrow.up.right.square"
+      action = {
+        PermissionStatusChecker.requestThenOpenSystemSettings(for: kind)
+        refresh()
+      }
     }
-  }
 
-  /// Same path as "Open System Settings": request access (which pre-registers the app), then
-  /// deep-link if it is still not granted. Refresh now and again once the prompt can settle.
-  private func requestScreenRecording() {
-    PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
-    refresh()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-      refresh()
+    let button = Button(action: action) {
+      actionLabel(title, systemImage: systemImage)
     }
-  }
-
-  private func openSettingsButton(for kind: PermissionKind) -> some View {
-    Button {
-      PermissionStatusChecker.requestThenOpenSystemSettings(for: kind)
-      refresh()
-    } label: {
-      actionLabel(String(localized: "Open System Settings"), systemImage: "arrow.up.right.square")
-    }
-    .buttonStyle(.bordered)
     .pointerCursorOnHover()
+
+    if prominent {
+      return AnyView(button.buttonStyle(.borderedProminent).frame(width: Self.actionColumnWidth))
+    }
+    return AnyView(button.buttonStyle(.bordered).frame(width: Self.actionColumnWidth))
   }
 
   /// Shared button label: full-width within the action column, single line, centered — so
@@ -181,8 +155,8 @@ struct PermissionsOverview: View {
       .frame(maxWidth: .infinity)
   }
 
-  /// Quits and relaunches the app in one click — the restart macOS requires for Screen Recording /
-  /// Accessibility grants to take effect.
+  /// Quits and relaunches the app in one click — the restart macOS requires for a Screen Recording
+  /// grant to take effect. Accessibility updates live.
   ///
   /// `NSWorkspace.openApplication` returns success while the current process is still alive but
   /// does not spawn a second instance; terminating then leaves nothing running. A short-lived

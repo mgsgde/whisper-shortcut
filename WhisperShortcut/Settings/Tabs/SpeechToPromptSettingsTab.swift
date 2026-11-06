@@ -107,7 +107,10 @@ struct SpeechToPromptSettingsTab: View {
               Task {
                 do {
                   _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                 } catch {
+                  // The call itself is the request, including when macOS refuses it.
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                   DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
                 }
               }
