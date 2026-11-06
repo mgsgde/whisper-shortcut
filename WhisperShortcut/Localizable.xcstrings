@@ -4700,17 +4700,6 @@
         }
       }
     },
-    "Chat & Meetings" : {
-      "comment" : "Settings sidebar section",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chat & Meetings"
-          }
-        }
-      }
-    },
     "Chat + Meeting" : {
       "localizations" : {
         "de" : {
@@ -7820,16 +7809,6 @@
         }
       }
     },
-    "Dictate Prompt does not read password manager windows." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dictate Prompt liest keine Fenster von Passwort-Managern."
-          }
-        }
-      }
-    },
     "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack." : {
       "localizations" : {
         "de" : {
@@ -9479,26 +9458,6 @@
         }
       }
     },
-    "Front window as fallback" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorderes Fenster als Rückfall"
-          }
-        }
-      }
-    },
-    "Front window as fallback:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorderes Fenster als Rückfall:"
-          }
-        }
-      }
-    },
     "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key." : {
       "localizations" : {
         "de" : {
@@ -9585,16 +9544,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "gemini-models"
-          }
-        }
-      }
-    },
-    "Gemma 4 26B A4B (Offline)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemma 4 26B A4B (offline)"
           }
         }
       }
@@ -11755,26 +11704,6 @@
         }
       }
     },
-    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, open Privacy & Security › Full Disk Access, drag WhisperShortcut from the Finder window that opens into the list, turn it on, then quit and reopen the app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben öffnen Sie Datenschutz & Sicherheit › Festplattenvollzugriff, ziehen Sie WhisperShortcut aus dem Finder-Fenster, das sich öffnet, in die Liste, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
-          }
-        }
-      }
-    },
-    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Open Privacy & Security, drag WhisperShortcut from the Finder window into the Full Disk Access list, turn it on, then quit and reopen the app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Öffnen Sie Datenschutz & Sicherheit, ziehen Sie WhisperShortcut aus dem Finder-Fenster in die Liste „Festplattenvollzugriff“, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
-          }
-        }
-      }
-    },
     "macOS permissions" : {
       "localizations" : {
         "de" : {
@@ -12266,16 +12195,6 @@
         }
       }
     },
-    "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "mlx-community/gemma-4-26B-A4B-it-qat-4bit • MLX in der App, ohne Server • ca. 15,6 GB • Offline • Nur Chat, braucht 32 GB RAM"
-          }
-        }
-      }
-    },
     "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline" : {
       "localizations" : {
         "de" : {
@@ -12446,17 +12365,6 @@
         }
       }
     },
-    "More" : {
-      "comment" : "Settings sidebar section",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mehr"
-          }
-        }
-      }
-    },
     "More models" : {
       "localizations" : {
         "de" : {
@@ -12473,16 +12381,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Weitere Modelle, %lld"
-          }
-        }
-      }
-    },
-    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Only Flash-Lite can run at Minimal; the other Gemini models are clamped to Low." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Nur Flash-Lite läuft auf Minimal; die anderen Gemini-Modelle werden auf Niedrig angehoben."
           }
         }
       }
@@ -14903,26 +14801,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Optional. Damit kann der Chat für Sie nachschlagen. Alles ist nur lesend, außer ein Abschnitt sagt etwas anderes."
-          }
-        }
-      }
-    },
-    "Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
-          }
-        }
-      }
-    },
-    "Lets WhisperShortcut paste at your cursor, read the text you selected, and react to the Fn key. Auto-paste is on once you allow this; switch it off in Settings → General → Clipboard Behavior." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Damit WhisperShortcut an der Cursorposition einfügen, markierten Text lesen und auf die Fn-Taste reagieren kann. Automatisches Einfügen ist an, sobald Sie das erlauben; ausschalten können Sie es unter Einstellungen → Allgemein → Zwischenablage."
           }
         }
       }
@@ -18827,26 +18705,6 @@
         }
       }
     },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model to dictate without a key." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen und ohne Schlüssel diktieren."
-          }
-        }
-      }
-    },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen."
-          }
-        }
-      }
-    },
     "Sign Out" : {
       "localizations" : {
         "de" : {
@@ -21905,16 +21763,6 @@
         }
       }
     },
-    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
-          }
-        }
-      }
-    },
     "When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes." : {
       "localizations" : {
         "de" : {
@@ -24164,6 +24012,1074 @@
         }
       }
     },
+    "%@ needs a Mac with Apple silicon and at least %lld GB of memory." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ needs a Mac with Apple silicon and at least %2$lld GB of memory."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht einen Mac mit Apple Silicon und mindestens %lld GB Arbeitsspeicher."
+          }
+        }
+      }
+    },
+    "%@ was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde erfolgreich geladen. Das erste Vorlesen kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
+          }
+        }
+      }
+    },
+    "11 languages" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "11 Sprachen"
+          }
+        }
+      }
+    },
+    "Add voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme hinzufügen"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 ASR 1.7B • 11 languages incl. German, Chinese, Japanese, Korean • ~2.5GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 ASR 1.7B • 11 Sprachen, u. a. Deutsch, Chinesisch, Japanisch, Koreanisch • ~2,5 GB • Offline"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 TTS VoiceDesign 1.7B • Natürliche deutsche Stimmen aus einer Beschreibung • 10 Sprachen • ~2,9 GB • Offline"
+          }
+        }
+      }
+    },
+    "Delete voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme löschen"
+          }
+        }
+      }
+    },
+    "Describe the voice in one or two sentences. English descriptions work best." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibe die Stimme in ein bis zwei Sätzen. Englische Beschreibungen funktionieren am besten."
+          }
+        }
+      }
+    },
+    "Description:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibung:"
+          }
+        }
+      }
+    },
+    "Download the Qwen3 voice model in Settings → Read Aloud to use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade das Qwen3-Stimmmodell in den Einstellungen → Vorlesen herunter, um es zu nutzen."
+          }
+        }
+      }
+    },
+    "Edit voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme bearbeiten"
+          }
+        }
+      }
+    },
+    "English audiobook (female, warm, expressive)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisches Hörbuch (weiblich, warm, ausdrucksstark)"
+          }
+        }
+      }
+    },
+    "English audiobook (male, deep, suspenseful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisches Hörbuch (männlich, tief, spannend)"
+          }
+        }
+      }
+    },
+    "English documentary (male, calm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Dokumentation (männlich, ruhig)"
+          }
+        }
+      }
+    },
+    "English narrator (female, 35)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Erzählerin (weiblich, 35)"
+          }
+        }
+      }
+    },
+    "English narrator (male, 40)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englischer Erzähler (männlich, 40)"
+          }
+        }
+      }
+    },
+    "English newsreader (female, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Nachrichtensprecherin (weiblich, neutral)"
+          }
+        }
+      }
+    },
+    "English newsreader (male, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englischer Nachrichtensprecher (männlich, neutral)"
+          }
+        }
+      }
+    },
+    "Female" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiblich"
+          }
+        }
+      }
+    },
+    "German audiobook (female, warm, expressive)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsches Hörbuch (weiblich, warm, ausdrucksstark)"
+          }
+        }
+      }
+    },
+    "German audiobook (male, deep, suspenseful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsches Hörbuch (männlich, tief, spannend)"
+          }
+        }
+      }
+    },
+    "German documentary (female, composed)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Dokumentation (weiblich, gefasst)"
+          }
+        }
+      }
+    },
+    "German documentary (male, calm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Dokumentation (männlich, ruhig)"
+          }
+        }
+      }
+    },
+    "German essay (male, distinguished)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Essay (männlich, distinguiert)"
+          }
+        }
+      }
+    },
+    "German narrator (female, 35)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Erzählerin (weiblich, 35)"
+          }
+        }
+      }
+    },
+    "German narrator (male, 40)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Erzähler (männlich, 40)"
+          }
+        }
+      }
+    },
+    "German newsreader (female, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Nachrichtensprecherin (weiblich, neutral)"
+          }
+        }
+      }
+    },
+    "German newsreader (male, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Nachrichtensprecher (männlich, neutral)"
+          }
+        }
+      }
+    },
+    "German voices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Stimmen"
+          }
+        }
+      }
+    },
+    "Male" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Männlich"
+          }
+        }
+      }
+    },
+    "My own voices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine eigenen Stimmen"
+          }
+        }
+      }
+    },
+    "My own voices…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine eigenen Stimmen …"
+          }
+        }
+      }
+    },
+    "New voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Stimme"
+          }
+        }
+      }
+    },
+    "No voice saved yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Stimme gespeichert"
+          }
+        }
+      }
+    },
+    "On-device Qwen3 dictation needs a Mac with Apple silicon." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3-Diktat auf dem Gerät braucht einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
+    "On-device Qwen3 voices need a Mac with Apple silicon." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3-Stimmen auf dem Gerät brauchen einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
+    "Qwen3 (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "Qwen3 ASR 1.7B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 ASR 1.7B (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3 ASR 1.7B was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 ASR 1.7B wurde erfolgreich geladen. Die erste Transkription kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
+          }
+        }
+      }
+    },
+    "Qwen3 TTS VoiceDesign 1.7B (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 TTS VoiceDesign 1.7B (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "The Qwen3 dictation model is not downloaded yet. Download it in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Diktatmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Diktieren herunter."
+          }
+        }
+      }
+    },
+    "The Qwen3 voice model is not downloaded yet. Download it in Settings → Read Aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Stimmmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Vorlesen herunter."
+          }
+        }
+      }
+    },
+    "The Qwen3 voice model returned no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Stimmmodell hat kein Audio geliefert."
+          }
+        }
+      }
+    },
+    "The current voice is discarded. The next Read Aloud with this persona creates and saves a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aktuelle Stimme wird verworfen. Das nächste Vorlesen mit dieser Stimme erzeugt und speichert eine neue."
+          }
+        }
+      }
+    },
+    "The recording contained no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme enthielt kein Audio."
+          }
+        }
+      }
+    },
+    "The saved voice is discarded; the next Read Aloud creates a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherte Stimme wird verworfen; das nächste Vorlesen erzeugt eine neue."
+          }
+        }
+      }
+    },
+    "The voice is created automatically on the first Read Aloud with this persona." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimme wird beim ersten Vorlesen mit dieser Stimme automatisch erzeugt."
+          }
+        }
+      }
+    },
+    "Tip: name the language, the region and the absence of a foreign accent — that is what makes the voice sound native." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: Nenne die Sprache, die Region und dass kein fremder Akzent vorhanden ist — das lässt die Stimme muttersprachlich klingen."
+          }
+        }
+      }
+    },
+    "Your own Read Aloud voices for the on-device Qwen3 model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine eigenen Vorlese-Stimmen für das Qwen3-Modell auf dem Gerät."
+          }
+        }
+      }
+    },
+    "e.g. Grandpa" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Opa"
+          }
+        }
+      }
+    },
+    "Draw a new voice for \"%@\"?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Stimme für „%@“ erzeugen?"
+          }
+        }
+      }
+    },
+    "Keeps your dictations and prompts on this Mac and lets the Smart Improvement model suggest better prompts and learn your writing style. Off by default." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behält deine Diktate und Prompts auf diesem Mac und lässt das Smart-Improvement-Modell bessere Prompts vorschlagen und deinen Schreibstil lernen. Standardmäßig aus."
+          }
+        }
+      }
+    },
+    "Learn from how I use WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus meiner Nutzung von WhisperShortcut lernen"
+          }
+        }
+      }
+    },
+    "Learning from your recent usage…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lernt aus deiner letzten Nutzung …"
+          }
+        }
+      }
+    },
+    "Off. Nothing is learned or stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus. Es wird nichts gelernt oder gespeichert."
+          }
+        }
+      }
+    },
+    "On. You get a notification when there is something to review." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An. Du bekommst eine Mitteilung, wenn es etwas zu prüfen gibt."
+          }
+        }
+      }
+    },
+    "Paused while Offline Mode is on. Nothing is stored or sent, and learning resumes when you turn Offline Mode off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert oder gesendet; das Lernen geht weiter, sobald du den Offline-Modus ausschaltest."
+          }
+        }
+      }
+    },
+    "Runs in the background; you get a notification when it is done. Needs learning to be on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft im Hintergrund; du bekommst eine Mitteilung, wenn es fertig ist. Setzt voraus, dass das Lernen an ist."
+          }
+        }
+      }
+    },
+    "WhisperShortcut learns from how you use it and gets better on its own: spellings, prompts, and the way you write messages. There is nothing to set up." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut lernt aus deiner Nutzung und wird von selbst besser: Schreibweisen, Prompts und die Art, wie du Nachrichten schreibst. Es gibt nichts einzurichten."
+          }
+        }
+      }
+    },
+    "Your usage data stays on this Mac. When it learns, a sample goes to your Smart Improvement model, and you review every change before it is saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nutzungsdaten bleiben auf diesem Mac. Wenn gelernt wird, geht eine Stichprobe an dein Smart-Improvement-Modell, und du prüfst jede Änderung, bevor sie gespeichert wird."
+          }
+        }
+      }
+    },
+    "💳 Billing Required\n\nYour API account has no usable credit, or this model requires billing to be enabled. Set up billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)\n• OpenAI: https://platform.openai.com/settings/organization/billing — add credit\n• xAI: https://console.x.ai — add credit\n\nNote: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "💳 Abrechnung erforderlich\n\nDein API-Konto hat kein nutzbares Guthaben, oder dieses Modell setzt eine aktivierte Abrechnung voraus. Richte die Abrechnung für den Anbieter ein, dessen Schlüssel du verwendest:\n• Google: https://aistudio.google.com/app/apikey — aktiviere die Abrechnung für das Projekt, dem dein Schlüssel gehört (Vorschau-Modelle wie Gemini 3 Flash verlangen sie oft)\n• OpenAI: https://platform.openai.com/settings/organization/billing — Guthaben aufladen\n• xAI: https://console.x.ai — Guthaben aufladen\n\nHinweis: Abos von ChatGPT, Grok oder Gemini enthalten KEIN API-Guthaben — das Entwicklerkonto wird separat abgerechnet."
+          }
+        }
+      }
+    },
+    "💳 Out of Credit\n\nYour OpenAI API key works, but the API account behind it has no credit left (insufficient_quota).\n\nA ChatGPT subscription does not include API credit. Use the \"Top up\" button below to add credit, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "💳 Kein Guthaben\n\nDein OpenAI-API-Schlüssel funktioniert, aber das dahinterliegende API-Konto hat kein Guthaben mehr (insufficient_quota).\n\nEin ChatGPT-Abo enthält kein API-Guthaben. Nutze die Schaltfläche „Aufladen“ unten, um Guthaben hinzuzufügen, und versuche es dann erneut."
+          }
+        }
+      }
+    },
+    "Qwen3 TTS CustomVoice 0.6B (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 TTS CustomVoice 0.6B (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 TTS CustomVoice 0.6B • Neun feste Sprecher, schnellste lokale Option • ~1,8 GB • Offline"
+          }
+        }
+      }
+    },
+    "Aiden (male, warm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aiden (männlich, warm)"
+          }
+        }
+      }
+    },
+    "Ryan (male, clear)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ryan (männlich, klar)"
+          }
+        }
+      }
+    },
+    "Eric (male, lively)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eric (männlich, lebhaft)"
+          }
+        }
+      }
+    },
+    "Dylan (male, youthful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dylan (männlich, jung)"
+          }
+        }
+      }
+    },
+    "Uncle Fu (male, mature)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uncle Fu (männlich, reif)"
+          }
+        }
+      }
+    },
+    "Serena (female, warm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serena (weiblich, warm)"
+          }
+        }
+      }
+    },
+    "Vivian (female, clear)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vivian (weiblich, klar)"
+          }
+        }
+      }
+    },
+    "Ono Anna (female, bright)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ono Anna (weiblich, hell)"
+          }
+        }
+      }
+    },
+    "Sohee (female, soft)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohee (weiblich, sanft)"
+          }
+        }
+      }
+    },
+    "Listen" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anhören"
+          }
+        }
+      }
+    },
+    "Create voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme erzeugen"
+          }
+        }
+      }
+    },
+    "Replace recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme ersetzen"
+          }
+        }
+      }
+    },
+    "Creating the voice…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme wird erzeugt …"
+          }
+        }
+      }
+    },
+    "Choose audio file…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiodatei wählen …"
+          }
+        }
+      }
+    },
+    "Choose a short recording of the voice this persona should speak in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine kurze Aufnahme der Stimme, die diese Persona sprechen soll."
+          }
+        }
+      }
+    },
+    "What the recording says (leave empty to transcribe it on this Mac)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was in der Aufnahme gesagt wird (leer lassen, um es auf diesem Mac zu transkribieren)"
+          }
+        }
+      }
+    },
+    "The voice sample could not be played." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimmprobe konnte nicht abgespielt werden."
+          }
+        }
+      }
+    },
+    "Type what the recording says, or download the Qwen3 ASR model in Settings → Dictate so the text can be transcribed on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippe ein, was in der Aufnahme gesagt wird, oder lade das Qwen3-ASR-Modell in den Einstellungen → Diktieren herunter, damit der Text auf diesem Mac transkribiert werden kann."
+          }
+        }
+      }
+    },
+    "Listen plays a short sample of the saved voice. New voice draws a different one and replaces it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anhören spielt eine kurze Probe der gespeicherten Stimme. Neue Stimme zieht eine andere und ersetzt sie."
+          }
+        }
+      }
+    },
+    "Create voice draws a voice for this persona now and saves it. Listen plays a sample; New voice draws another." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme erzeugen zieht jetzt eine Stimme für diese Persona und speichert sie. Anhören spielt eine Probe; Neue Stimme zieht eine andere."
+          }
+        }
+      }
+    },
+    "This voice comes from your own recording. Listen plays a sample; Replace recording draws a described voice instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Stimme stammt aus deiner eigenen Aufnahme. Anhören spielt eine Probe; Aufnahme ersetzen zieht stattdessen eine beschriebene Stimme."
+          }
+        }
+      }
+    },
+    "Describe a voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme beschreiben"
+          }
+        }
+      }
+    },
+    "Clone from a recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Aufnahme klonen"
+          }
+        }
+      }
+    },
+    "The voice comes from your recording — no description needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimme kommt aus deiner Aufnahme — keine Beschreibung nötig."
+          }
+        }
+      }
+    },
+    "Reference recording:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Referenzaufnahme:"
+          }
+        }
+      }
+    },
+    "Use a clean, single-speaker clip of 3–15 seconds. WAV, MP3, M4A, AIFF, CAF and FLAC work." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutze einen sauberen Ausschnitt mit nur einer Sprecherin oder einem Sprecher, 3–15 Sekunden. WAV, MP3, M4A, AIFF, CAF und FLAC funktionieren."
+          }
+        }
+      }
+    },
+    "No own voices yet. Add one — describe how it should sound, or clone it from a recording. It then appears in the Read Aloud voice picker." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine eigenen Stimmen. Lege eine an — beschreibe, wie sie klingen soll, oder klone sie aus einer Aufnahme. Sie erscheint dann in der Stimmenauswahl von Vorlesen."
+          }
+        }
+      }
+    },
+    "Chat & Meetings" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat & Meetings"
+          }
+        }
+      }
+    },
+    "Dictate Prompt does not read password manager windows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest keine Fenster von Passwort-Managern."
+          }
+        }
+      }
+    },
+    "Front window as fallback" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall"
+          }
+        }
+      }
+    },
+    "Front window as fallback:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall:"
+          }
+        }
+      }
+    },
+    "Gemma 4 26B A4B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 26B A4B (offline)"
+          }
+        }
+      }
+    },
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, open Privacy & Security › Full Disk Access, drag WhisperShortcut from the Finder window that opens into the list, turn it on, then quit and reopen the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben öffnen Sie Datenschutz & Sicherheit › Festplattenvollzugriff, ziehen Sie WhisperShortcut aus dem Finder-Fenster, das sich öffnet, in die Liste, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
+          }
+        }
+      }
+    },
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Open Privacy & Security, drag WhisperShortcut from the Finder window into the Full Disk Access list, turn it on, then quit and reopen the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Öffnen Sie Datenschutz & Sicherheit, ziehen Sie WhisperShortcut aus dem Finder-Fenster in die Liste „Festplattenvollzugriff“, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-26B-A4B-it-qat-4bit • MLX in der App, ohne Server • ca. 15,6 GB • Offline • Nur Chat, braucht 32 GB RAM"
+          }
+        }
+      }
+    },
+    "More" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr"
+          }
+        }
+      }
+    },
+    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Only Flash-Lite can run at Minimal; the other Gemini models are clamped to Low." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Nur Flash-Lite läuft auf Minimal; die anderen Gemini-Modelle werden auf Niedrig angehoben."
+          }
+        }
+      }
+    },
+    "Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
+          }
+        }
+      }
+    },
+    "Lets WhisperShortcut paste at your cursor, read the text you selected, and react to the Fn key. Auto-paste is on once you allow this; switch it off in Settings → General → Clipboard Behavior." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit WhisperShortcut an der Cursorposition einfügen, markierten Text lesen und auf die Fn-Taste reagieren kann. Automatisches Einfügen ist an, sobald Sie das erlauben; ausschalten können Sie es unter Einstellungen → Allgemein → Zwischenablage."
+          }
+        }
+      }
+    },
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model to dictate without a key." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen und ohne Schlüssel diktieren."
+          }
+        }
+      }
+    },
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen."
+          }
+        }
+      }
+    },
+    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
+          }
+        }
+      }
+    },
     "%@ Recording AI prompt — meeting still recording" : {
       "localizations" : {
         "de" : {
@@ -25287,752 +26203,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Basis-URL dieses Servers verwenden."
-          }
-        }
-      }
-    },
-    "%@ needs a Mac with Apple silicon and at least %lld GB of memory." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ needs a Mac with Apple silicon and at least %2$lld GB of memory."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ braucht einen Mac mit Apple Silicon und mindestens %lld GB Arbeitsspeicher."
-          }
-        }
-      }
-    },
-    "%@ was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ wurde erfolgreich geladen. Das erste Vorlesen kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
-          }
-        }
-      }
-    },
-    "11 languages" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "11 Sprachen"
-          }
-        }
-      }
-    },
-    "Add voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme hinzufügen"
-          }
-        }
-      }
-    },
-    "Aiden (male, warm)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aiden (männlich, warm)"
-          }
-        }
-      }
-    },
-    "Alibaba's Qwen3 ASR 1.7B • 11 languages incl. German, Chinese, Japanese, Korean • ~2.5GB • Offline" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alibabas Qwen3 ASR 1.7B • 11 Sprachen, u. a. Deutsch, Chinesisch, Japanisch, Koreanisch • ~2,5 GB • Offline"
-          }
-        }
-      }
-    },
-    "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alibabas Qwen3 TTS CustomVoice 0.6B • Neun feste Sprecher, schnellste lokale Option • ~1,8 GB • Offline"
-          }
-        }
-      }
-    },
-    "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alibabas Qwen3 TTS VoiceDesign 1.7B • Natürliche deutsche Stimmen aus einer Beschreibung • 10 Sprachen • ~2,9 GB • Offline"
-          }
-        }
-      }
-    },
-    "Delete voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme löschen"
-          }
-        }
-      }
-    },
-    "Describe the voice in one or two sentences. English descriptions work best." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beschreibe die Stimme in ein bis zwei Sätzen. Englische Beschreibungen funktionieren am besten."
-          }
-        }
-      }
-    },
-    "Description:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beschreibung:"
-          }
-        }
-      }
-    },
-    "Download the Qwen3 voice model in Settings → Read Aloud to use it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lade das Qwen3-Stimmmodell in den Einstellungen → Vorlesen herunter, um es zu nutzen."
-          }
-        }
-      }
-    },
-    "Draw a new voice for \"%@\"?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue Stimme für „%@“ erzeugen?"
-          }
-        }
-      }
-    },
-    "Dylan (male, youthful)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dylan (männlich, jung)"
-          }
-        }
-      }
-    },
-    "Edit voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme bearbeiten"
-          }
-        }
-      }
-    },
-    "English audiobook (female, warm, expressive)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englisches Hörbuch (weiblich, warm, ausdrucksstark)"
-          }
-        }
-      }
-    },
-    "English audiobook (male, deep, suspenseful)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englisches Hörbuch (männlich, tief, spannend)"
-          }
-        }
-      }
-    },
-    "English documentary (male, calm)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englische Dokumentation (männlich, ruhig)"
-          }
-        }
-      }
-    },
-    "English narrator (female, 35)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englische Erzählerin (weiblich, 35)"
-          }
-        }
-      }
-    },
-    "English narrator (male, 40)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englischer Erzähler (männlich, 40)"
-          }
-        }
-      }
-    },
-    "English newsreader (female, neutral)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englische Nachrichtensprecherin (weiblich, neutral)"
-          }
-        }
-      }
-    },
-    "English newsreader (male, neutral)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Englischer Nachrichtensprecher (männlich, neutral)"
-          }
-        }
-      }
-    },
-    "Eric (male, lively)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eric (männlich, lebhaft)"
-          }
-        }
-      }
-    },
-    "Female" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Weiblich"
-          }
-        }
-      }
-    },
-    "German audiobook (female, warm, expressive)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsches Hörbuch (weiblich, warm, ausdrucksstark)"
-          }
-        }
-      }
-    },
-    "German audiobook (male, deep, suspenseful)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsches Hörbuch (männlich, tief, spannend)"
-          }
-        }
-      }
-    },
-    "German documentary (female, composed)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsche Dokumentation (weiblich, gefasst)"
-          }
-        }
-      }
-    },
-    "German documentary (male, calm)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsche Dokumentation (männlich, ruhig)"
-          }
-        }
-      }
-    },
-    "German essay (male, distinguished)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutscher Essay (männlich, distinguiert)"
-          }
-        }
-      }
-    },
-    "German narrator (female, 35)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsche Erzählerin (weiblich, 35)"
-          }
-        }
-      }
-    },
-    "German narrator (male, 40)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutscher Erzähler (männlich, 40)"
-          }
-        }
-      }
-    },
-    "German newsreader (female, neutral)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsche Nachrichtensprecherin (weiblich, neutral)"
-          }
-        }
-      }
-    },
-    "German newsreader (male, neutral)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutscher Nachrichtensprecher (männlich, neutral)"
-          }
-        }
-      }
-    },
-    "German voices" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deutsche Stimmen"
-          }
-        }
-      }
-    },
-    "Keeps your dictations and prompts on this Mac and lets the Smart Improvement model suggest better prompts and learn your writing style. Off by default." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Behält deine Diktate und Prompts auf diesem Mac und lässt das Smart-Improvement-Modell bessere Prompts vorschlagen und deinen Schreibstil lernen. Standardmäßig aus."
-          }
-        }
-      }
-    },
-    "Learn from how I use WhisperShortcut" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus meiner Nutzung von WhisperShortcut lernen"
-          }
-        }
-      }
-    },
-    "Learning from your recent usage…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lernt aus deiner letzten Nutzung …"
-          }
-        }
-      }
-    },
-    "Male" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Männlich"
-          }
-        }
-      }
-    },
-    "My own voices" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meine eigenen Stimmen"
-          }
-        }
-      }
-    },
-    "My own voices…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Meine eigenen Stimmen …"
-          }
-        }
-      }
-    },
-    "New voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue Stimme"
-          }
-        }
-      }
-    },
-    "No own voices yet. Add one and describe how it should sound — it then appears in the Read Aloud voice picker." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch keine eigenen Stimmen. Füge eine hinzu und beschreibe, wie sie klingen soll — sie erscheint dann in der Stimmenauswahl beim Vorlesen."
-          }
-        }
-      }
-    },
-    "No voice saved yet" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch keine Stimme gespeichert"
-          }
-        }
-      }
-    },
-    "Off. Nothing is learned or stored." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus. Es wird nichts gelernt oder gespeichert."
-          }
-        }
-      }
-    },
-    "On-device Qwen3 dictation needs a Mac with Apple silicon." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3-Diktat auf dem Gerät braucht einen Mac mit Apple Silicon."
-          }
-        }
-      }
-    },
-    "On-device Qwen3 voices need a Mac with Apple silicon." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3-Stimmen auf dem Gerät brauchen einen Mac mit Apple Silicon."
-          }
-        }
-      }
-    },
-    "On. You get a notification when there is something to review." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "An. Du bekommst eine Mitteilung, wenn es etwas zu prüfen gibt."
-          }
-        }
-      }
-    },
-    "Ono Anna (female, bright)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ono Anna (weiblich, hell)"
-          }
-        }
-      }
-    },
-    "Paused while Offline Mode is on. Nothing is stored or sent, and learning resumes when you turn Offline Mode off." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pausiert, solange der Offline-Modus an ist. Es wird nichts gespeichert oder gesendet; das Lernen geht weiter, sobald du den Offline-Modus ausschaltest."
-          }
-        }
-      }
-    },
-    "Qwen3 (On-Device)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3 (auf dem Gerät)"
-          }
-        }
-      }
-    },
-    "Qwen3 ASR 1.7B (Offline)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3 ASR 1.7B (offline)"
-          }
-        }
-      }
-    },
-    "Qwen3 ASR 1.7B was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3 ASR 1.7B wurde erfolgreich geladen. Die erste Transkription kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
-          }
-        }
-      }
-    },
-    "Qwen3 TTS CustomVoice 0.6B (On-Device)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3 TTS CustomVoice 0.6B (auf dem Gerät)"
-          }
-        }
-      }
-    },
-    "Qwen3 TTS VoiceDesign 1.7B (On-Device)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Qwen3 TTS VoiceDesign 1.7B (auf dem Gerät)"
-          }
-        }
-      }
-    },
-    "Runs in the background; you get a notification when it is done. Needs learning to be on." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Läuft im Hintergrund; du bekommst eine Mitteilung, wenn es fertig ist. Setzt voraus, dass das Lernen an ist."
-          }
-        }
-      }
-    },
-    "Ryan (male, clear)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ryan (männlich, klar)"
-          }
-        }
-      }
-    },
-    "Serena (female, warm)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Serena (weiblich, warm)"
-          }
-        }
-      }
-    },
-    "Sohee (female, soft)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sohee (weiblich, sanft)"
-          }
-        }
-      }
-    },
-    "The Qwen3 dictation model is not downloaded yet. Download it in Settings → Dictate." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Qwen3-Diktatmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Diktieren herunter."
-          }
-        }
-      }
-    },
-    "The Qwen3 voice model is not downloaded yet. Download it in Settings → Read Aloud." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Qwen3-Stimmmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Vorlesen herunter."
-          }
-        }
-      }
-    },
-    "The Qwen3 voice model returned no audio." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Qwen3-Stimmmodell hat kein Audio geliefert."
-          }
-        }
-      }
-    },
-    "The current voice is discarded. The next Read Aloud with this persona creates and saves a new one." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die aktuelle Stimme wird verworfen. Das nächste Vorlesen mit dieser Stimme erzeugt und speichert eine neue."
-          }
-        }
-      }
-    },
-    "The recording contained no audio." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Aufnahme enthielt kein Audio."
-          }
-        }
-      }
-    },
-    "The saved voice is discarded; the next Read Aloud creates a new one." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gespeicherte Stimme wird verworfen; das nächste Vorlesen erzeugt eine neue."
-          }
-        }
-      }
-    },
-    "The voice is created automatically on the first Read Aloud with this persona." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Stimme wird beim ersten Vorlesen mit dieser Stimme automatisch erzeugt."
-          }
-        }
-      }
-    },
-    "Tip: name the language, the region and the absence of a foreign accent — that is what makes the voice sound native." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: Nenne die Sprache, die Region und dass kein fremder Akzent vorhanden ist — das lässt die Stimme muttersprachlich klingen."
-          }
-        }
-      }
-    },
-    "Uncle Fu (male, mature)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uncle Fu (männlich, reif)"
-          }
-        }
-      }
-    },
-    "Vivian (female, clear)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vivian (weiblich, klar)"
-          }
-        }
-      }
-    },
-    "WhisperShortcut learns from how you use it and gets better on its own: spellings, prompts, and the way you write messages. There is nothing to set up." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut lernt aus deiner Nutzung und wird von selbst besser: Schreibweisen, Prompts und die Art, wie du Nachrichten schreibst. Es gibt nichts einzurichten."
-          }
-        }
-      }
-    },
-    "Your own Read Aloud voices for the on-device Qwen3 model." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine eigenen Vorlese-Stimmen für das Qwen3-Modell auf dem Gerät."
-          }
-        }
-      }
-    },
-    "Your usage data stays on this Mac. When it learns, a sample goes to your Smart Improvement model, and you review every change before it is saved." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deine Nutzungsdaten bleiben auf diesem Mac. Wenn gelernt wird, geht eine Stichprobe an dein Smart-Improvement-Modell, und du prüfst jede Änderung, bevor sie gespeichert wird."
-          }
-        }
-      }
-    },
-    "e.g. Grandpa" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "z. B. Opa"
-          }
-        }
-      }
-    },
-    "💳 Billing Required\n\nYour API account has no usable credit, or this model requires billing to be enabled. Set up billing for the provider whose key you are using:\n• Google: https://aistudio.google.com/app/apikey — enable billing for the project that owns your key (preview models like Gemini 3 Flash often require it)\n• OpenAI: https://platform.openai.com/settings/organization/billing — add credit\n• xAI: https://console.x.ai — add credit\n\nNote: ChatGPT, Grok, or Gemini app subscriptions do NOT include API credit — the developer account is billed separately." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "💳 Abrechnung erforderlich\n\nDein API-Konto hat kein nutzbares Guthaben, oder dieses Modell setzt eine aktivierte Abrechnung voraus. Richte die Abrechnung für den Anbieter ein, dessen Schlüssel du verwendest:\n• Google: https://aistudio.google.com/app/apikey — aktiviere die Abrechnung für das Projekt, dem dein Schlüssel gehört (Vorschau-Modelle wie Gemini 3 Flash verlangen sie oft)\n• OpenAI: https://platform.openai.com/settings/organization/billing — Guthaben aufladen\n• xAI: https://console.x.ai — Guthaben aufladen\n\nHinweis: Abos von ChatGPT, Grok oder Gemini enthalten KEIN API-Guthaben — das Entwicklerkonto wird separat abgerechnet."
-          }
-        }
-      }
-    },
-    "💳 Out of Credit\n\nYour OpenAI API key works, but the API account behind it has no credit left (insufficient_quota).\n\nA ChatGPT subscription does not include API credit. Use the \"Top up\" button below to add credit, then try again." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "💳 Kein Guthaben\n\nDein OpenAI-API-Schlüssel funktioniert, aber das dahinterliegende API-Konto hat kein Guthaben mehr (insufficient_quota).\n\nEin ChatGPT-Abo enthält kein API-Guthaben. Nutze die Schaltfläche „Aufladen“ unten, um Guthaben hinzuzufügen, und versuche es dann erneut."
           }
         }
       }
