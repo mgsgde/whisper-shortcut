@@ -35,6 +35,9 @@ enum Qwen3TTSError: LocalizedError {
   case unsupportedMac
   case modelNotDownloaded
   case emptyAudio
+  /// A reference clip was imported without a transcript, and the on-device ASR checkpoint that
+  /// could produce one is not downloaded.
+  case transcriptRequired
 
   var errorDescription: String? {
     switch self {
@@ -44,6 +47,11 @@ enum Qwen3TTSError: LocalizedError {
       return String(localized: "The Qwen3 voice model is not downloaded yet. Download it in Settings → Read Aloud.")
     case .emptyAudio:
       return String(localized: "The Qwen3 voice model returned no audio.")
+    case .transcriptRequired:
+      return String(
+        localized:
+          "Type what the recording says, or download the Qwen3 ASR model in Settings → Dictate so the text can be transcribed on this Mac."
+      )
     }
   }
 }
@@ -219,21 +227,15 @@ struct Qwen3TTSService {
             + "(\(cached.samples.count) samples)")
       } else if Qwen3VoiceReferenceStore.hasReference(for: persona.id) {
         // A reference exists but does not fit the loaded checkpoint (sample-rate mismatch from a
-        // future model update). Treat it as absent: the calibration below writes a fresh one.
+        // future model update). Treat it as absent: the calibration below writes a fresh one —
+        // unless the user supplied the clip, which is never silently replaced.
         DebugLogger.log("QWEN3-TTS: frozen voice reference for \(persona.id) does not match the model; recalibrating")
       }
     }
 
-    // The library default (temperature 0.9) re-samples the voice on every call. Measured on a
-    // four-sentence German text: default 0.9 + reference gave F0 spread 31.0 Hz and mean
-    // MFCC similarity 0.8885; temperature 0.3 + reference gives 15.4 Hz and 0.9484. Lower
-    // (0.1) is worse again (21.3 Hz / 0.8811) — 0.3 is the sweet spot.
-    let parameters = GenerateParameters(
-      maxTokens: 4096,
-      temperature: 0.3,
-      topP: 1.0,
-      repetitionPenalty: 1.05
-    )
+    // The library default (temperature 0.9) re-samples the voice on every call; see
+    // `generationParameters` for the measurements behind 0.3.
+    let parameters = Self.generationParameters
 
     // When the persona has no frozen clip yet, the first generation of this Read Aloud is the
     // calibration: a fixed short sentence, spoken once, stored, and used as the reference for
@@ -241,7 +243,12 @@ struct Qwen3TTSService {
     // playback audio. An empty calibration degrades to per-run pinning (the first sentence
     // defines the voice) instead of failing the whole Read Aloud — the user asked to hear text,
     // not to calibrate.
-    let needsCalibration = modelType == .voiceDesign && referenceAudio == nil
+    //
+    // A clip the user imported is never overwritten here: it is the voice they chose, and a
+    // calibration run would silently replace it with a described one.
+    let needsCalibration =
+      modelType == .voiceDesign && referenceAudio == nil
+      && !Qwen3VoiceReferenceStore.isUserProvided(for: persona.id)
     if needsCalibration {
       let calibration = Self.calibrationText(for: persona.language)
       DebugLogger.log("QWEN3-TTS: calibrating voice for \(persona.id)")
@@ -309,6 +316,164 @@ struct Qwen3TTSService {
   /// the text and its on-disk consumer live in one place.
   static func calibrationText(for language: String) -> String {
     Qwen3VoiceReferenceStore.calibrationText(for: language)
+  }
+
+  // MARK: - Settings: create and audition a voice
+
+  /// What the Settings preview reads. Short enough to judge a voice in a few seconds, long enough
+  /// to hear prosody rather than one word, and free of anything that biases the speaker (no
+  /// numbers, no foreign words). The transcript is never stored — only the calibration clip is.
+  static func previewText(for language: String) -> String {
+    switch language {
+    case "English":
+      return "This is how this voice sounds when it reads a longer passage aloud to you."
+    default:
+      return "So klingt diese Stimme, wenn sie dir einen längeren Absatz vorliest."
+    }
+  }
+
+  /// Creates (or re-creates) a persona's frozen voice without starting a Read Aloud, and returns
+  /// the calibration clip as playback-ready PCM so Settings can play it immediately.
+  ///
+  /// This is the same generation `synthesizePCM` performs on the first Read Aloud — same sentence,
+  /// same parameters, same store — so a voice created here is exactly the voice the next Read
+  /// Aloud uses. CustomVoice has no freezable voice: its speaker is a fixed id, so there is
+  /// nothing to create and the call returns the preview of that speaker instead.
+  func createVoiceReference(
+    for persona: Qwen3VoicePersona, modelType: Qwen3ModelType
+  ) async throws -> Data {
+    guard modelType == .voiceDesign else {
+      return try await previewPCM(for: persona, modelType: modelType)
+    }
+    let model = try await Qwen3TTSModelLoader.shared.model(modelType)
+    let calibration = Self.calibrationText(for: persona.language)
+    DebugLogger.log("QWEN3-TTS: creating voice for \(persona.id) from Settings")
+    let clip = try await model.generate(
+      text: calibration,
+      voice: Self.voiceArgument(for: persona, modelType: modelType),
+      refAudio: nil,
+      refText: nil,
+      language: persona.language,
+      generationParameters: Self.generationParameters
+    )
+    let samples = clip.asArray(Float.self)
+    guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
+    Qwen3VoiceReferenceStore.store(
+      samples: samples, sampleRate: model.sampleRate, text: calibration, for: persona.id)
+    return Self.pcm16(from: samples, sourceRate: Double(model.sampleRate))
+  }
+
+  /// Synthesizes a short sample with the persona's current voice — the frozen clip when one
+  /// exists, otherwise a freshly created one — so Settings can play it before the user commits to
+  /// a Read Aloud. Returns playback-ready PCM.
+  func previewPCM(
+    for persona: Qwen3VoicePersona, modelType: Qwen3ModelType
+  ) async throws -> Data {
+    let model = try await Qwen3TTSModelLoader.shared.model(modelType)
+    let text = Self.previewText(for: persona.language)
+
+    var referenceAudio: MLXArray?
+    var referenceText: String?
+    if modelType == .voiceDesign {
+      if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
+        cached.sampleRate == model.sampleRate
+      {
+        referenceAudio = MLXArray(cached.samples)
+        referenceText = cached.text
+      } else {
+        // No usable clip yet: create one first, so the preview is the voice the user will get and
+        // not a one-off sample that the next Read Aloud would replace.
+        _ = try await createVoiceReference(for: persona, modelType: modelType)
+        if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
+          cached.sampleRate == model.sampleRate
+        {
+          referenceAudio = MLXArray(cached.samples)
+          referenceText = cached.text
+        }
+      }
+    }
+
+    let audio = try await model.generate(
+      text: text,
+      voice: Self.voiceArgument(for: persona, modelType: modelType),
+      refAudio: referenceAudio,
+      refText: referenceText,
+      language: persona.language,
+      generationParameters: Self.generationParameters
+    )
+    let samples = audio.asArray(Float.self)
+    guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
+    return Self.pcm16(from: samples, sourceRate: Double(model.sampleRate))
+  }
+
+  /// Imports a user-supplied audio file as a persona's voice reference, so the persona speaks in
+  /// that recording's voice instead of a described one.
+  ///
+  /// The checkpoint's ICL path needs the clip *and* its transcript (`refText`); the transcript is
+  /// what aligns the reference with the text being read. If the user did not type one, the
+  /// on-device Qwen3-ASR checkpoint transcribes the clip — no audio leaves the Mac either way.
+  ///
+  /// The clip is resampled to the model's rate and stored as `userProvided`, which is what stops
+  /// the next Read Aloud from replacing it with a generated calibration.
+  func importVoiceReference(
+    from url: URL, for persona: Qwen3VoicePersona, transcript: String?
+  ) async throws -> Data {
+    let model = try await Qwen3TTSModelLoader.shared.model(.voiceDesign)
+    let (fileRate, samples) = try loadAudioArray(from: url)
+    let values = samples.asArray(Float.self)
+    guard !values.isEmpty else { throw Qwen3TTSError.emptyAudio }
+
+    let resampled: [Float]
+    if abs(Double(fileRate) - Double(model.sampleRate)) < 1 {
+      resampled = values
+    } else {
+      let ratio = Double(model.sampleRate) / Double(fileRate)
+      let count = Int(Double(values.count) * ratio)
+      guard count > 0 else { throw Qwen3TTSError.emptyAudio }
+      resampled = (0..<count).map { index in
+        let position = Double(index) / ratio
+        let lower = Int(position)
+        let upper = min(lower + 1, values.count - 1)
+        let fraction = Float(position - Double(lower))
+        return values[lower] * (1 - fraction) + values[upper] * fraction
+      }
+    }
+
+    let text = try await referenceTranscript(for: url, typed: transcript, language: persona.language)
+    Qwen3VoiceReferenceStore.store(
+      samples: resampled, sampleRate: model.sampleRate, text: text, for: persona.id,
+      source: .userProvided)
+    DebugLogger.log(
+      "QWEN3-TTS: imported voice reference for \(persona.id) from \(url.lastPathComponent) "
+        + "(\(resampled.count) samples, \(text.count) chars of transcript)")
+    return Self.pcm16(from: resampled, sourceRate: Double(model.sampleRate))
+  }
+
+  /// The transcript that belongs to an imported reference clip: the user's own text when they
+  /// typed one, otherwise a local transcription. Cloud transcription is deliberately not used —
+  /// a voice sample is personal audio and importing a voice must not upload it.
+  private func referenceTranscript(
+    for url: URL, typed: String?, language: String
+  ) async throws -> String {
+    let trimmed = (typed ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty { return trimmed }
+    guard Qwen3ModelManager.shared.isModelAvailable(.asr) else {
+      throw Qwen3TTSError.transcriptRequired
+    }
+    let text = try await Qwen3ASRService.shared.transcribe(audioURL: url, language: language)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { throw Qwen3TTSError.transcriptRequired }
+    return text
+  }
+
+  /// The generation parameters every Qwen3-TTS call uses. The library default (temperature 0.9)
+  /// re-samples the voice on every call; measured on a four-sentence German text, default 0.9 +
+  /// reference gave F0 spread 31.0 Hz and mean MFCC similarity 0.8885, temperature 0.3 + reference
+  /// gives 15.4 Hz and 0.9484. Lower (0.1) is worse again (21.3 Hz / 0.8811) — 0.3 is the sweet
+  /// spot. Shared so a voice created in Settings is generated exactly like one created by a
+  /// Read Aloud.
+  private static var generationParameters: GenerateParameters {
+    GenerateParameters(maxTokens: 4096, temperature: 0.3, topP: 1.0, repetitionPenalty: 1.05)
   }
 
   /// What the model's `voice` argument means differs by checkpoint: VoiceDesign takes the
