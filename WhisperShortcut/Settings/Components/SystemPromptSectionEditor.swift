@@ -146,19 +146,13 @@ struct SystemPromptSectionEditor: View {
         .font(.callout.weight(.semibold))
         .foregroundStyle(.orange)
       Text(
-        "macOS blocked WhisperShortcut from reading system-prompts.md (\(reason)). Until that is fixed, the app uses its default prompts. Your file has not been changed. Open Privacy & Security, drag WhisperShortcut from the Finder window into the Full Disk Access list, turn it on, then quit and reopen the app."
+        "macOS blocked WhisperShortcut from reading system-prompts.md (\(reason)). Until that is fixed, the app uses its default prompts. Your file has not been changed. This happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)."
       )
       .font(.footnote)
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
       .textSelection(.enabled)
       HStack(spacing: 12) {
-        Button("Open Privacy & Security") {
-          PermissionStatusChecker.openFullDiskAccessSettings()
-        }
-        .buttonStyle(.bordered)
-        .font(.callout)
-        .pointerCursorOnHover()
         Button("Try again") { load(resetBaseline: true) }
           .buttonStyle(.bordered)
           .font(.callout)

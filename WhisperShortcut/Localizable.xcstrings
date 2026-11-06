@@ -24938,7 +24938,118 @@
           }
         }
       }
+    },
+    "Allow Accessibility for %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen für %@ erlauben"
+          }
+        }
+      }
+    },
+    "Auto-Paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch einfügen"
+          }
+        }
+      }
+    },
+    "Fn key dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat mit der Fn-Taste"
+          }
+        }
+      }
+    },
+    "notice when you press the Fn key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "erkennen, wann Sie die Fn-Taste drücken"
+          }
+        }
+      }
+    },
+    "paste dictated text at your cursor" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "diktierten Text an der Cursorposition einfügen"
+          }
+        }
+      }
+    },
+    "read the text you selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "den markierten Text lesen"
+          }
+        }
+      }
+    },
+    "read the word you selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "das markierte Wort lesen"
+          }
+        }
+      }
+    },
+    "type your words live into the app you are using" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Worte live in die geöffnete App schreiben"
+          }
+        }
+      }
+    },
+    "macOS needs this so WhisperShortcut can %@. Turn on WhisperShortcut in the list that opens.\n\nAlready on but still not working? Turn it off and on again. If that doesn't help, select WhisperShortcut, remove it with −, and use the feature again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS braucht das, damit WhisperShortcut %@ kann. Schalten Sie WhisperShortcut in der Liste ein, die sich öffnet.\n\nSchon eingeschaltet, funktioniert aber nicht? Schalten Sie es aus und wieder ein. Hilft das nicht, wählen Sie WhisperShortcut aus, entfernen Sie es mit − und nutzen Sie die Funktion erneut."
+          }
+        }
+      }
+    },
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nThis happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nDas passiert, wenn eine andere Version von WhisperShortcut die Datei angelegt hat. Beenden Sie WhisperShortcut, öffnen Sie es erneut und klicken Sie auf „Erlauben“, wenn macOS nach Daten anderer Apps fragt. Fragt macOS nicht, installieren Sie WhisperShortcut erneut von dort, wo Sie es geladen haben (App Store oder Website)."
+          }
+        }
+      }
+    },
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. This happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Das passiert, wenn eine andere Version von WhisperShortcut die Datei angelegt hat. Beenden Sie WhisperShortcut, öffnen Sie es erneut und klicken Sie auf „Erlauben“, wenn macOS nach Daten anderer Apps fragt. Fragt macOS nicht, installieren Sie WhisperShortcut erneut von dort, wo Sie es geladen haben (App Store oder Website)."
+          }
+        }
+      }
     }
+
   },
   "version" : "1.0"
 }

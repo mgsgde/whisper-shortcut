@@ -87,7 +87,7 @@ struct KeyboardShortcutsSection: View {
           DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
           if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
             // Request now (native prompt + pre-registration), not deferred to the first fn press.
-            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+            AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
           }
           viewModel.data.fnKeyDictation = newValue
           Task { await viewModel.saveSettings() }
@@ -117,7 +117,7 @@ struct KeyboardShortcutsSection: View {
               .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Allow Accessibility") {
-              AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+              AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
               refreshFnStatus()
             }
             .controlSize(.small)

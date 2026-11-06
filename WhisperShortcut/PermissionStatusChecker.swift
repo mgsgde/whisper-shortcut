@@ -118,12 +118,12 @@ enum PermissionStatusChecker {
   /// Microphone requests only while the status is `.notDetermined`, and opens Settings when that
   /// request is denied; any other status opens Settings immediately. Screen Recording opens
   /// Settings when already granted; otherwise it requests access and, if that does not grant it,
-  /// opens Settings after 0.5 s when the status is still not granted. Accessibility always calls
-  /// `AccessibilityPermissionManager.requestAccessibilityPermission()` — that sets the prompt flag
-  /// and calls `AXIsProcessTrustedWithOptions` with the prompt, which re-registers the entry even
-  /// after a `tccutil` reset. Settings opens only when a prompt was already shown and access is
-  /// still not trusted: the first native prompt has its own Open System Settings button, so this
-  /// does not open the pane a second time.
+  /// opens Settings after 0.5 s when the status is still not granted. Accessibility calls
+  /// `AccessibilityPermissionManager.requestThenOpenAccessibilitySettings()`, which reads the prompt
+  /// flag, calls `requestAccessibilityPermission()` (re-registers the entry even after a `tccutil`
+  /// reset), and opens Settings only when a prompt was already shown and access is still not
+  /// trusted. The first native prompt has its own Open System Settings button, so this does not
+  /// open the pane a second time.
   static func requestThenOpenSystemSettings(for kind: PermissionKind) {
     switch kind {
     case .microphone:
@@ -150,25 +150,7 @@ enum PermissionStatusChecker {
         }
       }
     case .accessibility:
-      let alreadyPrompted = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
-      AccessibilityPermissionManager.requestAccessibilityPermission()
-      if alreadyPrompted && !AXIsProcessTrusted() {
-        openSystemSettings(for: .accessibility)
-      }
-    }
-  }
-
-  /// Opens Privacy & Security → Full Disk Access and reveals WhisperShortcut in Finder.
-  ///
-  /// Full Disk Access has no request API, so macOS never pre-lists apps there. Revealing the app
-  /// lets the user drag it into the list instead of hunting through "+".
-  static func openFullDiskAccessSettings() {
-    let urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-    if let url = URL(string: urlString) {
-      Task { @MainActor in
-        SystemSettingsOpener.open(url)
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-      }
+      AccessibilityPermissionManager.requestThenOpenAccessibilitySettings()
     }
   }
 }

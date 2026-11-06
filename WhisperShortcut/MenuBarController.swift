@@ -2686,7 +2686,7 @@ class MenuBarController: NSObject {
   private func startLiveDictation() -> Bool {
     guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
       DebugLogger.logWarning("LIVE-DICTATE: Not started — Accessibility permission missing")
-      AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+      AccessibilityPermissionManager.requestAtUseTime(for: .dictateLive)
       return false
     }
     let model = TranscriptionModel.loadSelected()
@@ -3605,7 +3605,7 @@ class MenuBarController: NSObject {
             : "clipboard unchanged or our own write, running as compose"))
       return (true, selection)
     }
-    if !AccessibilityPermissionManager.checkPermissionForPromptUsage() { return (false, nil) }
+    if !AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .dictatePrompt) { return (false, nil) }
     // Snapshot before the synthetic ⌘C, not after: from here on the pasteboard holds the
     // user's selection, so a later snapshot would "restore" that instead of what they copied.
     captureClipboardRestorePointIfEnabled()
@@ -3679,7 +3679,7 @@ class MenuBarController: NSObject {
   /// selecting it, so the app stores it verbatim. That is what makes this the one glossary path
   /// that still works in Offline Mode, where every model-driven learning route is switched off.
   @objc internal func addSelectionToGlossary() {
-    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .glossary) else { return }
     captureClipboardRestorePointIfEnabled()
     let before = NSPasteboard.general.changeCount
     simulateCopy()
@@ -3919,7 +3919,7 @@ class MenuBarController: NSObject {
       let generation = pasteGeneration
       guard AccessibilityPermissionManager.hasAccessibilityPermission() else {
         DebugLogger.logWarning("AUTO-PASTE: Skipped — accessibility permission not granted, showing permission dialog")
-        AccessibilityPermissionManager.showAccessibilityPermissionDialog()
+        AccessibilityPermissionManager.requestAtUseTime(for: .autoPaste)
         // Nothing was pasted, so the result has to stay on the clipboard for the user's own ⌘V.
         clipboardManager.discardRestorePoint()
         return false
@@ -4739,7 +4739,7 @@ extension MenuBarController: ShortcutDelegate {
     default:
       return
     }
-    guard AccessibilityPermissionManager.checkPermissionForPromptUsage() else { return }
+    guard AccessibilityPermissionManager.checkPermissionForPromptUsage(for: .readAloud) else { return }
 
     // A blind delay isn't enough: some apps respond to Cmd+C slower than others, and a fixed
     // wait either reads the stale clipboard (too short) or stalls Read Aloud (too long). Poll
