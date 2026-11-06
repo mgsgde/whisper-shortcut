@@ -209,9 +209,9 @@ struct ModelPickerCurationTests {
     let readAloud = ModelPickerCuration(
       models: TTSModel.allCases, recommended: SettingsDefaults.readAloudModel,
       selected: SettingsDefaults.readAloudModel, isUsable: { _ in true })
-    // The Qwen3 voice is a first-class on-device tile: it belongs above the disclosure, not
-    // behind "More models" under the cloud tiles. Order follows the picker's list order.
-    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS, .qwen3VoiceDesign])
+    // The two Qwen3 voices are a two-tile on-device provider: they belong above the disclosure,
+    // not behind "More models" under the cloud tiles. Order follows the picker's list order.
+    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice])
     #expect(readAloud.featured.first?.badges == [.recommended, .fastest])
   }
 

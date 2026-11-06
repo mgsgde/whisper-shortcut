@@ -16,20 +16,20 @@ import Foundation
 import Hub
 
 /// The on-device Qwen3 audio models.
-///
-/// Read Aloud has exactly one checkpoint, VoiceDesign. The 0.6B CustomVoice checkpoint was
-/// dropped: its nine fixed speakers are Chinese, English, Japanese and Korean natives, so German
-/// came out as a non-native speaker reading German. VoiceDesign is the only checkpoint that can be
-/// told "native German speaker, no foreign accent", which is the whole point of offering a local
-/// voice here.
 enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
   case asr = "qwen3-asr-1.7b"
   case voiceDesign = "qwen3-tts-voicedesign-1.7b"
+  /// The small CustomVoice checkpoint: nine fixed speakers instead of a described voice. A third
+  /// of the download and several times faster than VoiceDesign, at the cost of not being able to
+  /// ask for a German-native speaker — the nine are Chinese, English, Japanese and Korean natives,
+  /// so German comes out as those speakers reading German. Offered as the fast local option.
+  case customVoice = "qwen3-tts-customvoice-0.6b"
 
   var displayName: String {
     switch self {
     case .asr: return "Qwen3 ASR 1.7B"
     case .voiceDesign: return "Qwen3 TTS VoiceDesign 1.7B"
+    case .customVoice: return "Qwen3 TTS CustomVoice 0.6B"
     }
   }
 
@@ -38,14 +38,17 @@ enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
     switch self {
     case .asr: return "mlx-community/Qwen3-ASR-1.7B-8bit"
     case .voiceDesign: return "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-8bit"
+    case .customVoice: return "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
     }
   }
 
-  /// Measured on disk after download (2026-11-05): ASR 2.46 GB, VoiceDesign 2.9 GB.
+  /// Measured on disk after download (2026-11-05): ASR 2.46 GB, VoiceDesign 2.9 GB,
+  /// CustomVoice 1.8 GB.
   var estimatedSizeMB: Int {
     switch self {
     case .asr: return 2460
     case .voiceDesign: return 2900
+    case .customVoice: return 1800
     }
   }
 
@@ -53,13 +56,13 @@ enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
     String(format: "~%.1f GB", Double(estimatedSizeMB) / 1000)
   }
 
-  /// Physical RAM (GiB) a Mac needs before this entry is offered. Both checkpoints are 1.7B
-  /// models that run comfortably next to the system and Parakeet on a 16 GB Mac — the same floor
-  /// `LocalLLMModelType.qwen359B` uses. Same mechanism as
+  /// Physical RAM (GiB) a Mac needs before this entry is offered. The two 1.7B checkpoints and
+  /// the 0.6B CustomVoice checkpoint all run comfortably next to the system and Parakeet on a
+  /// 16 GB Mac — the same floor `LocalLLMModelType.qwen359B` uses. Same mechanism as
   /// `LocalLLMModelType.minimumPhysicalMemoryGB` / `isOfferable`.
   var minimumPhysicalMemoryGB: Int {
     switch self {
-    case .asr, .voiceDesign: return 16
+    case .asr, .voiceDesign, .customVoice: return 16
     }
   }
 
@@ -170,8 +173,8 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
     switch type {
     case .asr:
       _ = try await Qwen3ASRModelLoader.shared.model()
-    case .voiceDesign:
-      _ = try await Qwen3TTSModelLoader.shared.model()
+    case .voiceDesign, .customVoice:
+      _ = try await Qwen3TTSModelLoader.shared.model(type)
     }
   }
 
@@ -179,7 +182,7 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
     switch type {
     case .asr:
       await Qwen3ASRModelLoader.shared.unload()
-    case .voiceDesign:
+    case .voiceDesign, .customVoice:
       await Qwen3TTSModelLoader.shared.unload()
     }
   }

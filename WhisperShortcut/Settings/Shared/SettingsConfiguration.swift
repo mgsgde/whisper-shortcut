@@ -938,9 +938,11 @@ enum TTSProvider {
     case .xai: return ChatModelProvider.grok.hasCredential
     case .system: return true
     // No key, but the weights have to be on disk — same "is it usable right now" question the
-    // macOS voice answers with `true`.
+    // macOS voice answers with `true`. Either checkpoint counts: a user who downloaded only
+    // CustomVoice has a working on-device provider.
     case .localMLX:
       return Qwen3ModelManager.shared.isModelAvailable(.voiceDesign)
+        || Qwen3ModelManager.shared.isModelAvailable(.customVoice)
     }
   }
 
@@ -1102,6 +1104,9 @@ enum TTSModel: String, CaseIterable {
   /// On-device Qwen3-TTS VoiceDesign (MLX). The voice is a natural-language persona description
   /// rather than a fixed speaker id — see `Qwen3VoicePersonas`.
   case qwen3VoiceDesign = "qwen3-tts-voicedesign-1.7b"
+  /// On-device Qwen3-TTS CustomVoice 0.6B (MLX). Nine fixed speakers, a third of the download and
+  /// several times faster than VoiceDesign, but none of the speakers is German-native.
+  case qwen3CustomVoice = "qwen3-tts-customvoice-0.6b"
 
   var provider: TTSProvider {
     switch self {
@@ -1109,7 +1114,7 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
-    case .qwen3VoiceDesign: return .localMLX
+    case .qwen3VoiceDesign, .qwen3CustomVoice: return .localMLX
     }
   }
 
@@ -1121,6 +1126,7 @@ enum TTSModel: String, CaseIterable {
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return String(localized: "macOS (On-Device)")
     case .qwen3VoiceDesign: return String(localized: "Qwen3 TTS VoiceDesign 1.7B (On-Device)")
+    case .qwen3CustomVoice: return String(localized: "Qwen3 TTS CustomVoice 0.6B (On-Device)")
     }
   }
 
@@ -1128,6 +1134,7 @@ enum TTSModel: String, CaseIterable {
   var qwen3ModelType: Qwen3ModelType? {
     switch self {
     case .qwen3VoiceDesign: return .voiceDesign
+    case .qwen3CustomVoice: return .customVoice
     default: return nil
     }
   }
@@ -1146,6 +1153,8 @@ enum TTSModel: String, CaseIterable {
       return String(localized: "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode")
     case .qwen3VoiceDesign:
       return String(localized: "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline")
+    case .qwen3CustomVoice:
+      return String(localized: "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline")
     }
   }
 
@@ -1178,19 +1187,27 @@ enum TTSModel: String, CaseIterable {
     case .openai: return "alloy"
     case .xai: return "eve"
     case .system: return SystemTTSService.defaultVoiceIdentifier
-    case .localMLX: return Qwen3VoicePersona.default.id
+    case .localMLX:
+      // VoiceDesign and CustomVoice have disjoint speaker catalogues, so the default depends on
+      // which checkpoint this model runs.
+      return qwen3ModelType == .customVoice
+        ? Qwen3VoicePersona.customVoiceSpeakers[0].id
+        : Qwen3VoicePersona.default.id
     }
   }
 
   /// The voices selectable for this model's provider (for the Read Aloud voice picker).
   var availableVoices: [TTSVoice] {
-    provider.voices
+    // The two Qwen3 checkpoints share a provider but not a speaker catalogue.
+    if qwen3ModelType == .customVoice { return Qwen3VoicePersona.customVoicePickerVoices }
+    return provider.voices
   }
 
   /// Whether the user has the API key this TTS model's provider needs. Gates Read Aloud so a
   /// single provider key is enough. See `TTSProvider.hasCredential` for why this is not its own switch.
   var hasRequiredCredential: Bool {
-    // The Qwen3 checkpoint is a download, not a key: having it on disk is what makes it ready.
+    // The two Qwen3 checkpoints are separate downloads under one provider, so the answer is
+    // per model: having VoiceDesign on disk must not make CustomVoice look ready.
     if let type = qwen3ModelType {
       return Qwen3ModelManager.shared.isModelAvailable(type)
     }
@@ -1230,7 +1247,7 @@ enum TTSModel: String, CaseIterable {
   /// Qwen3 needs Apple silicon and 16 GB of RAM — below that the tiles would end in a
   /// multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
-    [.systemMacOS, .qwen3VoiceDesign, .gemini38FlashLiteTTS,
+    [.systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice, .gemini38FlashLiteTTS,
      .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
       .filter { $0.qwen3ModelType?.isOfferable ?? true }
@@ -1243,11 +1260,6 @@ enum TTSModel: String, CaseIterable {
       // 2.5 previews shut down 2026-10-16; 3.1 preview replaced 2026-09-29 by the cheaper, faster,
       // stable 3.8 Flash-Lite TTS (see the TTSModel note).
       return TTSModel.gemini38FlashLiteTTS.rawValue
-    case "qwen3-tts-customvoice-0.6b":
-      // CustomVoice was dropped before release: its nine fixed speakers are not German natives,
-      // so German came out as a non-native speaker reading German. A stored selection moves to
-      // VoiceDesign, the only local checkpoint that can be asked for a German native voice.
-      return TTSModel.qwen3VoiceDesign.rawValue
     default:
       return raw
     }
@@ -1702,9 +1714,13 @@ enum ReadAloudPreferences {
     return stored
   }
 
-  /// The Qwen3 persona for `model`, resolved from the stored speaker id.
+  /// The Qwen3 persona for `model`, resolved from the stored speaker id. The two checkpoints have
+  /// disjoint catalogues, so this is the only place that knows which one a stored id belongs to.
   static func qwen3Persona(for model: TTSModel) -> Qwen3VoicePersona {
-    Qwen3VoicePersona.persona(for: voice(for: model))
+    let stored = voice(for: model)
+    return model.qwen3ModelType == .customVoice
+      ? Qwen3VoicePersona.customVoiceSpeaker(for: stored)
+      : Qwen3VoicePersona.persona(for: stored)
   }
 }
 

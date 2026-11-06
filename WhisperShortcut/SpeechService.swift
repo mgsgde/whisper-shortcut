@@ -2504,8 +2504,8 @@ class SpeechService {
       synthesizeText: synthesizeChunk)
   }
 
-  /// On-device Read Aloud through Qwen3-TTS VoiceDesign. Reached when the selected model is the
-  /// `.localMLX` checkpoint; `personaID` is a `Qwen3VoicePersonas` id, not a provider voice name.
+  /// On-device Read Aloud through Qwen3-TTS. Reached when the selected model is one of the two
+  /// `.localMLX` checkpoints; `personaID` is a `Qwen3VoicePersonas` id, not a provider voice name.
   ///
   /// Long text is chunked inside `Qwen3TTSService` and synthesized sequentially against one loaded
   /// model, so the weights are paid for once per Read Aloud, not once per chunk.
@@ -2516,25 +2516,31 @@ class SpeechService {
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
   ) async throws -> Data {
     // The caller already resolved the model it dispatched on; re-reading UserDefaults here
-    // could pair a persona resolved for a different model than the one this run uses.
+    // could pair a persona resolved for a different checkpoint than the one this run uses.
     let model = model ?? ReadAloudPreferences.model
-    guard model.qwen3ModelType != nil else {
+    guard let modelType = model.qwen3ModelType else {
       throw TranscriptionError.networkError("Qwen3 voice selected for a non-Qwen3 model")
     }
-    let persona = personaID.map { Qwen3VoicePersona.persona(for: $0) }
-      ?? ReadAloudPreferences.qwen3Persona(for: model)
+    let persona: Qwen3VoicePersona
+    if let personaID {
+      persona = modelType == .customVoice
+        ? Qwen3VoicePersona.customVoiceSpeaker(for: personaID)
+        : Qwen3VoicePersona.persona(for: personaID)
+    } else {
+      persona = ReadAloudPreferences.qwen3Persona(for: model)
+    }
 
-    if !Qwen3ModelManager.shared.isModelAvailable(.voiceDesign) {
+    if !Qwen3ModelManager.shared.isModelAvailable(modelType) {
       // `defer`, not a plain call after: a failed download must also dismiss the popup, or the
       // "Processing" window stays on screen with nothing running behind it. Same shape as the
       // dictation branch above.
       defer { PopupNotificationWindow.dismissProcessing() }
-      try await Qwen3ModelManager.shared.ensureReady(.voiceDesign) { status in
+      try await Qwen3ModelManager.shared.ensureReady(modelType) { status in
         PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Read Aloud")
       }
     }
     return try await Qwen3TTSService.shared.synthesizePCM(
-      text: text, persona: persona, onChunkReady: onChunkReady)
+      text: text, persona: persona, modelType: modelType, onChunkReady: onChunkReady)
   }
 
   /// On-device Read Aloud. Reached from `readSelectionAloud` / `readProseAloud` when the

@@ -2,13 +2,16 @@
 //  Qwen3TTSService.swift
 //  WhisperShortcut
 //
-//  On-device Read Aloud through Qwen3-TTS VoiceDesign (MLX, `mlx-audio-swift`).
+//  On-device Read Aloud through Qwen3-TTS (MLX, `mlx-audio-swift`).
 //
-//  One checkpoint: VoiceDesign 1.7B. The voice *is* a natural-language description, so it can be
-//  told "native German speaker, no foreign accent" — which is the whole point of a local voice
-//  here. The 0.6B CustomVoice checkpoint was dropped: its nine fixed speakers are Chinese,
-//  English, Japanese and Korean natives, so German came out as a non-native speaker reading
-//  German.
+//  Two checkpoints, two trade-offs:
+//
+//  - VoiceDesign 1.7B — the voice *is* a natural-language description. This is the default,
+//    because CustomVoice's nine speakers are all Chinese, English, Japanese or Korean natives and
+//    asking one of them to read German produces an audibly translated voice. VoiceDesign can be
+//    told "native German speaker, no foreign accent", which is the whole point.
+//  - CustomVoice 0.6B — nine fixed speakers, a third of the download and several times faster.
+//    Offered as the fast local option; German comes out as a non-native speaker reading German.
 //
 //  Output contract: s16le, 24 kHz, mono — the same raw PCM every other Read Aloud provider
 //  returns, so `MenuBarController`'s playback path needs no change.
@@ -46,12 +49,15 @@ enum Qwen3TTSError: LocalizedError {
 }
 
 /// Owns the loaded Qwen3-TTS model. One model is resident at a time, mirroring `MLXModelLoader`
-/// for the chat models: loading is expensive (2.9 GB of weights) and a menu-bar app must not hold
-/// it forever. There is only one TTS checkpoint, so no type slot is needed.
+/// for the chat models: loading is expensive (up to 2.9 GB of weights) and a menu-bar app must
+/// not hold both checkpoints forever. Switching between VoiceDesign and CustomVoice unloads the
+/// other one.
 actor Qwen3TTSModelLoader {
   static let shared = Qwen3TTSModelLoader()
 
+  private var loadedType: Qwen3ModelType?
   private var loaded: SpeechGenerationModel?
+  private var inFlightType: Qwen3ModelType?
   private var inFlight: Task<SpeechGenerationModel, Error>?
   private let lifetime = ModelLifetimeGuards()
 
@@ -60,20 +66,31 @@ actor Qwen3TTSModelLoader {
   /// session reuses the model, short enough that an idle app gives the memory back.
   private static let idleUnloadAfter: TimeInterval = 5 * 60
 
-  /// Loads (or returns) the VoiceDesign model. The cached instance is reused for every chunk of a
+  /// Loads (or returns) the model for `type`. The cached instance is reused for every chunk of a
   /// long text — that is the point of caching it here rather than in the caller.
-  func model() async throws -> SpeechGenerationModel {
-    if let loaded {
+  ///
+  /// A concurrent request for a *different* checkpoint must not join the in-flight load: it
+  /// would receive the other checkpoint's model and synthesize with a voice string that makes
+  /// no sense for it (a CustomVoice `"speaker, instruction"` read as a VoiceDesign description).
+  /// So the join only happens when the types match; otherwise the joiner waits for the running
+  /// load to finish (the actor serializes state, the model load itself runs off-actor) and then
+  /// starts its own.
+  func model(_ type: Qwen3ModelType) async throws -> SpeechGenerationModel {
+    if let loaded, loadedType == type {
       scheduleIdleUnload()
       return loaded
     }
-    if let inFlight { return try await inFlight.value }
+    if let inFlight, inFlightType == type { return try await inFlight.value }
+    if let inFlight {
+      // A different checkpoint is loading. Wait it out so the two loads do not race the
+      // `loaded` slot, then load ours.
+      _ = try? await inFlight.value
+    }
 
     let task = Task<SpeechGenerationModel, Error> {
       // Load from the app's own model folder, not the shared HuggingFace cache: the app's
       // download path writes there, and `TTS.loadModel` resolves a local directory before it
       // ever touches the network.
-      let type = Qwen3ModelType.voiceDesign
       guard let local = Qwen3ModelManager.shared.resolveModelPath(for: type) else {
         throw Qwen3TTSError.modelNotDownloaded
       }
@@ -87,9 +104,21 @@ actor Qwen3TTSModelLoader {
       return model
     }
     inFlight = task
-    defer { inFlight = nil }
+    inFlightType = type
+    // Ownership-checked teardown: a concurrent joiner for another checkpoint may have
+    // registered its own task by the time ours finishes (resumption order of two waiters on
+    // one Task is unspecified). Clearing unconditionally would wipe that registration and
+    // let a third caller start a duplicate load of the same checkpoint. `Task` is a struct,
+    // so identity is tracked via the type slot the registration itself wrote.
+    defer {
+      if inFlightType == type {
+        inFlight = nil
+        inFlightType = nil
+      }
+    }
     let model = try await task.value
     loaded = model
+    loadedType = type
     startLifetimeGuardsIfNeeded()
     scheduleIdleUnload()
     return model
@@ -97,6 +126,7 @@ actor Qwen3TTSModelLoader {
 
   func unload() {
     loaded = nil
+    loadedType = nil
     lifetime.cancelIdleUnload()
   }
 
@@ -116,8 +146,9 @@ actor Qwen3TTSModelLoader {
 
   private func unloadLoaded(reason: String) {
     guard loaded != nil else { return }
-    DebugLogger.log("QWEN3-TTS: unloading VoiceDesign (\(reason))")
+    DebugLogger.log("QWEN3-TTS: unloading \(loadedType?.rawValue ?? "model") (\(reason))")
     loaded = nil
+    loadedType = nil
     lifetime.cancelIdleUnload()
   }
 }
@@ -153,20 +184,23 @@ struct Qwen3TTSService {
   /// first Read Aloud with a persona synthesizes a short calibration sentence, stores it, and
   /// from then on every Read Aloud — in any session — starts from that same clip, so a persona
   /// is the same voice forever. "Reset voice" in Settings deletes the clip; the next Read Aloud
-  /// generates and stores a new one.
+  /// generates and stores a new one. CustomVoice personas skip all of this: their speaker is a
+  /// fixed id, the checkpoint does not drift.
   func synthesizePCM(
     text: String,
     persona: Qwen3VoicePersona,
+    modelType: Qwen3ModelType,
     onChunkReady: ((Data, Int, Int) -> Void)? = nil
   ) async throws -> Data {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return Data() }
 
     // Loaded once, before the loop: every sentence below reuses this instance.
-    let model = try await Qwen3TTSModelLoader.shared.model()
+    let model = try await Qwen3TTSModelLoader.shared.model(modelType)
     let sentences = Self.splitIntoSentences(trimmed, maxChars: Self.maxSentenceChars)
     DebugLogger.log(
-      "QWEN3-TTS: \(persona.id), \(trimmed.count) chars in \(sentences.count) sentence(s)")
+      "QWEN3-TTS: \(persona.id) via \(modelType.rawValue), \(trimmed.count) chars in "
+        + "\(sentences.count) sentence(s)")
 
     var merged = Data()
     // The speaker reference for every sentence: the persona's frozen clip when one exists,
@@ -174,18 +208,20 @@ struct Qwen3TTSService {
     var referenceAudio: MLXArray?
     var referenceText: String?
 
-    if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
-      cached.sampleRate == model.sampleRate
-    {
-      referenceAudio = MLXArray(cached.samples)
-      referenceText = cached.text
-      DebugLogger.log(
-        "QWEN3-TTS: using frozen voice reference for \(persona.id) "
-          + "(\(cached.samples.count) samples)")
-    } else if Qwen3VoiceReferenceStore.hasReference(for: persona.id) {
-      // A reference exists but does not fit the loaded checkpoint (sample-rate mismatch from a
-      // future model update). Treat it as absent: the calibration below writes a fresh one.
-      DebugLogger.log("QWEN3-TTS: frozen voice reference for \(persona.id) does not match the model; recalibrating")
+    if modelType == .voiceDesign {
+      if let cached = Qwen3VoiceReferenceStore.reference(for: persona.id),
+        cached.sampleRate == model.sampleRate
+      {
+        referenceAudio = MLXArray(cached.samples)
+        referenceText = cached.text
+        DebugLogger.log(
+          "QWEN3-TTS: using frozen voice reference for \(persona.id) "
+            + "(\(cached.samples.count) samples)")
+      } else if Qwen3VoiceReferenceStore.hasReference(for: persona.id) {
+        // A reference exists but does not fit the loaded checkpoint (sample-rate mismatch from a
+        // future model update). Treat it as absent: the calibration below writes a fresh one.
+        DebugLogger.log("QWEN3-TTS: frozen voice reference for \(persona.id) does not match the model; recalibrating")
+      }
     }
 
     // The library default (temperature 0.9) re-samples the voice on every call. Measured on a
@@ -205,13 +241,13 @@ struct Qwen3TTSService {
     // playback audio. An empty calibration degrades to per-run pinning (the first sentence
     // defines the voice) instead of failing the whole Read Aloud — the user asked to hear text,
     // not to calibrate.
-    let needsCalibration = referenceAudio == nil
+    let needsCalibration = modelType == .voiceDesign && referenceAudio == nil
     if needsCalibration {
       let calibration = Self.calibrationText(for: persona.language)
       DebugLogger.log("QWEN3-TTS: calibrating voice for \(persona.id)")
       let clip = try await model.generate(
         text: calibration,
-        voice: persona.prompt,
+        voice: Self.voiceArgument(for: persona, modelType: modelType),
         refAudio: nil,
         refText: nil,
         language: persona.language,
@@ -233,7 +269,7 @@ struct Qwen3TTSService {
       let start = Date()
       let audio = try await model.generate(
         text: sentence,
-        voice: persona.prompt,
+        voice: Self.voiceArgument(for: persona, modelType: modelType),
         refAudio: referenceAudio,
         refText: referenceText,
         language: persona.language,
@@ -273,6 +309,23 @@ struct Qwen3TTSService {
   /// the text and its on-disk consumer live in one place.
   static func calibrationText(for language: String) -> String {
     Qwen3VoiceReferenceStore.calibrationText(for: language)
+  }
+
+  /// What the model's `voice` argument means differs by checkpoint: VoiceDesign takes the
+  /// description itself, CustomVoice takes `"speaker, instruction"`. A CustomVoice persona
+  /// therefore carries its speaker name in `speaker`; a VoiceDesign persona leaves it nil.
+  private static func voiceArgument(
+    for persona: Qwen3VoicePersona, modelType: Qwen3ModelType
+  ) -> String {
+    switch modelType {
+    case .customVoice:
+      // CustomVoice has no German-native speaker, so the instruction asks for the closest thing:
+      // the least accented reading of German the fixed speaker can produce.
+      let speaker = persona.customVoiceSpeaker ?? "aiden"
+      return "\(speaker), \(persona.prompt)"
+    case .voiceDesign, .asr:
+      return persona.prompt
+    }
   }
 
   /// Splits `text` into one entry per sentence, cutting any sentence longer than `maxChars` at a

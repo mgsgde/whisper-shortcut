@@ -24878,6 +24878,116 @@
           }
         }
       }
+    },
+    "Qwen3 TTS CustomVoice 0.6B (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 TTS CustomVoice 0.6B (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 TTS CustomVoice 0.6B • Nine fixed speakers, fastest local option • ~1.8GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 TTS CustomVoice 0.6B • Neun feste Sprecher, schnellste lokale Option • ~1,8 GB • Offline"
+          }
+        }
+      }
+    },
+    "Aiden (male, warm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aiden (männlich, warm)"
+          }
+        }
+      }
+    },
+    "Ryan (male, clear)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ryan (männlich, klar)"
+          }
+        }
+      }
+    },
+    "Eric (male, lively)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eric (männlich, lebhaft)"
+          }
+        }
+      }
+    },
+    "Dylan (male, youthful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dylan (männlich, jung)"
+          }
+        }
+      }
+    },
+    "Uncle Fu (male, mature)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uncle Fu (männlich, reif)"
+          }
+        }
+      }
+    },
+    "Serena (female, warm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serena (weiblich, warm)"
+          }
+        }
+      }
+    },
+    "Vivian (female, clear)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vivian (weiblich, klar)"
+          }
+        }
+      }
+    },
+    "Ono Anna (female, bright)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ono Anna (weiblich, hell)"
+          }
+        }
+      }
+    },
+    "Sohee (female, soft)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohee (weiblich, sanft)"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

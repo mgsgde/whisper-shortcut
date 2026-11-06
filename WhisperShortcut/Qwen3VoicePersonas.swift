@@ -37,6 +37,9 @@ struct Qwen3VoicePersona: Identifiable, Hashable {
   let language: String
   /// The instruction the model receives. English, deliberately verbose — see the file header.
   let prompt: String
+  /// CustomVoice checkpoints take a fixed speaker name instead of a description. nil for
+  /// VoiceDesign personas, whose `prompt` is the whole voice.
+  var customVoiceSpeaker: String? = nil
 
   /// What the Read Aloud voice picker shows. Mirrors `TTSVoice.displayName`'s shape so a
   /// VoiceDesign persona and a cloud voice read the same way in the same list.
@@ -261,5 +264,89 @@ struct Qwen3VoicePersona: Identifiable, Hashable {
   /// user's own personas).
   static var pickerVoices: [TTSVoice] {
     (all + Qwen3CustomPersonas.all).map { TTSVoice(id: $0.id, gender: $0.gender, descriptor: $0.summary) }
+  }
+
+  // MARK: - CustomVoice speakers
+
+  /// The nine fixed speakers of the 0.6B CustomVoice checkpoint (`spk_id` in its `config.json`).
+  /// None of them is a German native, so the instruction below asks each one for the least
+  /// accented German it can produce. This is the fast local option, not the accurate one — the
+  /// VoiceDesign catalogue above is what a German listener should pick.
+  static let customVoiceSpeakers: [Qwen3VoicePersona] = [
+    Qwen3VoicePersona(
+      id: "aiden", gender: "m",
+      summary: String(localized: "Aiden (male, warm)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, warm and natural, calm pace.",
+      customVoiceSpeaker: "aiden"),
+    Qwen3VoicePersona(
+      id: "ryan", gender: "m",
+      summary: String(localized: "Ryan (male, clear)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, clear and steady, professional narrator.",
+      customVoiceSpeaker: "ryan"),
+    Qwen3VoicePersona(
+      id: "eric", gender: "m",
+      summary: String(localized: "Eric (male, lively)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, lively and friendly, natural intonation.",
+      customVoiceSpeaker: "eric"),
+    Qwen3VoicePersona(
+      id: "dylan", gender: "m",
+      summary: String(localized: "Dylan (male, youthful)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, youthful and relaxed, conversational.",
+      customVoiceSpeaker: "dylan"),
+    Qwen3VoicePersona(
+      id: "uncle_fu", gender: "m",
+      summary: String(localized: "Uncle Fu (male, mature)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, mature and composed, measured pace.",
+      customVoiceSpeaker: "uncle_fu"),
+    Qwen3VoicePersona(
+      id: "serena", gender: "w",
+      summary: String(localized: "Serena (female, warm)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, warm and natural, calm pace.",
+      customVoiceSpeaker: "serena"),
+    Qwen3VoicePersona(
+      id: "vivian", gender: "w",
+      summary: String(localized: "Vivian (female, clear)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, clear and steady, professional narrator.",
+      customVoiceSpeaker: "vivian"),
+    Qwen3VoicePersona(
+      id: "ono_anna", gender: "w",
+      summary: String(localized: "Ono Anna (female, bright)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, bright and friendly, natural intonation.",
+      customVoiceSpeaker: "ono_anna"),
+    Qwen3VoicePersona(
+      id: "sohee", gender: "w",
+      summary: String(localized: "Sohee (female, soft)"),
+      language: "German",
+      prompt: "Speak clear Standard German (Hochdeutsch) with a neutral accent and no English "
+        + "accent, soft and gentle, unhurried pace.",
+      customVoiceSpeaker: "sohee"),
+  ]
+
+  /// The CustomVoice picker's rows.
+  static var customVoicePickerVoices: [TTSVoice] {
+    customVoiceSpeakers.map { TTSVoice(id: $0.id, gender: $0.gender, descriptor: $0.summary) }
+  }
+
+  /// Resolves a stored CustomVoice speaker id, falling back to the first speaker.
+  static func customVoiceSpeaker(for id: String) -> Qwen3VoicePersona {
+    let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return customVoiceSpeakers[0] }
+    return customVoiceSpeakers.first { $0.id == trimmed } ?? customVoiceSpeakers[0]
   }
 }
