@@ -215,4 +215,26 @@ struct DictatePromptSelectionTests {
     #expect(!AppConstants.promptModeOutputRule.contains("write the text the user dictated"))
     #expect(AppConstants.promptModeOutputRule.contains("carry out a spoken request instead of echoing it"))
   }
+
+  @Test("VS Code whole-line copy on an empty selection is not a selection")
+  func editorEmptySelectionLineCopyIsDetected() {
+    let json = #"{"version":1,"isFromEmptySelection":true,"multicursorText":null,"mode":"plaintext"}"#
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: json))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: #"{"isFromEmptySelection" : true}"#))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: #"{"version":1,"isFromEmptySelection":false}"#))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: json.data(using: .utf16LittleEndian), vscodeEditorData: nil))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: json.data(using: .utf8), vscodeEditorData: nil))
+    let falseJson = json.replacingOccurrences(of: "true", with: "false")
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: falseJson.data(using: .utf16LittleEndian), vscodeEditorData: nil))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: nil))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: Data([0x01, 0x02, 0x03, 0xff]), vscodeEditorData: "hello"))
+  }
 }

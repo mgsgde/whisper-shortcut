@@ -25,6 +25,32 @@ enum DictatePromptSelectionDecision {
       && string != nil
   }
 
+  /// True when the copied pasteboard content is a VS Code-family "copy with no selection".
+  ///
+  /// In VS Code, Cursor and Windsurf, ⌘C with nothing selected copies the whole current line. That
+  /// line is not a selection, so it must not reach the model as one (incident 2026-11-06: ⌘2 over
+  /// an empty bullet "  - " sent the selection "-" with a 2.5-minute packing list). The editor
+  /// marks such copies with `"isFromEmptySelection":true` in its `vscode-editor-data` metadata,
+  /// exposed either as that pasteboard type directly or inside Chromium's
+  /// `org.chromium.web-custom-data` pickle (strings are UTF-16LE there; UTF-8 is a fallback).
+  static func isEditorEmptySelectionLineCopy(customData: Data?, vscodeEditorData: String?) -> Bool {
+    if let vscodeEditorData, containsEmptySelectionMarker(vscodeEditorData) { return true }
+    guard let customData else { return false }
+    if let utf16 = String(data: customData, encoding: .utf16LittleEndian),
+      containsEmptySelectionMarker(utf16)
+    {
+      return true
+    }
+    if let utf8 = String(data: customData, encoding: .utf8), containsEmptySelectionMarker(utf8) {
+      return true
+    }
+    return false
+  }
+
+  private static func containsEmptySelectionMarker(_ text: String) -> Bool {
+    text.range(of: #""isFromEmptySelection"\s*:\s*true"#, options: .regularExpression) != nil
+  }
+
   /// App Store build with a local model: there is no synthetic ⌘C (it would need Accessibility), so
   /// the user copies first and the clipboard is read as-is. It counts as a selection only when the
   /// pasteboard changed since the last Dictate Prompt run consumed it (or since launch) **and** that
