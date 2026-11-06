@@ -45,7 +45,7 @@ struct PermissionsOverview: View {
         Divider()
         permissionRow(
           name: PermissionKind.accessibility.displayName,
-          description: "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Auto-paste is on once you grant this; switch it off in Settings → General → Clipboard Behavior.",
+          description: "Lets WhisperShortcut paste at your cursor, read the text you selected, and react to the Fn key. Auto-paste is on once you allow this; switch it off in Settings → General → Clipboard Behavior.",
           required: false,
           status: axStatus,
           actions: primaryAction(for: .accessibility, status: axStatus, required: false)
@@ -56,7 +56,7 @@ struct PermissionsOverview: View {
         Divider()
         permissionRow(
           name: PermissionKind.screenRecording.displayName,
-          description: "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
+          description: "Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests.",
           required: false,
           status: screenStatus,
           actions: primaryAction(for: .screenRecording, status: screenStatus, required: false),
@@ -84,7 +84,10 @@ struct PermissionsOverview: View {
           status: nil,
           actions: systemAudioSettingsButton
         )
+      }
 
+      // Only while a Screen Recording grant may be waiting for a relaunch; hidden once it works.
+      if mode == .settings && screenStatus != .granted {
         HStack(spacing: 10) {
           Button(action: relaunchApp) {
             Label("Quit & Reopen WhisperShortcut", systemImage: "arrow.clockwise")

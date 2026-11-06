@@ -14895,22 +14895,22 @@
         }
       }
     },
-    "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
+    "Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
+            "value" : "Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
           }
         }
       }
     },
-    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Auto-paste is on once you grant this; switch it off in Settings → General → Clipboard Behavior." : {
+    "Lets WhisperShortcut paste at your cursor, read the text you selected, and react to the Fn key. Auto-paste is on once you allow this; switch it off in Settings → General → Clipboard Behavior." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Es ist eingeschaltet, sobald Sie dies gewähren; schalten Sie es unter Einstellungen → Allgemein → Zwischenablage aus."
+            "value" : "Damit WhisperShortcut an der Cursorposition einfügen, markierten Text lesen und auf die Fn-Taste reagieren kann. Automatisches Einfügen ist an, sobald Sie das erlauben; ausschalten können Sie es unter Einstellungen → Allgemein → Zwischenablage."
           }
         }
       }
