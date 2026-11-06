@@ -111,8 +111,7 @@ struct PromptModelSelectionView: View {
 
       ModelDetailsFooter(
         description: displayModel.description,
-        costLevel: displayModel.costLevel,
-        showsCompareLink: true)
+        costLevel: displayModel.costLevel)
 
       // The download list only matters once an on-device model is picked (the tile already says
       // "Needs download") or one is on disk to manage. Shown in every prompt picker before, it

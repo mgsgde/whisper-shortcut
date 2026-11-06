@@ -5903,16 +5903,6 @@
         }
       }
     },
-    "Compare Gemini models" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini-Modelle vergleichen"
-          }
-        }
-      }
-    },
     "Completed task" : {
       "localizations" : {
         "de" : {
@@ -12465,12 +12455,12 @@
         }
       }
     },
-    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it." : {
+    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Only Flash-Lite can run at Minimal; the other Gemini models are clamped to Low." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Gemini 3.1 Pro und Gemini 3.7 Flash laufen nicht unter Niedrig und werden darauf angehoben."
+            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Nur Flash-Lite läuft auf Minimal; die anderen Gemini-Modelle werden auf Niedrig angehoben."
           }
         }
       }
@@ -18815,22 +18805,22 @@
         }
       }
     },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key." : {
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model to dictate without a key." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen und ohne Schlüssel diktieren."
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen und ohne Schlüssel diktieren."
           }
         }
       }
     },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model." : {
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen."
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen."
           }
         }
       }
@@ -20485,26 +20475,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drei kurze Schritte: Offline- oder Cloud-Diktat wählen, das Mikrofon erlauben und einmal ausprobieren. Etwa eine Minute."
-          }
-        }
-      }
-    },
-    "Tip: Compare Gemini models (speed, intelligence, pricing):" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: Gemini-Modelle vergleichen (Tempo, Intelligenz, Preise):"
-          }
-        }
-      }
-    },
-    "Tip: Compare models (speed, intelligence, pricing):" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: Modelle vergleichen (Tempo, Intelligenz, Preise):"
           }
         }
       }
