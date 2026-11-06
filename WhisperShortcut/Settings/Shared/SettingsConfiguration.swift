@@ -1227,7 +1227,7 @@ enum TTSModel: String, CaseIterable {
   }
 
   /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
-  /// Qwen3 needs Apple silicon and 32 GB of RAM — below that the tiles would end in a
+  /// Qwen3 needs Apple silicon and 16 GB of RAM — below that the tiles would end in a
   /// multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .gemini38FlashLiteTTS,

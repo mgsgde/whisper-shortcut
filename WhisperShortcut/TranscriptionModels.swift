@@ -204,7 +204,7 @@ enum TranscriptionModel: String, CaseIterable {
     // downloaded one keeps it offered — hiding a model that is on disk and working would take a
     // working setup away to make a point.
     case .whisperMedium, .whisperLarge: return isOfflineModelAvailable()
-    // Qwen3-ASR runs on MLX, which needs Apple silicon and 32 GB of RAM. Offering it below that
+    // Qwen3-ASR runs on MLX, which needs Apple silicon and 16 GB of RAM. Offering it below that
     // would end in a multi-gigabyte download the model then cannot run — the same gate the
     // Settings download rows apply (`Qwen3ModelType.isOfferable`).
     case .qwen3ASR: return Qwen3ModelType.asr.isOfferable
