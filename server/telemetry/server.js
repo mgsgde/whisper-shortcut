@@ -8,26 +8,21 @@
 //   is excluded in Cloud Logging — see deploy.sh);
 // - the client IP is only held in memory for the rate limit below and forgotten within the hour.
 //
-// No dependencies on purpose: this file and sanitize.js are the whole server, so anyone can
-// check what happens to the data.
+// No dependencies on purpose: this file, sanitize.js and rate-limit.js are the whole
+// server, so anyone can check what happens to the data.
 'use strict';
 
 const http = require('http');
 const { sanitize, toStorage } = require('./sanitize');
+const { clientKey, recordHit } = require('./rate-limit');
 const schema = require('./schema.json');
 
 const PORT = Number(process.env.PORT) || 8080;
-const RATE_LIMIT_PER_HOUR = 60;
 
 // Guards against a client stuck in a send loop, not against attackers: the data is anonymous
 // counts, so abuse can pollute but never leak anything.
 const hits = new Map();
 setInterval(() => hits.clear(), 60 * 60 * 1000).unref();
-
-function clientKey(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  return (typeof forwarded === 'string' && forwarded.split(',')[0].trim()) || req.socket.remoteAddress || '';
-}
 
 function reply(res, status) {
   res.writeHead(status, { 'Cache-Control': 'no-store' });
@@ -41,9 +36,7 @@ const server = http.createServer((req, res) => {
   if (!String(req.headers['content-type'] || '').startsWith('application/json')) return reply(res, 400);
 
   const key = clientKey(req);
-  const count = (hits.get(key) || 0) + 1;
-  hits.set(key, count);
-  if (count > RATE_LIMIT_PER_HOUR) return reply(res, 429);
+  if (recordHit(hits, key).limited) return reply(res, 429);
 
   let size = 0;
   const chunks = [];
