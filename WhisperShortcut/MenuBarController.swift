@@ -1568,13 +1568,22 @@ class MenuBarController: NSObject {
       currentJobMode: currentJob?.mode,
       isTTSPlaying: ttsPlayback.isPlaying,
       isOfflineMode: OfflineMode.isEnabled,
-      readAloudUsesSystemVoice: ReadAloudPreferences.model.provider == .system,
+      readAloudRunsOnDevice: ReadAloudPreferences.model.provider.isOnDevice,
       hasTranscriptionCredential: TranscriptionModel.loadSelected().hasRequiredCredential,
       hasPromptCredential: Self.selectedPromptModel().hasRequiredCredentialForDictatePrompt,
       hasImprovementCredential: Self.selectedImprovementModel()
         .hasRequiredCredentialForDictatePrompt,
-      hasReadAloudCredential: ReadAloudPreferences.model.hasRequiredCredential,
+      hasReadAloudCredential: hasReadAloudCredential,
       hasMeetingCredential: TranscriptionModel.loadSelectedForMeeting().hasRequiredCredential)
+  }
+
+  /// Whether Read Aloud can start right now. A cloud provider needs its key; an on-device voice
+  /// needs its weights — but a missing download is not a blocker, `speakWithQwen3Voice` fetches
+  /// it on first use (same contract as offline Whisper). So only the key case gates the press.
+  var hasReadAloudCredential: Bool {
+    let model = ReadAloudPreferences.model
+    if model.qwen3ModelType != nil { return true }
+    return model.hasRequiredCredential
   }
 
   private func availability(_ action: ModeAction) -> ModeAvailability {
@@ -3256,6 +3265,11 @@ class MenuBarController: NSObject {
       // second section is how you end up dictating into a model that is not there.
       if newModel.isOffline, let offlineModelType = newModel.offlineModelType {
         prepareModelInBackground(ModelManager.shared, offlineModelType, label: "offline", reason: "selection")
+      }
+      // Qwen3-ASR is on-device but not an `OfflineModelType` (see `TranscriptionModels`), so it
+      // needs its own branch — otherwise selecting it left the user to find the download row.
+      if newModel == .qwen3ASR, Qwen3ModelType.asr.isOfferable {
+        prepareModelInBackground(Qwen3ModelManager.shared, Qwen3ModelType.asr, label: "Qwen3-ASR", reason: "selection")
       }
     }
   }

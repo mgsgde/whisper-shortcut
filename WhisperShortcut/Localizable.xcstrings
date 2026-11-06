@@ -24242,6 +24242,532 @@
           }
         }
       }
+    },
+    "%@ needs a Mac with Apple silicon and at least %lld GB of memory." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ needs a Mac with Apple silicon and at least %2$lld GB of memory."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht einen Mac mit Apple Silicon und mindestens %lld GB Arbeitsspeicher."
+          }
+        }
+      }
+    },
+    "%@ was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde erfolgreich geladen. Das erste Vorlesen kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
+          }
+        }
+      }
+    },
+    "11 languages" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "11 Sprachen"
+          }
+        }
+      }
+    },
+    "Add voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme hinzufügen"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 ASR 1.7B • 11 languages incl. German, Chinese, Japanese, Korean • ~2.5GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 ASR 1.7B • 11 Sprachen, u. a. Deutsch, Chinesisch, Japanisch, Koreanisch • ~2,5 GB • Offline"
+          }
+        }
+      }
+    },
+    "Alibaba's Qwen3 TTS VoiceDesign 1.7B • Natural German voices from a description • 10 languages • ~2.9GB • Offline" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alibabas Qwen3 TTS VoiceDesign 1.7B • Natürliche deutsche Stimmen aus einer Beschreibung • 10 Sprachen • ~2,9 GB • Offline"
+          }
+        }
+      }
+    },
+    "Delete voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme löschen"
+          }
+        }
+      }
+    },
+    "Describe the voice in one or two sentences. English descriptions work best." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibe die Stimme in ein bis zwei Sätzen. Englische Beschreibungen funktionieren am besten."
+          }
+        }
+      }
+    },
+    "Description:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibung:"
+          }
+        }
+      }
+    },
+    "Download the Qwen3 voice model in Settings → Read Aloud to use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lade das Qwen3-Stimmmodell in den Einstellungen → Vorlesen herunter, um es zu nutzen."
+          }
+        }
+      }
+    },
+    "Edit voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme bearbeiten"
+          }
+        }
+      }
+    },
+    "English audiobook (female, warm, expressive)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisches Hörbuch (weiblich, warm, ausdrucksstark)"
+          }
+        }
+      }
+    },
+    "English audiobook (male, deep, suspenseful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englisches Hörbuch (männlich, tief, spannend)"
+          }
+        }
+      }
+    },
+    "English documentary (male, calm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Dokumentation (männlich, ruhig)"
+          }
+        }
+      }
+    },
+    "English narrator (female, 35)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Erzählerin (weiblich, 35)"
+          }
+        }
+      }
+    },
+    "English narrator (male, 40)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englischer Erzähler (männlich, 40)"
+          }
+        }
+      }
+    },
+    "English newsreader (female, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englische Nachrichtensprecherin (weiblich, neutral)"
+          }
+        }
+      }
+    },
+    "English newsreader (male, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Englischer Nachrichtensprecher (männlich, neutral)"
+          }
+        }
+      }
+    },
+    "Female" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiblich"
+          }
+        }
+      }
+    },
+    "German audiobook (female, warm, expressive)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsches Hörbuch (weiblich, warm, ausdrucksstark)"
+          }
+        }
+      }
+    },
+    "German audiobook (male, deep, suspenseful)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsches Hörbuch (männlich, tief, spannend)"
+          }
+        }
+      }
+    },
+    "German documentary (female, composed)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Dokumentation (weiblich, gefasst)"
+          }
+        }
+      }
+    },
+    "German documentary (male, calm)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Dokumentation (männlich, ruhig)"
+          }
+        }
+      }
+    },
+    "German essay (male, distinguished)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Essay (männlich, distinguiert)"
+          }
+        }
+      }
+    },
+    "German narrator (female, 35)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Erzählerin (weiblich, 35)"
+          }
+        }
+      }
+    },
+    "German narrator (male, 40)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Erzähler (männlich, 40)"
+          }
+        }
+      }
+    },
+    "German newsreader (female, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Nachrichtensprecherin (weiblich, neutral)"
+          }
+        }
+      }
+    },
+    "German newsreader (male, neutral)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutscher Nachrichtensprecher (männlich, neutral)"
+          }
+        }
+      }
+    },
+    "German voices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Stimmen"
+          }
+        }
+      }
+    },
+    "Male" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Männlich"
+          }
+        }
+      }
+    },
+    "My own voices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine eigenen Stimmen"
+          }
+        }
+      }
+    },
+    "My own voices…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine eigenen Stimmen …"
+          }
+        }
+      }
+    },
+    "New voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Stimme"
+          }
+        }
+      }
+    },
+    "No own voices yet. Add one and describe how it should sound — it then appears in the Read Aloud voice picker." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine eigenen Stimmen. Füge eine hinzu und beschreibe, wie sie klingen soll — sie erscheint dann in der Stimmenauswahl beim Vorlesen."
+          }
+        }
+      }
+    },
+    "No voice saved yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Stimme gespeichert"
+          }
+        }
+      }
+    },
+    "On-device Qwen3 dictation needs a Mac with Apple silicon." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3-Diktat auf dem Gerät braucht einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
+    "On-device Qwen3 voices need a Mac with Apple silicon." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3-Stimmen auf dem Gerät brauchen einen Mac mit Apple Silicon."
+          }
+        }
+      }
+    },
+    "Qwen3 (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "Qwen3 ASR 1.7B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 ASR 1.7B (offline)"
+          }
+        }
+      }
+    },
+    "Qwen3 ASR 1.7B was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 ASR 1.7B wurde erfolgreich geladen. Die erste Transkription kann einen Moment dauern, bis das Modell bereit ist; danach geht es schneller."
+          }
+        }
+      }
+    },
+    "Qwen3 TTS VoiceDesign 1.7B (On-Device)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qwen3 TTS VoiceDesign 1.7B (auf dem Gerät)"
+          }
+        }
+      }
+    },
+    "The Qwen3 dictation model is not downloaded yet. Download it in Settings → Dictate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Diktatmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Diktieren herunter."
+          }
+        }
+      }
+    },
+    "The Qwen3 voice model is not downloaded yet. Download it in Settings → Read Aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Stimmmodell ist noch nicht heruntergeladen. Lade es in den Einstellungen → Vorlesen herunter."
+          }
+        }
+      }
+    },
+    "The Qwen3 voice model returned no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Qwen3-Stimmmodell hat kein Audio geliefert."
+          }
+        }
+      }
+    },
+    "The current voice is discarded. The next Read Aloud with this persona creates and saves a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aktuelle Stimme wird verworfen. Das nächste Vorlesen mit dieser Stimme erzeugt und speichert eine neue."
+          }
+        }
+      }
+    },
+    "The recording contained no audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme enthielt kein Audio."
+          }
+        }
+      }
+    },
+    "The saved voice is discarded; the next Read Aloud creates a new one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherte Stimme wird verworfen; das nächste Vorlesen erzeugt eine neue."
+          }
+        }
+      }
+    },
+    "The voice is created automatically on the first Read Aloud with this persona." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimme wird beim ersten Vorlesen mit dieser Stimme automatisch erzeugt."
+          }
+        }
+      }
+    },
+    "Tip: name the language, the region and the absence of a foreign accent — that is what makes the voice sound native." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: Nenne die Sprache, die Region und dass kein fremder Akzent vorhanden ist — das lässt die Stimme muttersprachlich klingen."
+          }
+        }
+      }
+    },
+    "Your own Read Aloud voices for the on-device Qwen3 model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine eigenen Vorlese-Stimmen für das Qwen3-Modell auf dem Gerät."
+          }
+        }
+      }
+    },
+    "e.g. Grandpa" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Opa"
+          }
+        }
+      }
+    },
+    "Draw a new voice for \"%@\"?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Stimme für „%@“ erzeugen?"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

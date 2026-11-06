@@ -53,6 +53,16 @@ enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
     String(format: "~%.1f GB", Double(estimatedSizeMB) / 1000)
   }
 
+  /// Physical RAM (GiB) a Mac needs before this entry is offered. Both checkpoints are 1.7B
+  /// models that have to sit next to the system, Parakeet and whatever else the user runs; below
+  /// 32 GB the load either thrashes or gets killed mid-Read-Aloud. Same mechanism and same floor
+  /// as `LocalLLMModelType.minimumPhysicalMemoryGB` / `isOfferable`.
+  var minimumPhysicalMemoryGB: Int {
+    switch self {
+    case .asr, .voiceDesign: return 32
+    }
+  }
+
   /// MLX needs Apple silicon. Intel Macs keep the cloud and own-server paths.
   static var isSupportedOnThisMac: Bool {
     #if arch(arm64)
@@ -60,6 +70,26 @@ enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
     #else
     return false
     #endif
+  }
+
+  /// Whether Settings and the pickers may offer this entry on this Mac: Apple Silicon plus the
+  /// per-model RAM floor. A 32 GB Mac reports exactly 32 << 30 bytes, hence `>=`.
+  var isOfferable: Bool {
+    Self.isSupportedOnThisMac
+      && ProcessInfo.processInfo.physicalMemory >= UInt64(minimumPhysicalMemoryGB) << 30
+  }
+}
+
+/// Errors the Qwen3 model store can refuse with before any download starts.
+enum Qwen3ModelError: LocalizedError {
+  case unsupportedMac(Qwen3ModelType)
+
+  var errorDescription: String? {
+    switch self {
+    case .unsupportedMac(let model):
+      return String(
+        localized: "\(model.displayName) needs a Mac with Apple silicon and at least \(model.minimumPhysicalMemoryGB) GB of memory.")
+    }
   }
 }
 
@@ -70,6 +100,17 @@ final class Qwen3ModelManager: ModelStore<Qwen3ModelType> {
 
   private init() {
     super.init(logPrefix: "QWEN3-MODEL-MANAGER")
+  }
+
+  /// Refuses the whole download-and-load path on a Mac the model cannot run on. The pickers and
+  /// Settings rows already hide these entries (`Qwen3ModelType.isOfferable`), but a selection can
+  /// also arrive from a restored preference, an MCP `update_settings` call or a synced defaults
+  /// file — and without this guard that path starts a 2.5 GB download that then fails at load.
+  override func ensureReady(
+    _ model: Qwen3ModelType, onProgress: ((String) -> Void)? = nil
+  ) async throws {
+    guard model.isOfferable else { throw Qwen3ModelError.unsupportedMac(model) }
+    try await super.ensureReady(model, onProgress: onProgress)
   }
 
   // MARK: - Paths

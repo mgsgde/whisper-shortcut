@@ -58,7 +58,7 @@ struct ReadAloudSettingsTab: View {
       // rather than being fetched silently on the first Read Aloud — a menu-bar app must not
       // start a multi-gigabyte download because someone pressed a shortcut.
       if let qwen3Type = viewModel.data.selectedReadAloudModel.qwen3ModelType,
-        Qwen3ModelType.isSupportedOnThisMac
+        qwen3Type.isOfferable
       {
         ModelDownloadRow(
           store: Qwen3ModelManager.shared,

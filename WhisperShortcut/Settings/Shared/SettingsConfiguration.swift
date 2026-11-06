@@ -918,6 +918,15 @@ enum TTSProvider {
     }
   }
 
+  /// Whether Read Aloud with this provider never leaves the Mac. Offline Mode allows exactly
+  /// these; the cloud providers are what it blocks.
+  var isOnDevice: Bool {
+    switch self {
+    case .system, .localMLX: return true
+    case .gemini, .openai, .xai: return false
+    }
+  }
+
   /// Whether Read Aloud can use this provider. Maps onto `ChatModelProvider.hasCredential` so
   /// the picker and the reconciler share its trim: Gemini through the `.gemini` requirement,
   /// OpenAI and xAI through their key kinds, on-device macOS with nothing to configure.
@@ -1218,13 +1227,13 @@ enum TTSModel: String, CaseIterable {
   }
 
   /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
-  /// Qwen3 needs Apple silicon (MLX) — on an Intel Mac the tiles would end in a multi-gigabyte
-  /// download the model then cannot run.
+  /// Qwen3 needs Apple silicon and 32 GB of RAM — below that the tiles would end in a
+  /// multi-gigabyte download the model then cannot run.
   static var readAloudModels: [TTSModel] {
     [.systemMacOS, .qwen3VoiceDesign, .gemini38FlashLiteTTS,
      .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
-      .filter { $0.qwen3ModelType == nil || Qwen3ModelType.isSupportedOnThisMac }
+      .filter { $0.qwen3ModelType?.isOfferable ?? true }
   }
 
   /// Maps removed/renamed persisted raw values onto current cases.

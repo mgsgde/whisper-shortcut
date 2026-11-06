@@ -45,7 +45,9 @@ struct ModeAvailabilityInput: Equatable {
   var currentJobMode: AppState.RecordingMode?
   var isTTSPlaying: Bool
   var isOfflineMode: Bool
-  var readAloudUsesSystemVoice: Bool
+  /// True when Read Aloud runs on this Mac: the macOS voice or an on-device MLX voice. Offline
+  /// Mode blocks only the cloud voices.
+  var readAloudRunsOnDevice: Bool
   var hasTranscriptionCredential: Bool
   var hasPromptCredential: Bool
   var hasImprovementCredential: Bool
@@ -81,7 +83,7 @@ enum ModeAvailabilityRules {
       return dictatePrompt(i)
     case .readAloudSelection:
       if let early = readAloudEarly(i) { return early }
-      if i.isOfflineMode, !i.readAloudUsesSystemVoice { return .blocked(.offlineModeReadAloud) }
+      if i.isOfflineMode, !i.readAloudRunsOnDevice { return .blocked(.offlineModeReadAloud) }
       if i.isLiveMeetingActive { return .ignored(.liveMeetingActive) }
       // DRIFT F3 (fixed): a non-meeting recording owns the microphone; a synthetic ⌘C into the
       // frontmost app would be pointless and the poll would abandon silently afterwards. A start

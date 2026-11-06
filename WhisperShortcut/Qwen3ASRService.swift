@@ -27,7 +27,7 @@ enum Qwen3ASRError: LocalizedError {
     case .unsupportedMac:
       return String(localized: "On-device Qwen3 dictation needs a Mac with Apple silicon.")
     case .modelNotDownloaded:
-      return String(localized: "The Qwen3 dictation model is not downloaded yet. Download it in Settings → Speech to Text.")
+      return String(localized: "The Qwen3 dictation model is not downloaded yet. Download it in Settings → Dictate.")
     case .emptyAudio:
       return String(localized: "The recording contained no audio.")
     }
@@ -40,9 +40,17 @@ actor Qwen3ASRModelLoader {
 
   private var loaded: Qwen3ASRModel?
   private var inFlight: Task<Qwen3ASRModel, Error>?
+  private let lifetime = ModelLifetimeGuards()
+
+  /// 2.5 GB of weights must not stay resident between dictations. Same window as the TTS loader
+  /// and `MLXModelLoader`.
+  private static let idleUnloadAfter: TimeInterval = 5 * 60
 
   func model() async throws -> Qwen3ASRModel {
-    if let loaded { return loaded }
+    if let loaded {
+      scheduleIdleUnload()
+      return loaded
+    }
     if let inFlight { return try await inFlight.value }
 
     let task = Task<Qwen3ASRModel, Error> {
@@ -63,11 +71,33 @@ actor Qwen3ASRModelLoader {
     defer { inFlight = nil }
     let model = try await task.value
     loaded = model
+    startLifetimeGuardsIfNeeded()
+    scheduleIdleUnload()
     return model
   }
 
   func unload() {
     loaded = nil
+    lifetime.cancelIdleUnload()
+  }
+
+  private func startLifetimeGuardsIfNeeded() {
+    lifetime.installMemoryPressureHandler {
+      Task { await self.unloadLoaded(reason: "memory pressure") }
+    }
+  }
+
+  private func scheduleIdleUnload() {
+    lifetime.scheduleIdleUnload(after: Self.idleUnloadAfter) {
+      await self.unloadLoaded(reason: "idle")
+    }
+  }
+
+  private func unloadLoaded(reason: String) {
+    guard loaded != nil else { return }
+    DebugLogger.log("QWEN3-ASR: unloading (\(reason))")
+    loaded = nil
+    lifetime.cancelIdleUnload()
   }
 }
 

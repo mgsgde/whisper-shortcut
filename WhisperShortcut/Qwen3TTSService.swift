@@ -53,11 +53,20 @@ actor Qwen3TTSModelLoader {
 
   private var loaded: SpeechGenerationModel?
   private var inFlight: Task<SpeechGenerationModel, Error>?
+  private let lifetime = ModelLifetimeGuards()
+
+  /// 2.9 GB of weights must not stay resident in a menu-bar app that reads aloud a few times a
+  /// day. Same window as `MLXModelLoader`: long enough that a second Read Aloud in the same
+  /// session reuses the model, short enough that an idle app gives the memory back.
+  private static let idleUnloadAfter: TimeInterval = 5 * 60
 
   /// Loads (or returns) the VoiceDesign model. The cached instance is reused for every chunk of a
   /// long text — that is the point of caching it here rather than in the caller.
   func model() async throws -> SpeechGenerationModel {
-    if let loaded { return loaded }
+    if let loaded {
+      scheduleIdleUnload()
+      return loaded
+    }
     if let inFlight { return try await inFlight.value }
 
     let task = Task<SpeechGenerationModel, Error> {
@@ -81,11 +90,35 @@ actor Qwen3TTSModelLoader {
     defer { inFlight = nil }
     let model = try await task.value
     loaded = model
+    startLifetimeGuardsIfNeeded()
+    scheduleIdleUnload()
     return model
   }
 
   func unload() {
     loaded = nil
+    lifetime.cancelIdleUnload()
+  }
+
+  /// A 2.9 GB model next to Parakeet and the system is exactly the situation memory pressure is
+  /// for; dropping the weights is always safe, the next Read Aloud reloads them.
+  private func startLifetimeGuardsIfNeeded() {
+    lifetime.installMemoryPressureHandler {
+      Task { await self.unloadLoaded(reason: "memory pressure") }
+    }
+  }
+
+  private func scheduleIdleUnload() {
+    lifetime.scheduleIdleUnload(after: Self.idleUnloadAfter) {
+      await self.unloadLoaded(reason: "idle")
+    }
+  }
+
+  private func unloadLoaded(reason: String) {
+    guard loaded != nil else { return }
+    DebugLogger.log("QWEN3-TTS: unloading VoiceDesign (\(reason))")
+    loaded = nil
+    lifetime.cancelIdleUnload()
   }
 }
 

@@ -3,11 +3,10 @@ import Foundation
 // MARK: - Curated model pickers
 //
 // Every model picker (Dictate, Dictate Prompt, Read Aloud, Chat, Meeting Transcription / Summary,
-// Smart Improvement) opens with the three slots Recommended · Fastest · Offline, plus every model
-// of an on-device provider whose whole catalogue fits two tiles (both Qwen3 voices in Read
-// Aloud, both local MLX chat models in Chat) — and keeps the rest behind "More models". The
-// 2026-10-19 UX review found 16–18 near-identical tiles per picker (five Gemini Flash variants
-// nobody could tell apart); the curation is the fix.
+// Smart Improvement) opens with the three slots Recommended · Fastest · Offline, plus the tiles of
+// any on-device provider the picker explicitly asks to feature (Read Aloud's Qwen3 voice) — and
+// keeps the rest behind "More models". The 2026-10-19 UX review found 16–18 near-identical tiles
+// per picker (five Gemini Flash variants nobody could tell apart); the curation is the fix.
 //
 // What is featured is decided here, from data on the model enums, never from string lists in the
 // views: `pickerSpeedRank` names the fastest, `pickerOfflineRank` the on-device pick,
@@ -67,9 +66,11 @@ protocol PickerCuratedModel: Hashable {
   /// would select for this user. `nil` = not a stand-in: on-device models, which have their own
   /// step in the fallback order, and models the reconciler never substitutes.
   var pickerStandInRank: Int? { get }
-  /// The provider group the model belongs to, for provider-level curation rules (see the
-  /// on-device rule in `ModelPickerCuration`).
-  var pickerProvider: String { get }
+  /// Whether this model's tile belongs in the picker's top row even when it wins none of the
+  /// three slots. Read Aloud's on-device voice uses it: a single local tile is a first-class
+  /// choice, not "More models" clutter. `false` everywhere else, so the Chat picker's curation is
+  /// untouched.
+  var pickerIsFeatured: Bool { get }
 }
 
 // `pickerTitle` on each model below is the name on the tile: `displayName` minus the "(Offline)" /
@@ -120,24 +121,12 @@ struct ModelPickerCuration<Model: PickerCuratedModel> {
     // On-device models never need a key, so the Offline slot does not depend on credentials.
     feature(Self.best(visible, by: \.pickerOfflineRank), as: .offline)
 
-    // An on-device provider whose whole catalogue fits in two tiles is a first-class choice, not
-    // "More models" clutter: the Read Aloud picker hid both Qwen3 voices behind the disclosure
-    // under the cloud tiles — the opposite of the picker's own offline-first curation. Larger
-    // offline families (the seven Whisper/Parakeet dictation models) stay curated: featuring
-    // all of them would flood the top row. Groups iterate in first-seen list order so the tile
-    // order is stable between renders.
-    var offlineProviders: [String: [Model]] = [:]
-    var offlineProviderOrder: [String] = []
-    for model in visible where model.pickerOfflineRank != nil {
-      let key = model.pickerProvider
-      if offlineProviders[key] == nil { offlineProviderOrder.append(key) }
-      offlineProviders[key, default: []].append(model)
-    }
-    for key in offlineProviderOrder {
-      guard let models = offlineProviders[key], models.count <= 2 else { continue }
-      for model in models where !featured.contains { $0.model == model } {
-        featured.append(Featured(model: model, badges: []))
-      }
+    // A model the picker explicitly features sits above the disclosure. Read Aloud uses this for
+    // its on-device voice: one local tile is a first-class choice, and hiding it under the cloud
+    // tiles was the opposite of the picker's own offline-first curation. Nothing else sets it, so
+    // the Chat picker keeps exactly the curation it had.
+    for model in visible where model.pickerIsFeatured && !featured.contains(where: { $0.model == model }) {
+      featured.append(Featured(model: model, badges: []))
     }
 
     if visible.count < Self.disclosureThreshold {
@@ -268,7 +257,7 @@ extension TranscriptionModel: PickerCuratedModel {
     return nil
   }
 
-  var pickerProvider: String { provider.rawValue }
+  var pickerIsFeatured: Bool { false }
 
   /// The models under "More models" that are their provider's own pick, for the "Best Gemini
   /// pick" tile badge. The top row carries one recommendation; someone with a Gemini *and* an
@@ -343,7 +332,7 @@ extension PromptModel: PickerCuratedModel {
     return index * 2 + (self == provider.defaultChatModel ? 0 : 1)
   }
 
-  var pickerProvider: String { provider.rawValue }
+  var pickerIsFeatured: Bool { false }
 }
 
 // MARK: - Read Aloud
@@ -373,19 +362,21 @@ extension TTSModel: PickerCuratedModel {
 
   var pickerTitle: String { self == .systemMacOS ? "macOS" : displayName }
 
-  var pickerSetupBadge: String? { hasRequiredCredential ? nil : String(localized: "Needs key", comment: "Tile badge: API key missing") }
+  var pickerSetupBadge: String? {
+    guard !hasRequiredCredential else { return nil }
+    // An on-device model is not missing a key, it is missing its weights — "Needs key" would send
+    // the user to Settings → Accounts for nothing.
+    if qwen3ModelType != nil {
+      return String(localized: "Needs download", comment: "Tile badge: on-device model not downloaded yet")
+    }
+    return String(localized: "Needs key", comment: "Tile badge: API key missing")
+  }
 
   /// The reconciler takes the first keyed entry of `readAloudModels`, which is the macOS voice;
   /// leaving every rank `nil` lets the curation reach the same model through its Offline step.
   var pickerStandInRank: Int? { nil }
 
-  var pickerProvider: String {
-    switch provider {
-    case .gemini: return "gemini"
-    case .openai: return "openai"
-    case .xai: return "xai"
-    case .system: return "system"
-    case .localMLX: return "qwen3"
-    }
-  }
+  /// The on-device voice is a first-class tile: one local choice next to the macOS voice, not
+  /// something to find behind "More models" under the cloud tiles.
+  var pickerIsFeatured: Bool { qwen3ModelType != nil }
 }

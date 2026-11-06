@@ -49,6 +49,7 @@ struct TTSModelSelectionView: View {
       badges: badges,
       setupBadge: model.pickerSetupBadge,
       setupHelp: model.apiKeyRequiredMessage,
+      setupSymbol: model.qwen3ModelType == nil ? "key.fill" : "arrow.down.circle",
       onTap: {
         selectedModel = model
         onModelChanged?()

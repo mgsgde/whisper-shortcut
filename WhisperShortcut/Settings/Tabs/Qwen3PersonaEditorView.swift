@@ -31,9 +31,12 @@ struct Qwen3PersonaEditorView: View {
           ForEach(personas) { persona in
             HStack {
               VStack(alignment: .leading, spacing: 2) {
-                Text(persona.summary)
+                // Verbatim: a persona's name is either the user's own text or a built-in summary
+                // that was localized where it was defined. Passing it as a `LocalizedStringKey`
+                // would look up the user's words in the catalogue.
+                Text(verbatim: persona.summary)
                   .font(.body.weight(.medium))
-                Text(persona.language == "English" ? "English" : "German")
+                Text(persona.language == "English" ? String(localized: "English") : String(localized: "German"))
                   .font(.caption)
                   .foregroundColor(.secondary)
               }

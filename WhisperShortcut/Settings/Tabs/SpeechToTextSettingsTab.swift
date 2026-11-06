@@ -413,7 +413,7 @@ struct SpeechToTextSettingsTab: View {
   /// `OfflineModelType` and cannot come from `OfflineModelType.offerable`. Same row, own store.
   @ViewBuilder
   private var qwen3ASRRow: some View {
-    if Qwen3ModelType.isSupportedOnThisMac {
+    if Qwen3ModelType.asr.isOfferable {
       ModelDownloadRow(
         store: Qwen3ModelManager.shared,
         model: Qwen3ModelType.asr,

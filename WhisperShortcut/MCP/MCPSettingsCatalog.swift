@@ -866,6 +866,13 @@ enum MCPSettingsCatalog {
         guard let raw = value as? String, let model = TTSModel(rawValue: raw), TTSModel.readAloudModels.contains(model) else {
           return "Unknown Read Aloud model."
         }
+        // An on-device voice is missing weights, not a key — say so, or an AI app tells the user
+        // to add an API key for a model that has none.
+        if model.qwen3ModelType != nil {
+          return model.hasRequiredCredential
+            ? nil
+            : "\(model.displayName) is not downloaded yet. Download it in WhisperShortcut Settings → Read Aloud first."
+        }
         return model.hasRequiredCredential ? nil : "\(model.displayName) needs a key or setup the user hasn't added yet."
       },
       apply: { value in

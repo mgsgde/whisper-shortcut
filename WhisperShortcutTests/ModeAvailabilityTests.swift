@@ -15,7 +15,7 @@ struct ModeAvailabilityTests {
     jobMode: AppState.RecordingMode? = nil,
     playing: Bool = false,
     offline: Bool = false,
-    systemVoice: Bool = false,
+    onDeviceVoice: Bool = false,
     transcription: Bool = true,
     prompt: Bool = true,
     improvement: Bool = true,
@@ -26,7 +26,7 @@ struct ModeAvailabilityTests {
       appState: state, isLiveMeetingActive: meeting, activeMeetingSegment: active,
       meetingSegmentIsProcessing: segmentProcessing, pendingMeetingSegment: pending, pendingRecordingMode: pendingMode,
       currentJobMode: jobMode, isTTSPlaying: playing, isOfflineMode: offline,
-      readAloudUsesSystemVoice: systemVoice, hasTranscriptionCredential: transcription,
+      readAloudRunsOnDevice: onDeviceVoice, hasTranscriptionCredential: transcription,
       hasPromptCredential: prompt, hasImprovementCredential: improvement,
       hasReadAloudCredential: readAloud, hasMeetingCredential: meetingCredential)
   }
@@ -105,7 +105,7 @@ struct ModeAvailabilityTests {
     #expect(a(.readAloudSelection, input(playing: true)) == .stop)
     #expect(a(.readAloudSelection, input(.processing(.transcribing))) == .ignored(.otherProcessing))
     #expect(a(.readAloudSelection, input(offline: true)) == .blocked(.offlineModeReadAloud))
-    #expect(a(.readAloudSelection, input(offline: true, systemVoice: true)) == .start)
+    #expect(a(.readAloudSelection, input(offline: true, onDeviceVoice: true)) == .start)
     // Order: the Offline Mode popup comes before the silent live-meeting ignore.
     #expect(a(.readAloudSelection, input(.recording(.liveMeeting), meeting: true, offline: true)) == .blocked(.offlineModeReadAloud))
     #expect(a(.readAloudSelection, input(.recording(.liveMeeting), meeting: true)) == .ignored(.liveMeetingActive))

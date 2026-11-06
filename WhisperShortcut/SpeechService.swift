@@ -2351,9 +2351,10 @@ class SpeechService {
       DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
       return text
     }
-    // Cloud rewrite cannot run in Offline Mode; the on-device voice also skips it so Read Aloud
-    // stays a local path (the Gemini call would otherwise die at the network guard).
-    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider == .system {
+    // Cloud rewrite cannot run in Offline Mode; an on-device voice also skips it so Read Aloud
+    // stays a local path (the Gemini call would otherwise die at the network guard, and for a
+    // local voice "on-device" would be a lie).
+    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider.isOnDevice {
       DebugLogger.log("READ-ALOUD-REWRITE: Skipped — Offline Mode / on-device voice")
       return text
     }
