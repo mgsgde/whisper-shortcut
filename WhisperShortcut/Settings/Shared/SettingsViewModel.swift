@@ -236,6 +236,7 @@ class SettingsViewModel: ObservableObject {
     .string(\.readAloudVoiceOpenAI, key: UserDefaultsKeys.selectedReadAloudVoiceOpenAI),
     .string(\.readAloudVoiceXAI, key: UserDefaultsKeys.selectedReadAloudVoiceXAI),
     .string(\.readAloudVoiceSystem, key: UserDefaultsKeys.selectedReadAloudVoiceSystem),
+    .string(\.readAloudVoiceCustom, key: UserDefaultsKeys.selectedReadAloudVoiceCustom),
 
     // Window behaviour
     .bool(\.chatCloseOnFocusLoss, key: UserDefaultsKeys.chatCloseOnFocusLoss,

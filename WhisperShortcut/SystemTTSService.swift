@@ -142,7 +142,11 @@ final class SystemTTSService: NSObject {
   }
 
   /// Converts one synthesizer buffer into the PCM layout `TTSPlaybackSession` expects.
-  private static func convertToS16le24k(_ input: AVAudioPCMBuffer) -> Data? {
+  ///
+  /// Internal rather than private: `SpeechService.synthesizeCustomTTS` decodes the WAV its
+  /// own-server returns into an `AVAudioPCMBuffer` and runs it through this same conversion, so
+  /// there is one resampler for both paths instead of two that can drift apart.
+  static func convertToS16le24k(_ input: AVAudioPCMBuffer) -> Data? {
     guard input.frameLength > 0 else { return nil }
     let inFormat = input.format
     guard let outFormat = AVAudioFormat(

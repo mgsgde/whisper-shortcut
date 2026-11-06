@@ -924,6 +924,9 @@ enum TTSProvider {
   case xai
   /// On-device `AVSpeechSynthesizer`. No key, no network.
   case system
+  /// The user's own OpenAI-compatible server (LiteLLM, LM Studio, mlx-audio). Shares the base
+  /// URL and key Dictate, Dictate Prompt and Chat already use — see `CustomEndpointPreferences`.
+  case custom
 
   var displayName: String {
     switch self {
@@ -931,6 +934,7 @@ enum TTSProvider {
     case .openai: return "OpenAI"
     case .xai: return "xAI (Grok)"
     case .system: return "macOS"
+    case .custom: return String(localized: "Own server")
     }
   }
 
@@ -938,12 +942,17 @@ enum TTSProvider {
   /// the picker and the reconciler share its trim: Gemini through the `.gemini` requirement,
   /// OpenAI and xAI through their key kinds, on-device macOS with nothing to configure.
   /// A second switch here called `hasNonEmpty` and treated a whitespace-only key as present.
+  ///
+  /// `.custom` is always usable: a key is optional (keyless self-hosted servers exist), the same
+  /// rule `CustomEndpointPreferences.isTranscriptionConfigured` applies to Dictate. A missing URL
+  /// surfaces as an actionable error from the synthesizer instead of hiding the model.
   var hasCredential: Bool {
     switch self {
     case .gemini: return ChatModelProvider.gemini.hasCredential
     case .openai: return ChatModelProvider.openai.hasCredential
     case .xai: return ChatModelProvider.grok.hasCredential
     case .system: return true
+    case .custom: return true
     }
   }
 
@@ -956,6 +965,7 @@ enum TTSProvider {
     case .openai: return UserDefaultsKeys.selectedReadAloudVoiceOpenAI
     case .xai: return UserDefaultsKeys.selectedReadAloudVoiceXAI
     case .system: return UserDefaultsKeys.selectedReadAloudVoiceSystem
+    case .custom: return UserDefaultsKeys.selectedReadAloudVoiceCustom
     }
   }
 
@@ -963,6 +973,8 @@ enum TTSProvider {
   /// (stable within each group). Voice ids are provider-specific (a Gemini voice name is not
   /// valid for OpenAI/xAI and vice versa). Live-verified 2026-05-30 against each provider's docs.
   /// `.system` voices come from `AVSpeechSynthesisVoice.speechVoices()` at call time.
+  /// `.custom` returns nothing: the catalogue lives on the user's server (`GET /v1/audio/voices`
+  /// on mlx-audio, empty for voice-pack-less models), so Settings shows a free-text voice field.
   var voices: [TTSVoice] {
     let raw: [TTSVoice]
     switch self {
@@ -970,6 +982,7 @@ enum TTSProvider {
     case .openai: raw = TTSVoice.openAIVoices
     case .xai: raw = TTSVoice.xaiVoices
     case .system: return SystemTTSService.voices
+    case .custom: return []
     }
     // Stable sort by gender: Swift's sort isn't guaranteed stable, so tie-break on original index.
     return raw.enumerated()
@@ -1100,6 +1113,8 @@ enum TTSModel: String, CaseIterable {
   case grokVoiceTTS = "grok-voice-tts-1.0"
   /// On-device macOS voices (`AVSpeechSynthesizer`). Automatic Offline Mode choice.
   case systemMacOS = "system-macos"
+  /// The user's own OpenAI-compatible `/audio/speech` server (LiteLLM, LM Studio, mlx-audio).
+  case ownServerTTS = "own-server-tts"
 
   var provider: TTSProvider {
     switch self {
@@ -1107,6 +1122,7 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return .openai
     case .grokVoiceTTS: return .xai
     case .systemMacOS: return .system
+    case .ownServerTTS: return .custom
     }
   }
 
@@ -1117,6 +1133,7 @@ enum TTSModel: String, CaseIterable {
     case .openAIGpt4oMiniTTS: return "GPT-4o mini TTS"
     case .grokVoiceTTS: return "Grok Voice TTS"
     case .systemMacOS: return String(localized: "macOS (On-Device)")
+    case .ownServerTTS: return String(localized: "Own server (OpenAI-compatible)")
     }
   }
 
@@ -1132,6 +1149,8 @@ enum TTSModel: String, CaseIterable {
       return String(localized: "xAI's Grok Voice TTS • Expressive multilingual speech • Needs an xAI API key")
     case .systemMacOS:
       return String(localized: "On-device macOS voices • No internet, no API key • Automatic choice in Offline Mode")
+    case .ownServerTTS:
+      return String(localized: "Your own OpenAI-compatible server • LiteLLM, LM Studio or mlx-audio • Runs on your hardware or your own bill")
     }
   }
 
@@ -1142,7 +1161,8 @@ enum TTSModel: String, CaseIterable {
   /// `gemini-3.1-flash-tts-preview` with the same request body as the non-streaming call).
   /// For OpenAI the model id is passed in the request body. **xAI takes no model id at all** —
   /// `SpeechService` `synthesizeXAITTS` selects the voice with `voice_id` and omits `model`; see
-  /// the note there. `.system` has no network endpoint.
+  /// the note there. `.system` has no network endpoint. `.custom` is the shared own-server base
+  /// URL with `/audio/speech` appended (empty when the user has not set a URL yet).
   var apiEndpoint: String {
     switch provider {
     case .gemini:
@@ -1153,6 +1173,8 @@ enum TTSModel: String, CaseIterable {
       return AppConstants.xaiTTSEndpoint
     case .system:
       return ""
+    case .custom:
+      return CustomEndpointPreferences.ttsURL ?? ""
     }
   }
 
@@ -1164,6 +1186,8 @@ enum TTSModel: String, CaseIterable {
     case .openai: return "alloy"
     case .xai: return "eve"
     case .system: return SystemTTSService.defaultVoiceIdentifier
+    // `alloy` is the OpenAI default and the name most OpenAI-compatible servers accept.
+    case .custom: return "alloy"
     }
   }
 
@@ -1183,6 +1207,7 @@ enum TTSModel: String, CaseIterable {
     case .openai: return String(localized: "Add your OpenAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
     case .xai: return String(localized: "Add your xAI API key in Settings → Accounts to use Read Aloud, or pick a different voice model.")
     case .system: return String(localized: "On-device macOS voices need no API key.")
+    case .custom: return String(localized: "Set the Own server URL in Settings → Read Aloud, or pick a different voice model.")
     }
   }
 
@@ -1195,18 +1220,26 @@ enum TTSModel: String, CaseIterable {
     switch provider {
     case .system: return .free
     case .gemini, .openai, .xai: return .low
+    // The user's own hardware or their own provider bill — no per-character cost to us.
+    case .custom: return .free
     }
   }
 
   /// Whether this TTS model may be offered while Offline Mode is on.
   var isSelectableUnderOfflineMode: Bool {
     guard OfflineMode.isEnabled else { return true }
-    return provider == .system
+    // `.custom` is only local when its URL is (localhost / LAN); a remote own-server URL would
+    // leave the machine, so the same host rule as the network guard decides.
+    switch provider {
+    case .system: return true
+    case .custom: return apiEndpoint.isEmpty || OfflineMode.allows(URL(string: apiEndpoint))
+    default: return false
+    }
   }
 
-  /// Models grouped for display in the Read Aloud picker (on-device first, then cloud).
+  /// Models grouped for display in the Read Aloud picker (local options first, then cloud).
   static var readAloudModels: [TTSModel] {
-    [.systemMacOS, .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
+    [.systemMacOS, .ownServerTTS, .gemini38FlashLiteTTS, .gemini38FlashTTS, .openAIGpt4oMiniTTS, .grokVoiceTTS]
       .filter(\.isSelectableUnderOfflineMode)
   }
 
@@ -1640,9 +1673,16 @@ enum ReadAloudPreferences {
   /// The voice the user picked for `model`'s provider, or that provider's default voice. Falls
   /// back to the default when the stored id is empty or no longer in the provider's catalogue
   /// (e.g. a voice the provider has since removed).
+  ///
+  /// `.custom` has no in-app catalogue — the ids live on the user's server — so any non-empty
+  /// stored value is used as typed. Filtering it against `availableVoices` would silently
+  /// replace every custom voice with `alloy`.
   static func voice(for model: TTSModel) -> String {
     let stored = (UserDefaults.standard.string(forKey: model.provider.voiceUserDefaultsKey) ?? "")
       .trimmingCharacters(in: .whitespacesAndNewlines)
+    if model.provider == .custom {
+      return stored.isEmpty ? model.defaultVoice : stored
+    }
     guard !stored.isEmpty, model.availableVoices.contains(where: { $0.id == stored }) else {
       return model.defaultVoice
     }
@@ -2295,6 +2335,9 @@ struct SettingsDefaults {
   /// Model id sent to the shared custom endpoint for transcription. The self-hosted path
   /// hardcoded this before the id was stored.
   static let customTranscriptionModelID = "whisper-1"
+  /// Model id sent to the shared custom endpoint for Read Aloud. `tts-1` is what LiteLLM and
+  /// LM Studio proxies expose by default; an `mlx-audio` server wants its own model path.
+  static let customTTSModelID = "tts-1"
   /// [OpenInference](https://openinference.de/) preset — EU-hosted GLM 5.2, OpenAI-compatible.
   static let openInferenceEndpointURL = "https://openinference.de/api/v1"
   static let openInferenceModelID = "zai-org/GLM-5.2"
@@ -2394,6 +2437,8 @@ struct SettingsData: Equatable {
   var readAloudVoiceOpenAI: String = ""
   var readAloudVoiceXAI: String = ""
   var readAloudVoiceSystem: String = ""
+  /// Free-text voice id for the user's own server; empty → `alloy`.
+  var readAloudVoiceCustom: String = ""
 
   /// The selected Read Aloud voice id for `provider` ("" → provider default).
   func readAloudVoice(for provider: TTSProvider) -> String {
@@ -2402,6 +2447,7 @@ struct SettingsData: Equatable {
     case .openai: return readAloudVoiceOpenAI
     case .xai: return readAloudVoiceXAI
     case .system: return readAloudVoiceSystem
+    case .custom: return readAloudVoiceCustom
     }
   }
 
@@ -2411,6 +2457,7 @@ struct SettingsData: Equatable {
     case .openai: readAloudVoiceOpenAI = id
     case .xai: readAloudVoiceXAI = id
     case .system: readAloudVoiceSystem = id
+    case .custom: readAloudVoiceCustom = id
     }
   }
 

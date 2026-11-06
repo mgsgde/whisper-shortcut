@@ -4,6 +4,8 @@ import SwiftUI
 struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  @State private var ownServerKeyDraft = ""
+  @FocusState private var ownServerKeyFocused: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -14,6 +16,12 @@ struct ReadAloudSettingsTab: View {
       voiceSection
 
       SpacedSectionDivider()
+
+      if viewModel.data.selectedReadAloudModel.provider == .custom {
+        ownServerSection
+
+        SpacedSectionDivider()
+      }
 
       playbackSpeedSection
 
@@ -51,6 +59,9 @@ struct ReadAloudSettingsTab: View {
   // MARK: - Voice Section
   /// Voice picker for the currently-selected provider. The catalogue and stored selection both
   /// switch with the provider, so each provider keeps its own chosen voice.
+  ///
+  /// `.custom` has no in-app catalogue — the ids live on the user's server — so it gets a free-text
+  /// field instead of a picker. `mlx-audio` lists them at `GET /v1/audio/voices`.
   @ViewBuilder
   private var voiceSection: some View {
     let model = viewModel.data.selectedReadAloudModel
@@ -76,23 +87,185 @@ struct ReadAloudSettingsTab: View {
         subtitle: "The specific voice \(provider.displayName) uses. Each provider has its own set."
       )
 
-      HStack(alignment: .center, spacing: 16) {
-        Text("Voice:")
-          .font(.body)
-          .fontWeight(.medium)
-          .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+      if provider == .custom {
+        customVoiceField
+      } else {
+        HStack(alignment: .center, spacing: 16) {
+          Text("Voice:")
+            .font(.body)
+            .fontWeight(.medium)
+            .frame(width: SettingsConstants.labelWidth, alignment: .leading)
 
-        Picker("", selection: voiceSelection) {
-          ForEach(voices) { voice in
-            Text(voice.displayName).tag(voice.id)
+          Picker("", selection: voiceSelection) {
+            ForEach(voices) { voice in
+              Text(voice.displayName).tag(voice.id)
+            }
           }
-        }
-        .pickerStyle(MenuPickerStyle())
-        .frame(width: 320)
-        .accessibilityLabel("Voice")
+          .pickerStyle(MenuPickerStyle())
+          .frame(width: 320)
+          .accessibilityLabel("Voice")
 
-        Spacer()
+          Spacer()
+        }
       }
+    }
+  }
+
+  /// Free-text voice id for the user's own server. Stored under the `.custom` voice key, so it
+  /// survives switching to another provider and back.
+  @ViewBuilder
+  private var customVoiceField: some View {
+    let binding = Binding<String>(
+      get: {
+        // Empty stays empty (the prompt shows the default); the "alloy" fallback is applied at
+        // read time in `ReadAloudPreferences.voice(for:)`.
+        viewModel.data.readAloudVoice(for: .custom)
+      },
+      set: { raw in
+        let newValue = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        viewModel.data.setReadAloudVoice(newValue, for: .custom)
+        UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.selectedReadAloudVoiceCustom)
+        Task { await viewModel.saveSettings() }
+      }
+    )
+
+    HStack(alignment: .firstTextBaseline, spacing: 16) {
+      Text("Voice:")
+        .font(.body)
+        .fontWeight(.medium)
+        .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+      VStack(alignment: .leading, spacing: 4) {
+        TextField(text: binding, prompt: Text(verbatim: TTSModel.ownServerTTS.defaultVoice)) {
+          Text("Voice id")
+        }
+        .textFieldStyle(.roundedBorder)
+        .font(.system(.body, design: .monospaced))
+        .frame(height: SettingsConstants.textFieldHeight)
+        .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+
+        Text("The voice id your server accepts. mlx-audio lists them at /v1/audio/voices; LiteLLM and LM Studio pass the id through to the model behind them.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      .frame(maxWidth: SettingsConstants.apiKeyMaxWidth, alignment: .leading)
+
+      Spacer(minLength: 0)
+    }
+  }
+
+  // MARK: - Own Server Section
+  /// The shared own-server settings, shown only for the "Own server" voice model. Same URL and key
+  /// as Dictate, Dictate Prompt and Chat (`CustomEndpointPreferences`) — only the TTS model id is
+  /// Read Aloud's own, because a chat model cannot synthesize speech.
+  @ViewBuilder
+  private var ownServerSection: some View {
+    VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      SectionHeader(
+        title: "Own server",
+        systemImage: "server.rack",
+        subtitle: "The same server Dictate, Dictate Prompt and Chat use. Setting the URL and key once is enough."
+      )
+
+      ownServerFieldRow("Base URL:") {
+        TextField("http://localhost:8000/v1", text: ownServerURLBinding)
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+      } caption: {
+        Text("Up to /v1, including the port: http://localhost:8000/v1 for mlx-audio, http://localhost:1234/v1 for LM Studio, http://localhost:4000/v1 for LiteLLM.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      ownServerFieldRow("TTS model:") {
+        TextField(SettingsDefaults.customTTSModelID, text: customTTSModelBinding)
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+      } caption: {
+        Text("The model id your server synthesizes with, e.g. mlx-community/Qwen3-TTS-12Hz-0.6B for mlx-audio.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      ownServerFieldRow("API key:") {
+        SecureField("Optional", text: ownServerKeyBinding)
+          .focused($ownServerKeyFocused)
+          .onSubmit { commitOwnServerKey() }
+          .onChange(of: ownServerKeyFocused) { _, focused in if !focused { commitOwnServerKey() } }
+          .onAppear { ownServerKeyDraft = KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "" }
+          .onDisappear { commitOwnServerKey() }
+          .textFieldStyle(.roundedBorder)
+          .font(.system(.body, design: .monospaced))
+          .frame(height: SettingsConstants.textFieldHeight)
+          .frame(maxWidth: SettingsConstants.apiKeyMaxWidth)
+      } caption: {
+        Text("Optional. A keyless server on your own machine works without one.")
+          .font(.caption)
+          .foregroundColor(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Text("The same URL and key serve Dictate, Dictate Prompt and Chat, so setting it once is enough.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// Writes straight to UserDefaults: the URL is not part of `SettingsData`, and the other tabs'
+  /// `OwnServerEndpointSection` reads the same key the same way.
+  private var ownServerURLBinding: Binding<String> {
+    Binding(
+      get: { UserDefaults.standard.string(forKey: UserDefaultsKeys.customOpenAIChatEndpointURL) ?? "" },
+      set: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL) })
+  }
+
+  private var customTTSModelBinding: Binding<String> {
+    Binding(
+      get: { UserDefaults.standard.string(forKey: UserDefaultsKeys.customTTSModelID) ?? "" },
+      set: { UserDefaults.standard.set($0, forKey: UserDefaultsKeys.customTTSModelID) })
+  }
+
+  /// The key lives in the Keychain, not UserDefaults. The field edits a local draft that is
+  /// loaded on appear and written to the Keychain on submit, focus loss or disappear — not on
+  /// every keystroke.
+  private var ownServerKeyBinding: Binding<String> {
+    Binding(get: { ownServerKeyDraft }, set: { ownServerKeyDraft = $0 })
+  }
+
+  private func commitOwnServerKey() {
+    let trimmed = ownServerKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed != (KeychainManager.shared.get(.customOpenAIChatAPIKey) ?? "") else { return }
+    if !KeychainManager.shared.save(trimmed, for: .customOpenAIChatAPIKey) {
+      DebugLogger.log("READ-ALOUD: Failed to save own-server API key to Keychain")
+    }
+  }
+
+  private func ownServerFieldRow<Field: View, Caption: View>(
+    _ label: LocalizedStringKey,
+    @ViewBuilder field: () -> Field,
+    @ViewBuilder caption: () -> Caption
+  ) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 16) {
+      Text(label)
+        .font(.body)
+        .fontWeight(.medium)
+        .frame(width: SettingsConstants.labelWidth, alignment: .leading)
+
+      VStack(alignment: .leading, spacing: 4) {
+        field()
+        caption()
+      }
+      .frame(maxWidth: SettingsConstants.apiKeyMaxWidth, alignment: .leading)
+
+      Spacer(minLength: 0)
     }
   }
 

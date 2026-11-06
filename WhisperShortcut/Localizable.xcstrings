@@ -25199,6 +25199,137 @@
         }
       }
     }
+,
+    "Own server (OpenAI-compatible)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Server (OpenAI-kompatibel)"
+          }
+        }
+      }
+    },
+    "Set the Own server URL in Settings → Read Aloud, or pick a different voice model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legen Sie die URL des eigenen Servers in Einstellungen → Vorlesen fest, oder wählen Sie ein anderes Sprachmodell."
+          }
+        }
+      }
+    },
+    "Read Aloud is set to your own server, but no server URL is configured. Set it in Settings → Read Aloud, or pick a different voice model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorlesen ist auf Ihren eigenen Server eingestellt, aber es ist keine Server-URL hinterlegt. Legen Sie sie in Einstellungen → Vorlesen fest, oder wählen Sie ein anderes Sprachmodell."
+          }
+        }
+      }
+    },
+    "Your own OpenAI-compatible server • LiteLLM, LM Studio or mlx-audio • Runs on your hardware or your own bill" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr eigener OpenAI-kompatibler Server • LiteLLM, LM Studio oder mlx-audio • Läuft auf Ihrer Hardware oder auf Ihre Rechnung"
+          }
+        }
+      }
+    },
+    "TTS model:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TTS-Modell:"
+          }
+        }
+      }
+    },
+    "http://localhost:8000/v1" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "http://localhost:8000/v1"
+          }
+        }
+      }
+    },
+    "Voice id" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimm-ID"
+          }
+        }
+      }
+    },
+    "The voice id your server accepts. mlx-audio lists them at /v1/audio/voices; LiteLLM and LM Studio pass the id through to the model behind them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimm-ID, die Ihr Server akzeptiert. mlx-audio listet sie unter /v1/audio/voices; LiteLLM und LM Studio reichen die ID an das dahinterliegende Modell weiter."
+          }
+        }
+      }
+    },
+    "Up to /v1, including the port: http://localhost:8000/v1 for mlx-audio, http://localhost:1234/v1 for LM Studio, http://localhost:4000/v1 for LiteLLM." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis /v1, einschließlich Port: http://localhost:8000/v1 für mlx-audio, http://localhost:1234/v1 für LM Studio, http://localhost:4000/v1 für LiteLLM."
+          }
+        }
+      }
+    },
+    "The model id your server synthesizes with, e.g. mlx-community/Qwen3-TTS-12Hz-0.6B for mlx-audio." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modell-ID, mit der Ihr Server synthetisiert, z. B. mlx-community/Qwen3-TTS-12Hz-0.6B für mlx-audio."
+          }
+        }
+      }
+    },
+    "Optional. A keyless server on your own machine works without one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Ein Server ohne Schlüssel auf Ihrem eigenen Rechner funktioniert auch ohne."
+          }
+        }
+      }
+    },
+    "The same URL and key serve Dictate, Dictate Prompt and Chat, so setting it once is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieselbe URL und derselbe Schlüssel gelten für Diktieren, Diktier-Prompt und Chat – einmal einrichten genügt."
+          }
+        }
+      }
+    },
+    "The same server Dictate, Dictate Prompt and Chat use. Setting the URL and key once is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Derselbe Server, den Diktieren, Diktier-Prompt und Chat verwenden. URL und Schlüssel einmal einzurichten genügt."
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }
