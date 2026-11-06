@@ -48,7 +48,7 @@ struct SettingsSidebarGroupingTests {
       SettingsTab.allCases.map(\.rawValue) == [
         "General", "Accounts", "Dictate", "Dictate Prompt", "Templates", "Screenshot",
         "Read Aloud", "Chat", "Meetings", "Smart Improvement", "Claude & AI Apps",
-        "Privacy & Permissions", "About",
+        "Permissions & Privacy", "About",
       ])
   }
 
