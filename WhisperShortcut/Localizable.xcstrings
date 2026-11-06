@@ -4700,6 +4700,17 @@
         }
       }
     },
+    "Chat & Meetings" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat & Meetings"
+          }
+        }
+      }
+    },
     "Chat + Meeting" : {
       "localizations" : {
         "de" : {
@@ -12431,6 +12442,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modell:"
+          }
+        }
+      }
+    },
+    "More" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr"
           }
         }
       }
