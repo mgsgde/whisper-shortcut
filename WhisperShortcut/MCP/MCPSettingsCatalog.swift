@@ -1128,13 +1128,16 @@ enum MCPSettingsCatalog {
 
     // MARK: read_aloud.voice.*
     // `""` is the provider default, the same sentinel `SettingsSlot.string` persists.
-    func voiceSetting(id: String, title: String, provider: TTSProvider) {
+    func voiceSetting(
+      id: String, title: String, provider: TTSProvider, voices: (() -> [TTSVoice])? = nil
+    ) {
       let key = provider.voiceUserDefaultsKey
+      let catalogue = voices ?? { provider.voices }
       settings.append(enumSetting(
         id: id, title: title, category: "read_aloud",
         allOptions: {
           [MCPSetting.Option("", "Provider default")]
-            + provider.voices.map { MCPSetting.Option($0.id, $0.displayName) }
+            + catalogue().map { MCPSetting.Option($0.id, $0.displayName) }
         },
         current: { defaults.string(forKey: key) ?? "" },
         applyValue: { raw in defaults.set(raw, forKey: key) }))
@@ -1143,7 +1146,12 @@ enum MCPSettingsCatalog {
     voiceSetting(id: "read_aloud.voice.openai", title: "OpenAI voice", provider: .openai)
     voiceSetting(id: "read_aloud.voice.xai", title: "xAI voice", provider: .xai)
     voiceSetting(id: "read_aloud.voice.system", title: "macOS voice", provider: .system)
-    voiceSetting(id: "read_aloud.voice.qwen3", title: "Qwen3 voice", provider: .localMLX)
+    // The two Qwen3 checkpoints share one provider key but not one speaker catalogue, so the
+    // options follow the selected Read Aloud model — otherwise an AI app could set a CustomVoice
+    // speaker id while VoiceDesign is selected, and the persona would silently fall back.
+    voiceSetting(
+      id: "read_aloud.voice.qwen3", title: "Qwen3 voice", provider: .localMLX,
+      voices: { ReadAloudPreferences.model.availableVoices })
 
     // MARK: screenshot.save_enabled — refused turning ON without a folder chosen (MCP never opens
     // the picker); `enablingRefused`, not `unavailableReason`, so the entry stays visible and OFF
