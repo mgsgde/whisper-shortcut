@@ -24579,6 +24579,16 @@
         }
       }
     },
+    "No own voices yet. Add one and describe how it should sound — it then appears in the Read Aloud voice picker." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine eigenen Stimmen. Füge eine hinzu und beschreibe, wie sie klingen soll — sie erscheint dann in der Stimmenauswahl beim Vorlesen."
+          }
+        }
+      }
+    },
     "No voice saved yet" : {
       "localizations" : {
         "de" : {
@@ -24975,186 +24985,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sohee (weiblich, sanft)"
-          }
-        }
-      }
-    },
-    "Listen" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anhören"
-          }
-        }
-      }
-    },
-    "Create voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme erzeugen"
-          }
-        }
-      }
-    },
-    "Replace recording" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufnahme ersetzen"
-          }
-        }
-      }
-    },
-    "Creating the voice…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme wird erzeugt …"
-          }
-        }
-      }
-    },
-    "Choose audio file…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audiodatei wählen …"
-          }
-        }
-      }
-    },
-    "Choose a short recording of the voice this persona should speak in." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle eine kurze Aufnahme der Stimme, die diese Persona sprechen soll."
-          }
-        }
-      }
-    },
-    "What the recording says (leave empty to transcribe it on this Mac)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Was in der Aufnahme gesagt wird (leer lassen, um es auf diesem Mac zu transkribieren)"
-          }
-        }
-      }
-    },
-    "The voice sample could not be played." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Stimmprobe konnte nicht abgespielt werden."
-          }
-        }
-      }
-    },
-    "Type what the recording says, or download the Qwen3 ASR model in Settings → Dictate so the text can be transcribed on this Mac." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tippe ein, was in der Aufnahme gesagt wird, oder lade das Qwen3-ASR-Modell in den Einstellungen → Diktieren herunter, damit der Text auf diesem Mac transkribiert werden kann."
-          }
-        }
-      }
-    },
-    "Listen plays a short sample of the saved voice. New voice draws a different one and replaces it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anhören spielt eine kurze Probe der gespeicherten Stimme. Neue Stimme zieht eine andere und ersetzt sie."
-          }
-        }
-      }
-    },
-    "Create voice draws a voice for this persona now and saves it. Listen plays a sample; New voice draws another." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme erzeugen zieht jetzt eine Stimme für diese Persona und speichert sie. Anhören spielt eine Probe; Neue Stimme zieht eine andere."
-          }
-        }
-      }
-    },
-    "This voice comes from your own recording. Listen plays a sample; Replace recording draws a described voice instead." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diese Stimme stammt aus deiner eigenen Aufnahme. Anhören spielt eine Probe; Aufnahme ersetzen zieht stattdessen eine beschriebene Stimme."
-          }
-        }
-      }
-    },
-    "Describe a voice" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimme beschreiben"
-          }
-        }
-      }
-    },
-    "Clone from a recording" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aus Aufnahme klonen"
-          }
-        }
-      }
-    },
-    "The voice comes from your recording — no description needed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Stimme kommt aus deiner Aufnahme — keine Beschreibung nötig."
-          }
-        }
-      }
-    },
-    "Reference recording:" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Referenzaufnahme:"
-          }
-        }
-      }
-    },
-    "Use a clean, single-speaker clip of 3–15 seconds. WAV, MP3, M4A, AIFF, CAF and FLAC work." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nutze einen sauberen Ausschnitt mit nur einer Sprecherin oder einem Sprecher, 3–15 Sekunden. WAV, MP3, M4A, AIFF, CAF und FLAC funktionieren."
-          }
-        }
-      }
-    },
-    "No own voices yet. Add one — describe how it should sound, or clone it from a recording. It then appears in the Read Aloud voice picker." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch keine eigenen Stimmen. Lege eine an — beschreibe, wie sie klingen soll, oder klone sie aus einer Aufnahme. Sie erscheint dann in der Stimmenauswahl von Vorlesen."
           }
         }
       }

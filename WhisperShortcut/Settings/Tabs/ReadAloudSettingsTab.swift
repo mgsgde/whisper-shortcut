@@ -5,15 +5,11 @@ struct ReadAloudSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
 
+  @State private var showResetVoiceConfirmation = false
   @State private var showingPersonaEditor = false
   /// Bumped whenever the frozen voice or the custom-persona list changes, so the reset button
   /// and the picker re-render — disk state alone does not trigger SwiftUI.
   @State private var voiceCacheGeneration = 0
-  /// A voice is being generated (create or preview). Disables the row so a second click cannot
-  /// start a second multi-second generation against the same model.
-  @State private var isGeneratingVoice = false
-  /// A preview is audible right now; the Listen button turns into Stop.
-  @State private var isPlayingPreview = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -71,11 +67,7 @@ struct ReadAloudSettingsTab: View {
             localized: "\(qwen3Type.displayName) was successfully downloaded. The first Read Aloud may take a moment to initialize the model; subsequent ones will be faster."),
           onError: { viewModel.showError($0) }
         ) {
-          Text(
-            qwen3Type == .customVoice
-              ? String(localized: "Fastest")
-              : String(localized: "German voices")
-          )
+          Text(qwen3Type == .customVoice ? "Fastest" : "German voices")
             .font(.caption)
             .foregroundColor(.secondary)
         }
@@ -139,21 +131,15 @@ struct ReadAloudSettingsTab: View {
   }
 
   // MARK: - Qwen3 Voice Management
-  /// Create, audition and reset the selected persona's voice, plus the user's own personas.
-  ///
-  /// The voice used to be created implicitly on the first Read Aloud, which meant the user could
-  /// not hear it before committing to a whole text, and could not compare candidates without
-  /// reading something aloud each time. Both now happen here: "Create voice" generates and stores
-  /// the clip, "Listen" plays a short sample of it, "New voice" discards it so the next click draws
-  /// a different one.
+  /// Reset for the selected persona's frozen voice, plus the user's own personas. Kept to two
+  /// plain-language controls: a "new voice" button whose whole effect is one sentence of
+  /// explanation, and an editor behind one "manage" toggle. No technical terms on the surface.
   @ViewBuilder
   private var qwen3VoiceManagement: some View {
     // Reads the generation counter so a reset re-renders this whole block.
     let _ = voiceCacheGeneration
     let persona = Qwen3VoicePersona.persona(for: voiceSelectionOfQwen3Persona)
     let hasFrozenVoice = Qwen3VoiceReferenceStore.hasReference(for: persona.id)
-    let isUserProvided = Qwen3VoiceReferenceStore.isUserProvided(for: persona.id)
-    let modelType = viewModel.data.selectedReadAloudModel.qwen3ModelType ?? .voiceDesign
 
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
       // One row per control, the explanatory caption spanning the full width below both —
@@ -161,33 +147,14 @@ struct ReadAloudSettingsTab: View {
       VStack(alignment: .leading, spacing: 6) {
         HStack(alignment: .center, spacing: 16) {
           Button {
-            if isPlayingPreview {
-              Qwen3VoicePreviewPlayer.shared.stop()
-            } else {
-              previewVoice(persona: persona, modelType: modelType)
-            }
+            showResetVoiceConfirmation = true
           } label: {
             Label(
-              isPlayingPreview ? "Stop" : "Listen",
-              systemImage: isPlayingPreview ? "stop.fill" : "play.fill")
+              hasFrozenVoice ? "New voice" : "No voice saved yet",
+              systemImage: hasFrozenVoice ? "arrow.triangle.2.circlepath" : "waveform.slash"
+            )
           }
-          .disabled(isGeneratingVoice)
-
-          Divider()
-            .frame(height: 14)
-
-          Button {
-            createVoice(persona: persona, modelType: modelType)
-          } label: {
-            Label(
-              isUserProvided
-                ? "Replace recording"
-                : (hasFrozenVoice ? "New voice" : "Create voice"),
-              systemImage: isUserProvided
-                ? "waveform.badge.plus"
-                : (hasFrozenVoice ? "arrow.triangle.2.circlepath" : "waveform.badge.plus"))
-          }
-          .disabled(isGeneratingVoice)
+          .disabled(!hasFrozenVoice)
 
           Divider()
             .frame(height: 14)
@@ -197,29 +164,30 @@ struct ReadAloudSettingsTab: View {
           } label: {
             Label("My own voices…", systemImage: "person.crop.square.badge.plus")
           }
-          .disabled(isGeneratingVoice)
-
-          if isGeneratingVoice {
-            ProgressView()
-              .controlSize(.small)
-            Text("Creating the voice…")
-              .font(.caption)
-              .foregroundColor(.secondary)
-          }
         }
         .padding(.leading, SettingsConstants.labelWidth + 16)
 
         Text(
-          isUserProvided
-            ? "This voice comes from your own recording. Listen plays a sample; Replace recording draws a described voice instead."
-            : (hasFrozenVoice
-              ? "Listen plays a short sample of the saved voice. New voice draws a different one and replaces it."
-              : "Create voice draws a voice for this persona now and saves it. Listen plays a sample; New voice draws another.")
+          hasFrozenVoice
+            ? "The saved voice is discarded; the next Read Aloud creates a new one."
+            : "The voice is created automatically on the first Read Aloud with this persona."
         )
         .font(.caption)
         .foregroundColor(.secondary)
         .padding(.leading, SettingsConstants.labelWidth + 16)
       }
+    }
+    .confirmationDialog(
+      "Draw a new voice for \"\(persona.summary)\"?",
+      isPresented: $showResetVoiceConfirmation,
+      titleVisibility: .visible
+    ) {
+      Button("New voice", role: .destructive) {
+        Qwen3VoiceReferenceStore.removeReference(for: persona.id)
+        voiceCacheGeneration += 1
+      }
+    } message: {
+      Text("The current voice is discarded. The next Read Aloud with this persona creates and saves a new one.")
     }
     .sheet(isPresented: $showingPersonaEditor, onDismiss: {
       // The editor can add, edit or delete personas — refresh the picker and the reset row.
@@ -227,57 +195,6 @@ struct ReadAloudSettingsTab: View {
     }) {
       Qwen3PersonaEditorView()
     }
-    // A preview belongs to the persona that was selected when it started. Switching persona or
-    // leaving the tab must not leave the previous voice talking.
-    .onChange(of: voiceSelectionOfQwen3Persona) { _ in
-      Qwen3VoicePreviewPlayer.shared.stop()
-    }
-    .onDisappear {
-      Qwen3VoicePreviewPlayer.shared.stop()
-    }
-  }
-
-  /// Generates and stores the persona's voice, then plays it so the user hears what they got.
-  private func createVoice(persona: Qwen3VoicePersona, modelType: Qwen3ModelType) {
-    guard !isGeneratingVoice else { return }
-    isGeneratingVoice = true
-    Qwen3VoicePreviewPlayer.shared.stop()
-    Task {
-      defer { isGeneratingVoice = false }
-      do {
-        let pcm = try await Qwen3TTSService.shared.createVoiceReference(
-          for: persona, modelType: modelType)
-        voiceCacheGeneration += 1
-        try playPreview(pcm)
-      } catch {
-        viewModel.showError(error.localizedDescription)
-      }
-    }
-  }
-
-  /// Plays a sample of the persona's current voice. Creates the voice first when none exists, so
-  /// "Listen" is never a dead end on a fresh persona.
-  private func previewVoice(persona: Qwen3VoicePersona, modelType: Qwen3ModelType) {
-    guard !isGeneratingVoice else { return }
-    isGeneratingVoice = true
-    Task {
-      defer { isGeneratingVoice = false }
-      do {
-        let pcm = try await Qwen3TTSService.shared.previewPCM(for: persona, modelType: modelType)
-        voiceCacheGeneration += 1
-        try playPreview(pcm)
-      } catch {
-        viewModel.showError(error.localizedDescription)
-      }
-    }
-  }
-
-  /// Starts the sample and keeps the button in its Stop state until the clip ends on its own.
-  private func playPreview(_ pcm: Data) throws {
-    try Qwen3VoicePreviewPlayer.shared.play(pcm: pcm) { [self] in
-      isPlayingPreview = false
-    }
-    isPlayingPreview = true
   }
 
   /// The persona id the picker currently shows, regardless of which catalogue it came from.

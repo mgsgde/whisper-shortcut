@@ -11,7 +11,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct Qwen3PersonaEditorView: View {
   /// Dismisses the sheet.
@@ -68,7 +67,7 @@ struct Qwen3PersonaEditorView: View {
       }
       .padding(16)
     }
-    .frame(width: 560, height: 560)
+    .frame(width: 560, height: 420)
     .onAppear { personas = Qwen3CustomPersonas.all }
     .sheet(isPresented: $showNewPersonaSheet) {
       Qwen3PersonaFormView(existing: nil) {
@@ -88,7 +87,7 @@ struct Qwen3PersonaEditorView: View {
       Image(systemName: "person.wave.2")
         .font(.system(size: 36))
         .foregroundColor(.secondary)
-      Text("No own voices yet. Add one — describe how it should sound, or clone it from a recording. It then appears in the Read Aloud voice picker.")
+      Text("No own voices yet. Add one and describe how it should sound — it then appears in the Read Aloud voice picker.")
         .font(.callout)
         .foregroundColor(.secondary)
         .multilineTextAlignment(.center)
@@ -110,45 +109,24 @@ struct Qwen3PersonaFormView: View {
   @State private var gender = "m"
   @State private var language = "German"
   @State private var prompt = ""
-  /// Whether this persona's voice comes from a recording instead of a description. With a
-  /// recording the description is meaningless — the clip *is* the voice — so the form hides it
-  /// and stops requiring it.
-  @State private var usesRecording = false
-  /// A reference recording the user picked. Its voice replaces the described one for this persona.
-  @State private var referenceURL: URL?
-  /// What the reference recording says. Optional: empty means "transcribe it on this Mac".
-  @State private var referenceTranscript = ""
-  @State private var isImportingReference = false
-  @State private var referenceError: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       SheetHeader(
         title: existing == nil ? "Add voice" : "Edit voice",
-        subtitle: usesRecording
-          ? "The voice comes from your recording — no description needed."
-          : "Describe the voice in one or two sentences. English descriptions work best.")
+        subtitle: "Describe the voice in one or two sentences. English descriptions work best.")
 
       VStack(alignment: .leading, spacing: 12) {
-        Picker("", selection: $usesRecording) {
-          Text("Describe a voice").tag(false)
-          Text("Clone from a recording").tag(true)
-        }
-        .pickerStyle(SegmentedPickerStyle())
-        .labelsHidden()
-
         HStack(spacing: 16) {
           labeledField("Name:") {
             TextField("e.g. Grandpa", text: $name)
           }
-          if !usesRecording {
-            labeledField("Gender:") {
-              Picker("", selection: $gender) {
-                Text("Male").tag("m")
-                Text("Female").tag("w")
-              }
-              .pickerStyle(MenuPickerStyle())
+          labeledField("Gender:") {
+            Picker("", selection: $gender) {
+              Text("Male").tag("m")
+              Text("Female").tag("w")
             }
+            .pickerStyle(MenuPickerStyle())
           }
           labeledField("Language:") {
             Picker("", selection: $language) {
@@ -159,10 +137,28 @@ struct Qwen3PersonaFormView: View {
           }
         }
 
-        if usesRecording {
-          referenceSection
-        } else {
-          descriptionSection
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Description:")
+            .font(.body.weight(.medium))
+          TextEditor(text: $prompt)
+            .font(.body)
+            .frame(height: 110)
+            .scrollContentBackground(.hidden)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+            .overlay(alignment: .topLeading) {
+              if prompt.isEmpty {
+                Text(placeholderPrompt)
+                  .font(.body)
+                  .foregroundColor(Color(nsColor: .placeholderTextColor))
+                  .padding(.horizontal, 6)
+                  .padding(.vertical, 8)
+                  .allowsHitTesting(false)
+              }
+            }
+          Text("Tip: name the language, the region and the absence of a foreign accent — that is what makes the voice sound native.")
+            .font(.caption)
+            .foregroundColor(.secondary)
         }
       }
 
@@ -180,13 +176,12 @@ struct Qwen3PersonaFormView: View {
         Button("Cancel") { dismiss() }
         Button("Save") {
           save()
+          onSaved()
+          dismiss()
         }
         .keyboardShortcut(.defaultAction)
-        .disabled(
-          isImportingReference
-            || name.trimmingCharacters(in: .whitespaces).isEmpty
-            || (!usesRecording && prompt.trimmingCharacters(in: .whitespaces).isEmpty)
-            || (usesRecording && referenceURL == nil))
+        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty
+          || prompt.trimmingCharacters(in: .whitespaces).isEmpty)
       }
     }
     .padding(20)
@@ -197,38 +192,7 @@ struct Qwen3PersonaFormView: View {
         gender = existing.gender
         language = existing.language
         prompt = existing.prompt
-        // A persona whose voice came from a recording opens in clone mode: its description is
-        // not what produces the voice, so showing it as the editable source would be a lie.
-        usesRecording = Qwen3VoiceReferenceStore.isUserProvided(for: existing.id)
       }
-    }
-  }
-
-  /// The description editor — only shown when the voice is described rather than cloned.
-  @ViewBuilder
-  private var descriptionSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text("Description:")
-        .font(.body.weight(.medium))
-      TextEditor(text: $prompt)
-        .font(.body)
-        .frame(height: 110)
-        .scrollContentBackground(.hidden)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .cornerRadius(6)
-        .overlay(alignment: .topLeading) {
-          if prompt.isEmpty {
-            Text(placeholderPrompt)
-              .font(.body)
-              .foregroundColor(Color(nsColor: .placeholderTextColor))
-              .padding(.horizontal, 6)
-              .padding(.vertical, 8)
-              .allowsHitTesting(false)
-          }
-        }
-      Text("Tip: name the language, the region and the absence of a foreign accent — that is what makes the voice sound native.")
-        .font(.caption)
-        .foregroundColor(.secondary)
     }
   }
 
@@ -238,81 +202,6 @@ struct Qwen3PersonaFormView: View {
         .font(.body.weight(.medium))
       content()
     }
-  }
-
-  /// Optional reference recording. A clip makes the persona speak in *that* voice instead of a
-  /// described one — the checkpoint's ICL path needs the audio and its transcript, so the user can
-  /// type the text or let the on-device ASR checkpoint transcribe it.
-  @ViewBuilder
-  private var referenceSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text("Reference recording:")
-        .font(.body.weight(.medium))
-
-      HStack(spacing: 12) {
-        Button {
-          pickReferenceFile()
-        } label: {
-          Label("Choose audio file…", systemImage: "waveform.badge.plus")
-        }
-        .disabled(isImportingReference)
-
-        if let referenceURL {
-          Text(referenceURL.lastPathComponent)
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-          Button("Remove") {
-            self.referenceURL = nil
-            referenceTranscript = ""
-            referenceError = nil
-          }
-          .buttonStyle(.link)
-        }
-
-        if isImportingReference {
-          ProgressView().controlSize(.small)
-        }
-      }
-
-      TextField("What the recording says (leave empty to transcribe it on this Mac)", text: $referenceTranscript)
-        .textFieldStyle(.roundedBorder)
-        .disabled(referenceURL == nil)
-
-      if let referenceError {
-        Text(referenceError)
-          .font(.caption)
-          .foregroundColor(.red)
-      }
-
-      Text("Use a clean, single-speaker clip of 3–15 seconds. WAV, MP3, M4A, AIFF, CAF and FLAC work.")
-        .font(.caption)
-        .foregroundColor(.secondary)
-    }
-  }
-
-  /// The audio formats the picker offers. Everything `AVAudioFile` can decode on macOS, which is
-  /// what `loadAudioArray` uses: WAV, MP3, M4A/AAC, AIFF, CAF and FLAC. Listed explicitly rather
-  /// than as `.audio` so the panel's filter matches the sentence under it, and so a format that
-  /// cannot be decoded is not offered in the first place.
-  private static let referenceAudioTypes: [UTType] = [
-    .wav, .mp3, .mpeg4Audio, .aiff,
-    UTType("com.apple.coreaudio-format") ?? .audio,
-    UTType("org.xiph.flac") ?? .audio,
-  ]
-
-  /// Opens a picker for an audio file. The clip is not copied yet — it is imported on Save, so
-  /// cancelling the form leaves no half-imported voice behind.
-  private func pickReferenceFile() {
-    let panel = NSOpenPanel()
-    panel.allowedContentTypes = Self.referenceAudioTypes
-    panel.allowsMultipleSelection = false
-    panel.canChooseDirectories = false
-    panel.message = String(localized: "Choose a short recording of the voice this persona should speak in.")
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    referenceURL = url
-    referenceError = nil
   }
 
   /// The placeholder doubles as the template that produces good voices — see the tip below it.
@@ -326,50 +215,17 @@ struct Qwen3PersonaFormView: View {
     let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
     let id = existing?.id ?? Qwen3CustomPersonas.uniqueID(for: trimmedName)
-    // A cloned persona has no description to store. The prompt is only ever read by the
-    // VoiceDesign calibration path, which a user-provided clip bypasses, so an empty string is
-    // the honest value — not a placeholder sentence the user never wrote.
-    let persona = Qwen3VoicePersona(
-      id: id, gender: gender, summary: trimmedName, language: language,
-      prompt: usesRecording ? "" : trimmedPrompt)
-    Qwen3CustomPersonas.save(persona)
-
-    if let referenceURL {
-      // Importing is the slow part (decode, resample, maybe a local transcription), so the form
-      // stays open with a spinner instead of closing and leaving the user without feedback.
-      isImportingReference = true
-      referenceError = nil
-      Task {
-        defer { isImportingReference = false }
-        do {
-          _ = try await Qwen3TTSService.shared.importVoiceReference(
-            from: referenceURL, for: persona, transcript: referenceTranscript)
-          onSaved()
-          dismiss()
-        } catch {
-          referenceError = error.localizedDescription
-        }
-      }
-      return
-    }
-
+    Qwen3CustomPersonas.save(
+      Qwen3VoicePersona(
+        id: id, gender: gender, summary: trimmedName, language: language, prompt: trimmedPrompt))
     // Only a changed description (or language) invalidates the frozen voice — the voice is the
     // description. Renaming or flipping the gender label keeps it; a needless reset costs a
-    // full calibration generation on the 1.7B checkpoint. A clip the user imported is never
-    // discarded here: the description no longer defines that voice.
+    // full calibration generation on the 1.7B checkpoint.
     if let existing,
-      existing.prompt != trimmedPrompt || existing.language != language,
-      !Qwen3VoiceReferenceStore.isUserProvided(for: id)
+      existing.prompt != trimmedPrompt || existing.language != language
     {
       Qwen3VoiceReferenceStore.removeReference(for: id)
     }
-    // Switching a cloned persona back to "describe a voice" drops the imported clip, or the
-    // description would be stored and then ignored by the next Read Aloud.
-    if !usesRecording, Qwen3VoiceReferenceStore.isUserProvided(for: id) {
-      Qwen3VoiceReferenceStore.removeReference(for: id)
-    }
-    onSaved()
-    dismiss()
   }
 }
 

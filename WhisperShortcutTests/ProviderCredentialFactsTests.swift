@@ -123,17 +123,7 @@ struct ProviderCredentialFactsTests {
       }
     }
     for model in TTSModel.allCases {
-      // `.localMLX` is the one provider with two models under one key: VoiceDesign and
-      // CustomVoice are separate downloads, so "can this model run" is per checkpoint while
-      // `provider.hasCredential` answers "is either of them on disk". A user with only one
-      // downloaded is the normal case, not a disagreement.
-      if model.qwen3ModelType != nil {
-        #expect(
-          model.hasRequiredCredential == Qwen3ModelManager.shared.isModelAvailable(model.qwen3ModelType!),
-          "\(model.rawValue)")
-      } else {
-        #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
-      }
+      #expect(model.hasRequiredCredential == model.provider.hasCredential, "\(model.rawValue)")
     }
     #expect(TTSProvider.gemini.hasCredential == ChatModelProvider.gemini.hasCredential)
     #expect(TTSProvider.openai.hasCredential == ChatModelProvider.openai.hasCredential)
