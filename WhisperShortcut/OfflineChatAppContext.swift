@@ -118,6 +118,8 @@ enum OfflineChatAppContext {
       tradeoff = "the default; fast, good at editing and short answers, thinner general knowledge"
     case .qwen359B:
       tradeoff = "slower, knows more and answers open questions better; too free with Dictate Prompt edits, so it is not offered there"
+    case .gemma426BA4B:
+      tradeoff = "the largest offline model, knows the most; heavy download, not tested on Dictate Prompt"
     }
     return "\(model.displayName) (\(command), \(model.estimatedSizeLabel) download, \(ram)\(uses)): \(tradeoff)."
   }

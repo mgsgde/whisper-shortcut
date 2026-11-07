@@ -17,12 +17,13 @@ struct PermissionStatusBadge: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 3)
     .background(Capsule().fill(color.opacity(0.12)))
+    .accessibilityElement(children: .combine)
   }
 
   private var color: Color {
     switch status {
     case .granted: return .green
-    case .denied: return .red
+    case .denied: return .orange
     case .notDetermined: return .yellow
     case .notApplicable: return .gray
     }
@@ -30,9 +31,9 @@ struct PermissionStatusBadge: View {
 
   private var label: LocalizedStringKey {
     switch status {
-    case .granted: return "Granted"
-    case .denied: return "Denied"
-    case .notDetermined: return "Not requested"
+    case .granted: return "Allowed"
+    case .denied: return "Off"
+    case .notDetermined: return "Not set up"
     case .notApplicable: return "Not applicable"
     }
   }

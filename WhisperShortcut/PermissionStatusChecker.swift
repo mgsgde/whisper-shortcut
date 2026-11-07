@@ -41,16 +41,18 @@ enum PermissionStatusChecker {
       }
     case .accessibility:
       // AX has no "notDetermined" state surfaced by the API. Approximate it with "has this
-      // app ever fired the AX prompt": a fresh install then shows "Not requested" instead of
-      // a red "Denied" for something the user was never asked about.
+      // app ever fired the AX prompt": a fresh install then shows "Not set up" instead of
+      // "Off" for something the user was never asked about.
       if AXIsProcessTrusted() { return .granted }
       return UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
         ? .denied : .notDetermined
     case .screenRecording:
-      // CGPreflightScreenCaptureAccess() doesn't disambiguate denied vs. not-yet-requested.
-      // Map "true" to granted and "false" to notDetermined so the UI shows an actionable
-      // "Open System Settings" affordance without falsely accusing the user of denying.
-      return CGPreflightScreenCaptureAccess() ? .granted : .notDetermined
+      // CGPreflightScreenCaptureAccess() is true only when Screen Recording is granted. It
+      // cannot tell "never asked" from "denied", so a false result is `.denied` only after
+      // this app has requested access (`hasRequestedScreenRecording`); otherwise `.notDetermined`.
+      if CGPreflightScreenCaptureAccess() { return .granted }
+      return UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasRequestedScreenRecording)
+        ? .denied : .notDetermined
     }
   }
 
@@ -90,6 +92,7 @@ enum PermissionStatusChecker {
   /// must enable access in System Settings — callers should offer that as a fallback.
   @discardableResult
   static func requestScreenRecordingAccess() -> Bool {
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
     return CGRequestScreenCaptureAccess()
   }
 
@@ -105,5 +108,51 @@ enum PermissionStatusChecker {
     let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
     let options = [promptKey: true] as CFDictionary
     return AXIsProcessTrustedWithOptions(options)
+  }
+
+  /// Fires the native permission request before deep-linking into Privacy & Security. Call on the
+  /// main thread.
+  ///
+  /// macOS lists an app under Microphone, Accessibility, or Screen Recording only after that app
+  /// has called the native request API once. A button that only opens the pane lands on a list
+  /// without WhisperShortcut, and the user has to add it manually with "+". The request
+  /// pre-registers the app so the switch is already there.
+  ///
+  /// Microphone requests only while the status is `.notDetermined`, and opens Settings when that
+  /// request is denied; any other status opens Settings immediately. Screen Recording opens
+  /// Settings when already granted. Otherwise it reads `hasRequestedScreenRecording` before
+  /// calling `requestScreenRecordingAccess()`, and opens Settings only when that flag was already
+  /// set. The first time, the native macOS prompt is the only thing the user sees — it has its
+  /// own Open System Settings button. Accessibility calls
+  /// `AccessibilityPermissionManager.requestThenOpenAccessibilitySettings()`, which reads the prompt
+  /// flag, calls `requestAccessibilityPermission()` (re-registers the entry even after a `tccutil`
+  /// reset), and opens Settings only when a prompt was already shown and access is still not
+  /// trusted. The first native prompt has its own Open System Settings button, so this does not
+  /// open the pane a second time.
+  static func requestThenOpenSystemSettings(for kind: PermissionKind) {
+    switch kind {
+    case .microphone:
+      if status(for: .microphone) == .notDetermined {
+        requestMicrophoneAccess { granted in
+          if !granted {
+            openSystemSettings(for: .microphone)
+          }
+        }
+      } else {
+        openSystemSettings(for: .microphone)
+      }
+    case .screenRecording:
+      if status(for: .screenRecording) == .granted {
+        openSystemSettings(for: .screenRecording)
+      } else {
+        let alreadyRequested = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasRequestedScreenRecording)
+        requestScreenRecordingAccess()
+        if alreadyRequested {
+          openSystemSettings(for: .screenRecording)
+        }
+      }
+    case .accessibility:
+      AccessibilityPermissionManager.requestThenOpenAccessibilitySettings()
+    }
   }
 }

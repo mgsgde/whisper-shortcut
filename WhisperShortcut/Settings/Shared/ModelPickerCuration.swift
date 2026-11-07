@@ -312,6 +312,7 @@ extension PromptModel: PickerCuratedModel {
     switch self {
     case .localMLXQwen34BInstruct: return "Qwen3 4B Instruct"
     case .localMLXQwen359B: return "Qwen3.5 9B"
+    case .localMLXGemma426BA4B: return "Gemma 4 26B A4B"
     default: return displayName
     }
   }

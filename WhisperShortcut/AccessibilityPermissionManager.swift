@@ -5,6 +5,44 @@ import Foundation
 /// Manages accessibility permissions and user guidance for WhisperShortcut
 class AccessibilityPermissionManager {
 
+  /// Which feature is asking, so the dialog names that feature and why it needs Accessibility.
+  enum AccessibilityPurpose {
+    case autoPaste, dictateLive, dictatePrompt, glossary, readAloud, fnKey
+
+    var featureName: String {
+      switch self {
+      case .autoPaste:
+        // Catalog name of the feature is "Auto-paste" → "Automatisch einfügen".
+        return String(localized: "Auto-Paste")
+      case .dictateLive:
+        return String(localized: "Dictate Live")
+      case .dictatePrompt:
+        return String(localized: "Dictate Prompt")
+      case .glossary:
+        return String(localized: "Add to Glossary")
+      case .readAloud:
+        return String(localized: "Read Aloud")
+      case .fnKey:
+        return String(localized: "Fn key dictation")
+      }
+    }
+
+    var reason: String {
+      switch self {
+      case .autoPaste:
+        return String(localized: "paste dictated text at your cursor")
+      case .dictateLive:
+        return String(localized: "type your words live into the app you are using")
+      case .dictatePrompt, .readAloud:
+        return String(localized: "read the text you selected")
+      case .glossary:
+        return String(localized: "read the word you selected")
+      case .fnKey:
+        return String(localized: "notice when you press the Fn key")
+      }
+    }
+  }
+
   /// Checks if the app has accessibility permissions (pure check, never prompts).
   static func hasAccessibilityPermission() -> Bool {
     AXIsProcessTrusted()
@@ -12,54 +50,37 @@ class AccessibilityPermissionManager {
 
   /// Triggers the native macOS Accessibility prompt. This also pre-registers WhisperShortcut in
   /// the Accessibility list in System Settings, so the user only has to flip the switch instead of
-  /// manually adding the app via "+". macOS won't re-show the prompt after a denial, so we record
-  /// that it ran and fall back to a deep-link dialog on later attempts.
+  /// manually adding the app via "+". macOS won't re-show the prompt after a denial. The flag
+  /// records that this ran so a later attempt can follow with our own dialog; it does not decide
+  /// whether macOS is asked — every attempt calls this, which re-lists the app after a reset or
+  /// a build switch.
   @discardableResult
   static func requestAccessibilityPermission() -> Bool {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
     return PermissionStatusChecker.requestAccessibilityAccess()
   }
 
-  /// Shows a single, elegant dialog for accessibility permission
-  static func showAccessibilityPermissionDialog() {
-    // Double-check permission before showing dialog
+  /// Re-lists the app (for example after a reset or a build switch), then explains why this
+  /// feature needs Accessibility. No-op when already trusted.
+  static func showAccessibilityPermissionDialog(for purpose: AccessibilityPurpose = .autoPaste) {
+    _ = PermissionStatusChecker.requestAccessibilityAccess()
     if hasAccessibilityPermission() {
       return
     }
 
     let alert = NSAlert()
-    alert.messageText = String(localized: "Enable Accessibility for Auto-Paste")
+    alert.messageText = String(localized: "Allow Accessibility for \(purpose.featureName)")
     alert.informativeText = String(localized: """
-      Auto-paste inserts dictated text at your cursor by simulating a ⌘V keystroke, which macOS allows only with Accessibility permission.
+      macOS needs this so WhisperShortcut can \(purpose.reason). Turn on WhisperShortcut in the list that opens.
 
-      Dictation works without this — your text is always copied to the clipboard, so you can paste it manually with ⌘V.
-
-      To turn on auto-paste, click "Open System Settings". There:
-      1. Go to Privacy & Security → Accessibility
-      2. Enable WhisperShortcut
-
-      Already listed but still not working? This happens after switching between the App Store and GitHub versions — macOS remembers the old copy. Remove WhisperShortcut from the list with the − button, then add it again. Or click "Copy Reset Command" and run it in Terminal to clear the stale entry.
+      Already on but still not working? Turn it off and on again. If that doesn't help, select WhisperShortcut, remove it with −, and use the feature again.
       """)
     alert.alertStyle = .informational
     alert.addButton(withTitle: String(localized: "Open System Settings"))
-    alert.addButton(withTitle: String(localized: "Copy Reset Command"))
     alert.addButton(withTitle: String(localized: "Not Now"))
 
-    let response = alert.runModal()
-
-    switch response {
-    case .alertFirstButtonReturn:
+    if alert.runModal() == .alertFirstButtonReturn {
       PermissionStatusChecker.openSystemSettings(for: .accessibility)
-    case .alertSecondButtonReturn:
-      // Clears the stale TCC entry left behind by a differently-signed copy (App Store vs
-      // GitHub build). The app cannot run tccutil itself; the user pastes it into Terminal.
-      let pasteboard = NSPasteboard.general
-      pasteboard.clearContents()
-      // Bundle.main, not a literal: Debug builds run as ….whispershortcut.dev.
-      let bundleID = Bundle.main.bundleIdentifier ?? "com.magnusgoedde.whispershortcut"
-      pasteboard.setString("tccutil reset Accessibility \(bundleID)", forType: .string)
-    default:
-      break
     }
   }
 
@@ -68,29 +89,46 @@ class AccessibilityPermissionManager {
     UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasUsedPromptFeature)
   }
 
-  /// The single Accessibility request rule, shared by the opt-in and use-time paths so both
-  /// behave identically: the first time, fire the native prompt (which pre-registers the app
-  /// in the Accessibility list so the user only flips a greyed switch); after a prior denial
-  /// macOS suppresses the prompt, so deep-link into System Settings instead.
-  private static func requestOrDeepLink() {
-    if UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt) {
-      showAccessibilityPermissionDialog()
-    } else {
-      requestAccessibilityPermission()
+  /// Always asks macOS first: that call is what lists the app, and macOS shows nothing after a
+  /// prior denial. Our own dialog follows only when the prompt flag was already set before this
+  /// call. The flag no longer decides whether macOS is asked.
+  private static func requestOrDeepLink(purpose: AccessibilityPurpose) {
+    let alreadyPrompted = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
+    requestAccessibilityPermission()
+    if alreadyPrompted {
+      showAccessibilityPermissionDialog(for: purpose)
     }
+  }
+
+  /// Use-time path: no-op when Accessibility is already granted, otherwise the shared request rule.
+  static func requestAtUseTime(for purpose: AccessibilityPurpose) {
+    guard !hasAccessibilityPermission() else { return }
+    requestOrDeepLink(purpose: purpose)
   }
 
   /// Requests Accessibility the moment the user opts into a feature that needs it (e.g. enabling
   /// auto-paste), so the system prompt appears now — not as an interruption on first use. No-op
   /// when already granted.
-  static func requestAccessibilityAtOptIn() {
+  static func requestAccessibilityAtOptIn(for purpose: AccessibilityPurpose = .autoPaste) {
     guard !hasAccessibilityPermission() else { return }
-    requestOrDeepLink()
+    requestOrDeepLink(purpose: purpose)
   }
 
-  /// Checks permission when user tries to use the prompt feature, prompting / deep-linking
-  /// to System Settings if it's missing.
-  static func checkPermissionForPromptUsage() -> Bool {
+  /// Same re-list rule as the dialog path, for the Privacy tab's "open Settings" button.
+  /// Reads the prompt flag first, asks macOS, and opens the pane only when a prompt was already
+  /// shown and access is still missing. The first native prompt has its own button, so the pane
+  /// is not opened a second time.
+  static func requestThenOpenAccessibilitySettings() {
+    let alreadyPrompted = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownAccessibilityPrompt)
+    requestAccessibilityPermission()
+    if alreadyPrompted && !hasAccessibilityPermission() {
+      PermissionStatusChecker.openSystemSettings(for: .accessibility)
+    }
+  }
+
+  /// Checks permission when user tries to use a feature that reads the selection, prompting /
+  /// deep-linking to System Settings if it's missing.
+  static func checkPermissionForPromptUsage(for purpose: AccessibilityPurpose = .dictatePrompt) -> Bool {
     // Mark that the user has tried the prompt feature (for future reference)
     markPromptFeatureUsed()
 
@@ -98,7 +136,7 @@ class AccessibilityPermissionManager {
       return true
     }
 
-    requestOrDeepLink()
+    requestOrDeepLink(purpose: purpose)
     return false
   }
 }

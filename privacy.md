@@ -89,7 +89,7 @@ Older versions may have stored some meeting files in `~/Documents/WhisperShortcu
 When you use Gemini-powered cloud features, WhisperShortcut sends the minimum needed audio, text, screenshots, image attachments, or prompt context to Google's Gemini API. This may include:
 
 - Dictation audio for cloud transcription.
-- Clipboard text and voice instructions for Dictate Prompt and Prompt & Read.
+- Clipboard or selected text, voice instructions and, with nothing selected, the text of the focused field (direct download build) or a picture of the front window for Dictate Prompt and Prompt & Read.
 - Text for TTS audio generation.
 - Chat messages, attachments, screenshots, and tool results for Gemini chat.
 - Meeting audio chunks for Live Meeting transcription.
@@ -102,7 +102,7 @@ Google's processing and retention are governed by Google's policies and the term
 When you choose OpenAI models, WhisperShortcut sends the minimum needed audio, text, images, chat messages, tool results, or prompt context to OpenAI using your OpenAI API key. This may include:
 
 - Dictation audio for OpenAI Transcribe.
-- Clipboard text and voice instructions for OpenAI Dictate Prompt.
+- Clipboard or selected text, voice instructions and, with nothing selected, the text of the focused field (direct download build) or a picture of the front window for OpenAI Dictate Prompt.
 - Chat messages, screenshots, image attachments, and tool results for OpenAI chat.
 - Optional hosted web search requests when enabled for supported OpenAI chat models.
 

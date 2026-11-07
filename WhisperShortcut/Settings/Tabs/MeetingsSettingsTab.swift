@@ -112,7 +112,7 @@ struct MeetingsSettingsTab: View {
         }
       )
       if viewModel.data.selectedTranscriptionModelForMeetings.isGemini && !GeminiCredentialProvider.shared.hasCredential() {
-        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model.")
+        Text("Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model.")
           .font(.callout)
           .foregroundColor(.secondary)
           .textSelection(.enabled)

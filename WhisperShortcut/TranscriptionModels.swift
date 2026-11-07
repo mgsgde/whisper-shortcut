@@ -850,10 +850,20 @@ struct GeminiChatRequest: Codable {
   struct GeminiGenerationConfig: Codable {
     let responseModalities: [String]?
     let speechConfig: GeminiSpeechConfig?
-    
+    /// How hard the model may think. Nil fields are omitted by synthesized Codable.
+    let thinkingConfig: ThinkingConfig?
+
+    /// `thinkingLevel` (`minimal`/`low`/`medium`/`high`) or `thinkingBudget`. A nil field is
+    /// left out of the JSON.
+    struct ThinkingConfig: Codable {
+      let thinkingLevel: String?
+      let thinkingBudget: Int?
+    }
+
     enum CodingKeys: String, CodingKey {
       case responseModalities = "responseModalities"
       case speechConfig = "speechConfig"
+      case thinkingConfig = "thinkingConfig"
     }
   }
   

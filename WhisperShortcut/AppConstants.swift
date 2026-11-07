@@ -240,8 +240,6 @@ Output rules (CRITICAL):
   /// items tagged `latest`.
   static let sparkleFeedURL = "https://github.com/mgsgde/whisper-shortcut/releases/latest/download/appcast.xml"
   static let privacyPolicyURL = "https://whispershortcut.com/privacy"
-  /// Tip link: compare Gemini models (speed, intelligence, pricing).
-  static let geminiModelsComparisonURL = "https://mgsgde.github.io/gemini-models/"
 
   /// Short version string from Info.plist (e.g. "1.2.3").
   static var appVersion: String {

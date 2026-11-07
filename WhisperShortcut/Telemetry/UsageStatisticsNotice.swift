@@ -114,7 +114,7 @@ struct UsageStatisticsNoticeView: View {
       }
 
       HStack(spacing: 12) {
-        Text("You can change this anytime in Settings → Privacy & Permissions.")
+        Text("You can change this anytime in Settings → Permissions & Privacy.")
           .font(.caption)
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
