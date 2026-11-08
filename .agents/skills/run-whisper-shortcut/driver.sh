@@ -60,6 +60,7 @@ other_instance_running() {
   local pid
   # The installed release (/Applications) owns the hotkeys whatever its process name is.
   for pid in $(pgrep -f "^/Applications/WhisperShortcut" 2>/dev/null); do
+    [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == *" --mcp-stdio"* ]] && continue
     [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == /Applications/WhisperShortcut* ]] && return 0
   done
   for pid in $(pgrep -x "$APP" 2>/dev/null); do

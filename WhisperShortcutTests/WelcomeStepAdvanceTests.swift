@@ -14,6 +14,10 @@ struct WelcomeStepAdvanceTests {
     #expect(WelcomeStep.permissions.canAdvance(micStatus: .denied))
     #expect(!WelcomeStep.permissions.canAdvance(micStatus: .notDetermined))
     #expect(!WelcomeStep.permissions.canAdvance(micStatus: .notApplicable))
+    // An unresolved 🌐 conflict with Fn on holds the permissions step, even with the mic answered.
+    #expect(!WelcomeStep.permissions.canAdvance(micStatus: .granted, fnSetupResolved: false))
+    #expect(!WelcomeStep.permissions.canAdvance(micStatus: .denied, fnSetupResolved: false))
+    #expect(WelcomeStep.permissions.canAdvance(micStatus: .granted, fnSetupResolved: true))
     for step in [WelcomeStep.intro, .tryIt, .done] {
       for status: PermissionStatus in [.granted, .denied, .notDetermined, .notApplicable] {
         #expect(step.canAdvance(micStatus: status))

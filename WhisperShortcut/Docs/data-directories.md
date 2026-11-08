@@ -50,13 +50,13 @@ Both shipped builds are sandboxed. `WhisperShortcut.entitlements` (direct/GitHub
 
 - **Same team, any channel:** the App Store build and the direct build both pass the MACL check. Installing a newer `.dmg` over an older one with the same signing changes nothing.
 - **Signature change between installs:** the container is bound to the code identity of the build that created it. Suppose it was created by a build that was not signed by Team `Z59J7V26UT`, such as an ad-hoc ("Sign to Run Locally") branch build, a re-signed copy, or another team. A later Developer ID build then counts as "another app" to macOS. It gets the "would like to access data from other apps" prompt once. If that prompt was denied or never seen, it gets a silent `EPERM`, even though `system-prompts.md` is still on disk. The reverse case, a team build first and an ad-hoc build afterwards, is blocked the same way.
-- **Denied prompt:** the denial is stored in TCC (`kTCCServiceSystemPolicyAppData`), and every later read fails with `EPERM` and no prompt. `tccutil reset SystemPolicyAppData com.magnusgoedde.whispershortcut` followed by a relaunch brings the prompt back; answer Allow. Full Disk Access is the in-app suggestion, but it is not verified to lift an App Data denial for a sandboxed app. If it does not help, use the `tccutil` reset.
+- **Denied prompt:** the denial is stored in TCC (`kTCCServiceSystemPolicyAppData`), and every later read fails with `EPERM` and no prompt. `tccutil reset SystemPolicyAppData com.magnusgoedde.whispershortcut` followed by a relaunch brings the prompt back; answer Allow. The app no longer suggests Full Disk Access. If it does not help, use the `tccutil` reset.
 
 Before 2026-10-19 the app treated that `EPERM` as "file missing". It tried to write defaults, `loadSection` returned nil, and dictation ran on the default prompts with nothing on screen to say why. Now `SystemPromptsStore` uses `stat` and tells `ENOENT` (create defaults) apart from every other errno (unreadable). For an unreadable file it:
 
 - logs `SYSTEM-PROMPTS: … exists but cannot be read: EPERM (Operation not permitted)`;
 - refuses every write, so the file is never replaced;
-- shows an alert at launch and a banner in the prompt editors that point to Full Disk Access.
+- shows an alert at launch and a banner in the prompt editors that explain the App Data prompt (quit, reopen, Allow; otherwise reinstall from the same source).
 
 Creating the file uses `O_EXCL` (`.withoutOverwriting`), so even a misdetected "missing" cannot replace an existing file.
 

@@ -1,10 +1,15 @@
+#if !APP_STORE
 import ScreenCaptureKit
+#endif
+import AppKit
 import SwiftUI
 
 /// Dictate Prompt Settings Tab — model, screen context, tools and prompt. The shortcut is set in General.
 struct SpeechToPromptSettingsTab: View {
   @ObservedObject var viewModel: SettingsViewModel
   @FocusState.Binding var focusedField: SettingsFocusField?
+  /// Live Screen Recording status for the caption under Front window as fallback.
+  @State private var screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -76,14 +81,22 @@ struct SpeechToPromptSettingsTab: View {
   @ViewBuilder
   private var screenshotContextSection: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
+      #if APP_STORE
       SectionHeader(
         title: "Screen Context",
         systemImage: "menubar.dock.rectangle",
-        subtitle: "Send a screenshot of your screen with each spoken Dictate Prompt, so the model sees what you see."
+        subtitle: "Dictate Prompt reads your selection from a picture of the front window, never the whole screen."
+      )
+      screenRecordingStatusRow
+      #else
+      SectionHeader(
+        title: "Screen Context",
+        systemImage: "menubar.dock.rectangle",
+        subtitle: "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there."
       )
 
       HStack(alignment: .center, spacing: 16) {
-        Text("Include screenshot:")
+        Text("Front window as fallback:")
           .font(.body)
           .fontWeight(.medium)
           .frame(width: SettingsConstants.labelWidth, alignment: .leading)
@@ -98,7 +111,10 @@ struct SpeechToPromptSettingsTab: View {
               Task {
                 do {
                   _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                 } catch {
+                  // The call itself is the request, including when macOS refuses it.
+                  UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasRequestedScreenRecording)
                   DebugLogger.logWarning("SCREENSHOT SETTINGS: Screen recording permission not granted")
                 }
               }
@@ -110,16 +126,46 @@ struct SpeechToPromptSettingsTab: View {
           }
         ))
           .toggleStyle(SwitchToggleStyle())
-          .accessibilityLabel("Screenshot context")
+          .accessibilityLabel("Front window as fallback")
 
         Spacer()
       }
 
-      Text("Needs Screen Recording permission.")
+      Text("Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers.")
         .font(.callout)
         .foregroundColor(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+      screenRecordingStatusRow
+      #endif
     }
+    .onAppear(perform: refreshScreenRecordingStatus)
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      refreshScreenRecordingStatus()
+    }
+  }
+
+  /// Live Screen Recording status, plus Allow… while it is not granted.
+  @ViewBuilder
+  private var screenRecordingStatusRow: some View {
+    HStack(spacing: 8) {
+      PermissionStatusBadge(status: screenRecordingStatus)
+      if screenRecordingStatus != .granted {
+        Button("Allow…") {
+          PermissionStatusChecker.requestThenOpenSystemSettings(for: .screenRecording)
+          refreshScreenRecordingStatus()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            refreshScreenRecordingStatus()
+          }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .pointerCursorOnHover()
+      }
+    }
+  }
+
+  private func refreshScreenRecordingStatus() {
+    screenRecordingStatus = PermissionStatusChecker.status(for: .screenRecording)
   }
 
   // MARK: - Usage Instructions
