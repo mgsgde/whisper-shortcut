@@ -26036,6 +26036,46 @@
           }
         }
       }
+    },
+    "Drops a short clip (under 2 seconds) whose transcript is nothing but one of those phrases. Longer clips and real sentences that merely contain one are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwirft einen kurzen Clip (unter 2 Sekunden), dessen Transkript nur aus einer dieser Phrasen besteht. Längere Clips und echte Sätze, die eine davon lediglich enthalten, bleiben erhalten."
+          }
+        }
+      }
+    },
+    "Filter known silence hallucinations" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekannte Stille-Halluzinationen filtern"
+          }
+        }
+      }
+    },
+    "Silence Hallucinations" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stille-Halluzinationen"
+          }
+        }
+      }
+    },
+    "Offline Whisper was trained on subtitled video, so on breath or room noise it sometimes writes subtitle filler — usually \"Thank you.\" Applies to offline Whisper only." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Whisper wurde mit untertitelten Videos trainiert. Bei Atemgeräuschen oder Raumrauschen schreibt es deshalb manchmal Untertitel-Füllsatz — meist „Thank you.“ Gilt nur für Offline-Whisper."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
