@@ -285,15 +285,6 @@ struct Qwen3TTSService {
       let samples = audio.asArray(Float.self)
       guard !samples.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
-      // Without a frozen clip the first sentence is still the one that defines the voice (the
-      // calibration above failed to store, e.g. disk full). Later sentences must never
-      // overwrite the reference, or the voice would drift sentence by sentence.
-      let referenceWasNil = referenceAudio == nil
-      if referenceWasNil {
-        referenceAudio = audio
-        referenceText = sentence
-      }
-
       // The checkpoint pads chunks it cannot speak (a URL without a scheme, a byline, "7–8
       // minutes") with seconds of near-silence at the front — measured 15 s of lead-in on a
       // text whose first chunk held a news-site header. Trim that padding before it reaches
@@ -305,6 +296,15 @@ struct Qwen3TTSService {
         DebugLogger.log(
           "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) was silent after trimming; skipping")
         continue
+      }
+      // Without a frozen clip the first sentence is still the one that defines the voice (the
+      // calibration above failed to store, e.g. disk full). Later sentences must never
+      // overwrite the reference, or the voice would drift sentence by sentence. A silent
+      // sentence was skipped above, so it never becomes the reference.
+      let referenceWasNil = referenceAudio == nil
+      if referenceWasNil {
+        referenceAudio = audio
+        referenceText = sentence
       }
       let pcm = Self.pcm16(from: trimmedSamples, sourceRate: Double(model.sampleRate))
       merged.append(pcm)
@@ -557,31 +557,52 @@ struct Qwen3TTSService {
     return chunks
   }
 
-  /// Drops leading and trailing near-silence from a generated chunk. The checkpoint pads text it
-  /// cannot vocalize (headers, bylines, bare domains) with long silent lead-ins instead of
-  /// skipping them, and a trailing tail of the same kind delays the next chunk's playback.
+  /// RMS level (per 10 ms window) below which audio counts as silence when trimming.
+  static let silenceRMSThreshold: Float = 0.02
+  /// Silence kept before the first speech window, so soft onsets (/h/, /f/, /s/) are not clipped.
+  static let silenceLeadMarginSeconds = 0.04
+  /// Trailing silence kept after the last speech window: decays stay intact and consecutive
+  /// chunks (played back to back) keep a natural pause between sentences.
+  static let silenceTailMarginSeconds = 0.2
+
+  /// Trims the near-silence the checkpoint pads around text it cannot vocalize (headers, bylines,
+  /// bare domains), without taking the natural pause between sentences with it.
   ///
-  /// The threshold is deliberately generous: normal speech on these checkpoints sits well above
-  /// 0.02 amplitude, while the padding is a low hum far below it. A short fade (5 ms) is applied
-  /// at both cut points so the trim itself cannot produce an audible click. A chunk that is
-  /// silent throughout comes back empty — the caller's `emptyAudio` guard then fails the
-  /// sentence instead of playing nothing for its full duration.
+  /// Speech boundaries come from a windowed RMS (10 ms) against `silenceRMSThreshold`, so a single
+  /// click inside a long pad does not count as speech and a soft onset is not cut. Only silence
+  /// beyond a 40 ms lead margin and a 200 ms tail margin is removed. A 5 ms fade is applied only
+  /// where a cut actually happens, so the trim cannot click. A chunk with no speech window comes
+  /// back empty; the caller skips that sentence.
   static func trimmingSilence(_ samples: [Float], sampleRate: Int) -> [Float] {
-    let threshold: Float = 0.02
-    let fade = max(1, sampleRate / 200)  // ~5 ms
     guard !samples.isEmpty else { return samples }
+    let window = max(1, sampleRate / 100)  // 10 ms
+    let fade = max(1, sampleRate / 200)  // ~5 ms
 
-    var first = 0
-    while first < samples.count, abs(samples[first]) < threshold { first += 1 }
-    guard first < samples.count else { return [] }
+    var firstSpeech: Int?
+    var lastSpeechEnd = 0
+    var start = 0
+    while start < samples.count {
+      let end = min(start + window, samples.count)
+      var sum: Float = 0
+      for i in start..<end { sum += samples[i] * samples[i] }
+      if (sum / Float(end - start)).squareRoot() >= silenceRMSThreshold {
+        if firstSpeech == nil { firstSpeech = start }
+        lastSpeechEnd = end
+      }
+      start = end
+    }
+    guard let firstSpeech else { return [] }
 
-    var last = samples.count - 1
-    while last > first, abs(samples[last]) < threshold { last -= 1 }
-
-    var trimmed = Array(samples[first...last])
-    for i in 0..<min(fade, trimmed.count) { trimmed[i] *= Float(i) / Float(fade) }
-    for i in 0..<min(fade, trimmed.count) {
-      trimmed[trimmed.count - 1 - i] *= Float(i) / Float(fade)
+    let from = max(0, firstSpeech - Int(silenceLeadMarginSeconds * Double(sampleRate)))
+    let to = min(samples.count, lastSpeechEnd + Int(silenceTailMarginSeconds * Double(sampleRate)))
+    var trimmed = Array(samples[from..<to])
+    if from > 0 {
+      for i in 0..<min(fade, trimmed.count) { trimmed[i] *= Float(i) / Float(fade) }
+    }
+    if to < samples.count {
+      for i in 0..<min(fade, trimmed.count) {
+        trimmed[trimmed.count - 1 - i] *= Float(i) / Float(fade)
+      }
     }
     return trimmed
   }
