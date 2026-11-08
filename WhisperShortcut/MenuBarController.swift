@@ -180,7 +180,17 @@ class MenuBarController: NSObject {
   /// Dictate Live (plans/active/live-dictate-insert.md): non-nil from the start of a live recording
   /// until its last piece is inserted or it is discarded. Its pieces are the recorder's rotated
   /// chunks, cut at every short pause.
-  private var liveDictationSession: LiveDictationSession?
+  private var liveDictationSession: LiveDictationSession? {
+    didSet {
+      #if !APP_STORE && canImport(Sparkle)
+      // Sparkle must not pop its window (and take focus) while pieces are being inserted.
+      let active = liveDictationSession != nil
+      guard active != (oldValue != nil) else { return }
+      UpdaterService.setDictateLiveActive(active)
+      if !active { Task { @MainActor in UpdaterService.shared.showDeferredUpdateIfAny() } }
+      #endif
+    }
+  }
   /// Bundle id of the app the current live dictation inserts into.
   private var liveTargetBundleId: String?
   /// What the previous live dictation ended with, while nothing has moved the caret since.
@@ -1578,6 +1588,7 @@ class MenuBarController: NSObject {
       pendingRecordingMode: pendingRecordingMode,
       currentJobMode: currentJob?.mode,
       isTTSPlaying: ttsPlayback.isPlaying,
+      isLiveDictationFinishing: liveDictationSession != nil,
       isOfflineMode: OfflineMode.isEnabled,
       readAloudRunsOnDevice: ReadAloudPreferences.model.provider.isOnDevice,
       hasTranscriptionCredential: TranscriptionModel.loadSelected().hasRequiredCredential,
@@ -1651,6 +1662,8 @@ class MenuBarController: NSObject {
       stopRecordingAfterTailDelay()
     case .ignored(.otherMeetingSegmentActive):
       DebugLogger.logWarning("MEETING-SEGMENT: Another segment already active, ignoring dictation")
+    case .ignored(.liveDictationFinishing):
+      DebugLogger.log("LIVE-DICTATE: Shortcut ignored — the last pieces are still being inserted")
     case .cancelProcessing:
       cancelInFlightTranscription()
     case .cancelPendingStart:
@@ -3820,8 +3833,8 @@ class MenuBarController: NSObject {
   }
 
   #if !APP_STORE
-  /// Types `text` as synthesized Unicode key events (at most 20 UTF-16 units each), Return for line
-  /// breaks. Flags are cleared on every event so a held modifier cannot leak in. Synchronous like
+  /// Types `text` as synthesized Unicode key events (at most 20 UTF-16 units each), Shift+Return for
+  /// line breaks. Flags are cleared on every event so a held modifier cannot leak in. Synchronous like
   /// `postCommandChord`; returns the number of chunks posted.
   @MainActor
   private func typeLivePiece(_ text: String) -> Int {
@@ -3841,7 +3854,10 @@ class MenuBarController: NSObject {
       case .newline:
         for down in [true, false] {
           let event = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: down)
-          event?.flags = []
+          // Shift+Return, not Return: in a browser a bare Return submits a single-line <input> and
+          // sends in chat-like web apps, while Shift+Return is a line break in textareas and
+          // contenteditable (Gmail body) and does nothing in an <input>.
+          event?.flags = .maskShift
           event?.post(tap: .cghidEventTap)
           usleep(2_000)
         }

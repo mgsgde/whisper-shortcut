@@ -26,6 +26,8 @@ enum BlockReason: Equatable {
 
 enum IgnoreReason: Equatable {
   case otherMeetingSegmentActive, meetingSegmentProcessing, liveMeetingActive, otherModeRecording, otherProcessing
+  /// Dictate Live has stopped recording and is still decoding / inserting its last pieces.
+  case liveDictationFinishing
 }
 
 enum ModeAvailability: Equatable {
@@ -44,6 +46,8 @@ struct ModeAvailabilityInput: Equatable {
   var pendingRecordingMode: AppState.RecordingMode?
   var currentJobMode: AppState.RecordingMode?
   var isTTSPlaying: Bool
+  /// A Dictate Live session is still open (recording or inserting its last pieces).
+  var isLiveDictationFinishing = false
   var isOfflineMode: Bool
   /// True when Read Aloud runs on this Mac: the macOS voice or an on-device MLX voice. Offline
   /// Mode blocks only the cloud voices.
@@ -147,6 +151,11 @@ enum ModeAvailabilityRules {
     if i.isLiveMeetingActive {
       return meetingSegmentArm(
         i, own: .dictation, hasCredential: i.hasTranscriptionCredential, need: .transcription)
+    }
+    // A second press while Dictate Live inserts its last pieces must not cancel: the text not yet
+    // at the cursor would be lost silently.
+    if i.appState.isTranscriptionPipelineProcessing, i.isLiveDictationFinishing {
+      return .ignored(.liveDictationFinishing)
     }
     // A long Dictate Prompt also runs through the chunk phases; Dictate must not cancel it.
     if i.appState.isTranscriptionPipelineProcessing, i.currentJobMode != .prompt {
