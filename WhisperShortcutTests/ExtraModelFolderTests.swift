@@ -20,7 +20,7 @@ struct ExtraModelFolderTests {
       "/Users/me/testmodels/large-v3-v20240930_turbo",
       "/Users/me/testmodels/whisper-large-v3-v20240930_turbo",
       "/Users/me/testmodels/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930_turbo",
-      "/Users/me/testmodels/models/openai/whisper-large-v3-v20240930_turbo",
+      "/Users/me/testmodels/models--argmaxinc--whisperkit-coreml/snapshots",
     ])
   }
 
@@ -28,7 +28,7 @@ struct ExtraModelFolderTests {
   func whisperCandidateOrderShortVariant() {
     let paths = ExtraModelFolder.whisperCandidates(in: folder, variant: "base").map(\.path)
     #expect(paths.first == "/Users/me/testmodels/openai_whisper-base")
-    #expect(paths.last == "/Users/me/testmodels/models/openai/whisper-base")
+    #expect(paths.last == "/Users/me/testmodels/models--argmaxinc--whisperkit-coreml/snapshots")
     #expect(paths.count == 5)
   }
 

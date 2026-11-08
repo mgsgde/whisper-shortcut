@@ -145,7 +145,13 @@ enum ExtraModelFolder {
 
   /// Every place a WhisperKit model may sit inside the user's folder, in the order they are tried:
   /// a flat copy first (what a user who dragged a folder over has), then a copied WhisperKit tree,
-  /// then a Hugging Face cache layout.
+  /// then a real Hugging Face cache layout (`models--argmaxinc--whisperkit-coreml/snapshots/<hash>`).
+  ///
+  /// The cache repo folder name is `org--repo` with double dashes, and the model itself sits one
+  /// level below a snapshot hash — `whisperModelURL` expands those snapshot children, the same
+  /// way `mlxModelURL` does. A plain `models/openai/whisper-<variant>` path is *not* a Hugging
+  /// Face cache: that layout only exists inside WhisperKit's own download folder and holds the
+  /// tokenizer, not the weights.
   static func whisperCandidates(in folder: URL, variant: String) -> [URL] {
     let flat = [
       "openai_whisper-\(variant)",
@@ -156,8 +162,8 @@ enum ExtraModelFolder {
       .appendingPathComponent("models/argmaxinc/whisperkit-coreml")
       .appendingPathComponent("openai_whisper-\(variant)")
     let huggingFaceCache = folder
-      .appendingPathComponent("models/openai")
-      .appendingPathComponent("whisper-\(variant)")
+      .appendingPathComponent("models--argmaxinc--whisperkit-coreml")
+      .appendingPathComponent("snapshots")
     return flat + [whisperKitTree, huggingFaceCache]
   }
 
@@ -171,9 +177,23 @@ enum ExtraModelFolder {
   static func whisperModelURL(for variant: String) -> URL? {
     guard let folder = resolveFolderURL() else { return nil }
     return withAccess(to: folder) {
-      let existing = whisperCandidates(in: folder, variant: variant).filter {
-        FileManager.default.fileExists(atPath: $0.path)
+      // The Hugging Face cache candidate is a `snapshots` directory, not the model folder
+      // itself — its children are. Expand it into one candidate per snapshot hash, so a real
+      // cache (`models--argmaxinc--whisperkit-coreml/snapshots/<hash>/openai_whisper-…`) is
+      // found. The other candidates are model folders already.
+      var candidates: [URL] = []
+      for candidate in whisperCandidates(in: folder, variant: variant) {
+        if candidate.lastPathComponent == "snapshots" {
+          let hashes = (try? FileManager.default.contentsOfDirectory(atPath: candidate.path)) ?? []
+          candidates.append(
+            contentsOf: hashes.sorted().map {
+              candidate.appendingPathComponent($0).appendingPathComponent("openai_whisper-\(variant)")
+            })
+        } else {
+          candidates.append(candidate)
+        }
       }
+      let existing = candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
       if let complete = existing.first(where: { ModelManager.incompleteComponent(at: $0) == nil }) {
         return complete
       }

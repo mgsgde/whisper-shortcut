@@ -27,11 +27,14 @@ struct SpeechToTextSettingsTab: View {
       // Available Models Section
       offlineModelsSection
 
-      SpacedSectionDivider()
-
       // Where those models may come from. Right after the list, because it changes what the list
-      // reports as downloaded.
-      ModelFolderSection { modelManager.objectWillChange.send() }
+      // reports as downloaded. Only while an offline model is relevant: with a cloud model
+      // selected the section would ask the user to organize downloads they are not offered.
+      if offlineModelsSectionIsRelevant {
+        SpacedSectionDivider()
+
+        ModelFolderSection { modelManager.objectWillChange.send() }
+      }
 
       SpacedSectionDivider()
 
@@ -457,11 +460,20 @@ struct SpeechToTextSettingsTab: View {
     }
   }
 
+  /// The model folder section only matters while an offline model is in play: selected, or
+  /// offered at all (a Mac below the RAM floor offers none, and a cloud-only user never sees a
+  /// download row the folder could serve). `isOffline` covers the selected model; the offerable
+  /// lists cover the rest — Qwen3-ASR included, which is not an `OfflineModelType`.
+  private var offlineModelsSectionIsRelevant: Bool {
+    viewModel.data.selectedTranscriptionModel.isOffline
+      || !OfflineModelType.offerable.isEmpty
+      || Qwen3ModelType.asr.isOfferable
+  }
+
   /// Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it is not an
   /// `OfflineModelType` and cannot come from `OfflineModelType.offerable`. Same row, own store.
   @ViewBuilder
-  private var qwen3ASRRow: some View {
-    if Qwen3ModelType.asr.isOfferable {
+  private var qwen3ASRRow: some View {    if Qwen3ModelType.asr.isOfferable {
       ModelDownloadRow(
         store: Qwen3ModelManager.shared,
         model: Qwen3ModelType.asr,
