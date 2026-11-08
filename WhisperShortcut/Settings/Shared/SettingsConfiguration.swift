@@ -947,7 +947,7 @@ enum TTSProvider {
     switch self {
     case .system, .localMLX: return true
     case .gemini, .openai, .xai: return false
-    case .custom: return OfflineMode.allows(CustomEndpointPreferences.baseURL ?? "")
+    case .custom: return OfflineMode.allows(URL(string: CustomEndpointPreferences.baseURL ?? ""))
     }
   }
 
