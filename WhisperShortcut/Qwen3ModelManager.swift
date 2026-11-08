@@ -56,13 +56,14 @@ enum Qwen3ModelType: String, CaseIterable, DownloadableModel {
     String(format: "~%.1f GB", Double(estimatedSizeMB) / 1000)
   }
 
-  /// Physical RAM (GiB) a Mac needs before this entry is offered. The two 1.7B checkpoints and
-  /// the 0.6B CustomVoice checkpoint all run comfortably next to the system and Parakeet on a
-  /// 16 GB Mac — the same floor `LocalLLMModelType.qwen359B` uses. Same mechanism as
+  /// Physical RAM (GiB) a Mac needs before this entry is offered. The 0.6B CustomVoice voice is
+  /// offered from 16 GB; the two 1.7B checkpoints (ASR, VoiceDesign) from 32 GB, so they do not
+  /// compete with Parakeet and other apps for memory on a 16 GB Mac. Same mechanism as
   /// `LocalLLMModelType.minimumPhysicalMemoryGB` / `isOfferable`.
   var minimumPhysicalMemoryGB: Int {
     switch self {
-    case .asr, .voiceDesign, .customVoice: return 16
+    case .customVoice: return 16
+    case .asr, .voiceDesign: return 32
     }
   }
 
