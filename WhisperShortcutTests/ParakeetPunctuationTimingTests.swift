@@ -272,4 +272,19 @@ struct ParakeetPunctuationTimingTests {
       LiveDictation.finishPiece(strichpunkt, mode: .spokenOnly, timedMarks: true)
         == "Hüfte frei beweglich; Knie mit Erguss")
   }
+
+  // "Leukozyten 11,8 , Natrium": the comma token is glued to the digit token.
+  private func commaAfterDigitTokens(gap: Double) -> [Token] {
+    [
+      word("11,8", 0.0, 0.6), mark(",", 0.6, 0.62),
+      word("Natrium", 0.62 + gap, 1.1 + gap),
+    ]
+  }
+
+  @Test("a spoken comma right after a number survives a short gap, a comma after a word does not")
+  func commaAfterDigit() {
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: commaAfterDigitTokens(gap: 0.07), audioDuration: 3) == [true])
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: commaAfterDigitTokens(gap: 0.02), audioDuration: 3) == [false])
+    #expect(ParakeetPunctuationTiming.spokenMarks(tokens: commaTokens(gap: 0.07), audioDuration: 2) == [false])
+  }
 }

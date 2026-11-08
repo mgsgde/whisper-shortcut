@@ -61,6 +61,7 @@ enum ParakeetVocabularyGuard {
     if !spelledOut, wordCount(original) > wordCount(term) + 1 { return false }
 
     if similarity(original, term) < minimumSimilarity { return false }
+    if isLongRealWordWithOtherStart(original, term: term) { return false }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
     if words.count > wordCount(term),
       words.contains(where: {
@@ -87,6 +88,30 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// (h) A single long word (>= 8 letters) is a real word of its own, not a misspelt term, unless
+  /// it is nearly the term (similarity >= 0.85) or starts with the same three letters:
+  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie",
+  /// "Hypnoterapie" still is.
+  private static func isLongRealWordWithOtherStart(_ span: String, term: String) -> Bool {
+    guard wordCount(span) == 1 else { return false }
+    let word = squashed(span)
+    guard word.count >= 8 else { return false }
+    if similarity(span, term) >= 0.85 { return false }
+    return word.prefix(3) != squashed(term).prefix(3)
+  }
+
+  /// Short everyday words a short all-caps glossary term ("AN", "ES") would otherwise capitalise.
+  private static let shortEverydayWords: Set<String> = [
+    "an", "ab", "es", "da", "im", "au", "so", "um", "er", "ja", "zu", "in", "ob", "am",
+  ]
+
+  private static func isEverydayShortTerm(_ term: String) -> Bool {
+    guard term.count <= 3 else { return false }
+    let lower = term.lowercased()
+    return shortEverydayWords.contains(lower) || GermanCommonWords.contains(lower)
+      || SpokenPunctuation.functionWords.contains(lower)
+  }
 
   /// True when `span` is one word that starts like (or is the start of) the first part of a
   /// hyphenated `term` and is not the whole term: "Hüfte" for "Hüft-TEP".
@@ -140,7 +165,7 @@ enum ParakeetVocabularyGuard {
   /// itself ends in a digit ("B12" is not split from a following digit).
   static func restoreGlossaryCasing(in text: String, glossaryTerms: [String]) -> String {
     var result = text
-    for term in glossaryTerms where hasDistinctiveCasing(term) {
+    for term in glossaryTerms where hasDistinctiveCasing(term) && !isEverydayShortTerm(term) {
       let endsInDigit = term.last?.isNumber ?? false
       var searchStart = result.startIndex
       while searchStart < result.endIndex,

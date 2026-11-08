@@ -24,6 +24,8 @@ import Foundation
 enum ParakeetPunctuationTiming {
   /// Mid-text mark ("," "." "?" "!"): minimum silence to the next token for the mark to count as spoken.
   static let minGapToNextToken: TimeInterval = 0.120
+  /// Mid-text "," directly after a digit token: shorter minimum gap (see `spokenMarks`).
+  static let minGapAfterDigitComma: TimeInterval = 0.060
   /// Final mark ("," "." "?" "!"): minimum audio left after it. Stricter than the mid-text gap
   /// because a recording always runs a little past the last word. 0.400 s since 2026-11-04
   /// (was 0.240 s): on live pieces this keeps 21 of 23 spoken piece-end marks and 0 of 42 guessed.
@@ -95,7 +97,13 @@ enum ParakeetPunctuationTiming {
       if index == tokens.count - 1 {
         return audioDuration - tokens[index].end >= minTailAfterFinalMark
       }
-      return tokens[index + 1].start - tokens[index].end >= minGapToNextToken
+      let gap = tokens[index + 1].start - tokens[index].end
+      // A comma the speaker says right after a number ("11,8 Komma Natrium") is glued in time to
+      // the digit token; the pause shows up shorter. Commas after words keep the strict gap.
+      if bare(tokens[index]) == ",", index > 0, bare(tokens[index - 1]).last?.isNumber == true {
+        return gap >= minGapAfterDigitComma
+      }
+      return gap >= minGapToNextToken
     }
   }
 

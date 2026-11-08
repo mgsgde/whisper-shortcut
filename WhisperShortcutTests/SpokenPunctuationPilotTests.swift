@@ -380,4 +380,54 @@ struct SpokenPunctuationPilotTests {
     Self.check(["A neue Zeile", "neuer Absatz B"], "A\n\nB", label: "10d")
     Self.check(["A neue Zeile", "B"], "A\nB", label: "10e one break stays")
   }
+
+  // MARK: Round 2
+
+  private typealias Guard = ParakeetVocabularyGuard
+
+  @Test func longRealWordIsNotRewrittenIntoSimilarGlossaryTerm() {
+    let terms = ["Hypnotherapie"]
+    for span in ["Psychotherapie", "Physiotherapie"] {
+      #expect(
+        !Guard.accepts(.init(originalSpan: span, term: "Hypnotherapie"), glossaryTerms: terms),
+        "\(span) must stay")
+    }
+    #expect(Guard.accepts(.init(originalSpan: "Hypnotherapie", term: "Hypnotherapie"), glossaryTerms: terms))
+    #expect(Guard.accepts(.init(originalSpan: "Hypnoterapie", term: "Hypnotherapie"), glossaryTerms: terms))
+    #expect(Guard.accepts(.init(originalSpan: "Ipril", term: "Ramipril"), glossaryTerms: ["Ramipril"]))
+  }
+
+  @Test func shortAllCapsTermDoesNotCapitalizeEverydayWord() {
+    for term in ["AN", "AB", "ES", "DA", "IM", "AU"] {
+      let out = Guard.restoreGlossaryCasing(
+        in: "Ich rufe sie morgen an und es ist da im Auto ab", glossaryTerms: [term])
+      #expect(out == "Ich rufe sie morgen an und es ist da im Auto ab", "\(term): \(out)")
+    }
+    #expect(
+      Guard.restoreGlossaryCasing(in: "gdb und ptbs und ekg", glossaryTerms: ["GdB", "PTBS", "EKG"])
+        == "GdB und PTBS und EKG")
+  }
+
+  @Test func punktBeforeNumberAtSentenceEnd() {
+    Self.check(["entlassen Punkt zwei Wochen später"], "entlassen. Zwei Wochen später", label: "R2-3a")
+    Self.check(["entlassen Punkt 2 Wochen später"], "entlassen. 2 Wochen später", label: "R2-3b")
+  }
+
+  @Test func punktBetweenDigitsIsIcdDot() {
+    Self.check(["Diagnose E11 Punkt 9 gesichert"], "Diagnose E11.9 gesichert", label: "R2-3c")
+    Self.check(["F33 Punkt 1 liegt vor"], "F33.1 liegt vor", label: "R2-3d")
+  }
+
+  @Test func punktNounBeforeNumberStaysWord() {
+    Self.check(["Siehe Punkt 2 im Brief"], "Siehe Punkt 2 im Brief", label: "R2-3e")
+    Self.check(["unter Punkt drei steht es"], "unter Punkt drei steht es", label: "R2-3f")
+    Self.check(["wie in Punkt 3 beschrieben"], "wie in Punkt 3 beschrieben", label: "R2-3g")
+  }
+
+  @Test func zuPunktAtSentenceEnd() {
+    Self.check(
+      ["Das Gewicht nahm um 3 kg zu Punkt"], "Das Gewicht nahm um 3 kg zu.", label: "R2-4a")
+    Self.check(
+      ["Wir stimmen der Empfehlung zu Punkt"], "Wir stimmen der Empfehlung zu.", label: "R2-4b")
+  }
 }

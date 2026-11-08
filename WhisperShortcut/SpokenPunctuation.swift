@@ -161,12 +161,16 @@ enum SpokenPunctuation {
     rule(
       #"[ \t,;]*(?:(?:\bdrei|(?<!\d)3)[ \t-]*p(?:ü|ue)nktchen|\bauslassungspunkte)\b[ \t,.;]*"#,
       "… "),
+    // ICD codes: "E11 Punkt 9" → "E11.9", "F33 Punkt 1" → "F33.1" (letter, 1-3 digits, Punkt, digit).
+    rule(#"(?<=\b\p{L}\d{1,3})[ \t]*\bpunkt\b[ \t]*(?=\d)"#, "."),
     // A model period before or after the word ("vor. Punkt", "Punkt.") is swallowed: the
     // `repeatedMarks` pass collapses the pair to one mark.
-    // Not the noun: "Punkt 3", "Punkt drei", "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt".
-    // A following number word counts as the number, same as a digit ("Unter Punkt drei steht").
+    // Not the noun: "Siehe Punkt 2.1", "zu Punkt", "der wichtigste Punkt". A number (digit or number
+    // word) after "Punkt" only keeps the noun when "Punkt" follows a preposition ("Siehe Punkt 2",
+    // "vgl. Punkt drei"); otherwise it is the command ("entlassen Punkt zwei Wochen später" →
+    // "entlassen. Zwei Wochen später").
     rule(
-      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?![ \t]*(?:\d|(?:\#(punktNumberWords))\b))[ \t,.;]*"#,
+      #"[ \t,;]*(?<!\b(?:zu|unter|im|in|der|den|dem|des|einen|einem|ein|jeden|letzten|wichtigste|wichtigsten)[ \t])\bpunkt\b(?!(?<=\b(?:siehe|vgl|auf|an|am|bei|von|nach|bis|ab|zum|zur|gemäß|laut)[ \t]punkt)[ \t]*(?:\d|(?:\#(punktNumberWords))\b))[ \t,.;]*"#,
       ". \u{1}"),
     // After a particle that is also a verb prefix ("morgens ein Punkt", "den Befund zu Punkt",
     // "wieder in Punkt") the word is the command, unless a number or a noun follows ("ein Punkt
