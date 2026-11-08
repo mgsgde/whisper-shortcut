@@ -87,7 +87,7 @@ German, final text). Pilot "words" = WER without the spoken Komma/Punkt words.
 | nemotron-stream-1120 | 6.2 % | 11.8 % | 0.64 s | 0.24 |
 | nemotron-stream-560 | 6.2 % | 10.0 % | 0.40 s | 0.58 |
 
-Not adopted: lower latency, but more errors, ~23× Ultra's compute and a second download. Reasoning
+Not adopted (owner, 2026-11-08): lower latency, but more errors and ~23× Ultra's compute. Reasoning
 in `plans/model-audits/2026-11-08-nemotron-unified-asr.md`.
 
 ### 2026-11-04 — successors to Parakeet Ultra, and the glossary gate (M1 Pro, macOS 26.6.2, FluidAudio 0.18.2)

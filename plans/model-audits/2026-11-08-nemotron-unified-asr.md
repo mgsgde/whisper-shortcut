@@ -1,10 +1,10 @@
-VERDICT: Nemotron Unified is not worth it, neither offline nor streaming. Measured 2026-11-08: offline it loses to Ultra again (pilot 10.4 % vs 7.1 %); streaming at 560 ms gives text 0.4 s behind speech, but with more errors (pilot 10.0 % vs 7.1 %), 0.58× real time of compute on an M1 Pro, and an extra download. The live preview stays on SlidingWindow over Ultra as planned.
+VERDICT: Nemotron Unified is not worth it, neither offline nor streaming. Measured 2026-11-08: offline it loses to Ultra again (pilot 10.4 % vs 7.1 %); streaming at 560 ms puts text 0.4 s behind speech, but with more errors (pilot 10.0 % vs 7.1 %) and 0.58x real-time compute on an M1 Pro. Dictate Live (Ultra per pause, ~0.7 s after each phrase) stays as it is. Not offered, not even as an option (owner, 2026-11-08).
 
 # Nemotron Unified ASR 0.6B as offline (and streaming) dictation, 2026-11-08
 
 Candidate: `FluidInference/nemotron-labs-unified-asr-0.6b-coreml`, a Core ML conversion of
 `nvidia/nemotron-labs-unified-asr-0.6b`. Why it matters: Parakeet Ultra does not stream
-(`plans/active/parakeet-offline.md` D2), and live dictation (`plans/active/live-dictate-preview.md`)
+(`plans/active/parakeet-offline.md` D2), and live dictation
 is what holds the practice pilots back on offline. This model claims one checkpoint for both
 offline and streaming, in 25 European languages.
 
@@ -21,7 +21,7 @@ wrong. The offline arms `nemotron-unified` and `nemotron-unified+vocab` were alr
 So offline replacement of Ultra is off the table, and Glossary boosting on this family inserts
 terms that were never said. What remains is streaming: buffered streaming can only be as good as
 the offline decode or worse, so the question is narrower — is Nemotron's live text good and fast
-enough for the opt-in live preview (`live-dictate-preview.md`), compared with the planned
+enough for live dictation, compared with the
 `SlidingWindowAsrManager` over Ultra, which needs no extra download? The model facts below come
 from the cards and FluidAudio's source.
 
@@ -92,7 +92,7 @@ caveats:
 
 - **Streaming:** rescoring runs on word-aligned segments, and corrections surface
   **retroactively** through the partial transcript. FluidAudio's CustomVocabulary doc says
-  cross-chunk detection is "not supported", and multi-word terms only partly. In a live preview
+  cross-chunk detection is "not supported", and multi-word terms only partly. In Dictate Live
   that inserts text, a retroactive correction means rewriting text already shown. That is a
   design question for `live-dictate-insert.md`, not only a model question.
 - **Unproven on this family:** the docs show English-only boosting benchmarks, and the default
@@ -200,7 +200,7 @@ Streaming arms were fed 80 ms buffers as fast as possible. Two reading notes:
 |---|---:|---:|---:|---:|---:|---:|
 | parakeet-ultra (offline, ships) | 5.1 % | 17.1 % | **7.1 %** | 10/12 | — | 0.025 |
 | nemotron-unified (offline) | 5.8 % | 18.3 % | 10.4 % | 10/12 | — | 0.045 |
-| parakeet-ultra-sliding (planned preview engine) | **4.8 %** | 17.1 % | **7.1 %** | 10/12 | not measured | 0.022 |
+| parakeet-ultra-sliding (reference) | **4.8 %** | 17.1 % | **7.1 %** | 10/12 | not measured | 0.022 |
 | nemotron-stream-2080 | 5.1 % | 18.7 % | 10.4 % | 10/12 | 1.28 / 1.84 s | 0.13 |
 | nemotron-stream-1120 | 6.2 %* | 20.2 % | 11.8 % | 10/12 | 0.64 / 0.96 s | 0.24 |
 | nemotron-stream-560 | 6.2 %* | 17.5 % | 10.0 % | 10/12 | 0.40 / 0.48 s | 0.58 |
@@ -222,12 +222,22 @@ measured.
   - ~40 % more word errors on the pilot dictation (10.0 % vs 7.1 %)
   - 0.58× real time of compute on an M1 Pro (~23× Ultra's)
   - a second ~570 MB+ download beside Ultra
-- **The live preview** (`live-dictate-preview.md`) only shows text. Stop still pastes Ultra's
-  offline decode, so the preview's accuracy matters less than its cost, and Nemotron's cost is the
-  higher one. Keep the planned SlidingWindow over Ultra: no extra download, Ultra-level final
-  text, 1 s tentative updates.
+- **Against Dictate Live as it ships** (#324–#339): the recording is cut at every short pause
+  (`ChunkedDictateRecorder.RotationPolicy.live`: 0.6 s silence, pieces ≥ 1.5 s). Each piece goes
+  through Ultra with the Glossary and is typed at the cursor, so text lands ~0.7 s after each
+  phrase, the way Dragon does it. Nemotron would type continuously, ~0.4 s behind each word (RNNT
+  buffered streaming does not revise emitted words, so direct insertion would be possible). The
+  gain is only inside long sentences without a pause. The price:
+  - 3 points more pilot errors
+  - ~23× the compute during the whole dictation
+  - rebuilding Dictate Live's piece-based post-processing (Glossary guard, spoken punctuation,
+    casing after pauses)
+- **Decision (owner, 2026-11-08):** not offered, not as "Recommended" and not as an option. The
+  pilots care about accuracy first, and the compute matters on laptops. A download only happens
+  when a user picks the model, so download size alone would not have ruled it out.
+  (An earlier version of this file argued from a live *preview*. That came from misreading
+  "live dictation". The owner does not need a preview; Dictate Live is the feature.)
 
-**What would reopen it:** pilots who use the preview complain that it lags (the 1 s tentative /
-~13 s confirmed rhythm), *and* a newer Nemotron or FluidAudio cache-aware path cuts the compute.
-Then re-run `--engines parakeet-ultra-sliding,nemotron-stream-560` with a lag metric for the
-tentative sliding-window text.
+**What would reopen it:** users of Dictate Live say the wait until text appears after a phrase is
+too long, *and* a Nemotron or FluidAudio streaming path with much lower compute exists. Then re-run
+`--engines parakeet-ultra,nemotron-stream-560` on the pilot set.
