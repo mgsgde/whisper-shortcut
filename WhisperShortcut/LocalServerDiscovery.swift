@@ -9,7 +9,6 @@ struct DiscoveredServer: Identifiable, Equatable {
   /// Which server software answered. Only used for the label — every one of them speaks the same
   /// `GET /v1/models` and `POST /v1/audio/transcriptions`, so the request shape never changes.
   enum Kind: Equatable {
-    case mlxAudio
     case lmStudio
     case liteLLM
     case ollama
@@ -19,12 +18,11 @@ struct DiscoveredServer: Identifiable, Equatable {
     /// Product names stay untranslated; only the fallback is prose.
     var displayName: String {
       switch self {
-      case .mlxAudio: return "MLX"
       case .lmStudio: return "LM Studio"
       case .liteLLM: return "LiteLLM"
       case .ollama: return "Ollama"
       case .llamaCpp: return "llama.cpp"
-      case .unknown: return String(localized: "Unknown server")
+      case .unknown: return String(localized: "OpenAI-compatible server")
       }
     }
   }
@@ -54,7 +52,7 @@ enum LocalServerDiscovery {
 
   /// The five defaults, in the order the "nothing answered" line lists them.
   static let candidates: [(port: Int, kind: DiscoveredServer.Kind)] = [
-    (8000, .mlxAudio),      // mlx-audio / mlx_lm.server
+    (8000, .unknown),       // vLLM, mlx_lm.server, mlx-audio and others
     (1234, .lmStudio),      // LM Studio
     (4000, .liteLLM),       // LiteLLM
     (11434, .ollama),       // Ollama
@@ -264,60 +262,4 @@ private struct LocalModelsResponse: Decodable {
   struct Entry: Decodable {
     let id: String
   }
-}
-
-// MARK: - Known speech models
-
-/// A short list of speech-to-text models known to work behind an OpenAI-compatible server.
-///
-/// These are **not** offline models of this app: they run on the user's own server, are downloaded
-/// by that server (mlx-audio pulls them from Hugging Face on first use), and are never touched by
-/// `ModelManager` or `OfflineModelType`. Do not wire them into the download path — the app only
-/// sends the repo id as the multipart `model` field.
-///
-/// A curated list rather than a live Hugging Face search: the point is to remove the guesswork for
-/// the common case, and a search would put the user back in front of a hundred repos with no
-/// telling which ones the server can actually load.
-enum KnownSpeechModels {
-
-  struct Entry: Identifiable {
-    /// The Hugging Face repo id, which is also the model id mlx-audio serves.
-    let repoID: String
-    /// Product name, shown as-is.
-    let displayName: String
-    /// Download size on the server, rounded.
-    let sizeLabel: String
-    /// One line on what it is for. Product facts, not prose to translate.
-    let note: String
-
-    var id: String { repoID }
-  }
-
-  static let all: [Entry] = [
-    Entry(
-      repoID: "mlx-community/Qwen3-ASR-0.6B-8bit",
-      displayName: "Qwen3-ASR 0.6B",
-      sizeLabel: "1.0 GB",
-      note: "Multilingual, the popular default"),
-    Entry(
-      repoID: "mlx-community/Qwen3-ASR-1.7B-8bit",
-      displayName: "Qwen3-ASR 1.7B",
-      sizeLabel: "2.4 GB",
-      note: "Multilingual, larger sibling"),
-    Entry(
-      repoID: "mlx-community/nemotron-3.5-asr-streaming-0.6b",
-      displayName: "Nemotron 3.5 ASR 0.6B",
-      sizeLabel: "1.2 GB",
-      note: "Streaming, German tagged"),
-    Entry(
-      repoID: "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
-      displayName: "Voxtral Mini 4B Realtime",
-      sizeLabel: "3.1 GB",
-      note: "Mistral, realtime, German tagged"),
-    Entry(
-      repoID: "mlx-community/parakeet-tdt-0.6b-v3",
-      displayName: "Parakeet TDT 0.6B v3",
-      sizeLabel: "2.5 GB",
-      note: "NVIDIA Parakeet, 25 EU languages"),
-  ]
 }

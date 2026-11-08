@@ -42,13 +42,13 @@ struct LocalServerDiscoveryTests {
     let body = data(#"{"object":"list","data":[{"id":"mlx-community/Qwen3-ASR-0.6B-8bit"}]}"#)
     let server = try #require(LocalServerDiscovery.server(
       baseURL: "http://localhost:8000/v1",
-      kind: .mlxAudio,
+      kind: .unknown,
       statusCode: 200,
       data: body))
 
     #expect(server.baseURL == "http://localhost:8000/v1")
     #expect(server.host == "localhost:8000")
-    #expect(server.kind == .mlxAudio)
+    #expect(server.kind == .unknown)
     #expect(server.modelIDs == ["mlx-community/Qwen3-ASR-0.6B-8bit"])
     #expect(server.id == server.baseURL)
   }
@@ -58,7 +58,7 @@ struct LocalServerDiscoveryTests {
     let body = data(#"{"object":"list","data":[{"id":"a"}]}"#)
     #expect(LocalServerDiscovery.server(
       baseURL: "http://localhost:8000/v1",
-      kind: .mlxAudio,
+      kind: .unknown,
       statusCode: statusCode,
       data: body) == nil)
   }
@@ -67,7 +67,7 @@ struct LocalServerDiscoveryTests {
   func rejectsMalformedBody() {
     #expect(LocalServerDiscovery.server(
       baseURL: "http://localhost:8000/v1",
-      kind: .mlxAudio,
+      kind: .unknown,
       statusCode: 200,
       data: data("<html>hello</html>")) == nil)
   }
@@ -106,27 +106,13 @@ struct LocalServerDiscoveryTests {
   @Test("The five usual ports are probed, in the documented order")
   func candidatePorts() {
     #expect(LocalServerDiscovery.candidates.map(\.port) == [8000, 1234, 4000, 11434, 8080])
-    #expect(LocalServerDiscovery.candidates.map(\.kind) == [.mlxAudio, .lmStudio, .liteLLM, .ollama, .llamaCpp])
+    #expect(LocalServerDiscovery.candidates.map(\.kind) == [.unknown, .lmStudio, .liteLLM, .ollama, .llamaCpp])
   }
 
   @Test("A typed URL is labelled by its port when it is a known one")
   func kindFromPort() {
-    #expect(LocalServerDiscovery.kind(forBaseURL: "http://localhost:8000/v1") == .mlxAudio)
+    #expect(LocalServerDiscovery.kind(forBaseURL: "http://localhost:8000/v1") == .unknown)
     #expect(LocalServerDiscovery.kind(forBaseURL: "http://127.0.0.1:11434/v1") == .ollama)
     #expect(LocalServerDiscovery.kind(forBaseURL: "https://example.com/v1") == .unknown)
-  }
-
-  // MARK: - Curated speech models
-
-  @Test("The curated list is the five verified repos, each with a size")
-  func knownSpeechModels() {
-    #expect(KnownSpeechModels.all.map(\.repoID) == [
-      "mlx-community/Qwen3-ASR-0.6B-8bit",
-      "mlx-community/Qwen3-ASR-1.7B-8bit",
-      "mlx-community/nemotron-3.5-asr-streaming-0.6b",
-      "mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit",
-      "mlx-community/parakeet-tdt-0.6b-v3",
-    ])
-    #expect(KnownSpeechModels.all.allSatisfy { !$0.sizeLabel.isEmpty && !$0.displayName.isEmpty })
   }
 }

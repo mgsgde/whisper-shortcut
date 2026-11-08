@@ -25231,16 +25231,6 @@
         }
       }
     },
-    "Known models…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bekannte Modelle…"
-          }
-        }
-      }
-    },
     "No answer" : {
       "localizations" : {
         "de" : {
@@ -25271,16 +25261,6 @@
         }
       }
     },
-    "Speech-to-text models known to work behind an OpenAI-compatible server. They run on that server, not in this app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spracherkennungsmodelle, die hinter einem OpenAI-kompatiblen Server nachweislich funktionieren. Sie laufen auf diesem Server, nicht in dieser App."
-          }
-        }
-      }
-    },
     "The model ids this server reported on /v1/models." : {
       "localizations" : {
         "de" : {
@@ -25291,12 +25271,12 @@
         }
       }
     },
-    "Unknown server" : {
+    "OpenAI-compatible server" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unbekannter Server"
+            "value" : "OpenAI-kompatibler Server"
           }
         }
       }

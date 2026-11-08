@@ -245,20 +245,6 @@ struct OwnServerEndpointSection: View {
               UserDefaults.standard.set(newValue, forKey: UserDefaultsKeys.customTranscriptionModelID)
             }
 
-          Menu("Known models…") {
-            ForEach(KnownSpeechModels.all) { model in
-              Button {
-                setTranscriptionModel(model.repoID)
-              } label: {
-                Text(verbatim: "\(model.displayName) · \(model.sizeLabel)")
-              }
-              .help(model.note)
-            }
-          }
-          .controlSize(.small)
-          .fixedSize()
-          .help("Speech-to-text models known to work behind an OpenAI-compatible server. They run on that server, not in this app.")
-
           if !probedModelIDs.isEmpty {
             Menu("From this server…") {
               ForEach(probedModelIDs, id: \.self) { modelID in
