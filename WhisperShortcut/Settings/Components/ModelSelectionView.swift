@@ -38,8 +38,7 @@ struct ModelSelectionView: View {
 
       ModelDetailsFooter(
         description: selectedTranscriptionModel.description,
-        costLevel: selectedTranscriptionModel.costLevel,
-        showsCompareLink: true)
+        costLevel: selectedTranscriptionModel.costLevel)
     }
   }
 

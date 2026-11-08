@@ -39,9 +39,12 @@
 			<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</array>
 
-		<!-- Reads AppleFnUsageType so Fn dictation can default on only when macOS's
-		     "Press 🌐 key to" is "Do Nothing". Read-only; the app never writes this domain. -->
-		<key>com.apple.security.temporary-exception.shared-preference.read-only</key>
+		<!-- AppleFnUsageType in com.apple.HIToolbox ("Press 🌐 key to"). Read so Fn dictation can
+		     default on only when it is "Do Nothing"; written only by the onboarding / Settings
+		     button "Free the 🌐 key for WhisperShortcut", after the user confirmed that exact change
+		     (GlobeKeyUsage.freeForFnDictation). Direct build only: the App Store entitlements
+		     carry no shared-preference exception. -->
+		<key>com.apple.security.temporary-exception.shared-preference.read-write</key>
 		<array>
 			<string>com.apple.HIToolbox</string>
 		</array>

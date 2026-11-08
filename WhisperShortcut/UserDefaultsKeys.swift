@@ -130,6 +130,10 @@ enum UserDefaultsKeys {
   /// the app in System Settings). macOS suppresses the prompt after a prior denial, so once this
   /// is set we deep-link into System Settings instead of re-prompting.
   static let hasShownAccessibilityPrompt = "hasShownAccessibilityPrompt"
+  /// Whether this app has called a Screen Recording request API (`CGRequestScreenCaptureAccess`
+  /// or `SCShareableContent`). `CGPreflightScreenCaptureAccess` cannot tell "never asked" from
+  /// "denied"; once this is set, a missing grant is `.denied`.
+  static let hasRequestedScreenRecording = "hasRequestedScreenRecording"
   static let hasAppliedLaunchAtLoginDefault = "hasAppliedLaunchAtLoginDefault"
   static let hasCompletedOnboarding = "hasCompletedOnboarding"
   /// WelcomeStep.rawValue the onboarding tour is currently on. Persisted so a mid-tour
@@ -322,6 +326,11 @@ enum UserDefaultsKeys {
   /// models?" offer the user declined. A key for a provider not in this list asks again.
   /// See `CloudModelOffer`.
   static let cloudModelOfferDeclinedProviders = "cloudModelOfferDeclinedProviders"
+
+  /// Bundle path for which the user chose Not Now on the move-to-Applications offer.
+  /// The same path is not offered again; a different path (a new download) is.
+  /// See `ApplicationsFolderMove.shouldOffer`.
+  static let applicationsMoveDeclinedPath = "applicationsMoveDeclinedPath"
 
   // MARK: - MCP Server
 

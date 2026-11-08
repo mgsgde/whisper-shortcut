@@ -174,6 +174,36 @@ struct DictatePromptSelectionTests {
     #expect(decoded.loadMs == 1200)
   }
 
+  @Test("The field slot resolves once and does not hang")
+  func fieldSlot() async {
+    let notes = FocusedFieldSnapshot(appName: "Notes", textBeforeCaret: "Hello", textAfterCaret: "")
+    let capture = DictatePromptSelectionCapture()
+    async let pending = capture.fieldValue(timeout: .milliseconds(400))
+    try? await Task.sleep(for: .milliseconds(20))
+    capture.resolveField(notes)
+    #expect(await pending == notes)
+    capture.resolveField(FocusedFieldSnapshot(appName: "Other", textBeforeCaret: "no", textAfterCaret: ""))
+    #expect(await capture.fieldValue() == notes)
+
+    let secure = DictatePromptSelectionCapture()
+    secure.resolveField(nil, allowsWindowImage: false)
+    #expect(await secure.fieldValue() == nil)
+    #expect(await secure.fieldAllowsWindowImage() == false)
+    secure.resolveField(notes, allowsWindowImage: true)
+    #expect(await secure.fieldAllowsWindowImage() == false)
+
+    #expect(await DictatePromptSelectionCapture.resolved("x").fieldValue() == nil)
+    #expect(await DictatePromptSelectionCapture.fromService("x").fieldValue() == nil)
+    #expect(await DictatePromptSelectionCapture.resolved(nil).fieldAllowsWindowImage())
+
+    let hung = DictatePromptSelectionCapture()
+    let started = ContinuousClock.now
+    #expect(await hung.fieldValue(timeout: .milliseconds(40)) == nil)
+    #expect(await hung.fieldAllowsWindowImage(timeout: .milliseconds(40)) == false)
+    let elapsed = started.duration(to: .now)
+    #expect(elapsed < .milliseconds(300))
+  }
+
   @Test("The output rule tells the model what a compose turn means")
   func outputRuleCoversCompose() {
     #expect(AppConstants.promptModeOutputRule.contains("NO SELECTED TEXT"))
@@ -184,5 +214,27 @@ struct DictatePromptSelectionTests {
     #expect(!AppConstants.dictatePromptComposeMarker.contains("write the text the voice instruction dictates"))
     #expect(!AppConstants.promptModeOutputRule.contains("write the text the user dictated"))
     #expect(AppConstants.promptModeOutputRule.contains("carry out a spoken request instead of echoing it"))
+  }
+
+  @Test("VS Code whole-line copy on an empty selection is not a selection")
+  func editorEmptySelectionLineCopyIsDetected() {
+    let json = #"{"version":1,"isFromEmptySelection":true,"multicursorText":null,"mode":"plaintext"}"#
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: json))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: #"{"isFromEmptySelection" : true}"#))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: #"{"version":1,"isFromEmptySelection":false}"#))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: json.data(using: .utf16LittleEndian), vscodeEditorData: nil))
+    #expect(DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: json.data(using: .utf8), vscodeEditorData: nil))
+    let falseJson = json.replacingOccurrences(of: "true", with: "false")
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: falseJson.data(using: .utf16LittleEndian), vscodeEditorData: nil))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: nil, vscodeEditorData: nil))
+    #expect(!DictatePromptSelectionDecision.isEditorEmptySelectionLineCopy(
+      customData: Data([0x01, 0x02, 0x03, 0xff]), vscodeEditorData: "hello"))
   }
 }

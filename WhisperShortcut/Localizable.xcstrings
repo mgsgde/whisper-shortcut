@@ -4243,7 +4243,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Automatisches Einfügen setzt diktierten Text am Cursor ein, indem es ⌘V simuliert. Das erlaubt macOS nur mit der Berechtigung Bedienungshilfen.\n\nDas Diktat funktioniert auch ohne: Ihr Text liegt immer in der Zwischenablage, Sie fügen ihn mit ⌘V selbst ein.\n\nUm automatisches Einfügen einzuschalten, klicken Sie auf „Systemeinstellungen öffnen“. Dort:\n1. Datenschutz & Sicherheit → Bedienungshilfen öffnen\n2. WhisperShortcut einschalten\n\nSchon in der Liste, aber es geht trotzdem nicht? Das passiert nach einem Wechsel zwischen App-Store- und GitHub-Version, macOS merkt sich die alte Kopie. Entfernen Sie WhisperShortcut mit der Taste − aus der Liste und fügen Sie es wieder hinzu. Oder klicken Sie auf „Befehl zum Zurücksetzen kopieren“ und führen Sie ihn im Terminal aus, um den alten Eintrag zu löschen."
+            "value" : "Automatisches Einfügen setzt diktierten Text am Cursor ein, indem es ⌘V simuliert. Das erlaubt macOS nur mit der Berechtigung Bedienungshilfen.\n\nDas Diktat funktioniert auch ohne: Ihr Text liegt immer in der Zwischenablage, Sie fügen ihn mit ⌘V selbst ein.\n\nUm automatisches Einfügen einzuschalten, klicken Sie auf „Systemeinstellungen öffnen“. Dort:\n1. Datenschutz & Sicherheit → Bedienungshilfen öffnen\n2. WhisperShortcut einschalten\n\nSchon in der Liste, aber es geht trotzdem nicht? Das passiert nach einem Wechsel zwischen App-Store- und GitHub-Version, macOS merkt sich die alte Kopie. Entfernen Sie WhisperShortcut mit der Schaltfläche − aus der Liste und fügen Sie es wieder hinzu. Oder klicken Sie auf „Befehl zum Zurücksetzen kopieren“ und führen Sie ihn im Terminal aus, um den alten Eintrag zu löschen."
           }
         }
       }
@@ -4696,6 +4696,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chat"
+          }
+        }
+      }
+    },
+    "Chat & Meetings" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat & Meetings"
           }
         }
       }
@@ -5899,16 +5910,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Befehle"
-          }
-        }
-      }
-    },
-    "Compare Gemini models" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gemini-Modelle vergleichen"
           }
         }
       }
@@ -7819,6 +7820,16 @@
         }
       }
     },
+    "Dictate Prompt does not read password manager windows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest keine Fenster von Passwort-Managern."
+          }
+        }
+      }
+    },
     "Dictate Prompt drafts messages the way you write them. The app learns your style by itself from emails you sent and from what you dictate into Mail, Messages, WhatsApp or Slack." : {
       "localizations" : {
         "de" : {
@@ -9378,16 +9389,6 @@
         }
       }
     },
-    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für Patientendaten oder Fallnotizen: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Datenschutz & Berechtigungen."
-          }
-        }
-      }
-    },
     "For your own OpenAI-compatible /v1/audio/transcriptions server (faster-whisper-server, whisper-asr-webservice, or any proxy). If you want OpenAI's hosted models, use the OpenAI entries in the model picker instead." : {
       "localizations" : {
         "de" : {
@@ -9478,6 +9479,26 @@
         }
       }
     },
+    "Front window as fallback" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall"
+          }
+        }
+      }
+    },
+    "Front window as fallback:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorderes Fenster als Rückfall:"
+          }
+        }
+      }
+    },
     "Fully offline recipe: (1) Dictate → Offline Whisper, (2) Dictate Prompt → Local (this page), (3) keep Ollama or LM Studio running. Audio is transcribed on-device first, then rewritten by your local model — no cloud, no API key." : {
       "localizations" : {
         "de" : {
@@ -9564,6 +9585,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "gemini-models"
+          }
+        }
+      }
+    },
+    "Gemma 4 26B A4B (Offline)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 26B A4B (offline)"
           }
         }
       }
@@ -10887,7 +10918,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst, wenn Sie WhisperShortcut beenden und neu öffnen. Nutzen Sie dafür die Taste unten."
+            "value" : "Gerade in den Systemeinstellungen aktiviert? macOS übernimmt die Änderung erst, wenn Sie WhisperShortcut beenden und neu öffnen. Nutzen Sie dafür die Schaltfläche unten."
           }
         }
       }
@@ -11724,22 +11755,22 @@
         }
       }
     },
-    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, give WhisperShortcut Full Disk Access in System Settings › Privacy & Security, then quit and reopen the app." : {
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nTo fix it, open Privacy & Security › Full Disk Access, drag WhisperShortcut from the Finder window that opens into the list, turn it on, then quit and reopen the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben geben Sie WhisperShortcut unter Systemeinstellungen › Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie wieder."
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nZum Beheben öffnen Sie Datenschutz & Sicherheit › Festplattenvollzugriff, ziehen Sie WhisperShortcut aus dem Finder-Fenster, das sich öffnet, in die Liste, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
           }
         }
       }
     },
-    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Give WhisperShortcut Full Disk Access in Privacy & Security, then quit and reopen the app." : {
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. Open Privacy & Security, drag WhisperShortcut from the Finder window into the Full Disk Access list, turn it on, then quit and reopen the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Geben Sie WhisperShortcut unter Datenschutz & Sicherheit den Festplattenvollzugriff, beenden Sie die App und öffnen Sie sie erneut."
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Öffnen Sie Datenschutz & Sicherheit, ziehen Sie WhisperShortcut aus dem Finder-Fenster in die Liste „Festplattenvollzugriff“, schalten Sie es ein, beenden Sie die App und öffnen Sie sie erneut."
           }
         }
       }
@@ -12165,16 +12196,6 @@
         }
       }
     },
-    "Microphone Access Needed" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofonzugriff nötig"
-          }
-        }
-      }
-    },
     "Microphone delivered no audio — check System Settings ▸ Privacy ▸ Microphone or restart WhisperShortcut." : {
       "localizations" : {
         "de" : {
@@ -12241,6 +12262,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minimal"
+          }
+        }
+      }
+    },
+    "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mlx-community/gemma-4-26B-A4B-it-qat-4bit • MLX in der App, ohne Server • ca. 15,6 GB • Offline • Nur Chat, braucht 32 GB RAM"
           }
         }
       }
@@ -12415,6 +12446,17 @@
         }
       }
     },
+    "More" : {
+      "comment" : "Settings sidebar section",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehr"
+          }
+        }
+      }
+    },
     "More models" : {
       "localizations" : {
         "de" : {
@@ -12435,12 +12477,12 @@
         }
       }
     },
-    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Gemini 3.1 Pro and Gemini 3.7 Flash cannot run below Low and are clamped to it." : {
+    "More thinking can help on hard audio, accents, and unusual vocabulary, at the cost of latency — on Flash-Lite the cost is close to zero, on Pro it roughly doubles. Only Flash-Lite can run at Minimal; the other Gemini models are clamped to Low." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Gemini 3.1 Pro und Gemini 3.7 Flash laufen nicht unter Niedrig und werden darauf angehoben."
+            "value" : "Mehr Denkaufwand hilft bei schwierigem Ton, Akzenten und ungewöhnlichem Vokabular, kostet aber Zeit: Bei Flash-Lite fast nichts, bei Pro etwa das Doppelte. Nur Flash-Lite läuft auf Minimal; die anderen Gemini-Modelle werden auf Niedrig angehoben."
           }
         }
       }
@@ -12623,16 +12665,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Braucht ein Konto, Sie bezahlen den Anbieter"
-          }
-        }
-      }
-    },
-    "Needs Screen Recording permission." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Benötigt die Berechtigung „Bildschirmaufnahme“."
           }
         }
       }
@@ -13729,26 +13761,6 @@
         }
       }
     },
-    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
-          }
-        }
-      }
-    },
-    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Datenschutz & Berechtigungen aus."
-          }
-        }
-      }
-    },
     "Offline Mode keeps no usage logs, so there is nothing to measure." : {
       "localizations" : {
         "de" : {
@@ -14051,16 +14063,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nur lesen"
-          }
-        }
-      }
-    },
-    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten, Sie ändern alles später unter Einstellungen → Datenschutz & Berechtigungen."
           }
         }
       }
@@ -14905,22 +14907,22 @@
         }
       }
     },
-    "Optional. Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
+    "Lets you attach screenshots to chat messages and include screen context in Dictate Prompt requests." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
+            "value" : "Damit können Sie Bildschirmfotos an Chat-Nachrichten hängen und Bildschirminhalte in Dictate-Prompt-Anfragen mitgeben."
           }
         }
       }
     },
-    "Optional. Used only for auto-paste — inserting dictated text at your cursor by simulating a ⌘V keystroke. Off by default; enable auto-paste in Settings → General." : {
+    "Lets WhisperShortcut paste at your cursor, read the text you selected, and react to the Fn key. Auto-paste is on once you allow this; switch it off in Settings → General → Clipboard Behavior." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Optional. Wird nur für das automatische Einfügen gebraucht: Der diktierte Text wird per simuliertem ⌘V an der Cursorposition eingefügt. Standardmäßig aus, einschalten unter Einstellungen → Allgemein."
+            "value" : "Damit WhisperShortcut an der Cursorposition einfügen, markierten Text lesen und auf die Fn-Taste reagieren kann. Automatisches Einfügen ist an, sobald Sie das erlauben; ausschalten können Sie es unter Einstellungen → Allgemein → Zwischenablage."
           }
         }
       }
@@ -15170,7 +15172,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Benötigt die Berechtigung „Bedienungshilfen“."
+            "value" : "Fügt das Ergebnis am Cursor ein (⌘V). Braucht die Berechtigung „Bedienungshilfen“."
           }
         }
       }
@@ -15481,17 +15483,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenschutz"
-          }
-        }
-      }
-    },
-    "Privacy & Permissions" : {
-      "comment" : "Settings tab",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Datenschutz & Berechtigungen"
           }
         }
       }
@@ -17693,7 +17684,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bildschirmaufnahme fehlgeschlagen. Datenschutz & Berechtigungen wird geöffnet …"
+            "value" : "Bildschirmaufnahme fehlgeschlagen. Berechtigungen & Datenschutz wird geöffnet …"
           }
         }
       }
@@ -18836,22 +18827,22 @@
         }
       }
     },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model to dictate without a key." : {
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model to dictate without a key." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen und ohne Schlüssel diktieren."
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen und ohne Schlüssel diktieren."
           }
         }
       }
     },
-    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline Whisper model." : {
+    "Sign in with Google or add your API key in Settings → Accounts for Gemini models. You can also select an offline model." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Whisper-Modell wählen."
+            "value" : "Für Gemini-Modelle melden Sie sich mit Google an oder tragen Ihren API-Schlüssel unter Einstellungen → Konten ein. Sie können auch ein Offline-Modell wählen."
           }
         }
       }
@@ -19684,16 +19675,6 @@
         }
       }
     },
-    "System Audio Not Recorded" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Systemton wird nicht aufgenommen"
-          }
-        }
-      }
-    },
     "System Prompt" : {
       "localizations" : {
         "de" : {
@@ -20080,16 +20061,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die nächste Änderung, die Sie annehmen, wird ab dann gemessen."
-          }
-        }
-      }
-    },
-    "The other participants can't be heard, so only your microphone is recorded. Allow system audio recording for WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die anderen Teilnehmer sind nicht zu hören, deshalb wird nur Ihr Mikrofon aufgenommen. Erlauben Sie WhisperShortcut die Systemaudioaufnahme."
           }
         }
       }
@@ -20526,26 +20497,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drei kurze Schritte: Offline- oder Cloud-Diktat wählen, das Mikrofon erlauben und einmal ausprobieren. Etwa eine Minute."
-          }
-        }
-      }
-    },
-    "Tip: Compare Gemini models (speed, intelligence, pricing):" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: Gemini-Modelle vergleichen (Tempo, Intelligenz, Preise):"
-          }
-        }
-      }
-    },
-    "Tip: Compare models (speed, intelligence, pricing):" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipp: Modelle vergleichen (Tempo, Intelligenz, Preise):"
           }
         }
       }
@@ -21954,6 +21905,16 @@
         }
       }
     },
+    "When nothing is selected, Dictate Prompt reads the text field you are writing in, so the result fits what is already there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ist nichts markiert, liest Dictate Prompt das Textfeld, in dem Sie schreiben, damit das Ergebnis zum vorhandenen Text passt."
+          }
+        }
+      }
+    },
     "When not Off, Improve from usage runs in the background at the chosen interval (e.g. every 14 days). You will be notified when it finishes." : {
       "localizations" : {
         "de" : {
@@ -21980,16 +21941,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wo das Popup erscheint und wie lange es bleibt"
-          }
-        }
-      }
-    },
-    "Whether anything may leave this Mac, and what WhisperShortcut can access on it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ob etwas diesen Mac verlassen darf und worauf WhisperShortcut hier zugreifen kann."
           }
         }
       }
@@ -22080,16 +22031,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "WhisperShortcut – Klicken Sie, um das Menü zu öffnen"
-          }
-        }
-      }
-    },
-    "WhisperShortcut can't hear the other participants. Allow WhisperShortcut under System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Until then the meeting is recorded from your microphone only." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht. Erlauben Sie WhisperShortcut unter Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Bildschirm- & Systemaudioaufnahme. Bis dahin wird das Meeting nur über Ihr Mikrofon aufgenommen."
           }
         }
       }
@@ -22214,22 +22155,12 @@
         }
       }
     },
-    "WhisperShortcut needs microphone access to record. Open System Settings ▸ Privacy & Security ▸ Microphone and enable WhisperShortcut." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "WhisperShortcut braucht Zugriff auf das Mikrofon, um aufzunehmen. Öffnen Sie Systemeinstellungen ▸ Datenschutz & Sicherheit ▸ Mikrofon und aktivieren Sie WhisperShortcut."
-          }
-        }
-      }
-    },
     "WhisperShortcut needs Screen Recording permission to capture screenshots. Review it in Privacy & Permissions — then quit and reopen WhisperShortcut for the change to take effect." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "WhisperShortcut braucht die Berechtigung für Bildschirmaufnahmen, um Bildschirmfotos zu machen. Prüfen Sie sie unter „Datenschutz & Berechtigungen“ und beenden und öffnen Sie WhisperShortcut danach neu, damit die Änderung wirkt."
+            "value" : "WhisperShortcut braucht die Berechtigung für Bildschirmaufnahme, um Bildschirmfotos zu machen. Prüfen Sie sie unter „Berechtigungen & Datenschutz“ und beenden und öffnen Sie WhisperShortcut danach neu, damit die Änderung wirkt."
           }
         }
       }
@@ -22580,16 +22511,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sie können das auch im Chat ändern lassen, z. B. „wenn ich ‚korrigieren‘ sage, nie übersetzen“. Änderungen dort landen in diesem Text."
-          }
-        }
-      }
-    },
-    "You can change this anytime in Settings → Privacy & Permissions." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das können Sie jederzeit unter Einstellungen → Datenschutz & Berechtigungen ändern."
           }
         }
       }
@@ -23855,7 +23776,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Benötigt Bedienungshilfen."
+            "value" : "Fn einmal drücken zum Starten, noch einmal zum Stoppen. Braucht Bedienungshilfen."
           }
         }
       }
@@ -24239,6 +24160,1033 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auch häufig genutzte Prompts anzeigen"
+          }
+        }
+      }
+    },
+    "%@ Recording AI prompt — meeting still recording" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ KI-Anweisung wird aufgenommen – Meeting wird weiter aufgenommen"
+          }
+        }
+      }
+    },
+    "Change Input Source" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabequelle ändern"
+          }
+        }
+      }
+    },
+    "Changes apply at once and can be undone below. Dictation and Chat instructions still wait for your approval: a meeting or email an AI app reads could contain text meant to change them. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gelten sofort und lassen sich unten widerrufen. Anweisungen für Diktat und Chat warten weiterhin auf Ihre Freigabe: Ein Meeting oder eine E-Mail, die eine KI-App liest, könnte Text enthalten, der sie ändern soll. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Deprecated – no longer available to new users. Consider switching to %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veraltet – für neue Nutzer nicht mehr verfügbar. Wechseln Sie am besten zu %@."
+          }
+        }
+      }
+    },
+    "Dictation language:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktiersprache:"
+          }
+        }
+      }
+    },
+    "Don’t see WhisperShortcut in the list? Drag this icon into the list." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut fehlt in der Liste? Ziehen Sie dieses Symbol in die Liste."
+          }
+        }
+      }
+    },
+    "Drag into the Accessibility list" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In die Liste der Bedienungshilfen ziehen"
+          }
+        }
+      }
+    },
+    "Each change opens here for you to accept, edit or decline. New glossary terms are added right away, since they never replace anything. Connect your AI app again below so it gets the new access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Änderung erscheint hier, damit Sie sie annehmen, bearbeiten oder ablehnen. Neue Glossarbegriffe werden sofort aufgenommen, weil sie nichts ersetzen. Verbinden Sie Ihre KI-App unten erneut, damit sie den neuen Zugriff bekommt."
+          }
+        }
+      }
+    },
+    "Failed to create audio buffer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiopuffer konnte nicht angelegt werden"
+          }
+        }
+      }
+    },
+    "Failed to create audio format" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioformat konnte nicht angelegt werden"
+          }
+        }
+      }
+    },
+    "Fn dictation won’t work yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn funktioniert noch nicht"
+          }
+        }
+      }
+    },
+    "Free the Key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taste freigeben"
+          }
+        }
+      }
+    },
+    "Free the 🌐 key above, or turn off Fn dictation, to continue." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie oben die 🌐-Taste frei oder schalten Sie Diktieren mit Fn aus, um fortzufahren."
+          }
+        }
+      }
+    },
+    "Free the 🌐 key for WhisperShortcut" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste für WhisperShortcut freigeben"
+          }
+        }
+      }
+    },
+    "Free the 🌐 key?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "🌐-Taste freigeben?"
+          }
+        }
+      }
+    },
+    "If macOS then asks for your password or Touch ID, that request comes from macOS itself — WhisperShortcut never sees it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt macOS danach nach Ihrem Passwort oder Touch ID, kommt diese Abfrage von macOS selbst – WhisperShortcut sieht sie nie."
+          }
+        }
+      }
+    },
+    "In Claude, open Settings → Developer → Edit Config, paste this into claude_desktop_config.json (merge it with any servers already there), then quit and reopen Claude. Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen Sie in Claude Einstellungen → Entwickler → Konfiguration bearbeiten, fügen Sie dies in claude_desktop_config.json ein (zusammen mit schon vorhandenen Servern), beenden Sie Claude und öffnen Sie es wieder. Braucht Node.js."
+          }
+        }
+      }
+    },
+    "Invalid Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültige Anmeldung"
+          }
+        }
+      }
+    },
+    "Move Here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hierher bewegen"
+          }
+        }
+      }
+    },
+    "Move WhisperShortcut to Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut in den Ordner „Programme“ bewegen?"
+          }
+        }
+      }
+    },
+    "Move WhisperShortcut yourself" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut selbst bewegen"
+          }
+        }
+      }
+    },
+    "Move and Relaunch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewegen und neu starten"
+          }
+        }
+      }
+    },
+    "Needs Node.js." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Node.js."
+          }
+        }
+      }
+    },
+    "No audio was generated for this text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Text wurde kein Audio erzeugt"
+          }
+        }
+      }
+    },
+    "Offline Mode and macOS permissions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline-Modus und macOS-Berechtigungen"
+          }
+        }
+      }
+    },
+    "Open Applications Folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner „Programme“ öffnen"
+          }
+        }
+      }
+    },
+    "Preparing report…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht wird vorbereitet …"
+          }
+        }
+      }
+    },
+    "Privacy, welcome tour, shortcuts, reset, and support" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutz, Einführung, Tastenkürzel, Zurücksetzen und Support"
+          }
+        }
+      }
+    },
+    "Processing AI prompt... Please wait" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "KI-Anweisung wird verarbeitet … Bitte warten"
+          }
+        }
+      }
+    },
+    "Processing text-to-speech... Please wait" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachausgabe wird erzeugt … Bitte warten"
+          }
+        }
+      }
+    },
+    "Quit WhisperShortcut, then drag it from the disk image window into the Applications folder and open it from there. If macOS asks for your password, that is macOS confirming the copy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beenden Sie WhisperShortcut, ziehen Sie die App dann aus dem Fenster des Disk-Images in den Ordner „Programme“ und öffnen Sie sie von dort. Fragt macOS nach Ihrem Passwort, bestätigt macOS damit nur das Kopieren."
+          }
+        }
+      }
+    },
+    "Replace" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ersetzen"
+          }
+        }
+      }
+    },
+    "Replace the copy in Applications?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kopie im Ordner „Programme“ ersetzen?"
+          }
+        }
+      }
+    },
+    "See and share an anonymous summary of how you use the app" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine anonyme Zusammenfassung Ihrer Nutzung ansehen und teilen"
+          }
+        }
+      }
+    },
+    "Share Usage Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsbericht teilen"
+          }
+        }
+      }
+    },
+    "Shortcuts and app behavior" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tastenkürzel und App-Verhalten"
+          }
+        }
+      }
+    },
+    "Show Emoji & Symbols" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emoji & Symbole einblenden"
+          }
+        }
+      }
+    },
+    "Start Dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktierfunktion starten"
+          }
+        }
+      }
+    },
+    "Taken from your Mac’s language. Choose Auto-detect if you switch languages while dictating." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus der Sprache Ihres Macs übernommen. Wählen Sie „Automatisch erkennen“, wenn Sie beim Diktieren die Sprache wechseln."
+          }
+        }
+      }
+    },
+    "The update check still reaches github.com — it sends only the app's version, never content. Switch it off in Settings → About → Updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Update-Prüfung erreicht weiterhin github.com. Sie sendet nur die App-Version, nie Inhalte. Abschalten unter Einstellungen → Über → Updates."
+          }
+        }
+      }
+    },
+    "The 🌐 key is free. Press Fn once to start dictating, again to stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die 🌐-Taste ist frei. Fn einmal drücken zum Starten, noch einmal zum Stoppen."
+          }
+        }
+      }
+    },
+    "There already is a WhisperShortcut in the Applications folder. It goes to the Trash and this one takes its place. Your settings and keys are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Ordner „Programme“ liegt bereits ein WhisperShortcut. Er wandert in den Papierkorb, und diese Version tritt an seine Stelle. Ihre Einstellungen und Schlüssel bleiben erhalten."
+          }
+        }
+      }
+    },
+    "This is everything the report contains. Nothing is sent automatically — pressing a send button opens your own mail or WhatsApp with this text prefilled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ist alles, was der Bericht enthält. Nichts wird automatisch gesendet: Eine Senden-Taste öffnet Ihr eigenes Mailprogramm oder WhatsApp mit diesem Text."
+          }
+        }
+      }
+    },
+    "Transcribing [%lld/%lld] - %lld active" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription [%lld/%lld] – %lld aktiv"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Transcribing [%1$lld/%2$lld] - %3$lld active"
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation and use %@ instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktieren mit Fn ausschalten und stattdessen %@ verwenden"
+          }
+        }
+      }
+    },
+    "Turn off Fn dictation instead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stattdessen Diktieren mit Fn ausschalten"
+          }
+        }
+      }
+    },
+    "Turn on \"Save usage data\" in Settings → Smart Improvement to collect this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie „Nutzungsdaten speichern“ unter Einstellungen → Smart Improvement ein, damit dies gesammelt wird"
+          }
+        }
+      }
+    },
+    "Usage report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nutzungsbericht"
+          }
+        }
+      }
+    },
+    "When you press 🌐 Fn, macOS currently does “%@” instead, so your dictation does not start. To fix this, set “Press 🌐 key to” to “Do Nothing” — once, and Fn dictates from then on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie 🌐 Fn drücken, führt macOS derzeit stattdessen „%@“ aus – Ihr Diktat startet deshalb nicht. Stellen Sie einmalig „Drücken der 🌐-Taste“ auf „Keine Aktion“, danach diktieren Sie mit Fn."
+          }
+        }
+      }
+    },
+    "WhisperShortcut - Click to record" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut – zum Aufnehmen klicken"
+          }
+        }
+      }
+    },
+    "WhisperShortcut app icon, draggable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut-App-Symbol, ziehbar"
+          }
+        }
+      }
+    },
+    "WhisperShortcut is running from the downloaded disk image or another temporary place. From there, macOS does not keep its permissions, and it is missing from the Accessibility list. Move it to the Applications folder and open it from there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut läuft direkt aus dem geladenen Disk-Image oder von einem anderen vorläufigen Ort. Dort behält macOS die Berechtigungen nicht, und die App fehlt in der Liste der Bedienungshilfen. Bewegen Sie sie in den Ordner „Programme“ und öffnen Sie sie von dort."
+          }
+        }
+      }
+    },
+    "WhisperShortcut will change one macOS setting: System Settings → Keyboard → “Press 🌐 key to” becomes “Do Nothing”. Pressing 🌐 Fn then only starts and stops your dictation. You can change it back there at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut ändert eine macOS-Einstellung: Systemeinstellungen → Tastatur → „Drücken der 🌐-Taste“ wird auf „Keine Aktion“ gesetzt. 🌐 Fn startet und stoppt dann nur noch Ihr Diktat. Sie können das dort jederzeit zurückstellen."
+          }
+        }
+      }
+    },
+    "You can revisit this tour any time from Settings → About." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Tour finden Sie jederzeit wieder unter Einstellungen → Über."
+          }
+        }
+      }
+    },
+    "You just updated. Replay the Welcome Tour below, or read the full notes on GitHub." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie haben gerade aktualisiert. Sehen Sie sich unten die Einführung noch einmal an oder lesen Sie die vollständigen Hinweise auf GitHub."
+          }
+        }
+      }
+    },
+    "macOS did not accept the change. Keyboard settings are open: choose “Do Nothing” next to “Press 🌐 key to”, then come back here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat die Änderung nicht übernommen. Die Tastatur-Einstellungen sind geöffnet: Wählen Sie bei „Drücken der 🌐-Taste“ die Option „Keine Aktion“ und kehren Sie dann hierher zurück."
+          }
+        }
+      }
+    },
+    "macOS needs your OK to copy WhisperShortcut into the Applications folder. Click “Move Here”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS braucht Ihr Einverständnis, um WhisperShortcut in den Ordner „Programme“ zu kopieren. Klicken Sie auf „Hierher bewegen“."
+          }
+        }
+      }
+    },
+    "⏳ Processing AI prompt..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ KI-Anweisung wird verarbeitet …"
+          }
+        }
+      }
+    },
+    "⏳ Processing text-to-speech..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⏳ Sprachausgabe wird erzeugt …"
+          }
+        }
+      }
+    },
+    "❌ Authentication Error\n\nYour API key is invalid or has expired.\nPlease check the API key for the selected provider in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Anmeldung fehlgeschlagen\n\nIhr API-Schlüssel ist ungültig oder abgelaufen.\nPrüfen Sie in den Einstellungen den API-Schlüssel für den gewählten Anbieter."
+          }
+        }
+      }
+    },
+    "❌ Invalid Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "❌ Ungültige Anmeldung"
+          }
+        }
+      }
+    },
+    "Allow Accessibility for %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bedienungshilfen für %@ erlauben"
+          }
+        }
+      }
+    },
+    "Auto-Paste" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch einfügen"
+          }
+        }
+      }
+    },
+    "Fn key dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktat mit der Fn-Taste"
+          }
+        }
+      }
+    },
+    "notice when you press the Fn key" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "erkennen, wann Sie die Fn-Taste drücken"
+          }
+        }
+      }
+    },
+    "paste dictated text at your cursor" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "diktierten Text an der Cursorposition einfügen"
+          }
+        }
+      }
+    },
+    "read the text you selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "den markierten Text lesen"
+          }
+        }
+      }
+    },
+    "read the word you selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "das markierte Wort lesen"
+          }
+        }
+      }
+    },
+    "type your words live into the app you are using" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Worte live in die geöffnete App schreiben"
+          }
+        }
+      }
+    },
+    "macOS needs this so WhisperShortcut can %@. Turn on WhisperShortcut in the list that opens.\n\nAlready on but still not working? Turn it off and on again. If that doesn't help, select WhisperShortcut, remove it with −, and use the feature again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS braucht das, damit WhisperShortcut %@ kann. Schalten Sie WhisperShortcut in der Liste ein, die sich öffnet.\n\nSchon eingeschaltet, funktioniert aber nicht? Schalten Sie es aus und wieder ein. Hilft das nicht, wählen Sie WhisperShortcut aus, entfernen Sie es mit − und nutzen Sie die Funktion erneut."
+          }
+        }
+      }
+    },
+    "macOS blocked access to system-prompts.md (%@). Until that is fixed, dictation uses the default prompts instead of yours. Your file has not been changed.\n\nThis happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat den Zugriff auf system-prompts.md blockiert (%@). Bis das behoben ist, nutzt das Diktat die Standard-Prompts statt Ihrer eigenen. Ihre Datei wurde nicht verändert.\n\nDas passiert, wenn eine andere Version von WhisperShortcut die Datei angelegt hat. Beenden Sie WhisperShortcut, öffnen Sie es erneut und klicken Sie auf „Erlauben“, wenn macOS nach Daten anderer Apps fragt. Fragt macOS nicht, installieren Sie WhisperShortcut erneut von dort, wo Sie es geladen haben (App Store oder Website)."
+          }
+        }
+      }
+    },
+    "macOS blocked WhisperShortcut from reading system-prompts.md (%@). Until that is fixed, the app uses its default prompts. Your file has not been changed. This happens when a different build of WhisperShortcut created the file. Quit and reopen WhisperShortcut, and click Allow when macOS asks about data from other apps. If macOS doesn't ask, install WhisperShortcut again from where you got it (App Store or website)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat WhisperShortcut das Lesen von system-prompts.md verweigert (%@). Bis das behoben ist, nutzt die App ihre Standard-Prompts. Ihre Datei wurde nicht verändert. Das passiert, wenn eine andere Version von WhisperShortcut die Datei angelegt hat. Beenden Sie WhisperShortcut, öffnen Sie es erneut und klicken Sie auf „Erlauben“, wenn macOS nach Daten anderer Apps fragt. Fragt macOS nicht, installieren Sie WhisperShortcut erneut von dort, wo Sie es geladen haben (App Store oder Website)."
+          }
+        }
+      }
+    },
+    "Allow Screen Recording in the macOS dialog, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben Sie die Bildschirmaufnahme im macOS-Dialog und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "Allow…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlauben …"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        }
+      }
+    },
+    "Needed after turning on Screen Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nötig, nachdem Sie die Bildschirmaufnahme eingeschaltet haben."
+          }
+        }
+      }
+    },
+    "Not set up" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht eingerichtet"
+          }
+        }
+      }
+    },
+    "Screen Recording Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme ist aus"
+          }
+        }
+      }
+    },
+    "Screen capture failed. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmfoto fehlgeschlagen. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Screenshots need Screen Recording. Turn it on in System Settings › Privacy & Security › Screen & System Audio Recording, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshots brauchen die Bildschirmaufnahme. Schalten Sie sie unter Systemeinstellungen › Datenschutz & Sicherheit › Bildschirm- & Systemaudioaufnahme ein und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "Sent Without Screenshot" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Screenshot gesendet"
+          }
+        }
+      }
+    },
+    "To give Dictate Prompt your screen as context, allow Screen Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Dictate Prompt Ihren Bildschirm als Kontext bekommt, erlauben Sie die Bildschirmaufnahme."
+          }
+        }
+      }
+    },
+    "Turn On in System Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Systemeinstellungen einschalten"
+          }
+        }
+      }
+    },
+    "Turn on WhisperShortcut under Screen & System Audio Recording, then quit and reopen WhisperShortcut." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie WhisperShortcut unter „Bildschirm- & Systemaudioaufnahme“ ein und öffnen Sie WhisperShortcut danach neu."
+          }
+        }
+      }
+    },
+    "macOS may offer to quit and reopen WhisperShortcut — that's fine, the tour continues where you left off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS bietet eventuell an, WhisperShortcut neu zu öffnen – kein Problem, die Tour geht an derselben Stelle weiter."
+          }
+        }
+      }
+    },
+    "Permissions & Privacy" : {
+      "comment" : "Settings tab",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen & Datenschutz"
+          }
+        }
+      }
+    },
+    "What WhisperShortcut may access on this Mac, and whether anything may leave it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worauf WhisperShortcut auf diesem Mac zugreifen darf und ob etwas den Mac verlassen darf."
+          }
+        }
+      }
+    },
+    "System Audio" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudio"
+          }
+        }
+      }
+    },
+    "Lets meeting transcripts include the other participants. macOS asks the first time you record a meeting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit Meeting-Transkripte auch die anderen Teilnehmer enthalten. macOS fragt beim ersten Meeting danach."
+          }
+        }
+      }
+    },
+    "Other features ask for access the first time you use them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Funktionen fragen beim ersten Benutzen nach Zugriff."
+          }
+        }
+      }
+    },
+    "Asks on first use" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fragt beim ersten Benutzen"
+          }
+        }
+      }
+    },
+    "Microphone Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon ist aus"
+          }
+        }
+      }
+    },
+    "Turn on WhisperShortcut under Privacy & Security › Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalten Sie WhisperShortcut unter Datenschutz & Sicherheit › Mikrofon ein."
+          }
+        }
+      }
+    },
+    "System Audio Is Off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudio ist aus"
+          }
+        }
+      }
+    },
+    "WhisperShortcut can't hear the other participants, so only your microphone is recorded. Turn on WhisperShortcut under Privacy & Security › Screen & System Audio Recording." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WhisperShortcut hört die anderen Teilnehmer nicht, deshalb wird nur Ihr Mikrofon aufgenommen. Schalten Sie WhisperShortcut unter Datenschutz & Sicherheit › Bildschirm- & Systemaudioaufnahme ein."
+          }
+        }
+      }
+    },
+    "For patient data or case notes: nothing leaves this Mac, not even Chat. Change it later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Patientendaten oder Fallnotizen: Nichts verlässt diesen Mac, auch nicht der Chat. Später änderbar unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "Only the microphone is required. The rest is optional and can wait — change any of it later in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur das Mikrofon ist nötig. Der Rest ist optional und kann warten, Sie ändern alles später unter Einstellungen → Berechtigungen & Datenschutz."
+          }
+        }
+      }
+    },
+    "You can change this anytime in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das können Sie jederzeit unter Einstellungen → Berechtigungen & Datenschutz ändern."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so cloud Read Aloud voices cannot be used. Pick the on-device macOS voice in Settings → Read Aloud, or turn Offline Mode off in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb lassen sich die Cloud-Stimmen zum Vorlesen nicht nutzen. Wählen Sie die macOS-Stimme unter Einstellungen → Vorlesen oder schalten Sie den Offline-Modus unter Einstellungen → Berechtigungen & Datenschutz aus."
+          }
+        }
+      }
+    },
+    "Offline Mode is on, so nothing may leave this Mac — the request to %@ was blocked. Use an on-device model, or turn Offline Mode off in Settings → Permissions & Privacy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Offline-Modus ist an, deshalb darf nichts diesen Mac verlassen. Die Anfrage an %@ wurde blockiert. Nutzen Sie ein Modell auf dem Gerät oder schalten Sie den Offline-Modus unter Einstellungen → Berechtigungen & Datenschutz aus."
+          }
+        }
+      }
+    },
+    "Adds a picture of the front window, never the whole screen, only when the text field is empty, short or unreadable. Never in password fields or password managers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schickt ein Bild des vorderen Fensters mit, nie den ganzen Bildschirm, und nur wenn das Textfeld leer, kurz oder nicht lesbar ist. Nie in Passwortfeldern oder Passwort-Managern."
+          }
+        }
+      }
+    },
+    "Dictate Prompt reads your selection from a picture of the front window, never the whole screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dictate Prompt liest Ihre Markierung aus einem Bild des vorderen Fensters, nie vom ganzen Bildschirm."
           }
         }
       }

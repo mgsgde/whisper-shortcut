@@ -73,3 +73,65 @@ struct RejectedSpellingCorrectionTests {
     #expect(corrected("Reden wir über Cloud CLI.") == "Reden wir über Claude CLI.")
   }
 }
+
+/// A one-word rejected spelling is a legitimate noun on its own ("Läufer", "Daten"). It is
+/// rewritten only when a personal title stands immediately before it, which is what makes the
+/// token a name.
+@Suite("Rejected one-word name after a title")
+struct RejectedNameAfterTitleTests {
+
+  private func corrected(_ text: String) -> String {
+    SpeechService.replacingRejectedNameAfterTitle("Läufer", with: "Läuffer", in: text)
+  }
+
+  @Test("Frau Dr. before the misheard name is corrected, title included")
+  func correctsAfterFrauDr() {
+    #expect(corrected("Ich wundere mich, die Frau Dr. Läufer.")
+      == "Ich wundere mich, die Frau Dr. Läuffer.")
+  }
+
+  @Test("Frau alone before the name is corrected")
+  func correctsAfterFrau() {
+    #expect(corrected("Frau Läufer hat geschrieben.") == "Frau Läuffer hat geschrieben.")
+  }
+
+  @Test("Herrn before the name is corrected")
+  func correctsAfterHerrn() {
+    #expect(corrected("Grüße an Herrn Läufer") == "Grüße an Herrn Läuffer")
+  }
+
+  @Test("Each titled occurrence in one sentence is corrected")
+  func correctsEachTitledOccurrence() {
+    #expect(corrected("Prof. Läufer, Dr. Läufer") == "Prof. Läuffer, Dr. Läuffer")
+  }
+
+  @Test("A bare noun with no title is left alone")
+  func leavesBareNounAlone() {
+    let text = "Der Läufer kam ins Ziel."
+    #expect(corrected(text) == text)
+  }
+
+  @Test("A name with no title stays, even when repeated")
+  func leavesUntitledNameAlone() {
+    let text = "Läufer, Läufer immer falsch"
+    #expect(corrected(text) == text)
+  }
+
+  @Test("A longer word that merely starts with the rejected spelling is left alone")
+  func leavesLongerWordsAlone() {
+    #expect(corrected("Frau Läuferin") == "Frau Läuferin")
+    #expect(corrected("Frau Marathonläufer") == "Frau Marathonläufer")
+  }
+
+  @Test("The title has to be the whole word")
+  func titleMustBeWholeWord() {
+    let text = "die Frauen Läufer"
+    #expect(corrected(text) == text)
+  }
+
+  @Test("A rejected common noun with no title is left alone")
+  func leavesDatenAlone() {
+    let text = "Wir speichern die Daten."
+    #expect(SpeechService.replacingRejectedNameAfterTitle("Daten", with: "Datev", in: text) == text)
+  }
+}

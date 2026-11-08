@@ -75,14 +75,18 @@ extension SettingsSlot {
   }
 
   /// A `Bool` persisted under `key`, falling back to `fallback` when never written.
+  ///
+  /// `fallback` is re-read on every load. The slot table is a `static let`, so a plain `Bool`
+  /// would freeze a live default (auto-paste once Accessibility is granted, Fn when the 🌐 key
+  /// is free) at the moment Settings was first opened.
   static func bool(
     _ keyPath: WritableKeyPath<SettingsData, Bool>,
     key: String,
-    default fallback: Bool
+    default fallback: @autoclosure @escaping () -> Bool
   ) -> SettingsSlot {
     .custom(
       keyPath,
-      load: { UserDefaults.standard.bool(forKey: key, default: fallback) },
+      load: { UserDefaults.standard.bool(forKey: key, default: fallback()) },
       save: { UserDefaults.standard.set($0, forKey: key) }
     )
   }

@@ -204,7 +204,7 @@ class SettingsViewModel: ObservableObject {
 
     // Dictation behaviour
     .bool(\.autoPasteAfterDictation, key: UserDefaultsKeys.autoPasteAfterDictation,
-          default: SettingsDefaults.autoPasteAfterDictation),
+          default: AutoPasteDefault.effectiveDefault),
     .bool(\.restoreClipboardAfterPaste, key: UserDefaultsKeys.restoreClipboardAfterPaste,
           default: SettingsDefaults.restoreClipboardAfterPaste),
     .bool(\.clearClipboardAfterAutoPaste, key: UserDefaultsKeys.clearClipboardAfterAutoPaste,

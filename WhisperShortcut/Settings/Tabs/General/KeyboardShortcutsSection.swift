@@ -16,10 +16,9 @@ struct KeyboardShortcutsSection: View {
   @FocusState.Binding var focusedField: SettingsFocusField?
 
   #if !APP_STORE
-  /// Re-read on appear and on app reactivation (the user may have just changed either in
-  /// System Settings).
+  /// Re-read on appear and on app reactivation (the user may have just changed it in System
+  /// Settings). The 🌐 setting is `GlobeKeyStatus`, refreshed by `GlobeKeyConflictCard`.
   @State private var hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
-  @State private var globeUsage: GlobeKeyUsage = .current
   #endif
 
   var body: some View {
@@ -88,7 +87,7 @@ struct KeyboardShortcutsSection: View {
           DebugLogger.log("SHORTCUTS: Fn-key dictation toggled to \(newValue)")
           if newValue && !AccessibilityPermissionManager.hasAccessibilityPermission() {
             // Request now (native prompt + pre-registration), not deferred to the first fn press.
-            AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+            AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
           }
           viewModel.data.fnKeyDictation = newValue
           Task { await viewModel.saveSettings() }
@@ -118,16 +117,14 @@ struct KeyboardShortcutsSection: View {
               .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Allow Accessibility") {
-              AccessibilityPermissionManager.requestAccessibilityAtOptIn()
+              AccessibilityPermissionManager.requestAccessibilityAtOptIn(for: .fnKey)
               refreshFnStatus()
             }
             .controlSize(.small)
             .pointerCursorOnHover()
           }
         }
-        if let systemAction = globeUsage.systemSettingsLabel {
-          GlobeKeyConflictNote(systemAction: systemAction)
-        }
+        GlobeKeyConflictCard()
       }
     }
     .padding(.top, 4)
@@ -139,7 +136,7 @@ struct KeyboardShortcutsSection: View {
 
   private func refreshFnStatus() {
     hasAccessibility = AccessibilityPermissionManager.hasAccessibilityPermission()
-    globeUsage = .current
+    GlobeKeyStatus.shared.refresh()
   }
   #endif
 }

@@ -194,12 +194,14 @@ enum PromptModel: String, CaseIterable {
   // offline Whisper and route through `MLXChatProvider`.
   case localMLXQwen34BInstruct = "local-mlx-qwen3-4b-instruct-2507"
   case localMLXQwen359B = "local-mlx-qwen3.5-9b"
+  case localMLXGemma426BA4B = "local-mlx-gemma-4-26b-a4b"
 
   /// Maps a catalogue entry to its picker / settings enum case.
   static func forLocalLLMModel(_ type: LocalLLMModelType) -> PromptModel {
     switch type {
     case .qwen34BInstruct2507: return .localMLXQwen34BInstruct
     case .qwen359B: return .localMLXQwen359B
+    case .gemma426BA4B: return .localMLXGemma426BA4B
     }
   }
 
@@ -208,6 +210,7 @@ enum PromptModel: String, CaseIterable {
     switch self {
     case .localMLXQwen34BInstruct: return .qwen34BInstruct2507
     case .localMLXQwen359B: return .qwen359B
+    case .localMLXGemma426BA4B: return .gemma426BA4B
     default: return nil
     }
   }
@@ -260,6 +263,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "Qwen3 4B Instruct (Offline)")
     case .localMLXQwen359B:
       return String(localized: "Qwen3.5 9B (Offline)")
+    case .localMLXGemma426BA4B:
+      return String(localized: "Gemma 4 26B A4B (Offline)")
     }
   }
 
@@ -295,6 +300,7 @@ enum PromptModel: String, CaseIterable {
     case .localModel:        return "local"
     case .localMLXQwen34BInstruct: return "mlx4b"
     case .localMLXQwen359B: return "mlx9b"
+    case .localMLXGemma426BA4B: return "mlxgemma"
     }
   }
 
@@ -344,6 +350,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "mlx-community/Qwen3-4B-Instruct-2507-4bit • In-process MLX, no server to install • ~2.3 GB • Offline")
     case .localMLXQwen359B:
       return String(localized: "mlx-community/Qwen3.5-9B-MLX-4bit • In-process MLX, no server to install • ~5.6 GB • Offline • Chat only, needs 16 GB RAM")
+    case .localMLXGemma426BA4B:
+      return String(localized: "mlx-community/gemma-4-26B-A4B-it-qat-4bit • In-process MLX, no server to install • ~15.6 GB • Offline • Chat only, needs 32 GB RAM")
     }
   }
   
@@ -352,7 +360,7 @@ enum PromptModel: String, CaseIterable {
     case .gemini31FlashLite, .gemini35FlashLite,
          .gemini38Flash, .geminiImage, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .claudeHaiku55:
       return .low
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .freeOffline
     case .gemini31Pro, .geminiImagePro:
       return .medium
@@ -389,7 +397,7 @@ enum PromptModel: String, CaseIterable {
       return .chatGPTPlan
     case .localModel:
       return .local
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return .localMLX
     }
   }
@@ -503,7 +511,7 @@ enum PromptModel: String, CaseIterable {
     case .openaiGPT4oAudio:
       return false
     // Local text models in Phase 1 are text-only; no image parts are sent to the local server.
-    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localModel, .customOpenAIEndpoint, .openRouterChat, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return false
     default:
       return true
@@ -521,7 +529,7 @@ enum PromptModel: String, CaseIterable {
     // Dictate-Prompt-only until its chat tool-calling path is validated separately.
     case .localModel:
       return false
-    case .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return true
     // Not offered at all in the App Store build (OpenAI approval pending).
     case .chatGPTPlanChat:
@@ -589,8 +597,19 @@ enum PromptModel: String, CaseIterable {
     case .grok43, .grok47,
          .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
-         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil
+    }
+  }
+
+  /// Thinking level Dictate Prompt sends. Chat's `high` and `medium` become `low` (the
+  /// measured 4–5× latency win); `low` and `minimal` stay. Nil when the model has no
+  /// `thinkingLevel` (non-Gemini, or a Gemini model with no thinking knob).
+  var dictatePromptThinkingLevel: String? {
+    guard let level = geminiThinkingConfig?["thinkingLevel"] as? String else { return nil }
+    switch level {
+    case "high", "medium": return "low"
+    default: return level
     }
   }
 
@@ -632,7 +651,7 @@ enum PromptModel: String, CaseIterable {
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
-    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B:
+    case .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil // proxy/local LLM is text-only; STT runs through the separate transcription pipeline
     }
   }
@@ -647,7 +666,7 @@ enum PromptModel: String, CaseIterable {
   var supportsGrounding: Bool {
     switch self {
     case .openaiGPT4oAudio, .geminiImage, .geminiImagePro, .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel,
-         .localMLXQwen34BInstruct, .localMLXQwen359B:
+         .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       // Audio-only, image-generation, proxy, and local models have no web-search path in this app.
       return false
     default:
@@ -1534,9 +1553,9 @@ enum SettingsTab: String, CaseIterable {
   case meetings = "Meetings"
   case improvement = "Smart Improvement"
   case aiApps = "Claude & AI Apps"
-  // The raw value is both the sidebar label and the persisted selection; a stored "Permissions"
-  // from an older build simply falls back to General once (`SettingsTab(rawValue:) ?? .general`).
-  case permissions = "Privacy & Permissions"
+  // Persisted selection. A stored "Privacy & Permissions" (or older "Permissions") falls back
+  // to General once (`SettingsTab(rawValue:) ?? .general`). The sidebar label is `displayName`.
+  case permissions = "Permissions & Privacy"
   case about = "About"
 
   /// What the sidebar shows. The raw value is the persisted identity and stays English.
@@ -1553,8 +1572,45 @@ enum SettingsTab: String, CaseIterable {
     case .meetings: return "Meetings"
     case .improvement: return "Smart Improvement"
     case .aiApps: return "Claude & AI Apps"
-    case .permissions: return "Privacy & Permissions"
+    case .permissions: return "Permissions & Privacy"
     case .about: return "About"
+    }
+  }
+
+  /// Which sidebar section this tab is listed under. Purely presentational — the tab itself,
+  /// its content and its persisted raw value are unchanged.
+  var section: SettingsSection {
+    switch self {
+    case .general, .accounts, .permissions: return .general
+    case .speechToText, .speechToPrompt, .templates, .readAloud: return .dictation
+    case .chat, .meetings, .improvement: return .chatAndMeetings
+    case .screenshot, .aiApps, .about: return .more
+    }
+  }
+
+  /// The sidebar's sections, in display order.
+  static var sections: [SettingsSection] { SettingsSection.allCases }
+
+  /// A sidebar section header. Purely presentational: it groups tabs, it does not own settings.
+  enum SettingsSection: String, CaseIterable {
+    case general = "General"
+    case dictation = "Dictation"
+    case chatAndMeetings = "Chat & Meetings"
+    case more = "More"
+
+    /// The section header. English key, translated like every other user-visible string.
+    var displayName: LocalizedStringResource {
+      switch self {
+      case .general: return "General"
+      case .dictation: return "Dictation"
+      case .chatAndMeetings: return "Chat & Meetings"
+      case .more: return "More"
+      }
+    }
+
+    /// The tabs shown under this header, in `SettingsTab.allCases` order.
+    var tabs: [SettingsTab] {
+      SettingsTab.allCases.filter { $0.section == self }
     }
   }
 }
@@ -2229,6 +2285,7 @@ struct SettingsDefaults {
   // permission (it simulates a ⌘V keystroke). Keeping it opt-in means a fresh
   // install never requires Accessibility, which it must not for its core features
   // (App Store Guideline 2.4.5). Users enable it explicitly in Settings → General.
+  // An unset key does not use this constant: `AutoPasteDefault.effectiveDefault`.
   static let autoPasteAfterDictation = false
 
   /// OFF by default: with auto-paste on, the text is already at the cursor, but some users
@@ -2256,6 +2313,8 @@ struct SettingsDefaults {
   static let dictateMode: DictateMode = .dictate
 
   // MARK: - Screenshot Settings
+  /// Front window as fallback: when the focused field is empty, short or unreadable, Dictate Prompt
+  /// attaches a picture of that window, never the whole screen. The key is unchanged.
   static let screenshotInPromptMode = true
   static let screenshotSaveEnabled = false
 
@@ -2316,6 +2375,44 @@ struct SettingsDefaults {
   static let errorMessage = ""
   static let isLoading = false
   static let showAlert = false
+}
+
+/// Whether auto-paste is on when the user has never written `autoPasteAfterDictation`.
+///
+/// A plain `true` default would make `autoPasteIfEnabled` show the Accessibility dialog after
+/// every dictation until the permission is granted. The direct build therefore follows the
+/// permission: on once it is granted, off until then, and never a prompt for a user who left
+/// the setting alone. The App Store build cannot paste (Guideline 2.4.5), so its default stays
+/// off. A value the user stored still wins — nothing here writes the key.
+enum AutoPasteDefault {
+  /// Fallback used wherever the key is missing. False in the App Store build; in the direct
+  /// build, true exactly when Accessibility is already granted.
+  static var effectiveDefault: Bool {
+    #if APP_STORE
+      return false
+    #else
+      return resolved(
+        stored: nil,
+        accessibilityGranted: AccessibilityPermissionManager.hasAccessibilityPermission())
+    #endif
+  }
+
+  /// Pure decision. `stored` is the user's toggle when the key exists, and nil when it does not.
+  /// A stored value always wins. When unset, the result is `accessibilityGranted` — callers pass
+  /// that in, so a test does not need the process's real Accessibility state. The App Store
+  /// build does not consult this for its own default; `effectiveDefault` is false there.
+  static func resolved(stored: Bool?, accessibilityGranted: Bool) -> Bool {
+    if let stored { return stored }
+    return accessibilityGranted
+  }
+
+  /// The value in effect now: the stored bool, or `effectiveDefault` when the key was never written.
+  static var currentValue: Bool {
+    let defaults = UserDefaults.standard
+    let key = UserDefaultsKeys.autoPasteAfterDictation
+    guard defaults.object(forKey: key) != nil else { return effectiveDefault }
+    return defaults.bool(forKey: key)
+  }
 }
 
 // MARK: - Settings Data Models
