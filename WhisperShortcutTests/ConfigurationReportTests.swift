@@ -98,9 +98,9 @@ struct ConfigurationReportTests {
   }
 }
 
-@Suite("Configuration report, live catalog")
+@Suite("Configuration report, real catalog entries")
 struct ConfigurationReportCatalogTests {
-  @Test("Real catalog on empty defaults still reports models and never keys")
+  @Test("Real catalog entries on empty defaults still report models and never keys")
   func liveCatalog() {
     let suite = "config-report-catalog-\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
@@ -108,9 +108,23 @@ struct ConfigurationReportCatalogTests {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
+    // Real entries, fake system probes: the live ones (SMAppService, TCC, main-queue posts) hung the test host for 6729 s on 2026-11-08.
+    let catalog = MCPSettingsCatalog.build(.init(
+      defaults: defaults,
+      hasAccessibilityPermission: { false },
+      hasScreenRecordingPermission: { false },
+      hasScreenshotFolder: { false },
+      isLaunchAtLoginEnabled: { false },
+      setLaunchAtLogin: { _ in },
+      loadShortcutConfig: { .default },
+      saveShortcutConfig: { _ in },
+      postNotification: { _, _ in },
+      postSelectionsChanged: {},
+      checkImprovementAutoRun: {}))
     let report = ConfigurationReport.build(
       .init(), store: SystemPromptsStore(contextDirectoryURL: dir), defaults: defaults,
-      environment: .init(appVersion: "1", osVersion: "2", isAppStoreBuild: true))
+      environment: .init(appVersion: "1", osVersion: "2", isAppStoreBuild: true),
+      settings: catalog)
     #expect(report.contains("### models"))
     #expect(report.contains("App 1 (App Store build)"))
     #expect(!report.lowercased().contains("apikey"))
