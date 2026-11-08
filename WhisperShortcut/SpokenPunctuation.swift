@@ -2,9 +2,9 @@ import Foundation
 
 /// Turns spoken layout commands into layout in offline transcripts.
 ///
-/// Parakeet and local Whisper write a spoken "Doppelpunkt" or "neuer Absatz" out as words
-/// ("Anamnese Doppelpunkt Patient berichtet …"), where cloud models that take a dictation prompt
-/// already produce the punctuation. This is the deterministic fix for the offline engines only.
+/// Parakeet and local Whisper write a spoken "Doppelpunkt", "Klammer auf" or "neuer Absatz" out as
+/// words ("Anamnese Doppelpunkt Patient berichtet …"), where cloud models that take a dictation
+/// prompt already produce the punctuation. This is the deterministic fix for the offline engines only.
 ///
 /// Deliberately narrow: "Punkt", "Komma" and "Fragezeichen" are ordinary German words ("der
 /// wichtigste Punkt"), so they are left alone. Only phrases that are almost never meant literally in
@@ -23,7 +23,8 @@ enum SpokenPunctuation {
   static let commandWords: Set<String> = [
     "doppelpunkt", "komma", "punkt", "fragezeichen", "ausrufezeichen", "schragstrich",
     "schraegstrich", "schreckstrich", "semikolon", "strichpunkt", "punktchen", "puenktchen",
-    "auslassungspunkte", "absatz", "zeile",
+    "auslassungspunkte", "absatz", "zeile", "klammer", "klammerauf", "klammerzu",
+    "neuzeile", "neuezeile",
   ]
 
   private struct Rule {
@@ -31,31 +32,56 @@ enum SpokenPunctuation {
     let template: String
   }
 
+  /// "Klammer auf", also glued or hyphenated ("Klammerauf", "Klammer-auf"). An article right after
+  /// it is the noun ("eine Klammer auf die Wunde"), not the command.
+  private static let openingParen =
+    #"\bklammer[ \t-]*auf\b(?![ \t,.;]*(?:die|der|den|dem|das|eine|einen|einer|einem)\b)"#
+  private static let closingParen = #"\bklammer[ \t-]*zu\b"#
+
   /// Order matters: the colon runs first so "Befund Doppelpunkt neuer Absatz" keeps its colon when
-  /// the paragraph rule then strips the stray space before the break.
+  /// the paragraph rule then strips the stray space before the break. Brackets run before the
+  /// breaks, so a following "neue Zeile" still sees the parenthesis.
   private static let rules: [Rule] = [
     // The colon is already there — a model reply that kept the spoken word after its own heading
     // ("Befund: Doppelpunkt Druckschmerz", "Anamnese:\nDoppelpunkt Patientin"). Drop the word only.
-    rule(#"(:[ \t]*\n?[ \t]*)\bdoppelpunkt\b[ \t,.;:]*"#, "$1"),
+    // "Doppel Punkt" and "Doppel-Punkt" are the same command split or hyphenated by Parakeet.
+    rule(#"(:[ \t]*\n?[ \t]*)\bdoppel[ \t-]?punkt\b[ \t,.;:]*"#, "$1"),
     // "Anamnese Doppelpunkt Patient" / "Befund, Doppelpunkt. Inspektion" → "Befund: Inspektion".
-    // Eats the punctuation the ASR put around the word on both sides.
-    rule(#"[ \t,.;]*\bdoppelpunkt\b[ \t,.;:]*"#, ": "),
+    // Eats the punctuation the ASR put around the words on both sides. Inflections
+    // ("Doppelpunkte") stay: the word boundary after "punkt" fails.
+    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt\b[ \t,.;:]*"#, ": "),
     // Parakeet sometimes glues the command onto the next word ("Befund Doppelpunktdruckschmerz").
     // The following word's first letter is upper-cased afterwards (`capitalizeAfterGluedColon`).
     // Inflections of the noun itself ("Doppelpunkte", "-en", "-es", "-s") are left alone.
-    rule(#"[ \t,.;]*\bdoppelpunkt(?!(?:e|en|es|s)\b)(?=\p{L})"#, ": \u{1}"),
+    rule(#"[ \t,.;]*\bdoppel[ \t-]?punkt(?!(?:e|en|es|s)\b)(?=\p{L})"#, ": \u{1}"),
+    // "(" keeps one space before it and none after, except at the start of the text or a line,
+    // where there is no space before it either. Stray ASR commas and periods around the words go.
+    rule(#"(^|\n)[ \t,.;]*\#(openingParen)[ \t,.;]*"#, "$1("),
+    rule(#"[ \t,.;]*\#(openingParen)[ \t,.;]*"#, " ("),
+    // ")" has no space before it. A comma the ASR put after it goes (one space stays before the
+    // next word); a period after it stays ("Anlage Klammer zu."). The period and comma before it go.
+    rule(#"[ \t,.;]*\#(closingParen)[ \t]*,[ \t]*"#, ") "),
+    rule(#"[ \t,.;]*\#(closingParen)"#, ")"),
     // A comma before a spoken paragraph break is the ASR marking the pause; the sentence ended.
-    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, ".\n\n"),
+    // No capital marker: this stays ".\n\n", and the next word keeps the case it was spoken with.
+    // "Neuerabsatz" / "Neuenabsatz" are the glued forms (no space).
+    rule(#"[ \t]*,[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, ".\n\n"),
     // The model already ended the sentence ("Anamnese. Neuer Absatz, die Klägerin"): the next word
     // starts the new paragraph or line, so it gets a capital (marker, `capitalizeAfterGluedColon`).
-    rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
-    rule(#"(?<=[.!?])[ \t]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
-    // Paragraph break. A sentence end before it (". ! ? :") is kept, a stray comma is not.
-    rule(#"[ \t,;]*\bneue[rn][ \t]+absatz\b[ \t,.;:!?]*"#, "\n\n"),
-    rule(#"[ \t,;]*\bneue[ \t]+zeile\b[ \t,.;:!?]*"#, "\n"),
-    // Parakeet glues this one onto the next word too ("neue Zeileinspektion", live capture
-    // 2026-10-20). "neue Zeilen…" is left alone: that is the plural or a compound, said literally.
-    rule(#"[ \t,;]*\bneue[ \t]+zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
+    // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
+    rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"(?<=[.!?])[ \t]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
+    // Paragraph or line break without a sentence mark before it. The next word still starts the
+    // new paragraph or line, so it gets a capital too. A comma directly before "neue Zeile" is the
+    // speaker's comma and is not eaten; `commaKeepsFollowingCase` then drops the marker, so
+    // "Herr Müller, neue Zeile vielen" stays lower-case. A comma before "neuer Absatz" never
+    // reaches this rule — the rule above already turned it into a period.
+    rule(#"[ \t;]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
+    // Parakeet glues this one onto the next word too ("neue Zeileinspektion", "Neuzeileinspektion",
+    // live capture 2026-10-20). "neue Zeilen…" is left alone: the "n" is the plural or a compound
+    // ("Zeilenumbrüche"), said literally. "Neue Teile" is a different phrase and does not match.
+    rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
   ]
 
   /// Only in `PunctuationMode.spokenOnly`, where the model adds no punctuation of its own. The mark
@@ -164,15 +190,23 @@ enum SpokenPunctuation {
     return first.lowercased() + word.dropFirst()
   }
 
-  /// Lower-case forms of function words and adverbs that are never nouns. "sie" is omitted on purpose — see `lowercasingFunctionWord`.
+  /// Lower-case forms of function words and adverbs that are never nouns. "sie", "ihr" and "ihnen"
+  /// are omitted on purpose — see `lowercasingFunctionWord`.
   static let functionWords: Set<String> = [
     "und", "oder", "aber", "sondern", "denn", "weil", "dass", "ob", "wenn", "als", "wie",
     "mit", "bei", "nach", "von", "vor", "zu", "zum", "zur", "aus", "auf", "an", "am",
-    "im", "in", "über", "unter", "seit", "für", "durch", "gegen", "ohne", "um",
+    "im", "in", "über", "unter", "seit", "für", "durch", "gegen", "ohne", "um", "bis",
     "ist", "sind", "war", "waren", "hat", "haben", "wird", "wurde", "sich", "nicht",
     "auch", "noch", "schon", "sehr", "er", "es", "wir", "man",
     "der", "die", "das", "den", "dem", "des",
     "ein", "eine", "einen", "einem", "einer",
+    "diese", "dieser", "diesen", "diesem", "dieses",
+    "mein", "meine", "meinen", "meinem", "meiner", "meines",
+    "dein", "deine",
+    "seine", "seinen", "seinem", "seiner",
+    "unser", "unsere", "unseren", "unserem", "unserer",
+    "jeder", "jede", "jeden", "jedem", "jedes",
+    "kein", "keine", "keinen", "keinem", "keiner",
     "weiter", "dann", "jetzt", "hier", "da", "dort", "so", "nur", "mal", "wieder", "bitte",
     "doch", "eben", "gerade", "eigentlich", "vielleicht", "also", "dabei", "dazu", "damit",
     "daher", "deshalb", "trotzdem", "bereits", "immer", "nie", "oft", "etwas", "sonst", "zwar",
@@ -214,6 +248,10 @@ enum SpokenPunctuation {
   /// counts as whitespace between them, so it is not what separates two marks, and the marker
   /// after the last copy is left in place for `capitalizeAfterGluedColon` ("Ende. Weiter").
   private static let repeatedMarks = rule("([.,!?])(?:[ \t\u{1}]*\\1)+", "$1")
+  /// A comma glued to the break is a continuation ("Müller, neue Zeile vielen"), including a spoken
+  /// "Komma" that only becomes a comma in the spoken-only rules, after the break was inserted.
+  /// The plain break rules have marked the next word for a capital; drop that marker.
+  private static let commaKeepsFollowingCase = rule("(,[ \\t]*\\n+)\u{1}", "$1")
 
   private static let numberWordBody =
     "null|eins|ein|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun"
@@ -296,7 +334,9 @@ enum SpokenPunctuation {
       changed = true
     }
     // Before `capitalizeAfterGluedColon`: the marker has to still be in the text, and a marker
-    // between two copies of a mark has to count as the space that separates them.
+    // between two copies of a mark has to count as the space that separates them. A comma in
+    // front of a break is a continuation, so its marker is dropped first — including after spoken
+    // "Komma", which the spoken-only rules have just turned into a comma.
     if mode == .spokenOnly {
       let range = NSRange(result.startIndex..., in: result)
       let collapsed = repeatedMarks.regex.stringByReplacingMatches(
@@ -307,6 +347,9 @@ enum SpokenPunctuation {
       }
     }
     guard changed else { return text }
+    let commaRange = NSRange(result.startIndex..., in: result)
+    result = commaKeepsFollowingCase.regex.stringByReplacingMatches(
+      in: result, range: commaRange, withTemplate: commaKeepsFollowingCase.template)
     result = capitalizeAfterGluedColon(result)
     for cleanup in [trailingSpaceBeforeBreak, excessBreaks] {
       let range = NSRange(result.startIndex..., in: result)

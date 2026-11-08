@@ -182,9 +182,14 @@ enum LiveDictation {
 ///   before the caret: a letter takes that leading space ("Basistherapie" + "Ah" → " Ah"),
 ///   whitespace or a line break there does not, and an unknown caret keeps today's start. Also
 ///   none after a line break, none before a piece that starts with a line break
-///   (`SpokenPunctuation` turns "neuer Absatz" into one) or with closing punctuation, none on
+///   (`SpokenPunctuation` turns "neuer Absatz" into one) or with closing punctuation, none after
+///   "(" (the piece ended on "Klammer auf"; the next word sits inside the parentheses), none on
 ///   either side of a slash ("Schrägstrich" said in one piece and the next word in another must
 ///   still read "L4/L5", not "L4/ L5" or "L4 /L5").
+/// - **The same mark on both sides of a piece boundary** (".", ",", "?", "!", ";", ":"): Parakeet
+///   writes it again at the start of the next breath. When the text so far ends with that mark
+///   (trailing spaces aside), the leading copy is dropped, and one space after it too
+///   ("ganz gut." + "." stays "ganz gut.", "Müller," + ", ganz lieben Dank").
 /// - **A period at a breath:** Parakeet punctuates each piece on its own, so a pause mid-sentence
 ///   can end a piece with "." although the sentence goes on. A piece's final period is therefore
 ///   held back and emitted with the next piece — dropped when that piece starts with a lowercase
@@ -240,10 +245,18 @@ struct LiveChunkJoiner: Equatable {
       heldPeriod = false
       if !Self.startsWithLowercaseLetter(body) { out += "." }
     }
+    // After the held period, so a period just emitted still counts as "already ends with '.'".
+    body = Self.droppingDuplicateLeadingMark(body, after: precedingText + inserted + out)
+    if body.isEmpty {
+      guard !out.isEmpty else { return "" }
+      inserted += out
+      return out
+    }
     let before = precedingText + inserted + out
     // Whitespace (a space or a line break already in the field, or a break this joiner wrote)
-    // already separates the next piece, so it must not gain a second space.
-    if let last = before.last, !last.isWhitespace, last != "/",
+    // already separates the next piece, so it must not gain a second space. "(" neither: the next
+    // word is inside the parentheses.
+    if let last = before.last, !last.isWhitespace, last != "/", last != "(",
       let first = body.first, !first.isNewline, first != "/", !Self.closingPunctuation.contains(first)
     {
       out += " "
@@ -266,6 +279,19 @@ struct LiveChunkJoiner: Equatable {
   }
 
   static let closingPunctuation: Set<Character> = [",", ".", ";", ":", "!", "?", ")", "]", "»", "“", "…"]
+
+  private static let boundaryMarks: Set<Character> = [".", ",", "?", "!", ";", ":"]
+
+  /// Drops a leading mark the text so far already ends with, and one space after that mark.
+  private static func droppingDuplicateLeadingMark(_ body: String, after prior: String) -> String {
+    guard let mark = body.first, boundaryMarks.contains(mark) else { return body }
+    var end = prior
+    while end.last == " " || end.last == "\t" { end.removeLast() }
+    guard end.last == mark else { return body }
+    var rest = body.dropFirst()
+    if rest.first == " " { rest = rest.dropFirst() }
+    return String(rest)
+  }
 
   /// Parakeet capitalises the first word after a pause. Mid-sentence, in spoken-only mode, that
   /// capital belongs only on a noun or a verb — see the struct comment.
