@@ -26206,6 +26206,16 @@
           }
         }
       }
+    },
+    "Only clone a voice with the consent of the person it belongs to. The recording stays on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klonen Sie eine Stimme nur mit Einverständnis der Person, der sie gehört. Die Aufnahme bleibt auf diesem Mac."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

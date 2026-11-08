@@ -246,6 +246,10 @@ struct Qwen3PersonaFormView: View {
   @ViewBuilder
   private var referenceSection: some View {
     VStack(alignment: .leading, spacing: 6) {
+      Text("Only clone a voice with the consent of the person it belongs to. The recording stays on this Mac.")
+        .font(.caption)
+        .foregroundColor(.secondary)
+
       Text("Reference recording:")
         .font(.body.weight(.medium))
 
