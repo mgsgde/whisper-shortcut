@@ -2062,26 +2062,6 @@ enum OpenAIChatPreferences {
     UserDefaults.standard.set(SettingsDefaults.vertexAIEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
     UserDefaults.standard.set(SettingsDefaults.vertexAIModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
   }
-
-  /// Points chat at LM Studio on this Mac. LM Studio serves whatever model is loaded, so the model
-  /// id is its own placeholder for that — the user still has to make it match what they loaded.
-  static func applyLMStudioPreset() {
-    UserDefaults.standard.set(SettingsDefaults.lmStudioEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
-    UserDefaults.standard.set(SettingsDefaults.lmStudioModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
-  }
-
-  /// Points chat at `mlx_lm.server` / `mlx-audio` on this Mac.
-  static func applyMLXPreset() {
-    UserDefaults.standard.set(SettingsDefaults.mlxEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
-    UserDefaults.standard.set(SettingsDefaults.mlxModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
-  }
-
-  /// Points chat at oMLX on this Mac. Like LM Studio it addresses the loaded model as
-  /// `local-model`, so the id is a placeholder rather than a model that is guaranteed to exist.
-  static func applyoMLXPreset() {
-    UserDefaults.standard.set(SettingsDefaults.oMLXEndpointURL, forKey: UserDefaultsKeys.customOpenAIChatEndpointURL)
-    UserDefaults.standard.set(SettingsDefaults.oMLXModelID, forKey: UserDefaultsKeys.customOpenAIChatModelID)
-  }
 }
 
 // MARK: - Local LLM Preferences (UserDefaults Accessors)
@@ -2374,19 +2354,6 @@ struct SettingsDefaults {
     "https://europe-west4-aiplatform.googleapis.com/v1/projects/<project>/locations/europe-west4/endpoints/openapi"
   /// Vertex requires the publisher prefix on the model id.
   static let vertexAIModelID = "google/gemini-2.5-flash"
-
-  // MARK: - Local server presets (LM Studio / MLX / oMLX)
-  /// LM Studio's local server, default port 1234. It serves whatever model is loaded and accepts
-  /// `local-model` as the id for it. https://lmstudio.ai/docs/app/api/endpoints/openai
-  static let lmStudioEndpointURL = "http://localhost:1234/v1"
-  static let lmStudioModelID = "local-model"
-  /// `mlx_lm.server` / `mlx-audio`, default port 8000. The id is the Hugging Face repo the server
-  /// was started with, so this is only a plausible default.
-  static let mlxEndpointURL = "http://localhost:8000/v1"
-  static let mlxModelID = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
-  /// oMLX, default port 8000. It also addresses the loaded model as `local-model`.
-  static let oMLXEndpointURL = "http://localhost:8000/v1"
-  static let oMLXModelID = "local-model"
 
   // MARK: - UI State
   static let errorMessage = ""

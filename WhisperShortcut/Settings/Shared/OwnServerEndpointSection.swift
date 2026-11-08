@@ -28,6 +28,10 @@ struct OwnServerEndpointSection: View {
   /// line. The feature tabs render the header because there it is the only thing naming the form.
   var showsHeader: Bool = true
 
+  /// One sentence for the Accounts card and this form's own header, so the two cannot drift.
+  static let subtitle: LocalizedStringResource =
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve."
+
   @State private var endpointURL: String = ""
   @State private var chatModelID: String = ""
   @State private var transcriptionModelID: String = ""
@@ -53,7 +57,7 @@ struct OwnServerEndpointSection: View {
         SectionHeader(
           title: "Own server",
           systemImage: "server.rack",
-          subtitle: "Connect your own OpenAI-compatible endpoint — LiteLLM, Azure OpenAI, Vertex AI or self-hosted. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve."
+          subtitle: Self.subtitle
         )
       }
 
@@ -232,8 +236,7 @@ struct OwnServerEndpointSection: View {
   // MARK: - Presets
 
   /// Presets fill the URL shape (and a plausible chat model): the part that is easy to get wrong.
-  /// Small and short-named so all four fit the field column at the window's minimum width; the
-  /// local servers live behind one "Local…" menu because a fifth and sixth button would overflow.
+  /// Small and short-named so all four fit the field column at the window's minimum width.
   private var presetRow: some View {
     fieldRow("Fill in:") {
       HStack(spacing: 6) {
@@ -249,38 +252,10 @@ struct OwnServerEndpointSection: View {
         presetButton("Vertex", help: "The Vertex AI OpenAI-compatible URL shape. Replace <project> with your Google Cloud project id.") {
           OpenAIChatPreferences.applyVertexAIPreset()
         }
-        localPresetMenu
       }
     } caption: {
       EmptyView()
     }
-  }
-
-  /// The local servers a user runs on this Mac. A menu rather than three more buttons: the row is
-  /// already full at the window's minimum width, and these are the same kind of choice.
-  private var localPresetMenu: some View {
-    Menu("Local…") {
-      Button("LM Studio") {
-        OpenAIChatPreferences.applyLMStudioPreset()
-        reloadFromPreferences()
-      }
-      .help("http://localhost:1234/v1, LM Studio's default port. The chat model is `local-model`, which LM Studio maps to whatever you loaded. Chat only: LM Studio does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it.")
-
-      Button("MLX") {
-        OpenAIChatPreferences.applyMLXPreset()
-        reloadFromPreferences()
-      }
-      .help("http://localhost:8000/v1, the default port of mlx_lm.server and mlx-audio. The chat model is the Hugging Face repo the server was started with. Chat only: mlx_lm.server does not serve /audio/transcriptions, so Dictate and spoken Dictate Prompt cannot use it.")
-
-      Button("oMLX") {
-        OpenAIChatPreferences.applyoMLXPreset()
-        reloadFromPreferences()
-      }
-      .help("http://localhost:8000/v1, oMLX's default port. The chat model is `local-model`, which oMLX maps to the model it serves. Dictate and Dictate Prompt work only when oMLX runs with audio support (v0.3.0+, included in the Homebrew and DMG builds; pip needs 'omlx[audio]').")
-    }
-    .controlSize(.small)
-    .fixedSize()
-    .help("Presets for a server on this Mac: LM Studio, MLX, oMLX.")
   }
 
   private func presetButton(_ title: LocalizedStringKey, help: LocalizedStringKey, apply: @escaping () -> Void) -> some View {
