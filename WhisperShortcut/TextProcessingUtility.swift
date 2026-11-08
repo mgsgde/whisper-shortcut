@@ -5,7 +5,6 @@
 //  Shared text processing utilities for transcription normalization and validation
 //
 
-import AVFoundation
 import Foundation
 
 // MARK: - Text Processing Utility
@@ -488,26 +487,11 @@ enum TextProcessingUtility {
     knownWhisperHallucinations.contains(phantomComparisonForm(text))
   }
 
-  /// True for the modes that carry a *transcription* rather than a Dictate Prompt reply. The
-  /// offline path passes `"LOCAL-SPEECH"`, which does not contain `"TRANSCRIPTION"`, so the plain
-  /// substring test the assistant-refusal check uses would silently skip the one path this filter
-  /// exists for.
-  static func isTranscriptionMode(_ mode: String) -> Bool {
-    mode.contains("TRANSCRIPTION") || mode.contains("LOCAL-SPEECH")
-  }
-
   /// Longest clip for which a single-phrase transcript is treated as a silence hallucination.
   /// Subtitle filler appears on short noise-only clips; a clip of 2 s or more that transcribes to
   /// just "You" or "Vielen Dank" is far more likely a real, deliberate utterance. Unknown duration
   /// (nil) keeps the transcript — the same fail-open rule the VAD gate follows.
   static let hallucinationMaxClipSeconds: Double = 2.0
-
-  /// Duration of an audio file in seconds, nil when unreadable.
-  static func audioDurationSeconds(of url: URL) -> Double? {
-    guard let file = try? AVAudioFile(forReading: url), file.fileFormat.sampleRate > 0
-    else { return nil }
-    return Double(file.length) / file.fileFormat.sampleRate
-  }
 
   static func validateSpeechText(
     _ text: String, mode: String = "TRANSCRIPTION-MODE", audioSeconds: Double? = nil
@@ -568,9 +552,9 @@ enum TextProcessingUtility {
     // the model writes when the clip holds no speech. Whole-transcript match only, so a real
     // sentence that happens to contain "thank you" is untouched. The VAD gate in
     // `LocalSpeechService` catches most of these before the decode; this catches what still gets
-    // through, and is the only defence on the cloud paths. User-switchable because the list
+    // through. Offline Whisper only. User-switchable because the list
     // contains phrases someone could legitimately dictate on their own ("You", "Bye").
-    if Self.isTranscriptionMode(mode), DictationPreferences.filterKnownWhisperHallucinations,
+    if mode.contains("LOCAL-SPEECH"), DictationPreferences.filterKnownWhisperHallucinations,
        isKnownWhisperHallucination(trimmedText),
        let audioSeconds, audioSeconds < Self.hallucinationMaxClipSeconds {
       DebugLogger.log(

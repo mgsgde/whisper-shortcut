@@ -530,8 +530,11 @@ actor LocalSpeechService {
     }
 
     let normalizedText = TextProcessingUtility.normalizeTranscriptionText(text)
+    // Phrase filter is offline Whisper only. Parakeet does not write subtitle filler, so a
+    // short "Vielen Dank." from it is kept — nil duration fails open inside the filter.
     try TextProcessingUtility.validateSpeechText(
-      normalizedText, mode: "LOCAL-SPEECH", audioSeconds: audioDuration)
+      normalizedText, mode: "LOCAL-SPEECH",
+      audioSeconds: whisperKit != nil ? audioDuration : nil)
     
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")

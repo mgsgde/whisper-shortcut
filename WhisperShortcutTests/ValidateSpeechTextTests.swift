@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import WhisperShortcut_AppStore
 
-@Suite("validateSpeechText")
+@Suite("validateSpeechText", .serialized)
 struct ValidateSpeechTextTests {
 
   @Test("A normal transcript is accepted")
@@ -126,14 +126,12 @@ struct ValidateSpeechTextTests {
   func phantomPhraseIsNoSpeech(text: String) {
     #expect(throws: TranscriptionError.noSpeechDetected) {
       try TextProcessingUtility.validateSpeechText(
-        text, mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
+        text, mode: "LOCAL-SPEECH", audioSeconds: 1.0)
     }
   }
 
-  /// The same phrases on the offline path, whose mode string is `"LOCAL-SPEECH"` and does not
-  /// contain `"TRANSCRIPTION"` — the filter must still apply there, or it misses the one path it
-  /// was written for.
-  @Test("The filter also applies to the offline LOCAL-SPEECH mode")
+  /// Offline Whisper passes `"LOCAL-SPEECH"`. The filter runs on that mode only.
+  @Test("The filter applies to the offline LOCAL-SPEECH mode")
   func phantomPhraseAppliesToOfflineMode() {
     #expect(throws: TranscriptionError.noSpeechDetected) {
       try TextProcessingUtility.validateSpeechText(
@@ -150,7 +148,8 @@ struct ValidateSpeechTextTests {
     "Please subscribe to the practice newsletter before Friday.",
   ])
   func realSentenceWithPhantomSubstringKept(text: String) throws {
-    try TextProcessingUtility.validateSpeechText(text, mode: "TRANSCRIPTION-MODE")
+    try TextProcessingUtility.validateSpeechText(
+      text, mode: "LOCAL-SPEECH", audioSeconds: 1.0)
   }
 
   /// A clip of 2 s or more, or of unknown length, that transcribes to a single phrase is real
@@ -158,7 +157,7 @@ struct ValidateSpeechTextTests {
   @Test("A long or unknown-length clip keeps a single-phrase transcript", arguments: [2.0, 5.0, Double?.none])
   func longClipKeepsPhrase(seconds: Double?) throws {
     try TextProcessingUtility.validateSpeechText(
-      "Vielen Dank.", mode: "TRANSCRIPTION-MODE", audioSeconds: seconds)
+      "Vielen Dank.", mode: "LOCAL-SPEECH", audioSeconds: seconds)
   }
 
   @Test("Empty is still no speech, not a hallucination")
@@ -181,13 +180,21 @@ struct ValidateSpeechTextTests {
 
     UserDefaults.standard.set(false, forKey: key)
     try TextProcessingUtility.validateSpeechText(
-      "Thank you.", mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
+      "Thank you.", mode: "LOCAL-SPEECH", audioSeconds: 1.0)
 
     UserDefaults.standard.set(true, forKey: key)
     #expect(throws: TranscriptionError.noSpeechDetected) {
       try TextProcessingUtility.validateSpeechText(
-      "Thank you.", mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
+        "Thank you.", mode: "LOCAL-SPEECH", audioSeconds: 1.0)
     }
+  }
+
+  /// Cloud transcription uses `"TRANSCRIPTION-MODE"`. A real short "Vielen Dank." must survive;
+  /// the phrase list is an offline-Whisper property.
+  @Test("A short cloud transcript that is only a known phrase is kept")
+  func cloudModeKeepsShortPhrase() throws {
+    try TextProcessingUtility.validateSpeechText(
+      "Vielen Dank.", mode: "TRANSCRIPTION-MODE", audioSeconds: 1.0)
   }
 
   @Test("The comparison form strips case, whitespace and trailing punctuation")

@@ -1656,7 +1656,7 @@ enum ReadAloudSpeed: Double, CaseIterable {
 /// as `ReadAloudPreferences`: coalesce-with-default in one place instead of at every call site.
 enum DictationPreferences {
   /// Whether a transcript that is entirely a known Whisper silence hallucination is dropped.
-  /// Read by `TextProcessingUtility.validateSpeechText`, which runs on every transcription path.
+  /// Read by `TextProcessingUtility.validateSpeechText` on the offline Whisper path.
   static var filterKnownWhisperHallucinations: Bool {
     UserDefaults.standard.bool(
       forKey: UserDefaultsKeys.filterKnownWhisperHallucinations,

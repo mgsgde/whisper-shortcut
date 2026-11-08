@@ -25221,12 +25221,12 @@
         }
       }
     },
-    "Speech models, Whisper especially, were trained on subtitled video, so on breath or room noise they sometimes write subtitle filler — usually \"Thank you.\" Applies to all transcription models." : {
+    "Offline Whisper was trained on subtitled video, so on breath or room noise it sometimes writes subtitle filler — usually \"Thank you.\" Applies to offline Whisper only." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sprachmodelle, besonders Whisper, wurden mit untertitelten Videos trainiert. Bei Atemgeräuschen oder Raumrauschen schreiben sie deshalb manchmal Untertitel-Füllsatz — meist „Thank you.“ Gilt für alle Transkriptionsmodelle."
+            "value" : "Offline-Whisper wurde mit untertitelten Videos trainiert. Bei Atemgeräuschen oder Raumrauschen schreibt es deshalb manchmal Untertitel-Füllsatz — meist „Thank you.“ Gilt nur für Offline-Whisper."
           }
         }
       }
