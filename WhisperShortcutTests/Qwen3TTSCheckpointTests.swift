@@ -11,7 +11,11 @@ struct Qwen3TTSCheckpointTests {
   @Test("Both checkpoints are offered, VoiceDesign first")
   func lineup() {
     let qwen3 = TTSModel.readAloudModels.filter { $0.qwen3ModelType != nil }
-    #expect(qwen3 == [.qwen3VoiceDesign, .qwen3CustomVoice])
+    // Offered checkpoints depend on this Mac's RAM (VoiceDesign needs 32 GB, CustomVoice 16 GB).
+    let expected: [TTSModel] = [.qwen3VoiceDesign, .qwen3CustomVoice].filter {
+      $0.qwen3ModelType?.isOfferable ?? true
+    }
+    #expect(qwen3 == expected)
     #expect(TTSModel.qwen3VoiceDesign.qwen3ModelType == .voiceDesign)
     #expect(TTSModel.qwen3CustomVoice.qwen3ModelType == .customVoice)
   }
