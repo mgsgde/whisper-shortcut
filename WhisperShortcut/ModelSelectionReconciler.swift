@@ -206,7 +206,9 @@ enum ModelSelectionReconciler {
     let ttsRaw = UserDefaults.standard.string(forKey: ttsKey) ?? SettingsDefaults.readAloudModel.rawValue
     let ttsCurrent = TTSModel(rawValue: TTSModel.migrateLegacyReadAloudRawValue(ttsRaw))
       ?? SettingsDefaults.readAloudModel
-    if ttsCurrent.provider != .system {
+    // On-device voices stay: Offline Mode is exactly what they are for. Only a cloud voice has to
+    // move to the macOS voice.
+    if !ttsCurrent.provider.isOnDevice {
       UserDefaults.standard.set(TTSModel.systemMacOS.rawValue, forKey: ttsKey)
       DebugLogger.log(
         "MODEL-RECONCILE: \(ttsKey): \(ttsCurrent.rawValue) → \(TTSModel.systemMacOS.rawValue) (Offline Mode)")
@@ -496,6 +498,11 @@ enum ModelSelectionReconciler {
       UserDefaults.standard.removeObject(forKey: recordKey)
     }
     if hasKey(current.provider) { return }
+    // On-device providers are never replaced by a cloud model. A missing Qwen3 download is a
+    // download, not a dead end — `speakWithQwen3Voice` fetches it on first use. Replacing the
+    // selection here would silently send the user's text to a cloud provider they did not pick,
+    // which is the same failure `reconcileTranscription` documents for offline Whisper.
+    if current.provider == .system || current.provider == .localMLX { return }
     guard let replacement = TTSModel.readAloudModels.first(where: { hasKey($0.provider) }) else { return }
     UserDefaults.standard.set(replacement.rawValue, forKey: key)
     if replacement == .systemMacOS {

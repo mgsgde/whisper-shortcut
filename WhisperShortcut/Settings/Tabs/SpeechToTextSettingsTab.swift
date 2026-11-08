@@ -404,6 +404,26 @@ struct SpeechToTextSettingsTab: View {
         ForEach(OfflineModelType.offerable, id: \.self) { modelType in
           offlineModelRow(for: modelType)
         }
+        qwen3ASRRow
+      }
+    }
+  }
+
+  /// Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it is not an
+  /// `OfflineModelType` and cannot come from `OfflineModelType.offerable`. Same row, own store.
+  @ViewBuilder
+  private var qwen3ASRRow: some View {
+    if Qwen3ModelType.asr.isOfferable {
+      ModelDownloadRow(
+        store: Qwen3ModelManager.shared,
+        model: Qwen3ModelType.asr,
+        downloadedMessage: String(
+          localized: "Qwen3 ASR 1.7B was successfully downloaded. The first transcription may take a moment to initialize the model; subsequent ones will be faster."),
+        onError: { viewModel.showError($0) }
+      ) {
+        Text("11 languages")
+          .font(.caption)
+          .foregroundColor(.secondary)
       }
     }
   }

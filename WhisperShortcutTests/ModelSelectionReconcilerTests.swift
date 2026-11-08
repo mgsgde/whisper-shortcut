@@ -322,6 +322,7 @@ struct ModelSelectionReconcilerTests {
         case .openai: return keyed.contains("openai")
         case .xai: return keyed.contains("xai")
         case .system: return true
+        case .localMLX: return true
         }
       }
     }
