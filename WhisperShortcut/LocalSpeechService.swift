@@ -534,7 +534,7 @@ actor LocalSpeechService {
     // short "Vielen Dank." from it is kept — nil duration fails open inside the filter.
     try TextProcessingUtility.validateSpeechText(
       normalizedText, mode: "LOCAL-SPEECH",
-      audioSeconds: whisperKit != nil ? audioDuration : nil)
+      audioSeconds: parakeet == nil ? audioDuration : nil)
     
     let totalElapsedTime = CFAbsoluteTimeGetCurrent() - transcribeStartTime
     DebugLogger.logSuccess("LOCAL-SPEECH: Transcription completed")
