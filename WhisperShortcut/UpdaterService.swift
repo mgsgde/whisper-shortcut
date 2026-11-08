@@ -2,6 +2,7 @@
 import AppKit
 import Combine
 import Foundation
+import os
 import Sparkle
 
 /// Wraps Sparkle 2 for the direct (GitHub) build. Never installs silently: Sparkle shows a notice
@@ -26,9 +27,17 @@ final class UpdaterService: NSObject, ObservableObject {
   }
 
   private var controller: SPUStandardUpdaterController!
-  /// A scheduled update that arrived while a meeting recorded and was held back (see
-  /// `standardUserDriverShouldHandleShowingScheduledUpdate`). Shown when the meeting ends.
+  /// A scheduled update that arrived while a meeting recorded or Dictate Live ran and was held back
+  /// (see `standardUserDriverShouldHandleShowingScheduledUpdate`). Shown when that ends.
   private var deferredScheduledUpdate = false
+  /// True from the start of a Dictate Live recording until its last piece is inserted. A lock, not
+  /// MainActor state, because Sparkle's delegate callbacks are nonisolated.
+  nonisolated private static let dictateLiveActive = OSAllocatedUnfairLock(initialState: false)
+
+  /// Set by `MenuBarController` when Dictate Live starts and clears.
+  nonisolated static func setDictateLiveActive(_ active: Bool) {
+    dictateLiveActive.withLock { $0 = active }
+  }
   private var started = false
   private var observations: [NSKeyValueObservation] = []
 
@@ -76,12 +85,12 @@ final class UpdaterService: NSObject, ObservableObject {
     }
   }
 
-  /// Called when a live meeting has finished. A held-back scheduled update is brought up now;
+  /// Called when a live meeting or Dictate Live has finished. A held-back scheduled update is brought up now;
   /// Sparkle keeps that update session open and shows it in focus on the next check.
   func showDeferredUpdateIfAny() {
     guard deferredScheduledUpdate else { return }
     deferredScheduledUpdate = false
-    DebugLogger.log("UPDATER: meeting ended, showing the deferred scheduled update")
+    DebugLogger.log("UPDATER: meeting or dictation ended, showing the deferred scheduled update")
     controller.checkForUpdates(nil)
   }
 
@@ -137,13 +146,18 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
     _ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool
   ) -> Bool {
     // A scheduled update must not pop a window (and steal focus) while this process records a
-    // live meeting. Declining here defers it to the next scheduled check.
-    if Self.thisProcessIsRecordingMeeting() {
-      DebugLogger.log("UPDATER: deferring scheduled update \(update.displayVersionString) (meeting recording)")
+    // live meeting or inserts Dictate Live pieces. Declining here defers it until that ends.
+    if Self.thisProcessIsBusyWithLiveWork() {
+      DebugLogger.log(
+        "UPDATER: deferring scheduled update \(update.displayVersionString) (meeting recording or Dictate Live)")
       Task { @MainActor in UpdaterService.shared.deferredScheduledUpdate = true }
       return false
     }
     return true
+  }
+
+  nonisolated private static func thisProcessIsBusyWithLiveWork() -> Bool {
+    thisProcessIsRecordingMeeting() || dictateLiveActive.withLock { $0 }
   }
 
   /// True when the live-meeting marker belongs to this process (written at session start, cleared
@@ -157,7 +171,7 @@ extension UpdaterService: SPUStandardUserDriverDelegate {
     _ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState
   ) {
     guard !state.userInitiated else { return }
-    guard handleShowingUpdate, !Self.thisProcessIsRecordingMeeting() else { return }
+    guard handleShowingUpdate, !Self.thisProcessIsBusyWithLiveWork() else { return }
     DebugLogger.log("UPDATER: scheduled update found: \(update.displayVersionString)")
     // Menu-bar (LSUIElement) app: bring Sparkle's alert in front of other windows.
     Task { @MainActor in NSApp.activate(ignoringOtherApps: true) }
