@@ -297,7 +297,7 @@ struct Qwen3PersonaFormView: View {
   }
 
   /// The audio formats the picker offers. Everything `AVAudioFile` can decode on macOS, which is
-  /// what `loadAudioArray` uses: WAV, MP3, M4A/AAC, AIFF, CAF and FLAC. Listed explicitly rather
+  /// what `AudioFileMonoLoader` uses: WAV, MP3, M4A/AAC, AIFF, CAF and FLAC. Listed explicitly rather
   /// than as `.audio` so the panel's filter matches the sentence under it, and so a format that
   /// cannot be decoded is not offered in the first place.
   private static let referenceAudioTypes: [UTType] = [
