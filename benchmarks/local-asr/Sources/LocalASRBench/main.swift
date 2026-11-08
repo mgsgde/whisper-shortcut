@@ -88,6 +88,10 @@ func makeEngine(_ name: String) -> Engine? {
       nameOverride: "parakeet-ultra+app-gate", appGuard: true)
   case "nemotron-unified": return NemotronUnifiedEngine(useVocabulary: false)
   case "nemotron-unified+vocab": return NemotronUnifiedEngine(useVocabulary: true)
+  case "nemotron-stream-2080": return NemotronStreamingEngine(leftFrames: 70, chunkFrames: 13, rightFrames: 13)
+  case "nemotron-stream-1120": return NemotronStreamingEngine(leftFrames: 70, chunkFrames: 7, rightFrames: 7)
+  case "nemotron-stream-560": return NemotronStreamingEngine(leftFrames: 70, chunkFrames: 2, rightFrames: 5)
+  case "parakeet-ultra-sliding": return ParakeetSlidingWindowEngine()
   case "apple":
     if #available(macOS 26.0, *) { return AppleSpeechEngine(useContext: false) }
     return nil
@@ -226,6 +230,14 @@ for engineName in options.engines {
   let summary = EngineSummary(name: engine.name, loadSeconds: load, firstDecodeSeconds: firstDecode, rows: rows)
   summaries.append(summary)
   printSummary([summary], header: false)
+  if engine is NemotronStreamingEngine || engine is ParakeetSlidingWindowEngine {
+    let lags = StreamLagCollector.lags
+    let mean = lags.isEmpty ? nil : lags.reduce(0, +) / Double(lags.count)
+    print(
+      "STREAM-LAG \(engine.name) words=\(lags.count) p50=\(f(Metrics.median(lags))) p90=\(f(Metrics.percentile(lags, 0.9))) mean=\(f(mean))"
+    )
+    StreamLagCollector.lags = []
+  }
 }
 try rowsHandle.close()
 

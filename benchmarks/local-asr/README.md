@@ -71,6 +71,25 @@ Engines run one after another, never side by side, so none competes with another
 
 ## Results
 
+### 2026-11-08 — Nemotron Unified streaming vs the sliding-window preview (M1 Pro, FluidAudio 0.18.2)
+
+New arms: `nemotron-stream-{2080,1120,560}` (`StreamingUnifiedAsrManager`, int8, German prompt,
+80 ms buffers fed as fast as possible, prints `STREAM-LAG` = audio position when a word first
+appears minus its end time) and `parakeet-ultra-sliding` (`SlidingWindowAsrManager`, `.streaming`,
+German, final text). Pilot "words" = WER without the spoken Komma/Punkt words.
+
+| engine | WER real | pilot words | lag p50 | RTF |
+|---|---:|---:|---:|---:|
+| parakeet-ultra | 5.1 % | 7.1 % | — | 0.025 |
+| nemotron-unified | 5.8 % | 10.4 % | — | 0.045 |
+| parakeet-ultra-sliding | 4.8 % | 7.1 % | — | 0.022 |
+| nemotron-stream-2080 | 5.1 % | 10.4 % | 1.28 s | 0.13 |
+| nemotron-stream-1120 | 6.2 % | 11.8 % | 0.64 s | 0.24 |
+| nemotron-stream-560 | 6.2 % | 10.0 % | 0.40 s | 0.58 |
+
+Not adopted: lower latency, but more errors, ~23× Ultra's compute and a second download. Reasoning
+in `plans/model-audits/2026-11-08-nemotron-unified-asr.md`.
+
 ### 2026-11-04 — successors to Parakeet Ultra, and the glossary gate (M1 Pro, macOS 26.6.2, FluidAudio 0.18.2)
 
 Candidates: German fine-tune of Parakeet v3 (`ValentinWeyer/parakeet-primeline-de-coreml`, unofficial

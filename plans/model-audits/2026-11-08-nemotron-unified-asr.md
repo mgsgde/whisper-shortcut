@@ -1,4 +1,4 @@
-VERDICT: candidate worth one benchmark. Our pinned FluidAudio 0.18.2 already runs it (offline + streaming + glossary boosting), and the licence allows App Store shipping with attribution. Ship nothing before the German benchmark below.
+VERDICT: Nemotron Unified is not worth it, neither offline nor streaming. Measured 2026-11-08: offline it loses to Ultra again (pilot 10.4 % vs 7.1 %); streaming at 560 ms gives text 0.4 s behind speech, but with more errors (pilot 10.0 % vs 7.1 %), 0.58× real time of compute on an M1 Pro, and an extra download. The live preview stays on SlidingWindow over Ultra as planned.
 
 # Nemotron Unified ASR 0.6B as offline (and streaming) dictation, 2026-11-08
 
@@ -8,8 +8,22 @@ Candidate: `FluidInference/nemotron-labs-unified-asr-0.6b-coreml`, a Core ML con
 is what holds the practice pilots back on offline. This model claims one checkpoint for both
 offline and streaming, in 25 European languages.
 
-This was prepared in a session that did not run the model. Every fact below is read from the
-model cards and from FluidAudio's source at our pinned commit. Nothing was measured.
+**Correction (same day):** the first version of this file said nothing was measured. That was
+wrong. The offline arms `nemotron-unified` and `nemotron-unified+vocab` were already run on
+2026-11-04 (M1 Pro, FluidAudio 0.18.2, int8), see `benchmarks/local-asr/README.md`:
+
+| engine | WER real | WER pilot | pilot without spoken-mark words | p50 <5 s |
+|---|---:|---:|---:|---:|
+| parakeet-ultra | **5.5 %** | 17.1 % | **6.3 %** | **0.09** |
+| nemotron-unified | 6.5 % | 18.3 % | 9.8 % | 0.16 |
+| nemotron-unified+vocab | 11.8 % | 20.2 % | 12.2 % | 0.19 |
+
+So offline replacement of Ultra is off the table, and Glossary boosting on this family inserts
+terms that were never said. What remains is streaming: buffered streaming can only be as good as
+the offline decode or worse, so the question is narrower — is Nemotron's live text good and fast
+enough for the opt-in live preview (`live-dictate-preview.md`), compared with the planned
+`SlidingWindowAsrManager` over Ultra, which needs no extra download? The model facts below come
+from the cards and FluidAudio's source.
 
 ## What the model is
 
@@ -165,3 +179,55 @@ a throwaway `TranscriptionModel` case on a branch, never on main before the deci
 
 Queue row: `plans/implementer-queue.md` #77. It is `ASK`, because it needs the Mac, model downloads
 and minutes of ANE time, which the unattended runner should not take on its own.
+
+## Results, 2026-11-08 (run on the Mac)
+
+Run setup: M1 Pro, macOS 26.6.2, FluidAudio 0.18.2, int8 Nemotron encoders. The streaming arms
+were added to `benchmarks/local-asr` on this branch.
+
+Clips: 10 synthetic, 59 real, 46 pilot. The real reference is the cloud transcript the user
+accepted. The pilot reference is the spoken corpus text; "words" drops the spoken
+Komma/Punkt words.
+
+Streaming arms were fed 80 ms buffers as fast as possible. Two reading notes:
+
+- **Lag** is the audio position at which a word first appears in the partial text, minus that
+  word's end time. It does not include compute time.
+- **RTF** is total decode time ÷ audio time, so on this Mac the real live delay is roughly lag
+  plus one step's compute.
+
+| engine | WER real | WER pilot | pilot words | terms pilot | lag p50 / p90 | RTF |
+|---|---:|---:|---:|---:|---:|---:|
+| parakeet-ultra (offline, ships) | 5.1 % | 17.1 % | **7.1 %** | 10/12 | — | 0.025 |
+| nemotron-unified (offline) | 5.8 % | 18.3 % | 10.4 % | 10/12 | — | 0.045 |
+| parakeet-ultra-sliding (planned preview engine) | **4.8 %** | 17.1 % | **7.1 %** | 10/12 | not measured | 0.022 |
+| nemotron-stream-2080 | 5.1 % | 18.7 % | 10.4 % | 10/12 | 1.28 / 1.84 s | 0.13 |
+| nemotron-stream-1120 | 6.2 %* | 20.2 % | 11.8 % | 10/12 | 0.64 / 0.96 s | 0.24 |
+| nemotron-stream-560 | 6.2 %* | 17.5 % | 10.0 % | 10/12 | 0.40 / 0.48 s | 0.58 |
+
+\* Two real clips failed to open in each of these two arms (`ExtAudioFileOpenURL`). The app
+container's recordings changed during the ~40 min run, so those arms are scored on 57 clips.
+
+The WER figures above are the *final* text. For the sliding window that is the confirmed text,
+which only firms up after ~11 s chunk + 2 s right context (`SlidingWindowAsrConfig.streaming`).
+Its tentative hypothesis updates every 1 s, and the quality of that tentative text was not
+measured.
+
+**Reading:**
+
+- **Offline:** the 2026-11-04 result holds. Nemotron's pilot error rate is ~3 points worse than
+  Ultra's, and it mishears the user's voice more often.
+- **Streaming:** Nemotron's one real advantage is a low, predictable delay, 0.4–0.6 s at the
+  560 ms bundle. It pays for that in three ways:
+  - ~40 % more word errors on the pilot dictation (10.0 % vs 7.1 %)
+  - 0.58× real time of compute on an M1 Pro (~23× Ultra's)
+  - a second ~570 MB+ download beside Ultra
+- **The live preview** (`live-dictate-preview.md`) only shows text. Stop still pastes Ultra's
+  offline decode, so the preview's accuracy matters less than its cost, and Nemotron's cost is the
+  higher one. Keep the planned SlidingWindow over Ultra: no extra download, Ultra-level final
+  text, 1 s tentative updates.
+
+**What would reopen it:** pilots who use the preview complain that it lags (the 1 s tentative /
+~13 s confirmed rhythm), *and* a newer Nemotron or FluidAudio cache-aware path cuts the compute.
+Then re-run `--engines parakeet-ultra-sliding,nemotron-stream-560` with a lag metric for the
+tentative sliding-window text.

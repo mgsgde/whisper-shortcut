@@ -80,6 +80,48 @@ final class WhisperEngine: Engine {
 
 // MARK: - Parakeet family (FluidAudio, CoreML on the ANE)
 
+/// Same load path `ParakeetEngine` uses: an exact folder when one is given, otherwise the
+/// version's own cache. `AsrModels.load(from:version:)` would resolve a sibling repo folder
+/// and can silently pick stock v3.
+func loadParakeetModels(version: AsrModelVersion, localDirectory: URL?) async throws -> AsrModels {
+  if let localDirectory {
+    return try AsrModels.loadLocal(from: localDirectory, version: version)
+  }
+  return try await AsrModels.downloadAndLoad(version: version)
+}
+
+/// 80 ms at 16 kHz. Streaming engines feed this size so a step matches one encoder frame.
+let streamingFrameSamples = 1280
+
+func pcm16kMono(_ samples: ArraySlice<Float>) throws -> AVAudioPCMBuffer {
+  let count = samples.count
+  guard count > 0,
+    let format = AVAudioFormat(
+      commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+    let channel = buffer.floatChannelData
+  else {
+    throw NSError(domain: "bench", code: 5, userInfo: [
+      NSLocalizedDescriptionKey: "Could not build a 16 kHz mono buffer"
+    ])
+  }
+  buffer.frameLength = AVAudioFrameCount(count)
+  samples.withUnsafeBufferPointer { source in
+    channel[0].update(from: source.baseAddress!, count: count)
+  }
+  return buffer
+}
+
+/// Per-word emission lag (seconds) from the streaming engines. `main` prints and clears it
+/// after each streaming engine.
+enum StreamLagCollector {
+  static var lags: [Double] = []
+
+  static func append(_ values: [Double]) {
+    lags.append(contentsOf: values)
+  }
+}
+
 final class ParakeetEngine: Engine {
   let name: String
   private let version: AsrModelVersion
@@ -112,12 +154,7 @@ final class ParakeetEngine: Engine {
   }
 
   func load() async throws {
-    let models: AsrModels
-    if let localDirectory {
-      models = try AsrModels.loadLocal(from: localDirectory, version: version)
-    } else {
-      models = try await AsrModels.downloadAndLoad(version: version)
-    }
+    let models = try await loadParakeetModels(version: version, localDirectory: localDirectory)
     let manager = AsrManager(config: .default)
     try await manager.loadModels(models)
     self.manager = manager
@@ -221,6 +258,115 @@ final class NemotronUnifiedEngine: Engine {
     manager = nil
     ctcModels = nil
     configuredVocabularyKey = nil
+  }
+}
+
+// MARK: - Nemotron streaming (FluidAudio, chunked-attention windows)
+
+/// Streaming Nemotron. Vocabulary is ignored. Each clip is reset, then pushed as fast as the
+/// encoder will take it in 80 ms frames. Word lag is `fedSeconds` at the partial where the word
+/// first appeared, minus that word's end time from `consumeWordTimings()`.
+final class NemotronStreamingEngine: Engine {
+  let name: String
+  private let config: UnifiedConfig
+  private var manager: StreamingUnifiedAsrManager?
+  private let converter = AudioConverter()
+
+  init(leftFrames: Int, chunkFrames: Int, rightFrames: Int) {
+    let config = UnifiedConfig(
+      leftFrames: leftFrames, chunkFrames: chunkFrames, rightFrames: rightFrames,
+      family: .nemotronMultilingual(.de))
+    self.config = config
+    // latencyMs is (chunk + right) × 80 ms: 2080, 1120, 560 for the shipped contexts.
+    self.name = "nemotron-stream-\(config.latencyMs)"
+  }
+
+  func load() async throws {
+    let manager = StreamingUnifiedAsrManager(config: config, encoderPrecision: .int8)
+    try await manager.loadModels()
+    self.manager = manager
+  }
+
+  func transcribe(_ clip: Clip, vocabulary: [String], rawGlossary: String) async throws -> String {
+    guard let manager else { throw NSError(domain: "bench", code: 3) }
+    try await manager.reset()
+    let samples = try converter.resampleAudioFile(clip.url)
+    var fedSeconds = 0.0
+    var emissionTimes: [Double] = []
+    var offset = 0
+    while offset < samples.count {
+      let count = min(streamingFrameSamples, samples.count - offset)
+      let buffer = try pcm16kMono(samples[offset..<(offset + count)])
+      try await manager.appendAudio(buffer)
+      try await manager.processBufferedAudio()
+      offset += count
+      fedSeconds += Double(count) / 16_000
+      recordNewWords(await manager.getPartialTranscript(), at: fedSeconds, into: &emissionTimes)
+    }
+    let text = try await manager.finish()
+    recordNewWords(text, at: fedSeconds, into: &emissionTimes)
+    let timings = await manager.consumeWordTimings()
+    StreamLagCollector.append(wordLags(emissions: emissionTimes, ends: timings.map(\.endTime)))
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  func unload() async {
+    await manager?.cleanup()
+    manager = nil
+  }
+
+  /// Words that showed up since the previous partial. Earlier words keep the time they first appeared.
+  private func recordNewWords(_ transcript: String, at fedSeconds: Double, into emissions: inout [Double]) {
+    let count = transcript.split(whereSeparator: \.isWhitespace).count
+    guard count > emissions.count else { return }
+    emissions.append(contentsOf: repeatElement(fedSeconds, count: count - emissions.count))
+  }
+
+  /// Index-aligned lag. The clip is dropped when the two word counts differ by more than 20 %.
+  private func wordLags(emissions: [Double], ends: [TimeInterval]) -> [Double] {
+    let peak = max(emissions.count, ends.count)
+    guard peak > 0 else { return [] }
+    if Double(abs(emissions.count - ends.count)) / Double(peak) > 0.20 { return [] }
+    return (0..<min(emissions.count, ends.count)).map { index in
+      emissions[index] - ends[index]
+    }
+  }
+}
+
+// MARK: - Parakeet Ultra sliding window
+
+/// Ultra through `SlidingWindowAsrManager`. The input stream is single-shot (`finish` closes it),
+/// so each clip builds a new manager around the models loaded once in `load()`.
+final class ParakeetSlidingWindowEngine: Engine {
+  let name = "parakeet-ultra-sliding"
+  private var models: AsrModels?
+  private let converter = AudioConverter()
+
+  func load() async throws {
+    models = try await loadParakeetModels(version: .ultra, localDirectory: nil)
+  }
+
+  func transcribe(_ clip: Clip, vocabulary: [String], rawGlossary: String) async throws -> String {
+    guard let models else { throw NSError(domain: "bench", code: 3) }
+    // `.system` is the non-microphone source. `.microphone` is the only other case.
+    let manager = SlidingWindowAsrManager(config: .streaming.applying(language: .german))
+    try await manager.loadModels(models)
+    try await manager.startStreaming(source: .system)
+    let samples = try converter.resampleAudioFile(clip.url)
+    var offset = 0
+    while offset < samples.count {
+      let count = min(streamingFrameSamples, samples.count - offset)
+      let buffer = try pcm16kMono(samples[offset..<(offset + count)])
+      await manager.streamAudio(buffer)
+      offset += count
+    }
+    let text = try await manager.finish()
+    await manager.cleanup()
+    return text.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  func unload() async {
+    models = nil
   }
 }
 
