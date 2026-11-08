@@ -120,6 +120,13 @@ struct LocalLLMTests {
     #expect(!LocalLLMModelType.qwen359B.isRecommended)
   }
 
+  @Test("Qwen3 audio models: CustomVoice from 16 GB, the 1.7B checkpoints from 32 GB")
+  func qwen3AudioMemoryFloors() {
+    #expect(Qwen3ModelType.customVoice.minimumPhysicalMemoryGB == 16)
+    #expect(Qwen3ModelType.asr.minimumPhysicalMemoryGB == 32)
+    #expect(Qwen3ModelType.voiceDesign.minimumPhysicalMemoryGB == 32)
+  }
+
   @Test("Gemma 4 26B A4B is a Chat-only catalogue entry that needs 32 GB")
   func gemma426BA4BIsChatOnlyAndNeeds32GB() {
     #expect(PromptModel.forLocalLLMModel(.gemma426BA4B) == .localMLXGemma426BA4B)
