@@ -13849,16 +13849,6 @@
         }
       }
     },
-    "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein OpenAI-kompatibler Server für Diktieren, Dictate Prompt und Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference oder selbst gehostet. Sie richten ihn einmal ein; alle drei nutzen dieselbe URL und denselben Schlüssel."
-          }
-        }
-      }
-    },
     "One-time download, %@" : {
       "localizations" : {
         "de" : {
@@ -26253,6 +26243,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Offline-Whisper wurde mit untertitelten Videos trainiert. Bei Atemgeräuschen oder Raumrauschen schreibt es deshalb manchmal Untertitel-Füllsatz — meist „Thank you.“ Gilt nur für Offline-Whisper."
+          }
+        }
+      }
+    },
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde deinen eigenen OpenAI-kompatiblen Endpunkt, etwa LiteLLM, Azure OpenAI, Vertex AI oder einen selbst betriebenen Server. Eine URL und ein Schlüssel für Diktieren, Dictate Prompt und Chat; jede Funktion behält ihre eigene Modellwahl. Diktieren und gesprochenes Dictate Prompt brauchen /audio/transcriptions, das LM Studio und mlx_lm.server nicht anbieten."
+          }
+        }
+      }
+    },
+    "MLX" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MLX"
+          }
+        }
+      }
+    },
+    "Not set up yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht eingerichtet."
+          }
+        }
+      }
+    },
+    "Set up…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einrichten …"
+          }
+        }
+      }
+    },
+    "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Modell-ID, die Ihr Server erwartet; sie muss zu dem passen, was der Server tatsächlich ausliefert. Bei Azure der Name Ihres Deployments."
+          }
+        }
+      }
+    },
+    "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wendet sie dann auf den markierten Text an. Bei Azure: Ihr Deployment-Name. Er muss zu dem passen, was der Server tatsächlich ausliefert."
+          }
+        }
+      }
+    },
+    "Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The port is part of the URL — type whatever your server listens on. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bis einschließlich /v1, z. B. http://localhost:4000/v1 für LiteLLM. Der Port gehört zur URL – tragen Sie ein, worauf Ihr Server hört. Die App ergänzt /audio/transcriptions fürs Diktieren und /chat/completions für den Chat."
           }
         }
       }

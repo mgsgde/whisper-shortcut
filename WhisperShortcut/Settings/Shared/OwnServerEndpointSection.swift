@@ -24,6 +24,14 @@ struct OwnServerEndpointSection: View {
 
   let route: Route
 
+  /// Set on the Accounts tab, where the surrounding card already carries the title and the status
+  /// line. The feature tabs render the header because there it is the only thing naming the form.
+  var showsHeader: Bool = true
+
+  /// One sentence for the Accounts card and this form's own header, so the two cannot drift.
+  static let subtitle: LocalizedStringResource =
+    "Connect your own OpenAI-compatible endpoint, such as LiteLLM, Azure OpenAI, Vertex AI or a self-hosted server. One URL and key for Dictate, Dictate Prompt and Chat; each feature keeps its own model choice. Dictate and spoken Dictate Prompt need /audio/transcriptions, which LM Studio and mlx_lm.server do not serve."
+
   @State private var endpointURL: String = ""
   @State private var chatModelID: String = ""
   @State private var transcriptionModelID: String = ""
@@ -64,11 +72,13 @@ struct OwnServerEndpointSection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsConstants.internalSectionSpacing) {
-      SectionHeader(
-        title: "Own server",
-        systemImage: "server.rack",
-        subtitle: "One OpenAI-compatible server for Dictate, Dictate Prompt and Chat: LiteLLM, Azure OpenAI, Vertex AI, OpenInference or self-hosted. You set it up once; all three use the same URL and key."
-      )
+      if showsHeader {
+        SectionHeader(
+          title: "Own server",
+          systemImage: "server.rack",
+          subtitle: Self.subtitle
+        )
+      }
 
       if showsSummary {
         summary
@@ -146,7 +156,7 @@ struct OwnServerEndpointSection: View {
             .help("Ask this URL for its model list. Works for any host, not only localhost.")
         }
       } caption: {
-        Text("Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat.")
+        Text("Up to /v1, e.g. http://localhost:4000/v1 for LiteLLM. The port is part of the URL — type whatever your server listens on. The app adds /audio/transcriptions for Dictate and /chat/completions for Chat.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -282,8 +292,8 @@ struct OwnServerEndpointSection: View {
           }
       } caption: {
         Text(route == .dictatePrompt
-          ? "Then applies it to your selected text. On Azure, your deployment name."
-          : "The model id your server expects. On Azure, your deployment name.")
+          ? "Then applies it to your selected text. On Azure, your deployment name. It must match what the server actually serves."
+          : "The model id your server expects, and it must match what the server actually serves. On Azure, your deployment name.")
           .font(.caption)
           .foregroundColor(.secondary)
           .fixedSize(horizontal: false, vertical: true)
