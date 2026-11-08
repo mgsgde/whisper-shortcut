@@ -46,6 +46,7 @@ final class TestHostAppDelegate: NSObject, NSApplicationDelegate {}
 // Main App Delegate with full functionality
 class FullAppDelegate: NSObject, NSApplicationDelegate {
   var menuBarController: MenuBarController?
+  private var takeoverObserver: NSObjectProtocol?
 
   /// `NSApp.servicesProvider` is not guaranteed to retain its object. Held for the process lifetime
   /// so the three selection Services stay registered.
@@ -131,8 +132,28 @@ class FullAppDelegate: NSObject, NSApplicationDelegate {
 
       #if !APP_STORE && canImport(Sparkle)
       // Direct build only: start Sparkle's scheduled daily update check (nothing installs without a click).
-      UpdaterService.shared.start()
+      // Never in a Dev build: the daily Dev instance is updated by scripts/dev-daily.sh.
+      if !AppConstants.isDevBuild {
+        UpdaterService.shared.start()
+      }
       #endif
+
+      // A `--takeover` instance (DailyInstanceSwitcher) asks every other instance to quit.
+      takeoverObserver = DistributedNotificationCenter.default().addObserver(
+        forName: .init(AppConstants.takeoverNotificationName), object: nil, queue: .main
+      ) { note in
+        if (note.object as? String) == String(getpid()) { return }
+        if let marker = LiveMeetingRecordingMarker.read(),
+          marker.payload.pid == getpid(), !marker.payload.userQuit
+        {
+          DebugLogger.log("TAKEOVER: ignoring takeover request, a live meeting is recording (\(marker.payload.stem))")
+          return
+        }
+        DebugLogger.log("TAKEOVER: another instance took over, quitting pid=\(getpid())")
+        // applicationShouldTerminate cancels unless this flag is set (menu-bar app stays alive).
+        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+        NSApp.terminate(nil)
+      }
     }
 
     // Initialize the full menu bar controller
@@ -629,10 +650,37 @@ class FullWhisperShortcut {
   /// Retains the delegate for the process lifetime — `NSApplication.delegate` is weak.
   private static var delegate: NSApplicationDelegate?
 
+  /// Asks every other running instance (release or daily Dev) to quit, then waits up to 8 s for
+  /// the release and daily Dev bundles to be gone, so this instance can take their hotkeys.
+  private static func requestTakeover() {
+    DebugLogger.log("TAKEOVER: requesting takeover, pid=\(getpid())")
+    DistributedNotificationCenter.default().postNotificationName(
+      .init(AppConstants.takeoverNotificationName), object: String(getpid()), userInfo: nil,
+      deliverImmediately: true)
+    let ids = ["com.magnusgoedde.whispershortcut", "com.magnusgoedde.whispershortcut.dev"]
+    let paths = [AppConstants.releaseAppPath, AppConstants.dailyDevAppPath]
+    func othersRunning() -> Bool {
+      ids.contains { id in
+        NSRunningApplication.runningApplications(withBundleIdentifier: id).contains {
+          $0.processIdentifier != getpid()
+            && paths.contains($0.bundleURL?.standardizedFileURL.path ?? "")
+        }
+      }
+    }
+    let deadline = Date().addingTimeInterval(8)
+    while othersRunning() && Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+    DebugLogger.log(
+      othersRunning()
+        ? "TAKEOVER: other instance still running after 8s, continuing anyway"
+        : "TAKEOVER: other instances gone, continuing")
+  }
+
   static func main() {
     // Claude Desktop launches this binary as its stdio MCP server. That process must not
     // become a second menu-bar app, so the bridge runs before NSApplication exists.
     if CommandLine.arguments.contains(MCPStdioBridge.argument) { MCPStdioBridge.run() }
+
+    if CommandLine.arguments.contains(AppConstants.takeoverArgument) { requestTakeover() }
 
     let app = NSApplication.shared
     // LSUIElement = true in Info.plist handles the menu bar app behavior
@@ -661,9 +709,14 @@ class FullWhisperShortcut {
       // The user's instance must not exit because a sidecar is running. A sandboxed app cannot read
       // other processes' arguments, so sidecars are recognised by location: they only ever run
       // from a worktree's build.
+      // The daily Dev instance only counts instances running from its own path: a DerivedData
+      // sidecar of the same bundle ID must not make it exit.
       let others = runningApps.filter {
-        $0.processIdentifier != getpid()
-          && !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
+        guard $0.processIdentifier != getpid() else { return false }
+        if AppConstants.isDailyDevInstance {
+          return $0.bundleURL?.standardizedFileURL.path == AppConstants.dailyDevAppPath
+        }
+        return !($0.bundleURL?.path.contains("/.claude/worktrees/") ?? false)
       }
       if !others.isEmpty {
         DebugLogger.log("APP-LIFECYCLE: another instance already running (count=\(others.count + 1)) — exiting pid=\(getpid())")

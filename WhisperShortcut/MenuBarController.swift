@@ -606,6 +606,17 @@ class MenuBarController: NSObject {
     menu.addItem(
       createMenuItem("Rate WhisperShortcut", action: #selector(rateApp), tag: .rate))
     #endif
+    // Only on Magnus's Mac: the daily Dev build and the /Applications release swap with one click.
+    // Users never see it, because the other bundle does not exist for them (`target` is nil).
+    if let target = DailyInstanceSwitcher.target {
+      let switchItem = NSMenuItem(
+        title: target.title, action: #selector(switchDailyInstance), keyEquivalent: "")
+      switchItem.target = self
+      switchItem.toolTip = AppConstants.isDailyDevInstance
+        ? "Quit this Dev build and open the installed release"
+        : "Quit the release and open the Dev build that follows main"
+      menu.addItem(switchItem)
+    }
     menu.addItem(
       createMenuItem("Quit WhisperShortcut", action: #selector(quitApp), keyEquivalent: "q"))
 
@@ -2272,6 +2283,25 @@ class MenuBarController: NSObject {
   @objc private func rateApp() {
     NSWorkspace.shared.open(ReviewPrompter.writeReviewURL)
     DebugLogger.log("REVIEW: User opened App Store write-review page from menu")
+  }
+
+  /// Swaps the daily Dev build and the /Applications release. Never mid-recording: quitting would
+  /// cut a dictation or a meeting, so the user is told to finish first.
+  @objc private func switchDailyInstance() {
+    guard let target = DailyInstanceSwitcher.target else { return }
+    if appState.isRecording || appState.isProcessing || isLiveMeetingActive {
+      let alert = NSAlert()
+      alert.messageText = String(localized: "Finish the current recording first")
+      alert.informativeText = String(
+        localized: "Switching quits this instance, which would cut the recording or meeting that is running.")
+      alert.addButton(withTitle: String(localized: "OK"))
+      NSApp.activate(ignoringOtherApps: true)
+      alert.runModal()
+      return
+    }
+    DebugLogger.log("SWITCHER: user chose \(target.title) → \(target.url.path)")
+    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.shouldTerminate)
+    DailyInstanceSwitcher.switchNow()
   }
 
   @objc private func quitApp() {
