@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily Dev instance updater (scripts/dev-daily.sh update): every 10 minutes, build the newest
+  origin/main and swap it in when it is safe. `scripts/dev-daily.sh install` copies this file to
+  ~/Library/LaunchAgents/ with __MAIN_ROOT__ replaced by the main checkout and bootstraps it.
+-->
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.whispershortcut.dev-daily</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/bash</string>
+      <string>__MAIN_ROOT__/scripts/dev-daily.sh</string>
+      <string>update</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/Users/mgsgde/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>600</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__MAIN_ROOT__/build/logs/dev-daily.log</string>
+    <key>StandardErrorPath</key>
+    <string>__MAIN_ROOT__/build/logs/dev-daily-error.log</string>
+  </dict>
+</plist>

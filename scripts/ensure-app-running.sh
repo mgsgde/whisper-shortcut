@@ -43,6 +43,8 @@ running_non_sidecar WhisperShortcut-AppStore && exit 0
 pgrep -f 'xcodebuild (.* )?test( |$)' >/dev/null 2>&1 && exit 0
 pgrep -f 'rebuild-and-restart\.sh' >/dev/null 2>&1 && exit 0
 
+# No recorded daily app: the installed daily Dev instance beats the main checkout's build.
+[[ -d "$DEV_DAILY_APP" ]] && MAIN_APP="$DEV_DAILY_APP"
 MAIN_APP="$(daily_app_or "$MAIN_APP")"
 
 if [[ ! -d "$MAIN_APP" ]]; then

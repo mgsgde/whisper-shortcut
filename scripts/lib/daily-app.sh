@@ -6,11 +6,15 @@
 
 DAILY_APP_FILE="$HOME/Library/Caches/whispershortcut-dev/daily-app"
 
-# Hard rule for every dev script: nothing under /Applications (the installed release, the user's
-# real daily instance) is ever killed. Anything that stops WhisperShortcut goes through
-# kill_unprotected, never a bare pkill.
+# The daily Dev instance (scripts/dev-daily.sh): a Debug build kept up to date from origin/main.
+DEV_DAILY_APP="$HOME/Applications/WhisperShortcut Dev.app"
+
+# Hard rule for every dev script: nothing under /Applications (the installed release) AND the
+# daily Dev app (the user's real daily instance) is ever killed. Anything that stops
+# WhisperShortcut goes through kill_unprotected, never a bare pkill. Only dev-daily.sh stops the
+# daily Dev app, deliberately.
 is_protected_cmd() {
-  [[ "$1" == /Applications/* ]]
+  [[ "$1" == /Applications/* || "$1" == "$DEV_DAILY_APP/"* ]]
 }
 
 # kill_unprotected -x NAME | -f REGEX
@@ -54,6 +58,22 @@ release_running() {
     [[ "$cmd" == /Applications/WhisperShortcut* ]] && return 0
   done
   return 1
+}
+
+# True when the daily Dev instance runs (--mcp-stdio helpers own no hotkeys and do not count).
+daily_dev_running() {
+  local pid cmd
+  for pid in $(pgrep -f "^$DEV_DAILY_APP/Contents/MacOS/" 2>/dev/null || true); do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    [[ "$cmd" == *" --mcp-stdio"* ]] && continue
+    [[ "$cmd" == "$DEV_DAILY_APP/Contents/MacOS/"* ]] && return 0
+  done
+  return 1
+}
+
+# True when the user's own instance runs, whichever flavor: the release or the daily Dev.
+daily_instance_running() {
+  release_running || daily_dev_running
 }
 
 # Record the bundle the user's own instance runs from: a running /Applications release wins, else
