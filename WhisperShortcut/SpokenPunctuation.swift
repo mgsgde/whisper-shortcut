@@ -71,17 +71,27 @@ enum SpokenPunctuation {
     // "Neuzeile" / "Neuezeile" are "neue Zeile" glued into one word. "Neuzeilen" does not match.
     rule(#"(?<=[.!?])[ \t]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
     rule(#"(?<=[.!?])[ \t]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
-    // Paragraph or line break without a sentence mark before it. The next word still starts the
-    // new paragraph or line, so it gets a capital too. A comma directly before "neue Zeile" is the
-    // speaker's comma and is not eaten; `commaKeepsFollowingCase` then drops the marker, so
-    // "Herr Müller, neue Zeile vielen" stays lower-case. A comma before "neuer Absatz" never
-    // reaches this rule — the rule above already turned it into a period.
-    rule(#"[ \t;]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    // Paragraph break without a sentence mark before it. The next word still starts the new
+    // paragraph, so it gets a capital too. A comma before "neuer Absatz" never reaches this rule —
+    // the rule above already turned it into a period — so the comma in the prefix only restores
+    // the old pattern.
+    rule(#"[ \t,;]*\bneue[rn][ \t]*absatz\b[ \t,.;:!?]*"#, "\n\n\u{1}"),
+    // A comma or semicolon before "neue Zeile" is the pause Parakeet wrote. Token timing keeps
+    // those pause commas in "Only when spoken", so eating them here is what stops
+    // "Befund, neue Zeile Inspektion" from staying "Befund,\nInspektion". No capital marker: the
+    // next word keeps the case it was spoken with ("Herr Müller, neue Zeile vielen" →
+    // "Herr Müller\nvielen"). A spoken "Komma" is still the word at this point; it becomes ","
+    // only in the spoken-only rules, and `commaKeepsFollowingCase` then drops the marker.
+    rule(#"[ \t]*[,;][ \t,;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n"),
+    // Line break without a sentence mark or a pause comma before it. The next word starts the
+    // new line, so it gets a capital.
     rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile\b[ \t,.;:!?]*"#, "\n\u{1}"),
     // Parakeet glues this one onto the next word too ("neue Zeileinspektion", "Neuzeileinspektion",
-    // live capture 2026-10-20). "neue Zeilen…" is left alone: the "n" is the plural or a compound
-    // ("Zeilenumbrüche"), said literally. "Neue Teile" is a different phrase and does not match.
-    rule(#"[ \t;]*\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
+    // live capture 2026-10-20). A comma or semicolon before the glued command is the same pause
+    // and is eaten; the split-off word still gets a capital. "neue Zeilen…" is left alone: the
+    // "n" is the plural or a compound ("Zeilenumbrüche"), said literally. "Neue Teile" is a
+    // different phrase and does not match.
+    rule(#"[ \t,;]*\bneu(?:e[ \t]*)?zeile(?!n)(?=\p{L})"#, "\n\u{1}"),
   ]
 
   /// Only in `PunctuationMode.spokenOnly`, where the model adds no punctuation of its own. The mark
@@ -248,9 +258,10 @@ enum SpokenPunctuation {
   /// counts as whitespace between them, so it is not what separates two marks, and the marker
   /// after the last copy is left in place for `capitalizeAfterGluedColon` ("Ende. Weiter").
   private static let repeatedMarks = rule("([.,!?])(?:[ \t\u{1}]*\\1)+", "$1")
-  /// A comma glued to the break is a continuation ("Müller, neue Zeile vielen"), including a spoken
-  /// "Komma" that only becomes a comma in the spoken-only rules, after the break was inserted.
-  /// The plain break rules have marked the next word for a capital; drop that marker.
+  /// A spoken "Komma" becomes a comma only in the spoken-only rules, after the break was inserted
+  /// ("Komma neue Zeile vielen" → ",\n\u{1}vielen"). The plain break marked the next word for a
+  /// capital; drop that marker so it keeps the case it was spoken with. A model comma before
+  /// "neue Zeile" never reaches this: the break rule above already ate it.
   private static let commaKeepsFollowingCase = rule("(,[ \\t]*\\n+)\u{1}", "$1")
 
   private static let numberWordBody =
@@ -334,9 +345,9 @@ enum SpokenPunctuation {
       changed = true
     }
     // Before `capitalizeAfterGluedColon`: the marker has to still be in the text, and a marker
-    // between two copies of a mark has to count as the space that separates them. A comma in
-    // front of a break is a continuation, so its marker is dropped first — including after spoken
-    // "Komma", which the spoken-only rules have just turned into a comma.
+    // between two copies of a mark has to count as the space that separates them. A spoken
+    // "Komma" has just become a comma in front of the break; drop its marker first so the next
+    // word keeps its case. A model comma was already eaten by the break rule.
     if mode == .spokenOnly {
       let range = NSRange(result.startIndex..., in: result)
       let collapsed = repeatedMarks.regex.stringByReplacingMatches(

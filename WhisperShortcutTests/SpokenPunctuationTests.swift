@@ -498,21 +498,23 @@ struct SpokenPunctuationBracketTests {
     #expect(SpokenPunctuation.apply(to: "Befund Neuenabsatz Therapie") == "Befund\n\nTherapie")
   }
 
-  @Test("A break without a sentence mark capitalises the next line, unless a comma precedes it")
+  @Test("A plain break capitalises the next line; a pause comma before neue Zeile is eaten")
   func capitalAfterPlainBreak() {
     #expect(
       SpokenPunctuation.apply(to: "Liebe Grüße und einen schönen Sonntag neue Zeile wie gesagt")
         == "Liebe Grüße und einen schönen Sonntag\nWie gesagt")
-    // The comma is the speaker's, so "vielen" stays lower-case. Same in both modes.
+    // The model's pause comma is eaten; the next word keeps the case it was spoken with.
     let comma = "Hallo Herr Müller, neue Zeile vielen Dank"
-    let kept = "Hallo Herr Müller,\nvielen Dank"
-    #expect(SpokenPunctuation.apply(to: comma) == kept)
-    #expect(SpokenPunctuation.apply(to: comma, mode: .spokenOnly) == kept)
-    // Spoken "Komma" becomes the comma only in spoken-only mode, after the break was inserted.
+    let eaten = "Hallo Herr Müller\nvielen Dank"
+    #expect(SpokenPunctuation.apply(to: comma) == eaten)
+    #expect(SpokenPunctuation.apply(to: comma, mode: .spokenOnly) == eaten)
+    #expect(SpokenPunctuation.apply(to: "Befund, neue Zeile Inspektion") == "Befund\nInspektion")
+    // Spoken "Komma" becomes the comma only in spoken-only mode, after the break was inserted,
+    // so the comma stays and "vielen" stays lower-case.
     #expect(
       SpokenPunctuation.apply(
         to: "Hallo Herr Müller Komma neue Zeile vielen Dank", mode: .spokenOnly)
-        == kept)
+        == "Hallo Herr Müller,\nvielen Dank")
     // ", neuer Absatz" still ends the sentence with a period and does not add its own capital.
     #expect(
       SpokenPunctuation.apply(to: "Schmerzen, neuer Absatz befund")
