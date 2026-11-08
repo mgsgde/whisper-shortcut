@@ -403,8 +403,9 @@ enum TextProcessingUtility {
       else { return text }
     }
 
-    let trimmedTail = tail.trimmingCharacters(in: .whitespacesAndNewlines)
-    DebugLogger.logWarning("\(mode): Stripped trailing glossary echo \"\(trimmedTail)\"")
+    // Dictated content (patient data): log the size only, never the words.
+    DebugLogger.logWarning(
+      "\(mode): Stripped trailing glossary echo (\(tailWords.count) word(s), \(tail.count) chars)")
 
     var kept = String(head)
     while let last = kept.last, last.isWhitespace {

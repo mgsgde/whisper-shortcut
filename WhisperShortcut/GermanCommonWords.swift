@@ -74,6 +74,10 @@ enum GermanCommonWords {
     "winter", "staat", "recht", "gesetz", "regel", "ordnung", "chance", "hilfe", "herr", "gespräch",
     "bild", "computer", "handy", "internet", "prozent", "hälfte", "rest", "liste", "reihe", "menge",
     "garten",
+    // Everyday body and clinic words a short glossary term sits next to ("Hüfte" → "Hüft-TEP",
+    // "Typ" / "Top" / "Tempo" / "Step" → "TEP", "Pep" → "PNP")
+    "hüfte", "knie", "schulter", "rücken", "hals", "bauch", "brust", "finger", "zeh",
+    "ellenbogen", "gelenk", "typ", "top", "tempo", "step", "pep",
     // Common adjectives
     "gut", "gute", "guter", "gutes", "guten", "besser", "bessere", "besten", "beste", "neu", "neue",
     "neuer", "neuen", "neues", "groß", "große", "großer", "großen", "größer", "größte", "klein",

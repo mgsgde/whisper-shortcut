@@ -34,9 +34,14 @@ enum ParakeetVocabularyGuard {
   ///     (`GermanCommonWords`): "weiter" is never rewritten into "Seiter". A pure casing
   ///     fix still passes ("GDB" → "GdB"), and a span with any uncommon word still passes
   ///     ("Wir Belsäule" → "Wirbelsäule").
+  /// (g) a single-word span that is only the first part of a hyphenated term is not rewritten
+  ///     into the whole term: "Hüfte" → "Hüft-TEP" would add a "TEP" nobody said. The speaker
+  ///     says the compound in pieces ("Hüft TEP", two words) when they mean it.
   static func accepts(_ replacement: Replacement, glossaryTerms: [String]) -> Bool {
     let original = replacement.originalSpan
     let term = replacement.term
+
+    if isOnlyLeadingPartOfCompound(original, term: term) { return false }
 
     let termRuns = Set(digitRuns(term))
     if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return false }
@@ -56,6 +61,7 @@ enum ParakeetVocabularyGuard {
     if !spelledOut, wordCount(original) > wordCount(term) + 1 { return false }
 
     if similarity(original, term) < minimumSimilarity { return false }
+    if isLongRealWordWithOtherStart(original, term: term) { return false }
     let words = original.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
     if words.count > wordCount(term),
       words.contains(where: {
@@ -82,6 +88,44 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// (h) A single long word (>= 8 letters) is a real word of its own, not a misspelt term, unless
+  /// it is nearly the term (similarity >= 0.85) or starts with the same three letters:
+  /// "Psychotherapie" / "Physiotherapie" (0.71 / 0.79) are never rewritten into "Hypnotherapie",
+  /// "Hypnoterapie" still is.
+  private static func isLongRealWordWithOtherStart(_ span: String, term: String) -> Bool {
+    guard wordCount(span) == 1 else { return false }
+    let word = squashed(span)
+    guard word.count >= 8 else { return false }
+    if similarity(span, term) >= 0.85 { return false }
+    return word.prefix(3) != squashed(term).prefix(3)
+  }
+
+  /// Short everyday words a short all-caps glossary term ("AN", "ES") would otherwise capitalise.
+  private static let shortEverydayWords: Set<String> = [
+    "an", "ab", "es", "da", "im", "au", "so", "um", "er", "ja", "zu", "in", "ob", "am",
+  ]
+
+  private static func isEverydayShortTerm(_ term: String) -> Bool {
+    guard term.count <= 3 else { return false }
+    let lower = term.lowercased()
+    return shortEverydayWords.contains(lower) || GermanCommonWords.contains(lower)
+      || SpokenPunctuation.functionWords.contains(lower)
+  }
+
+  /// True when `span` is one word that starts like (or is the start of) the first part of a
+  /// hyphenated `term` and is not the whole term: "Hüfte" for "Hüft-TEP".
+  private static func isOnlyLeadingPartOfCompound(_ span: String, term: String) -> Bool {
+    let parts = term.split(separator: "-").map { GlossaryDocument.fold(String($0)) }
+      .filter { !$0.isEmpty }
+    guard parts.count >= 2, let head = parts.first, head.count >= 3 else { return false }
+    guard wordCount(span) == 1 else { return false }
+    let word = GlossaryDocument.fold(span.trimmingCharacters(in: .punctuationCharacters))
+    guard !word.isEmpty, word != parts.joined() else { return false }
+    return word.hasPrefix(head) || head.hasPrefix(word)
+  }
+
+  private static let trailingMarks: Set<Character> = [",", ".", "?", "!"]
 
   /// Normalized Levenshtein similarity of the folded strings, whitespace and punctuation removed.
   static func similarity(_ a: String, _ b: String) -> Double {
@@ -121,7 +165,7 @@ enum ParakeetVocabularyGuard {
   /// itself ends in a digit ("B12" is not split from a following digit).
   static func restoreGlossaryCasing(in text: String, glossaryTerms: [String]) -> String {
     var result = text
-    for term in glossaryTerms where hasDistinctiveCasing(term) {
+    for term in glossaryTerms where hasDistinctiveCasing(term) && !isEverydayShortTerm(term) {
       let endsInDigit = term.last?.isNumber ?? false
       var searchStart = result.startIndex
       while searchStart < result.endIndex,
@@ -174,7 +218,16 @@ enum ParakeetVocabularyGuard {
         rejected += 1
         continue
       }
-      text.replaceSubrange(range, with: replacement.term)
+      // The marks at the end of the span stay: the term replaces the words, not the comma or
+      // question mark behind them. Dropping one shifts the mark count against the token timings
+      // (`ParakeetPunctuationTiming.filter`) and every mark of the text is lost to the fallback.
+      var term = replacement.term
+      for mark in replacement.originalSpan.reversed().prefix(while: { trailingMarks.contains($0) })
+        .reversed() where term.last != mark
+      {
+        term.append(mark)
+      }
+      text.replaceSubrange(range, with: term)
       accepted += 1
     }
     return (text, accepted, rejected)
