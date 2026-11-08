@@ -557,6 +557,36 @@ class SpeechService {
 
     // Check if using offline model
     if model.isOffline {
+      // Qwen3-ASR is on-device but not a WhisperKit/Parakeet engine, so it has no
+      // `OfflineModelType` and cannot go through `LocalSpeechService`. Same contract as the
+      // Whisper branch below: download and load on demand rather than throwing the recording away.
+      if model == .qwen3ASR {
+        try validateAudioFileFormat(at: audioURL)
+        try Task.checkCancellation()
+
+        let showsLoadingUI = reportsProgress
+        defer {
+          if showsLoadingUI {
+            Task { @MainActor in PopupNotificationWindow.dismissProcessing() }
+          }
+        }
+        if !Qwen3ModelManager.shared.isModelAvailable(.asr) {
+          try await Qwen3ModelManager.shared.ensureReady(.asr) { status in
+            guard showsLoadingUI else { return }
+            PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Offline Dictation")
+          }
+        }
+        try Task.checkCancellation()
+
+        let savedLanguageString = UserDefaults.standard.string(forKey: UserDefaultsKeys.whisperLanguage)
+        let savedLanguage = WhisperLanguage(rawValue: savedLanguageString ?? WhisperLanguage.auto.rawValue) ?? WhisperLanguage.auto
+        let result = try await Qwen3ASRService.shared.transcribe(
+          audioURL: audioURL, language: savedLanguage.qwen3LanguageName)
+        let elapsedTime = CFAbsoluteTimeGetCurrent() - startTime
+        DebugLogger.logSpeech("SPEED: Qwen3-ASR transcription completed in \(String(format: "%.3f", elapsedTime))s (\(String(format: "%.0f", elapsedTime * 1000))ms)")
+        return result
+      }
+
       // For offline models, use LocalSpeechService
       guard let offlineModelType = model.offlineModelType else {
         throw TranscriptionError.networkError(String(localized: "Invalid offline model type"))
@@ -2473,9 +2503,10 @@ class SpeechService {
       DebugLogger.log("READ-ALOUD-REWRITE: Disabled by user, using original text")
       return text
     }
-    // Cloud rewrite cannot run in Offline Mode; the on-device voice also skips it so Read Aloud
-    // stays a local path (the Gemini call would otherwise die at the network guard).
-    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider == .system {
+    // Cloud rewrite cannot run in Offline Mode; an on-device voice also skips it so Read Aloud
+    // stays a local path (the Gemini call would otherwise die at the network guard, and for a
+    // local voice "on-device" would be a lie).
+    if OfflineMode.isEnabled || ReadAloudPreferences.model.provider.isOnDevice {
       DebugLogger.log("READ-ALOUD-REWRITE: Skipped — Offline Mode / on-device voice")
       return text
     }
@@ -2578,6 +2609,11 @@ class SpeechService {
         trimmedText, voiceIdentifier: voice, onChunkReady: onChunkReady)
     }
 
+    if model.provider == .localMLX {
+      return try await speakWithQwen3Voice(
+        trimmedText, model: model, personaID: voice, onChunkReady: onChunkReady)
+    }
+
     // ChunkTTSService handles splitting, parallelism, retry/rate-limit coordination, and
     // merging. Every cloud provider returns raw PCM (s16le 24kHz mono), so the merged result
     // feeds playback unchanged — we only supply a per-chunk synthesizer for the chosen provider.
@@ -2609,6 +2645,8 @@ class SpeechService {
       }
     case .system:
       throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
+    case .localMLX:
+      throw TranscriptionError.networkError("On-device TTS should not reach the cloud chunk path")
     }
 
     let chunkService = ChunkTTSService(chunkSize: chunkSize)
@@ -2616,6 +2654,45 @@ class SpeechService {
     return try await chunkService.synthesize(
       text: trimmedText, model: model, onChunkReady: onChunkReady,
       synthesizeText: synthesizeChunk)
+  }
+
+  /// On-device Read Aloud through Qwen3-TTS. Reached when the selected model is one of the two
+  /// `.localMLX` checkpoints; `personaID` is a `Qwen3VoicePersonas` id, not a provider voice name.
+  ///
+  /// Long text is chunked inside `Qwen3TTSService` and synthesized sequentially against one loaded
+  /// model, so the weights are paid for once per Read Aloud, not once per chunk.
+  func speakWithQwen3Voice(
+    _ text: String,
+    model: TTSModel? = nil,
+    personaID: String? = nil,
+    onChunkReady: ((Data, Int, Int) -> Void)? = nil
+  ) async throws -> Data {
+    // The caller already resolved the model it dispatched on; re-reading UserDefaults here
+    // could pair a persona resolved for a different checkpoint than the one this run uses.
+    let model = model ?? ReadAloudPreferences.model
+    guard let modelType = model.qwen3ModelType else {
+      throw TranscriptionError.networkError("Qwen3 voice selected for a non-Qwen3 model")
+    }
+    let persona: Qwen3VoicePersona
+    if let personaID {
+      persona = modelType == .customVoice
+        ? Qwen3VoicePersona.customVoiceSpeaker(for: personaID)
+        : Qwen3VoicePersona.persona(for: personaID)
+    } else {
+      persona = ReadAloudPreferences.qwen3Persona(for: model)
+    }
+
+    if !Qwen3ModelManager.shared.isModelAvailable(modelType) {
+      // `defer`, not a plain call after: a failed download must also dismiss the popup, or the
+      // "Processing" window stays on screen with nothing running behind it. Same shape as the
+      // dictation branch above.
+      defer { PopupNotificationWindow.dismissProcessing() }
+      try await Qwen3ModelManager.shared.ensureReady(modelType) { status in
+        PopupNotificationWindow.showOrUpdateProcessing(verbatim: status, title: "Read Aloud")
+      }
+    }
+    return try await Qwen3TTSService.shared.synthesizePCM(
+      text: text, persona: persona, modelType: modelType, onChunkReady: onChunkReady)
   }
 
   /// On-device Read Aloud. Reached from `readSelectionAloud` / `readProseAloud` when the

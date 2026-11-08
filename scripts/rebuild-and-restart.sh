@@ -2,9 +2,10 @@
 
 # WhisperShortcut Rebuild and Restart Script
 # Builds the project, kills any running dev instances, and starts the app that was just built.
-# NOTHING under /Applications is ever killed (the installed release is the user's daily instance):
-# see kill_unprotected in lib/daily-app.sh. While the release runs, this build launches as a
-# sidecar next to it (badge TEST, no hotkeys), even from the main checkout.
+# NOTHING under /Applications and not the daily Dev app (~/Applications/WhisperShortcut Dev.app,
+# see scripts/dev-daily.sh) is ever killed: see kill_unprotected in lib/daily-app.sh. While your
+# daily instance (release or daily Dev) runs, this build launches as a sidecar next to it
+# (badge TEST, no hotkeys), even from the main checkout.
 # The Debug build is "WhisperShortcut Dev" (bundle com.magnusgoedde.whispershortcut.dev): its own
 # TCC entries (Accessibility, Microphone, Screen Recording), keychain group and container, so it
 # never collides with the installed /Applications release. Settings/history can be copied over
@@ -18,10 +19,11 @@
 #   bash scripts/rebuild-and-restart.sh --launch-from-main     # inside a .claude/worktrees/ checkout: build here, but
 #                                                              # relaunch the MAIN checkout's app (see warning below)
 #   bash scripts/rebuild-and-restart.sh --sidecar              # launch this build NEXT TO the running instance (never kills it)
+#   bash scripts/rebuild-and-restart.sh --build-only           # build, print "Build successful", exit 0: no guard, no kill, no launch
 #   bash scripts/rebuild-and-restart.sh --replace              # kill every non-/Applications instance, launch this build
 #
-# Main checkout: replaces the running dev instance (default) unless the /Applications release
-# runs, then it is a sidecar. Worktree: sidecar by default, because an agent's worktree build must
+# Main checkout: replaces the running dev instance (default) unless your daily instance (release
+# or daily Dev) runs, then it is a sidecar. Worktree: sidecar by default, because an agent's worktree build must
 # not take the user's all-day instance away (all instances bind the same global hotkeys). A sidecar
 # runs with `--sidecar`: badge TEST, no hotkeys / Fn key / MCP / Sparkle / daily auto-run. Only the
 # previous sidecar of this very build is restarted. (The app also turns itself into a sidecar when
@@ -41,6 +43,7 @@ DEVELOPMENT=false
 LAUNCH_FROM_MAIN=false
 FORCE_SIDECAR=false
 FORCE_REPLACE=false
+BUILD_ONLY=false
 for arg in "$@"; do
   case "$arg" in
     --app-store) APP_STORE=true ;;
@@ -48,6 +51,7 @@ for arg in "$@"; do
     --launch-from-main) LAUNCH_FROM_MAIN=true ;;
     --sidecar) FORCE_SIDECAR=true ;;
     --replace) FORCE_REPLACE=true ;;
+    --build-only) BUILD_ONLY=true ;;
   esac
 done
 
@@ -81,10 +85,10 @@ fi
 # "this is the instance the user runs", so they keep the kill-everything path.
 SIDECAR=false
 if [[ "$FORCE_SIDECAR" == true && "$IN_WORKTREE" != true ]]; then
-  # Without a running release the main checkout's build IS the daily instance, and the sidecar
-  # path kills the previous instance of this very bundle path: it would take it away.
-  if release_running; then
-    SIDECAR=true   # same as the default launch below: sidecar next to the release
+  # Without a running daily instance the main checkout's build IS the daily instance, and the
+  # sidecar path kills the previous instance of this very bundle path: it would take it away.
+  if daily_instance_running; then
+    SIDECAR=true   # same as the default launch below: sidecar next to the daily instance
   else
     echo "ℹ️  --sidecar ignored: the main checkout's build is the daily instance."
   fi
@@ -231,6 +235,9 @@ fi
 
 echo "✅ Build successful!"
 
+# --build-only: callers (scripts/dev-daily.sh) install the product themselves.
+[[ "$BUILD_ONLY" == true ]] && exit 0
+
 # The build is ready; do not take a recording meeting down to install it (2026-10-20 incident).
 if [[ "${CI:-}" != "true" ]]; then
   bash "$SCRIPT_DIR/meeting-guard.sh" --dev-only || { echo "ℹ️  The build is ready; rerun this script once the meeting has ended." >&2; exit 1; }
@@ -245,9 +252,9 @@ fi
 # build still named "WhisperShortcut" bind the same global hotkeys, so only one may run at a time.
 APP_PROCESS_NAMES=("WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore)
 
-# Computed before anything is killed; the release is never among the victims.
+# Computed before anything is killed; the daily instance (release or daily Dev) is never among the victims.
 RELEASE_UP=false
-release_running && RELEASE_UP=true
+daily_instance_running && RELEASE_UP=true
 
 if [[ "$SIDECAR" == true ]]; then
   echo "🔄 Sidecar: restarting only this build's previous sidecar (other instances stay untouched)..."
@@ -312,10 +319,10 @@ fi
 echo "🚀 Starting WhisperShortcut application ($( [[ "$LAUNCH_FROM_MAIN" == true ]] && echo main checkout || echo this build ))..."
 # -n: every dev instance was just killed, and the launch must not be folded into a stray one.
 # The daily-app record is deliberately not touched here: it names the instance the user runs
-# (the /Applications release), and a dev build overwriting it made scripts relaunch the wrong app.
+# (the /Applications release or the daily Dev), and a dev build overwriting it made scripts relaunch the wrong app.
 if [[ "$RELEASE_UP" == true ]]; then
   open -n "$APP_PATH" --args --sidecar
-  echo "🧪 The release in /Applications keeps running; this build runs next to it as a sidecar (badge TEST, no hotkeys)."
+  echo "🧪 Your daily instance (release or daily Dev) keeps running; this build runs next to it as a sidecar (badge TEST, no hotkeys)."
 else
   open -n "$APP_PATH"
 fi

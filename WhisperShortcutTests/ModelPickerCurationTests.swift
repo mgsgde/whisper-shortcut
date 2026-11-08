@@ -18,6 +18,7 @@ private enum FakeModel: String, CaseIterable, PickerCuratedModel {
   var pickerSupersededBy: FakeModel? { self == .oldFlash ? .newFlash : nil }
   var pickerSetupBadge: String? { nil }
   var pickerStandInRank: Int? { self == .extra1 ? 0 : nil }
+  var pickerIsFeatured: Bool { false }
 }
 
 @Suite("Curated model pickers")
@@ -208,7 +209,9 @@ struct ModelPickerCurationTests {
     let readAloud = ModelPickerCuration(
       models: TTSModel.allCases, recommended: SettingsDefaults.readAloudModel,
       selected: SettingsDefaults.readAloudModel, isUsable: { _ in true })
-    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS])
+    // The two Qwen3 voices are a two-tile on-device provider: they belong above the disclosure,
+    // not behind "More models" under the cloud tiles. Order follows the picker's list order.
+    #expect(readAloud.featured.map(\.model) == [.gemini38FlashLiteTTS, .systemMacOS, .qwen3VoiceDesign, .qwen3CustomVoice])
     #expect(readAloud.featured.first?.badges == [.recommended, .fastest])
   }
 
@@ -223,6 +226,14 @@ struct ModelPickerCurationTests {
     let onDevice = PromptModel.allCases.filter { $0.pickerOfflineRank != nil }
     let allLocal = onDevice.allSatisfy { $0.provider == .local || $0.provider == .localMLX }
     #expect(allLocal)
+    // The Read Aloud feature rule must not leak into the Chat picker: no chat model opts into it,
+    // so Chat keeps exactly the three-slot curation it had. Pinned so a future "feature the
+    // on-device family" change has to be made on purpose.
+    #expect(PromptModel.chatModels.allSatisfy { !$0.pickerIsFeatured })
+    let chat = ModelPickerCuration(
+      models: PromptModel.chatModels, recommended: SettingsDefaults.selectedChatModel,
+      selected: SettingsDefaults.selectedChatModel, isUsable: { _ in true })
+    #expect(chat.featured.count <= 4)
   }
 
   @Test("Speed ranks never feature on-device models as Fastest")

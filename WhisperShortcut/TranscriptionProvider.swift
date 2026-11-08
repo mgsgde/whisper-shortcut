@@ -140,7 +140,7 @@ extension TranscriptionModel {
     case .selfHostedTranscription:
       return .selfHosted
     case .whisperTiny, .whisperBase, .whisperSmall, .whisperMedium, .whisperLarge,
-         .whisperLargeTurbo, .parakeetUltra:
+         .whisperLargeTurbo, .parakeetUltra, .qwen3ASR:
       return .offline
     }
   }

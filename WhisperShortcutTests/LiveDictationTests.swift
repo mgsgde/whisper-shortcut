@@ -98,6 +98,15 @@ struct LiveDictationTests {
     #expect(joiner.inserted == "Sie klagt über Schmerzen")
   }
 
+  @Test("Only when spoken: \"Diese\" at a piece boundary is lower-cased mid-sentence")
+  func spokenOnlyLowercasesDiese() {
+    var joiner = LiveChunkJoiner()
+    joiner.holdsPeriods = false
+    #expect(joiner.next("Ich habe das System") == "Ich habe das System")
+    #expect(joiner.next("Diese Woche nicht genutzt.") == " diese Woche nicht genutzt.")
+    #expect(joiner.inserted == "Ich habe das System diese Woche nicht genutzt.")
+  }
+
   @Test("Only when spoken: a kept model period at the end of piece 1 lets piece 2 keep its capital")
   func spokenOnlyKeptModelPeriodThenCapital() {
     var joiner = LiveChunkJoiner()
@@ -318,6 +327,46 @@ struct LiveDictationTests {
     #expect(beforeSlash.next("L4") == "L4")
     #expect(beforeSlash.next("/L5") == "/L5")
     #expect(beforeSlash.inserted == "L4/L5")
+  }
+
+  @Test("No space after an opening parenthesis from \"Klammer auf\"")
+  func noSpaceAfterOpeningParen() {
+    #expect(LiveDictation.finishPiece("ist es Klammer auf", mode: .spokenOnly) == "ist es (")
+    var joiner = LiveChunkJoiner()
+    #expect(joiner.next("es (") == "es (")
+    #expect(joiner.next("soweit ich kann)") == "soweit ich kann)")
+    #expect(joiner.next("deutlich") == " deutlich")
+    #expect(joiner.inserted == "es (soweit ich kann) deutlich")
+  }
+
+  @Test("A mark already ending the text is not repeated at the next piece, held or not")
+  func duplicateMarkAcrossPieces() {
+    // "gut" is shorter than five letters, so the period is not held in either mode.
+    for holds in [false, true] {
+      var period = LiveChunkJoiner()
+      period.holdsPeriods = holds
+      #expect(period.next("ganz gut.") == "ganz gut.")
+      #expect(period.next(".") == "")
+      #expect(period.inserted == "ganz gut.")
+
+      var comma = LiveChunkJoiner()
+      comma.holdsPeriods = holds
+      #expect(comma.next("Hallo Herr Müller,") == "Hallo Herr Müller,")
+      #expect(comma.next(", ganz lieben Dank") == " ganz lieben Dank")
+      #expect(comma.inserted == "Hallo Herr Müller, ganz lieben Dank")
+    }
+    // A period that IS held is still emitted once when the next piece is only that mark.
+    var held = LiveChunkJoiner()
+    #expect(held.next("über Schmerzen.") == "über Schmerzen")
+    #expect(held.next(".") == ".")
+    #expect(held.inserted == "über Schmerzen.")
+    #expect(held.finish() == "")
+
+    var spoken = LiveChunkJoiner()
+    spoken.holdsPeriods = false
+    #expect(spoken.next("über Schmerzen.") == "über Schmerzen.")
+    #expect(spoken.next(".") == "")
+    #expect(spoken.inserted == "über Schmerzen.")
   }
 
   // MARK: - Drift
