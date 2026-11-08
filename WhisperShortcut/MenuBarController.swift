@@ -3162,13 +3162,12 @@ class MenuBarController: NSObject {
         // whole transcript, after streamed chunks are joined, so a command at a chunk edge still
         // attaches to the word before it.
         guard transcriptionModelForCapture.isOffline else { return transcript }
+        let timedMarks = transcriptionModelForCapture.offlineModelType?.engine == .parakeet
         let source =
           punctuationMode == .spokenOnly
-          ? SpokenPunctuation.stripModelPunctuation(
-            from: transcript,
-            timedMarks: transcriptionModelForCapture.offlineModelType?.engine == .parakeet)
+          ? SpokenPunctuation.stripModelPunctuation(from: transcript, timedMarks: timedMarks)
           : transcript
-        return SpokenPunctuation.apply(to: source, mode: punctuationMode)
+        return SpokenPunctuation.apply(to: source, mode: punctuationMode, timedMarks: timedMarks)
       },
       afterCopy: { result in
         // Recorded regardless of the interaction-logging toggle (that one gates *persistence*

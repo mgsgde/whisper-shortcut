@@ -34,9 +34,14 @@ enum ParakeetVocabularyGuard {
   ///     (`GermanCommonWords`): "weiter" is never rewritten into "Seiter". A pure casing
   ///     fix still passes ("GDB" → "GdB"), and a span with any uncommon word still passes
   ///     ("Wir Belsäule" → "Wirbelsäule").
+  /// (g) a single-word span that is only the first part of a hyphenated term is not rewritten
+  ///     into the whole term: "Hüfte" → "Hüft-TEP" would add a "TEP" nobody said. The speaker
+  ///     says the compound in pieces ("Hüft TEP", two words) when they mean it.
   static func accepts(_ replacement: Replacement, glossaryTerms: [String]) -> Bool {
     let original = replacement.originalSpan
     let term = replacement.term
+
+    if isOnlyLeadingPartOfCompound(original, term: term) { return false }
 
     let termRuns = Set(digitRuns(term))
     if digitRuns(original).contains(where: { !termRuns.contains($0) }) { return false }
@@ -82,6 +87,20 @@ enum ParakeetVocabularyGuard {
   }
 
   private static let minimumSimilarity = 0.6
+
+  /// True when `span` is one word that starts like (or is the start of) the first part of a
+  /// hyphenated `term` and is not the whole term: "Hüfte" for "Hüft-TEP".
+  private static func isOnlyLeadingPartOfCompound(_ span: String, term: String) -> Bool {
+    let parts = term.split(separator: "-").map { GlossaryDocument.fold(String($0)) }
+      .filter { !$0.isEmpty }
+    guard parts.count >= 2, let head = parts.first, head.count >= 3 else { return false }
+    guard wordCount(span) == 1 else { return false }
+    let word = GlossaryDocument.fold(span.trimmingCharacters(in: .punctuationCharacters))
+    guard !word.isEmpty, word != parts.joined() else { return false }
+    return word.hasPrefix(head) || head.hasPrefix(word)
+  }
+
+  private static let trailingMarks: Set<Character> = [",", ".", "?", "!"]
 
   /// Normalized Levenshtein similarity of the folded strings, whitespace and punctuation removed.
   static func similarity(_ a: String, _ b: String) -> Double {
@@ -174,7 +193,16 @@ enum ParakeetVocabularyGuard {
         rejected += 1
         continue
       }
-      text.replaceSubrange(range, with: replacement.term)
+      // The marks at the end of the span stay: the term replaces the words, not the comma or
+      // question mark behind them. Dropping one shifts the mark count against the token timings
+      // (`ParakeetPunctuationTiming.filter`) and every mark of the text is lost to the fallback.
+      var term = replacement.term
+      for mark in replacement.originalSpan.reversed().prefix(while: { trailingMarks.contains($0) })
+        .reversed() where term.last != mark
+      {
+        term.append(mark)
+      }
+      text.replaceSubrange(range, with: term)
       accepted += 1
     }
     return (text, accepted, rejected)

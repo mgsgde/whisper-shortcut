@@ -44,6 +44,11 @@ class SpeechService {
   private var recentEchoStrips: [(date: Date, tail: String)] = []
   private let echoStripsLock = NSLock()
 
+  /// False for offline Parakeet: it has no prompt to echo, so nothing it writes is an echo.
+  static func canEchoGlossary(_ model: TranscriptionModel) -> Bool {
+    !(model.isOffline && model.offlineModelType?.engine == .parakeet)
+  }
+
   /// The strip only ever removes a suffix, so the removed tail is what `original` has beyond
   /// `stripped`'s length.
   private func noteEchoStrip(original: String, stripped: String) {
@@ -507,10 +512,16 @@ class SpeechService {
       // Files API / chunked, OpenAI, xAI, self-hosted) and both dictation and live meeting
       // return through this one call. Both the trailing glossary-echo strip and the
       // rejected-spelling correction run on that result.
-      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
-        transcript,
-        glossaryTerms: self.glossaryTermsForEchoCheck(),
-        mode: "TRANSCRIPTION")
+      // Parakeet takes no prompt, so it cannot echo the glossary; a glossary term at the end is
+      // something the speaker said and must stay.
+      let model = preferredModel ?? TranscriptionModel.loadSelected()
+      let stripped =
+        Self.canEchoGlossary(model)
+        ? TextProcessingUtility.strippingTrailingGlossaryEcho(
+          transcript,
+          glossaryTerms: self.glossaryTermsForEchoCheck(),
+          mode: "TRANSCRIPTION")
+        : transcript
       if stripped != transcript {
         self.noteEchoStrip(original: transcript, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "transcription")
@@ -2160,10 +2171,13 @@ class SpeechService {
         // feeds the local model should arrive with the layout the user spoke.
         spokenOffline = TranscriptionModel.loadSelected().isOffline
       }
-      let stripped = TextProcessingUtility.strippingTrailingGlossaryEcho(
-        spoken,
-        glossaryTerms: glossaryTermsForEchoCheck(),
-        mode: "DICTATE-PROMPT")
+      let stripped =
+        Self.canEchoGlossary(TranscriptionModel.loadSelected())
+        ? TextProcessingUtility.strippingTrailingGlossaryEcho(
+          spoken,
+          glossaryTerms: glossaryTermsForEchoCheck(),
+          mode: "DICTATE-PROMPT")
+        : spoken
       if stripped != spoken {
         noteEchoStrip(original: spoken, stripped: stripped)
         ContextLogger.shared.logSignal(.glossaryEchoRemoved, mode: "prompt")

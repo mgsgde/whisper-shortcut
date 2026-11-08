@@ -19,7 +19,8 @@ import Foundation
 /// `minTailAfterFinalMark`. A spoken "Fragezeichen" / "Ausrufezeichen" comes out of Parakeet as
 /// "?" / "!" with that signature, so the model's mark is kept when the timing says it was spoken.
 /// When no timings are available, `SpokenPunctuation.stripModelPunctuation` still drops the
-/// model's "?" and "!".
+/// model's "?" and "!". When timings exist but the marks cannot be matched to them (count
+/// mismatch), `fallbackWithoutTiming` keeps the model's marks instead of dropping every comma.
 enum ParakeetPunctuationTiming {
   /// Mid-text mark ("," "." "?" "!"): minimum silence to the next token for the mark to count as spoken.
   static let minGapToNextToken: TimeInterval = 0.120
@@ -75,6 +76,14 @@ enum ParakeetPunctuationTiming {
   static func spacingGluedCommas(_ text: String) -> String {
     text.replacingOccurrences(
       of: ",(?=\\p{L})", with: ", ", options: .regularExpression)
+  }
+
+  /// The text when the marks cannot be matched to the tokens (`filter` returned nil). The model's
+  /// commas, "?", "!" and periods stay: a spoken salutation comma or question mark is worse lost
+  /// than a guessed comma kept, and the timing can no longer tell them apart. Only semicolons go
+  /// (Parakeet never says one; a spoken "Semikolon" is converted later).
+  static func fallbackWithoutTiming(_ text: String) -> String {
+    SpokenPunctuation.stripModelPunctuation(from: spacingGluedCommas(text), timedMarks: true)
   }
 
   /// One verdict per mark token, in order: true = the speaker said it, false = Parakeet guessed it.
