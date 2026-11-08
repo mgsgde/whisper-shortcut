@@ -67,11 +67,13 @@ enum ChatModelCommandResolver {
       normalized.contains("haiku")
     )
     // "gpt"/"openai"/"4o" pull the user toward OpenAI before the generic " 3 "
-    // branch can mis-route "gpt 3" to Gemini 3.
+    // branch can mis-route "gpt 3" to Gemini 3. "terra" is OpenAI-only (GPT-6.1 Terra,
+    // and legacy "5.6 terra"), so a bare "/model terra" enters the same branch.
     let hasOpenAI = !hasGrok && !hasClaude && (
       normalized.contains("openai") ||
       normalized.contains("gpt") ||
-      normalized.contains("4o")
+      normalized.contains("4o") ||
+      normalized.contains("terra")
     )
 
     // Native image generation (Nano Banana) — match before the version branches so "image"
@@ -114,17 +116,20 @@ enum ChatModelCommandResolver {
     } else if hasOpenAI {
       // openaiGPT4oAudio is Dictate-Prompt only (supportsTextChat=false), so the chat resolver
       // returns only the text-capable OpenAI models.
-      // The 5.x chat models are Pareto-dominated by GPT-6 and no longer offered; "5.5"/"5.4"/
-      // "terra" still resolve, to the model that replaced them. "mini" keeps 5.4 Mini.
+      // The 5.x chat models are Pareto-dominated by GPT-6 and no longer offered; "5.5"/"5.4"
+      // and legacy "5.6 terra" still resolve to Sol, the model that replaced them. Bare
+      // "terra" is GPT-6.1 Terra. "mini" keeps 5.4 Mini.
       if normalized.contains("mini") {
         candidates = [.openaiGPT5Mini]
       } else if normalized.contains("luna") {
         candidates = [.openaiGPT6Luna]
-      } else if normalized.contains("sol") || normalized.contains("terra")
+      } else if normalized.contains("terra") && !normalized.contains("5.6") {
+        candidates = [.openaiGPT61Terra]
+      } else if normalized.contains("sol") || normalized.contains("5.6")
         || normalized.contains("5.5") || normalized.contains("5.4") || normalized.contains("6") {
         candidates = [.openaiGPT6Sol]
       } else {
-        candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT6Sol]
+        candidates = [.openaiGPT5Mini, .openaiGPT6Luna, .openaiGPT61Terra, .openaiGPT6Sol]
       }
     } else if normalized.contains("argon") || padded.contains(" 4 ") {
       candidates = [.gemini4Argon]

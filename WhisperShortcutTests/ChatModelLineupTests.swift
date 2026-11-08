@@ -146,4 +146,35 @@ struct ChatModelLineupTests {
       temperature: 0.0, effort: .minimal)
     #expect(clamped.thinkingConfig?.thinkingLevel == TranscriptionThinkingEffort.low.geminiValue)
   }
+
+  @Test("GPT-6.1 Terra is wired as an OpenAI chat model")
+  func gpt61TerraIsWired() {
+    let terra = PromptModel.openaiGPT61Terra
+    #expect(terra.rawValue == "gpt-6.1-terra")
+    #expect(terra.provider == .openai)
+    #expect(terra.supportsTextChat)
+    #expect(terra.supportsGrounding)
+    #expect(!terra.supportsDictatePrompt)
+    #expect(terra.asTranscriptionModel == nil)
+    #expect(terra.chatReplacement == nil)
+    #expect(terra.shortAlias == "gpt61terra")
+    #expect(Set(PromptModel.allCases.map(\.shortAlias)).count == PromptModel.allCases.count)
+    let previousOffline = OfflineMode.isEnabled
+    defer { OfflineMode.setEnabled(previousOffline) }
+    OfflineMode.setEnabled(false)
+    #expect(PromptModel.chatModels.contains(.openaiGPT61Terra))
+    #expect(PromptModel.chatModels.contains(.openaiGPT5Mini))
+    #expect(
+      ChatModelCommandResolver.resolve(argument: "terra", currentSelection: .openaiGPT6Sol)
+        == .applied(model: .openaiGPT61Terra))
+    #expect(
+      ChatModelCommandResolver.resolve(argument: "gpt 6.1 terra", currentSelection: .openaiGPT6Sol)
+        == .applied(model: .openaiGPT61Terra))
+    #expect(
+      ChatModelCommandResolver.resolve(argument: "5.6 terra", currentSelection: .openaiGPT6Sol)
+        == .applied(model: .openaiGPT6Sol))
+    #expect(
+      OpenAIChatProvider.reasoningEffort(.default, model: "gpt-6.1-terra", useCustomEndpoint: false)
+        == "low")
+  }
 }

@@ -137,6 +137,8 @@ enum PromptModel: String, CaseIterable {
   // the *nano* rung ("roughly corresponds to the nano model tier used in earlier GPT-5
   // families") while 5.4-mini is the *mini* rung ("our strongest mini model yet"). Different
   // rungs of one price ladder are all frontier points, so it stays.
+  // Also not dominated by gpt-6.1-terra (cheaper on both price axes; Terra wins context
+  // 1.05M vs 400k and knowledge cutoff), re-verified 2026-11-08.
   // Prices re-verified 2026-08-02: https://developers.openai.com/api/docs/pricing
   case openaiGPT5Mini = "gpt-5.4-mini"
   // GPT-6 family (GA, 1.05M context), prices verified 2026-09-29 at
@@ -150,6 +152,13 @@ enum PromptModel: String, CaseIterable {
   // plans/model-audits/2026-10-03-audit.md). Revisit when OpenAI deprecates gpt-6-sol — the
   // migration must then map minimal → low.
   case openaiGPT6Sol = "gpt-6-sol"
+  // GPT-6.1 Terra, added 2026-11-08, $1/$5 per 1M (cached $0.05), 1.05M context, accepts
+  // reasoning_effort none (so `/think minimal` works, unlike gpt-6.1-sol), web search via
+  // Responses. Fills the rung between luna ($0.10/$0.50) and sol ($2/$10). Does not supersede
+  // gpt-5.4-mini: mini is cheaper on both input ($0.75) and output ($4.50), so by the Pareto
+  // rule it stays; see plans/model-audits/2026-11-08-terra.md.
+  // Source: https://developers.openai.com/api/docs/pricing
+  case openaiGPT61Terra = "gpt-6.1-terra"
   case openaiGPT6Luna = "gpt-6-luna"
   /// Audio-input chat model. Accepts inline `input_audio` content parts, which makes it the
   /// counterpart to Gemini for Dictate Prompt (the model "hears" the audio directly).
@@ -239,6 +248,8 @@ enum PromptModel: String, CaseIterable {
       return "GPT-5.4 Mini"
     case .openaiGPT6Sol:
       return "GPT-6 Sol"
+    case .openaiGPT61Terra:
+      return "GPT-6.1 Terra"
     case .openaiGPT6Luna:
       return "GPT-6 Luna"
     case .openaiGPT4oAudio:
@@ -289,6 +300,7 @@ enum PromptModel: String, CaseIterable {
     case .grok47:            return "grok47"
     case .openaiGPT5Mini:    return "gpt54mini"
     case .openaiGPT6Sol:     return "gpt6sol"
+    case .openaiGPT61Terra:  return "gpt61terra"
     case .openaiGPT6Luna:    return "gpt6luna"
     case .openaiGPT4oAudio:  return "gptaudio" // audio-only; excluded from chatModels, never surfaced
     case .claudeHaiku55:     return "claudehaiku55"
@@ -328,6 +340,8 @@ enum PromptModel: String, CaseIterable {
       return String(localized: "OpenAI's GPT-5.4 Mini • Cheaper, faster GPT-5.4 variant • Text + images • Requires OpenAI API key")
     case .openaiGPT6Sol:
       return String(localized: "OpenAI's GPT-6 Sol • Strong reasoning for research and demanding questions • Web search • 1M context • Needs an OpenAI API key")
+    case .openaiGPT61Terra:
+      return String(localized: "OpenAI's GPT-6.1 Terra • Mid-price GPT-6 • Clear writing and image understanding • Web search • 1M context • Needs an OpenAI API key")
     case .openaiGPT6Luna:
       return String(localized: "OpenAI's GPT-6 Luna • Cheapest GPT-6 • Fast everyday questions • Web search • 1M context • Needs an OpenAI API key")
     case .openaiGPT4oAudio:
@@ -366,7 +380,7 @@ enum PromptModel: String, CaseIterable {
       return .medium
     case .grok43, .grok47:
       return .medium
-    case .openaiGPT4oAudio, .openaiGPT6Sol, .claudeSonnet55:
+    case .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .claudeSonnet55:
       return .medium
     case .openaiGPT5Mini, .openaiGPT6Luna:
       return .low
@@ -385,7 +399,7 @@ enum PromptModel: String, CaseIterable {
       return .gemini
     case .grok43, .grok47:
       return .grok
-    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna:
+    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .openaiGPT6Luna:
       return .openai
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return .anthropic
@@ -595,7 +609,7 @@ enum PromptModel: String, CaseIterable {
       return nil
     // Non-Gemini — ignored by other providers
     case .grok43, .grok47,
-         .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna,
+         .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .openaiGPT6Luna,
          .claudeHaiku55, .claudeSonnet55, .claudeOpus55,
          .customOpenAIEndpoint, .openRouterChat, .chatGPTPlanChat, .localModel, .localMLXQwen34BInstruct, .localMLXQwen359B, .localMLXGemma426BA4B:
       return nil
@@ -647,7 +661,7 @@ enum PromptModel: String, CaseIterable {
       return nil // image-generation models; not transcription models
     case .grok43, .grok47:
       return nil // Grok models are text-only, no audio transcription
-    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT6Luna:
+    case .openaiGPT5Mini, .openaiGPT4oAudio, .openaiGPT6Sol, .openaiGPT61Terra, .openaiGPT6Luna:
       return nil // OpenAI chat models don't piggy-back on the transcription endpoint here
     case .claudeHaiku55, .claudeSonnet55, .claudeOpus55:
       return nil // Claude is chat-only here; no audio transcription endpoint
@@ -659,7 +673,7 @@ enum PromptModel: String, CaseIterable {
   /// Whether this model supports grounding/search.
   /// - Gemini: `google_search` + `url_context` tools on the standard endpoint.
   /// - Grok: `web_search` tool via the Responses API.
-  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4, gpt-5.4-mini).
+  /// - OpenAI text chat models: `web_search` tool via the Responses API (gpt-5.4-mini, gpt-6-luna, gpt-6.1-terra, gpt-6-sol).
   /// - Claude: Anthropic's server-side `web_search` tool (`AnthropicChatProvider.webSearchTool`).
   /// - `gpt-4o-audio-preview` is audio-only and routes through Chat Completions only, so
   ///   the Responses API path doesn't apply.
