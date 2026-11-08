@@ -65,26 +65,32 @@ bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/meeting-guard.sh" || exit 1
 # This is the one script that quits the /Applications release on purpose (you run it by hand).
 # It remembers every bundle it quits and opens them again at the end.
 echo "ℹ️  Running apps are quit for the copy and relaunched afterwards."
+# App pids by process name, without Claude's `--mcp-stdio` bridges: they carry the same name but
+# are stdio helpers with no data of their own, never quit on request, and Claude restarts them.
+app_pids() {
+  local pid cmd
+  for pid in $(pgrep -x "$1" 2>/dev/null || true); do
+    cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    [[ "$cmd" == *" --mcp-stdio"* ]] && continue
+    echo "$pid"
+  done
+}
 RESTART_APPS=()
 for name in "WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore; do
-  for pid in $(pgrep -x "$name" 2>/dev/null || true); do
+  pids=$(app_pids "$name")
+  for pid in $pids; do
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
     [[ "$cmd" == *.app/Contents/MacOS/* ]] && RESTART_APPS+=("${cmd%%.app/Contents/MacOS/*}.app")
   done
-  if pgrep -x "$name" >/dev/null 2>&1; then
+  if [[ -n "$pids" ]]; then
     echo "• Quitting $name"
-    osascript -e "tell application \"$name\" to quit" >/dev/null 2>&1 || pkill -x "$name" || true
+    # By name AppleScript reaches one instance; sidecars of the same name get SIGTERM after it.
+    osascript -e "tell application \"$name\" to quit" >/dev/null 2>&1 || true
+    sleep 1
+    leftover=$(app_pids "$name"); [[ -n "$leftover" ]] && kill $leftover 2>/dev/null || true
   fi
 done
-sleep 2
-for name in "WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore; do
-  if pgrep -x "$name" >/dev/null 2>&1; then
-    echo "❌ $name is still running — quit it and try again." >&2
-    exit 1
-  fi
-done
-
-# Runs on every exit after the quit above, so a failed copy does not leave you without your app.
+# Relaunch on every exit from here on, so a failed copy does not leave you without your app.
 restart_quit_apps() {
   local app
   [[ ${#RESTART_APPS[@]} -gt 0 ]] || return 0
@@ -95,6 +101,17 @@ restart_quit_apps() {
   done < <(printf '%s\n' "${RESTART_APPS[@]}" | sort -u)
 }
 trap restart_quit_apps EXIT
+for _ in $(seq 1 20); do
+  [[ -z "$(app_pids "WhisperShortcut Dev")$(app_pids WhisperShortcut)$(app_pids WhisperShortcut-AppStore)" ]] && break
+  sleep 0.5
+done
+for name in "WhisperShortcut Dev" WhisperShortcut WhisperShortcut-AppStore; do
+  if [[ -n "$(app_pids "$name")" ]]; then
+    echo "❌ $name is still running — quit it and try again." >&2
+    exit 1
+  fi
+done
+
 
 clone_dir() { # clone_dir <path relative to Data>
   local rel="$1"
