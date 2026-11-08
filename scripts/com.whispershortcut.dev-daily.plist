@@ -3,7 +3,8 @@
 <!--
   Daily Dev instance updater (scripts/dev-daily.sh update): every 10 minutes, build the newest
   origin/main and swap it in when it is safe. `scripts/dev-daily.sh install` copies this file to
-  ~/Library/LaunchAgents/ with __MAIN_ROOT__ replaced by the main checkout and bootstraps it.
+  ~/Library/LaunchAgents/ with __RUNNER__ (build/dev-daily/bin/dev-daily.sh, a copy that follows
+  origin/main) and __MAIN_ROOT__ filled in, and bootstraps it.
 -->
 <plist version="1.0">
   <dict>
@@ -12,7 +13,7 @@
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>__MAIN_ROOT__/scripts/dev-daily.sh</string>
+      <string>__RUNNER__</string>
       <string>update</string>
     </array>
     <key>EnvironmentVariables</key>

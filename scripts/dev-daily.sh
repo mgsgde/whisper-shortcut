@@ -50,6 +50,7 @@ daily_dev_pids() {
   local pid cmd
   for pid in $(pgrep -f "^$DEV_DAILY_APP/Contents/MacOS/" 2>/dev/null || true); do
     cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+    [[ "$cmd" == *" --mcp-stdio"* ]] && continue
     [[ "$cmd" == "$DEV_DAILY_APP/Contents/MacOS/"* ]] && echo "$pid"
   done
 }
@@ -111,7 +112,12 @@ build_target() {
   fi
   git -C "$SRC" checkout -q --detach -f "$target" || { log "checkout of $(short "$target") failed"; return 1; }
   log "building $(short "$target")"
-  if ! bash "$SRC/scripts/rebuild-and-restart.sh" --build-only; then
+  local rc=0
+  bash "$SRC/scripts/rebuild-and-restart.sh" --build-only || rc=$?
+  if [[ "$rc" -eq 75 ]]; then
+    log "build lock busy (another Xcode run), retrying next time"
+    return 75
+  elif [[ "$rc" -ne 0 ]]; then
     log "build failed on $(short "$target")"
     return 1
   fi
@@ -131,6 +137,19 @@ install_staged() {
   ditto "$STATE/staged.app" "$DEV_DAILY_APP" || { log "install failed"; return 1; }
   echo "$target" > "$STATE/installed-sha"
   log "installed $(short "$target") at $DEV_DAILY_APP"
+}
+
+# install_runner DIR: copy dev-daily.sh + lib/daily-app.sh from DIR to $STATE/bin, the copy launchd
+# runs. Not the main checkout's scripts/: that checkout may sit on any branch. Refreshed from the
+# freshly built origin/main after every install, so the updater follows main too. mv swaps the
+# inode, so a bash already reading the old file is not disturbed.
+RUNNER="$STATE/bin/dev-daily.sh"
+install_runner() {
+  local dir="$1"
+  [[ -f "$dir/dev-daily.sh" && -f "$dir/lib/daily-app.sh" ]] || return 0
+  mkdir -p "$STATE/bin/lib"
+  cp "$dir/dev-daily.sh" "$STATE/bin/.dev-daily.sh.new" && mv -f "$STATE/bin/.dev-daily.sh.new" "$RUNNER"
+  cp "$dir/lib/daily-app.sh" "$STATE/bin/lib/.daily-app.sh.new" && mv -f "$STATE/bin/lib/.daily-app.sh.new" "$STATE/bin/lib/daily-app.sh"
 }
 
 cmd_status() {
@@ -158,7 +177,10 @@ cmd_update() {
   [[ "$target" == "$installed" ]] && exit 0
   if grep -qx "$target" "$STATE/bad-sha" 2>/dev/null; then exit 0; fi
 
-  if ! build_target "$target"; then
+  local brc=0
+  build_target "$target" || brc=$?
+  [[ "$brc" -eq 75 ]] && exit 0
+  if [[ "$brc" -ne 0 ]]; then
     if [[ "$(read_state notified-sha)" != "$target" ]]; then
       notify "Dev build failed on $(short "$target")"
       echo "$target" > "$STATE/notified-sha"
@@ -181,6 +203,7 @@ cmd_update() {
 
   old_installed="$installed"
   install_staged "$target" || exit 1
+  install_runner "$SRC/scripts"
   [[ "$was_running" == true ]] || { log "daily dev not running, installed without launching"; exit 0; }
 
   log "launching $(short "$target")"
@@ -210,7 +233,8 @@ cmd_install() {
   install_staged "$target" || exit 1
   local plist="$HOME/Library/LaunchAgents/$LABEL.plist"
   mkdir -p "$HOME/Library/LaunchAgents"
-  sed "s#__MAIN_ROOT__#$MAIN_ROOT#g" "$MAIN_ROOT/scripts/com.whispershortcut.dev-daily.plist" > "$plist"
+  install_runner "$_here"
+  sed -e "s#__RUNNER__#$RUNNER#g" -e "s#__MAIN_ROOT__#$MAIN_ROOT#g" "$_here/com.whispershortcut.dev-daily.plist" > "$plist"
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$plist" || { log "launchctl bootstrap failed"; exit 1; }
   log "launchd job loaded"
