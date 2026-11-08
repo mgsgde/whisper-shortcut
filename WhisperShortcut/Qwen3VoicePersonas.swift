@@ -42,9 +42,10 @@ struct Qwen3VoicePersona: Identifiable, Hashable {
   var customVoiceSpeaker: String? = nil
 
   /// What the Read Aloud voice picker shows. Mirrors `TTSVoice.displayName`'s shape so a
-  /// VoiceDesign persona and a cloud voice read the same way in the same list.
+  /// VoiceDesign persona and a cloud voice read the same way in the same list. A cloned persona
+  /// has no gender label — the recording decides the voice, not a tag.
   var displayName: String {
-    "\(summary) (\(gender))"
+    gender.isEmpty ? summary : "\(summary) (\(gender))"
   }
 
   /// The catalogue. German first: the app's users dictate and read German, and a German voice
