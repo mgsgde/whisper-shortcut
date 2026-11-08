@@ -1,13 +1,17 @@
-## Diktat
-- **Kein „Vielen Dank.“ mehr aus der Stille.** Offline-Whisper-Modelle schreiben manchmal Untertitel-Floskeln wie „Vielen Dank.“, wenn sie nur Atmen oder Raumgeräusche hören. WhisperShortcut verwirft jetzt eine kurze Aufnahme (unter 2 Sekunden), die nur aus so einer Floskel besteht. Echte Sätze bleiben erhalten. Ausschalten können Sie das mit „Bekannte Stille-Halluzinationen filtern“ unter Einstellungen ▸ Diktieren.
+## Dictate Live
+- **Zeilenumbrüche senden nichts mehr ab.** Zeilenumbrüche werden als Shift+Return getippt, sodass eine neue Zeile in Chrome, Webformularen oder Chat-Apps die Nachricht nicht mehr abschickt.
+- **Kein Update-Fenster mitten im Diktat.** Ist während des Diktats ein Update bereit, zeigt WhisperShortcut es erst, wenn Sie fertig sind.
+- **Ein zweiter Tastendruck verliert keinen Text mehr.** Drücken Sie das Kürzel erneut, während die letzten Stücke noch eingefügt werden, wird das ignoriert, statt sie zu verwerfen.
 
-## Vorlesen
-- **Eigene Qwen3-Stimmen erzeugen und klonen.** Ist die Qwen3-VoiceDesign-Stimme ausgewählt (Macs mit mindestens 32 GB Arbeitsspeicher), können Sie unter Einstellungen ▸ Vorlesen eine Stimme anhören, aus einer Beschreibung eine neue erzeugen und eigene Stimmen behalten. Sie können eine Stimme auch aus einer Aufnahme klonen; tun Sie das nur mit Einverständnis der Person, der sie gehört. Die Aufnahme bleibt auf Ihrem Mac.
-
-## Konten
-- **Eigener Server neben den anderen Anbietern.** Unter Einstellungen ▸ Konten steht Ihr eigener OpenAI-kompatibler Server jetzt neben Gemini, OpenAI und den anderen, mit Vorlagen für LM Studio, MLX und oMLX.
+## Offline-Diktat mit gesprochenen Satzzeichen
+- Ein gesprochenes Komma vor „neue Zeile“ oder „neuer Absatz“ bleibt erhalten.
+- „Klammer auf“ mit folgendem Artikel wird zu „(“, wenn danach ein „Klammer zu“ kommt.
+- „Punkt“ nach „ein“, „zu“, „in“ oder „einen“ wird als Punkt geschrieben, außer es folgt eine Zahl oder ein Nomen.
+- Nach einer Anrede mit Komma beginnt die nächste Zeile klein.
+- Das Glossar ersetzt keine Alltagswörter und keinen ersten Teil eines zusammengesetzten Worts mehr.
+- Kommas, Frage- und Ausrufezeichen bleiben zuverlässiger erhalten, und zwischen zwei Stücken steht nie mehr als eine Leerzeile.
 
 ## Installation
 Laden Sie das DMG von der [Release-Seite](https://github.com/mgsgde/whisper-shortcut/releases), öffnen Sie es und ziehen Sie WhisperShortcut in den Ordner „Programme“.
 
-**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.85...v8.86
+**Alle Änderungen:** https://github.com/mgsgde/whisper-shortcut/compare/v8.86...v8.87
