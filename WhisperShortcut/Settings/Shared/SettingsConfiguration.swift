@@ -1735,6 +1735,19 @@ enum ReadAloudSpeed: Double, CaseIterable {
   }
 }
 
+// MARK: - Dictation Preferences (UserDefaults Accessors)
+/// Read accessors for dictation behaviour that code outside the Settings window needs. Same shape
+/// as `ReadAloudPreferences`: coalesce-with-default in one place instead of at every call site.
+enum DictationPreferences {
+  /// Whether a transcript that is entirely a known Whisper silence hallucination is dropped.
+  /// Read by `TextProcessingUtility.validateSpeechText` on the offline Whisper path.
+  static var filterKnownWhisperHallucinations: Bool {
+    UserDefaults.standard.bool(
+      forKey: UserDefaultsKeys.filterKnownWhisperHallucinations,
+      default: SettingsDefaults.filterKnownWhisperHallucinations)
+  }
+}
+
 // MARK: - Read Aloud Preferences (UserDefaults Accessors)
 /// Centralized read accessors for Read Aloud preferences so MenuBarController, SpeechService,
 /// and SettingsViewModel don't each have to coalesce-with-default the same UserDefaults keys.
@@ -2345,6 +2358,9 @@ struct SettingsDefaults {
   // MARK: - Whisper Language Settings
   static let whisperLanguage = WhisperLanguage.auto
   static let punctuationMode = PunctuationMode.automatic
+  /// On by default: the filter only ever drops a transcript that is *nothing but* a known
+  /// hallucination, so leaving it off costs the user a pasted "Thank you." and buys nothing.
+  static let filterKnownWhisperHallucinations = true
 
   // MARK: - Notification Settings
   static let showPopupNotifications = true
@@ -2514,6 +2530,9 @@ struct SettingsData: Equatable {
   var transcriptionTemperature: TranscriptionTemperature = SettingsDefaults.transcriptionTemperature
   var transcriptionThinkingEffort: TranscriptionThinkingEffort = SettingsDefaults.transcriptionThinkingEffort
   var openRouterTranscriptionModelID: String = SettingsDefaults.openRouterTranscriptionModelID
+  /// Drop a transcript that is entirely a known Whisper silence hallucination. See
+  /// `TextProcessingUtility.knownWhisperHallucinations`.
+  var filterKnownWhisperHallucinations: Bool = SettingsDefaults.filterKnownWhisperHallucinations
 
   // MARK: - Read Aloud
   var readAloudSmartRewriteEnabled: Bool = SettingsDefaults.readAloudSmartRewriteEnabled
