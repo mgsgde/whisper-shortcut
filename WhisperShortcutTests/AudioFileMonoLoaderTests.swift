@@ -81,4 +81,22 @@ struct AudioFileMonoLoaderTests {
     #expect(samples.count == 16_000)
     #expect(abs(samples[0] - 0.3) < 0.01)
   }
+
+  @Test("A zero-length file reports emptyAudio, not a decode failure")
+  func emptyFileReportsEmptyAudio() throws {
+    let url = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("empty-test-\(UUID().uuidString).caf")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
+    do { _ = try AVAudioFile(forWriting: url, settings: format.settings) }
+
+    #expect(throws: AudioFileMonoLoaderError.self) {
+      try AudioFileMonoLoader.loadMonoSamples(from: url, targetRate: 16_000)
+    }
+    do {
+      _ = try AudioFileMonoLoader.loadMonoSamples(from: url, targetRate: 16_000)
+      Issue.record("expected emptyAudio")
+    } catch AudioFileMonoLoaderError.emptyAudio {
+    }
+  }
 }

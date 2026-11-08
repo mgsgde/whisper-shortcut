@@ -37,6 +37,9 @@ enum AudioFileMonoLoader {
   ) throws -> (fileRate: Int, samples: [Float]) {
     let audioFile = try AVAudioFile(forReading: url)
     let format = audioFile.processingFormat
+    // A zero-length file would request a capacity-0 buffer (nil), which reads as a decode
+    // failure; report it as what it is.
+    guard audioFile.length > 0 else { throw AudioFileMonoLoaderError.emptyAudio }
     let frameCount = AVAudioFrameCount(audioFile.length)
 
     guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {

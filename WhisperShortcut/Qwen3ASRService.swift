@@ -114,7 +114,7 @@ struct Qwen3ASRService {
   func transcribe(audioURL: URL, language: String?) async throws -> String {
     let model = try await Qwen3ASRModelLoader.shared.model()
 
-    let (fileRate, samples) = try AudioFileMonoLoader.loadMonoSamples(
+    let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(
       from: audioURL, targetRate: model.sampleRate)
     let audio = MLXArray(samples)
     guard audio.size > 0 else { throw Qwen3ASRError.emptyAudio }
@@ -122,7 +122,7 @@ struct Qwen3ASRService {
     let start = Date()
     let output = model.generate(audio: audio, language: language)
     DebugLogger.log(
-      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(fileRate)))s "
+      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(model.sampleRate)))s "
         + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s → \(output.text.count) chars")
     return output.text
   }
