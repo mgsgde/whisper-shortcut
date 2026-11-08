@@ -110,42 +110,20 @@ struct Qwen3ASRService {
   ///
   /// The model wants a mono float waveform at its own sample rate, so the file is decoded and
   /// resampled first — the recorder writes 16 kHz mono, the model reads at 16 kHz, but a
-  /// user-supplied file need not match.
+  /// user-supplied file need not match (and may be stereo, which the loader mixes to mono).
   func transcribe(audioURL: URL, language: String?) async throws -> String {
     let model = try await Qwen3ASRModelLoader.shared.model()
 
-    let (fileRate, samples) = try loadAudioArray(from: audioURL)
-    guard samples.size > 0 else { throw Qwen3ASRError.emptyAudio }
-
-    let audio: MLXArray
-    if abs(Double(fileRate) - Double(model.sampleRate)) < 1 {
-      audio = samples
-    } else {
-      audio = Self.resample(samples, from: Double(fileRate), to: Double(model.sampleRate))
-    }
+    let (_, samples) = try AudioFileMonoLoader.loadMonoSamples(
+      from: audioURL, targetRate: model.sampleRate)
+    let audio = MLXArray(samples)
+    guard audio.size > 0 else { throw Qwen3ASRError.emptyAudio }
 
     let start = Date()
     let output = model.generate(audio: audio, language: language)
     DebugLogger.log(
-      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.size) / Double(fileRate)))s "
+      "QWEN3-ASR: transcribed \(String(format: "%.1f", Double(samples.count) / Double(model.sampleRate)))s "
         + "in \(String(format: "%.1f", Date().timeIntervalSince(start)))s → \(output.text.count) chars")
     return output.text
-  }
-
-  /// Linear resampling. The recorder's 16 kHz matches the model, so this only runs for an
-  /// imported file with a different rate.
-  private static func resample(_ samples: MLXArray, from source: Double, to target: Double) -> MLXArray {
-    let values = samples.asArray(Float.self)
-    let ratio = target / source
-    let count = Int(Double(values.count) * ratio)
-    guard count > 0 else { return MLXArray([Float]()) }
-    let resampled: [Float] = (0..<count).map { index in
-      let position = Double(index) / ratio
-      let lower = Int(position)
-      let upper = min(lower + 1, values.count - 1)
-      let fraction = Float(position - Double(lower))
-      return values[lower] * (1 - fraction) + values[upper] * fraction
-    }
-    return MLXArray(resampled)
   }
 }

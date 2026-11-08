@@ -433,25 +433,11 @@ struct Qwen3TTSService {
     from url: URL, for persona: Qwen3VoicePersona, transcript: String?
   ) async throws -> Data {
     let model = try await Qwen3TTSModelLoader.shared.model(.voiceDesign)
-    let (fileRate, samples) = try loadAudioArray(from: url)
-    let values = samples.asArray(Float.self)
-    guard !values.isEmpty else { throw Qwen3TTSError.emptyAudio }
-
-    let resampled: [Float]
-    if abs(Double(fileRate) - Double(model.sampleRate)) < 1 {
-      resampled = values
-    } else {
-      let ratio = Double(model.sampleRate) / Double(fileRate)
-      let count = Int(Double(values.count) * ratio)
-      guard count > 0 else { throw Qwen3TTSError.emptyAudio }
-      resampled = (0..<count).map { index in
-        let position = Double(index) / ratio
-        let lower = Int(position)
-        let upper = min(lower + 1, values.count - 1)
-        let fraction = Float(position - Double(lower))
-        return values[lower] * (1 - fraction) + values[upper] * fraction
-      }
-    }
+    // The loader mixes stereo files to mono — the library's `loadAudioArray` would read only
+    // channel 0 and lose a voice that sits on the right channel.
+    let resampled = try AudioFileMonoLoader.loadMonoSamples(
+      from: url, targetRate: model.sampleRate).samples
+    guard !resampled.isEmpty else { throw Qwen3TTSError.emptyAudio }
 
     let text = try await referenceTranscript(for: url, typed: transcript, language: persona.language)
     Qwen3VoiceReferenceStore.store(
