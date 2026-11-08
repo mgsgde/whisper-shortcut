@@ -294,15 +294,29 @@ struct Qwen3TTSService {
         referenceText = sentence
       }
 
-      let pcm = Self.pcm16(from: samples, sourceRate: Double(model.sampleRate))
+      // The checkpoint pads chunks it cannot speak (a URL without a scheme, a byline, "7–8
+      // minutes") with seconds of near-silence at the front — measured 15 s of lead-in on a
+      // text whose first chunk held a news-site header. Trim that padding before it reaches
+      // playback, or the user waits through silence and hears the text start mid-way.
+      let trimmedSamples = Self.trimmingSilence(samples, sampleRate: model.sampleRate)
+      // A sentence that is entirely silence (a bare domain the model cannot vocalize at all)
+      // must not enqueue an empty chunk: playback would schedule zero bytes and stall.
+      guard !trimmedSamples.isEmpty else {
+        DebugLogger.log(
+          "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) was silent after trimming; skipping")
+        continue
+      }
+      let pcm = Self.pcm16(from: trimmedSamples, sourceRate: Double(model.sampleRate))
       merged.append(pcm)
-      let seconds = Double(samples.count) / Double(model.sampleRate)
+      let seconds = Double(trimmedSamples.count) / Double(model.sampleRate)
       let elapsed = Date().timeIntervalSince(start)
       let role = referenceWasNil ? "defines the voice" : "reference-pinned"
       DebugLogger.log(
-        "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(samples.count) samples "
+        "QWEN3-TTS: sentence \(index + 1)/\(sentences.count) \(trimmedSamples.count) samples "
           + "(\(String(format: "%.2f", seconds))s) "
-          + "in \(String(format: "%.1f", elapsed))s (\(role))")
+          + "in \(String(format: "%.1f", elapsed))s (\(role))"
+          + (trimmedSamples.count != samples.count
+            ? " (trimmed \(samples.count - trimmedSamples.count) silent samples)" : ""))
       if let onChunkReady {
         await MainActor.run { onChunkReady(pcm, index, sentences.count) }
       }
@@ -541,6 +555,35 @@ struct Qwen3TTSService {
     }
     if !rest.isEmpty { chunks.append(String(rest)) }
     return chunks
+  }
+
+  /// Drops leading and trailing near-silence from a generated chunk. The checkpoint pads text it
+  /// cannot vocalize (headers, bylines, bare domains) with long silent lead-ins instead of
+  /// skipping them, and a trailing tail of the same kind delays the next chunk's playback.
+  ///
+  /// The threshold is deliberately generous: normal speech on these checkpoints sits well above
+  /// 0.02 amplitude, while the padding is a low hum far below it. A short fade (5 ms) is applied
+  /// at both cut points so the trim itself cannot produce an audible click. A chunk that is
+  /// silent throughout comes back empty — the caller's `emptyAudio` guard then fails the
+  /// sentence instead of playing nothing for its full duration.
+  static func trimmingSilence(_ samples: [Float], sampleRate: Int) -> [Float] {
+    let threshold: Float = 0.02
+    let fade = max(1, sampleRate / 200)  // ~5 ms
+    guard !samples.isEmpty else { return samples }
+
+    var first = 0
+    while first < samples.count, abs(samples[first]) < threshold { first += 1 }
+    guard first < samples.count else { return [] }
+
+    var last = samples.count - 1
+    while last > first, abs(samples[last]) < threshold { last -= 1 }
+
+    var trimmed = Array(samples[first...last])
+    for i in 0..<min(fade, trimmed.count) { trimmed[i] *= Float(i) / Float(fade) }
+    for i in 0..<min(fade, trimmed.count) {
+      trimmed[trimmed.count - 1 - i] *= Float(i) / Float(fade)
+    }
+    return trimmed
   }
 
   /// Float samples → s16le at `outputSampleRate`, mono. Linear resampling is enough here: the

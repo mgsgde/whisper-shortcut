@@ -67,4 +67,38 @@ struct Qwen3TTSSplitTests {
     let sentences = Qwen3TTSService.splitIntoSentences(text, maxChars: 400)
     #expect(sentences.joined(separator: " ") == text)
   }
+
+  // MARK: - Silence trimming
+  // The checkpoint pads chunks it cannot vocalize (headers, bylines, bare domains) with long
+  // silent lead-ins. `trimmingSilence` is what keeps those out of playback.
+
+  @Test("Leading and trailing silence is dropped, speech is kept")
+  func trimsLeadingAndTrailingSilence() {
+    // 1 s of silence, 0.5 s of speech, 2 s of silence at 24 kHz.
+    let rate = 24_000
+    let silence = [Float](repeating: 0.001, count: rate)
+    let speech = [Float](repeating: 0.5, count: rate / 2)
+    let trimmed = Qwen3TTSService.trimmingSilence(silence + speech + silence + silence, sampleRate: rate)
+    // The speech body survives; only the padding and the 5 ms fades are gone.
+    #expect(trimmed.count > rate / 2 - 2 * rate / 200)
+    #expect(trimmed.count < rate / 2 + 2 * rate / 200 + rate / 100)
+    // No padding is left at the front: the fade-in is complete within ~5 ms, so the sample
+    // just past the fade is already at speech level.
+    #expect(abs(trimmed[rate / 200]) > 0.1)
+  }
+
+  @Test("A fully silent chunk comes back empty")
+  func fullySilentChunkComesBackEmpty() {
+    let silence = [Float](repeating: 0.001, count: 24_000 * 5)
+    #expect(Qwen3TTSService.trimmingSilence(silence, sampleRate: 24_000).isEmpty)
+  }
+
+  @Test("A chunk that is speech from the first sample is returned unchanged")
+  func speechOnlyChunkIsUnchanged() {
+    let speech = [Float](repeating: 0.4, count: 4_800)
+    let trimmed = Qwen3TTSService.trimmingSilence(speech, sampleRate: 24_000)
+    // Only the two 5 ms fades differ from the input.
+    #expect(trimmed.count == speech.count)
+    #expect(trimmed[trimmed.count / 2] == speech[speech.count / 2])
+  }
 }
