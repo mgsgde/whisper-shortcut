@@ -46,6 +46,12 @@ done
 # main-checkout `whisper-shortcut/.env`.
 if [[ "$HERMETIC_RUN" != true && "${CI:-}" != true && ! -e "$PROJECT_DIR/.env" ]]; then
   MAIN_WT=$(git -C "$PROJECT_DIR" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
+  # In a submodule git lists its gitdir (.git/modules/...) as "main"; core.worktree (relative to
+  # that gitdir) names the real checkout.
+  CORE_WT=$(git -C "$MAIN_WT" config --get core.worktree 2>/dev/null || true)
+  if [[ -n "$MAIN_WT" && -n "$CORE_WT" ]]; then
+    MAIN_WT=$(cd "$MAIN_WT" && cd "$CORE_WT" && pwd) || true
+  fi
   PARENT_ROOT="${PROJECT_DIR%%/.claude/worktrees/*}"
   CANDIDATES=("$MAIN_WT")
   [[ "$PARENT_ROOT" != "$PROJECT_DIR" ]] && CANDIDATES+=("$PARENT_ROOT/whisper-shortcut")
